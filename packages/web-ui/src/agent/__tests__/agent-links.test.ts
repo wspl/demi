@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { agentLinkWindow, findAgent, linkedAgent } from '../agent-links'
+import { NO_COST } from '../context-cost'
 import type { SubagentRecord } from '../subagents'
 
 // A message's link to an agent. Pure,
@@ -8,7 +9,7 @@ import type { SubagentRecord } from '../subagents'
 
 function agent(id: string, number: number, phase: SubagentRecord['phase']): SubagentRecord {
   return {
-    id, number, name: `Agent ${id}`, onPath: true, phase, sessionPhase: 'idle', startedAt: '2026-09-09T00:00:00.000Z',
+    id, number, parent: 'root', cost: NO_COST, name: `Agent ${id}`, onPath: true, phase, sessionPhase: 'idle', startedAt: '2026-09-09T00:00:00.000Z',
     profile: null, model: { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }, round: 1, forkedFrom: null,
     history: EMPTY_TRANSCRIPT, pendingCalls: [], waitingSince: null, failures: {}, contextUsage: null, cwd: '/work',
   }

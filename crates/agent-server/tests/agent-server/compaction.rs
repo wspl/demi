@@ -11,7 +11,7 @@ use std::{rc::Rc, sync::Arc};
 
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
-    testing::{ScriptedProviders, TestClient},
+    testing::{ScriptedProviders, TestClient, entry_in, phase_is, root_context, root_phase_is},
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{SubagentSettings, Toolset};
@@ -28,10 +28,8 @@ use demi_shared_types::{
 use serde_json::json;
 
 use crate::support::{
-    Fixture, Gate, LiveHosts, Model, ScriptedShells, agent, conversation, held, is_context_usage,
-    is_idle, is_pending_steers, kinds, named_node, open, request_text, scripted_host_server, send,
-    session_of, until,
-};
+        is_agents, Fixture, Gate, LiveHosts, Model, ScriptedShells, agent, conversation, held, is_context_usage, is_pending_steers, kinds, named_node, request_text, scripted_host_server, send, session_of, until, is_root_reset,
+    };
 
 /// The test model's window, which `model_of` gives every scripted model.
 const WINDOW: u64 = 100_000;
@@ -39,12 +37,8 @@ const WINDOW: u64 = 100_000;
 /// The usage a frame tells: its estimate, its window and the estimate the
 /// user may compact from.
 fn usage(frame: Option<&ServerFrame>) -> Option<(u64, Option<u64>, Option<u64>)> {
-    match frame? {
-        ServerFrame::ContextUsage { usage: Some(usage), .. } => {
-            Some((usage.tokens, usage.window, usage.compact_from))
-        }
-        _ => None,
-    }
+    let usage = root_context(frame?)?;
+    Some((usage.tokens, usage.window, usage.compact_from))
 }
 
 fn of_window(tokens: u64) -> Option<(u64, Option<u64>, Option<u64>)> {
@@ -70,16 +64,15 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
 
-    client.send(open()).await;
-    client.next_until(is_pending_steers).await;
-    // The usage follows the handshake.
+    client.open().await;
+    // The usage comes with the handshake's agents, or as the root's entry
+    // changes once its estimate is made.
     let opened = client.next_until(is_context_usage).await;
     // Before any message the estimate is the system prompt's and the
     // tools', all of it the System prompt and Commands rows.
-    let Some(ServerFrame::ContextUsage { node, usage: Some(first) }) = opened.last() else {
+    let Some(first) = opened.last().and_then(root_context) else {
         panic!("the open reported no usage: {opened:?}");
     };
-    assert_eq!(node, &conversation());
     let row_kinds: Vec<_> = first.rows.iter().map(|row| row.kind).collect();
     let prompt: u64 = first.rows[..2].iter().map(|row| row.tokens).sum();
     assert_eq!(
@@ -94,7 +87,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     assert!(first.tokens > 0 && first.tokens == prompt, "{first:?}");
 
     client.send(send("m1", "first")).await;
-    let turn = client.next_until(is_idle).await;
+    let turn = client.until_idle().await;
     assert_eq!(usage(last_usage(&turn)), of_window(30_000));
     client.send(ClientFrame::Compact { node: None }).await;
     assert_eq!(
@@ -112,19 +105,16 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     );
 
     client.send(send("m2", "second")).await;
-    let turn = client.next_until(is_idle).await;
+    let turn = client.until_idle().await;
     assert_eq!(usage(last_usage(&turn)), of_window(60_000));
     client.send(ClientFrame::Compact { node: None }).await;
-    let compaction = client.next_until(is_idle).await;
-    assert!(compaction.contains(&ServerFrame::Phase {
-        subagent_id: None,
-        phase: SessionPhase::Compacting
-    }));
+    let compaction = client.until_idle().await;
+    assert!(compaction.iter().any(|frame| root_phase_is(frame, SessionPhase::Compacting)));
     let blocks = session_of(&fixture).transcript().blocks;
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("compaction_marker"));
     // The summary replaced what the response measured: the usage is the
     // estimate of the blocks from the boundary on, far below the half.
-    let Some(ServerFrame::ContextUsage { usage: Some(usage), .. }) = last_usage(&compaction) else {
+    let Some(usage) = last_usage(&compaction).and_then(root_context) else {
         panic!("the compaction reported no usage: {compaction:?}");
     };
     assert!(usage.tokens < WINDOW / 2, "{usage:?}");
@@ -147,25 +137,22 @@ async fn a_turn_refused_for_its_size_compacts_at_any_share_and_then_resumes() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "first")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     client.send(send("m2", "second")).await;
-    let failed = client.next_until(is_idle).await;
+    let failed = client.until_idle().await;
     assert_eq!(usage(last_usage(&failed)).map(|usage| usage.0 < WINDOW / 2), Some(true));
 
     // Compact is taken below half the window: the media the vendor refused
     // are summarized away.
     client.send(ClientFrame::Compact { node: None }).await;
-    let compaction = client.next_until(is_idle).await;
+    let compaction = client.until_idle().await;
     assert!(
-        compaction.contains(&ServerFrame::Phase {
-            subagent_id: None,
-            phase: SessionPhase::Compacting
-        }),
+        compaction.iter().any(|frame| root_phase_is(frame, SessionPhase::Compacting)),
         "{compaction:?}"
     );
     // The turn is still the unfinished one, and Resume finishes it.
     client.send(ClientFrame::Resume {}).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let blocks = session_of(&fixture).transcript().blocks;
     assert_eq!(
@@ -192,18 +179,18 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
     let mut client = fixture.opened().await;
 
     client.send(send("m1", "first")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     client.send(send("m2", "second")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     client.send(ClientFrame::Close {}).await;
     client
         .next_until(|frame| *frame == ServerFrame::Closed)
         .await;
     let mut reopened = fixture.client();
-    reopened.send(open()).await;
-    let handshake = reopened.next_until(is_pending_steers).await;
-    let Some(ServerFrame::TranscriptReset { blocks, .. }) = handshake.get(1) else {
+    reopened.open().await;
+    let handshake = reopened.next_until(is_root_reset).await;
+    let Some(ServerFrame::TranscriptReset { blocks, .. }) = handshake.last() else {
         panic!("no transcript in the handshake: {handshake:?}");
     };
     let Some(Block::Error(error)) = blocks.last() else {
@@ -214,7 +201,7 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
     assert!(!error.outside_turn);
 
     reopened.send(ClientFrame::Resume {}).await;
-    reopened.next_until(is_idle).await;
+    reopened.until_idle().await;
     let blocks = session_of(&fixture).transcript().blocks;
     let answer = blocks.iter().rev().find_map(|block| match block {
         Block::Text(text) => Some(text.text.as_str()),
@@ -254,7 +241,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
     );
     let (server, store) = tree_server(&model);
     let mut client = TestClient::connect(&server, &conversation());
-    client.send(open()).await;
+    client.open().await;
     client.next_until(is_pending_steers).await;
     let session = server
         .node(&conversation(), &conversation())
@@ -263,7 +250,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
         .clone();
 
     client.send(send("m1", "Look around.")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     session.compact().unwrap().await.unwrap();
     assert_eq!(
         kinds(&session.transcript().blocks).last().map(String::as_str),
@@ -271,7 +258,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
     );
 
     client.send(send("m2", "Build the release.")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let spawned = agent(
         &server,
         &conversation(),
@@ -307,7 +294,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
 
 /// Whether `frame` is the usage of `node` with `tokens` in it.
 fn is_usage_of(node: &NodeId, tokens: u64) -> impl Fn(&ServerFrame) -> bool + '_ {
-    move |frame| matches!(frame, ServerFrame::ContextUsage { node: shown, usage: Some(usage) } if shown == node && usage.tokens == tokens)
+    move |frame| entry_in(frame, node).and_then(|entry| entry.context.as_ref()).is_some_and(|usage| usage.tokens == tokens)
 }
 
 /// A subagent's session reports its usage as the root's does, naming the child:
@@ -340,7 +327,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, Rc::new(ScriptedShells::default()), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
-    page.send(open()).await;
+    page.open().await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &conversation(), "spawn", json!({ "prompt": "task serve" })).await;
     let child = named_node(&store, &spawned);
@@ -349,35 +336,30 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
     page.next_until(is_usage_of(&child, 55_000)).await;
     page.next_until(is_usage_of(&child, 60_000)).await;
     page.next_until(|frame| {
-        matches!(frame, ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Idle } if id == &child)
+        phase_is(frame, &child, SessionPhase::Idle)
     })
     .await;
 
-    // A page that opens is told the root's usage and the live child's.
+    // A page that opens is told the root's usage and the live child's,
+    // with their entries.
     let mut opening = TestClient::connect(&server, &conversation());
-    opening.send(open()).await;
-    let handshake = opening.next_until(is_usage_of(&child, 60_000)).await;
-    let nodes: Vec<&NodeId> = handshake
-        .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::ContextUsage { node, .. } => Some(node),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(nodes, [&conversation(), &child]);
+    opening.open().await;
+    let handshake = opening.next_until(is_agents).await;
+    let agents = handshake.last().expect("the handshake lists the agents");
+    assert!(root_context(agents).is_some(), "{agents:?}");
+    assert!(is_usage_of(&child, 60_000)(agents), "{agents:?}");
     drop(opening);
 
     page.send(ClientFrame::Compact { node: Some(child.clone()) }).await;
     let compaction = page
         .next_until(|frame| {
-            matches!(frame, ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Idle } if id == &child)
+            phase_is(frame, &child, SessionPhase::Idle)
         })
         .await;
-    assert!(compaction.iter().any(|frame| matches!(frame,
-        ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Compacting } if id == &child)),
-        "{compaction:?}");
-    assert!(compaction.iter().any(|frame| matches!(frame,
-        ServerFrame::ContextUsage { node, usage: Some(usage) } if node == &child && usage.tokens < WINDOW / 2)),
+    assert!(compaction.iter().any(|frame| phase_is(frame, &child, SessionPhase::Compacting)), "{compaction:?}");
+    assert!(compaction.iter().any(|frame| entry_in(frame, &child)
+        .and_then(|entry| entry.context.as_ref())
+        .is_some_and(|usage| usage.tokens < WINDOW / 2)),
         "{compaction:?}");
     let tree = server.tree(&conversation()).expect("the tree is live");
     let child_blocks = tree.node(&child).expect("the child is live").session().transcript().blocks;
@@ -429,6 +411,8 @@ fn tree_server(model: &Model) -> (Rc<AgentServer<LiveHosts>>, Rc<MemoryTreeStore
         ids: Rc::new(SequentialIds::new("id")),
         config: ServerConfig::default(),
         status_changed: Rc::new(|_| {}),
+        agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
+        reply_files: Rc::new(demi_agent_server::testing::TestHostFiles::default()),
     });
     (server, store)
 }
@@ -457,7 +441,7 @@ async fn a_childs_working_directory_is_told_again_after_a_pass() {
     );
     let (server, store) = tree_server(&model);
     let mut client = TestClient::connect(&server, &conversation());
-    client.send(open()).await;
+    client.open().await;
     client.next_until(is_pending_steers).await;
     let spawned = agent(
         &server,

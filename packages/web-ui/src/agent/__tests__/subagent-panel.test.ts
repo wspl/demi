@@ -17,6 +17,7 @@ const { provideMediaViewer } = await import('../../files/media-viewer')
 const { EMPTY_TRANSCRIPT, heldTranscript } = await import('@demicodes/conversation-client')
 const { deferred, waitFor } = await import('@demicodes/utils')
 const { createdAt, userBlock } = await import('./agent-harness')
+const { NO_COST } = await import('../context-cost')
 type SubagentRecord = import('../subagents').SubagentRecord
 type Deferred = import('@demicodes/utils').Deferred<void>
 
@@ -32,6 +33,8 @@ function child(phase: 'running' | 'completed'): SubagentRecord {
   return {
     id: 'child',
     number: 1,
+    parent: 'root',
+    cost: NO_COST,
     name: 'Read the notes',
     phase,
     onPath: true,
@@ -79,14 +82,14 @@ function mountPanel(agents: SubagentRecord[], readLatest: (id: string) => Promis
   unmount = () => app.unmount()
 }
 
-test('a finished child the window holds none of shows loading, a failed read shows Retry, and Retry reads it again', async () => {
+test('a child the window holds none of on a page with no session shows loading, a failed read shows Retry, and Retry reads it again', async () => {
   const reads: Deferred[] = []
   const agents = reactive([child('completed')])
   mountPanel(agents, () => {
     const read = deferred()
     reads.push(read)
     return read.promise
-  })
+  }, false)
   await waitFor(() => reads.length === 1 && text().includes('Loading agent…'), () => `not loading: ${text()}`)
   reads[0]!.reject(new Error('The server took too long to answer.'))
   await waitFor(() => retryButton() !== undefined, () => `no Retry: ${text()}`)
@@ -103,20 +106,26 @@ test('a finished child the window holds none of shows loading, a failed read sho
   expect(shown).not.toContain('Couldn’t load this agent.')
 })
 
-// A live child's transcript comes with the socket's reset once the page shows
-// it (`crates/agent-server/src/server/tree.rs`). Reading it over HTTP as well
-// read a large child's page twice. It loads until the reset arrives.
-test('showing a live child reads nothing and loads until its transcript arrives', async () => {
-  const reads: string[] = []
-  const agents = reactive([child('running')])
-  mountPanel(agents, async (id) => {
-    reads.push(id)
-  })
-  await waitFor(() => text().includes('Loading agent…'), () => `not loading: ${text()}`)
-  agents[0]!.history = heldTranscript(1, [{ start: 0, blocks: [userBlock('u1', 't1', 'Read notes.md')] }])
-  await waitFor(() => !text().includes('Loading agent…'), () => `still loading: ${text()}`)
+// A child's transcript, live or finished, comes with the socket's reset once
+// the page shows it (`crates/agent-server/src/server/tree.rs`). Reading it
+// over HTTP as well read a large child's page twice; a finished child read
+// only over HTTP never caught up with what the page held of it. It loads
+// until the reset arrives.
+test('showing a child, live or finished, reads nothing and loads until its transcript arrives', async () => {
+  for (const state of ['running', 'completed'] as const) {
+    const reads: string[] = []
+    const agents = reactive([child(state)])
+    mountPanel(agents, async (id) => {
+      reads.push(id)
+    })
+    await waitFor(() => text().includes('Loading agent…'), () => `${state}: not loading: ${text()}`)
+    agents[0]!.history = heldTranscript(1, [{ start: 0, blocks: [userBlock('u1', 't1', 'Read notes.md')] }])
+    await waitFor(() => !text().includes('Loading agent…'), () => `${state}: still loading: ${text()}`)
 
-  expect(reads).toEqual([])
+    expect(reads).toEqual([])
+    unmount?.()
+    unmount = null
+  }
 })
 
 // A page that opens no session, as for a conversation whose model is gone,

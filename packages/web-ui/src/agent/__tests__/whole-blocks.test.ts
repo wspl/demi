@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { createRenderer, defineComponent, h, nextTick, ref } from 'vue'
-import type { HeldBlock } from '@demicodes/conversation-client'
+import { EMPTY_TRANSCRIPT, heldBlocks, resetTranscript, type HeldBlock } from '@demicodes/conversation-client'
 import { provideBlockReader, provideBlockScope, useWholeBlock, type ShownBlock } from '../whole-blocks'
 import { createdAt, model } from './agent-harness'
 
@@ -67,5 +67,36 @@ test('a light block that joins an open row is read whole too', async () => {
   shown.value = joined(lightThinking('k1'), lightThinking('k2'))
   await nextTick()
   expect(reads).toEqual(['k1', 'k2'])
+  app.unmount()
+})
+
+// A window opened again, or a page that reconnects, receives its blocks in a
+// reset, light as a page's are: a thinking without its text, a call without
+// its output. Before, the reset's blocks were not marked light, so opening
+// one showed it empty and read nothing.
+test('a block that came in a reset is read whole when its row opens', async () => {
+  const { light: _, ...sent } = lightThinking('k1')
+  const reset = resetTranscript(EMPTY_TRANSCRIPT, { start: 0, length: 2, blocks: [sent, { ...sent, id: 'k2' }] })
+  const reads: string[] = []
+  const open = ref(false)
+  const row = defineComponent({
+    setup() {
+      useWholeBlock(() => open.value)
+      return () => null
+    },
+  })
+  const app = createApp(defineComponent({
+    setup() {
+      provideBlockReader(() => async (_node, id) => {
+        reads.push(id)
+      })
+      provideBlockScope(() => joined(heldBlocks(reset)[0]!))
+      return () => h(row)
+    },
+  }))
+  app.mount(node())
+  open.value = true
+  await nextTick()
+  expect(reads).toEqual(['k1'])
   app.unmount()
 })

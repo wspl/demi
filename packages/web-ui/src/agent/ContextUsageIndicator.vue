@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
@@ -37,7 +37,7 @@ import {
 } from './context-usage'
 import { instructionRows } from './instructions'
 import ContextCost from './ContextCost.vue'
-import { type CostState, hasCost } from './context-cost'
+import { type CostShown, hasCost } from './context-cost'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as the
@@ -96,11 +96,11 @@ const props = defineProps<{
    */
   segment?: boolean
   /**
-   * The conversation's cost, which the host holds while the conversation is
-   * open, read with it and kept current by its frames, or the failure of its
-   * read. None for a card that shows no conversation's cost.
+   * The cost of the conversation or the agent the card is for, from its
+   * agents' metadata, with the calls the host reads while the card is open
+   * (`costCalls`). None for a card that shows no cost.
    */
-  cost?: CostState | null
+  cost?: CostShown | null
   /**
    * The part that stands open, or none, whatever the browser keeps, as a
    * gallery specimen pins it.
@@ -131,8 +131,13 @@ const emit = defineEmits<{
    * Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
-  /** Read the cost again after a read that failed. */
+  /** Read the calls again after a read that failed. */
   retryCost: []
+  /**
+   * The card opened or closed: the host reads the calls the Cost section
+   * charts while it is open, and lets them go when it closes.
+   */
+  costCalls: [wanted: boolean]
 }>()
 
 /**
@@ -181,16 +186,16 @@ const open = computed({
   },
 })
 const elevation = useLayerElevation()
-/**
- * The Cost section shows once the conversation made a call, or once a read
- * of it failed, with the context's part or without it.
- */
-const costShown = computed(() => {
-  const cost = props.cost
-  if (!cost)
-    return false
-  return cost.status === 'failed' || hasCost(cost.cost)
+watch(open, (shown) => emit('costCalls', shown), { immediate: true })
+onBeforeUnmount(() => {
+  if (open.value)
+    emit('costCalls', false)
 })
+/**
+ * The Cost section shows once the conversation made a call, with the
+ * context's part or without it.
+ */
+const costShown = computed(() => hasCost(props.cost?.cost ?? null))
 
 /**
  * Compact is an action of the card, which closes it as a menu's action does.

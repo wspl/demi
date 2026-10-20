@@ -94,8 +94,8 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   }
   const conversations = useConversations()
   const resources = useResources()
-  const summary = computed(() => conversations.items.find((item) => item.id === conversationId) ?? null)
-  const execution = computed(() => (summary.value ? executionFor(summary.value) : null))
+  const conversation = computed(() => conversations.items.find((item) => item.id === conversationId) ?? null)
+  const execution = computed(() => (conversation.value ? executionFor(conversation.value) : null))
   const device = computed(() => {
     const target = execution.value
     return target ? resources.deviceById(target.deviceId) : null

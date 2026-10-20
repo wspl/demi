@@ -1153,6 +1153,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="cardLong.refresh"
                   @retry-cost="costClosed.retry"
+                  @cost-calls="costClosed.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1170,6 +1171,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costProfiles.retry"
+                  @cost-calls="costProfiles.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1187,6 +1189,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costPlain.retry"
+                  @cost-calls="costPlain.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1204,6 +1207,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costAlone.retry"
+                  @cost-calls="costAlone.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1221,6 +1225,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costYoung.retry"
+                  @cost-calls="costYoung.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1238,6 +1243,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costFailed.retry"
+                  @cost-calls="costFailed.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1255,6 +1261,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costShort.retry"
+                  @cost-calls="costShort.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1272,6 +1279,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costGiant.retry"
+                  @cost-calls="costGiant.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1289,6 +1297,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @retry-cost="costMany.retry"
+                  @cost-calls="costMany.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1304,6 +1313,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @retry-cost="costUnpriced.retry"
+                  @cost-calls="costUnpriced.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1319,6 +1329,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="[]"
                   @compact="productWould('Compact the Conversation')"
                   @retry-cost="costSubagent.retry"
+                  @cost-calls="costSubagent.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1336,6 +1347,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @refresh-limits="cardEarly.refresh"
                   @retry-cost="costEarly.retry"
+                  @cost-calls="costEarly.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1352,6 +1364,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @refresh-limits="cardWindowless.refresh"
                   @retry-cost="costWindowless.retry"
+                  @cost-calls="costWindowless.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1371,6 +1384,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="cardLong.refresh"
                   @retry-cost="costCompacting.retry"
+                  @cost-calls="costCompacting.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1387,6 +1401,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-tip="tip.call"
                   @compact="productWould('Compact the Conversation')"
                   @retry-cost="tip.cost.retry"
+                  @cost-calls="tip.cost.calls"
                 />
               </div>
             </GallerySpecimen>

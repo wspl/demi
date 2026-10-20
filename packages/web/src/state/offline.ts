@@ -1,26 +1,52 @@
 import { toRaw, watch } from 'vue'
 import { z } from 'zod'
 import {
+  agentEntrySchema,
   blockSchema,
   instructionEntrySchema,
   providerFailureFactsSchema,
   schemaRefusal,
-  subagentJobSchema,
+  versionSchema,
   versionsSchema,
+  type ProviderFailureFacts,
+  type Version,
 } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { heldTranscript, type HeldBlock, type HeldTranscript, type TranscriptWindow } from '@demicodes/web-ui/transport/protocol'
 import { onSessionExpired } from '../api/client'
-import { productStateSchema, userDtoSchema, type ProductState, type UserDto } from '../api/generated/web-api'
+import {
+  conversationMetadataSchema,
+  productStateSchema,
+  userDtoSchema,
+  type ProductState,
+  type UserDto,
+} from '../api/generated/web-api'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { t } from './locales/text'
 
 /**
- * The account's cache for opening offline: the page's copy of the product state
- * with the account the session names, and, for each conversation the user
- * opened on this device, the latest window of its root agent as the page held
- * it, with its agents. It is read only while the backend cannot be reached, and
- * it is disposable: written by one build and read by that build alone, a record
- * of another build is dropped, never migrated, and it is the account's alone.
+ * The account's disk copy (`docs/decisions/0009-agent-sessions-and-sync.md`): what
+ * the page has read, so a reload, a return and a tab opened again show it at
+ * once and catch up by changes alone, and so the page opens offline.
+ *
+ * - The account's record: the product state, with the conversation list,
+ *   and the account the session names.
+ * - Each conversation's record: its metadata and its agents at their
+ *   version.
+ * - Each node's record and blocks: the runs of its transcript the page knows
+ *   to be whole, its length, and the version its latest run is current at;
+ *   each block by node and index, read one window at a time.
+ *
+ * A block is written once it is complete, never per streamed piece. The
+ * disk is bounded at `DISK_BYTES`, or what the browser grants if less: past
+ * it the node viewed longest ago goes first, its blocks deleted a small
+ * batch at a time while the page is idle, since one large deletion holds
+ * every read back until it ends; a write the disk is too full for evicts
+ * rather than fails.
+ *
+ * It is disposable: written by one build and read by that build alone, a
+ * record of another build is dropped, never migrated, and it is the
+ * account's alone.
  */
 
 /** The build the records belong to; Vite's development server names none. */
@@ -31,15 +57,22 @@ function cacheBuild(): string {
 const ACCOUNT = 'account'
 const CONVERSATIONS = 'conversations'
 /**
- * When the user last opened each kept conversation, `{ openedAt }` by its
- * id: a record of its own, so opening a conversation writes these few bytes
- * and never its copy, and the copies opened longest ago are found by its
- * index when room runs out. A copy and its record are written and deleted
- * together, so every kept copy has one.
+ * Each node's record by its id, with when it was last viewed, by whose
+ * index the node viewed longest ago is found, and its conversation's id,
+ * by whose index a conversation's nodes go with it.
  */
-const OPENED = 'opened'
+const NODES = 'nodes'
+/** Each block by `[node, index]`. */
+const BLOCKS = 'blocks'
 /** The one key of the account's record. */
 const ACCOUNT_KEY = 'account'
+
+/** The most the disk holds, in bytes, when the browser grants as much. */
+export const DISK_BYTES = 500 * 1024 * 1024
+/** The blocks one idle step deletes at most, so no deletion holds reads back for long. */
+export const EVICTION_BATCH = 200
+/** The blocks of a node's latest run a view shows from the disk at once. */
+export const DISK_WINDOW = 200
 
 /**
  * The database's layout. Its records are disposable, so a change of their
@@ -47,14 +80,17 @@ const ACCOUNT_KEY = 'account'
  * layout drops every store of the one before, records and all, as a cache
  * of another build is dropped.
  */
-const database = new IndexedDatabase('demi-offline', 2, (request) => {
+const database = new IndexedDatabase('demi-offline', 3, (request) => {
   const db = request.result
   for (const name of [...db.objectStoreNames]) {
     db.deleteObjectStore(name)
   }
   db.createObjectStore(ACCOUNT)
   db.createObjectStore(CONVERSATIONS)
-  db.createObjectStore(OPENED).createIndex('openedAt', 'openedAt')
+  const nodes = db.createObjectStore(NODES)
+  nodes.createIndex('viewedAt', 'viewedAt')
+  nodes.createIndex('conversation', 'conversation')
+  db.createObjectStore(BLOCKS)
 })
 
 const accountRecordSchema = z.object({
@@ -63,37 +99,78 @@ const accountRecordSchema = z.object({
   state: productStateSchema,
 })
 
-/** A child of the conversation as its job says it, without what only the job's frames carry. */
-const agentCopySchema = subagentJobSchema.omit({ parentSessionId: true, result: true })
-
-/** A block as the page held it: whole, or light when it was read from a page. */
-const heldBlockSchema = z.intersection(
-  blockSchema,
-  z.object({ light: z.literal(true).optional(), versions: versionsSchema.optional() }),
-)
-
 const conversationRecordSchema = z.object({
   build: z.string(),
   userId: z.string(),
-  /** The root agent's latest window, and how many blocks its transcript held. */
-  transcript: z.object({
-    length: z.int().nonnegative(),
-    start: z.int().nonnegative(),
-    blocks: z.array(heldBlockSchema),
-  }),
-  failures: z.record(z.string(), providerFailureFactsSchema),
+  metadata: conversationMetadataSchema,
+  agents: z.object({ version: versionSchema, entries: z.array(agentEntrySchema) }),
+})
+
+/** A run of blocks the disk holds whole, from `start` to before `end`. */
+const runSchema = z.object({ start: z.int().nonnegative(), end: z.int().nonnegative() })
+
+const nodeRecordSchema = z.object({
+  build: z.string(),
+  userId: z.string(),
+  conversation: z.string(),
+  /** How many blocks its transcript held, as far as the latest run knows. */
+  length: z.int().nonnegative(),
+  /** The version its latest run is current at; absent when that run lacks blocks still streaming. */
+  version: versionSchema.optional(),
+  runs: z.array(runSchema),
+  /** The root's newest instructions and its compaction summaries, as pages named them. */
   instructions: z.array(instructionEntrySchema),
   summaries: z.record(z.string(), z.int().nonnegative()),
-  agents: z.array(agentCopySchema),
+  viewedAt: z.number(),
+  /** About how many bytes its blocks take, counted as they are written. */
+  bytes: z.number().nonnegative(),
 })
+
+/** A block as the page held it: whole, or light when it was read from a page, with its failure's facts. */
+const blockRecordSchema = z.object({
+  block: z.intersection(
+    blockSchema,
+    z.object({ light: z.literal(true).optional(), versions: versionsSchema.optional() }),
+  ),
+  failure: providerFailureFactsSchema.optional(),
+})
+
+export type ConversationCopy = Omit<z.infer<typeof conversationRecordSchema>, 'build' | 'userId'>
+type NodeRecord = z.infer<typeof nodeRecordSchema>
+type Run = z.infer<typeof runSchema>
+
+/** What the disk holds of a node, as a view shows it at once. */
+export interface NodeCopy {
+  transcript: HeldTranscript
+  failures: Record<string, ProviderFailureFacts>
+  instructions: NodeRecord['instructions']
+  summaries: NodeRecord['summaries']
+}
+
+/** What a page writes of a node: its runs as they are now, and the blocks that changed in them. */
+export interface NodeWrite {
+  conversation: string
+  length: number
+  version?: Version
+  runs: Run[]
+  instructions: NodeRecord['instructions']
+  summaries: NodeRecord['summaries']
+  /** The blocks to write, by index, each with its failure's facts. */
+  blocks: { index: number, block: HeldBlock, failure?: ProviderFailureFacts }[]
+  /** The index from which the disk's blocks go, as a rewrite that cut the transcript there; none for none. */
+  cutFrom?: number
+  /**
+   * Whether `runs` replace the disk's, as after a reset that could not vouch
+   * for what the page held, which the disk holds as well; else they join them.
+   */
+  replaceRuns?: true
+}
 
 export interface AccountCopy {
   user: UserDto
   state: ProductState
 }
 
-export type ConversationCopy = Omit<z.infer<typeof conversationRecordSchema>, 'build' | 'userId'>
-export type AgentCopy = z.infer<typeof agentCopySchema>
 
 /**
  * `value` as the database keeps it: the plain data under the reactive
@@ -161,37 +238,6 @@ export async function readAccountCopy(): Promise<AccountCopy | null> {
 }
 
 /**
- * The copy of conversation `id` this build wrote for `userId`; a record of
- * another build, or one that does not read, is dropped. A database that
- * fails says so on the console, and the conversation has no copy then.
- */
-export async function readConversationCopy(userId: string, id: string): Promise<ConversationCopy | null> {
-  try {
-    return await readConversation(userId, id)
-  } catch (error) {
-    reportError(t('failures.readOffline'), error)
-    return null
-  }
-}
-
-async function readConversation(userId: string, id: string): Promise<ConversationCopy | null> {
-  const value = await database.transaction(CONVERSATIONS, 'readonly', (store) => store.get(id))
-  if (value === undefined) {
-    return null
-  }
-  const record = ofThisBuild(value) ? conversationRecordSchema.safeParse(value) : null
-  if (record === null || !record.success || record.data.userId !== userId) {
-    if (record !== null && !record.success) {
-      reportError(t('failures.readOffline'), schemaRefusal(record.error))
-    }
-    await forget(id)
-    return null
-  }
-  const { build: _build, userId: _user, ...copy } = record.data
-  return copy
-}
-
-/**
  * The session that ended, whose copies are never written again: its account
  * and the user object the page held for it. A new sign-in, which brings a
  * user object of its own, writes again.
@@ -203,95 +249,251 @@ function writable(userId: string): boolean {
   return ended?.userId !== userId
 }
 
-/** What hears that a conversation's copy left the cache, by its id. */
-const dropListeners = new Set<(id: string) => void>()
+/** Reads `value` as `schema` says a record of this build for `userId` is; another build's, another account's or one that does not read is none. */
+function ours<S extends z.ZodType<{ userId: string }>>(schema: S, value: unknown, userId: string): z.infer<S> | null {
+  if (value === undefined || !ofThisBuild(value)) {
+    return null
+  }
+  const record = schema.safeParse(value)
+  if (!record.success) {
+    reportError(t('failures.readOffline'), schemaRefusal(record.error))
+    return null
+  }
+  return record.data.userId === userId ? record.data : null
+}
 
 /**
- * Hears of each conversation whose copy leaves the cache while the account
- * keeps it: the copy opened longest ago, which goes to make room, or one
- * that did not read. Returns what stops it.
+ * The copy of conversation `id`'s metadata and agents this build wrote for
+ * `userId`; none for none, or one that does not read. A database that
+ * fails says so on the console, and the conversation has no copy then.
  */
-export function onConversationCopyDropped(listener: (id: string) => void): () => void {
-  dropListeners.add(listener)
-  return () => {
-    dropListeners.delete(listener)
+export async function readConversationCopy(userId: string, id: string): Promise<ConversationCopy | null> {
+  try {
+    const value = await database.transaction(CONVERSATIONS, 'readonly', (store) => store.get(id))
+    const record = ours(conversationRecordSchema, value, userId)
+    if (!record) {
+      return null
+    }
+    const { build: _build, userId: _user, ...copy } = record
+    return copy
+  } catch (error) {
+    reportError(t('failures.readOffline'), error)
+    return null
   }
 }
 
 /**
- * Replaces the copy of conversation `id` whole with `copy`, and when the
- * user last opened it with `openedAt`, as `Date.now()`, both in one
- * transaction, so every kept copy has the recency room is made by; unless
- * the session of `userId` ended. `copy` is plain data, behind no proxy,
- * which the database copies as it is. A write that fails says so on the
- * console: the page works without the copy.
+ * Replaces conversation `id`'s copy with `copy`, plain data behind no
+ * proxy, unless the session of `userId` ended. A write that fails says so
+ * on the console: the page works without the copy.
  */
-export async function writeConversationCopy(userId: string, id: string, copy: ConversationCopy, openedAt: number): Promise<void> {
+export async function writeConversationCopy(userId: string, id: string, copy: ConversationCopy): Promise<void> {
   if (!writable(userId)) {
     return
   }
   const record = { build: cacheBuild(), userId, ...copy }
   try {
-    await withRoom(id, () => database.across([CONVERSATIONS, OPENED], 'readwrite', (transaction) => {
-      transaction.objectStore(CONVERSATIONS).put(record, id)
-      transaction.objectStore(OPENED).put({ openedAt }, id)
-      return () => {}
-    }))
+    await withRoom(id, () => database.transaction(CONVERSATIONS, 'readwrite', (store) => store.put(record, id)))
   } catch (error) {
     reportError(t('failures.keepOffline'), error)
   }
 }
 
 /**
- * Records that the user opened conversation `id` at `openedAt`, as
- * `Date.now()`, where the cache keeps its copy, which stays as it is; a
- * conversation without a copy gets its recency with its copy. Nothing
- * once the session of `userId` ended. A write that fails says so on the
- * console.
+ * What the disk holds of node `node` for `userId`: the last `DISK_WINDOW`
+ * blocks of its latest run, as a view shows them at once, marked viewed
+ * now; none when it holds none. A database that fails says so on the
+ * console, and the node has no copy then.
  */
-export async function writeConversationOpened(userId: string, id: string, openedAt: number): Promise<void> {
+export async function readNodeCopy(userId: string, node: string): Promise<NodeCopy | null> {
+  try {
+    const record = await viewedNode(userId, node)
+    const latest = record?.runs.at(-1)
+    if (!record || !latest || latest.end < record.length) {
+      return null
+    }
+    const start = Math.max(latest.start, latest.end - DISK_WINDOW)
+    const window = await readRun(node, start, latest.end)
+    if (!window) {
+      return null
+    }
+    return {
+      transcript: heldTranscript(record.length, window.blocks.length ? [{ start, blocks: window.blocks }] : [], record.version),
+      failures: window.failures,
+      instructions: record.instructions,
+      summaries: record.summaries,
+    }
+  } catch (error) {
+    reportError(t('failures.readOffline'), error)
+    return null
+  }
+}
+
+/**
+ * The blocks of node `node` the disk holds whole before the index `end`, as
+ * a view reads the page before its window there: up to `DISK_WINDOW` of
+ * them, back to the start of the run that holds them, when that run holds
+ * `edge` at `end` too, which the window starts with; none otherwise.
+ */
+export async function readNodeBlocks(
+  userId: string,
+  node: string,
+  end: number,
+  edge: string,
+): Promise<{ window: TranscriptWindow, failures: Record<string, ProviderFailureFacts> } | null> {
+  try {
+    const value = await database.transaction(NODES, 'readonly', (store) => store.get(node))
+    const run = ours(nodeRecordSchema, value, userId)?.runs.find((each) => each.start < end && each.end > end)
+    if (!run) {
+      return null
+    }
+    const start = Math.max(run.start, end - DISK_WINDOW)
+    const read = await readRun(node, start, end + 1)
+    if (read?.blocks.at(-1)?.id !== edge) {
+      return null
+    }
+    return { window: { start, blocks: read.blocks.slice(0, -1) }, failures: read.failures }
+  } catch (error) {
+    reportError(t('failures.readOffline'), error)
+    return null
+  }
+}
+
+/** The node's record, marked viewed now; none for none. */
+async function viewedNode(userId: string, node: string): Promise<NodeRecord | null> {
+  return database.across([NODES], 'readwrite', (transaction) => {
+    const nodes = transaction.objectStore(NODES)
+    let record: NodeRecord | null = null
+    const request = nodes.get(node)
+    request.onsuccess = () => {
+      record = ours(nodeRecordSchema, request.result, userId)
+      if (record) {
+        record = { ...record, viewedAt: Date.now() }
+        nodes.put(record, node)
+      }
+    }
+    return () => record
+  })
+}
+
+/** The blocks `[start, end)` of node `node`; none when one of them is missing. */
+async function readRun(node: string, start: number, end: number): Promise<{ blocks: HeldBlock[], failures: Record<string, ProviderFailureFacts> } | null> {
+  const values = await database.transaction(BLOCKS, 'readonly', (store) =>
+    store.getAll(IDBKeyRange.bound([node, start], [node, end], false, true)))
+  if (values.length !== end - start) {
+    return null
+  }
+  const blocks: HeldBlock[] = []
+  const failures: Record<string, ProviderFailureFacts> = {}
+  for (const value of values) {
+    const record = blockRecordSchema.safeParse(value)
+    if (!record.success) {
+      reportError(t('failures.readOffline'), schemaRefusal(record.error))
+      return null
+    }
+    blocks.push(record.data.block)
+    if (record.data.failure) {
+      failures[record.data.block.id] = record.data.failure
+    }
+  }
+  return { blocks, failures }
+}
+
+/**
+ * Writes what changed of node `node` for `userId`, its record and its
+ * blocks in one transaction, unless the session of `userId` ended; each
+ * block is plain data behind no proxy. A write that fails says so on the
+ * console: the page works without it.
+ */
+export async function writeNode(userId: string, node: string, write: NodeWrite): Promise<void> {
   if (!writable(userId)) {
     return
   }
   try {
-    await withRoom(id, () => database.across([CONVERSATIONS, OPENED], 'readwrite', (transaction) => {
-      const kept = transaction.objectStore(CONVERSATIONS).getKey(id)
-      kept.onsuccess = () => {
-        if (kept.result !== undefined) {
-          transaction.objectStore(OPENED).put({ openedAt }, id)
+    await withRoom(write.conversation, () => database.across([NODES, BLOCKS], 'readwrite', (transaction) => {
+      const nodes = transaction.objectStore(NODES)
+      const blocks = transaction.objectStore(BLOCKS)
+      // What its blocks take changes by what the write adds less what it
+      // cuts or replaces, each about what its text takes, which is most of
+      // it. A transaction runs its requests in order, so each read before a
+      // change answers what the change replaces.
+      const size = (value: unknown) => JSON.stringify(value).length
+      let change = 0
+      const replaced: IDBRequest[] = []
+      if (write.cutFrom !== undefined) {
+        const range = IDBKeyRange.bound([node, write.cutFrom], [node, Number.MAX_SAFE_INTEGER])
+        replaced.push(blocks.getAll(range))
+        blocks.delete(range)
+      }
+      for (const { index, block, failure } of write.blocks) {
+        const record = failure ? { block, failure } : { block }
+        change += size(record)
+        replaced.push(blocks.get([node, index]))
+        blocks.put(record, [node, index])
+      }
+      const held = nodes.get(node)
+      held.onsuccess = () => {
+        for (const read of replaced) {
+          const values: unknown[] = Array.isArray(read.result) ? read.result : read.result === undefined ? [] : [read.result]
+          for (const value of values) {
+            change -= size(value)
+          }
         }
+        const before = ours(nodeRecordSchema, held.result, userId)
+        nodes.put({
+          build: cacheBuild(),
+          userId,
+          conversation: write.conversation,
+          length: write.length,
+          ...(write.version ? { version: write.version } : {}),
+          runs: joinedRuns(write.replaceRuns ? [] : before?.runs ?? [], write),
+          instructions: write.instructions,
+          summaries: write.summaries,
+          viewedAt: before?.viewedAt ?? Date.now(),
+          bytes: (before?.bytes ?? 0) + change,
+        } satisfies NodeRecord, node)
       }
       return () => {}
     }))
+    scheduleEviction()
   } catch (error) {
     reportError(t('failures.keepOffline'), error)
   }
 }
 
-/** Deletes conversation `id`'s copy and when it was opened, together, and says the copy is gone. */
-async function forget(id: string): Promise<void> {
-  await database.across([CONVERSATIONS, OPENED], 'readwrite', (transaction) => {
-    transaction.objectStore(CONVERSATIONS).delete(id)
-    transaction.objectStore(OPENED).delete(id)
-    return () => {}
-  })
-  for (const listener of dropListeners) {
-    listener(id)
+/**
+ * The runs the disk holds whole after `write`: its runs among `before`,
+ * which a cut and the transcript's new length end.
+ */
+function joinedRuns(before: readonly Run[], write: NodeWrite): Run[] {
+  const end = Math.min(write.length, write.cutFrom ?? write.length)
+  const runs = [...before.map((run) => ({ start: run.start, end: Math.min(run.end, end) })), ...write.runs]
+    .filter((run) => run.end > run.start)
+    .sort((a, b) => a.start - b.start)
+  const joined: Run[] = []
+  for (const run of runs) {
+    const last = joined.at(-1)
+    if (last && run.start <= last.end) {
+      last.end = Math.max(last.end, run.end)
+    } else {
+      joined.push({ ...run })
+    }
   }
+  return joined
 }
 
 /** Deletes the account's cache, as signing out, a 401 or `session_ended` does. */
 export async function deleteAccountCache(): Promise<void> {
   // All go at once, so whatever reads the cache from now on finds it gone.
-  await Promise.all([ACCOUNT, CONVERSATIONS, OPENED].map((store) =>
+  await Promise.all([ACCOUNT, CONVERSATIONS, NODES, BLOCKS].map((store) =>
     database.transaction(store, 'readwrite', (records) => records.clear()),
   ))
 }
 
 /**
- * Runs `write`. When the web browser refuses it for lack of room, the
- * copies of the conversations opened longest ago go, one at a time, until
- * it fits; the copy of `keep`, the one being written, stays.
+ * Runs `write`. When the web browser refuses it for lack of room, the node
+ * viewed longest ago goes, whole, until it fits; a node of `keep`, the
+ * conversation being written, goes only when no other is left.
  */
 async function withRoom<T>(keep: string | null, write: () => Promise<T>): Promise<T> {
   for (;;) {
@@ -301,21 +503,135 @@ async function withRoom<T>(keep: string | null, write: () => Promise<T>): Promis
       if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') {
         throw error
       }
-      const oldest = await openedLongestAgo(keep)
+      const oldest = await viewedLongestAgo(keep)
       if (oldest === null) {
         throw error
       }
-      await forget(oldest)
+      while (!(await evictStep(oldest))) {
+        // Each step deletes a batch; the node's record goes with its last.
+      }
     }
   }
 }
 
-/** The conversation, other than `keep`, whose copy was opened longest ago; none when no other is kept. */
-async function openedLongestAgo(keep: string | null): Promise<string | null> {
-  const keys = await database.transaction(OPENED, 'readonly', (records) =>
-    records.index('openedAt').getAllKeys(null, 2),
-  )
-  return keys.find((key): key is string => typeof key === 'string' && key !== keep) ?? null
+/** The node viewed longest ago, one not of conversation `keep` first; none when the disk holds none. */
+async function viewedLongestAgo(keep: string | null): Promise<string | null> {
+  return database.across([NODES], 'readonly', (transaction) => {
+    let found: string | null = null
+    let other: string | null = null
+    const cursor = transaction.objectStore(NODES).index('viewedAt').openCursor()
+    cursor.onsuccess = () => {
+      const at = cursor.result
+      if (!at) {
+        return
+      }
+      const conversation = (at.value as { conversation?: unknown }).conversation
+      found ??= String(at.primaryKey)
+      if (conversation !== keep) {
+        other = String(at.primaryKey)
+        return
+      }
+      at.continue()
+    }
+    return () => other ?? found
+  })
+}
+
+/**
+ * Deletes a batch of node `node`'s blocks, and its record with its last,
+ * with the conversation's record once its root goes; answers whether the
+ * node is gone.
+ */
+async function evictStep(node: string): Promise<boolean> {
+  return database.across([NODES, BLOCKS, CONVERSATIONS], 'readwrite', (transaction) => {
+    const blocks = transaction.objectStore(BLOCKS)
+    const range = IDBKeyRange.bound([node, 0], [node, Number.MAX_SAFE_INTEGER])
+    let gone = false
+    const keys = blocks.getAllKeys(range, EVICTION_BATCH)
+    keys.onsuccess = () => {
+      for (const key of keys.result) {
+        blocks.delete(key)
+      }
+      if (keys.result.length < EVICTION_BATCH) {
+        gone = true
+        const nodes = transaction.objectStore(NODES)
+        const record = nodes.get(node)
+        record.onsuccess = () => {
+          const conversation = (record.result as { conversation?: unknown } | undefined)?.conversation
+          // The root's node is the conversation's id: the conversation's
+          // record goes with it.
+          if (conversation === node) {
+            transaction.objectStore(CONVERSATIONS).delete(node)
+          }
+          nodes.delete(node)
+        }
+      }
+    }
+    return () => gone
+  })
+}
+
+/** The bound the disk keeps under: `DISK_BYTES`, or what the browser grants if less. */
+async function diskBound(): Promise<number> {
+  const quota = (await navigator.storage?.estimate?.())?.quota
+  return quota === undefined ? DISK_BYTES : Math.min(DISK_BYTES, quota)
+}
+
+/** How many bytes the nodes' blocks take, about, and the node viewed longest ago. */
+async function diskUse(): Promise<{ bytes: number, oldest: string | null }> {
+  return database.across([NODES], 'readonly', (transaction) => {
+    let bytes = 0
+    let oldest: string | null = null
+    const cursor = transaction.objectStore(NODES).index('viewedAt').openCursor()
+    cursor.onsuccess = () => {
+      const at = cursor.result
+      if (!at) {
+        return
+      }
+      oldest ??= String(at.primaryKey)
+      const counted = (at.value as { bytes?: unknown }).bytes
+      bytes += typeof counted === 'number' ? counted : 0
+      at.continue()
+    }
+    return () => ({ bytes, oldest })
+  })
+}
+
+let evicting = false
+
+/**
+ * Keeps the disk under its bound once the page is idle: one batch of the
+ * node viewed longest ago at each idle moment, until the disk fits.
+ */
+function scheduleEviction(): void {
+  if (evicting) {
+    return
+  }
+  evicting = true
+  const step = () => {
+    void (async () => {
+      const [use, bound] = await Promise.all([diskUse(), diskBound()])
+      if (use.bytes <= bound || use.oldest === null) {
+        evicting = false
+        return
+      }
+      await evictStep(use.oldest)
+      idle(step)
+    })().catch((error: unknown) => {
+      evicting = false
+      reportError(t('failures.keepOffline'), error)
+    })
+  }
+  idle(step)
+}
+
+/** Runs `step` when the page is idle; a browser without idle callbacks runs it after the current task. */
+function idle(step: () => void): void {
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(step)
+  } else {
+    setTimeout(step, 0)
+  }
 }
 
 /** What the account's cache reads of the page's session. */

@@ -3,8 +3,8 @@
 //! It holds:
 //!
 //! - the commands whose pages' view changed and was not sent yet;
-//! - the task that sends them to every attached connection at most every
-//!   [`INTERVAL`], and an end at once;
+//! - the task that sends them to the attached connections that subscribe to
+//!   their node at most every [`INTERVAL`], and an end at once;
 //! - the commands that run, which keep the tree from being idle;
 //! - the feed through which each node's shell environments report their
 //!   commands and learn whether a page watches.
@@ -59,6 +59,8 @@ pub(crate) const INTERVAL: Duration = Duration::from_millis(250);
 /// The tree's commands whose new output waits for the next send.
 pub(crate) struct LiveOutput {
     sink: Rc<FrameSink>,
+    /// The root's id, which names its commands' node.
+    root: NodeId,
     /// In the order their views changed; emptied when they are sent, when a
     /// command ends, and when the last connection detaches.
     waiting: RefCell<Vec<Waiting>>,
@@ -84,9 +86,10 @@ struct Waiting {
 }
 
 impl LiveOutput {
-    pub(crate) fn new(sink: Rc<FrameSink>) -> Rc<Self> {
+    pub(crate) fn new(sink: Rc<FrameSink>, root: NodeId) -> Rc<Self> {
         Rc::new(Self {
             sink,
+            root,
             waiting: RefCell::default(),
             sent: Cell::new(None),
             wake: Notify::new(),
@@ -173,7 +176,14 @@ impl LiveOutput {
         }
         drop(waiting);
         let view = record.borrow().page_view();
-        self.sink.emit(shell_output(subagent.clone(), view));
+        self.emit(subagent.clone(), view);
+    }
+
+    /// Sends `view`, of a command of the node `subagent`, the root when
+    /// none, to the connections that subscribe to the node.
+    fn emit(&self, subagent: Option<NodeId>, view: demi_host_interface::PageView) {
+        let node = subagent.unwrap_or_else(|| self.root.clone());
+        self.sink.emit_to(&node, shell_output(node.clone(), view));
     }
 
     /// When the waiting commands are due: at once after a quiet interval.
@@ -197,7 +207,7 @@ impl LiveOutput {
         } in waiting
         {
             let view = record.borrow().page_view();
-            self.sink.emit(shell_output(subagent, view));
+            self.emit(subagent, view);
         }
     }
 }

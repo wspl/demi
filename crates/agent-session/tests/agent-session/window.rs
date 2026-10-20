@@ -109,12 +109,12 @@ fn across_a_boundary(tail: &str) -> Vec<Block> {
 async fn a_reset_of_a_window_that_starts_inside_a_request_starts_within_the_window() {
     let session = restored(&stored(&across_a_boundary("the rest of A")).await).await;
     assert_eq!(session.transcript().start, 4);
-    let reset = session.reset(None, None).await.unwrap();
+    let reset = session.reset(None, None);
     assert_eq!((reset.start, reset.length), (4, 12));
 
     let long = "x".repeat(demi_conversation_socket_protocol::PAGE_BYTES);
     let session = restored(&stored(&across_a_boundary(&long)).await).await;
-    let reset = session.reset(None, None).await.unwrap();
+    let reset = session.reset(None, None);
     assert_eq!((reset.start, reset.blocks.first().map(Block::id)), (6, Some(&BlockId::try_from("u-b").unwrap())));
 }
 

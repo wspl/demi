@@ -9,7 +9,8 @@
 //!
 //! It runs beside the root's turn and never waits for it. It closes once it is
 //! quiescent, which delivers nothing to anyone, and opens again for a follow-up
-//! or a Retry. The pages follow its transcript as a subagent's, by its node.
+//! or a Retry. The pages follow its transcript as any node's, and its card in
+//! its agent entry.
 
 use std::{
     cell::{Cell, RefCell},
@@ -20,7 +21,7 @@ use demi_agent_session::{SessionEvent, Settle, Subscription};
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, SideOf};
 use demi_agent_tools::HostResolver;
 use demi_agent_transcript::ForkEnd;
-use demi_conversation_socket_protocol::{ServerFrame, index_u32, latest_page_start_within};
+use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{NodeId, QueuedMessage, TurnId, UserContentBlock, markdown_quote};
@@ -29,7 +30,7 @@ use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{
-    Tree, cut_path, note_activity,
+    Tree, agents, cut_path, note_activity, note_agent,
     supervisor::OWNER_CLOSING,
     told::{self, Asked},
 };
@@ -75,66 +76,20 @@ pub enum AskError {
     Failed(String),
 }
 
-/// What a closed side question's transcript ended with: its latest page,
-/// which a page that attaches receives as its reset.
+/// What a closed side question asked, which the conversation's agent learns
+/// of.
 pub(crate) struct ClosedSide {
-    asked_at: Option<demi_shared_types::Timestamp>,
-    /// What it asked, which the conversation's agent learns of.
     asked: Option<Asked>,
-    start: usize,
-    length: usize,
-    blocks: Vec<demi_shared_types::Block>,
-    revision: u64,
 }
 
 impl ClosedSide {
     /// Of the side question `id`, whose transcript holds `blocks` from the
     /// position `offset` on, a session's window or a load's, and `earlier`
     /// before them ([`Asked::earlier`]).
-    fn of(
-        id: &NodeId,
-        offset: usize,
-        earlier: &[demi_shared_types::Block],
-        blocks: &[demi_shared_types::Block],
-        revision: u64,
-        of: Option<SideOf>,
-    ) -> Self {
-        let start = latest_page_start_within(blocks, offset == 0);
+    fn of(id: &NodeId, earlier: &[demi_shared_types::Block], blocks: &[demi_shared_types::Block], of: Option<SideOf>) -> Self {
         Self {
-            asked_at: of.as_ref().map(|of| of.asked_at),
             asked: of.map(|of| Asked::of(id, of, earlier, blocks, true)),
-            start: offset + start,
-            length: offset + blocks.len(),
-            blocks: blocks[start..].to_vec(),
-            revision,
         }
-    }
-
-    /// The frames that tell a page the side question is done: its
-    /// transcript's latest page, idle, nothing pending.
-    fn frames(&self, id: &NodeId) -> [ServerFrame; 4] {
-        [
-            ServerFrame::SubagentTranscriptReset {
-                subagent_id: id.clone(),
-                start: index_u32(self.start),
-                length: index_u32(self.length),
-                blocks: self.blocks.clone(),
-                revision: self.revision,
-                failures: None,
-            },
-            ServerFrame::Phase {
-                subagent_id: Some(id.clone()),
-                phase: demi_shared_types::SessionPhase::Idle,
-            },
-            ServerFrame::PendingCalls {
-                subagent_id: Some(id.clone()),
-                pending_calls: Vec::new(),
-            },
-            ServerFrame::Waiting {
-                subagent_id: Some(id.clone()),
-                waited_ms: None,
-            },
-        ]
     }
 }
 
@@ -382,6 +337,9 @@ impl<H: HostResolver> Tree<H> {
                 if self.disposing.get() {
                     return;
                 }
+                if let Some(of) = record.side.clone() {
+                    self.agents.put(agents::resting(record.id.clone(), agents::side_role(of)));
+                }
                 if record.closed.is_some() {
                     let store = self.store.session_store(&record.id);
                     let read = async {
@@ -394,14 +352,7 @@ impl<H: HostResolver> Tree<H> {
                     };
                     match read.await {
                         Ok(Some((checkpoint, earlier))) => {
-                            let closed = ClosedSide::of(
-                                &record.id,
-                                checkpoint.start,
-                                &earlier,
-                                &checkpoint.transcript,
-                                0,
-                                record.side.clone(),
-                            );
+                            let closed = ClosedSide::of(&record.id, &earlier, &checkpoint.transcript, record.side.clone());
                             self.closed_sides.borrow_mut().insert(record.id.clone(), closed);
                         }
                         Ok(None) => {}
@@ -477,6 +428,7 @@ impl<H: HostResolver> Tree<H> {
             config: deps.config.session,
             interval_floor_ms: deps.config.interval_floor_ms,
             call_window_ms: deps.config.call_window_ms,
+            reply_files: deps.reply_files.clone(),
         })
         .await
         .map_err(|error| error.to_string())?;
@@ -499,37 +451,23 @@ impl<H: HostResolver> Tree<H> {
             let events = node.session().subscribe({
                 let side = side.clone();
                 let sink = self.sink.clone();
+                let agents = self.agents.clone();
                 let id = node.id().clone();
                 let paths = self.paths.clone();
                 let activity = self.activity.clone();
                 move |event| {
                     cut_path(&paths, event);
                     note_activity(&activity, event);
+                    note_agent(&agents, &id, event);
                     match event {
                         SessionEvent::TranscriptChanged { patches, revision } => {
-                            sink.emit(ServerFrame::SubagentTranscriptPatch {
-                                subagent_id: id.clone(),
+                            sink.emit_to(&id, ServerFrame::TranscriptPatch {
+                                node: id.clone(),
                                 patches: patches.clone(),
                                 revision: *revision,
                                 failures: None,
                             });
                         }
-                        SessionEvent::PendingCallsChanged { pending_calls } => sink.emit(ServerFrame::PendingCalls {
-                            subagent_id: Some(id.clone()),
-                            pending_calls: pending_calls.clone(),
-                        }),
-                        SessionEvent::WaitingChanged { waited_ms } => sink.emit(ServerFrame::Waiting {
-                            subagent_id: Some(id.clone()),
-                            waited_ms: *waited_ms,
-                        }),
-                        SessionEvent::PhaseChanged { phase } => sink.emit(ServerFrame::Phase {
-                            subagent_id: Some(id.clone()),
-                            phase: *phase,
-                        }),
-                        SessionEvent::ContextUsageChanged { usage } => sink.emit(ServerFrame::ContextUsage {
-                            node: id.clone(),
-                            usage: Some(usage.clone()),
-                        }),
                         SessionEvent::ActionFailed { report } => {
                             if let Some(side) = side.upgrade() {
                                 side.failure.replace(Some(report.message.clone()));
@@ -553,8 +491,18 @@ impl<H: HostResolver> Tree<H> {
         self.closed_sides.borrow_mut().remove(node.id());
         self.sides.borrow_mut().insert(node.id().clone(), side.clone());
         self.bump();
-        for frame in side_frames(&side) {
-            self.sink.emit(frame);
+        if let Some(of) = node.record().side {
+            let session = node.session();
+            let mut entry = agents::resting(node.id().clone(), agents::side_role(of));
+            entry.phase = session.phase();
+            entry.waited_ms = session.waited_ms();
+            entry.pending_calls = session.pending_calls();
+            self.agents.put(entry);
+        }
+        if self.sink.subscribes(node.id()) {
+            for frame in self.node_frames(node.id(), None) {
+                self.sink.emit_to(node.id(), frame);
+            }
         }
         side
     }
@@ -598,29 +546,6 @@ impl<H: HostResolver> Tree<H> {
         }
         held.sort_by_key(|asked| asked.of.asked_at);
         Ok(told::untold(&held, seen))
-    }
-
-    /// Every side question's state, the closed ones' as they ended, in the
-    /// order they were asked.
-    ///
-    /// It is what a connection that attaches or syncs receives after the
-    /// children's, so a side question that finished while the page was away
-    /// shows done and whole.
-    pub(super) fn replay_sides(&self) -> Vec<ServerFrame> {
-        let mut frames: Vec<(Option<demi_shared_types::Timestamp>, Vec<ServerFrame>)> = self
-            .sides
-            .borrow()
-            .values()
-            .map(|side| (side.node.record().side.map(|of| of.asked_at), side_frames(side).to_vec()))
-            .collect();
-        frames.extend(
-            self.closed_sides
-                .borrow()
-                .iter()
-                .map(|(id, closed)| (closed.asked_at, closed.frames(id).to_vec())),
-        );
-        frames.sort_by_key(|(asked_at, _)| *asked_at);
-        frames.into_iter().flat_map(|(_, frames)| frames).collect()
     }
 
     /// Whether every live side question does nothing by itself.
@@ -675,16 +600,7 @@ impl<H: HostResolver> Tree<H> {
                     Vec::new()
                 }
             };
-            let ended = session.with_window(|transcript| {
-                ClosedSide::of(
-                    &id,
-                    transcript.start(),
-                    &earlier,
-                    transcript.blocks(),
-                    transcript.version().revision,
-                    side.node.record().side,
-                )
-            });
+            let ended = session.with_window(|transcript| ClosedSide::of(&id, &earlier, transcript.blocks(), side.node.record().side));
             side.events.borrow_mut().take();
             let phase = match failure {
                 Some(failure) => ClosePhase::Error { failure },
@@ -696,6 +612,9 @@ impl<H: HostResolver> Tree<H> {
             }
             tree.sides.borrow_mut().remove(&id);
             tree.closed_sides.borrow_mut().insert(id.clone(), ended);
+            if let Some(of) = side.node.record().side {
+                tree.agents.change(&id, |entry| *entry = agents::resting(id.clone(), agents::side_role(of)));
+            }
             side.closed.send_replace(true);
             tree.bump();
         });
@@ -753,26 +672,4 @@ async fn side_supervision<H: HostResolver>(tree: Weak<Tree<H>>, side: Weak<Side<
             () = wake.notified() => {}
         }
     }
-}
-
-/// A side question's transcript from its latest page, its phase, the calls
-/// it is writing and its wait for the model.
-fn side_frames<H: HostResolver>(side: &Side<H>) -> [ServerFrame; 4] {
-    let session = side.node.session();
-    let id = side.node.id().clone();
-    [
-        session.with_window(|transcript| super::supervisor::subagent_reset(id.clone(), transcript)),
-        ServerFrame::Phase {
-            subagent_id: Some(id.clone()),
-            phase: session.phase(),
-        },
-        ServerFrame::PendingCalls {
-            subagent_id: Some(id.clone()),
-            pending_calls: session.pending_calls(),
-        },
-        ServerFrame::Waiting {
-            subagent_id: Some(id),
-            waited_ms: session.waited_ms(),
-        },
-    ]
 }

@@ -1,58 +1,13 @@
-//! A conversation's side questions: the list a page reads, asking one, a
-//! follow-up, a Retry and folding its card. The answers themselves are the side
-//! question's transcript, which a page reads by its pages with `?node=` and
-//! follows on the conversation's socket, as a subagent's.
+//! A conversation's side questions: asking one, a follow-up, a Retry and
+//! folding its card. Each is an agent of the conversation, whose entry the
+//! conversation's agents list (`crates/conversation-socket-protocol/src/agents.rs`)
+//! and whose answers are its transcript, which a page reads and follows as any
+//! agent's.
 
-use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, Timestamp, is_blank};
+use demi_conversation_socket_protocol::SideQuestion;
+use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-/// One side question: where it asks, what, and how its card shows.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-#[garde(allow_unvalidated)]
-pub struct SideQuestion {
-    /// The id the page chose, its node's: `?node=` reads its transcript.
-    pub id: NodeId,
-    /// The root's text block the asked words are in.
-    pub block_id: BlockId,
-    /// The asked words' character offsets in the block's text as the page
-    /// renders it, as a comment's.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub start: u64,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub end: u64,
-    /// The asked words; a picture's alt text or name for a side question
-    /// about a picture.
-    pub quote: String,
-    /// The picture a side question about a picture asks of, whose place
-    /// among the block's pictures `start` and `end` are, as a comment on a
-    /// picture's; absent for words.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub picture: Option<MediaSource>,
-    /// The first question; a follow-up is a `user` block of its transcript.
-    pub question: String,
-    /// The small model's title; null until it wrote one, when the card says
-    /// *Ask*.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    pub title: Option<String>,
-    /// Whether its card is folded into the margin's mark.
-    pub folded: bool,
-    pub asked_at: Timestamp,
-}
-
-/// `GET /conversations/:id/side-questions`: every side question, in the
-/// order they were asked, with the revision they were read at, which the
-/// summary's `sideQuestionsRevision` is compared with.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct SideQuestions {
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub revision: u64,
-    #[garde(dive)]
-    pub side_questions: Vec<SideQuestion>,
-}
 
 /// `POST /conversations/:id/side-questions`: a new side question, under the
 /// id the page chose, about the words `quote` of the completed assistant
@@ -95,10 +50,13 @@ pub struct SideQuestionPatch {
     pub folded: bool,
 }
 
-/// The answer of a side question's creation and of its patch.
+/// The answer of a side question's creation and of its patch: the side
+/// question as its agent entry shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct SideQuestionAnswer {
+    #[garde(skip)]
+    pub id: NodeId,
     #[garde(dive)]
     pub side_question: SideQuestion,
 }

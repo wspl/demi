@@ -77,9 +77,10 @@ pub fn protocol() -> Vec<Root> {
         // Every user stream takes it, over the relay and the direct channel
         // alike (`packages/web-ui/src/plugins/streams.ts`).
         sends::<direct::StreamWatched>(),
-        // An agent's price in a cost read, which web-ui's cost view holds
-        // and no frame carries (`packages/web-ui/src/agent/context-cost.ts`).
-        receives::<frames::AgentCost>(),
+        // An agent's turn call, which the calls read brings and web-ui's
+        // cache chart draws, and no frame carries
+        // (`packages/web-ui/src/agent/context-cost.ts`).
+        receives::<frames::CostCall>(),
         receives::<core::Block>(),
         receives::<core::ProviderModelList>(),
         receives::<core::AuthState>(),
@@ -214,7 +215,8 @@ pub fn web() -> Vec<Root> {
         sends::<conversations::ReadRequest>(),
         receives::<conversations::TranscriptPage>(),
         receives::<conversations::WholeBlock>(),
-        receives::<conversations::Subagents>(),
+        receives::<conversations::ConversationDetail>(),
+        receives::<conversations::ConversationFrame>(),
         receives::<conversations::CommandCall>(),
         sends::<conversations::ConversationPatch>(),
         receives::<conversations::ConversationUpdate>(),
@@ -222,7 +224,6 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::BatchAnswer>(),
         sends::<conversations::ForkRequest>(),
         receives::<conversations::ForkAnswer>(),
-        receives::<side_questions::SideQuestions>(),
         sends::<side_questions::AskRequest>(),
         sends::<side_questions::SideFollowUp>(),
         sends::<side_questions::SideQuestionPatch>(),
@@ -239,8 +240,6 @@ pub fn web() -> Vec<Root> {
         sends::<files::CreateDirectory>(),
         sends::<files::CreateDeviceDirectory>(),
         receives::<files::CreatedDirectory>(),
-        sends::<files::FileExistence>(),
-        receives::<files::ExistingFiles>(),
         receives::<files::FileText>(),
         receives::<files::FileWatchMessage>(),
         sends::<files::FileWatchRequest>(),
@@ -252,7 +251,7 @@ pub fn web() -> Vec<Root> {
         receives::<files::GitCommit>(),
         receives::<usage::UsageTotals>(),
         receives::<usage::InstanceUsage>(),
-        receives::<usage::ConversationCost>(),
+        receives::<usage::AgentCalls>(),
         receives::<users::Users>(),
         sends::<users::CreateUser>(),
         receives::<users::CreatedUser>(),
@@ -266,7 +265,7 @@ pub fn web() -> Vec<Root> {
         receives::<panel::WorkPanel>(),
         sends::<panel::PanelChanges>(),
         receives::<panel::PanelAnswer>(),
-        receives::<workflows::ConversationWorkflows>(),
+        receives::<workflows::KeptWorkflowList>(),
         sends::<drafts::DraftSave>(),
         sends::<drafts::ReplacedDraftAction>(),
         receives::<drafts::DraftAnswer>(),

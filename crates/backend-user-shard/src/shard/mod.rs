@@ -147,9 +147,6 @@ pub struct Shard {
     /// How many times each conversation's permission requests changed
     /// since the shard started.
     permission_revisions: demi_backend_page_sync::Revisions,
-    /// How many times each conversation's side questions changed since the
-    /// shard started.
-    side_revisions: demi_backend_page_sync::Revisions,
     /// The project files its conversations use, kept current by the
     /// runner's file watch.
     project_files: ProjectFiles,
@@ -235,7 +232,6 @@ impl Shard {
             plugins,
             plugin_installs: PluginInstalls::default(),
             permission_revisions: demi_backend_page_sync::Revisions::default(),
-            side_revisions: demi_backend_page_sync::Revisions::default(),
             project_files,
             pending_watches: PendingWatches::default(),
             waits: demi_backend_permissions::Waits::default(),
@@ -356,12 +352,6 @@ impl Shard {
 
     pub(crate) fn search_indexer(&self) -> &SearchIndexer {
         &self.search
-    }
-
-    /// How many times each conversation's side questions changed since the
-    /// shard started, which its summary carries.
-    pub(crate) fn side_revisions(&self) -> &demi_backend_page_sync::Revisions {
-        &self.side_revisions
     }
 
     pub(crate) fn tree_openers(&self) -> &TaskTracker {

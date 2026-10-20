@@ -157,6 +157,17 @@ impl Block {
         }
     }
 
+    /// The request the block belongs to, by its `user` block's id; none for
+    /// a block before the transcript's first `user` block.
+    pub fn request(&self) -> Option<&BlockId> {
+        on_block!(self, block => block.request.as_ref())
+    }
+
+    /// Sets the request the block belongs to.
+    pub fn set_request(&mut self, request: Option<BlockId>) {
+        on_block!(self, block => block.request = request)
+    }
+
     /// Whether the block is an editable target: only a `user` block is.
     pub fn is_editable(&self) -> bool {
         matches!(self, Block::User(_))
@@ -299,6 +310,18 @@ pub struct UserBlock {
     pub turn_id: TurnId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The content as submitted.
@@ -380,6 +403,18 @@ pub struct ContextBlock {
     pub turn_id: TurnId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The source that answered: `execution`, [`INSTRUCTIONS_SOURCE`],
@@ -501,6 +536,18 @@ pub struct WakeupBlock {
     pub turn_id: TurnId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(skip)]
@@ -663,6 +710,18 @@ pub struct SteerBlock {
     pub turn_id: TurnId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(dive)]
@@ -694,6 +753,18 @@ pub struct AgentMessageBlock {
     pub turn_id: TurnId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(dive)]
@@ -744,6 +815,18 @@ pub struct ResumeBlock {
     pub turn_id: TurnId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// Why the turn is resumed, as the model reads it before "Continue
@@ -775,6 +858,18 @@ pub struct AccountSwitchBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The label of the account that reached its limit.
@@ -804,6 +899,18 @@ pub struct AbortBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// Set once the stopped turn is continued.
@@ -820,6 +927,18 @@ pub struct ThinkingBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(skip)]
@@ -872,6 +991,18 @@ pub struct RedactedThinkingBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(skip)]
@@ -907,6 +1038,18 @@ pub struct TextBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(skip)]
@@ -921,6 +1064,19 @@ pub struct TextBlock {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub forkable: bool,
+    /// The inline code of the text that names a file on the conversation's
+    /// Host, which opens as a link: read once through the Host when the text
+    /// is complete (`crates/agent-server/src/node/reply_files.rs`) and kept
+    /// with the block. Absent until then; empty when no code names a file, or
+    /// when the Host could not say.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<CodeFile>")]
+    #[garde(dive)]
+    pub code_files: Option<Vec<CodeFile>>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them
     /// (`crates/provider-claude-code/src/session.rs`); omitted when there are
@@ -931,6 +1087,22 @@ pub struct TextBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<Entry>,
+}
+
+/// Inline code of a reply that names a file on the Host: the code as the
+/// reply wrote it, such as `src/app.ts:42`, the file's absolute path and the
+/// line it names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodeFile {
+    #[garde(length(min = 1))]
+    pub code: String,
+    #[garde(length(min = 1))]
+    pub path: String,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
+    pub line: Option<u64>,
 }
 
 /// What a stored `shell` call ran: its title and its script.
@@ -965,6 +1137,18 @@ pub struct ToolCallBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The provider's id of the call.
@@ -1039,6 +1223,18 @@ pub struct ResponseBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(dive)]
@@ -1054,6 +1250,18 @@ pub struct ErrorBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(skip)]
@@ -1124,6 +1332,18 @@ pub struct CompactionBoundaryBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(skip)]
@@ -1167,6 +1387,18 @@ pub struct CompactionMarkerBlock {
     pub id: BlockId,
     #[garde(skip)]
     pub created_at: Timestamp,
+    /// The request the block belongs to: the id of the `user` block that
+    /// starts it, the block's own for a `user` block, which the backend sets
+    /// as it stores the block and never changes; absent for a block before
+    /// the transcript's first `user` block (`crates/agent-store/src/changes.rs`).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub request: Option<BlockId>,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The boundary this pass inserted.

@@ -1,4 +1,4 @@
-import type { Block, ClientFrame, ModelSelection, PendingSteer, ServerFrame } from '@demicodes/protocol'
+import type { AgentEntry, Block, ClientFrame, ModelSelection, PendingCall, PendingSteer, ServerFrame, SessionPhase } from '@demicodes/protocol'
 import { ConversationClient } from '../client'
 import type { ClientSessionEvent } from '../events'
 import { EMPTY_TRANSCRIPT, applyTranscriptPatches, heldBlocks, resetTranscript, type HeldTranscript } from '../transcript'
@@ -20,6 +20,42 @@ export const model: ModelSelection = {
 
 export const createdAt = '2026-09-24T12:00:00.000Z'
 
+/** The root's node, the conversation's id. */
+export const ROOT = 'conversation'
+
+const NO_COST: AgentEntry['cost'] = {
+  totals: {
+    inputTokens: 0,
+    cacheWriteTokens: 0,
+    cacheReadTokens: 0,
+    outputTokens: 0,
+    price: { total: null, input: null, cacheWrite: null, cacheRead: null, output: null },
+  },
+  calls: 0,
+}
+
+/** The entry of the agent `id`, the root or a running child of it, its session in `phase`. */
+export function entry(id: string, phase: SessionPhase, pendingCalls: PendingCall[] = []): AgentEntry {
+  const role: AgentEntry['role'] = id === ROOT
+    ? { kind: 'root' }
+    : {
+        kind: 'subagent',
+        number: 1,
+        parent: ROOT,
+        description: 'Read the notes',
+        profile: null,
+        model: { providerId: 'stub', provider: 'Stub', model: 'Stub', effort: null, fast: false },
+        round: 1,
+        forkedFrom: null,
+        state: 'running',
+        startedAt: createdAt,
+        endedAt: null,
+        cwd: '/Users/alex',
+        onPath: true,
+      }
+  return { id, role, phase, waitedMs: null, pendingCalls, context: null, cost: NO_COST }
+}
+
 export function text(id: string, value: string): Block {
   return { type: 'text', id, createdAt, model, text: value }
 }
@@ -32,8 +68,12 @@ export function pendingSteer(id: string): PendingSteer {
   return { id, turnId: 'turn-1', model, content: [{ type: 'text', text: 'identical guidance' }] }
 }
 
-/** A client over a transport the test drives: what the client sends, and what the server answers. */
-export function harness() {
+/**
+ * A client over a transport the test drives: what the client sends, and what
+ * the server answers. Unless `opened` is false, the client has opened the
+ * conversation `ROOT`, which subscribes to its root, and `sent` starts empty.
+ */
+export function harness({ opened = true }: { opened?: boolean } = {}) {
   const sent: ClientFrame[] = []
   const events: ClientSessionEvent[] = []
   let deliver: (frame: unknown) => void = () => {}
@@ -68,6 +108,9 @@ export function harness() {
   let transcript: HeldTranscript = EMPTY_TRANSCRIPT
   client.subscribe((event) => {
     events.push(event)
+    if ((event.type === 'transcript_reset' || event.type === 'transcript_patch') && event.node !== ROOT) {
+      return
+    }
     if (event.type === 'transcript_reset') {
       transcript = resetTranscript(transcript, event, event.asked)
     } else if (event.type === 'transcript_patch') {
@@ -76,10 +119,34 @@ export function harness() {
       transcript = EMPTY_TRANSCRIPT
     }
   })
+  if (opened) {
+    // A wait the test does not answer fails when the client disconnects.
+    client.open({ root: ROOT }).catch(() => {})
+    sent.length = 0
+  }
+  // The agents' revision the server has sent; null before the first frame.
+  let revision: number | null = null
+  const entries = new Map<string, AgentEntry>()
+  /** Sends the agent `node`'s entry as it changed, after the whole agents first. */
+  const change = (agent: AgentEntry) => {
+    entries.set(agent.id, agent)
+    if (revision === null) {
+      revision = 1
+      deliver({ type: 'agents', version: { epoch: 'e', revision }, agents: [...entries.values()] })
+    } else {
+      revision += 1
+      deliver({ type: 'agent', revision, agent })
+    }
+  }
   return {
     client,
     sent,
     events,
+    /** Delivers the agent `node`'s session phase, as its entry's change. */
+    phase: (phase: SessionPhase, node: string = ROOT) => change({ ...(entries.get(node) ?? entry(node, phase)), phase }),
+    /** Delivers the calls the agent `node`'s model writes, as its entry's change. */
+    calls: (pendingCalls: PendingCall[], node: string = ROOT) =>
+      change({ ...(entries.get(node) ?? entry(node, 'running')), pendingCalls }),
     /** The root's blocks the page holds, from the client's events. */
     blocks: () => heldBlocks(transcript),
     /** Delivers a frame as the server would send it. */

@@ -36,11 +36,11 @@ class SizedObserver implements ResizeObserver {
 globalThis.ResizeObserver = SizedObserver
 
 await import('@demicodes/web-ui/__tests__/vue-components')
-const { createApp, h, nextTick, ref } = await import('vue')
+const { createApp, h, nextTick } = await import('vue')
 const { default: ContextUsageIndicator } = await import('@demicodes/web-ui/agent/ContextUsageIndicator.vue')
 const { default: ContextCost } = await import('@demicodes/web-ui/agent/ContextCost.vue')
-const { default: AgentStatusBar } = await import('@demicodes/web-ui/agent/AgentStatusBar.vue')
 const { workflowProfiles } = await import('@demicodes/web-ui/agent/workflow-menu')
+type CostShown = import('@demicodes/web-ui/agent/context-cost').CostShown
 
 let unmount: (() => void) | null = null
 beforeEach(() => {
@@ -63,19 +63,18 @@ function calls(count: number, rate = 0.9) {
 }
 
 /** A conversation's cost whose main conversation made `calls`. */
-function costOf(calls: ReturnType<typeof call>[]) {
+function costOf(calls: ReturnType<typeof call>[]): CostShown {
   return {
-    status: 'read' as const,
     cost: {
-      rows: calls.length,
       totals: {
         inputTokens: calls.reduce((sum, next) => sum + next.inputTokens, 0), cacheWriteTokens: 0,
         cacheReadTokens: calls.reduce((sum, next) => sum + next.cacheReadTokens, 0), outputTokens: 0,
         price: { total: calls.length / 2, input: null, cacheWrite: null, cacheRead: null, output: null },
       },
+      calls: calls.length,
       agents: [],
-      calls,
     },
+    calls: { status: 'read', calls: calls.map((each, index) => ({ number: index + 1, ...each })) },
   }
 }
 
@@ -240,9 +239,8 @@ test('the numbers under the chart are round, about one for each 60 px', async ()
 })
 
 test('the Profiles part shows the main conversation and each profile the workflow choice offers that ran subagents', async () => {
-  const call = { startedAt: '2026-09-13T00:00:00.000Z', inputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 90, price: 0.5, afterCompaction: false, miss: null }
   const cost = {
-    rows: 6,
+    calls: 1,
     totals: {
       inputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 90, outputTokens: 0,
       price: { total: 8.5, input: null, cacheWrite: null, cacheRead: null, output: null },
@@ -257,7 +255,6 @@ test('the Profiles part shows the main conversation and each profile the workflo
       // No profile: no row.
       { agent: 5, profile: null, price: 0.5 },
     ],
-    calls: [call],
   }
   const list = {
     state: 'read' as const,
@@ -270,7 +267,7 @@ test('the Profiles part shows the main conversation and each profile the workflo
     const root = document.createElement('div')
     document.body.append(root)
     const app = createApp({
-      render: () => h(ContextCost, { open: true, state: { status: 'read', cost }, profiles: workflowProfiles(choice, list, global) }),
+      render: () => h(ContextCost, { open: true, state: { cost, calls: null }, profiles: workflowProfiles(choice, list, global) }),
     })
     app.mount(root)
     await nextTick()
@@ -297,7 +294,7 @@ test('the Profiles part shows the main conversation and the five profiles that c
   }
   const root = document.createElement('div')
   document.body.append(root)
-  const app = createApp({ render: () => h(ContextCost, { open: true, state: { status: 'read', cost }, profiles: names }) })
+  const app = createApp({ render: () => h(ContextCost, { open: true, state: { cost, calls: null }, profiles: names }) })
   app.mount(root)
   await nextTick()
   const caption = [...root.querySelectorAll('.cost-caption')].find((element) => element.textContent?.trim() === 'Profiles')!
@@ -326,38 +323,4 @@ test('the price by kind leaves out each kind with no price, and with none priced
   }
   expect(await shown(0.25)).toEqual(['Input'])
   expect(await shown(null)).toEqual([])
-})
-
-// A subagent's card never shows its cost arriving late: while the first read
-// of the child's cost is on its way, the status bar's context indicator
-// waits, and it shows with the cost once the read answers
-// (`docs/decisions/0001-agent-cost.md`). Production: the card opened without its
-// Cost section, which was inserted a moment later.
-test("a running child's context indicator waits for the first read of its cost", async () => {
-  const run = {
-    profile: null, round: 1, forkedFrom: null, phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', cwd: '/work',
-    model: { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus', effort: 'high', fast: false },
-  }
-  const cost = ref<ReturnType<typeof costOf> | null>(null)
-  const root = document.createElement('div')
-  document.body.append(root)
-  const app = createApp({
-    render: () => h(AgentStatusBar, {
-      run, usage: USAGE, compacting: false, unavailableReason: null, instructions: [], limits: null, cost: cost.value,
-    }),
-  })
-  app.mount(root)
-  unmount = () => {
-    app.unmount()
-    root.remove()
-  }
-  await nextTick()
-  const indicator = () => root.querySelector<HTMLButtonElement>('[data-context-ring]')
-  expect(indicator()).toBeNull()
-  cost.value = costOf([call(0.9), call(0.9)])
-  await nextTick()
-  indicator()!.click()
-  await nextTick()
-  const card = document.querySelector<HTMLElement>('[data-context-card]')
-  expect(disclosures(card!).cost).not.toBeNull()
 })

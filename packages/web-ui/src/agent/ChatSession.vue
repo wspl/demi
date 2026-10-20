@@ -10,7 +10,7 @@ import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, EthernetPort, Settings2, Share, TextCursorInput } from '@lucide/vue'
-import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
+import type { InstructionEntry, Version } from '@demicodes/protocol'
 import {
   beginMessageEdit,
   offeredEditId,
@@ -45,7 +45,7 @@ import type { MessageForkHandler } from './message-fork'
 import { useShare, type ExistingShare, type ShareService } from './sharing'
 import ShareDialog from './ShareDialog.vue'
 import type { UsageLimits } from './context-usage'
-import type { CostState } from './context-cost'
+import type { CostShown } from './context-cost'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
@@ -90,7 +90,7 @@ const props = withDefaults(defineProps<{
    * from the press, and come back only when the removal is refused.
    */
   removing?: readonly string[]
-  editVersion?: TranscriptVersion | null
+  editVersion?: Version | null
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
@@ -184,9 +184,9 @@ const props = withDefaults(defineProps<{
   usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
   /**
    * The own cost of a child the Agents window shows, which its context card
-   * shows; null while its first read is on its way. Absent, it shows none.
+   * shows. Absent, it shows none.
    */
-  subagentCost?: (id: string) => CostState | null
+  subagentCost?: (id: string) => CostShown | null
   /**
    * What each provider entry holds, which a failure's record names, as *The
    * provider refused the API key*. Absent, records read their code's words.
@@ -351,6 +351,8 @@ const emit = defineEmits<{
   compactSubagent: [id: string]
   /** Retry in a child's context card, after the read of its cost failed. */
   retrySubagentCost: [id: string]
+  /** A child's context card opened or closed, which reads its calls or lets them go. */
+  subagentCostCalls: [id: string, wanted: boolean]
   /**
    * A child's context card asks for the usage limits of the account it runs on,
    * `account` of its entry `providerId`, again.
@@ -1031,6 +1033,7 @@ watch(
             :agent-cost="subagentCost"
             @compact-agent="(id) => emit('compactSubagent', id)"
             @retry-agent-cost="(id) => emit('retrySubagentCost', id)"
+            @agent-cost-calls="(id, wanted) => emit('subagentCostCalls', id, wanted)"
             @refresh-limits="(providerId, account, automatic) => emit('refreshLimits', providerId, account, automatic)"
             @open-instruction="(entry) => emit('openInstruction', entry)"
           />

@@ -1,14 +1,15 @@
 //! A conversation's history as its database holds it.
 //!
-//! The routes read:
+//! The routes read, each of one agent, the root, a subagent or a side question,
+//! named by its node (`docs/decisions/0009-agent-sessions-and-sync.md`):
 //!
-//! - one page of an agent's transcript at a time, in light form;
+//! - one page of its transcript at a time, in light form;
 //! - a block whole;
-//! - the conversation's subagents;
-//! - where the call that started a command lies;
-//! - what the conversation cost.
+//! - its recent turn calls, which a context card's cache chart plots;
 //!
-//! Every route reads the database alone: it wakes no Host and needs no live
+//! and where the call that started a command lies.
+//!
+//! Every route reads a database alone: it wakes no Host and needs no live
 //! session.
 
 use axum::Json;
@@ -16,15 +17,13 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
-use demi_backend_host_access::root_of;
-use demi_backend_user_shard::conversation::{SubagentsError, failure_facts};
+use demi_backend_database::usage::CHART_CALLS;
+use demi_backend_user_shard::conversation::failure_facts;
 use demi_conversation_socket_protocol::{index_u32, light};
-use demi_shared_types::{Block, BlockId, CommandId};
-use demi_web_api_protocol::conversations::{
-    CommandCall, NodeQuery, Subagents, TranscriptPage, TranscriptQuery, WholeBlock,
-};
+use demi_shared_types::{Block, BlockId, CommandId, NodeId};
+use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::usage::{ConversationCost, CostQuery};
+use demi_web_api_protocol::usage::{AgentCalls, CallsQuery};
 
 use super::AppState;
 use super::conversations::owned;
@@ -32,23 +31,29 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
 
-/// `GET /conversations/:id/transcript`: one page of an agent's transcript.
+/// `GET /conversations/:id/agents/:node/transcript`: one page of an agent's
+/// transcript.
 pub(super) async fn transcript(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
+    Path((id, node)): Path<(String, String)>,
     QueryParams(query): QueryParams<TranscriptQuery>,
 ) -> Result<Json<TranscriptPage>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
-    let transcript = Transcript::Agent(query.node.clone().unwrap_or_else(|| root_of(&record.id)));
+    let node = NodeId::try_from(node).map_err(|_| no_node())?;
+    // The root is the conversation's from its start: before its first turn
+    // stored it, its transcript is empty.
+    let root = node.as_str() == record.id.as_str();
+    let transcript = Transcript::Agent(node);
     let read = services
         .conversations
         .read(&record.id, move |connection| {
             tree::read_page(connection, &transcript, PageQuery::from(&query))
         })
         .await
-        .map_err(ApiError::conversation_unreadable)?;
+        .map_err(ApiError::conversation_unreadable)?
+        .filter(|read| !(root && matches!(read, PageRead::NoNode)));
     let mut page = page_answer(read, no_node, no_block, outside, changed)?;
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
@@ -133,18 +138,17 @@ pub(super) fn page_answer(
     }
 }
 
-/// `GET /conversations/:id/transcript/blocks/:blockId`: a block whole, for
+/// `GET /conversations/:id/agents/:node/blocks/:blockId`: a block whole, for
 /// a row the page opens.
 pub(super) async fn block(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path((id, block)): Path<(String, String)>,
-    QueryParams(query): QueryParams<NodeQuery>,
+    Path((id, node, block)): Path<(String, String, String)>,
 ) -> Result<Json<WholeBlock>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
     let block = BlockId::try_from(block).map_err(|_| no_block())?;
-    let transcript = Transcript::Agent(query.node.unwrap_or_else(|| root_of(&record.id)));
+    let transcript = Transcript::Agent(NodeId::try_from(node).map_err(|_| no_node())?);
     let read = services
         .conversations
         .read(&record.id, move |connection| {
@@ -174,47 +178,35 @@ pub(super) fn block_answer(
     }
 }
 
-/// `GET /conversations/:id/subagents`: every subagent the conversation has
-/// had, in the order they started, as its shard lists them
-/// (`crates/agent-server/src/server/tree.rs`).
-pub(super) async fn subagents(
+/// `GET /conversations/:id/agents/:node/calls`: the agent's recent turn calls
+/// after the one `?after=` names, which its context card's cache chart plots
+/// (`crates/backend-database/src/usage.rs`). A side question's rows are the
+/// root's, so it, like a node the conversation lacks, has none of its own.
+pub(super) async fn calls(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<Subagents>, ApiError> {
-    let record = owned(&state.services, &user.id, &id).await?;
-    let conversation = record.id.clone();
-    let subagents = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move { shard.subagents(&conversation).await })
-        .await?
-        .map_err(|error| match error {
-            SubagentsError::Host(error) => ApiError::from(error),
-            SubagentsError::Unreadable(error) => ApiError::conversation_unreadable(error),
-        })?;
-    Ok(Json(Subagents { subagents }))
-}
-
-/// `GET /conversations/:id/cost`: the conversation's cost from its ledger
-/// rows, or one agent's own, its subagents named as its database holds them
-/// (`crates/backend-database/src/usage.rs`).
-pub(super) async fn cost(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    QueryParams(query): QueryParams<CostQuery>,
-) -> Result<Json<ConversationCost>, ApiError> {
+    Path((id, node)): Path<(String, String)>,
+    QueryParams(query): QueryParams<CallsQuery>,
+) -> Result<Json<AgentCalls>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
-    let labels = services
+    let node = NodeId::try_from(node).map_err(|_| no_node())?;
+    let number = services
         .conversations
-        .read(&record.id, tree::agent_labels)
+        .read(&record.id, move |connection| tree::agent_number(connection, &node))
         .await
         .map_err(ApiError::conversation_unreadable)?
-        .unwrap_or_default();
-    let cost = services.control.conversation_cost(record.id.clone(), labels, query.agent).await?;
-    Ok(Json(cost))
+        .flatten();
+    let calls = match number {
+        Some(agent) => {
+            services
+                .control
+                .agent_calls(record.id.clone(), agent, query.after.unwrap_or(0), CHART_CALLS)
+                .await?
+        }
+        None => Vec::new(),
+    };
+    Ok(Json(AgentCalls { calls }))
 }
 
 /// `GET /conversations/:id/commands/:commandId`: where the call that started
@@ -234,7 +226,6 @@ pub(super) async fn command(
         )
     };
     let command_id = CommandId::try_from(command.clone()).map_err(|_| no_command())?;
-    let root = root_of(&record.id);
     let wanted = command_id.clone();
     let (node, call) = services
         .conversations
@@ -245,7 +236,7 @@ pub(super) async fn command(
         .ok_or_else(no_command)?;
     Ok(Json(CommandCall {
         command_id,
-        subagent_id: (node != root).then_some(node),
+        node,
         block_id: call.id,
     }))
 }

@@ -19,7 +19,9 @@ use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 
 use crate::subagents::held_said;
-use crate::support::{Gate, LiveHosts, Model, ScriptedShells, agent_in, named_node, start};
+use crate::support::{
+        Gate, LiveHosts, Model, ScriptedShells, agent_in, named_node, start,
+    };
 
 /// The user's plugins: a revision the test changes, as turning a plugin on
 /// does, and how many times the commands were composed.
@@ -100,6 +102,8 @@ async fn trees_with_the_same_plugins_share_one_command_set_per_spawning_right() 
             ids: Rc::new(SequentialIds::new("id")),
             config: ServerConfig::default(),
             status_changed: Rc::new(|_| {}),
+            agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
+            reply_files: Rc::new(demi_agent_server::testing::TestHostFiles::default()),
         })
     };
     let first = NodeId::try_from("first").unwrap();

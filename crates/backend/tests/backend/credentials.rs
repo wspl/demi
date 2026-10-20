@@ -260,7 +260,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         panic!("not a credential request: {request:?}");
     };
     assert!(!renewal, "{request:?}");
-    let before = summary(&backend, &master, FIRST).await.permissions_revision;
+    let before = crate::conversations::metadata(&backend, &master, FIRST).await.permissions_revision;
     saved(
         &backend,
         &master,
@@ -270,7 +270,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         }),
     )
     .await;
-    assert!(summary(&backend, &master, FIRST).await.permissions_revision > before);
+    assert!(crate::conversations::metadata(&backend, &master, FIRST).await.permissions_revision > before);
     let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
     let PermissionRequest::Credential { id, renewal, .. } = &request else {
         panic!("not a credential request: {request:?}");

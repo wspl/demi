@@ -22,8 +22,7 @@ use demi_backend_database::conversation_index::{
 };
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
 use demi_agent_store::Placement;
-use demi_backend_database::tree;
-use demi_conversation_socket_protocol::SubagentJob;
+use demi_conversation_socket_protocol::{AgentEntry, Version};
 use demi_agent_tools::NodeContext;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::{conversation_of, root_of};
@@ -33,16 +32,15 @@ use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
-use super::runs_on::runs_on;
 
-/// Why the conversation's subagents could not be listed.
+/// Why the conversation's agents could not be listed.
 #[derive(Debug, thiserror::Error)]
-pub enum SubagentsError {
+pub enum AgentsError {
     #[error(transparent)]
     Host(#[from] HostAccessError),
     /// The conversation's database could not be read.
     #[error(transparent)]
-    Unreadable(StorageError),
+    Unreadable(demi_agent_store::StoreError),
 }
 
 /// What opens every context block, before the revision it describes.
@@ -178,40 +176,15 @@ impl Shard {
         })
     }
 
-    /// Every subagent the conversation `id` has had, in the order they started,
-    /// each working where the conversation works now.
-    ///
-    /// The list is the live tree's own whenever a tree is live as the answer is
-    /// made, the one the open's `subagents` frame sends, and otherwise the
-    /// store's (`crates/agent-server/src/server/tree.rs`). The store's reading
-    /// awaits, and a tree opened meanwhile answers instead, so the answer never
-    /// disagrees with a handshake made before it.
-    pub async fn subagents(&self, id: &ConversationId) -> Result<Vec<SubagentJob>, SubagentsError> {
+    /// The agents of the conversation `id` as its metadata lists them, and
+    /// their version: the live tree's, or the store's while none is live
+    /// (`crates/agent-server/src/server/tree/agents.rs`).
+    pub async fn conversation_agents(&self, id: &ConversationId) -> Result<(Version, Vec<AgentEntry>), AgentsError> {
         let placement = self.placement(id).await?;
-        let live = || {
-            self.agent()
-                .tree(&root_of(id))
-                .map(|tree| tree.subagent_jobs(Some(&placement)))
-        };
-        if let Some(listed) = live() {
-            return Ok(listed);
-        }
-        let nodes = self
-            .services()
-            .conversations
-            .read(id, tree::subagents)
+        self.agent()
+            .agents(&root_of(id), Some(placement))
             .await
-            .map_err(SubagentsError::Unreadable)?
-            .unwrap_or_default();
-        let selections: Vec<_> = nodes.iter().map(|node| node.model.clone()).collect();
-        let models = runs_on(self.services(), self.user(), &selections).await;
-        Ok(live().unwrap_or_else(|| {
-            nodes
-                .iter()
-                .zip(models)
-                .filter_map(|(node, model)| node.record.job(model, Some(&placement), node.on_path))
-                .collect()
-        }))
+            .map_err(AgentsError::Unreadable)
     }
 
     /// How the primary Host of the conversation `id` writes its paths: in

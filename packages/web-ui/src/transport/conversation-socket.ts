@@ -1,4 +1,4 @@
-import { ConversationClient, createWebSocketTransport } from '@demicodes/conversation-client'
+import { ConversationClient, createWebSocketTransport, type ConversationClientOptions } from '@demicodes/conversation-client'
 import { openSocket, pingOn, watchSilence } from './liveness'
 
 /**
@@ -23,8 +23,14 @@ export class ConversationSocketError extends Error {
  *   disconnects the client with a `ConversationSocketError` too. So does a socket
  *   that brings nothing, heartbeats included, for as long as the liveness rule
  *   allows.
+ *
+ * `options` are the client's, such as the conversation's own frames it takes.
  */
-export function connectConversationClient(url: string, signal?: AbortSignal): Promise<ConversationClient> {
+export function connectConversationClient(
+  url: string,
+  signal?: AbortSignal,
+  options: ConversationClientOptions = {},
+): Promise<ConversationClient> {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted()
     // A handshake that takes too long ends as a close (`openSocket`).
@@ -51,7 +57,7 @@ export function connectConversationClient(url: string, signal?: AbortSignal): Pr
       const client = new ConversationClient({
         ...transport,
         onClose: (handler) => transport.onClose((error) => handler(new ConversationSocketError(error.message))),
-      })
+      }, options)
       const silence = watchSilence('conversation socket', () => {
         client.disconnect(new ConversationSocketError('The agent socket went silent'))
       }, pingOn(socket))

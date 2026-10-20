@@ -15,13 +15,13 @@ use demi_provider_common::testing::{MockResponse, MockVendor, sse_body};
 use demi_shared_types::Block;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::shares::ShareAnswer;
-use demi_web_api_protocol::side_questions::{SideQuestionAnswer, SideQuestions};
+use demi_conversation_socket_protocol::{AgentRole, SideQuestion};
+use demi_web_api_protocol::side_questions::SideQuestionAnswer;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, agent_history, answer, anthropic, choose, configured, create, entry, last_text,
-    summaries,
+    FIRST, SECOND, Socket, agent_history, answer, anthropic, choose, configured, create, detail, entry, last_text,
 };
 use crate::support::{Session, TestBackend, eventually, Harness};
 use crate::uploads::{png, upload};
@@ -33,21 +33,23 @@ fn asking(block: &str, question: &str) -> Value {
     json!({ "id": SIDE, "blockId": block, "start": 4, "end": 15, "quote": "stale cache", "question": question })
 }
 
-async fn listed(backend: &TestBackend, session: &Session, conversation: &str) -> SideQuestions {
-    let read = backend
-        .get(&format!("/api/conversations/{conversation}/side-questions"), Some(session))
-        .await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-    read.json()
+/// The conversation's side questions, as its agents list them.
+async fn listed(backend: &TestBackend, session: &Session, conversation: &str) -> Vec<SideQuestion> {
+    detail(backend, session, conversation)
+        .await
+        .entries
+        .into_iter()
+        .filter_map(|entry| match entry.role {
+            AgentRole::Side(side) => Some(side),
+            _ => None,
+        })
+        .collect()
 }
 
+/// The revision of the conversation's agents, which each change of a side
+/// question raises.
 async fn revision(backend: &TestBackend, session: &Session) -> u64 {
-    summaries(backend, session)
-        .await
-        .into_iter()
-        .find(|summary| summary.id.as_str() == FIRST)
-        .expect("the conversation is listed")
-        .side_questions_revision
+    detail(backend, session, FIRST).await.agents.revision
 }
 
 // The conversation's agent answers; the user asks about its words.
@@ -57,7 +59,7 @@ async fn revision(backend: &TestBackend, session: &Session) -> u64 {
 //   conversation's own transcript gains nothing.
 // - The same request again finds it; another question under its id is
 //   refused.
-// - The fold is kept, each change raises the summary's revision, and both
+// - The fold is kept, each change raises the agents' revision, and both
 //   survive a restart.
 // - Its request is counted under the conversation, under no agent.
 // - A Fork of the reply copies no side question and a share reaches none of
@@ -145,7 +147,7 @@ async fn a_side_question_is_answered_beside_the_conversation_and_kept_with_its_r
         .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), json!({ "id": SECOND, "blockId": reply }))
         .await;
     assert_eq!(forked.status, StatusCode::CREATED);
-    assert!(listed(&backend, &master, SECOND).await.side_questions.is_empty());
+    assert!(listed(&backend, &master, SECOND).await.is_empty());
 
     // A share reaches none of its blocks.
     let side_answer = agent_history(&backend, &master, FIRST, Some(SIDE))
@@ -174,7 +176,7 @@ async fn a_side_question_is_answered_beside_the_conversation_and_kept_with_its_r
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
-    let kept = listed(&backend, &master, FIRST).await.side_questions;
+    let kept = listed(&backend, &master, FIRST).await;
     assert_eq!(kept, [folded]);
 }
 
@@ -226,7 +228,7 @@ async fn a_side_question_about_a_picture_sends_the_picture_and_keeps_it() {
     assert_eq!(last["content"][0]["type"], "image", "{last}");
     assert_eq!(last["content"][0]["source"]["data"], BASE64_STANDARD.encode(&chart), "{last}");
     assert!(last["content"][1]["text"].as_str().unwrap().ends_with("Which connection?"), "{last}");
-    let kept = listed(&backend, &master, FIRST).await.side_questions;
+    let kept = listed(&backend, &master, FIRST).await;
     assert_eq!(serde_json::to_value(&kept[0].picture).unwrap(), picture);
     backend.close().await;
 }

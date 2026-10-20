@@ -12,25 +12,21 @@ use demi_shared_types::{BlockId, MessageComment};
 use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, ReplacedDraft};
 use demi_web_api_protocol::saved::{FromDraftAnswer, SavedList};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::state::SyncEvent;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
+use crate::conversations::Socket;
 use crate::support::{
-    Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, SyncChannel, TestBackend, answer,
+    Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, answer,
 };
 
 /// The mark a draft's text holds where a file's capsule stands.
 const MARK: char = '\u{FFFC}';
 
-/// Waits until the page's channel brings the conversation's summary with
-/// the draft revision `revision`.
-async fn until_draft(page: &mut SyncChannel, id: &str, revision: u64) {
-    page.until(|event| {
-        matches!(event, SyncEvent::Conversation { conversation }
-            if conversation.id.as_str() == id && conversation.draft_revision == revision)
-    })
-    .await;
+/// Waits until the page's conversation socket brings the draft at the
+/// revision `revision`.
+async fn until_draft(page: &mut Socket, revision: u64) -> ConversationDraft {
+    page.draft_until(|draft| draft.revision == revision).await
 }
 
 async fn read(backend: &TestBackend, session: &Session, id: &str) -> ConversationDraft {
@@ -115,11 +111,7 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         read(&backend, &phone, &id).await,
         ConversationDraft::empty()
     );
-    let mut phone_page = backend.sync(&phone).await;
-    assert_eq!(
-        phone_page.snapshot().await.conversations[0].draft_revision,
-        0
-    );
+    let (mut phone_page, _) = Socket::shown(&backend, &phone, &id, 0).await;
 
     // The laptop stages a text file, and a file on a device, and saves the
     // draft that names them.
@@ -167,7 +159,8 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
 
     // The phone learns of it from its channel and reads it: the text, the
     // file with what its record holds, and the file's bytes.
-    until_draft(&mut phone_page, &id, 1).await;
+    // The draft itself arrives, as the read answers it.
+    assert_eq!(until_draft(&mut phone_page, 1).await, first);
     assert_eq!(read(&backend, &phone, &id).await, first);
     let bytes = backend
         .get(
@@ -192,7 +185,8 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         (bug.revision, bug.text.as_str(), &bug.replaced),
         (3, text(" bug").as_str(), &Some(tested.clone()))
     );
-    until_draft(&mut phone_page, &id, 3).await;
+    // The draft itself arrives, as the read answers it.
+    assert_eq!(until_draft(&mut phone_page, 3).await, bug);
     assert_eq!(read(&backend, &phone, &id).await, bug);
     // A save on the current revision keeps the replaced version, and so
     // does one built on an older revision that saves what the draft holds.
@@ -367,14 +361,14 @@ async fn waiting_comments_reach_every_session_and_stay_in_the_draft_when_its_tex
         .post("/api/conversations", Some(&laptop), json!({ "id": id }))
         .await;
     assert_eq!(created.status, StatusCode::CREATED);
-    let mut phone_page = backend.sync(&phone).await;
-    phone_page.snapshot().await;
+    let (mut phone_page, _) = Socket::shown(&backend, &phone, &id, 0).await;
 
     let chunks = comment("c1", 120, "Upload in chunks of 4 MB.", "4 MB feels large on 2G.");
     let timeout = comment("c2", 40, "the same 30-second timeout", "Should uploads get their own?");
     let first = save_comments(&backend, &laptop, &id, 0, "", &[chunks.clone()]).await;
     assert_eq!((first.revision, first.comments.clone()), (1, vec![chunks.clone()]));
-    until_draft(&mut phone_page, &id, 1).await;
+    // The draft itself arrives, as the read answers it.
+    assert_eq!(until_draft(&mut phone_page, 1).await, first);
     assert_eq!(read(&backend, &phone, &id).await, first);
 
     // Both change the comments on revision 1: the laptop's save wins and
@@ -388,7 +382,8 @@ async fn waiting_comments_reach_every_session_and_stay_in_the_draft_when_its_tex
         laptop_saved.replaced,
         Some(ReplacedDraft { revision: 2, text: String::new(), files: Vec::new(), comments: both.to_vec() })
     );
-    until_draft(&mut phone_page, &id, 3).await;
+    // The draft itself arrives, as the read answers it.
+    assert_eq!(until_draft(&mut phone_page, 3).await, laptop_saved);
     assert_eq!(read(&backend, &phone, &id).await, laptop_saved);
 
     // Save for Later takes the text; the comment stays waiting.

@@ -118,26 +118,6 @@ pub struct CreateDirectory {
     pub path: String,
 }
 
-/// The most paths one existence question names.
-pub const EXISTENCE_PATHS_MAX: usize = 200;
-
-/// `POST .../fs/exists { paths }`: which of these paths of the
-/// conversation's primary Host are regular files, as a message's inline
-/// code names them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct FileExistence {
-    #[garde(length(min = 1, max = EXISTENCE_PATHS_MAX))]
-    pub paths: Vec<AbsolutePath>,
-}
-
-/// The answer to a [`FileExistence`]: the paths asked about that are
-/// regular files, in the order asked, a symbolic link followed.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct ExistingFiles {
-    pub files: Vec<String>,
-}
-
 /// `POST /devices/:id/fs { path }`: a directory to make on a device, named
 /// the way the device names it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]

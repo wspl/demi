@@ -2,7 +2,8 @@
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`):
 //!
 //! - `GET /conversations/:id/workflows` lists the workflows of its working
-//!   directory with what the page watches to hear of a change.
+//!   directory as the backend last read them, with when; the conversation's
+//!   metadata carries their revision, so a page hears of a change.
 //! - `GET /devices/:id/workflows?directory=` lists those of a new
 //!   conversation's directory before its first message.
 
@@ -10,7 +11,7 @@ use demi_runner_protocol::files::SubscriptionKind;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use demi_shared_types::{Nullable, ReadAt};
+use demi_shared_types::{Nullable, Timestamp};
 
 use crate::files::AbsolutePath;
 
@@ -29,10 +30,21 @@ pub struct ConversationWorkflows {
     #[schemars(with = "Nullable<String>")]
     pub unavailable: Option<String>,
     pub workflows: Vec<MenuWorkflow>,
-    /// The page's file watch subscriptions whose change means the list may
-    /// have changed: the workflows directory's details, and the names of
-    /// each nearer directory and `.demi` that could gain one.
-    pub watch: Vec<WatchSubject>,
+}
+
+/// The workflows of a directory as the backend holds them, which it answers
+/// at once, never waiting on the Host.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum KeptWorkflowList {
+    /// The backend has not read them yet: their first read is announced.
+    Unknown,
+    /// As the backend last read them, at `read_at`; a Host offline since
+    /// leaves them as they were.
+    Read {
+        list: ConversationWorkflows,
+        read_at: Timestamp,
+    },
 }
 
 /// One workflow file.
@@ -58,7 +70,8 @@ pub struct MenuWorkflow {
     pub profiles: Vec<String>,
 }
 
-/// A subject the page subscribes to on the file watch.
+/// A subject a project search watches on the Host's file watch: what makes
+/// the backend read it again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchSubject {
@@ -76,18 +89,4 @@ pub struct WatchSubject {
 #[serde(deny_unknown_fields)]
 pub struct WorkflowsQuery {
     pub directory: AbsolutePath,
-    /// See [`ReadAfterQuery`].
-    #[serde(default, rename = "readAfter", deserialize_with = "crate::query::read_at")]
-    pub read_after: Option<ReadAt>,
-}
-
-/// `?readAfter=<epoch>.<number>` of `GET /conversations/:id/workflows`:
-/// the answer must have been read at that number or later, as the page's
-/// watch went live there; the backend searches again when what it keeps
-/// was read before it.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ReadAfterQuery {
-    #[serde(default, rename = "readAfter", deserialize_with = "crate::query::read_at")]
-    pub read_after: Option<ReadAt>,
 }

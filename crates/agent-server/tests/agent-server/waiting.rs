@@ -25,9 +25,8 @@ use demi_provider_common::{
 use serde_json::json;
 
 use crate::support::{
-    ScriptedShell, ScriptedShells, conversation, is_idle, is_pending_steers, open, request_text, scripted_host_server_telling,
-    send, until,
-};
+        ScriptedShell, ScriptedShells, conversation, is_pending_steers, request_text, scripted_host_server_telling, send, until,
+    };
 
 /// How often the commands report: the least interval a call can ask for.
 const INTERVAL: Duration = Duration::from_secs(15);
@@ -58,7 +57,7 @@ async fn serving(
         Rc::new(move |_| told.set(told.get() + 1))
     });
     let mut page = TestClient::connect(&server, &conversation());
-    page.send(open()).await;
+    page.open().await;
     page.next_until(is_pending_steers).await;
     (server, shells, page, told)
 }
@@ -118,7 +117,7 @@ async fn the_tree_only_waits_once_every_call_still_running_waits_for_the_device_
     shell.exit("1");
     shell.exit("2");
     let mut page = page;
-    page.next_until(is_idle).await;
+    page.until_idle().await;
     assert!(!tree.only_waits(), "a tree at rest does not wait");
 }
 
@@ -137,7 +136,7 @@ async fn a_command_waiting_for_its_device_sends_no_interval_report_until_it_runs
     shell.wait_for("1", Some("MacBook Pro"));
     // The call returns at its interval, its command still waiting.
     tokio::time::sleep(INTERVAL).await;
-    page.next_until(is_idle).await;
+    page.until_idle().await;
     assert_eq!(script.requests().len(), 2);
 
     // Ten intervals pass while it waits: no report.
@@ -166,7 +165,7 @@ async fn a_turn_that_ends_leaves_its_command_waiting_and_a_later_turns_stop_ends
     until(|| holding(&shells, 1).is_some()).await;
     holding(&shells, 1).unwrap().wait_for("1", Some("MacBook Pro"));
     tokio::time::sleep(INTERVAL).await;
-    page.next_until(is_idle).await;
+    page.until_idle().await;
     // The turn ended; its command, a background command not yet started,
     // waits on.
     assert_eq!(state_of(&shells, "1"), PageState::Waiting { host: "MacBook Pro".into() });
@@ -174,6 +173,6 @@ async fn a_turn_that_ends_leaves_its_command_waiting_and_a_later_turns_stop_ends
     page.send(send("m2", "Anything else?")).await;
     until(|| script.requests().len() == 3).await;
     page.send(ClientFrame::Abort {}).await;
-    page.next_until(is_idle).await;
+    page.until_idle().await;
     assert_eq!(state_of(&shells, "1"), PageState::Aborted, "the Stop ends every waiting command");
 }

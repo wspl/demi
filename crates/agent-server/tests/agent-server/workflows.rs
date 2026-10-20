@@ -20,7 +20,9 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::subagents::{fixture, is_closed, refused, root, said, spawn};
-use crate::support::{Fixture, Model, TestProduct, agent, agent_call};
+use crate::support::{
+        Fixture, Model, TestProduct, agent, agent_call,
+    };
 
 /// The workflow Review Team: `explore`, whose model the user's entries
 /// offer, with a Context of 300K, and `slow`, whose model none of them

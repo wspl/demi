@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, shallowRef } from 'vue'
 import { conversationSummary, productState } from '../__tests__/product-state'
+import { showMetadata } from '../__tests__/shown-metadata'
 import { playChannels } from '../__tests__/sync-channel'
 import type { FileWatchMessage } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
@@ -124,11 +125,11 @@ beforeEach(() => {
     devices: [laptop('laptop')],
     conversations: [
       conversationSummary(CONVERSATION, 'Work', {
-        cwd: '/home/ada/work',
         target: { kind: 'device', deviceId: LAPTOP, path: '/home/ada/work' },
       }),
     ],
   }))
+  showMetadata(CONVERSATION, { cwd: '/home/ada/work' })
 })
 
 afterEach(async () => {

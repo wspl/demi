@@ -61,9 +61,10 @@ pub mod testing;
 pub mod small_request;
 pub mod title;
 
-pub use node::Node;
+pub use node::{CODE_PATHS_MAX, Node, ReplyFiles, code_path};
 pub use server::{
-    AgentServer, AskError, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing, side_instruction,
+    AgentServer, AgentsSource, AskError, Connection, ContentError, ContentResolver, FileReference, FrameRx, KeptAgents,
+    Outgoing, SideCard, side_instruction,
     ProviderResolver, QuiescenceWatch, ResolveError, ResolvedFiles, RestoreError, ServerConfig,
     ServerDeps, Tree,
     TreeStores, Working,

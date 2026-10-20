@@ -3,26 +3,29 @@
     "name": "a turn with signed thinking, streamed text and a tool call",
     "reset": {
       "type": "transcript_reset",
+      "node": "conversation",
       "start": 0,
       "length": 0,
       "blocks": [],
       "version": {
-        "epoch": "id-1",
+        "epoch": "id-2",
         "revision": 0
       }
     },
     "patches": [
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 0,
             "value": {
               "type": "user",
-              "id": "id-2",
+              "id": "id-3",
               "turnId": "m1",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -50,14 +53,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 1,
             "value": {
               "type": "thinking",
-              "id": "id-4",
+              "id": "id-5",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -73,7 +78,7 @@
               },
               "text": "",
               "signature": null,
-              "run": "id-4"
+              "run": "id-5"
             }
           }
         ],
@@ -81,6 +86,7 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "append_text",
@@ -92,14 +98,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "replace_block",
             "index": 1,
             "value": {
               "type": "thinking",
-              "id": "id-4",
+              "id": "id-5",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -115,7 +123,7 @@
               },
               "text": "Let me look.",
               "signature": "anthropic:sig-1",
-              "run": "id-4"
+              "run": "id-5"
             }
           }
         ],
@@ -123,14 +131,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 2,
             "value": {
               "type": "text",
-              "id": "id-5",
+              "id": "id-6",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -152,6 +162,7 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "append_text",
@@ -163,14 +174,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "replace_block",
             "index": 2,
             "value": {
               "type": "text",
-              "id": "id-5",
+              "id": "id-6",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -193,14 +206,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 3,
             "value": {
               "type": "tool_call",
-              "id": "id-6",
+              "id": "id-7",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -221,7 +236,7 @@
               "output": [],
               "view": null,
               "endedAt": null,
-              "run": "id-6"
+              "run": "id-7"
             }
           }
         ],
@@ -229,14 +244,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 4,
             "value": {
               "type": "response",
-              "id": "id-7",
+              "id": "id-8",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -263,14 +280,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "replace_block",
             "index": 3,
             "value": {
               "type": "tool_call",
-              "id": "id-6",
+              "id": "id-7",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -296,7 +315,7 @@
               ],
               "view": null,
               "endedAt": "2026-09-24T12:00:00.000Z",
-              "run": "id-6"
+              "run": "id-7"
             }
           }
         ],
@@ -304,14 +323,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 5,
             "value": {
               "type": "text",
-              "id": "id-9",
+              "id": "id-10",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -333,14 +354,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "replace_block",
             "index": 5,
             "value": {
               "type": "text",
-              "id": "id-9",
+              "id": "id-10",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -363,14 +386,16 @@
       },
       {
         "type": "transcript_patch",
+        "node": "conversation",
         "patches": [
           {
             "op": "add",
             "index": 6,
             "value": {
               "type": "response",
-              "id": "id-10",
+              "id": "id-11",
               "createdAt": "2026-09-24T12:00:00.000Z",
+              "request": "id-3",
               "model": {
                 "providerId": "stub",
                 "model": {
@@ -399,9 +424,10 @@
     "transcript": [
       {
         "type": "user",
-        "id": "id-2",
+        "id": "id-3",
         "turnId": "m1",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {
@@ -425,8 +451,9 @@
       },
       {
         "type": "thinking",
-        "id": "id-4",
+        "id": "id-5",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {
@@ -442,12 +469,13 @@
         },
         "text": "Let me look.",
         "signature": "anthropic:sig-1",
-        "run": "id-4"
+        "run": "id-5"
       },
       {
         "type": "text",
-        "id": "id-5",
+        "id": "id-6",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {
@@ -466,8 +494,9 @@
       },
       {
         "type": "tool_call",
-        "id": "id-6",
+        "id": "id-7",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {
@@ -493,12 +522,13 @@
         ],
         "view": null,
         "endedAt": "2026-09-24T12:00:00.000Z",
-        "run": "id-6"
+        "run": "id-7"
       },
       {
         "type": "response",
-        "id": "id-7",
+        "id": "id-8",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {
@@ -521,8 +551,9 @@
       },
       {
         "type": "text",
-        "id": "id-9",
+        "id": "id-10",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {
@@ -541,8 +572,9 @@
       },
       {
         "type": "response",
-        "id": "id-10",
+        "id": "id-11",
         "createdAt": "2026-09-24T12:00:00.000Z",
+        "request": "id-3",
         "model": {
           "providerId": "stub",
           "model": {

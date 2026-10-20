@@ -5,14 +5,17 @@
 //! The supervisor operations on its children are in [`supervisor`], and its
 //! commands' live output in [`live`].
 //!
-//! Subagent traffic of the whole tree travels on the conversation's one socket,
-//! flat: a job's `parentSessionId` is the tree.
+//! Every node of the tree, the root, a child or a side question, is one kind of
+//! agent session on the conversation's one socket
+//! (`docs/decisions/0009-agent-sessions-and-sync.md`):
 //!
-//! - A child's transcript goes only to a connection that shows it
-//!   (`show_subagents`), so opening a conversation whose five children each
-//!   hold megabytes of output costs the root's latest page and five summaries.
-//! - Each open sends the `subagents` summary of every child, so one that
-//!   started or finished while the page was away shows as it is.
+//! - A node's transcript goes only to a connection that subscribes to it
+//!   (`subscribe`), the root's too, so opening a conversation whose five
+//!   children each hold megabytes of output costs the latest page of the
+//!   nodes it shows.
+//! - What a page shows of every agent, its phase, wait, calls being written,
+//!   context and cost, is its entry in the tree's agents ([`agents`]), which
+//!   every connection follows by version.
 //! - A child's blocks never reach another session's inference transcript: the
 //!   parent never receiving a child's tool history is what subagents are for.
 //!
@@ -21,6 +24,7 @@
 //! open restores it as after a restart. A live child or a running command is
 //! not quiescent, so only an idle root is evicted.
 
+mod agents;
 mod live;
 mod profiles;
 mod reading;
@@ -38,10 +42,10 @@ use std::{
 
 use bytes::Bytes;
 use demi_agent_session::{Continuation, Execution, ModelSwitch, Reset, SessionEvent, Settle, Status, Subscription};
-use demi_agent_store::{Placement, AgentTreeStore, NodeRecord, StoreError};
+use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
-use demi_conversation_socket_protocol::{AgentCode, ServerFrame, TranscriptPatch, index_u32};
+use demi_conversation_socket_protocol::{AgentCost, AgentCode, AgentRole, HeldEdge, ServerFrame, TranscriptPatch, Version, index_u32};
 use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{Block, Clock, CommandId, ModelSelection, NodeId};
@@ -49,10 +53,11 @@ use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
+pub use self::agents::{KeptAgents, SideCard};
 pub(crate) use self::profiles::{Deleted, ListedProfile, ProfileAnswer};
 pub use self::sides::{AskError, side_instruction};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry, list_text};
-use self::{live::LiveOutput, reading::OutputReading, sides::Side, supervisor::{Child, Summary}};
+use self::{agents::Agents, live::LiveOutput, reading::OutputReading, sides::Side, supervisor::{Child, Summary}};
 use super::{AgentServer, ResolveError, connection::Outbox};
 use crate::{
     Node,
@@ -70,10 +75,11 @@ pub struct Tree<H: HostResolver> {
     /// Every live side question, by its node: beside the agent directory, never
     /// in it.
     sides: RefCell<HashMap<NodeId, Rc<Side<H>>>>,
-    /// What each closed side question ended with, which a page that
-    /// attaches receives, so a side question that finished while it was
-    /// away shows done and whole.
+    /// What each closed side question asked, which the conversation's agent
+    /// learns of.
     closed_sides: RefCell<HashMap<NodeId, sides::ClosedSide>>,
+    /// Every agent of the conversation as its metadata lists it.
+    agents: Rc<Agents>,
     /// Every child of the tree, live and closed, by number: read from the
     /// store when the tree opens, and changed in the step that changes a
     /// child, so an open's snapshot lists them without an await.
@@ -167,14 +173,14 @@ pub(crate) struct FrameSink {
 pub(crate) struct Attachment {
     pub(crate) connection: u64,
     pub(crate) outbox: Rc<Outbox>,
-    /// The children whose transcripts the connection shows, which its
-    /// `show_subagents` names.
-    pub(crate) shown: Shown,
+    /// The nodes whose messages the connection shows, which its `subscribe`
+    /// and `unsubscribe` name.
+    pub(crate) subscribed: Subscribed,
 }
 
-/// The children whose transcripts a connection shows: its own, shared with
-/// its attachment.
-pub(crate) type Shown = Rc<RefCell<HashSet<NodeId>>>;
+/// The nodes whose messages a connection shows: its own, shared with its
+/// attachment.
+pub(crate) type Subscribed = Rc<RefCell<HashSet<NodeId>>>;
 
 impl FrameSink {
     fn new() -> Self {
@@ -191,18 +197,18 @@ impl FrameSink {
         self.emit_where(|_| true, frame);
     }
 
-    /// Sends the child `subagent`'s transcript frame `frame` to every
-    /// attached connection that shows the child, and to no other.
-    pub(crate) fn emit_shown(&self, subagent: &NodeId, frame: ServerFrame) {
-        self.emit_where(|attachment| attachment.shown.borrow().contains(subagent), frame);
+    /// Sends the node `node`'s frame `frame` to every attached connection
+    /// that subscribes to the node, and to no other.
+    pub(crate) fn emit_to(&self, node: &NodeId, frame: ServerFrame) {
+        self.emit_where(|attachment| attachment.subscribed.borrow().contains(node), frame);
     }
 
-    /// Whether an attached connection shows the child `subagent`.
-    pub(crate) fn shows(&self, subagent: &NodeId) -> bool {
+    /// Whether an attached connection subscribes to the node `node`.
+    pub(crate) fn subscribes(&self, node: &NodeId) -> bool {
         self.attachments
             .borrow()
             .iter()
-            .any(|attachment| attachment.shown.borrow().contains(subagent))
+            .any(|attachment| attachment.subscribed.borrow().contains(node))
     }
 
     /// Sends `frame` to the attached connections `to` picks.
@@ -375,9 +381,7 @@ impl<H: HostResolver> Tree<H> {
                 Summary {
                     record: stored.record,
                     runs_on,
-                    revision: 0,
                     started_on_path: stored.started_on_path,
-                    shown_on_path: None,
                 },
             );
         }
@@ -388,7 +392,8 @@ impl<H: HostResolver> Tree<H> {
         });
         let runtime = deps.providers.runtime(root, &model).await?;
         let sink = Rc::new(FrameSink::new());
-        let live = LiveOutput::new(sink.clone());
+        let live = LiveOutput::new(sink.clone(), root.clone());
+        let agents = Agents::new(deps.ids.next_id(), sink.clone());
         let assembled = node::assemble(NodeSpec {
             origin,
             role: NodeRole::Root,
@@ -415,6 +420,7 @@ impl<H: HostResolver> Tree<H> {
             config: deps.config.session,
             interval_floor_ms: deps.config.interval_floor_ms,
             call_window_ms: deps.config.call_window_ms,
+            reply_files: deps.reply_files.clone(),
         })
         .await?;
         let session = assembled.node.session().clone();
@@ -429,9 +435,16 @@ impl<H: HostResolver> Tree<H> {
         }
         let paths = watch::Sender::new(0);
         let activity = watch::Sender::new(0);
+        agents.put(agents::resting(root.clone(), AgentRole::Root));
+        agents.change(root, |entry| {
+            entry.phase = session.phase();
+            entry.waited_ms = session.waited_ms();
+            entry.pending_calls = session.pending_calls();
+        });
         let reading = OutputReading::new(sink.clone());
         let frames = session.subscribe({
             let sink = sink.clone();
+            let agents = agents.clone();
             let reading = reading.clone();
             let status_changed = deps.status_changed.clone();
             let root = root.clone();
@@ -440,10 +453,18 @@ impl<H: HostResolver> Tree<H> {
             move |event| {
                 cut_path(&paths, event);
                 note_activity(&activity, event);
+                note_agent(&agents, &root, event);
                 if let SessionEvent::OutputChanged { output } = event {
                     reading.changed(output);
                 }
-                if let Some(frame) = frame_of(&root, event) {
+                if let SessionEvent::TranscriptChanged { patches, revision } = event {
+                    sink.emit_to(&root, ServerFrame::TranscriptPatch {
+                        node: root.clone(),
+                        patches: patches.clone(),
+                        revision: *revision,
+                        failures: None,
+                    });
+                } else if let Some(frame) = frame_of(event) {
                     sink.emit(frame);
                 }
                 if let SessionEvent::PhaseChanged { .. } = event {
@@ -479,6 +500,7 @@ impl<H: HostResolver> Tree<H> {
                 children: RefCell::new(HashMap::new()),
                 sides: RefCell::new(HashMap::new()),
                 closed_sides: RefCell::new(HashMap::new()),
+                agents,
                 summaries: RefCell::new(summaries),
                 changes,
                 starts: KeyedSerialGate::new(),
@@ -507,6 +529,11 @@ impl<H: HostResolver> Tree<H> {
             }
         });
         server.trees.borrow_mut().insert(root.clone(), tree.clone());
+        tree.placement().await;
+        tree.show_subagents();
+        // Read once the tree is listed, so a ledger row announced meanwhile
+        // reaches it, and what was kept before it stays behind it.
+        tree.agents.adopt(deps.agents.kept(root).await);
         Ok((tree, assembled.continuation))
     }
 
@@ -524,23 +551,22 @@ impl<H: HostResolver> Tree<H> {
         child.or_else(|| self.side(id).map(|side| side.node().clone()))
     }
 
-    /// The `context_usage` of each live node, the root's, then each live
-    /// child's, depth first in spawn order.
+    /// Takes each live node's context usage into its entry, as its session
+    /// estimates it now: an open asks for the window in use.
     ///
     /// None for a node whose session cannot tell it without reading a blob, so
     /// the page shows no figure from before.
-    pub(crate) async fn held_context_usage(&self) -> Vec<ServerFrame> {
-        let nodes: Vec<Rc<Node<H>>> = std::iter::once(self.root.clone())
-            .chain(self.descendants().iter().map(|child| child.node().clone()))
-            .collect();
-        let mut frames = Vec::new();
-        for node in nodes {
-            frames.push(ServerFrame::ContextUsage {
-                node: node.id().clone(),
-                usage: node.session().held_context_usage().await,
-            });
+    pub(crate) async fn refresh_context(&self) {
+        for node in self.nodes() {
+            let usage = node.session().held_context_usage().await;
+            self.agents.change(node.id(), |entry| entry.context = usage);
         }
-        frames
+    }
+
+    /// The conversation's agents as its metadata lists them, and the version
+    /// they are at.
+    pub fn agents(&self) -> (Version, Vec<demi_conversation_socket_protocol::AgentEntry>) {
+        (self.agents.version(), self.agents.all())
     }
 
     /// The tree's live nodes, the root first, then its children and its
@@ -606,11 +632,15 @@ impl<H: HostResolver> Tree<H> {
         self.sink.attached()
     }
 
-    /// Sends `frame`, of a fact the backend owns outside the tree, such as
-    /// a new row of the conversation's usage ledger, to every attached
-    /// connection.
-    pub fn announce(&self, frame: ServerFrame) {
-        self.sink.emit(frame);
+    /// The agent `number`, the root's 0, costs `cost` now, as the product's
+    /// latest ledger row of it made it.
+    pub fn cost_changed(&self, number: u64, cost: AgentCost) {
+        self.agents.cost_changed(number, cost);
+    }
+
+    /// The side question `id`'s card is `card` now, as the product keeps it.
+    pub fn side_card_changed(&self, id: &NodeId, card: SideCard) {
+        self.agents.card_changed(id, card);
     }
 
     /// Writes a page's input to the conversation's command `command`.
@@ -795,125 +825,127 @@ impl<H: HostResolver> Tree<H> {
     ///
     /// The handshake is, in order:
     ///
-    /// 1. the root's snapshot frames;
-    /// 2. its transcript `reset` from the blocks the page holds, which the
-    ///    root's session read just before (`AgentSession::reset`);
-    /// 3. the summary of every child;
-    /// 4. each live child's `started`, with its transcript when the connection
-    ///    shows it (`shown`), depth first in spawn order;
-    /// 5. the view of each live command of the tree.
+    /// 1. `opened`;
+    /// 2. the agents changed since the version the page holds, `agents`;
+    /// 3. the root's queue and pending steers;
+    /// 4. the transcript of each live node it subscribes to, from the blocks
+    ///    `held` names, with the view of each of its live commands
+    ///    ([`node_frames`](Self::node_frames)).
     ///
     /// Answers how many frames it sent.
     pub(crate) fn attach(
         &self,
         connection: u64,
         outbox: Rc<Outbox>,
-        shown: Shown,
-        reset: Reset,
-        placement: Option<&Placement>,
+        subscribed: Subscribed,
+        agents: Option<&Version>,
+        held: &HashMap<NodeId, Option<HeldEdge>>,
     ) -> usize {
         self.sink.attach(Attachment {
             connection,
             outbox: outbox.clone(),
-            shown: shown.clone(),
+            subscribed: subscribed.clone(),
         });
         let session = self.root.session();
-        let root = [
+        let mut frames = vec![
             ServerFrame::Opened,
-            root_reset(reset),
-            ServerFrame::Phase {
-                subagent_id: None,
-                phase: session.phase(),
-            },
+            self.agents.snapshot(agents, |id| self.node(id).and_then(|node| node.session().waited_ms())),
             ServerFrame::Queue {
                 queue: session.queued_messages(),
             },
             ServerFrame::PendingSteers {
                 pending_steers: session.pending_steers(),
             },
-            ServerFrame::PendingCalls {
-                subagent_id: None,
-                pending_calls: session.pending_calls(),
-            },
-            ServerFrame::Waiting {
-                subagent_id: None,
-                waited_ms: session.waited_ms(),
-            },
             ServerFrame::RequestOutput {
                 output: session.request_output(),
             },
-            ServerFrame::Subagents {
-                subagents: self.subagent_summaries(placement),
-            },
         ];
-        let mut sent = 0;
-        for frame in root
-            .into_iter()
-            .chain(self.replay(placement, &shown.borrow()))
-            .chain(self.replay_sides())
-            .chain(self.live_commands())
-        {
+        let nodes: Vec<NodeId> = subscribed.borrow().iter().cloned().collect();
+        for node in nodes {
+            frames.extend(self.node_frames(&node, held.get(&node).and_then(Option::as_ref)));
+        }
+        let sent = frames.len();
+        for frame in frames {
             // A frame the fresh outbox refuses belongs to a socket that is
             // gone; the next emit detaches the connection.
             outbox.push(frame);
-            sent += 1;
         }
         sent
     }
 
-    /// Fresh transcripts of the root, from `reset`, and of every live child the
-    /// connection shows (`shown`), with the view of each live command of the
-    /// tree.
-    ///
-    /// It is the answer to a connection that saw a gap in the patch revisions,
-    /// which goes to that connection alone.
-    pub(crate) fn fresh_transcripts(
-        &self,
-        reset: Reset,
-        placement: Option<&Placement>,
-        shown: &HashSet<NodeId>,
-    ) -> Vec<ServerFrame> {
-        std::iter::once(root_reset(reset))
-            .chain(self.replay(placement, shown))
-            .chain(self.replay_sides())
-            .chain(self.live_commands())
-            .collect()
+    /// What a connection that subscribes to the node `id` receives: the
+    /// node's transcript from the blocks the page `held`, unless it holds
+    /// the current version, and the view of each of its live commands; no
+    /// transcript for a node that is not live, which sends it when it
+    /// starts, though a closed child's commands still stopping are shown.
+    pub(crate) fn node_frames(&self, id: &NodeId, held: Option<&HeldEdge>) -> Vec<ServerFrame> {
+        let mut frames = Vec::new();
+        if let Some(node) = self.node(id) {
+            let session = node.session();
+            if held.is_none_or(|held| held.version != session.transcript_version()) {
+                let reset = session.reset(held.map(|held| held.from), held.map(|held| &held.edge));
+                frames.push(reset_frame(id.clone(), reset));
+            }
+        }
+        frames.extend(self.live_commands_of(id));
+        frames
     }
 
-
-    /// The `shell_output` of each live command
-    /// (`crates/agent-server/src/server/tree/live.rs`).
+    /// What a connection that subscribes to the closed node `id` receives:
+    /// the node's transcript from its last checkpoint, from the blocks the
+    /// page `held`, unless it holds the node's closed version; none for a
+    /// node that is live, which [`node_frames`](Self::node_frames) answers,
+    /// or that the store does not hold closed.
     ///
-    /// The order is the root's, then each live child's, depth first in spawn
-    /// order, then each one a closed child's shells hold while it stops.
-    fn live_commands(&self) -> Vec<ServerFrame> {
-        let mut frames: Vec<ServerFrame> = self
-            .root
-            .live_views()
-            .into_iter()
-            .map(|view| shell_output(None, view))
-            .collect();
-        let others = self
-            .descendants()
-            .iter()
-            .map(|child| child.node().clone())
-            .chain(self.sides.borrow().values().map(|side| side.node().clone()))
-            .collect::<Vec<_>>();
-        for node in others {
-            let id = node.id();
-            frames.extend(
-                node.live_views()
-                    .into_iter()
-                    .map(|view| shell_output(Some(id.clone()), view)),
-            );
+    /// A closed node's version names the round it closed in, which a resume
+    /// raises, so a page that held it live, or closed in an earlier round,
+    /// catches up, and one that holds it closed reads nothing again.
+    pub(crate) async fn closed_frames(&self, id: &NodeId, held: Option<&HeldEdge>) -> Result<Option<ServerFrame>, StoreError> {
+        if self.node(id).is_some() {
+            return Ok(None);
         }
-        for shells in self.stopping.borrow().values() {
+        let Some(record) = self.store.node(id).await?.filter(|record| record.closed.is_some()) else {
+            return Ok(None);
+        };
+        let version = closed_version(&record);
+        if held.is_some_and(|held| held.version == version) {
+            return Ok(None);
+        }
+        let Some(checkpoint) = self.store.session_store(id).load().await? else {
+            return Ok(None);
+        };
+        // The node may have resumed while its checkpoint was read: its live
+        // session sends its own transcript.
+        if self.node(id).is_some() {
+            return Ok(None);
+        }
+        let reset = demi_agent_session::checkpoint_reset(
+            &checkpoint,
+            version,
+            held.map(|held| held.from),
+            held.map(|held| &held.edge),
+        );
+        Ok(Some(reset_frame(id.clone(), reset)))
+    }
+
+    /// The `shell_output` of each live command of the node `id`
+    /// (`crates/agent-server/src/server/tree/live.rs`), with those a closed
+    /// child's shells hold while they stop.
+    fn live_commands_of(&self, id: &NodeId) -> Vec<ServerFrame> {
+        let mut frames: Vec<ServerFrame> = self
+            .node(id)
+            .map(|node| node.live_views())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|view| shell_output(id.clone(), view))
+            .collect();
+        for shells in self.stopping.borrow().values().filter(|shells| &shells.subagent == id) {
             frames.extend(
                 shells
                     .environments
                     .iter()
                     .flat_map(|environment| unended_views(environment.as_ref()))
-                    .map(|view| shell_output(Some(shells.subagent.clone()), view)),
+                    .map(|view| shell_output(id.clone(), view)),
             );
         }
         frames
@@ -1014,36 +1046,17 @@ impl<H: HostResolver> Tree<H> {
     }
 }
 
-/// The frame an event of the root `root`'s session becomes; an action's
-/// failure was already reported as its `error`.
-fn frame_of(root: &NodeId, event: &SessionEvent) -> Option<ServerFrame> {
+/// The frame of the conversation's own that an event of the root's session
+/// becomes: its queue, its pending steers, a retry and an error; its
+/// transcript goes to its subscribers and the rest is its agent entry's. An
+/// action's failure was already reported as its `error`.
+fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
     Some(match event {
-        SessionEvent::TranscriptChanged { patches, revision } => ServerFrame::TranscriptPatch {
-            patches: patches.clone(),
-            revision: *revision,
-            failures: None,
-        },
-        SessionEvent::PhaseChanged { phase } => ServerFrame::Phase {
-            subagent_id: None,
-            phase: *phase,
-        },
-        SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage {
-            node: root.clone(),
-            usage: Some(usage.clone()),
-        },
         SessionEvent::QueueChanged { queue } => ServerFrame::Queue {
             queue: queue.clone(),
         },
         SessionEvent::PendingSteersChanged { pending_steers } => ServerFrame::PendingSteers {
             pending_steers: pending_steers.clone(),
-        },
-        SessionEvent::PendingCallsChanged { pending_calls } => ServerFrame::PendingCalls {
-            subagent_id: None,
-            pending_calls: pending_calls.clone(),
-        },
-        SessionEvent::WaitingChanged { waited_ms } => ServerFrame::Waiting {
-            subagent_id: None,
-            waited_ms: *waited_ms,
         },
         SessionEvent::RetryScheduled {
             attempt,
@@ -1062,9 +1075,24 @@ fn frame_of(root: &NodeId, event: &SessionEvent) -> Option<ServerFrame> {
             diagnostics: report.diagnostics.clone(),
             request_id: None,
         },
-        // The tree's reading sends it (`reading`).
-        SessionEvent::ActionFailed { .. } | SessionEvent::OutputChanged { .. } => return None,
+        // The rest change the agent's entry (`note_agent`) or its transcript,
+        // or are a request's output, which the tree's reading sends (`reading`).
+        _ => return None,
     })
+}
+
+/// Takes what `event` of the node `id`'s session changes of its agent entry
+/// into it: its phase, its wait, the calls being written and its context.
+pub(super) fn note_agent(agents: &Agents, id: &NodeId, event: &SessionEvent) {
+    match event {
+        SessionEvent::PhaseChanged { phase } => agents.change(id, |entry| entry.phase = *phase),
+        SessionEvent::WaitingChanged { waited_ms } => agents.change(id, |entry| entry.waited_ms = *waited_ms),
+        SessionEvent::PendingCallsChanged { pending_calls } => {
+            agents.change(id, |entry| entry.pending_calls = pending_calls.clone());
+        }
+        SessionEvent::ContextUsageChanged { usage } => agents.change(id, |entry| entry.context = Some(usage.clone())),
+        _ => {}
+    }
 }
 
 /// What [`Tree::watch_quiescence`] answers.
@@ -1214,10 +1242,49 @@ async fn evict_when_idle<H: HostResolver>(
     }
 }
 
-/// The root's transcript from the blocks the page holds, as its session
-/// read it.
-fn root_reset(reset: Reset) -> ServerFrame {
+/// The agents of a conversation whose tree is not live, as its store keeps
+/// them: its `subagents` with what each runs on, its `sides`, and what the
+/// product `kept`, while the conversation works at `placement`, at a version
+/// of the epoch `epoch`.
+pub(super) fn stored_agents(
+    epoch: String,
+    root: &NodeId,
+    subagents: Vec<(demi_agent_store::StoredSubagent, demi_conversation_socket_protocol::JobModel)>,
+    sides: Vec<NodeRecord>,
+    placement: Option<demi_agent_store::Placement>,
+    kept: KeptAgents,
+) -> (Version, Vec<demi_conversation_socket_protocol::AgentEntry>) {
+    // No connection is attached to the sink, so the puts announce nothing.
+    let agents = Agents::new(epoch, Rc::new(FrameSink::new()));
+    agents.set_placement(placement.clone());
+    agents.put(agents::resting(root.clone(), AgentRole::Root));
+    for (stored, runs_on) in subagents {
+        let role = agents::subagent_role(&stored.record, runs_on, placement.as_ref(), stored.started_on_path);
+        agents.put(agents::resting(stored.record.id.clone(), role));
+    }
+    for record in sides {
+        if let Some(of) = record.side {
+            agents.put(agents::resting(record.id, agents::side_role(of)));
+        }
+    }
+    agents.adopt(kept);
+    (agents.version(), agents.all())
+}
+
+/// The version of a closed node's transcript, which no live session's
+/// epoch equals: the round it closed in.
+fn closed_version(record: &NodeRecord) -> Version {
+    Version {
+        epoch: format!("closed-{}", record.round),
+        revision: 0,
+    }
+}
+
+/// The node `node`'s transcript from the blocks the page holds, as its
+/// session read it.
+pub(super) fn reset_frame(node: NodeId, reset: Reset) -> ServerFrame {
     ServerFrame::TranscriptReset {
+        node,
         start: index_u32(reset.start),
         length: index_u32(reset.length),
         blocks: reset.blocks,

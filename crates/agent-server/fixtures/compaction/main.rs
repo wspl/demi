@@ -512,6 +512,8 @@ impl Conversation {
             config: ServerConfig::default(),
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
+            agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
+            reply_files: Rc::new(demi_agent_server::testing::TestHostFiles::default()),
         });
         let client = open_client(&server, &root).await;
         Ok(Self {
@@ -717,12 +719,7 @@ async fn open_client(
     root: &NodeId,
 ) -> TestClient<NoHosts> {
     let mut client = TestClient::connect(server, root).with_hang_guard(TURN_TIMEOUT);
-    client
-        .send(ClientFrame::Open {
-            from: None,
-            edge: None,
-        })
-        .await;
+    client.open().await;
     client
         .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
         .await;
@@ -758,10 +755,7 @@ fn blocks_of(server: &AgentServer<NoHosts>, root: &NodeId) -> Vec<Block> {
 /// action may take fails as a hang.
 async fn act(client: &mut TestClient<NoHosts>, frame: ClientFrame) {
     client.send(frame).await;
-    let busy = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase != SessionPhase::Idle);
-    let idle = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase == SessionPhase::Idle);
-    client.next_until(busy).await;
-    client.next_until(idle).await;
+    client.until_idle().await;
 }
 
 /// Sends `text` to the conversation `root` and returns its turn: the

@@ -18,12 +18,11 @@ use demi_shared_types::{Block, MessageComment, SessionPhase, TurnId};
 use demi_provider_common::testing::event;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::shares::{ShareAnswer, ShareKind, SharedConversation, SharedEntry, SharedTranscriptPage};
-use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, anthropic, answer, choose, create, kinds, message, send, summary, text_block, tool_use_block,
+    FIRST, Socket, anthropic, answer, choose, create, kinds, message, send, text_block, tool_use_block,
     transcript,
 };
 use crate::subagents::{Scripts, say, shell, tree_on};
@@ -139,8 +138,7 @@ async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stop
     };
     let (looking, first) = (text("Looking it up."), text("Answer one."));
     assert!(looking.forkable, "a text before a call is complete, yet the agent went on");
-    let mut sync = backend.sync(&master).await;
-    sync.snapshot().await;
+    let (mut shown, _) = crate::conversations::Socket::shown(&backend, &master, FIRST, 0).await;
 
     let ShareAnswer::Answer { token, url, block_id, taken_at } =
         shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": first.id })).await)
@@ -151,12 +149,11 @@ async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stop
     assert_eq!(block_id, first.id);
     assert_eq!(url, format!("http://{}/s/{token}", backend.address()));
     assert_eq!(token.len(), 22, "128 bits in URL-safe base64");
-    // The owner's pages learn of it from the conversation's summary.
-    sync.until(|event| {
-        matches!(event, SyncEvent::Conversation { conversation }
-            if conversation.shares.iter().any(|share| share.token().as_str() == token))
-    })
-    .await;
+    // The owner's pages that show the conversation learn of it from its
+    // metadata.
+    shown
+        .metadata_until(|metadata| metadata.shares.iter().any(|share| share.token().as_str() == token))
+        .await;
     // Sharing it again opens the same link.
     let again = shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": first.id })).await);
     assert!(matches!(again, ShareAnswer::Answer { token: same, .. } if same.as_str() == token));
@@ -213,7 +210,7 @@ async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stop
         missed(&public(&backend, &token, path, None).await, path);
         missed(&public(&backend, "AAAAAAAAAAAAAAAAAAAAAA", path, None).await, path);
     }
-    let left = summary(&backend, &master, FIRST).await.shares;
+    let left = crate::conversations::metadata(&backend, &master, FIRST).await.shares;
     assert!(left.iter().all(|share| share.token().as_str() != token), "{left:?}");
     assert_eq!(left.len(), 1, "the earlier answer's share stays");
     backend.close().await;
@@ -283,17 +280,17 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         })
         .await;
     socket
-        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }))
+        .until(|frame| crate::conversations::root_phase(frame) == Some(SessionPhase::Idle))
         .await;
     let own = transcript(&backend, &master, FIRST).await;
-    let child = own.subagents[0].child.number;
+    let child = crate::conversations::child_of(&own.subagents[0]).number;
     // The child's attachment, which no text of the root names.
     let viewed = backend.get(&format!("/api/conversations/{FIRST}/attachments/a3"), Some(&master)).await;
     assert_eq!(viewed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&viewed.body));
     let viewed = viewed.json::<demi_web_api_protocol::attachments::ConversationAttachment>().blob;
     // An agent's reply shows only what that agent uploaded: the root's a2,
     // not the user's a1 or the child's a3, and the child's own a3 alone.
-    let child_node = own.subagents[0].child.subagent_id.as_str().to_owned();
+    let child_node = own.subagents[0].id.as_str().to_owned();
     for (agent, number, shown) in [
         (FIRST, "a2", true),
         (FIRST, "a1", false),
@@ -425,10 +422,10 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         })
         .await;
     socket
-        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }))
+        .until(|frame| crate::conversations::root_phase(frame) == Some(SessionPhase::Idle))
         .await;
     let later = transcript(&backend, &master, FIRST).await;
-    let later_child = later.subagents[1].child.number;
+    let later_child = crate::conversations::child_of(&later.subagents[1]).number;
     let later_answer = later
         .blocks
         .iter()

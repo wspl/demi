@@ -54,6 +54,21 @@ export function binaryFile(file: Omit<EditedFile, 'edits'>): EditedFile {
 }
 
 /**
+ * `blocks` as the backend stores them: each names its request, the id of
+ * the `user` block that starts it, which a block before the first has none
+ * of (`crates/agent-store/src/changes.rs`).
+ */
+export function inRequests(blocks: Block[]): Block[] {
+  let request: string | undefined
+  return blocks.map((block) => {
+    if (block.type === 'user') {
+      request = block.id
+    }
+    return request === undefined ? block : ({ ...block, request } as Block)
+  })
+}
+
+/**
  * `blocks` as one run of steps, as the backend stores it: each carries
  * the id of the run's first block, which the fixture names by putting the
  * run's blocks together.
@@ -655,14 +670,14 @@ export function screenshotRunBlocks(): Block[] {
     view: shellView({ commandId: '71', chunks: [{ stream: 'stdout', text: 't1\n' }] }),
   })
   const shots = { ...twelveScreenshotsTool, id: 'shots-run-shots', toolUseId: 'shots-run-shots', createdAt: iso(585_000) }
-  return [
+  return inRequests([
     {
       type: 'user', id: 'shots-run-ask', turnId: 'shots-run-turn', createdAt: iso(600_000), model: demoModel,
       content: [{ type: 'text', text: 'Screenshot the whole sign-in flow.' }], preamble: null,
     },
     ...inRun(open, shots),
     { type: 'text', id: 'shots-run-answer', createdAt: iso(580_000), model: demoModel, text: 'Twelve screenshots, one per screenful: the form, its errors, and the dashboard after it.' },
-  ]
+  ])
 }
 
 /**
@@ -672,7 +687,7 @@ export function screenshotRunBlocks(): Block[] {
  */
 export function viewerTranscriptBlocks(): Block[] {
   const shots = { ...screenshotsTool, id: 'viewer-shots', toolUseId: 'viewer-shots', createdAt: iso(585_000) }
-  return [
+  return inRequests([
     {
       type: 'user', id: 'viewer-ask', turnId: 'viewer-turn', createdAt: iso(600_000), model: demoModel,
       content: [
@@ -695,7 +710,7 @@ export function viewerTranscriptBlocks(): Block[] {
       type: 'text', id: 'viewer-answer', createdAt: iso(580_000), model: demoModel,
       text: 'The tabs differ only in the button. The test pattern and the whole page, from the workspace:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
     },
-  ]
+  ])
 }
 
 /** A capture of a whole page: taller than a thumbnail's proportions, so the thumbnail keeps its top. */
@@ -1044,7 +1059,7 @@ export function changesDemoBlocks(): Block[] {
     ...firstRun.slice(2),
     ...secondRun.filter((file) => file !== mixedTest && file !== mixedSession),
   ]
-  return [
+  return inRequests([
     {
       type: 'user',
       id: 'changes-user',
@@ -1082,7 +1097,7 @@ export function changesDemoBlocks(): Block[] {
     ),
     text('changes-text-2', 60_000, 'Every widget compiles and the snapshots match. Applying the same codemod to the docs examples.'),
     ...inRun(withLists(snapshotDiff, thirdRun, [...request, ...thirdRun]), caseBlock('still running')),
-  ]
+  ])
 }
 
 /**
@@ -1293,7 +1308,7 @@ export function removedToolBlocks(): ToolCallBlock[] {
 
 /** One request and one answer: enough history for a failure to keep on screen. */
 export function shortTranscriptBlocks(): Block[] {
-  return [
+  return inRequests([
     {
       type: 'user',
       id: 'short-user',
@@ -1315,7 +1330,7 @@ export function shortTranscriptBlocks(): Block[] {
       model: demoModel,
       text: 'The game is ready.\n\nChoose a difficulty, reveal cells and mark suspected mines. The first click is always safe, and the timer starts with the first move.',
     },
-  ]
+  ])
 }
 
 /** The provider error that ends a turn, as the transcript records it. */
@@ -1461,7 +1476,7 @@ export function signedOutErrorBlock(id: string): Block {
  * (`crates/backend-providers/src/llm/rotation.rs`).
  */
 export function accountSwitchBlocks(resetsAt: string): Block[] {
-  return [
+  return inRequests([
     {
       type: 'account_switch',
       id: 'account-switch',
@@ -1479,7 +1494,7 @@ export function accountSwitchBlocks(resetsAt: string): Block[] {
       model: demoModel,
       text: 'The board now opens every empty neighbor when a blank cell is revealed.',
     },
-  ]
+  ])
 }
 
 /** The script of the call that waits for its offline device (`waitingShellCall`). */
@@ -1505,7 +1520,7 @@ export function transcriptDemoBlocks(): Block[] {
   const thinkingStartedAt = iso(18_000)
   const thinkingEndedAt = iso(10_000)
 
-  return [
+  return inRequests([
     {
       type: 'user',
       id: 'user-1',
@@ -1622,7 +1637,7 @@ export function transcriptDemoBlocks(): Block[] {
       ],
       preamble: null,
     },
-  ]
+  ])
 }
 
 /**
@@ -1630,7 +1645,7 @@ export function transcriptDemoBlocks(): Block[] {
  * of its own, which a page read after a reload holds without its text.
  */
 export function thoughtAnswerBlocks(): Block[] {
-  return [
+  return inRequests([
     {
       type: 'user', id: 'thought-ask', turnId: 'thought-ask-turn', createdAt: iso(120_000), model: demoModel,
       content: [{ type: 'text', text: 'Is 1001 prime?' }], preamble: null,
@@ -1640,7 +1655,7 @@ export function thoughtAnswerBlocks(): Block[] {
       text: '1001 = 7 × 11 × 13, so it is not prime.', signature: null,
     }),
     { type: 'text', id: 'thought-answer', createdAt: iso(114_000), model: demoModel, text: 'No: 1001 is 7 × 11 × 13.' },
-  ]
+  ])
 }
 
 /**
@@ -1679,7 +1694,7 @@ export function commandLookBlocks(): Block[] {
     type: 'wakeup', id: 'look-report', turnId: 'look-report-turn', createdAt: iso(300_000), model: demoModel, placement: 'new_turn',
     reports: [{ commandId: '51', title: 'Run the end-to-end suite', event: { kind: 'ended', exitCode: 0 }, output: '140 passed (4m 12s)' }],
   }
-  return [
+  return inRequests([
     user('look-start', 900_000, 'Run the end-to-end suite.'),
     ...inRun(run('look-suite', 890_000, '51')),
     reply('look-started', 880_000, 'The suite is running; it takes a few minutes. I will tell you when it ends.'),
@@ -1699,7 +1714,7 @@ export function commandLookBlocks(): Block[] {
       look('again-look', 190_000, 'Read the first run’s timing', '56', statusText('51', 'exited', '140 passed (4m 12s)\n')),
     ),
     reply('again-answer', 185_000, 'The first run took 4 minutes 12 seconds. The second one is running; I will tell you when it ends.'),
-  ]
+  ])
 }
 
 /** The call whose command the running run's specimen runs (`runningRunBlocks`). */
@@ -1721,7 +1736,7 @@ export function runningRunBlocks(): Block[] {
     input: JSON.stringify({ script, description }),
     view: done ? shellView({ commandId: '61', runningMs: 400, chunks: [{ stream: 'stdout', text: 'On branch fix/reset-wording\nnothing to commit, working tree clean\n' }] }) : null,
   })
-  return [
+  return inRequests([
     {
       type: 'user', id: 'running-run-ask', turnId: 'running-run-turn', createdAt: iso(100_000), model: demoModel,
       content: [{ type: 'text', text: 'Merge the reset wording and run the tests.' }], preamble: null,
@@ -1731,7 +1746,7 @@ export function runningRunBlocks(): Block[] {
       shell('running-run-status', 96_000, 'git status', 'Check the branch', true),
       shell(RUNNING_RUN_CALL, 92_000, 'git merge --no-ff fix/reset-wording && bun run test', 'Review and merge the pricing page copy', false),
     ),
-  ]
+  ])
 }
 
 /** The stages a run steps through (`steppedRunBlocks`), the last being the answer. */
@@ -1792,7 +1807,7 @@ export function steppedRunBlocks(stage: number): Block[] {
   ]
   if (stage === 4)
     blocks.push({ type: 'text', id: 'stepped-run-answer', createdAt: iso(1_000), model: demoModel, text: 'The auth tests pass now: the run script was not executable.' })
-  return blocks
+  return inRequests(blocks)
 }
 
 /** The call whose command runs on after its turn ended (`leftRunningBlocks`). */
@@ -1806,7 +1821,7 @@ export const LEFT_RUNNING_CALL = 'left-running-suite'
  * is it.
  */
 export function leftRunningBlocks(): Block[] {
-  return [
+  return inRequests([
     {
       type: 'user', id: 'left-running-ask', turnId: 'left-running-turn', createdAt: iso(140_000), model: demoModel,
       content: [{ type: 'text', text: 'Start the end-to-end suite and tell me when it ends.' }], preamble: null,
@@ -1837,7 +1852,7 @@ export function leftRunningBlocks(): Block[] {
       }),
     ),
     { type: 'text', id: 'left-running-reply', createdAt: iso(120_000), model: demoModel, text: 'The suite is running; I will tell you when it ends.' },
-  ]
+  ])
 }
 
 /**
@@ -1888,13 +1903,13 @@ export function viewedMediaBlocks(): Block[] {
       media: [blobImage(galleryBlobs.screenshot), blobImage(galleryBlobs.chart)],
     }],
   }
-  return [
+  return inRequests([
     user('viewed-ask', 600_000, 'Open example.com and take two screenshots of it.'),
     ...inRun(open, shots),
     reply('viewed-answer', 580_000, 'Both screenshots show the same page: a heading and one link. I am capturing the checkout screens too and will tell you when that ends.'),
     ...inRun(report),
     reply('viewed-report-answer', 295_000, 'The checkout screens are captured: the cart and the payment step.'),
-  ]
+  ])
 }
 
 /**
@@ -1903,7 +1918,7 @@ export function viewedMediaBlocks(): Block[] {
  * call being written or with Requesting.
  */
 export function callBeingWrittenBlocks(): Block[] {
-  return [
+  return inRequests([
     {
       type: 'user',
       id: 'writing-user',
@@ -1921,7 +1936,7 @@ export function callBeingWrittenBlocks(): Block[] {
       text: 'Now I have everything needed to classify. Let me write a categorizer.',
       forkable: true,
     },
-  ]
+  ])
 }
 
 /**
@@ -2001,7 +2016,7 @@ So on a slow network every attempt times out before the server can answer, and t
       ...inRun(edit, { ...finalTests, status: 'executing', output: [], view: shellView({ commandId: 'busy-test-again', status: 'running', chunks: [{ stream: 'stdout', text: ' 7 pass\n' }] }) }),
     ]
   }
-  return [
+  return inRequests([
     ...blocks,
     ...inRun(edit, finalTests),
     say('say-5', `Fixed. The checkout page now waits through a slow network:
@@ -2010,7 +2025,7 @@ So on a slow network every attempt times out before the server can answer, and t
 - \`withRetry\` retries a **504** as it retries a timeout.
 
 All 12 checkout tests pass, including the slow-network one that failed before.`),
-  ]
+  ])
 }
 
 /** The suites the found-mark transcript's run starts, by the command each runs as. */
@@ -2047,7 +2062,7 @@ export function foundMarkBlocks(): Block[] {
     'The expired-cookie case now has a test of its own: it signs in, moves the clock past the cookie’s age, and expects the sign-in page again.',
     'Both tests pass, and the whole suite passes in 41 seconds.',
   ]
-  return [
+  return inRequests([
     user('found-ask', 600_000, 'Why does the login test fail?'),
     { ...shellTool, id: 'found-call', createdAt: iso(590_000) },
     reply('found-long', 580_000, steps.map((step) => `${step} ${'Each step follows from the one before it, and the next one reads its result. '.repeat(3)}`).join('\n\n')),
@@ -2067,5 +2082,5 @@ export function foundMarkBlocks(): Block[] {
       type: 'wakeup', id: 'found-report', turnId: 'found-report-turn', createdAt: iso(30_000), model: demoModel, placement: 'new_turn',
       reports: [{ commandId: '65', title: 'Run mjsunit with JIT translation on', event: { kind: 'ended', exitCode: 0 }, output: '5,812 tests passed' }],
     },
-  ]
+  ])
 }

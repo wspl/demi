@@ -90,7 +90,7 @@ use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placem
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
-    JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob, SubagentSummary, TranscriptPatch, index_u32,
+    JobModel, JobPhase, ServerFrame, TranscriptPatch,
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
@@ -107,7 +107,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{StoppingShells, Tree, cut_path, note_activity, unended_views};
+use super::{StoppingShells, Tree, agents, cut_path, note_activity, note_agent, unended_views};
 use super::profiles::Limits;
 use crate::{
     Node,
@@ -129,21 +129,15 @@ const SIDE_SENDS: &str = "a side question cannot send messages to agents";
 const SIDE_CWD: &str = "a side question works in the conversation's directory and cannot change it";
 pub(super) const OWNER_CLOSING: &str = "owner session is closing";
 
-/// A child of the tree, live or closed, as an open's snapshot lists it
-/// (`crates/agent-server/src/server/tree.rs`).
+/// A child of the tree, live or closed, as its agent entry shows it
+/// (`crates/agent-server/src/server/tree/agents.rs`).
 pub(crate) struct Summary {
     pub(super) record: NodeRecord,
     pub(super) runs_on: JobModel,
-    /// Its transcript's revision when it closed; a live child's is its
-    /// session's, and one read from the store has none it can tell, 0.
-    pub(super) revision: u64,
     /// Whether the call that started it is on its parent's current path,
     /// as it was when the parent last was live; a live parent's session
     /// tells it now.
     pub(super) started_on_path: bool,
-    /// Whether the pages last heard that it is on the current path; none
-    /// before a change of a path told them.
-    pub(super) shown_on_path: Option<bool>,
 }
 
 /// A live child: its node, and what its supervision keeps about it.
@@ -182,14 +176,6 @@ impl<H: HostResolver> Child<H> {
     /// Its place among its siblings: spawn order, its number's.
     fn rank(&self) -> u64 {
         self.node.record().number
-    }
-
-    /// Its job, as `record`, its record now or as it closed, describes it,
-    /// while the conversation works at `now`.
-    fn job(&self, record: &NodeRecord, now: Option<&Placement>, on_path: bool) -> SubagentJob {
-        record
-            .job(self.runs_on.clone(), now, on_path)
-            .expect("a child has a job")
     }
 
     pub(super) fn stop_supervision(&self) {
@@ -827,6 +813,7 @@ impl<H: HostResolver> Tree<H> {
             config: deps.config.session,
             interval_floor_ms: deps.config.interval_floor_ms,
             call_window_ms: deps.config.call_window_ms,
+            reply_files: deps.reply_files.clone(),
         })
         .await
         .map_err(|error| error.to_string())?;
@@ -837,8 +824,8 @@ impl<H: HostResolver> Tree<H> {
             // assembled is not closing; its runtime is closed all the same.
             refused.discard().await;
         }
-        let placement = self.placement().await;
-        let child = self.attach_child(assembled.node, runs_on, placement.as_ref());
+        self.placement().await;
+        let child = self.attach_child(assembled.node, runs_on);
         drop(slot);
         let id = child.id().clone();
         if let Some(continuation) = assembled.continuation
@@ -888,38 +875,38 @@ impl<H: HostResolver> Tree<H> {
 
     /// A path of the tree changed, by an edit, a Regenerate, a switch, a
     /// retry or any rewrite: each child whose place on the current path
-    /// changed with it, at any depth, is told to the pages.
+    /// changed with it, at any depth, shows it in its entry.
     pub(crate) async fn paths_changed(&self) {
-        let records: Vec<NodeRecord> = self
+        self.show_subagents();
+    }
+
+    /// Shows every child, live and closed, in its agent entry as it is now.
+    pub(super) fn show_subagents(&self) {
+        let summaries: Vec<(NodeRecord, JobModel)> = self
             .summaries
             .borrow()
             .values()
-            .map(|summary| summary.record.clone())
+            .map(|summary| (summary.record.clone(), summary.runs_on.clone()))
             .collect();
-        let mut changed = Vec::new();
-        for record in records {
-            let on_path = self.on_path(&record);
-            let mut summaries = self.summaries.borrow_mut();
-            let Some(summary) = summaries.get_mut(&record.number) else {
-                continue;
-            };
-            if summary.shown_on_path.unwrap_or(true) != on_path {
-                changed.push((record, summary.runs_on.clone(), on_path));
-            }
-            summary.shown_on_path = Some(on_path);
+        for (record, runs_on) in summaries {
+            self.show_subagent(&record, &runs_on);
         }
-        if changed.is_empty() {
-            return;
+    }
+
+    /// Shows the child `record`, whose round runs on `runs_on`, in its agent
+    /// entry: what it is, where it works and whether it is on its parent's
+    /// path; a closed one rests, with nothing pending.
+    fn show_subagent(&self, record: &NodeRecord, runs_on: &JobModel) {
+        let role = agents::subagent_role(record, runs_on.clone(), self.agents.placement().as_ref(), self.on_path(record));
+        let mut entry = self
+            .agents
+            .entry(&record.id)
+            .unwrap_or_else(|| agents::resting(record.id.clone(), role.clone()));
+        entry.role = role;
+        if record.closed.is_some() {
+            entry = agents::resting(record.id.clone(), entry.role);
         }
-        let placement = self.placement().await;
-        for (record, runs_on, on_path) in changed {
-            if let Some(job) = record.job(runs_on, placement.as_ref(), on_path) {
-                self.sink.emit(ServerFrame::Subagent {
-                    event: SubagentEvent::Changed,
-                    job,
-                });
-            }
-        }
+        self.agents.put(entry);
     }
 
     /// The child `id` leaves the directory: whether each of its own
@@ -934,31 +921,28 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// The conversation works elsewhere now: each live child's page hears
-    /// where the child works, which its record and the new placement give
+    /// The conversation works elsewhere now: each child's entry shows where
+    /// it works, which its record and the new placement give
     /// (`crates/agent-server/src/node/mod.rs`).
     pub(crate) async fn placement_changed(&self) {
-        let now = self.placement().await;
-        let children: Vec<Rc<Child<H>>> = self.children.borrow().values().cloned().collect();
-        for child in children {
-            self.sink.emit(ServerFrame::Subagent {
-                event: SubagentEvent::Changed,
-                job: child.job(&child.node.record(), now.as_ref(), self.on_path(&child.node.record())),
-            });
-        }
+        self.placement().await;
     }
 
     /// Where the conversation works now; none, with the failure logged,
-    /// when it cannot be read, and a child's frame then names its own
-    /// directory.
+    /// when it cannot be read, and a child's entry then names its own
+    /// directory. A move shows in every child's entry.
     pub(crate) async fn placement(&self) -> Option<Placement> {
-        match self.root.placement().await {
+        let now = match self.root.placement().await {
             Ok(now) => Some(now),
             Err(error) => {
                 tracing::warn!(root = %self.root.id(), %error, "where the conversation works could not be read");
                 None
             }
+        };
+        if self.agents.set_placement(now.clone()) {
+            self.show_subagents();
         }
+        now
     }
 
     /// The working directory of the live agent `caller`: a child's own, the
@@ -995,25 +979,21 @@ impl<H: HostResolver> Tree<H> {
             .set_cwd(cwd.clone(), now.clone())
             .await
             .map_err(|error| error.to_string())?;
-        let record = child.node.record();
-        self.remember(&record, &child.runs_on, 0);
-        self.sink.emit(ServerFrame::Subagent {
-            event: SubagentEvent::Changed,
-            job: child.job(&record, Some(&now), self.on_path(&record)),
-        });
+        self.remember(&child.node.record(), &child.runs_on);
         Ok(cwd)
     }
 
-    /// Registers a new live child, sends its `started` frame, where it works
-    /// while the conversation works at `placement`, and its transcript, and
-    /// forwards its session's changes from then on.
-    fn attach_child(&self, node: Node<H>, runs_on: JobModel, placement: Option<&Placement>) -> Rc<Child<H>> {
+    /// Registers a new live child, shows it in its agent entry, sends its
+    /// transcript to the connections that subscribe to it, and forwards its
+    /// session's changes from then on.
+    fn attach_child(&self, node: Node<H>, runs_on: JobModel) -> Rc<Child<H>> {
         let node = Rc::new(node);
         let now = self.clock.now().as_millisecond();
         let child = Rc::new_cyclic(|child: &Weak<Child<H>>| {
             let events = node.session().subscribe({
                 let child = child.clone();
                 let sink = self.sink.clone();
+                let agents = self.agents.clone();
                 let clock = self.clock.clone();
                 let id = node.id().clone();
                 let paths = self.paths.clone();
@@ -1021,6 +1001,7 @@ impl<H: HostResolver> Tree<H> {
                 move |event| {
                     cut_path(&paths, event);
                     note_activity(&activity, event);
+                    note_agent(&agents, &id, event);
                     match event {
                         SessionEvent::TranscriptChanged { patches, revision } => {
                             if let Some(child) = child.upgrade() {
@@ -1032,35 +1013,11 @@ impl<H: HostResolver> Tree<H> {
                                     now,
                                 );
                             }
-                            sink.emit_shown(&id, ServerFrame::SubagentTranscriptPatch {
-                                subagent_id: id.clone(),
+                            sink.emit_to(&id, ServerFrame::TranscriptPatch {
+                                node: id.clone(),
                                 patches: patches.clone(),
                                 revision: *revision,
                                 failures: None,
-                            });
-                        }
-                        SessionEvent::PendingCallsChanged { pending_calls } => {
-                            sink.emit(ServerFrame::PendingCalls {
-                                subagent_id: Some(id.clone()),
-                                pending_calls: pending_calls.clone(),
-                            });
-                        }
-                        SessionEvent::WaitingChanged { waited_ms } => {
-                            sink.emit(ServerFrame::Waiting {
-                                subagent_id: Some(id.clone()),
-                                waited_ms: *waited_ms,
-                            });
-                        }
-                        SessionEvent::PhaseChanged { phase } => {
-                            sink.emit(ServerFrame::Phase {
-                                subagent_id: Some(id.clone()),
-                                phase: *phase,
-                            });
-                        }
-                        SessionEvent::ContextUsageChanged { usage } => {
-                            sink.emit(ServerFrame::ContextUsage {
-                                node: id.clone(),
-                                usage: Some(usage.clone()),
                             });
                         }
                         SessionEvent::ActionFailed { report } => {
@@ -1088,13 +1045,17 @@ impl<H: HostResolver> Tree<H> {
         self.children
             .borrow_mut()
             .insert(child.id().clone(), child.clone());
-        self.remember(&child.node.record(), &child.runs_on, 0);
+        self.remember(&child.node.record(), &child.runs_on);
+        let session = child.node.session();
+        self.agents.change(child.id(), |entry| {
+            entry.phase = session.phase();
+            entry.waited_ms = session.waited_ms();
+            entry.pending_calls = session.pending_calls();
+        });
         self.bump();
-        let shown = self.sink.shows(child.id());
-        for frame in child_frames(&child, placement, self.on_path(&child.node.record()), shown) {
-            match frame {
-                reset @ ServerFrame::SubagentTranscriptReset { .. } => self.sink.emit_shown(child.id(), reset),
-                frame => self.sink.emit(frame),
+        if self.sink.subscribes(child.id()) {
+            for frame in self.node_frames(child.id(), None) {
+                self.sink.emit_to(child.id(), frame);
             }
         }
         child
@@ -1295,14 +1256,7 @@ impl<H: HostResolver> Tree<H> {
             closed: Some(close.clone()),
             ..record
         };
-        self.remember(&closed, &runs_on, 0);
-        let placement = self.placement().await;
-        self.sink.emit(ServerFrame::Subagent {
-            event: SubagentEvent::Closed,
-            job: closed
-                .job(runs_on, placement.as_ref(), self.on_path(&closed))
-                .expect("a child has a job"),
-        });
+        self.remember(&closed, &runs_on);
         let origin = self.stored_origin(&closed.id, &close.phase).await;
         self.deliver(owner, &closed, &close, origin).await;
     }
@@ -1494,19 +1448,14 @@ impl<H: HostResolver> Tree<H> {
         };
         self.keep_started_on_path(&record.id, session);
         self.children.borrow_mut().remove(&record.id);
-        // In the step it leaves the directory: an open's snapshot lists it
-        // closed from then on, before its `closed` frame goes.
+        // In the step it leaves the directory: its entry shows it closed
+        // from then on.
         if committed.is_ok() {
-            self.remember(&closed, &child.runs_on, session.transcript_version().revision);
+            self.remember(&closed, &child.runs_on);
         }
         self.bump();
         match committed {
             Ok(()) => {
-                let placement = self.placement().await;
-                self.sink.emit(ServerFrame::Subagent {
-                    event: SubagentEvent::Closed,
-                    job: child.job(&closed, placement.as_ref(), self.on_path(&closed)),
-                });
                 if let Some(owner) = &owner {
                     self.deliver(owner, &record, &close, origin).await;
                 }
@@ -1659,103 +1608,26 @@ impl<H: HostResolver> Tree<H> {
         Ok(recipient.record().number)
     }
 
-    /// Each live child's `started` frame, with its transcript when it is one of
-    /// `shown`, depth first in spawn order.
-    ///
-    /// It is what a connection that attaches or syncs receives. Each works
-    /// where the conversation's placement `placement` puts it.
-    pub(super) fn replay(&self, placement: Option<&Placement>, shown: &HashSet<NodeId>) -> Vec<ServerFrame> {
-        self.descendants()
-            .iter()
-            .flat_map(|child| {
-                child_frames(child, placement, self.on_path(&child.node.record()), shown.contains(child.id()))
-            })
-            .collect()
-    }
-
-    /// The transcript of each live child of `ids`, for a connection that
-    /// starts showing them; a child that is not live has none to send.
-    pub(crate) fn subagent_resets(&self, ids: &[NodeId]) -> Vec<ServerFrame> {
-        ids.iter()
-            .filter_map(|id| self.child(id))
-            .map(|child| child_reset(&child))
-            .collect()
-    }
-
-    /// The summary of every child, in the order of their numbers, while the
-    /// conversation works at `placement`: a live child's revision is its
-    /// session's now.
-    pub(super) fn subagent_summaries(&self, placement: Option<&Placement>) -> Vec<SubagentSummary> {
-        let children = self.children.borrow();
-        self.summaries
-            .borrow()
-            .values()
-            .map(|summary| {
-                let child = summary
-                    .record
-                    .child(summary.runs_on.clone(), placement, self.on_path(&summary.record))
-                    .expect("a subagent's record has a child");
-                let revision = children.get(&summary.record.id).map_or(summary.revision, |live| {
-                    live.node.session().transcript_version().revision
-                });
-                SubagentSummary { child, revision }
-            })
-            .collect()
-    }
-
-    /// Every child as [`subagent_summaries`](Self::subagent_summaries) lists
-    /// it, each with the result of a completed round.
-    ///
-    /// It is what the conversation's subagent list answers while the tree is
-    /// live, so the open's `subagents` frame never takes back a child the list
-    /// showed.
-    pub fn subagent_jobs(&self, placement: Option<&Placement>) -> Vec<SubagentJob> {
-        self.summaries
-            .borrow()
-            .values()
-            .map(|summary| {
-                summary
-                    .record
-                    .job(summary.runs_on.clone(), placement, self.on_path(&summary.record))
-                    .expect("a subagent's record has a child")
-            })
-            .collect()
-    }
-
     /// Keeps `record` as its child's summary now, with what its round runs
-    /// on and, once it closed, its transcript's last revision.
-    fn remember(&self, record: &NodeRecord, runs_on: &JobModel, revision: u64) {
-        let mut summaries = self.summaries.borrow_mut();
-        // What the pages heard of its place, and whether its start is on
-        // its parent's path, stay; a new child's start is.
-        let (started_on_path, shown_on_path) = summaries
-            .get(&record.number)
-            .map_or((true, None), |summary| (summary.started_on_path, summary.shown_on_path));
-        summaries.insert(
-            record.number,
-            Summary {
-                record: record.clone(),
-                runs_on: runs_on.clone(),
-                revision,
-                started_on_path,
-                shown_on_path,
-            },
-        );
-    }
-
-    /// Every live child, depth first in spawn order.
-    pub(super) fn descendants(&self) -> Vec<Rc<Child<H>>> {
-        let mut children = Vec::new();
-        self.collect_children(self.root.id(), &mut children);
-        children
-    }
-
-    fn collect_children(&self, owner: &NodeId, children: &mut Vec<Rc<Child<H>>>) {
-        for child in self.children_of(owner) {
-            let id = child.id().clone();
-            children.push(child);
-            self.collect_children(&id, children);
+    /// on, and shows it in its agent entry.
+    fn remember(&self, record: &NodeRecord, runs_on: &JobModel) {
+        {
+            let mut summaries = self.summaries.borrow_mut();
+            // Whether its start is on its parent's path stays; a new child's
+            // start is.
+            let started_on_path = summaries
+                .get(&record.number)
+                .is_none_or(|summary| summary.started_on_path);
+            summaries.insert(
+                record.number,
+                Summary {
+                    record: record.clone(),
+                    runs_on: runs_on.clone(),
+                    started_on_path,
+                },
+            );
         }
+        self.show_subagent(record, runs_on);
     }
 
     /// The whole tree from the root down, with each node's archived
@@ -2068,46 +1940,6 @@ async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>
 /// records the stop, then the waiting ones.
 pub(super) async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
-}
-
-/// A child's `started` frame, its transcript when `shown`, its phase, the
-/// calls it is writing and its wait for the model.
-fn child_frames<H: HostResolver>(
-    child: &Child<H>,
-    placement: Option<&Placement>,
-    on_path: bool,
-    shown: bool,
-) -> Vec<ServerFrame> {
-    let session = child.node.session();
-    let mut frames = vec![ServerFrame::Subagent {
-        event: SubagentEvent::Started,
-        job: child.job(&child.node.record(), placement, on_path),
-    }];
-    if shown {
-        frames.push(child_reset(child));
-    }
-    frames.extend([
-        ServerFrame::Phase {
-            subagent_id: Some(child.id().clone()),
-            phase: session.phase(),
-        },
-        ServerFrame::PendingCalls {
-            subagent_id: Some(child.id().clone()),
-            pending_calls: session.pending_calls(),
-        },
-        ServerFrame::Waiting {
-            subagent_id: Some(child.id().clone()),
-            waited_ms: session.waited_ms(),
-        },
-    ]);
-    frames
-}
-
-/// A child's transcript from its latest page: the page holds none of a
-/// child's blocks until it shows it. Only that page is copied, never the
-/// whole transcript.
-fn child_reset<H: HostResolver>(child: &Child<H>) -> ServerFrame {
-    child.node.session().with_window(|transcript| subagent_reset(child.id().clone(), transcript))
 }
 
 /// A closed round's completion message
@@ -2637,21 +2469,5 @@ impl ToolStatus {
             Self::Completed => "completed",
             Self::Error => "error",
         }
-    }
-}
-
-/// A child's or a side question's transcript from the start of its latest page.
-///
-/// The page holds none of it until it shows it. The window its session holds
-/// holds that page, as the root's does ([`demi_agent_session::latest_page`]).
-pub(super) fn subagent_reset(subagent_id: NodeId, transcript: &demi_agent_transcript::TranscriptLog) -> ServerFrame {
-    let start = demi_agent_session::latest_page(transcript);
-    ServerFrame::SubagentTranscriptReset {
-        subagent_id,
-        start: index_u32(start),
-        length: index_u32(transcript.len()),
-        blocks: transcript.from(start).to_vec(),
-        revision: transcript.version().revision,
-        failures: None,
     }
 }

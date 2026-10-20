@@ -16,7 +16,7 @@ use std::time::Duration;
 
 use demi_agent_server::{
     Outgoing, ServerConfig,
-    testing::{TestFiles, client_text},
+    testing::{TestFiles, client_text, root_entry},
 };
 use demi_agent_store::testing::{MemoryTreeStore, model_of};
 use demi_conversation_socket_protocol::{
@@ -32,8 +32,7 @@ use futures_util::{StreamExt as _, stream};
 use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
-        Fixture, Gate, conversation, frame_type, held, is_context_usage, is_idle, kinds, open,
-        send, session_of, streamed_then_held, turn, until,
+        is_root_reset, Fixture, Gate, conversation, frame_type, held, is_context_usage, kinds, send, session_of, streamed_then_held, turn, until,
     },
 };
 
@@ -59,13 +58,13 @@ async fn a_page_that_opens_a_conversation_has_its_next_request_readied_ahead_aft
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
 
-    client.send(open()).await;
+    client.open().await;
     let readied = script.readied(1).await;
     assert_eq!(readied[0].0, Ahead::Opened);
     assert!(readied[0].1.items.is_empty(), "{:?}", readied[0].1.items);
 
     client.send(send("m1", "hi")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let readied = script.readied(2).await;
     let (ahead, history) = &readied[1];
     assert_eq!(*ahead, Ahead::Ended);
@@ -96,28 +95,24 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
 
-    client.send(open()).await;
+    client.open().await;
     let handshake = client.received();
     client.send(send("m1", "hi")).await;
-    let turn = client.next_until(is_idle).await;
+    let turn = client.until_idle().await;
 
     let types: Vec<String> = handshake.iter().map(frame_type).collect();
     assert_eq!(
         types,
         [
             "opened",
-            "transcript_reset",
-            "phase",
+            "agents",
             "queue",
             "pending_steers",
-            "pending_calls",
-            "waiting",
             "request_output",
-            "subagents",
-            "context_usage"
+            "transcript_reset"
         ]
     );
-    let ServerFrame::TranscriptReset { version, .. } = &handshake[1] else {
+    let Some(ServerFrame::TranscriptReset { version, .. }) = handshake.last() else {
         unreachable!()
     };
     let mut revision = version.revision;
@@ -130,10 +125,58 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
     assert!(revision > version.revision);
 }
 
+/// The `agents` frame of `frames`: its version, the revision it is since,
+/// and the ids of the entries it carries.
+fn agents_of(frames: &[ServerFrame]) -> (demi_conversation_socket_protocol::Version, Option<u64>, Vec<NodeId>) {
+    frames
+        .iter()
+        .find_map(|frame| match frame {
+            ServerFrame::Agents { version, since, agents } => {
+                Some((version.clone(), *since, agents.iter().map(|agent| agent.id.clone()).collect()))
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no agents in {frames:?}"))
+}
+
+/// The handshake a page that holds the agents at `held` receives.
+async fn open_holding(fixture: &Fixture, held: Option<demi_conversation_socket_protocol::Version>) -> Vec<ServerFrame> {
+    let mut client = fixture.client();
+    client.subscribe(&conversation()).await;
+    client.send(ClientFrame::Open { agents: held, draft: None }).await;
+    client.received()
+}
+
+// A page that opens again names the version of the agents it holds: the
+// open brings only the entries changed since, and none when nothing
+// changed; a page that holds another epoch, as one from before a restart
+// of the backend, or none, receives them whole. Cost: one turn, four opens.
+#[tokio::test(flavor = "local")]
+async fn an_open_that_names_the_agents_it_holds_receives_only_what_changed_since() {
+    let script = ScriptedRuntime::new([Turn::Events(vec![event::text("Done."), event::response(1, 1)])]);
+    let fixture = Fixture::new(&script);
+    let (held, since, whole) = agents_of(&open_holding(&fixture, None).await);
+    assert_eq!((since, whole), (None, vec![conversation()]));
+
+    let (current, since, unchanged) = agents_of(&open_holding(&fixture, Some(held.clone())).await);
+    assert_eq!((&current, since, unchanged), (&held, Some(held.revision), vec![]));
+
+    let mut page = fixture.opened().await;
+    page.send(send("m1", "hi")).await;
+    page.until_idle().await;
+    let (now, since, changed) = agents_of(&open_holding(&fixture, Some(held.clone())).await);
+    assert!(now.revision > held.revision, "{now:?}");
+    assert_eq!((since, changed), (Some(held.revision), vec![conversation()]));
+
+    let other = demi_conversation_socket_protocol::Version { epoch: "another".into(), revision: now.revision };
+    let (_, since, whole) = agents_of(&open_holding(&fixture, Some(other)).await);
+    assert_eq!((since, whole), (None, vec![conversation()]));
+}
+
 // The model wrote its text and writes a call whose title it has not written:
 // the page says Requesting under the text, from the text's end. A page that
-// opens eleven seconds later receives, after the transcript, how long the root
-// has waited, so a reload goes on counting from 11s.
+// opens eleven seconds later receives with the root's entry how long it has
+// waited, so a reload goes on counting from 11s.
 //
 // Cost: one held run.
 #[tokio::test(flavor = "local")]
@@ -148,30 +191,19 @@ async fn a_page_that_opens_after_the_answers_text_ended_receives_how_long_the_ro
     let mut first = fixture.opened().await;
     first.send(send("m1", "hi")).await;
     first
-        .next_until(|frame| {
-            matches!(frame, ServerFrame::PendingCalls { subagent_id: None, pending_calls } if !pending_calls.is_empty())
-        })
+        .next_until(|frame| root_entry(frame).is_some_and(|entry| !entry.pending_calls.is_empty()))
         .await;
     clock.advance(jiff::SignedDuration::from_secs(11));
 
     let mut second = fixture.client();
-    second.send(open()).await;
+    second.open().await;
     let handshake = second.received();
-    let reset = handshake
-        .iter()
-        .position(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
-        .expect("the handshake carries the transcript");
-    let waited = handshake.iter().enumerate().find_map(|(index, frame)| match frame {
-        ServerFrame::Waiting {
-            subagent_id: None,
-            waited_ms,
-        } => Some((index, *waited_ms)),
+    let Some(waited_ms) = handshake.iter().find_map(|frame| match frame {
+        ServerFrame::Agents { .. } => root_entry(frame).and_then(|entry| entry.waited_ms),
         _ => None,
-    });
-    let Some((index, Some(waited_ms))) = waited else {
+    }) else {
         panic!("the root waits since its text ended: {handshake:?}");
     };
-    assert!(index > reset, "{handshake:?}");
     assert!(waited_ms >= 11_000, "{waited_ms}");
 }
 
@@ -191,36 +223,19 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
     until(|| script.requests().len() == 1).await;
 
     let mut second = fixture.client();
-    second.send(open()).await;
+    second.open().await;
     let received = second.received();
     // The root waits for the held request's answer: the handshake says
     // so.
     assert!(
-        received.iter().any(|frame| matches!(
-            frame,
-            ServerFrame::Waiting { subagent_id: None, waited_ms: Some(_) }
-        )),
+        received.iter().any(|frame| root_entry(frame).is_some_and(|entry| entry.waited_ms.is_some())),
         "{received:?}"
     );
     let handshake: Vec<String> = received.iter().map(frame_type).collect();
-    assert_eq!(
-        handshake,
-        [
-            "opened",
-            "transcript_reset",
-            "phase",
-            "queue",
-            "pending_steers",
-            "pending_calls",
-            "waiting",
-            "request_output",
-            "subagents",
-            "context_usage"
-        ]
-    );
+    assert_eq!(handshake, ["opened", "agents", "queue", "pending_steers", "request_output", "transcript_reset"]);
 
     gate.open();
-    let turn = second.next_until(is_idle).await;
+    let turn = second.until_idle().await;
     assert!(
         turn.iter()
             .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
@@ -250,15 +265,16 @@ async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in
     let mut first = fixture.opened().await;
     first.send(send("m1", "hi")).await;
     let listed = first
-        .next_until(|frame| matches!(frame, ServerFrame::PendingCalls { pending_calls, .. }
-            if pending_calls.iter().any(|call| call.description.is_some())))
+        .next_until(|frame| root_entry(frame)
+            .is_some_and(|entry| entry.pending_calls.iter().any(|call| call.description.is_some())))
         .await;
-    let calls = |frame: &ServerFrame| match frame {
-        ServerFrame::PendingCalls { subagent_id: None, pending_calls } => pending_calls
+    let calls = |frame: &ServerFrame| match root_entry(frame) {
+        Some(entry) => entry
+            .pending_calls
             .iter()
             .map(|call| (call.tool_use_id.clone(), call.tool_name.clone(), call.description.clone()))
             .collect::<Vec<_>>(),
-        other => panic!("{other:?}"),
+        None => panic!("{frame:?}"),
     };
     assert_eq!(
         calls(listed.last().unwrap()),
@@ -266,18 +282,18 @@ async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in
     );
 
     let mut second = fixture.client();
-    second.send(open()).await;
+    second.open().await;
     let handshake = second.received();
     let types: Vec<String> = handshake.iter().map(frame_type).collect();
-    assert_eq!(types[4..6], ["pending_steers", "pending_calls"]);
-    assert_eq!(calls(&handshake[5]), calls(listed.last().unwrap()));
+    assert_eq!(types[1], "agents");
+    assert_eq!(calls(&handshake[1]), calls(listed.last().unwrap()));
 
     // The request ends without the call: the list is emptied.
     gate.open();
-    let rest = first.next_until(is_idle).await;
+    let rest = first.until_idle().await;
     let last = rest
         .iter()
-        .filter(|frame| matches!(frame, ServerFrame::PendingCalls { .. }))
+        .filter(|frame| root_entry(frame).is_some())
         .last()
         .expect("the list changed");
     assert!(calls(last).is_empty());
@@ -290,7 +306,7 @@ async fn two_opens_of_one_conversation_at_once_build_one_tree() {
     let mut first = fixture.client();
     let mut second = fixture.client();
 
-    tokio::join!(first.send(open()), second.send(open()));
+    tokio::join!(first.open(), second.open());
 
     assert_eq!(fixture.resolver.calls.borrow().len(), 1);
     assert_eq!(fixture.store.saves().len(), 1);
@@ -331,8 +347,8 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
     let mut second = fixture.opened().await;
 
     first.send(send("m1", "hi")).await;
-    let seen_by_first = first.next_until(is_idle).await;
-    let seen_by_second = second.next_until(is_idle).await;
+    let seen_by_first = first.until_idle().await;
+    let seen_by_second = second.until_idle().await;
     assert_eq!(seen_by_first, seen_by_second);
     assert!(
         seen_by_second
@@ -349,10 +365,7 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
         })
         .await;
     second.send(ClientFrame::Abort {}).await;
-    second.send(ClientFrame::SyncTranscript {
-            from: None,
-            edge: None,
-        }).await;
+    second.subscribe(&conversation()).await;
     second
         .send(ClientFrame::ShellWrite {
             command_id: CommandId::try_from("no-such-command").unwrap(),
@@ -409,7 +422,7 @@ async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_t
     let mut stalled = fixture.opened().await;
 
     reading.send(send("m1", "count")).await;
-    let turn = reading.next_until(is_idle).await;
+    let turn = reading.until_idle().await;
 
     let patches = turn
         .iter()
@@ -441,6 +454,40 @@ async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_t
     assert!(fixture.server.tree(&conversation()).unwrap().is_attached());
 }
 
+// A page that opens, or reconnects, while a thinking block streams receives
+// that block whole in its reset: the patches that follow append to the text
+// it holds, and the block's stored copy, which a whole read returns, does
+// not have that text yet. Before, the reset sent it light, without its text,
+// and the page showed the rest of the thinking alone.
+#[tokio::test(flavor = "local")]
+async fn a_page_that_opens_while_a_thinking_streams_receives_its_text() {
+    let rest = Gate::new();
+    let script = ScriptedRuntime::new([streamed_then_held(
+        &rest,
+        vec![event::thinking("weighing the options")],
+        vec![event::text("done"), event::response(1, 1)],
+    )]);
+    let fixture = Fixture::new(&script);
+    let mut streaming = fixture.opened().await;
+    streaming.send(send("m1", "think")).await;
+    streaming
+        .next_until(|frame| serde_json::to_string(frame).is_ok_and(|json| json.contains("weighing the options")))
+        .await;
+
+    let mut page = fixture.client();
+    page.open().await;
+    let handshake = page.next_until(is_root_reset).await;
+    let Some(ServerFrame::TranscriptReset { blocks, .. }) = handshake.last() else {
+        panic!("{handshake:?}");
+    };
+    let Some(Block::Thinking(thinking)) = blocks.last() else {
+        panic!("{blocks:?}");
+    };
+    assert_eq!(thinking.text, "weighing the options");
+    rest.open();
+    page.until_idle().await;
+}
+
 // Two tabs acting at once need no rule of their own: two sends queue in the
 // order they arrive, a send while the other tab's edit is prepared is
 // refused, and so is an edit while the other tab's send runs.
@@ -463,8 +510,8 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
     second.send(send("m2", "two")).await;
     first.send(send("m3", "three")).await;
     first_turn.open();
-    let seen_by_first = first.next_until(is_idle).await;
-    let seen_by_second = second.next_until(is_idle).await;
+    let seen_by_first = first.until_idle().await;
+    let seen_by_second = second.until_idle().await;
     let queues: Vec<Vec<String>> = seen_by_second.iter().filter_map(queued).collect();
     assert!(
         queues.contains(&vec!["m2".to_owned(), "m3".to_owned()]),
@@ -498,7 +545,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
         saves.release();
         editing.await;
     }
-    let refused = second.next_until(is_idle).await;
+    let refused = second.until_idle().await;
     assert!(
         refused.contains(&rejected(
             ClientFrameKind::Send,
@@ -507,7 +554,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
         )),
         "{refused:?}"
     );
-    let edited = first.next_until(is_idle).await;
+    let edited = first.until_idle().await;
     let EditOutcome::Accepted { turn_id } = edit_outcome(&edited) else {
         panic!("{edited:?}");
     };
@@ -531,7 +578,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
             ),
         }
     );
-    second.next_until(is_idle).await;
+    second.until_idle().await;
 }
 
 #[tokio::test(flavor = "local")]
@@ -544,10 +591,6 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     for frame in [
         send("m1", "hi"),
         ClientFrame::Abort {},
-        ClientFrame::SyncTranscript {
-            from: None,
-            edge: None,
-        },
         ClientFrame::DequeueMessage {
             message_id: turn("m1"),
         },
@@ -575,7 +618,6 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
         [
             rejected(ClientFrameKind::Send, AgentCode::NoSession, "No session is open on this connection"),
             rejected(ClientFrameKind::Abort, AgentCode::NoSession, "No session is open on this connection"),
-            rejected(ClientFrameKind::SyncTranscript, AgentCode::NoSession, "No session is open on this connection"),
             ServerFrame::RemoveResult {
                 id: "m1".into(),
                 outcome: RemoveOutcome::GoneOn,
@@ -598,10 +640,11 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     client.send(ClientFrame::Close {}).await;
     assert_eq!(client.received(), [ServerFrame::Closed]);
 
-    client.send(open()).await;
-    // The handshake, then the usage that follows it.
+    client.open().await;
+    // The handshake, whose agents tell the usage.
     client.next_until(is_context_usage).await;
-    client.send(open()).await;
+    client.next_until(is_root_reset).await;
+    client.send(ClientFrame::Open { agents: None, draft: None }).await;
     assert_eq!(
         client.next().await,
         Some(rejected(
@@ -614,15 +657,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     // The turn's start: its phase, then its wait for the model, which
     // starts with it.
     client
-        .next_until(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Waiting {
-                    subagent_id: None,
-                    waited_ms: Some(_)
-                }
-            )
-        })
+        .next_until(|frame| root_entry(frame).is_some_and(|entry| entry.waited_ms.is_some()))
         .await;
     for frame in [
         ClientFrame::Retry {},
@@ -645,7 +680,7 @@ async fn an_unknown_provider_leaves_the_connection_unattached() {
     let mut client = fixture.client();
 
     fixture.resolver.select(model_of("missing", "some-model"));
-    client.send(open()).await;
+    client.open().await;
     client.send(send("m1", "hi")).await;
 
     assert_eq!(
@@ -675,7 +710,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
         fixture
             .server
             .connect(conversation(), TestFiles::new());
-    connection.handle(open()).await;
+    connection.handle(ClientFrame::Open { agents: None, draft: None }).await;
     let tree = fixture.server.tree(&conversation()).unwrap();
     assert!(tree.is_attached());
 
@@ -699,15 +734,10 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
         handshake,
         [
             "opened",
-            "transcript_reset",
-            "phase",
+            "agents",
             "queue",
             "pending_steers",
-            "pending_calls",
-            "waiting",
-            "request_output",
-            "subagents",
-            "context_usage"
+            "request_output"
         ]
     );
 }
@@ -721,7 +751,7 @@ async fn a_tree_left_detached_and_quiescent_is_disposed_after_its_idle_time() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
     client.send(send("m1", "hi")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     drop(client);
 
     // An open inside the idle time keeps the tree; leaving starts it again.

@@ -918,56 +918,61 @@ async fn a_delete_takes_a_file_or_a_directory_and_refuses_the_directories_the_ho
     device.backend.close().await;
 }
 
+// A reply names files, a directory and a missing path as code; once it is
+// complete, one look at the device says which are files, and the reply keeps
+// them, each with its line, across a restart, which a page shows as links
+// (`crates/agent-server/src/node/reply_files.rs`). The page asks no Host.
+//
+// Planted defect: a look per page that shows the reply, which this test does
+// not see; and a reply that keeps no answer, which it does.
+// A real device and one scripted turn: about a second.
 #[tokio::test]
-async fn one_question_names_which_paths_a_message_names_are_files() {
-    let device = OnDevice::start().await;
-    std::fs::create_dir_all(device.root.join("src")).unwrap();
-    std::fs::write(device.root.join("src/app.ts"), "export {}\n").unwrap();
-    std::fs::write(device.root.join("README.md"), "# Read me\n").unwrap();
-    let exists = |paths: Vec<String>| {
-        let device = &device;
-        async move {
-            device
-                .backend
-                .post(
-                    &format!("/api/conversations/{CONVERSATION}/fs/exists"),
-                    Some(&device.master),
-                    json!({ "paths": paths }),
-                )
-                .await
-        }
-    };
+async fn a_complete_reply_keeps_which_of_the_paths_it_names_are_files() {
+    use demi_conversation_socket_protocol::{ServerFrame, TranscriptPatch};
+    use demi_shared_types::{Block, CodeFile};
 
-    // A file answers; a directory, a missing path and a file under a file
-    // do not.
-    let answered = exists(vec![
-        device.path("src/app.ts"),
-        device.path("src"),
-        device.path("missing.ts"),
-        device.path("README.md/x"),
-        device.path("README.md"),
-    ])
-    .await;
+    use crate::conversations::{anthropic_at, create, on_device, transcript};
+    use crate::support::{MASTER_EMAIL, MASTER_PASSWORD};
+    use crate::work::{Driven, say};
+
+    const CHAT: &str = "5a1d0c3e-8f3a-4c1e-9d2b-7a1c2e3f4a02";
+    let vendor = demi_provider_common::testing::MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CHAT).await;
+    let (_device, root) = on_device(&harness, &backend, &master, CHAT).await;
+    std::fs::create_dir_all(format!("{root}/src")).unwrap();
+    std::fs::write(format!("{root}/src/app.ts"), "export {}\n").unwrap();
+    std::fs::write(format!("{root}/README.md"), "# Notes\n").unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CHAT, &provider, "/work").await;
+    work.turn(vec![say("See `src/app.ts:3`, `README.md`, `src` and `missing.ts`.")]).await;
+    let kept = |frame: &ServerFrame| {
+        matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| matches!(
+            patch,
+            TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. } if text.code_files.is_some()
+        )))
+    };
+    work.socket.until(kept).await;
+    // The answer is kept with the reply: a restart, whose close saves it,
+    // reads it back.
+    drop(work);
+    backend.close().await;
+    let backend = harness.start().await;
+    let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+
+    let blocks = transcript(&backend, &master, CHAT).await.blocks;
+    let Some(Block::Text(reply)) = blocks.iter().rev().find(|block| matches!(block, Block::Text(_))) else {
+        panic!("{blocks:?}")
+    };
     assert_eq!(
-        answered.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&answered.body)
+        reply.code_files,
+        Some(vec![
+            CodeFile { code: "src/app.ts:3".into(), path: format!("{root}/src/app.ts"), line: Some(3) },
+            CodeFile { code: "README.md".into(), path: format!("{root}/README.md"), line: None },
+        ])
     );
-    assert_eq!(
-        answered.json::<Value>(),
-        json!({ "files": [device.path("src/app.ts"), device.path("README.md")] })
-    );
-    // A relative path, or more than one question holds, is refused whole.
-    assert_eq!(
-        exists(vec!["src/app.ts".to_owned()]).await.status,
-        StatusCode::BAD_REQUEST
-    );
-    assert_eq!(
-        exists(vec![device.path("README.md"); 201]).await.status,
-        StatusCode::BAD_REQUEST
-    );
-    device.backend.close().await;
+    backend.close().await;
 }
 
 #[tokio::test]
@@ -1329,8 +1334,10 @@ async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
     let mut harness = Harness::new();
     harness.pages.heartbeat = Duration::from_millis(200);
     let device = OnDevice::start_with(harness).await;
-    let mut socket = watch_socket(&device).await;
+    // Taken before connecting: the backend's interval starts as it accepts
+    // the socket, before the page sees it open.
     let quiet = std::time::Instant::now();
+    let mut socket = watch_socket(&device).await;
     // A hang guard: without a heartbeat the watch stays silent.
     let heartbeat = tokio::time::timeout(Duration::from_secs(10), watch_message(&mut socket))
         .await

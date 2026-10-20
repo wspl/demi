@@ -130,10 +130,7 @@ fn usage_account(frames: &[ServerFrame]) -> Option<String> {
     frames
         .iter()
         .rev()
-        .find_map(|frame| match frame {
-            ServerFrame::ContextUsage { usage: Some(usage), .. } => Some(usage.account.clone()),
-            _ => None,
-        })
+        .find_map(|frame| demi_agent_server::testing::root_context(frame).map(|usage| usage.account.clone()))
         .flatten()
 }
 

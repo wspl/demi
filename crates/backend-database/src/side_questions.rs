@@ -1,11 +1,11 @@
-//! A conversation's side questions as the web app lists them.
+//! A conversation's side questions as their agent entries show them.
 //!
 //! The module stores each `side_questions` row, which the tree store writes with
 //! its node, and the two fields the backend changes afterwards: the title the
 //! small model writes once, and whether the card is folded.
 
 use demi_shared_types::{BlockId, MediaSource, NodeId};
-use demi_web_api_protocol::side_questions::SideQuestion;
+use demi_conversation_socket_protocol::SideQuestion;
 use rusqlite::{Connection, Row, params};
 
 use super::StorageError;
@@ -13,18 +13,20 @@ use super::columns::{decode, instant};
 
 const TABLE: &str = "side_questions";
 
-/// Every side question, in the order they were asked.
-pub fn all(connection: &Connection) -> Result<Vec<SideQuestion>, StorageError> {
-    let mut statement = connection.prepare(
-        "SELECT node_id, block_id, start_offset, end_offset, quote, picture, question, asked_at, title, folded
-         FROM side_questions ORDER BY asked_at, node_id",
-    )?;
+/// Each side question's card: its title, none until the small model wrote one,
+/// and whether it is folded, by its node.
+pub fn cards(connection: &Connection) -> Result<Vec<(NodeId, Option<String>, bool)>, StorageError> {
+    let mut statement = connection.prepare("SELECT node_id, title, folded FROM side_questions")?;
     let mut rows = statement.query([])?;
-    let mut questions = Vec::new();
+    let mut cards = Vec::new();
     while let Some(row) = rows.next()? {
-        questions.push(question(row)?);
+        cards.push((
+            decode(TABLE, "node_id", NodeId::try_from(row.get::<_, String>("node_id")?))?,
+            row.get("title")?,
+            row.get("folded")?,
+        ));
     }
-    Ok(questions)
+    Ok(cards)
 }
 
 /// The side question `id`; none when the conversation has no such one.
@@ -67,7 +69,6 @@ pub(crate) fn picture(row: &Row<'_>, table: &'static str) -> Result<Option<Media
 
 fn question(row: &Row<'_>) -> Result<SideQuestion, StorageError> {
     Ok(SideQuestion {
-        id: decode(TABLE, "node_id", NodeId::try_from(row.get::<_, String>("node_id")?))?,
         block_id: decode(TABLE, "block_id", BlockId::try_from(row.get::<_, String>("block_id")?))?,
         start: decode(TABLE, "start_offset", u64::try_from(row.get::<_, i64>("start_offset")?))?,
         end: decode(TABLE, "end_offset", u64::try_from(row.get::<_, i64>("end_offset")?))?,

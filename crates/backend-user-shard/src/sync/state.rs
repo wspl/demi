@@ -128,6 +128,8 @@ impl Shard {
     ) -> Result<Option<SyncEvent>, StateError> {
         let control = &self.services().control;
         let event = match part {
+            // No channel of a page's sidebar follows it.
+            Part::Metadata(_) => return Ok(None),
             Part::Conversation(id) => {
                 let record = control.conversation(id.clone()).await?;
                 let Some(record) = record.filter(|record| record.owner == *self.user()) else {

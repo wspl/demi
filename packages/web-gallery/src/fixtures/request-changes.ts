@@ -1,6 +1,6 @@
 import type { Block, ChangedFile, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { binaryFile, demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withEnd, withLists } from './blocks'
+import { binaryFile, demoModel, inRequests, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withEnd, withLists } from './blocks'
 import { editCopies } from './blobs'
 import { ago } from './time'
 import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
@@ -117,7 +117,7 @@ export function signInRequestBlocks(prefix: string): Block[] {
   const errorRun = listedFiles(error)
   // login.ts from before the request to after its third edit.
   const request = [{ ...login!, lines: { added: 2, removed: 2 }, edits: [...login!.edits, ...errorRun[0]!.edits] }, form!]
-  return [
+  return inRequests([
     user(`${prefix}-user`, 600_000, 'Fix the sign-in page: an empty email must not sign in, and the form fields should fill the width.'),
     ...inRun(fix, withLists(shell(`${prefix}-build`, 580_000, 'bun run build', 'Start the build'), listedFiles(fix))),
     text(`${prefix}-waiting`, 570_000, 'The build is running. I will go on once it ends.'),
@@ -126,7 +126,7 @@ export function signInRequestBlocks(prefix: string): Block[] {
       withLists(error, errorRun, request),
     ),
     text(`${prefix}-reply`, 490_000, 'An empty email no longer signs in: it throws the old error text. The form fields now fill the width, and the build passes.'),
-  ]
+  ])
 }
 
 /**
@@ -145,11 +145,11 @@ export function uncopiedRequestBlocks(): Block[] {
   // The readme's first original was not kept, so it has no lines to show.
   const [image, firstReadme] = listedFiles(logo)
   const files = [image!, { ...firstReadme!, edits: [...firstReadme!.edits, ...listedFiles(readme)[0]!.edits] }]
-  return [
+  return inRequests([
     user('uncopied-user', 400_000, 'Replace the logo and say so in the readme.'),
     ...inRun(logo, withLists(readme, files)),
     text('uncopied-reply', 370_000, 'The logo is replaced and the readme says so.'),
-  ]
+  ])
 }
 
 /**
@@ -175,7 +175,7 @@ export function movedRequestBlocks(): Block[] {
   const [newPage] = listedFiles(place)
   const scratch = listedFile('cmd-moved-write', ownFiles(write)[0]!)
   const page = { ...newPage!, edits: [scratch.edits[0]!, ...newPage!.edits] }
-  return [
+  return inRequests([
     user('moved-user', 260_000, 'Give the page the new layout, and clean up after yourself.'),
     ...inRun(
       write,
@@ -191,7 +191,7 @@ export function movedRequestBlocks(): Block[] {
       ]), [page]),
     ),
     text('moved-reply', 210_000, 'The page has the new layout, and the scratch notes are gone.'),
-  ]
+  ])
 }
 
 /**
@@ -222,13 +222,13 @@ export function cleanupRequestBlocks(): Block[] {
   ])
   const [, readme] = listedFiles(draft)
   const [notes, guide, install] = ownFiles(tidy).map(listedMove)
-  return [
+  return inRequests([
     user('cleanup-user', 190_000, 'Tidy the docs: draft notes for the release, then drop what is out of date.'),
     ...inRun(ownLists(draft)),
     text('cleanup-drafted', 170_000, 'Drafted the notes and linked them from the readme. Now the old pages.'),
     ...inRun(withLists(tidy, [notes!, guide!, install!], [readme!, guide!, install!])),
     text('cleanup-reply', 150_000, 'The old guide is gone, the setup page is now install.md, and the draft notes are removed.'),
-  ]
+  ])
 }
 
 /** The subagent the parent below spawns, whose own transcript holds its request and its changes. */
@@ -236,18 +236,18 @@ export const SUBAGENT = 'gallery-subagent'
 
 /** The subagent's transcript: its spawn's message starts its request, and its call renames the cookie. */
 export function subagentBlocks(): Block[] {
-  return [
+  return inRequests([
     user('subagent-user', 300_000, 'Rename the sid cookie to session in src/auth/cookie.ts.', 'You are a subagent of the conversation’s agent.'),
     ...inRun(ownLists(shell('subagent-rename', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie', [
       file('src/auth/cookie.ts', 'modified', COOKIE, { added: 1, removed: 1 }),
     ]))),
     text('subagent-reply', 280_000, 'Renamed the cookie to session.'),
-  ]
+  ])
 }
 
 /** The parent's transcript: it spawns the subagent and reads its receipt, and changes no file itself. */
 export function subagentParentBlocks(): Block[] {
-  return [
+  return inRequests([
     user('parent-user', 310_000, 'Have a subagent rename the session cookie.'),
     ...inRun(shell('parent-spawn', 305_000, 'demi agent spawn --description "Rename the cookie"', 'Start a subagent'), {
       type: 'agent_message',
@@ -265,12 +265,12 @@ export function subagentParentBlocks(): Block[] {
       },
     }),
     text('parent-reply', 270_000, 'The subagent renamed the cookie to session in src/auth/cookie.ts.'),
-  ]
+  ])
 }
 
 /** A call shown on its own, in a request of its own, as its pills open it. */
 export function standaloneRequest(block: Block): Block[] {
-  return [user(`${block.id}-request`, 700_000, 'Fix the cookie rename.'), ...inRun(ownLists(block))]
+  return inRequests([user(`${block.id}-request`, 700_000, 'Fix the cookie rename.'), ...inRun(ownLists(block))])
 }
 
 /** The child that works in another checkout (`crates/agent-server/src/node/mod.rs`). */
@@ -292,7 +292,7 @@ export function slotBlocks(): Block[] {
   const edit = shell('slot-edit', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie in this checkout', [
     file(`${SLOT_ROOT}/src/auth/cookie.ts`, 'modified', COOKIE, { added: 1, removed: 1 }),
   ])
-  return [
+  return inRequests([
     workingDirectory('slot-dir', 300_000, SLOT_ROOT),
     user('slot-user', 300_000, 'Rename the sid cookie to session in this checkout, and tell me where.', 'You are a subagent of the conversation’s agent.'),
     ...inRun(ownLists(edit)),
@@ -300,5 +300,5 @@ export function slotBlocks(): Block[] {
     ...inRun(shell('slot-cwd', 270_000, 'demi agent cwd src/auth', 'Move into the auth folder')),
     workingDirectory('slot-dir-auth', 269_000, `${SLOT_ROOT}/src/auth`),
     text('slot-reply', 260_000, 'From here [cookie.ts](cookie.ts) is the same file: the cookie is `session` now.'),
-  ]
+  ])
 }

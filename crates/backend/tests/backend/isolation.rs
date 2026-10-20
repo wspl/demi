@@ -126,7 +126,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         (Method::GET, format!("/api/blobs/{private_hash}"), None),
         (
             Method::GET,
-            format!("/api/conversations/{c}/transcript"),
+            format!("/api/conversations/{c}/agents/{c}/transcript"),
             None,
         ),
         (

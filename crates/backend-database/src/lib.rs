@@ -108,6 +108,7 @@ pub mod deletions;
 pub mod devices;
 pub mod drafts;
 pub mod exposed_ports;
+pub mod host_workflows;
 pub mod forks;
 pub mod instructions;
 pub mod interrupted_turns;

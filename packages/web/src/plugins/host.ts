@@ -10,6 +10,7 @@ import { conversationFiles } from '../conversation/files'
 import { directRoute } from '../direct'
 import { directStream } from '../direct/operations'
 import { useWorkPanel } from '../conversation/work'
+import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { packageInstalled } from '../state/installed'
 import { useResources } from '../state/resources'
@@ -72,16 +73,17 @@ export function productPageHost(): PageHost {
   const work = useWorkPanel()
   const resources = useResources()
   const settings = useSettingsAddress()
-  const states = conversationStates(() => product.snapshot)
+  const conversations = useConversations()
+  const states = conversationStates(() => product.snapshot, (conversation) => conversations.metadataOf(conversation))
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
   function primaryHost(plugin: string, conversation: string) {
     const state = product.snapshot
-    const summary = state?.conversations.find((entry) => entry.id === conversation)
-    if (!state || !summary) {
+    const listed = conversations.items.find((entry) => entry.id === conversation && entry.persistence === 'synced')
+    if (!state || !listed) {
       return null
     }
     const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
-    return { deviceId: executionFor(summary).deviceId, packages }
+    return { deviceId: executionFor(listed).deviceId, packages }
   }
   // Each plugin is watched on its own, so a switch of one leaves the others' stores alone.
   for (const page of PLUGIN_PAGES) {
@@ -127,8 +129,8 @@ export function productPageHost(): PageHost {
     },
     hostStarting(conversation) {
       const state = product.snapshot
-      const summary = state?.conversations.find((entry) => entry.id === conversation)
-      return !!state && !!summary && executionFor(summary).kind === 'cloud' && state.cloud.state !== 'running'
+      const listed = conversations.items.find((entry) => entry.id === conversation)
+      return !!state && !!listed && executionFor(listed).kind === 'cloud' && state.cloud.state !== 'running'
     },
     files: conversationFiles,
     intents: {

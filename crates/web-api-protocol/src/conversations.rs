@@ -1,6 +1,6 @@
 //! Conversations as the web app creates, lists and follows them.
 
-use demi_conversation_socket_protocol::{BlockVersions, Failures, SubagentJob};
+use demi_conversation_socket_protocol::{AgentCost, AgentEntry, BlockVersions, Failures, Version};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
     WorkflowChoice,
@@ -12,6 +12,7 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::error::ErrorCode;
 use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
+use crate::drafts::ConversationDraft;
 use crate::shares::ConversationShare;
 use crate::text::Trimmed;
 
@@ -131,15 +132,18 @@ pub struct CreateConversation {
 }
 
 /// What `POST /conversations` answers: the conversation as the list shows
-/// it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// it, and its metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CreatedConversation {
     pub conversation: ConversationSummary,
+    pub metadata: ConversationMetadata,
 }
 
-/// A conversation as the web app lists it: its record, with the directory
-/// its work runs in, its status and its output revision. What the backend
-/// keeps for itself, such as the owner, stays out.
+/// A conversation as the sidebar lists it: what the sidebar shows of it, and
+/// no more. What a page shows only of an open conversation is its
+/// [`ConversationMetadata`], and what the backend keeps for itself, such as
+/// the owner, stays out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
@@ -156,10 +160,43 @@ pub struct ConversationSummary {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub read_revision: u64,
     pub target: ConversationTarget,
-    /// Advances with every change of the conversation's execution context,
-    /// such as a target switch.
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+    pub status: ConversationStatus,
+    /// The output revision: it advances with each saved change of output,
+    /// never with the user's input alone.
     #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub context_version: u64,
+    pub revision: u64,
+    /// Whether output is newer than the read revision.
+    pub unread: bool,
+    /// How many permission requests of the conversation wait for the user,
+    /// which the sidebar shows as the needs-you mark.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub permission_requests: u64,
+    /// How many of those the user has not read: the sidebar's needs-you mark
+    /// shows while this is above zero, and settles once the user reads the
+    /// conversation, as it does for an answer. The read acknowledgement reads
+    /// them with the output.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub unread_permission_requests: u64,
+    /// The automation's run the conversation is filed under, which keeps it
+    /// out of the sidebar until the user sends it a message or moves it; null
+    /// for an ordinary conversation.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<crate::automations::FiledRun>")]
+    #[garde(skip)]
+    pub automation: Option<crate::automations::FiledRun>,
+}
+
+/// What a page shows of an open conversation beside its sidebar entry and its
+/// agents (`docs/decisions/0009-agent-sessions-and-sync.md`): its settings, and the
+/// version of each of its collections, which the page reads again when it
+/// shows one whose version is newer than the one it holds. Only a page that
+/// shows the conversation hears of its changes, on the conversation's socket.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationMetadata {
+    pub id: ConversationId,
     /// The conversation's model settings, the value every page shows; null
     /// while the conversation has no model yet.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -169,22 +206,13 @@ pub struct ConversationSummary {
     /// (`crates/backend-user-shard/src/conversation/workflows.rs`), kept as its
     /// model is.
     pub workflow: WorkflowChoice,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
     /// The directory the conversation's work runs in, resolved by the backend
     /// for every kind of target, so the web app never derives it.
     pub cwd: String,
-    pub status: ConversationStatus,
-    /// The output revision: it advances with each saved change of output,
-    /// never with the user's input alone.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub revision: u64,
     /// The root's latest ended turn; null before the first.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<LastTurn>")]
     pub last_turn: Option<LastTurn>,
-    /// Whether output is newer than the read revision.
-    pub unread: bool,
     /// Whether the conversation's tree is open with commands of plugins the
     /// user has since turned on or off, so a reload would change them
     /// (`crates/backend-plugins/src/lib.rs`).
@@ -194,10 +222,10 @@ pub struct ConversationSummary {
     /// agent's remaining work is a command whose start waits for it. A move
     /// then stops nothing (`crates/backend-host-access/src/transition.rs`).
     pub only_waits_for_host: bool,
-    /// The revision of the conversation's draft, 0 before its first save: a page reads the
-    /// draft only when this is higher than the revision it holds.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub draft_revision: u64,
+    /// What the conversation's rows of no agent cost, such as its titles';
+    /// each agent's own is its entry's, and the conversation's is their sum.
+    #[garde(dive)]
+    pub other_cost: AgentCost,
     /// How many messages the conversation keeps saved for later.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub saved: u64,
@@ -214,10 +242,15 @@ pub struct ConversationSummary {
     /// attach, a detach or a rename, read the same way.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub hosts_revision: u64,
+    /// The revision of the workflows of its working directory as the backend
+    /// keeps them, 0 before it first read them: a page that holds an older
+    /// one reads them again (`GET /conversations/:id/workflows`).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub workflows_revision: u64,
     /// The number of the conversation's latest attachment, 3 for `a3`, 0
     /// before its first (`crates/backend-host-access/src/attachment_commands.rs`): a message
     /// that names a higher number names one still to come, which shows once
-    /// a summary raises this to it.
+    /// the metadata raises this to it.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub last_attachment: u64,
     /// The revision of each plugin's conversation state, in registration
@@ -225,37 +258,41 @@ pub struct ConversationSummary {
     /// it holds, counted in memory.
     #[garde(dive)]
     pub plugin_revisions: Vec<PluginRevision>,
-    /// How many permission requests of the conversation wait for the user,
-    /// which the sidebar shows as the needs-you mark.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub permission_requests: u64,
-    /// How many of those the user has not read: the sidebar's needs-you mark
-    /// shows while this is above zero, and settles once the user reads the
-    /// conversation, as it does for an answer. The read acknowledgement reads
-    /// them with the output.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub unread_permission_requests: u64,
     /// Rises with each change of the conversation's permission requests in
     /// this run of the backend: a page reads them only when this is newer
     /// than the revision it holds.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permissions_revision: u64,
-    /// Rises with each change of the conversation's side questions in this
-    /// run of the backend, an Ask, a title written or a fold: a page reads
-    /// them only when this is newer than the revision it holds.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub side_questions_revision: u64,
     /// The conversation's shares, its own and its answers', so the header
     /// and an answer open the share dialog on the existing link.
     #[garde(skip)]
     pub shares: Vec<ConversationShare>,
-    /// The automation's run the conversation is filed under, which keeps it
-    /// out of the sidebar until the user sends it a message or moves it; null
-    /// for an ordinary conversation.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<crate::automations::FiledRun>")]
-    #[garde(skip)]
-    pub automation: Option<crate::automations::FiledRun>,
+}
+
+/// `GET /conversations/:id`: one conversation as the sidebar lists it, its
+/// metadata, and its agents at their version.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationDetail {
+    pub conversation: ConversationSummary,
+    pub metadata: ConversationMetadata,
+    pub agents: Version,
+    /// The root first, then the subagents by number, then the side
+    /// questions as they were asked.
+    pub entries: Vec<AgentEntry>,
+}
+
+/// What the conversation's socket carries of the conversation itself, beside
+/// its agents' frames (`crates/backend-user-shard/src/conversation/socket.rs`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum ConversationFrame {
+    /// The conversation's metadata, at the open and at each change of it.
+    Conversation { metadata: Box<ConversationMetadata> },
+    /// The conversation's draft at a revision newer than the one the page
+    /// named at its open, and at each change of it; the page that wrote a
+    /// change knows its revision from its save's answer.
+    Draft { draft: ConversationDraft },
 }
 
 /// The latest ended turn of a conversation's root.
@@ -350,14 +387,12 @@ pub struct ReadRequest {
     pub revision: u64,
 }
 
-/// `?node=&before=|after=|around=&edge=` of `GET /conversations/:id/transcript`.
-/// Queries are the backend's alone and are not emitted.
+/// `?before=|after=|around=&edge=` of
+/// `GET /conversations/:id/agents/:node/transcript`. Queries are the
+/// backend's alone and are not emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TranscriptQuery {
-    /// The subagent whose transcript the page is of; the root's without it.
-    #[serde(default)]
-    pub node: Option<NodeId>,
     #[serde(default)]
     pub before: Option<u32>,
     #[serde(default)]
@@ -369,16 +404,8 @@ pub struct TranscriptQuery {
     pub edge: Option<BlockId>,
 }
 
-/// `?node=` of the block and command reads.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct NodeQuery {
-    #[serde(default)]
-    pub node: Option<NodeId>,
-}
-
-/// One page of an agent's transcript: whole requests, its blocks in their light
-/// form, with the failure facts of its error blocks
+/// One page of an agent's transcript: blocks within the page budget, wherever
+/// requests begin and end, in their light form, with the failure facts of its error blocks
 /// (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -420,7 +447,7 @@ pub struct CompactionSummary {
     pub summary_tokens: u64,
 }
 
-/// `GET /conversations/:id/transcript/blocks/:blockId`: a block whole.
+/// `GET /conversations/:id/agents/:node/blocks/:blockId`: a block whole.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WholeBlock {
@@ -436,24 +463,14 @@ pub struct WholeBlock {
     pub failures: Option<Failures>,
 }
 
-/// `GET /conversations/:id/subagents`: every subagent the conversation has
-/// had, in the order they started.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct Subagents {
-    pub subagents: Vec<SubagentJob>,
-}
-
 /// `GET /conversations/:id/commands/:commandId`: where the `shell` call that
 /// started a command lies, which a report's title brings into view.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandCall {
     pub command_id: CommandId,
-    /// The subagent that ran it; null for the root.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<NodeId>")]
-    pub subagent_id: Option<NodeId>,
+    /// The agent that ran it.
+    pub node: NodeId,
     /// The call's block in that agent's transcript.
     pub block_id: BlockId,
 }
@@ -605,9 +622,11 @@ pub enum FieldResult {
 
 /// The answer of a patch: the conversation as it is now, and each field's
 /// result in the order they were applied, the archive first.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ConversationUpdate {
     pub conversation: ConversationSummary,
+    /// Its metadata as the patch left it, such as the model it set.
+    pub metadata: ConversationMetadata,
     pub results: Vec<FieldResult>,
 }
 
@@ -667,11 +686,12 @@ pub struct ForkRequest {
     pub block_id: BlockId,
 }
 
-/// The answer of a Fork: the new conversation, whose model settings are the
-/// ones it inherited from its source.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// The answer of a Fork: the new conversation as the list shows it, and its
+/// metadata, whose model settings are the ones it inherited from its source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ForkAnswer {
     pub conversation: ConversationSummary,
+    pub metadata: ConversationMetadata,
 }
 
 #[cfg(test)]

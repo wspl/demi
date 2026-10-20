@@ -290,8 +290,16 @@ pub(crate) const CONTROL: Schema = Schema {
 ///   queue while it is busy, as every run's did.
 /// - A run records the repeat's task that started it: each run of a daily
 ///   schedule's, its one task.
+/// - Each conversation keeps its cost as its ledger rows are written, and each
+///   turn call its number and its cache miss (`crates/backend-database/src/usage.rs`
+///   § A conversation's cost): the rows written before are numbered, judged and
+///   added up in the order they were written, as writing them now would.
+/// - The backend keeps each Host directory's workflows as it reads them
+///   (`host_workflows`); nothing was kept before, so the next read fills it.
 fn control_from_0_1_37(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch("ALTER TABLE automation_runs ADD COLUMN task_id TEXT;")?;
+    transaction.execute_batch(CONTROL_FROM_0_1_37)?;
+    super::usage::keep_costs(transaction).map_err(storage)?;
     let rows: Vec<(String, String, String, String)> = transaction
         .prepare("SELECT id, trigger, target, prompt FROM automations")?
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))?
@@ -369,14 +377,46 @@ fn automation_target_2(text: &str) -> rusqlite::Result<demi_web_api_protocol::au
     serde_json::from_value(value).map_err(corrupt)
 }
 
-/// From 0.1.36's control schema, which 0.1.33 to 0.1.35 shipped too, to the
-/// current one.
+/// From 0.1.36's control schema, which 0.1.33 to 0.1.35 shipped too, to
+/// 0.1.37's.
 ///
 /// - A saved message is edited in the composer and written back in its place,
 ///   so the moves of one into the draft, whose answers `saved_edits` kept, go
 ///   with their answers.
 const CONTROL_FROM_0_1_36: &str = "
 DROP TABLE saved_edits;
+";
+
+const CONTROL_FROM_0_1_37: &str = "
+ALTER TABLE usage_ledger ADD COLUMN call_number INTEGER CHECK (call_number >= 1);
+ALTER TABLE usage_ledger ADD COLUMN after_compaction INTEGER CHECK (after_compaction IN (0, 1));
+ALTER TABLE usage_ledger ADD COLUMN miss TEXT CHECK (miss IN ('model_changed', 'tools_changed', 'system_prompt_changed', 'cache_expired', 'not_cached'));
+CREATE INDEX usage_ledger_agent ON usage_ledger (conversation_id, agent);
+CREATE INDEX usage_ledger_cache_writes ON usage_ledger (conversation_id, agent, model_id)
+  WHERE call_number IS NOT NULL AND cache_write_tokens > 0;
+CREATE TABLE usage_costs (
+  conversation_id    TEXT NOT NULL,
+  agent              INTEGER CHECK (agent >= 0),
+  input_tokens       INTEGER NOT NULL CHECK (input_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL CHECK (cache_write_tokens >= 0),
+  cache_read_tokens  INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+  output_tokens      INTEGER NOT NULL CHECK (output_tokens >= 0),
+  price_total        REAL CHECK (price_total >= 0),
+  price_input        REAL CHECK (price_input >= 0),
+  price_cache_write  REAL CHECK (price_cache_write >= 0),
+  price_cache_read   REAL CHECK (price_cache_read >= 0),
+  price_output       REAL CHECK (price_output >= 0),
+  calls              INTEGER NOT NULL CHECK (calls >= 0)
+) STRICT;
+CREATE UNIQUE INDEX usage_costs_by_agent ON usage_costs (conversation_id, ifnull(agent, -1));
+CREATE TABLE host_workflows (
+  device_id TEXT NOT NULL,
+  directory TEXT NOT NULL,
+  list      TEXT NOT NULL,
+  read_at   INTEGER NOT NULL,
+  revision  INTEGER NOT NULL CHECK (revision >= 1),
+  PRIMARY KEY (device_id, directory)
+) STRICT;
 ";
 
 /// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to
@@ -1577,16 +1617,102 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.36.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_36),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.37.sql"),
+            migration: Migration::Code(conversation_from_0_1_37),
+        },
     ],
 };
 
-/// From 0.1.36's conversation schema, which 0.1.35 shipped too, to the current
-/// one: an attachment the agent uploads keeps the Host and the path of the file
-/// it was uploaded from. One stored before keeps none, and opens its copy.
+/// From 0.1.37's conversation schema, of transcript block format 12, to the
+/// current one, of format 13.
+///
+/// - Every block names the request it belongs to, by its `user` block
+///   (`crates/agent-store/src/changes.rs`): a block stored before takes the
+///   request of the row it follows on its path, and a share's copy of a text
+///   the request of the latest message before it on the share's list.
+/// - A text keeps which of its inline code names a file on the Host, read when
+///   it is complete. One stored before was never read, and names none.
+fn conversation_from_0_1_37(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    with_requests(transaction)
+}
+
+/// From 0.1.36's conversation schema, which 0.1.35 shipped too, to 0.1.37's: an
+/// attachment the agent uploads keeps the Host and the path of the file it was
+/// uploaded from. One stored before keeps none, and opens its copy.
 const CONVERSATION_FROM_0_1_36: &str = "
 ALTER TABLE attachments ADD COLUMN source_host TEXT;
 ALTER TABLE attachments ADD COLUMN source_path TEXT CHECK ((source_path IS NULL) = (source_host IS NULL));
 ";
+
+/// Gives every stored block, and every share's copy, the request it belongs
+/// to (`conversation_from_0_1_37`).
+fn with_requests(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    use demi_shared_types::{Block, BlockId};
+
+    let decoded = |text: &str| -> rusqlite::Result<Block> {
+        let value = serde_json::from_str::<serde_json::Value>(text).map_err(corrupt)?;
+        demi_shared_types::decode_value::<Block>(value).map_err(corrupt)
+    };
+    {
+        let mut rows = transaction.prepare("SELECT node_id, idx, follows, block FROM blocks ORDER BY node_id, idx")?;
+        let mut rows = rows.query([])?;
+        let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+        let mut node = String::new();
+        // Each row's request by its index, of the node read now: a row's path
+        // goes through rows written before it.
+        let mut requests: HashMap<i64, Option<BlockId>> = HashMap::new();
+        while let Some(row) = rows.next()? {
+            let (of, index, follows, text): (String, i64, Option<i64>, String) =
+                (row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?);
+            if of != node {
+                node = of;
+                requests.clear();
+            }
+            let mut block = decoded(&text)?;
+            let request = match &block {
+                Block::User(user) => Some(user.id.clone()),
+                _ => follows.and_then(|follows| requests.get(&follows).cloned().flatten()),
+            };
+            requests.insert(index, request.clone());
+            if request.is_some() {
+                block.set_request(request);
+                update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
+            }
+        }
+    }
+    let mut entries = transaction.prepare(
+        "SELECT entry.token, entry.position, block.block, copy.block
+         FROM share_entries AS entry
+         LEFT JOIN blocks AS block ON block.node_id = entry.node_id AND block.idx = entry.idx
+         LEFT JOIN share_blocks AS copy ON entry.node_id IS NULL AND copy.token = entry.token AND copy.idx = entry.position
+         ORDER BY entry.token, entry.position",
+    )?;
+    let mut entries = entries.query([])?;
+    let mut update = transaction.prepare("UPDATE share_blocks SET block = ?3 WHERE token = ?1 AND idx = ?2")?;
+    let mut token = String::new();
+    let mut request: Option<BlockId> = None;
+    while let Some(entry) = entries.next()? {
+        let (of, position, row, copy): (String, i64, Option<String>, Option<String>) =
+            (entry.get(0)?, entry.get(1)?, entry.get(2)?, entry.get(3)?);
+        if of != token {
+            token = of;
+            request = None;
+        }
+        if let Some(row) = row {
+            if let Block::User(user) = decoded(&row)? {
+                request = Some(user.id);
+            }
+        } else if let Some(copy) = copy
+            && request.is_some()
+        {
+            let mut block = decoded(&copy)?;
+            block.set_request(request.clone());
+            update.execute(rusqlite::params![token, position, super::columns::to_json(&block)])?;
+        }
+    }
+    Ok(())
+}
 
 /// From 0.1.33's conversation schema, which 0.1.33 shipped, to 0.1.36's: a
 /// running command keeps its call's script beside its title, which the pages'
@@ -3818,6 +3944,21 @@ CREATE TABLE exposed_ports (
 ) STRICT;
 CREATE INDEX exposed_ports_of_user ON exposed_ports (user_id, created_at);
 
+-- The workflows of each directory of a Host as the backend last read them,
+-- in the Workflow menu's form, with when (`crates/backend-host-access/src/kept.rs`):
+-- what a page reads at once, also after a restart while the Host is
+-- offline. The revision rises when a read differs from what was kept; the
+-- rows of a device go with it.
+-- host_workflows.list: conversation workflows format 1
+CREATE TABLE host_workflows (
+  device_id TEXT NOT NULL,
+  directory TEXT NOT NULL,
+  list      TEXT NOT NULL,
+  read_at   INTEGER NOT NULL,
+  revision  INTEGER NOT NULL CHECK (revision >= 1),
+  PRIMARY KEY (device_id, directory)
+) STRICT;
+
 -- Each choice a user made about a plugin (`plugins.md` § A user's plugins):
 -- a plugin with no row is on.
 CREATE TABLE user_plugins (
@@ -4398,10 +4539,42 @@ CREATE TABLE usage_ledger (
   -- sent; null for a request outside a session.
   system_hash           TEXT,
   tools_hash            TEXT,
+  -- A turn call's number among its agent's turn calls, from 1, whether its
+  -- agent answered a compaction since its previous one, and why it missed
+  -- the cache, judged as it is written; null for every other row.
+  call_number           INTEGER CHECK (call_number >= 1),
+  after_compaction      INTEGER CHECK (after_compaction IN (0, 1)),
+  miss                  TEXT CHECK (miss IN ('model_changed', 'tools_changed', 'system_prompt_changed', 'cache_expired', 'not_cached')),
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
 CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
+-- An agent's rows, newest last: its previous call and its recent calls.
+CREATE INDEX usage_ledger_agent ON usage_ledger (conversation_id, agent);
+-- An agent's turn calls that wrote the cache, newest last by model: the
+-- latest such write a new call's cache miss is judged by.
+CREATE INDEX usage_ledger_cache_writes ON usage_ledger (conversation_id, agent, model_id)
+  WHERE call_number IS NOT NULL AND cache_write_tokens > 0;
+
+-- Each conversation's cost as its ledger rows are written, per agent and,
+-- with a null agent, for its rows of no agent (`usage.rs` § A
+-- conversation's cost): the counts, the prices, each null while no row had
+-- one, and the number of turn calls.
+CREATE TABLE usage_costs (
+  conversation_id    TEXT NOT NULL,
+  agent              INTEGER CHECK (agent >= 0),
+  input_tokens       INTEGER NOT NULL CHECK (input_tokens >= 0),
+  cache_write_tokens INTEGER NOT NULL CHECK (cache_write_tokens >= 0),
+  cache_read_tokens  INTEGER NOT NULL CHECK (cache_read_tokens >= 0),
+  output_tokens      INTEGER NOT NULL CHECK (output_tokens >= 0),
+  price_total        REAL CHECK (price_total >= 0),
+  price_input        REAL CHECK (price_input >= 0),
+  price_cache_write  REAL CHECK (price_cache_write >= 0),
+  price_cache_read   REAL CHECK (price_cache_read >= 0),
+  price_output       REAL CHECK (price_output >= 0),
+  calls              INTEGER NOT NULL CHECK (calls >= 0)
+) STRICT;
+CREATE UNIQUE INDEX usage_costs_by_agent ON usage_costs (conversation_id, ifnull(agent, -1));
 
 CREATE TABLE attachments (
   id         TEXT PRIMARY KEY,
@@ -4509,14 +4682,14 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 12.
+-- blocks.block: transcript block format 13.
 -- A node's transcript is a tree of rows (message-editing.md § Versions):
 -- `idx` is a row's number, its place in the order the node's rows were
 -- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
   node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx      INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 12
+  -- blocks.block: transcript block format 13
   block    TEXT NOT NULL,
   -- The row before it on its path; null for a path's first row.
   follows  INTEGER CHECK (follows < idx),
@@ -4598,7 +4771,7 @@ CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 12
+  -- share_blocks.block: transcript block format 13
   block TEXT NOT NULL,
   PRIMARY KEY (token, idx)
 ) STRICT;
@@ -6345,6 +6518,8 @@ mod tests {
             Block::Text(TextBlock {
                 id: text.try_into().unwrap(),
                 created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
+                request: None,
+                code_files: None,
                 model: demi_agent_store::testing::test_model(),
                 text: text.to_owned(),
                 forkable: true,
@@ -6409,6 +6584,7 @@ mod tests {
             Block::ToolCall(ToolCallBlock {
                 id: id.try_into().unwrap(),
                 created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
+                request: None,
                 model: demi_agent_store::testing::test_model(),
                 tool_use_id: id.to_owned(),
                 tool_name: "shell".to_owned(),
@@ -6486,6 +6662,7 @@ mod tests {
             Block::ToolCall(ToolCallBlock {
                 id: id.try_into().unwrap(),
                 created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
+                request: None,
                 model: demi_agent_store::testing::test_model(),
                 tool_use_id: id.to_owned(),
                 tool_name: "shell".to_owned(),
@@ -6655,12 +6832,15 @@ mod tests {
                 [serde_json::to_string(&state()).unwrap()],
             )
             .unwrap();
+        let said = |id: &str| serde_json::to_string(&crate::tree::tests::reply(id)).unwrap();
         connection
-            .execute_batch(
-                r#"INSERT INTO blocks (node_id, idx, block) VALUES ('child', 0, '{"type":"text"}');
-                   INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', 3, '{"type":"text"}', 0);
-                   INSERT INTO block_attachments (node_id, idx, attachment) VALUES ('child', 0, 2), ('root', 3, 2);"#,
-            )
+            .execute("INSERT INTO blocks (node_id, idx, block) VALUES ('child', 0, ?1)", [said("c0")])
+            .unwrap();
+        connection
+            .execute("INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', 3, ?1, 0)", [said("r3")])
+            .unwrap();
+        connection
+            .execute_batch("INSERT INTO block_attachments (node_id, idx, attachment) VALUES ('child', 0, 2), ('root', 3, 2);")
             .unwrap();
         CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
 
@@ -7414,6 +7594,188 @@ mod tests {
                 None,
                 0
             )
+        );
+    }
+
+    /// 0.1.37's blocks, of format 12, name no request: once migrated, each
+    /// names the `user` block its path goes back to, a block before the first
+    /// message and a share's copy before the share's first message name none,
+    /// and a share's copy names the latest message before it on the list.
+    #[test]
+    fn the_blocks_of_0_1_37_name_their_request() {
+        use demi_shared_types::Block;
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.37.sql"));
+        let model = serde_json::json!({
+            "providerId": "p1",
+            "model": { "id": "m1", "name": "M1", "contextWindow": 1000, "outputLimit": null, "thinking": [], "acceptedExtensions": [] },
+            "thinking": null,
+            "serviceTierId": null,
+        });
+        let user = |id: &str| {
+            serde_json::json!({
+                "type": "user", "id": id, "turnId": id, "createdAt": "2026-09-24T12:00:00.000Z", "model": model,
+                "content": [{ "type": "text", "text": "Rename the field." }], "preamble": null,
+            })
+        };
+        let text = |id: &str| {
+            serde_json::json!({
+                "type": "text", "id": id, "createdAt": "2026-09-24T12:00:00.000Z", "model": model, "text": "Done.",
+            })
+        };
+        // Row 4 is a second version of the answer to `u1`, after `u2`'s rows.
+        let rows = [
+            (text("before"), None),
+            (user("u1"), Some(0)),
+            (text("answer-1"), Some(1)),
+            (user("u2"), Some(2)),
+            (text("answer-1b"), Some(1)),
+            (text("answer-2"), Some(3)),
+        ];
+        connection
+            .execute(
+                "INSERT INTO nodes (id, number, description, round, started_at, can_spawn, delivered, state, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, '{}', 0)",
+                [],
+            )
+            .unwrap();
+        for (index, (block, follows)) in rows.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', ?1, ?2, ?3)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string(), follows],
+                )
+                .unwrap();
+        }
+        // A share lists a copy of a text, then `u1`, then a copy of the text
+        // that answered it.
+        connection
+            .execute_batch(
+                "INSERT INTO share_entries (token, position, node_id, idx) VALUES
+                   ('s1', 0, NULL, NULL), ('s1', 1, 'root', 1), ('s1', 2, NULL, NULL);",
+            )
+            .unwrap();
+        for position in [0, 2] {
+            connection
+                .execute(
+                    "INSERT INTO share_blocks (token, idx, block) VALUES ('s1', ?1, ?2)",
+                    rusqlite::params![position, text(&format!("copy-{position}")).to_string()],
+                )
+                .unwrap();
+        }
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let requests = |sql: &str| -> Vec<Option<String>> {
+            connection
+                .prepare(sql)
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .map(|text| {
+                    let block = demi_shared_types::decode::<Block>(&text.unwrap()).unwrap();
+                    block.request().map(|request| request.as_str().to_owned())
+                })
+                .collect()
+        };
+        let named = |ids: &[Option<&str>]| -> Vec<Option<String>> { ids.iter().map(|id| id.map(str::to_owned)).collect() };
+        assert_eq!(
+            requests("SELECT block FROM blocks ORDER BY idx"),
+            named(&[None, Some("u1"), Some("u1"), Some("u2"), Some("u1"), Some("u2")])
+        );
+        assert_eq!(
+            requests("SELECT block FROM share_blocks ORDER BY idx"),
+            named(&[None, Some("u1")])
+        );
+    }
+
+    /// A 0.1.37 ledger row that holds some of its four token counts only is
+    /// corrupt: the migration fails and leaves the database as it was, never
+    /// reading the row as a call with no counts.
+    #[test]
+    fn a_0_1_37_ledger_row_with_some_of_its_counts_fails_the_migration() {
+        let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.37.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'alex@example.com', 'Alex', 'h', 'master', 1);
+                 INSERT INTO usage_ledger (id, user_id, conversation_id, agent, purpose, provider_id, model_id,
+                     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, ended_at)
+                   VALUES ('r1', 'u1', 'c1', 0, 'turn', 'p1', 'm1', 100, NULL, 0, 0, 2000);",
+            )
+            .unwrap();
+        let before: i32 = connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+
+        let failed = CONTROL.apply(&mut connection, &path, &NoBlobs);
+        assert!(failed.is_err(), "{failed:?}");
+        let after: i32 = connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        assert_eq!(after, before);
+        let kept: i64 = connection
+            .query_row("SELECT count(*) FROM sqlite_schema WHERE name = 'usage_costs'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(kept, 0);
+    }
+
+    /// 0.1.37's ledger kept no cost: once migrated, each agent of each
+    /// conversation keeps the sum of its rows and the number of its turn
+    /// calls, and each turn call its number among its agent's, as writing the
+    /// rows now would.
+    #[test]
+    fn the_ledger_of_0_1_37_keeps_each_agents_cost() {
+        let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.37.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'alex@example.com', 'Alex', 'h', 'master', 1);
+                 INSERT INTO usage_ledger (id, user_id, conversation_id, agent, purpose, provider_id, model_id,
+                     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, started_at, ended_at,
+                     api_price_input, api_price_cache_write, api_price_cache_read, api_price_output, system_hash, tools_hash)
+                   VALUES
+                   ('r1', 'u1', 'c1', 0, 'turn', 'p1', 'm1', 100, 10, 0, 50, 1000, 2000, 0.1, 0.2, 0.0, 0.3, 's', 't'),
+                   ('r2', 'u1', 'c1', 1, 'turn', 'p1', 'm1', 200, 20, 0, 0, 3000, 4000, NULL, NULL, NULL, NULL, 's', 't'),
+                   ('r3', 'u1', 'c1', 0, 'turn', 'p1', 'm1', 10, 5, 50, 0, 5000, 6000, 0.01, 0.0, 0.02, 0.03, 's', 't'),
+                   ('r4', 'u1', 'c1', NULL, 'title', 'p1', 'm1', 7, 3, 0, 0, 7000, 8000, NULL, NULL, NULL, NULL, NULL, NULL),
+                   ('r5', 'u1', 'c2', 0, 'turn', 'p1', 'm1', 1, 1, 0, 0, 9000, 9500, NULL, NULL, NULL, NULL, 's', 't');",
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let costs: Vec<(String, Option<i64>, [i64; 4], Option<f64>, i64)> = connection
+            .prepare(
+                "SELECT conversation_id, agent, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+                   round(price_total, 6), calls
+                 FROM usage_costs ORDER BY conversation_id, agent",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, [row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?], row.get(6)?, row.get(7)?))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            costs,
+            [
+                ("c1".to_owned(), None, [7, 3, 0, 0], None, 0),
+                ("c1".to_owned(), Some(0), [110, 15, 50, 50], Some(0.66), 2),
+                ("c1".to_owned(), Some(1), [200, 20, 0, 0], None, 1),
+                ("c2".to_owned(), Some(0), [1, 1, 0, 0], None, 1),
+            ]
+        );
+        let numbers: Vec<(String, Option<i64>)> = connection
+            .prepare("SELECT id, call_number FROM usage_ledger ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            numbers,
+            [
+                ("r1".to_owned(), Some(1)),
+                ("r2".to_owned(), Some(1)),
+                ("r3".to_owned(), Some(2)),
+                ("r4".to_owned(), None),
+                ("r5".to_owned(), Some(1)),
+            ]
         );
     }
 

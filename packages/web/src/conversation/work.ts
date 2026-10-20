@@ -181,12 +181,14 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return states.get(conversationId)!
   }
 
-  // A panel a page has read is read again when the summary says it changed.
+  // A panel a page has read is read again when its conversation's metadata says it changed.
   watch(
-    () => product.snapshot?.conversations,
-    (summaries) => {
-      for (const summary of summaries ?? []) {
-        panels.get(summary.id)?.noticed(summary.panelRevision)
+    () => conversations.items.map((item) => [item.id, item.metadata.shown.value?.panelRevision] as const),
+    (followed) => {
+      for (const [id, revision] of followed) {
+        if (revision !== undefined) {
+          panels.get(id)?.noticed(revision)
+        }
       }
     },
   )

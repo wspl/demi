@@ -303,7 +303,7 @@ async fn a_commands_record_keeps_how_it_ended_for_its_page_header() {
         .into_iter()
         .find(|block| matches!(block, Block::ToolCall(_)))
         .expect("the shell call");
-    assert_eq!((&call.block_id, call.subagent_id), (started.id(), None));
+    assert_eq!((&call.block_id, call.node.as_str()), (started.id(), ENDED));
     let unknown = backend
         .get(&format!("/api/conversations/{ENDED}/commands/999"), Some(&master))
         .await;

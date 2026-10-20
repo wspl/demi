@@ -34,7 +34,7 @@ use crate::conversations::{
     FIRST, SECOND, Socket, THIRD, anthropic, answer, choose, create, message, send, text_block,
     thinking_block,
 };
-use crate::editing::{edit, edit_request, idle};
+use crate::editing::{edit_request, edited_turn};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, eventually};
 
 /// A result as `search` gives it: the conversation, whether it is archived,
@@ -191,8 +191,7 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     // title the message gave stays.
     let request = edit_request(&mut first, "Why does the build fail?", "edit-1", "Why does it fail?").await;
     vendor.respond(answer(&["Fixed now"], 1, 1));
-    edit(&mut first, &ClientFrame::EditAndSend { request }).await;
-    first.until(idle).await;
+    edited_turn(&mut first, &ClientFrame::EditAndSend { request }).await;
     drop(first);
     let edited = vec![
         (SECOND.to_owned(), false, marks(&["TS2307"]), None),
@@ -303,8 +302,7 @@ async fn the_index_applies_each_save_on_top_of_the_one_before_and_reads_a_conver
     let start = backend.search_work();
     let request = edit_request(&mut first, "And betaword?", "edit-1", "And deltaword?").await;
     vendor.respond(answer(&["Edited answer echoword"], 1, 1));
-    edit(&mut first, &ClientFrame::EditAndSend { request }).await;
-    first.until(idle).await;
+    edited_turn(&mut first, &ClientFrame::EditAndSend { request }).await;
     drop(first);
     let echo = vec![(FIRST.to_owned(), false, marks(&[]), found("Edited answer echoword", &["echoword"]))];
     eventually("the edit is indexed", || async {

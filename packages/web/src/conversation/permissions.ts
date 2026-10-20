@@ -13,6 +13,7 @@ import { ApiError } from '../api/client'
 import { decidePermission, readPermissions } from '../api/permissions'
 import type { ConversationPermissions, PermissionCategory, PermissionRequest } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
+import { useConversations } from './store'
 import { isNewer, type RunRevision } from '../state/revisions'
 
 /** One conversation's permission requests, as this page last read them. */
@@ -63,14 +64,14 @@ function view(request: PermissionRequest): RequestView {
 
 /**
  * The conversations' permission requests: a page reads them for a conversation it
- * shows, and again whenever the summary's `permissionsRevision` is newer than the
+ * shows, and again whenever its metadata's `permissionsRevision` is newer than the
  * revision it holds, a count of another run of the backend included.
  *
- * - An answer older than the one it holds is dropped, since a read and the summary
+ * - An answer older than the one it holds is dropped, since a read and the metadata
  *   can arrive in either order.
  * - A decision shows at once and is not read back. One refused goes back to the
  *   requests as they were, and another page's decision reaches this one through the
- *   summary.
+ *   metadata.
  */
 /**
  * Why the values in a credential card do not fit its request, in the page's
@@ -90,6 +91,7 @@ function answerProblem(error: ApiError): string | null {
 
 export const usePermissions = defineStore('permissions', () => {
   const product = useProduct()
+  const conversations = useConversations()
   const states = reactive(new Map<string, PermissionsState>())
 
   function stateFor(conversationId: string): PermissionsState {
@@ -118,16 +120,16 @@ export const usePermissions = defineStore('permissions', () => {
   /** The reads on their way, each with whether a newer revision was heard of meanwhile. */
   const reading = new Map<string, { again: boolean }>()
 
-  /** Whether the summary names a revision newer than the one the page holds. */
+  /** Whether the conversation's metadata names a revision newer than the one the page holds. */
   function behind(conversationId: string): boolean {
-    const summary = product.snapshot?.conversations.find((item) => item.id === conversationId)
+    const metadata = conversations.metadataOf(conversationId)
     const run = product.snapshot?.run ?? null
-    return summary !== undefined && isNewer({ run, revision: summary.permissionsRevision }, stateFor(conversationId).held)
+    return metadata !== null && isNewer({ run, revision: metadata.permissionsRevision }, stateFor(conversationId).held)
   }
 
   /**
    * Reads the requests, unless a read is on its way: that one is read again
-   * after, if the summary is still newer than what it brought, so a page
+   * after, if the metadata is still newer than what it brought, so a page
    * that opens a conversation reads its requests once.
    */
   async function read(conversationId: string): Promise<void> {
@@ -151,7 +153,7 @@ export const usePermissions = defineStore('permissions', () => {
     }
   }
 
-  /** Reads the conversation's permissions once a page shows it; the summary keeps them current from then on. */
+  /** Reads the conversation's permissions once a page shows it; the metadata keeps them current from then on. */
   function follow(conversationId: string): void {
     if (!states.has(conversationId)) {
       void read(conversationId)
@@ -159,11 +161,11 @@ export const usePermissions = defineStore('permissions', () => {
   }
 
   watch(
-    () => product.snapshot?.conversations,
-    (summaries) => {
-      for (const summary of summaries ?? []) {
-        if (states.has(summary.id) && behind(summary.id)) {
-          void read(summary.id)
+    () => [...states.keys()].map((id) => [id, conversations.metadataOf(id)?.permissionsRevision] as const),
+    (followed) => {
+      for (const [id] of followed) {
+        if (behind(id)) {
+          void read(id)
         }
       }
     },
@@ -194,7 +196,7 @@ export const usePermissions = defineStore('permissions', () => {
       }
     } catch (error) {
       if (error instanceof ApiError) {
-        // Another page decided it first, or the credential was removed since: the summary brings the outcome.
+        // Another page decided it first, or the credential was removed since: the metadata brings the outcome.
         if (error.code === 'permission_request_not_found' || error.code === 'credential_removed') {
           return
         }

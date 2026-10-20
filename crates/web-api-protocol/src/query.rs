@@ -22,14 +22,6 @@ impl<'de> Deserialize<'de> for StrictBool {
     }
 }
 
-/// A Host read number spelled `<epoch>.<number>`, as `X-Demi-Read-At`
-/// carries it, such as `?readAfter=` of the workflows routes; none when
-/// omitted.
-pub fn read_at<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<demi_shared_types::ReadAt>, D::Error> {
-    let text = std::borrow::Cow::<'de, str>::deserialize(deserializer)?;
-    text.parse().map(Some).map_err(de::Error::custom)
-}
-
 /// `?refresh=true|false`.
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct Refresh {

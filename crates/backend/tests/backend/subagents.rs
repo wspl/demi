@@ -28,8 +28,9 @@ use std::sync::{Arc, Mutex};
 use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
+use demi_agent_server::testing::agent_entries;
 use demi_conversation_socket_protocol::{
-    ClientFrame, JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob,
+    AgentEntry, AgentRole, ClientFrame, JobModel, JobPhase, ServerFrame, Subagent,
 };
 use demi_provider_claude_code::Placement;
 use demi_provider_common::testing::event;
@@ -41,7 +42,6 @@ use demi_shared_types::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
-use demi_web_api_protocol::conversations::Subagents;
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{StreamExt as _, stream};
@@ -555,7 +555,10 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     let jobs: Vec<(&str, JobPhase)> = history
         .subagents
         .iter()
-        .map(|child| (child.child.description.as_str(), child.child.phase))
+        .map(|entry| {
+            let child = crate::conversations::child_of(entry);
+            (child.description.as_str(), child.state)
+        })
         .collect();
     assert_eq!(jobs, [("reader", JobPhase::Completed)]);
     backend.close().await;
@@ -639,17 +642,19 @@ async fn a_child_works_in_its_own_directory_which_it_changes_and_keeps_and_the_r
     }
     // The page learns where the child works: as it starts, as it moves, and
     // in the conversation's list of subagents.
-    let moves: Vec<(SubagentEvent, String)> = frames
+    let moves: Vec<(JobPhase, String)> = frames
         .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::Subagent { event, job } => Some((*event, job.child.cwd.clone())),
+        .flat_map(agent_entries)
+        .filter_map(|entry| match &entry.role {
+            AgentRole::Subagent(child) => Some((child.state, child.cwd.clone())),
             _ => None,
         })
         .collect();
-    assert!(moves.contains(&(SubagentEvent::Started, format!("{root}/app"))), "{moves:?}");
-    assert!(moves.contains(&(SubagentEvent::Changed, format!("{root}/lib"))), "{moves:?}");
+    assert!(moves.contains(&(JobPhase::Running, format!("{root}/app"))), "{moves:?}");
+    assert!(moves.contains(&(JobPhase::Running, format!("{root}/lib"))), "{moves:?}");
     let history = transcript(&backend, &master, FIRST).await;
-    let listed: Vec<&str> = history.subagents.iter().map(|child| child.child.cwd.as_str()).collect();
+    let listed: Vec<&str> =
+        history.subagents.iter().map(|entry| crate::conversations::child_of(entry).cwd.as_str()).collect();
     assert_eq!(listed, [format!("{root}/lib")]);
     backend.close().await;
 }
@@ -841,17 +846,7 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
     socket.chat("m1", "Find the parser").await;
     std::fs::write(format!("{root}/go"), "").unwrap();
     // The child's completion wakes the idle root, which answers it.
-    socket
-        .until(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Subagent {
-                    event: SubagentEvent::Closed,
-                    ..
-                }
-            )
-        })
-        .await;
+    socket.until_child_closed().await;
     socket.until_idle().await;
     let child = last_asked(&scripts, |session| session != FIRST);
     assert!(child.contains("model=n "), "{child}");
@@ -889,18 +884,13 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
     backend.close().await;
 }
 
-/// The windows the `context_usage` frames among `frames` report, the root's
-/// and the other nodes' apart.
+/// The windows the agents' entries among `frames` report, the root's and
+/// the other nodes' apart.
 fn usage_windows(frames: &[ServerFrame]) -> (Vec<u64>, Vec<u64>) {
     let (mut root, mut others) = (Vec::new(), Vec::new());
-    for frame in frames {
-        if let ServerFrame::ContextUsage {
-            node,
-            usage: Some(usage),
-        } = frame
-            && let Some(window) = usage.window
-        {
-            if node.as_str() == FIRST { &mut root } else { &mut others }.push(window);
+    for entry in frames.iter().flat_map(agent_entries) {
+        if let Some(window) = entry.context.as_ref().and_then(|usage| usage.window) {
+            if entry.id.as_str() == FIRST { &mut root } else { &mut others }.push(window);
         }
     }
     (root, others)
@@ -987,27 +977,20 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
     );
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    let closed = |frame: &ServerFrame| {
-        matches!(
-            frame,
-            ServerFrame::Subagent {
-                event: SubagentEvent::Closed,
-                ..
-            }
-        )
-    };
     let mut frames = socket.chat("m1", "Look").await;
     std::fs::write(format!("{root}/go"), "").unwrap();
-    frames.extend(socket.until(closed).await);
+    frames.extend(socket.until(|frame| {
+        agent_entries(frame)
+            .iter()
+            .any(|entry| matches!(&entry.role, AgentRole::Subagent(child) if child.state != JobPhase::Running))
+    }).await);
     frames.extend(socket.until_idle().await);
 
     let compacting = |frames: &[ServerFrame], subagent: bool| {
         frames.iter().any(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Phase { subagent_id, phase: demi_shared_types::SessionPhase::Compacting }
-                    if subagent_id.is_some() == subagent
-            )
+            agent_entries(frame).iter().any(|entry| {
+                entry.phase == demi_shared_types::SessionPhase::Compacting && (entry.id.as_str() != FIRST) == subagent
+            })
         })
     };
     assert!(compacting(&frames, true), "the child compacts at the threshold of 500K");
@@ -1035,7 +1018,7 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
     );
     let mut frames = socket.chat("m2", "Again").await;
     std::fs::write(format!("{root}/again"), "").unwrap();
-    frames.extend(socket.until(closed).await);
+    socket.until_child_closed().await;
     frames.extend(socket.until_idle().await);
     let (_, children) = usage_windows(&frames);
     assert!(!children.is_empty() && children.iter().all(|window| *window == 500_000), "{children:?}");
@@ -1112,18 +1095,21 @@ async fn a_profiles_context_stays_while_its_model_offers_it_and_goes_with_the_pa
     assert!(text.contains("context: the profile inherits the parent's model"), "{text}");
 }
 
-/// The `started` jobs among `frames`.
-fn started(frames: &[ServerFrame]) -> Vec<SubagentJob> {
-    frames
-        .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::Subagent {
-                event: SubagentEvent::Started,
-                job,
-            } => Some(job.clone()),
-            _ => None,
-        })
-        .collect()
+/// The children `frames` show starting a round, each as it started.
+fn started(frames: &[ServerFrame]) -> Vec<AgentEntry> {
+    let mut seen: Vec<(String, u64)> = Vec::new();
+    let mut started = Vec::new();
+    for entry in frames.iter().flat_map(agent_entries) {
+        let AgentRole::Subagent(child) = &entry.role else {
+            continue;
+        };
+        let round = (entry.id.as_str().to_owned(), child.round);
+        if child.state == JobPhase::Running && !seen.contains(&round) {
+            seen.push(round);
+            started.push(entry.clone());
+        }
+    }
+    started
 }
 
 // About a second: four rounds of children each run a shell job on a real
@@ -1173,19 +1159,7 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
         );
         let mut frames = socket.chat(id, "Go").await;
         std::fs::write(&go, "").unwrap();
-        frames.extend(
-            socket
-                .until(|frame| {
-                    matches!(
-                        frame,
-                        ServerFrame::Subagent {
-                            event: SubagentEvent::Closed,
-                            ..
-                        }
-                    )
-                })
-                .await,
-        );
+        socket.until_child_closed().await;
         frames.extend(socket.until_idle().await);
         started(&frames)
     };
@@ -1203,11 +1177,11 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
         effort: Some("off".to_owned()),
         fast: true,
     };
-    let runs_on = |jobs: &[SubagentJob]| -> Vec<(u64, Option<String>, JobModel, u64, Option<u64>)> {
+    let runs_on = |jobs: &[AgentEntry]| -> Vec<(u64, Option<String>, JobModel, u64, Option<u64>)> {
         jobs.iter()
-            .map(|job| {
-                let job = job.clone();
-                (job.child.number, job.child.profile, job.child.model, job.child.round, job.child.forked_from)
+            .map(|entry| {
+                let child = crate::conversations::child_of(entry).clone();
+                (child.number, child.profile, child.model, child.round, child.forked_from)
             })
             .collect()
     };
@@ -1266,17 +1240,7 @@ async fn a_live_trees_subagent_list_is_the_one_its_open_sends() {
     scripts.child(vec![shell("c1", WAIT), say("found")]);
     socket.chat("t1", "Go").await;
     std::fs::write(format!("{root}/go"), "").unwrap();
-    socket
-        .until(|frame| {
-            matches!(
-                frame,
-                ServerFrame::Subagent {
-                    event: SubagentEvent::Closed,
-                    ..
-                }
-            )
-        })
-        .await;
+    socket.until_child_closed().await;
     socket.until_idle().await;
     // The entry's new name reaches the store's reading of the child, not
     // the live tree's, whose summary names what its round ran on.
@@ -1289,28 +1253,13 @@ async fn a_live_trees_subagent_list_is_the_one_its_open_sends() {
         .await;
     assert_eq!(renamed.status, StatusCode::OK);
 
-    let listed = backend
-        .get(&format!("/api/conversations/{FIRST}/subagents"), Some(&master))
-        .await;
-    assert_eq!(listed.status, StatusCode::OK);
-    let listed: Vec<_> = listed
-        .json::<Subagents>()
-        .subagents
-        .into_iter()
-        .map(|job| job.child)
-        .collect();
+    let listed = children(&crate::conversations::detail(&backend, &master, FIRST).await.entries);
     let mut page = Socket::connect(&backend, &master, FIRST).await;
-    page.open().await;
-    let opened = page
-        .until(|frame| matches!(frame, ServerFrame::Subagents { .. }))
-        .await;
-    let Some(ServerFrame::Subagents { subagents }) = opened.last() else {
-        unreachable!("the handshake ends at its subagents frame")
-    };
-    let sent: Vec<_> = subagents.iter().map(|summary| summary.child.clone()).collect();
+    let opened = page.open().await;
+    let sent = children(handshake_agents(&opened));
     assert_eq!(listed, sent);
     assert_eq!(
-        sent.iter().map(|child| (child.number, child.phase, child.model.provider.as_str())).collect::<Vec<_>>(),
+        sent.iter().map(|child| (child.number, child.state, child.model.provider.as_str())).collect::<Vec<_>>(),
         [(1, JobPhase::Completed, "Tree")]
     );
 
@@ -1320,7 +1269,7 @@ async fn a_live_trees_subagent_list_is_the_one_its_open_sends() {
     page.send(&ClientFrame::Close {}).await;
     page.until(|frame| *frame == ServerFrame::Closed).await;
     let (arrived, release) = scripts.hold_next_health();
-    let path = format!("/api/conversations/{FIRST}/subagents");
+    let path = format!("/api/conversations/{FIRST}");
     let (listed, sent) = tokio::join!(
         backend.get(&path, Some(&master)),
         async {
@@ -1330,22 +1279,38 @@ async fn a_live_trees_subagent_list_is_the_one_its_open_sends() {
                 .await;
             assert_eq!(renamed.status, StatusCode::OK);
             let mut page = Socket::connect(&backend, &master, FIRST).await;
-            page.open().await;
-            let opened = page
-                .until(|frame| matches!(frame, ServerFrame::Subagents { .. }))
-                .await;
+            let opened = page.open().await;
             release.notify_one();
-            let Some(ServerFrame::Subagents { subagents }) = opened.last() else {
-                unreachable!("the handshake ends at its subagents frame")
-            };
-            subagents.iter().map(|summary| summary.child.clone()).collect::<Vec<_>>()
+            children(handshake_agents(&opened))
         },
     );
     assert_eq!(listed.status, StatusCode::OK);
-    let listed: Vec<_> = listed.json::<Subagents>().subagents.into_iter().map(|job| job.child).collect();
+    let listed = children(&listed.json::<demi_web_api_protocol::conversations::ConversationDetail>().entries);
     assert_eq!(listed, sent);
     assert_eq!(sent[0].model.provider, "Again");
     backend.close().await;
+}
+
+/// The subagents `entries` list.
+fn children(entries: &[AgentEntry]) -> Vec<Subagent> {
+    entries
+        .iter()
+        .filter_map(|entry| match &entry.role {
+            AgentRole::Subagent(child) => Some(child.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The agents an open's handshake lists.
+fn handshake_agents(handshake: &[ServerFrame]) -> &[AgentEntry] {
+    handshake
+        .iter()
+        .find_map(|frame| match frame {
+            ServerFrame::Agents { agents, .. } => Some(agents.as_slice()),
+            _ => None,
+        })
+        .expect("the handshake lists the agents")
 }
 
 /// Writes the skill `name` into `.agents/skills` of `directory`.

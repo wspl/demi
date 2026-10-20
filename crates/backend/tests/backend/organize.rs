@@ -481,8 +481,9 @@ async fn a_host_move_puts_the_conversation_in_its_directorys_project_and_the_hom
     }
     assert_eq!(target_of(&harness, FIRST), ("home".to_owned(), None));
     let summary = crate::conversations::summary(&backend, &master, FIRST).await;
+    let cwd = crate::conversations::metadata(&backend, &master, FIRST).await.cwd;
     assert_eq!(
-        (serde_json::to_value(&summary.target).unwrap(), summary.cwd.as_str()),
+        (serde_json::to_value(&summary.target).unwrap(), cwd.as_str()),
         (json!({ "kind": "device", "deviceId": laptop.id(), "path": home }), home.as_str())
     );
     backend.close().await;

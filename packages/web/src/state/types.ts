@@ -1,5 +1,5 @@
-import type { CostState } from '@demicodes/web-ui/agent/context-cost'
-import type { Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { CallsState } from '@demicodes/web-ui/agent/context-cost'
+import type { AgentCost, Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, Version } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
@@ -23,9 +23,8 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationShare, ConversationTarget, DeviceKind, FiledRun, SideQuestion, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationShare, ConversationTarget, DeviceKind, FiledRun, WorkflowChoice } from '../api/generated/web-api'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
-import type { RunRevision } from './revisions'
 import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
@@ -50,6 +49,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * user answers it or moves it; null otherwise.
    */
   filed: FiledRun | null
+  /**
+   * What a page shows only of an open conversation, as its socket or a read
+   * of it brings it and the page's own changes, such as a model chosen, show
+   * over it until they land; its fields below follow it.
+   */
+  metadata: Raw<Slot<ConversationMetadata>>
+  /** The version of the conversation's agents the page holds; null before it holds any. */
+  agentsHeld: Version | null
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
   pluginsChanged: boolean
   /** The backend says the agent only waits for the conversation's offline device: a move stops nothing. */
@@ -122,22 +129,20 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   removing: string[]
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
-  /** The devices the conversation's agents attached, as a slot whose revision is the summary's `hostsRevision`: a summary with a higher one reads them again. */
+  /** The devices the conversation's agents attached, as a slot whose revision is the metadata's `hostsRevision`: metadata with a higher one reads them again. */
   attachedHosts: Raw<Slot<AttachedHost[]>>
   subagents: SubagentRecord[]
   /**
    * The children whose transcripts the page shows, the child its Agents
-   * window shows, which the socket streams to it and no other
+   * window shows, to whose nodes the socket subscribes besides the root's
    * (`crates/agent-server/src/server/tree.rs`).
    */
   shownSubagents: string[]
   /**
-   * Its side questions as this page last read them, each with the
-   * transcript the page holds of it, in the order they were asked.
+   * Its side questions as its agents name them, each with the transcript
+   * the page holds of it, in the order they were asked.
    */
   sides: SideRecord[]
-  /** The revision of the side questions' list the page holds; null before the first read. */
-  sidesHeld: RunRevision | null
   terminals: TerminalRecord[]
   load: SessionLoad
   pendingAction: PendingAction
@@ -145,19 +150,16 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   failures: Record<string, ProviderFailureFacts>
   contextUsage: ConversationState['contextUsage']
   /**
-   * What the conversation cost, read with the conversation as it opens and
-   * kept, with each `cost` frame added, or the failure of its read; null
-   * while it opens, and for a conversation without a record
+   * What the root's own calls cost, as its entry says; the conversation's
+   * is its agents' with the metadata's `otherCost`
    * (`packages/web-ui/src/agent/context-cost.ts`).
    */
-  cost: CostState | null
+  cost: AgentCost
   /**
-   * The own cost of each child whose window the page shows, by the child's
-   * id, read as the window opens and kept with each `cost` frame of the
-   * child, or the failure of its read; a child the page shows and holds none
-   * of is being read.
+   * The turn calls of each node whose context card is open, by the node,
+   * which its cache chart draws; a node whose card is closed holds none.
    */
-  subagentCosts: Record<string, CostState>
+  calls: Record<string, CallsState>
 }
 
 export interface Device extends DeviceReport {
@@ -183,18 +185,17 @@ export type Project = SidebarProject & {
 }
 
 /**
- * One side question of a conversation: the backend's record and what the
- * page holds of its side conversation, which the socket's frames keep live
- * while its node is open and the transcript routes read by its node.
+ * One side question of a conversation: its node's entry and what the page
+ * holds of its side conversation, which the socket's frames keep live while
+ * the page subscribes to its node and the transcript routes read by its
+ * node.
  */
 export interface SideRecord {
   id: string
-  /**
-   * The backend's record; null for a side question whose frames came before
-   * the list named it, as another page's question's do, which the page
-   * holds until the list it reads next names it.
-   */
-  record: SideQuestion | null
+  /** What its entry says of it, or the page's own question until an entry names it. */
+  record: SideQuestion & { id: string }
+  /** Whether an entry of the conversation's agents named it. */
+  listed: boolean
   history: HeldTranscript
   failures: Record<string, ProviderFailureFacts>
   sessionPhase: SessionPhase

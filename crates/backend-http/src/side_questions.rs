@@ -1,12 +1,10 @@
 //! A conversation's side questions, each in the user's shard.
 //!
-//! - The list a page reads when the summary's revision passes what it holds.
-//! - Asking one under the id the page chose, a follow-up, a Retry and folding
-//!   its card.
-//!
-//! Its answers are its transcript, read with `GET
-//! /conversations/:id/transcript?node=` and followed on the conversation's
-//! socket.
+//! Asking one under the id the page chose, a follow-up, a Retry and folding
+//! its card. Each is an agent of the conversation, which a page lists from the
+//! conversation's agents; its answers are its transcript, read with `GET
+//! /conversations/:id/agents/:node/transcript` and followed on the
+//! conversation's socket.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -16,29 +14,13 @@ use demi_shared_types::NodeId;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::side_questions::{
-    AskRequest, SideFollowUp, SideQuestionAnswer, SideQuestionPatch, SideQuestions,
+    AskRequest, SideFollowUp, SideQuestionAnswer, SideQuestionPatch,
 };
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
-
-/// `GET /conversations/:id/side-questions`.
-pub(super) async fn list(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<SideQuestions>, ApiError> {
-    let id = conversation(id)?;
-    let listed = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move { shard.side_questions(id).await })
-        .await?
-        .map_err(refused)?;
-    Ok(Json(listed))
-}
 
 /// `POST /conversations/:id/side-questions { id, blockId, start, end,
 /// quote, question }`: the side question, 201; the same request again,
@@ -50,6 +32,7 @@ pub(super) async fn ask(
     JsonBody(request): JsonBody<AskRequest>,
 ) -> Result<(StatusCode, Json<SideQuestionAnswer>), ApiError> {
     let id = conversation(id)?;
+    let side = side_id(request.id.clone())?;
     let (side_question, created) = state
         .shards
         .of(&user.id)
@@ -57,7 +40,7 @@ pub(super) async fn ask(
         .await?
         .map_err(refused)?;
     let status = if created { StatusCode::CREATED } else { StatusCode::OK };
-    Ok((status, Json(SideQuestionAnswer { side_question })))
+    Ok((status, Json(SideQuestionAnswer { id: side, side_question })))
 }
 
 /// `POST /conversations/:id/side-questions/:side/messages { text }`: 204
@@ -107,13 +90,14 @@ pub(super) async fn fold(
 ) -> Result<Json<SideQuestionAnswer>, ApiError> {
     let id = conversation(id)?;
     let side = side_id(side)?;
+    let folding = side.clone();
     let side_question = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.fold_side(id, side, folded).await })
+        .call(move |shard, _| async move { shard.fold_side(id, folding, folded).await })
         .await?
         .map_err(refused)?;
-    Ok(Json(SideQuestionAnswer { side_question }))
+    Ok(Json(SideQuestionAnswer { id: side, side_question }))
 }
 
 fn conversation(id: String) -> Result<ConversationId, ApiError> {

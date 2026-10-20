@@ -1,5 +1,5 @@
 import type { Block, ChangedFile, EditCopies, EditedFile, EditKind, FileEdit, LineCounts } from '@demicodes/protocol'
-import { windowOf, type HeldTranscript } from '@demicodes/conversation-client'
+import type { HeldTranscript } from '@demicodes/conversation-client'
 import { z } from 'zod'
 import { storedShellView, toolCallTitle } from '../agent/block-helpers'
 import type { ToolCallBlock } from '../agent/block-types'
@@ -7,9 +7,9 @@ import type { ChangeFile, ReadCallChange } from './changes'
 
 /**
  * A request's changes (`crates/agent-store/src/changes.rs`): what one message of
- * the user asked for, from its `user` block to the same agent's next one, and
- * the files its calls changed, as the backend stored them with the request's
- * latest call (`requestFiles`).
+ * the user asked for, the blocks that name its `user` block as their request,
+ * and the files its calls changed, as the backend stored them with the
+ * request's latest call (`requestFiles`).
  *
  * The page reads the lists it is given and counts nothing: a subagent's changes
  * are in its own transcript, not its parent's.
@@ -45,26 +45,26 @@ export interface TranscriptRequests {
 }
 
 /**
- * One agent's requests, each with the files its latest call stored. Only a
- * `user` block starts one: a steer, a wakeup, another agent's message and
- * a resume continue the request they follow.
+ * The requests of a window of one agent's transcript, each with the files
+ * its latest call stored. Every block names the request it belongs to, its
+ * own for a `user` block, so a window that starts inside a request, as a
+ * compacted agent's does, finds that request's edits without its `user`
+ * block; a block before the first `user` block names none.
  */
 export function storedRequests(blocks: readonly Block[]): TranscriptRequests {
   const requests: TranscriptRequest[] = []
   const requestOf = new Map<string, TranscriptRequest>()
-  let current: { request: TranscriptRequest; calls: Map<string, ToolCallBlock>; latest: ChangedFile[] } | null = null
-  const settle = () => {
-    if (current)
-      current.request.files = current.latest.map((file) => requestFile(file, current!.calls))
-  }
+  const held = new Map<string, { request: TranscriptRequest; calls: Map<string, ToolCallBlock>; latest: ChangedFile[] }>()
   for (const block of blocks) {
-    if (block.type === 'user') {
-      settle()
-      current = { request: { id: block.id, files: [] }, calls: new Map(), latest: [] }
+    const id = block.request
+    if (id === undefined)
+      continue
+    let current = held.get(id)
+    if (!current) {
+      current = { request: { id, files: [] }, calls: new Map(), latest: [] }
+      held.set(id, current)
       requests.push(current.request)
     }
-    if (!current)
-      continue
     requestOf.set(block.id, current.request)
     const view = block.type === 'tool_call' ? storedShellView(block) : null
     if (block.type === 'tool_call' && view) {
@@ -73,7 +73,8 @@ export function storedRequests(blocks: readonly Block[]): TranscriptRequests {
         current.latest = view.requestFiles
     }
   }
-  settle()
+  for (const { request, calls, latest } of held.values())
+    request.files = latest.map((file) => requestFile(file, calls))
   return { requests, requestOf }
 }
 
@@ -138,8 +139,9 @@ export function findRequest(
   const history = node === null
     ? transcripts.history
     : transcripts.subagents.find((agent) => agent.id === node)?.history
-  // A page never cuts a request, so a window holds it whole or not at all.
-  const window = history && windowOf(history, request)
+  // The window that holds its latest call holds what it stored of the
+  // request's files; its `user` block may stand in a page before it.
+  const window = history?.windows.findLast((each) => each.blocks.some((block) => block.request === request))
   if (!window) {
     return null
   }

@@ -1382,6 +1382,9 @@ impl Shard {
     fn kept_or_asked(&self, target: &CliTarget, link: &Link) -> (Versions, Rc<Cell<usize>>) {
         let mut kept = self.claude_cli().versions.borrow_mut();
         if let Some(kept) = kept.get(&target.device).filter(|kept| kept.link.is(link)) {
+            if kept.versions.peek().is_none() {
+                tracing::info!(device = %target.device, "a start shares the ask of the device's Claude Code versions under way");
+            }
             return (kept.versions.clone(), kept.waiting.clone());
         }
         // The ask holds the shard weakly: the shard keeps the ask.

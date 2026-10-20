@@ -3,8 +3,8 @@ import { shallowRef } from 'vue'
 import { deferred } from '@demicodes/utils'
 import { until } from '@vueuse/core'
 import type { StateFeed } from '@demicodes/web-ui/plugins/page'
-import type { ProductState } from '../api/generated/web-api'
-import { conversationSummary, productState } from '../__tests__/product-state'
+import type { ConversationMetadata, ProductState } from '../api/generated/web-api'
+import { conversationMetadata, conversationSummary, productState } from '../__tests__/product-state'
 import { conversationStates } from './states'
 
 // Cost: a stubbed fetch and a reactive snapshot; milliseconds.
@@ -46,17 +46,17 @@ function answer(revision: number, tabs: string[]): () => Promise<Response> {
   return async () => Response.json({ revision, state: { tabs } })
 }
 
-/** The product state of the backend's `run` with the conversation's summary carrying `revision` of the browser's state. */
-function at(revision: number, run = 'run-1'): ProductState {
-  return productState({
-    run,
-    conversations: [conversationSummary(CONVERSATION, 'Work', { pluginRevisions: [{ plugin: 'browser', revision }] })],
-  })
+/** The product state of the backend's `run`, and the conversation's metadata carrying `revision` of the browser's state. */
+function at(revision: number, run = 'run-1'): { state: ProductState, metadata: ConversationMetadata } {
+  return {
+    state: productState({ run, conversations: [conversationSummary(CONVERSATION, 'Work')] }),
+    metadata: conversationMetadata(CONVERSATION, { pluginRevisions: [{ plugin: 'browser', revision }] }),
+  }
 }
 
-test("a followed state is read when the summary's revision rises", async () => {
+test("a followed state is read when the metadata's revision rises", async () => {
   const snapshot = shallowRef(at(2))
-  const states = conversationStates(() => snapshot.value)
+  const states = conversationStates(() => snapshot.value.state, () => snapshot.value.metadata)
   answers.push(answer(2, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
@@ -70,7 +70,7 @@ test("a followed state is read when the summary's revision rises", async () => {
 
 test('a failed read keeps the last state and says why, until a read succeeds', async () => {
   const snapshot = shallowRef(at(1))
-  const states = conversationStates(() => snapshot.value)
+  const states = conversationStates(() => snapshot.value.state, () => snapshot.value.metadata)
   answers.push(answer(1, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
@@ -90,7 +90,7 @@ test('a failed read keeps the last state and says why, until a read succeeds', a
 
 test('after the backend started again, its count is read whatever the revision held', async () => {
   const snapshot = shallowRef(at(5))
-  const states = conversationStates(() => snapshot.value)
+  const states = conversationStates(() => snapshot.value.state, () => snapshot.value.metadata)
   answers.push(answer(5, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
@@ -105,7 +105,7 @@ test('after the backend started again, its count is read whatever the revision h
 
 test('nothing is read once nothing follows the state, and following again shows what was read at once', async () => {
   const snapshot = shallowRef(at(1))
-  const states = conversationStates(() => snapshot.value)
+  const states = conversationStates(() => snapshot.value.state, () => snapshot.value.metadata)
   answers.push(answer(1, ['t1']))
   const first = states.follow('browser', CONVERSATION)
   await shows(first, { tabs: ['t1'] })

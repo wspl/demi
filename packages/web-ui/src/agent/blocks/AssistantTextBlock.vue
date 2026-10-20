@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { CodeFile } from '@demicodes/protocol'
 import { ref } from 'vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import AssistantMessageFooter from './AssistantMessageFooter.vue'
@@ -32,6 +33,8 @@ const props = withDefaults(defineProps<{
   versions?: VersionChoice
   isStreaming?: boolean
   showFooter?: boolean
+  /** The Host files the reply's inline code names, kept with it once it ended. */
+  codeFiles?: readonly CodeFile[]
 }>(), {
   isStreaming: false,
 })
@@ -74,6 +77,7 @@ const menu: ContextMenuDeclaration = {
       :content="content"
       :streaming="isStreaming"
       :arrivals="arrivals()"
+      :code-files="codeFiles"
       class="text-conversation text-fg-body"
     />
     <AssistantMessageFooter

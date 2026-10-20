@@ -123,7 +123,12 @@ const s4 = shellCall('s4', 's1', 'Tidy up', [
   own('/w/old.css', 'deleted', null, { added: 0, removed: 0 }),
   own('/w/b.ts', 'renamed', null, { added: 0, removed: 0, from: '/w/a.ts' }),
 ], { run: lastLists, request: lastLists })
-const transcript: Block[] = [userBlock('u1', 't1', 'Fix the sign-in page'), s1, s2, s3, s4, text('reply'), userBlock('u2', 't2', 'Thanks')]
+/** `blocks` as the backend sends them, each naming the request `request` it belongs to. */
+const inRequest = (request: string, blocks: Block[]): Block[] => blocks.map((block) => ({ ...block, request }))
+const transcript: Block[] = [
+  ...inRequest('u1', [userBlock('u1', 't1', 'Fix the sign-in page'), s1, s2, s3, s4, text('reply')]),
+  ...inRequest('u2', [userBlock('u2', 't2', 'Thanks')]),
+]
 
 describe('the files a request shows', () => {
   test('are the ones its latest call stored, each edit named by its call’s title', () => {
@@ -141,11 +146,25 @@ describe('the files a request shows', () => {
     expect(requests[1]!.files).toEqual([])
   })
 
+  // A compacted agent's window starts inside a request, after its `user`
+  // block: before, it found no request there, and its edit pills were dead.
+  test('of a window that starts inside a request are that request’s, without its user block', () => {
+    const { requests, requestOf } = storedRequests(transcript.slice(3))
+    expect(requests.map((request) => request.id)).toEqual(['u1', 'u2'])
+    // The window holds s4, the request's latest call, whose list it stored.
+    expect(requests[0]!.files.map((file) => [file.path, file.edits.map((entry) => entry.call)])).toEqual([
+      ['/w/login.ts', ['s1', 's2']],
+      ['/w/old.css', []],
+      ['/w/b.ts', []],
+    ])
+    expect(requestOf.get('s4')?.id).toBe('u1')
+  })
+
   test('a subagent’s are in its own transcript, not the parent’s', () => {
     const childCall = shellCall('child-c', 'child-c', 'Restyle the form', [own('/w/form.css', 'modified', 40)], {
       request: [listed('/w/form.css', 'modified', [edit('child-c', '/w/form.css', 40)], [1, 1])],
     })
-    const child: Block[] = [userBlock('child-u', 'ct', 'Check the form styles'), childCall, text('child-reply')]
+    const child = inRequest('child-u', [userBlock('child-u', 'ct', 'Check the form styles'), childCall, text('child-reply')])
     const transcripts = { history: wholeHistory(transcript), subagents: [{ id: 'child', history: wholeHistory(child) }] }
     expect(findRequest(transcripts, null, 'child-u')).toBeNull()
     expect(findRequest(transcripts, 'child', 'child-u')!.files.map((file) => file.path)).toEqual(['/w/form.css'])

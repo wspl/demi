@@ -20,14 +20,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use demi_agent_server::testing::client_text;
+use demi_agent_server::testing::{agent_entries, client_text, root_entry};
 use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
     ClientFrameKind,
-    ClientFrame, EditOutcome, EditRequest, Failures, Refusal, RemoveOutcome, ServerFrame, SubagentJob,
-    TranscriptPatch, TranscriptVersion,
+    AgentEntry, AgentRole, ClientFrame, EditOutcome, JobPhase, Subagent, EditRequest, Failures, Refusal, RemoveOutcome, ServerFrame,
+    TranscriptPatch, Version,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
@@ -35,14 +35,15 @@ use demi_provider_common::{
     ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
 };
 use demi_shared_types::{
-    AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Block, NodeId, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, SessionPhase, Timestamp, TokenUsage, TurnId,
 };
 use demi_web_api_protocol::conversations::{
-    BatchAnswer, BatchResult, ConversationStatus, ConversationSummary, CreatedConversation,
-    ConversationUpdate, Conversations, FieldResult, ModelSettings, PatchField, Subagents,
-    TranscriptPage, TurnOutcome, WholeBlock,
+    BatchAnswer, BatchResult, ConversationDetail, ConversationFrame, ConversationMetadata, ConversationStatus,
+    ConversationSummary, CreatedConversation, ConversationUpdate, Conversations, FieldResult, ModelSettings,
+    PatchField, TranscriptPage, TurnOutcome, WholeBlock,
 };
+use demi_web_api_protocol::drafts::ConversationDraft;
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
 use demi_web_api_protocol::usage::UsageTotals;
@@ -50,7 +51,6 @@ use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{SinkExt as _, StreamExt as _, stream};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
-use tokio::io::AsyncReadExt as _;
 use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -68,6 +68,27 @@ use demi_web_api_protocol::diagnostics::LogLevel;
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
 pub(crate) const SECOND: &str = "7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a";
 pub(crate) const THIRD: &str = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d";
+
+/// The subagent an entry of the conversation's subagents lists.
+pub(crate) fn child_of(entry: &AgentEntry) -> &Subagent {
+    match &entry.role {
+        AgentRole::Subagent(child) => child,
+        role => panic!("not a subagent: {role:?}"),
+    }
+}
+
+/// The root's phase, as a frame's entry of it says.
+pub(crate) fn root_phase(frame: &ServerFrame) -> Option<SessionPhase> {
+    root_entry(frame).map(|entry| entry.phase)
+}
+
+/// A frame of a conversation socket: an agent's, or the conversation's own.
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum Incoming {
+    Agents(ServerFrame),
+    Conversation(ConversationFrame),
+}
 
 /// What a conversation socket delivered next.
 #[derive(Debug)]
@@ -88,9 +109,19 @@ pub(crate) struct Socket {
     /// The frames of the last message not read yet: a message carries a
     /// frame, or an array of the frames the backend had ready at once.
     unread: VecDeque<ServerFrame>,
+    /// The conversation's own frames, its metadata's and its draft's, not
+    /// read yet, which arrive between the agents' frames.
+    conversation: VecDeque<ConversationFrame>,
     /// The request ID of the socket's upgrade, from its answer's
     /// `X-Request-Id`.
     pub(crate) request_id: String,
+    /// The conversation's root node, whose id is the conversation's.
+    root: NodeId,
+    /// The children the frames read so far showed running.
+    running: std::collections::HashSet<NodeId>,
+    /// The children the frames read so far showed closing after they ran,
+    /// not waited for yet.
+    closes: VecDeque<NodeId>,
 }
 
 impl Socket {
@@ -135,6 +166,10 @@ impl Socket {
                 socket,
                 patience: Duration::from_secs(10),
                 unread: VecDeque::new(),
+                conversation: VecDeque::new(),
+                root: NodeId::try_from(conversation).unwrap(),
+                running: std::collections::HashSet::new(),
+                closes: VecDeque::new(),
                 request_id: response.headers()["x-request-id"].to_str().unwrap().to_owned(),
             }),
             Err(tungstenite::Error::Http(response)) => {
@@ -183,12 +218,74 @@ impl Socket {
         }
     }
 
-    /// The frames of the last message not read yet, else those of the next
-    /// message; the close code once the backend closed the socket.
+    /// The agents' frames of the last message not read yet, else those of
+    /// the next message that carries any, keeping the conversation's own
+    /// frames aside; the close code once the backend closed the socket.
     async fn message(&mut self) -> Result<Vec<ServerFrame>, Option<u16>> {
         if !self.unread.is_empty() {
             return Ok(self.unread.drain(..).collect());
         }
+        loop {
+            let frames = self.any_message().await?;
+            let mut agents = Vec::new();
+            for frame in frames {
+                match frame {
+                    Incoming::Agents(frame) => agents.push(frame),
+                    Incoming::Conversation(frame) => self.conversation.push_back(frame),
+                }
+            }
+            if !agents.is_empty() {
+                return Ok(agents);
+            }
+        }
+    }
+
+    /// The next of the conversation's own frames, keeping the agents'
+    /// frames before it for `frame` to read.
+    pub(crate) async fn conversation_frame(&mut self) -> ConversationFrame {
+        loop {
+            if let Some(frame) = self.conversation.pop_front() {
+                return frame;
+            }
+            let frames = self
+                .any_message()
+                .await
+                .unwrap_or_else(|code| panic!("the socket closed with {code:?}"));
+            for frame in frames {
+                match frame {
+                    Incoming::Agents(frame) => self.unread.push_back(frame),
+                    Incoming::Conversation(frame) => self.conversation.push_back(frame),
+                }
+            }
+        }
+    }
+
+    /// The conversation's metadata as the socket sends it, from the first
+    /// that `done` accepts.
+    pub(crate) async fn metadata_until(&mut self, done: impl Fn(&ConversationMetadata) -> bool) -> ConversationMetadata {
+        loop {
+            if let ConversationFrame::Conversation { metadata } = self.conversation_frame().await
+                && done(&metadata)
+            {
+                return *metadata;
+            }
+        }
+    }
+
+    /// The draft as the socket sends it, from the first that `done`
+    /// accepts.
+    pub(crate) async fn draft_until(&mut self, done: impl Fn(&ConversationDraft) -> bool) -> ConversationDraft {
+        loop {
+            if let ConversationFrame::Draft { draft } = self.conversation_frame().await
+                && done(&draft)
+            {
+                return draft;
+            }
+        }
+    }
+
+    /// The frames of the next message.
+    async fn any_message(&mut self) -> Result<Vec<Incoming>, Option<u16>> {
         loop {
             let message = tokio::time::timeout(self.patience, self.socket.next())
                 .await
@@ -220,8 +317,37 @@ impl Socket {
 
     pub(crate) async fn frame(&mut self) -> ServerFrame {
         match self.next().await {
-            Received::Frame(frame) => frame,
+            Received::Frame(frame) => {
+                self.note_children(&frame);
+                frame
+            }
             Received::Closed(code) => panic!("the socket closed with {code:?}"),
+        }
+    }
+
+    /// Notes which children `frame` shows running, and which closing after
+    /// they ran.
+    fn note_children(&mut self, frame: &ServerFrame) {
+        for entry in agent_entries(frame) {
+            let AgentRole::Subagent(child) = &entry.role else {
+                continue;
+            };
+            if child.state == JobPhase::Running {
+                self.running.insert(entry.id.clone());
+            } else if self.running.remove(&entry.id) {
+                self.closes.push_back(entry.id.clone());
+            }
+        }
+    }
+
+    /// The next child the frames show closing after it ran, the frames
+    /// read already included.
+    pub(crate) async fn until_child_closed(&mut self) -> NodeId {
+        loop {
+            if let Some(child) = self.closes.pop_front() {
+                return child;
+            }
+            self.frame().await;
         }
     }
 
@@ -238,12 +364,13 @@ impl Socket {
         }
     }
 
-    /// Opens the conversation, with the model its record holds, and reads
-    /// the handshake.
+    /// Opens the conversation, with the model its record holds, showing its
+    /// root, and reads the handshake to the root's transcript.
     pub(crate) async fn open(&mut self) -> Vec<ServerFrame> {
-        self.send(&ClientFrame::Open { from: None, edge: None }).await;
+        self.send(&ClientFrame::Subscribe { node: self.root.clone(), held: None }).await;
+        self.send(&ClientFrame::Open { agents: None, draft: None }).await;
         let handshake = self
-            .until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+            .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
             .await;
         assert_eq!(
             handshake.first(),
@@ -260,25 +387,20 @@ impl Socket {
         self.until_idle().await
     }
 
-    /// The frames up to the idle phase that follows a running one.
+    /// The frames up to the root's entry that says it is idle, after one
+    /// that said it ran.
     pub(crate) async fn until_idle(&mut self) -> Vec<ServerFrame> {
         let mut ran = false;
         let mut frames = Vec::new();
         loop {
             let frame = self.frame().await;
-            let idle = match &frame {
-                ServerFrame::Phase {
-                    subagent_id: None,
-                    phase: SessionPhase::Running,
-                } => {
+            let idle = match root_phase(&frame) {
+                Some(SessionPhase::Idle) => ran,
+                Some(_) => {
                     ran = true;
                     false
                 }
-                ServerFrame::Phase {
-                    subagent_id: None,
-                    phase: SessionPhase::Idle,
-                } => ran,
-                _ => false,
+                None => false,
             };
             frames.push(frame);
             if idle {
@@ -294,12 +416,10 @@ impl Socket {
         let mut answered = false;
         let mut idle = false;
         while !(answered && idle) {
-            match self.frame().await {
+            let frame = self.frame().await;
+            match &frame {
                 ServerFrame::AbortResult { .. } => answered = true,
-                ServerFrame::Phase {
-                    subagent_id: None,
-                    phase: SessionPhase::Idle,
-                } => idle = true,
+                frame if root_phase(frame) == Some(SessionPhase::Idle) => idle = true,
                 _ => {}
             }
         }
@@ -309,7 +429,7 @@ impl Socket {
     /// reset sends it to a page that holds none of it; the whole of a
     /// transcript short enough for one page.
     pub(crate) async fn live(&mut self) -> Vec<Block> {
-        self.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+        self.resubscribe().await;
         let frames = self
             .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
             .await;
@@ -317,6 +437,23 @@ impl Socket {
             Some(ServerFrame::TranscriptReset { blocks, .. }) => blocks,
             other => unreachable!("{other:?}"),
         }
+    }
+
+    /// A page that shows the conversation `conversation`, holding its draft
+    /// at `draft`, once the conversation's metadata reached it: it hears of
+    /// each change of the conversation's metadata and draft, whether or not
+    /// a tree opens for it.
+    pub(crate) async fn shown(backend: &TestBackend, session: &Session, conversation: &str, draft: u64) -> (Self, ConversationMetadata) {
+        let mut socket = Self::connect(backend, session, conversation).await;
+        socket.send(&ClientFrame::Open { agents: None, draft: Some(draft) }).await;
+        let metadata = socket.metadata_until(|_| true).await;
+        (socket, metadata)
+    }
+
+    /// Subscribes to the root again, holding nothing, which a reset of its
+    /// transcript answers after every frame sent before it.
+    pub(crate) async fn resubscribe(&mut self) {
+        self.send(&ClientFrame::Subscribe { node: self.root.clone(), held: None }).await;
     }
 
     /// The close code, skipping the frames before it.
@@ -513,14 +650,15 @@ pub(crate) async fn create(
 }
 
 /// Chooses the model `model` of the entry `provider` for the conversation
-/// `id`, as a page's first send does, and answers the conversation.
+/// `id`, as a page's first send does, and answers the conversation's
+/// metadata.
 pub(crate) async fn choose(
     backend: &TestBackend,
     session: &Session,
     id: &str,
     provider: &str,
     model: &str,
-) -> ConversationSummary {
+) -> ConversationMetadata {
     let body = json!({ "model": { "providerId": provider, "modelId": model } });
     let chosen = backend
         .patch(&format!("/api/conversations/{id}"), session, body)
@@ -531,7 +669,7 @@ pub(crate) async fn choose(
         "{}",
         String::from_utf8_lossy(&chosen.body)
     );
-    chosen.json::<ConversationUpdate>().conversation
+    chosen.json::<ConversationUpdate>().metadata
 }
 
 /// Makes the master's conversation `id` work in a new `work` directory of a
@@ -604,20 +742,35 @@ pub(crate) async fn summary(
         .expect("the conversation is listed")
 }
 
+/// The conversation `id` as a page that opens it reads it: its entry, its
+/// metadata and its agents.
+pub(crate) async fn detail(backend: &TestBackend, session: &Session, id: &str) -> ConversationDetail {
+    read_ok(backend, session, &format!("/api/conversations/{id}")).await.json()
+}
+
+/// The conversation `id`'s metadata.
+pub(crate) async fn metadata(backend: &TestBackend, session: &Session, id: &str) -> ConversationMetadata {
+    detail(backend, session, id).await.metadata
+}
+
 /// A conversation's history as the backend serves it cold: the root's blocks, each page
 /// read back to the start and each block then read whole, with their failure facts, and
-/// the conversation's subagents.
+/// the conversation's subagents' entries.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Cold {
     pub blocks: Vec<Block>,
     pub failures: Option<Failures>,
-    pub subagents: Vec<SubagentJob>,
+    pub subagents: Vec<AgentEntry>,
 }
 
 pub(crate) async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Cold {
     let (blocks, failures) = agent_history(backend, session, id, None).await;
-    let listed = read_ok(backend, session, &format!("/api/conversations/{id}/subagents")).await;
-    let Subagents { subagents } = listed.json();
+    let subagents = detail(backend, session, id)
+        .await
+        .entries
+        .into_iter()
+        .filter(|entry| matches!(entry.role, AgentRole::Subagent(_)))
+        .collect();
     Cold {
         blocks,
         failures,
@@ -633,9 +786,10 @@ pub(crate) async fn agent_history(
     id: &str,
     node: Option<&str>,
 ) -> (Vec<Block>, Option<Failures>) {
-    let node_query = node.map(|node| format!("node={node}&")).unwrap_or_default();
-    let base = format!("/api/conversations/{id}/transcript");
-    let mut page: TranscriptPage = read_ok(backend, session, &format!("{base}?{node_query}"))
+    let node = node.unwrap_or(id);
+    let node_query = "";
+    let base = format!("/api/conversations/{id}/agents/{node}/transcript");
+    let mut page: TranscriptPage = read_ok(backend, session, &format!("{base}?"))
         .await
         .json();
     let mut light = page.blocks;
@@ -656,7 +810,7 @@ pub(crate) async fn agent_history(
         let whole: WholeBlock = read_ok(
             backend,
             session,
-            &format!("{base}/blocks/{}?{node_query}", block.id()),
+            &format!("/api/conversations/{id}/agents/{node}/blocks/{}", block.id()),
         )
         .await
         .json();
@@ -735,7 +889,7 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
             false
         )
     );
-    assert_eq!(created.cwd, format!("/home/demi/sessions/{FIRST}"));
+    assert_eq!(metadata(&backend, &master, FIRST).await.cwd, format!("/home/demi/sessions/{FIRST}"));
     assert_eq!(
         serde_json::to_value(&created.target).unwrap(),
         json!({ "kind": "cloud" })
@@ -789,8 +943,8 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
         (StatusCode::CONFLICT, ErrorCode::IdUnavailable)
     );
     for path in [
-        format!("/api/conversations/{FIRST}/transcript"),
-        "/api/conversations/not-a-uuid/transcript".into(),
+        format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript"),
+        "/api/conversations/not-a-uuid/agents/not-a-uuid/transcript".into(),
     ] {
         let foreign = backend.get(&path, Some(&ana)).await;
         assert_eq!(
@@ -869,7 +1023,7 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
         json!({ "kind": "workspace", "workspaceId": projects["workspaces"][0]["id"] })
     );
     assert_eq!(
-        conversation.model,
+        created.metadata.model,
         Some(ModelSettings {
             provider_id: provider.as_str().try_into().unwrap(),
             model_id: "m".into(),
@@ -942,10 +1096,11 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         kinds_of,
         [
             "opened",
-            "transcript_reset",
-            "phase",
+            "agents",
             "queue",
-            "pending_steers"
+            "pending_steers",
+            "request_output",
+            "transcript_reset"
         ]
     );
     vendor.respond(answer(&["Hello", " there."], 12, 3));
@@ -953,8 +1108,9 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let mut ran = false;
     let end = loop {
         let message = socket.message().await.expect("the socket stays open");
-        ran |= message.contains(&ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Running });
-        if ran && message.contains(&ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }) {
+        let says = |phase: SessionPhase| message.iter().any(|frame| root_phase(frame) == Some(phase));
+        ran |= says(SessionPhase::Running);
+        if ran && says(SessionPhase::Idle) {
             break message;
         }
     };
@@ -970,7 +1126,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     });
     let idle = end
         .iter()
-        .position(|frame| *frame == ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle });
+        .position(|frame| root_phase(frame) == Some(SessionPhase::Idle));
     assert!(matches!((completes, idle), (Some(completes), Some(idle)) if completes < idle), "{end:?}");
 
     let sent = &vendor.requests()[0];
@@ -1017,14 +1173,15 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
 
     // Live equals cold once the page has seen the turn end: the live tree's
     // transcript is what the database holds, which the history route reads
-    // without a session.
+    // without a session, in the light form a reset sends.
     let summary = summary(&backend, &master, FIRST).await;
     let live = socket.live().await;
     // The model learned its Host before its first request.
     assert_eq!(kinds(&live), ["user", "context", "text", "response"]);
     assert_eq!(last_text(&live), "Hello there.");
     let cold = transcript(&backend, &master, FIRST).await;
-    assert_eq!(cold.blocks, live);
+    // The reset carries the light form, which a block's row reads whole.
+    assert_eq!(demi_conversation_socket_protocol::light(&cold.blocks), live);
     assert!(cold.failures.is_none() && cold.subagents.is_empty());
 
     assert_eq!(
@@ -1032,8 +1189,8 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         (ConversationStatus::Completed, true)
     );
     assert!(summary.revision > 0);
-    let model = summary
-        .model
+    let chosen = metadata(&backend, &master, FIRST).await.model;
+    let model = chosen
         .as_ref()
         .map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
     assert_eq!(model, Some((provider.as_str(), "claude-opus-4-8")));
@@ -1090,7 +1247,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     drop(socket);
     let mut reloaded = Socket::connect(&backend, &master, FIRST).await;
     let handshake = reloaded.open().await;
-    let ServerFrame::TranscriptReset { blocks, .. } = &handshake[1] else {
+    let Some(ServerFrame::TranscriptReset { blocks, .. }) = handshake.last() else {
         panic!("{handshake:?}");
     };
     assert_eq!(*blocks, live);
@@ -1192,11 +1349,8 @@ fn large_window(id: &str) -> Value {
 fn compacted(turn: &[ServerFrame]) -> bool {
     turn.iter().any(|frame| {
         matches!(
-            frame,
-            ServerFrame::Phase {
-                subagent_id: None,
-                phase: SessionPhase::Compacting
-            }
+            root_phase(frame),
+            Some(SessionPhase::Compacting)
         )
     })
 }
@@ -1326,17 +1480,15 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         Some(socket.request_id.as_str())
     );
     // A conversation without a model opens no tree.
-    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
+    socket.send(&ClientFrame::Open { agents: None, draft: None }).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
         panic!("an open without a model is refused");
     };
     assert_eq!(code.as_deref(), Some("model_not_selected"));
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    socket.open().await;
-    // The usage follows the handshake.
-    socket
-        .until(|frame| matches!(frame, ServerFrame::ContextUsage { .. }))
-        .await;
+    // The usage comes with the root's entry.
+    let handshake = socket.open().await;
+    assert!(handshake.iter().any(|frame| root_entry(frame).is_some()), "{handshake:?}");
 
     // Archived, the conversation takes no frame but its close, and no
     // socket.
@@ -1380,7 +1532,7 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         request: EditRequest {
             operation_id: "edit-1".try_into().unwrap(),
             target_block_id: "user-1".try_into().unwrap(),
-            version: TranscriptVersion {
+            version: Version {
                 epoch: "epoch".into(),
                 revision: 1,
             },
@@ -1883,7 +2035,7 @@ async fn a_turn_of_two_requests_reads_each_from_zero_to_its_own_count_then_nothi
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
+    let handshake = socket.open().await;
     vendor.respond(tool_use("toolu_1", "no_such_tool", &json!({ "path": "notes.md" })));
     vendor.respond(answer(&["There is ", "no such tool."], 1, 3));
     let turn = socket.chat("m1", "Look first").await;
@@ -1893,7 +2045,7 @@ async fn a_turn_of_two_requests_reads_each_from_zero_to_its_own_count_then_nothi
     // between may go too, which is left out.
     let mut requests: Vec<String> = Vec::new();
     let mut shown: Vec<Option<(usize, bool, u64)>> = Vec::new();
-    for frame in &turn {
+    for frame in handshake.iter().chain(&turn) {
         let ServerFrame::RequestOutput { output } = frame else {
             continue;
         };
@@ -1919,27 +2071,27 @@ async fn a_turn_of_two_requests_reads_each_from_zero_to_its_own_count_then_nothi
     backend.close().await;
 }
 
-/// The summary's latest ended turn and status after each way a turn ends,
+/// The metadata's latest ended turn and the status after each way a turn ends,
 /// each named by the block that ended it, so a turn that ends again is a
 /// new end. One backend and four turns against the mock vendor, about a second.
 #[tokio::test]
-async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_ended() {
+async fn the_metadata_names_the_roots_latest_ended_turn_as_its_status_says_it_ended() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let ended = |summary: &ConversationSummary| {
-        let turn = summary.last_turn.as_ref();
+    let ended = |detail: &ConversationDetail| {
+        let turn = detail.metadata.last_turn.as_ref();
         (
-            summary.status,
+            detail.conversation.status,
             turn.map(|turn| turn.id.to_string()),
             turn.map(|turn| turn.outcome),
         )
     };
     let last_id = |blocks: &[Block]| Some(blocks.last().unwrap().id().to_string());
-    let before = summary(&backend, &master, FIRST).await;
+    let before = detail(&backend, &master, FIRST).await;
     assert_eq!(ended(&before), (ConversationStatus::Idle, None, None));
 
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -1948,7 +2100,7 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
     socket.chat("m1", "Say it").await;
     let finished = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(
-        ended(&summary(&backend, &master, FIRST).await),
+        ended(&detail(&backend, &master, FIRST).await),
         (
             ConversationStatus::Completed,
             last_id(&finished),
@@ -1963,7 +2115,7 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
     socket.send(&send("m2", "Look first")).await;
     vendor.received(requests + 2).await;
     assert_eq!(
-        ended(&summary(&backend, &master, FIRST).await),
+        ended(&detail(&backend, &master, FIRST).await),
         (
             ConversationStatus::Running,
             last_id(&finished),
@@ -1974,7 +2126,7 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
     let stopped = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(kinds(&stopped).last().map(String::as_str), Some("abort"));
     assert_eq!(
-        ended(&summary(&backend, &master, FIRST).await),
+        ended(&detail(&backend, &master, FIRST).await),
         (
             ConversationStatus::Stopped,
             last_id(&stopped),
@@ -1989,7 +2141,7 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
     socket.chat("m3", "Again").await;
     let failed = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(
-        ended(&summary(&backend, &master, FIRST).await),
+        ended(&detail(&backend, &master, FIRST).await),
         (
             ConversationStatus::Error,
             last_id(&failed),
@@ -2025,13 +2177,7 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
     socket.open().await;
     vendor.respond(answer(&["Done."], 1, 1));
     socket.chat("m1", "Hello").await;
-    let facts = |summary: &ConversationSummary| {
-        (
-            summary.status,
-            summary.revision,
-            summary.last_turn.as_ref().map(|turn| turn.outcome),
-        )
-    };
+    let facts = |summary: &ConversationSummary| (summary.status, summary.revision);
     let before = facts(&summary(&backend, &master, FIRST).await);
     assert_eq!(before.0, ConversationStatus::Completed);
     drop(socket);
@@ -2055,12 +2201,7 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
         .await
         .expect("the start's search catch-up migrates the database");
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket
-        .send(&ClientFrame::Open {
-            from: None,
-            edge: None,
-        })
-        .await;
+    socket.send(&ClientFrame::Open { agents: None, draft: None }).await;
     let listed = {
         let listing = summaries(&backend, &master);
         tokio::pin!(listing);
@@ -2169,10 +2310,10 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     backend.close().await;
 }
 
-/// A page's conversation socket that stops reading where the test says,
-/// with a receive buffer of a few kilobytes: a frame larger than the
-/// backend's send buffer then fills the socket's buffers, and the backend's
-/// send of it waits for a read that never comes.
+/// A page's conversation socket that reads nothing, with a receive buffer
+/// of a few kilobytes: a frame larger than the backend's send buffer then
+/// fills the socket's buffers, and the backend's send of it waits for a read
+/// that never comes.
 struct StalledPage {
     socket: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
 }
@@ -2193,35 +2334,25 @@ impl StalledPage {
         Self { socket }
     }
 
-    /// Opens the conversation and reads the socket's bytes as far as the
-    /// start of the handshake's message, whose length it answers: the
-    /// backend is sending `opened` and the transcript's reset, which it had
-    /// ready at once, in one message, and the page reads no further.
-    async fn open_until_the_reset_is_sent(&mut self) -> u64 {
-        let open = serde_json::to_string(&ClientFrame::Open { from: None, edge: None }).unwrap();
+    /// Opens the conversation, showing its root, and reads nothing: the
+    /// handshake, a few kilobytes, fits the socket's buffers, and what the
+    /// root's turns send after it fills them.
+    async fn open_without_reading(&mut self) {
+        let root = NodeId::try_from(FIRST).unwrap();
+        let subscribe = serde_json::to_string(&ClientFrame::Subscribe { node: root, held: None }).unwrap();
+        self.socket.send(Message::Text(subscribe.into())).await.unwrap();
+        let open = serde_json::to_string(&ClientFrame::Open { agents: None, draft: None }).unwrap();
         self.socket.send(Message::Text(open.into())).await.unwrap();
-        // Read beneath the WebSocket, which would read the whole message: a
-        // final text frame's header with its 64-bit length, then the array
-        // of the handshake's frames, `opened` first.
-        let opened = br#"[{"type":"opened"},"#;
-        let mut head = [0; 10 + 19];
-        tokio::time::timeout(PATIENCE, self.socket.get_mut().read_exact(&mut head))
-            .await
-            .expect("the backend sends the handshake")
-            .unwrap();
-        assert_eq!(head[..2], [0x81, 127]);
-        assert_eq!(&head[10..], opened);
-        u64::from_be_bytes(head[2..10].try_into().unwrap())
     }
 }
 
 /// A page that stopped reading, its socket's buffers full, holds up shutdown no
 /// longer than the close frame's bound: the backend is in the middle of
-/// sending a transcript larger than any socket buffer when it shuts down.
+/// sending a turn's frames larger than any socket buffer when it shuts down.
+/// Another page of the conversation sees the turn to its end meanwhile.
 ///
-/// The 8 MiB answer that makes the transcript so large costs most of the
-/// test's second: a smaller one can fit the send buffer, whose limit is 4 MiB
-/// on Linux and macOS.
+/// The 8 MiB answer costs most of the test's second: a smaller one can fit
+/// the send buffer, whose limit is 4 MiB on Linux and macOS.
 ///
 /// The answer is the model's, since a page sends no message over 1 MiB. It
 /// comes in 128 KiB deltas, as a vendor streams it: the stream's parser reads
@@ -2238,16 +2369,16 @@ async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
+    let mut stalled = StalledPage::connect(&backend, &master, FIRST).await;
+    stalled.open_without_reading().await;
     let piece = "x".repeat(128 << 10);
     vendor.respond(answer(&[piece.as_str(); 64], 1, 1));
-    socket.chat("m1", "Write at length.").await;
-
-    let mut stalled = StalledPage::connect(&backend, &master, FIRST).await;
-    let reset = stalled.open_until_the_reset_is_sent().await;
-    assert!(
-        reset > 8 << 20,
-        "the reset carries the whole transcript: {reset} bytes"
-    );
+    let turn = socket.chat("m1", "Write at length.").await;
+    let sent: usize = turn
+        .iter()
+        .map(|frame| serde_json::to_string(frame).unwrap().len())
+        .sum();
+    assert!(sent > 8 << 20, "the turn sends more than the buffers hold: {sent} bytes");
     tokio::time::timeout(PATIENCE, backend.close())
         .await
         .expect("a page that stopped reading does not hold up shutdown");
@@ -2493,7 +2624,8 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
         ]
     );
     let conversation = update.conversation;
-    let model = conversation
+    let model = update
+        .metadata
         .model
         .as_ref()
         .map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
@@ -2661,6 +2793,8 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
         .await;
     let mut socket = Socket::connect(&backend, &other, FIRST).await;
     socket.open().await;
+    let mut sidebar = backend.sync(&master).await;
+    sidebar.snapshot().await;
     let raised = backend
         .patch(&path, &master, json!({ "thinkingEffort": "high" }))
         .await;
@@ -2673,10 +2807,21 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
         .await;
     let both = settings("m", Some("high"), Some("priority"));
     assert_eq!(
-        fast.json::<ConversationUpdate>().conversation.model,
+        fast.json::<ConversationUpdate>().metadata.model,
         Some(both.clone())
     );
-    assert_eq!(summary(&backend, &master, FIRST).await.model, Some(both));
+    assert_eq!(metadata(&backend, &master, FIRST).await.model, Some(both.clone()));
+    // The settings are the conversation's metadata: page B's socket brings
+    // them, and the sidebar's channel hears nothing of them, so its next
+    // message is the nickname's.
+    socket.metadata_until(|metadata| metadata.model.as_ref() == Some(&both)).await;
+    let nickname = backend.patch("/api/auth/me", &master, json!({ "nickname": "Ana" })).await;
+    assert_eq!(nickname.status, StatusCode::OK);
+    let next = sidebar.next().await;
+    assert!(
+        matches!(&next, demi_web_api_protocol::state::SyncEvent::User { user } if user.nickname == "Ana"),
+        "{next:?}"
+    );
 
     // Page B's message runs with both.
     vendor.respond(answer(&["one"], 1, 1));
@@ -2706,7 +2851,7 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
         ]
     );
     assert_eq!(
-        update.conversation.model,
+        update.metadata.model,
         Some(settings("n", Some("high"), None))
     );
     vendor.respond(answer(&["two"], 1, 1));
@@ -2774,7 +2919,7 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
         assert_eq!(refused.refusal(), (status, code), "{body}");
     }
     assert_eq!(
-        summary(&backend, &master, FIRST).await.model,
+        metadata(&backend, &master, FIRST).await.model,
         Some(settings("n", Some("low"), None))
     );
     backend.close().await;
@@ -2799,7 +2944,7 @@ async fn a_change_that_names_no_effort_takes_the_first_effort_the_model_lists() 
     let provider = entry(&backend, &master, body).await;
     create(&backend, &master, FIRST).await;
     let effort =
-        |summary: ConversationSummary| summary.model.and_then(|model| model.thinking_effort);
+        |metadata: ConversationMetadata| metadata.model.and_then(|model| model.thinking_effort);
     let chosen = choose(&backend, &master, FIRST, &provider, "m").await;
     assert_eq!(effort(chosen).as_deref(), Some("low"));
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -2819,13 +2964,13 @@ async fn a_change_that_names_no_effort_takes_the_first_effort_the_model_lists() 
         .patch(&path, &master, json!({ "thinkingEffort": "disabled" }))
         .await;
     assert_eq!(
-        effort(off.json::<ConversationUpdate>().conversation).as_deref(),
+        effort(off.json::<ConversationUpdate>().metadata).as_deref(),
         Some("disabled")
     );
     let switch = json!({ "model": { "providerId": provider, "modelId": "n" } });
     let switched = backend.patch(&path, &master, switch).await;
     assert_eq!(
-        effort(switched.json::<ConversationUpdate>().conversation).as_deref(),
+        effort(switched.json::<ConversationUpdate>().metadata).as_deref(),
         Some("low")
     );
 

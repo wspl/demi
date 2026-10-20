@@ -11,14 +11,14 @@ use std::{
 
 use demi_agent_store::{media::HeldMedia, testing::test_model};
 use demi_agent_tools::{HostResolver, ProfileModel, Unavailable};
-use demi_conversation_socket_protocol::{ClientContent, ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{AgentEntry, AgentRole, ClientContent, ClientFrame, ServerFrame};
 use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
-use demi_shared_types::{ModelSelection, NodeId, ProviderModel, UnavailableSetting, UserContentBlock};
+use demi_shared_types::{ContextUsage, ModelSelection, NodeId, ProviderModel, SessionPhase, UnavailableSetting, UserContentBlock};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
-    ProviderResolver, ResolveError, ResolvedFiles,
+    AgentServer, AgentsSource, Connection, ContentError, ContentResolver, FileReference, FrameRx, KeptAgents, Outgoing,
+    ProviderResolver, ReplyFiles, ResolveError, ResolvedFiles,
 };
 
 /// A message's content of one text, as the web app sends it.
@@ -219,6 +219,80 @@ impl ContentResolver for TestFiles {
     }
 }
 
+/// A product that keeps nothing of a conversation's agents: no cost, no
+/// side question's card.
+pub struct NoKeptAgents;
+
+impl AgentsSource for NoKeptAgents {
+    fn kept<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, KeptAgents> {
+        Box::pin(async { KeptAgents::default() })
+    }
+}
+
+/// A Host whose files a test names: a path a reply writes, read against its
+/// working directory, is a file when `files` holds what it resolves to.
+#[derive(Default)]
+pub struct TestHostFiles {
+    pub files: RefCell<Vec<String>>,
+}
+
+impl ReplyFiles for TestHostFiles {
+    fn files<'a>(
+        &'a self,
+        _root: &'a NodeId,
+        cwd: &'a str,
+        paths: Vec<String>,
+    ) -> LocalBoxFuture<'a, Option<HashMap<String, String>>> {
+        Box::pin(async move {
+            let held = self.files.borrow();
+            Some(
+                paths
+                    .into_iter()
+                    .filter_map(|path| {
+                        let resolved = if path.starts_with('/') { path.clone() } else { format!("{cwd}/{path}") };
+                        held.contains(&resolved).then_some((path, resolved))
+                    })
+                    .collect(),
+            )
+        })
+    }
+}
+
+/// The agents' entries a frame carries: every one an `agents` frame lists,
+/// the one an `agent` frame changes, none for another frame.
+pub fn agent_entries(frame: &ServerFrame) -> &[AgentEntry] {
+    match frame {
+        ServerFrame::Agents { agents, .. } => agents,
+        ServerFrame::Agent { agent, .. } => std::slice::from_ref(agent),
+        _ => &[],
+    }
+}
+
+/// The entry of the agent `id` the frame carries.
+pub fn entry_in<'a>(frame: &'a ServerFrame, id: &NodeId) -> Option<&'a AgentEntry> {
+    agent_entries(frame).iter().find(|entry| &entry.id == id)
+}
+
+/// The root's entry the frame carries.
+pub fn root_entry(frame: &ServerFrame) -> Option<&AgentEntry> {
+    agent_entries(frame).iter().find(|entry| entry.role == AgentRole::Root)
+}
+
+/// The root's estimate of its next request the frame carries.
+pub fn root_context(frame: &ServerFrame) -> Option<&ContextUsage> {
+    root_entry(frame).and_then(|entry| entry.context.as_ref())
+}
+
+/// Whether the frame says the agent `id` is at `phase`.
+pub fn phase_is(frame: &ServerFrame, id: &NodeId, phase: SessionPhase) -> bool {
+    entry_in(frame, id).is_some_and(|entry| entry.phase == phase)
+}
+
+/// Whether the frame says the root is at `phase`.
+pub fn root_phase_is(frame: &ServerFrame, phase: SessionPhase) -> bool {
+    root_entry(frame).is_some_and(|entry| entry.phase == phase)
+}
+
 /// How long a test's wait for a frame may take before it fails as a hang
 /// (`testing.md` § Time and stability): the scripted model answers at once.
 pub const HANG_GUARD: Duration = Duration::from_secs(10);
@@ -226,6 +300,9 @@ pub const HANG_GUARD: Duration = Duration::from_secs(10);
 /// A client of one connection: it hands frames to the connection as the
 /// backend's socket task would, and reads what the outbox sends back.
 pub struct TestClient<H: HostResolver> {
+    root: NodeId,
+    /// The root's phase as the frames read so far tell it.
+    root_phase: SessionPhase,
     connection: Connection<H>,
     frames: FrameRx,
     /// How long a wait for a frame may take before it fails as a hang.
@@ -246,6 +323,8 @@ impl<H: HostResolver> TestClient<H> {
     ) -> Self {
         let (connection, frames) = server.connect(root.clone(), files);
         Self {
+            root: root.clone(),
+            root_phase: SessionPhase::Idle,
             connection,
             frames,
             hang_guard: HANG_GUARD,
@@ -260,6 +339,18 @@ impl<H: HostResolver> TestClient<H> {
         self
     }
 
+    /// Subscribes to the root, as a page that shows the conversation does,
+    /// and opens the conversation, holding nothing of it.
+    pub async fn open(&self) {
+        self.subscribe(&self.root).await;
+        self.send(ClientFrame::Open { agents: None, draft: None }).await;
+    }
+
+    /// Subscribes to the node `node`, holding nothing of it.
+    pub async fn subscribe(&self, node: &NodeId) {
+        self.send(ClientFrame::Subscribe { node: node.clone(), held: None }).await;
+    }
+
     /// Hands `frame` to the connection and waits until it is handled.
     pub async fn send(&self, frame: ClientFrame) {
         self.connection.handle(frame).await;
@@ -268,14 +359,40 @@ impl<H: HostResolver> TestClient<H> {
     /// The next frame; `None` once the outbox is closed or lagged.
     pub async fn next(&mut self) -> Option<ServerFrame> {
         match self.frames.recv().await {
-            Outgoing::Frame(frame) => Some(frame),
+            Outgoing::Frame(frame) => {
+                if let Some(entry) = entry_in(&frame, &self.root) {
+                    self.root_phase = entry.phase;
+                }
+                Some(frame)
+            }
             Outgoing::Lagged | Outgoing::Closed => None,
         }
     }
 
+    /// The frames up to the one that tells the root went idle, after the
+    /// frames read so far or these told it working: the end of its turn or
+    /// its action, as a page sees it.
+    pub async fn until_idle(&mut self) -> Vec<ServerFrame> {
+        let worked = std::cell::Cell::new(self.root_phase != SessionPhase::Idle);
+        let root = self.root.clone();
+        self.next_until(move |frame| match entry_in(frame, &root).map(|entry| entry.phase) {
+            Some(SessionPhase::Idle) => worked.get(),
+            Some(_) => {
+                worked.set(true);
+                false
+            }
+            None => false,
+        })
+        .await
+    }
+
     /// Every frame waiting now.
     pub fn received(&mut self) -> Vec<ServerFrame> {
-        waiting_frames(&mut self.frames)
+        let frames = waiting_frames(&mut self.frames);
+        if let Some(entry) = frames.iter().rev().find_map(|frame| entry_in(frame, &self.root)) {
+            self.root_phase = entry.phase;
+        }
+        frames
     }
 
     /// The connection and its outbox apart, for a test that looks at what

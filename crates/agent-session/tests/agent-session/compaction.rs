@@ -3252,11 +3252,12 @@ async fn a_session_of_many_compactions_holds_only_its_last_window_and_reads_the_
     let held = session.transcript();
     assert_eq!((held.start, held.blocks), (next, path[next..].to_vec()));
 
-    // The earlier history is read from the store: whole, and as a page
-    // that holds it from its second block.
+    // The earlier history is read from the store whole; a page that holds it
+    // from its second block is answered with the latest page, which the
+    // window holds, and reads the rest when it shows it.
     assert_eq!(session.history().await.unwrap().blocks, path);
-    let reset = session.reset(Some(1), Some(path[1].id())).await.unwrap();
-    assert_eq!((reset.start, reset.length, reset.blocks), (1, path.len(), path[1..].to_vec()));
+    let reset = session.reset(Some(1), Some(path[1].id()));
+    assert_eq!((reset.start, reset.length), (next, path.len()));
 
     // An edit of the first message, before every boundary, replaces the
     // history from it.

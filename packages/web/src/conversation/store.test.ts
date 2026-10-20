@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, expect, jest, setSystemTime, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, expect, jest, mock, setSystemTime, spyOn, test } from 'bun:test'
+import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { ClientContent, MessageComment, ServerFrame } from '@demicodes/protocol'
-import { RefusedError } from '@demicodes/conversation-client'
+import type { AgentEntry, Block, ClientContent, ClientFrame, MessageComment, ProviderFailureFacts, ServerFrame, SessionPhase } from '@demicodes/protocol'
+import { RefusedError, heldEdge } from '@demicodes/conversation-client'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
@@ -10,15 +11,16 @@ import { codeText, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { createPageI18n } from '@demicodes/web-ui/i18n/text'
 import { sendPageErrorReport } from '../api/page-errors'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
+import { readConversationCopy } from '../state/offline'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences, SavedMessage, WorkspaceDto } from '../api/generated/web-api'
+import type { AttachedHost, ConversationDraft, ConversationMetadata, ConversationSummary, DraftFile, Preferences, SavedMessage, WorkspaceDto } from '../api/generated/web-api'
 import { changeMessageEditContent, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { useSession } from '../auth/session'
-import { conversationSummary, productState } from '../__tests__/product-state'
+import { conversationMetadata, conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import * as draftStorage from './drafts'
@@ -27,7 +29,8 @@ import { DRAFT_SAVE_DELAY_MS } from './record'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { contentCopy } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { quotedWords, textWords } from '@demicodes/web-ui/agent/send-to-conversation'
-import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
+import { EMPTY_TRANSCRIPT, type ClientSessionEvent } from '@demicodes/web-ui/transport/protocol'
+import type { Conversation } from '../state/types'
 import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
 import { TestSocket } from '@demicodes/web-ui/transport/__tests__/test-socket'
@@ -38,6 +41,9 @@ const EMPTY_PAGE = { start: 0, length: 0, blocks: [], instructions: [], summarie
 const RUNS_ON = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
 
 const realFetch = globalThis.fetch
+const realSocket = globalThis.WebSocket
+const realIndexedDB = globalThis.indexedDB
+const realKeyRange = globalThis.IDBKeyRange
 const FIRST = '00000000-0000-4000-8000-000000000001'
 const SECOND = '00000000-0000-4000-8000-000000000002'
 const SHA = 'a'.repeat(64)
@@ -113,6 +119,14 @@ class FakeXhr {
 }
 globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest
 let records: ConversationSummary[]
+/** Each conversation's metadata as the backend keeps it, by id. */
+let metas: Map<string, ConversationMetadata>
+/** Each conversation's attached hosts, as the backend serves them. */
+let serverHosts = new Map<string, AttachedHost[]>()
+/** Each conversation's root transcript, as the played backend serves it. */
+let rootBlocks = new Map<string, Block[]>()
+/** Each conversation's subagents' entries, as the played backend serves them. */
+let subagentEntries = new Map<string, AgentEntry[]>()
 let rejectCreate: boolean
 /** Holds the next creation's answer until the test opens it. */
 let holdCreate: Promise<void> | null
@@ -164,16 +178,25 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
     }
   }
   serverDrafts.set(id, next)
-  records.find((item) => item.id === id)!.draftRevision = next.revision
   return Response.json({ draft: next, revisions: revisionsOf(id) })
 }
 
 /** The messages saved for later the backend keeps, by conversation, newest first. */
 let serverSaved: Map<string, SavedMessage[]>
 
+/** The metadata the backend keeps of conversation `id`, made at its first use. */
+function metaOf(id: string): ConversationMetadata {
+  let metadata = metas.get(id)
+  if (!metadata) {
+    metadata = conversationMetadata(id, { cwd: `/home/demi/sessions/${id}` })
+    metas.set(id, metadata)
+  }
+  return metadata
+}
+
 /** The conversation's revisions of its draft and its list, as every write answers them. */
 function revisionsOf(id: string) {
-  return { draft: serverDrafts.get(id)?.revision ?? 0, saved: records.find((item) => item.id === id)!.savedRevision }
+  return { draft: serverDrafts.get(id)?.revision ?? 0, saved: metaOf(id).savedRevision }
 }
 
 /**
@@ -183,16 +206,16 @@ function revisionsOf(id: string) {
  * the message's place; and a deletion, which a message gone already answers the same.
  */
 function savedRoute(id: string, method: string, path: string, body: Record<string, unknown>): Response {
-  const summary = records.find((item) => item.id === id)!
+  const metadata = metaOf(id)
   const messages = serverSaved.get(id) ?? []
   const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], comments: [], replaced: null }
   const raise = () => {
-    summary.savedRevision += 1
-    summary.saved = serverSaved.get(id)!.length
+    metadata.savedRevision += 1
+    metadata.saved = serverSaved.get(id)!.length
   }
   const [, messageId] = /^\/saved(?:\/([^/]+))?$/.exec(path) ?? []
   if (method === 'GET') {
-    return Response.json({ revision: summary.savedRevision, messages })
+    return Response.json({ revision: metadata.savedRevision, messages })
   }
   if (method === 'DELETE') {
     if (messages.some((message) => message.id === messageId)) {
@@ -219,20 +242,49 @@ function savedRoute(id: string, method: string, path: string, body: Record<strin
   if (messageId === 'from-draft') {
     const draft = { revision: current.revision + 1, text: '', files: [], comments: current.comments, replaced: current.replaced }
     serverDrafts.set(id, draft)
-    summary.draftRevision = draft.revision
     return Response.json({ message, draft, revisions: revisionsOf(id) }, { status: 201 })
   }
   return Response.json({ message, revisions: revisionsOf(id) }, { status: 201 })
 }
 
 function record(id: string, title = id): ConversationSummary {
-  return conversationSummary(id, title, { cwd: `/home/demi/sessions/${id}` })
+  return conversationSummary(id, title)
+}
+
+/**
+ * Applies `patch` as the backend does: the sidebar's fields to the
+ * conversation's summary, its model, effort, tier and workflow to its
+ * metadata.
+ */
+function applyPatch(summary: ConversationSummary, patch: Record<string, unknown>): void {
+  const metadata = metaOf(summary.id)
+  for (const [field, value] of Object.entries(patch)) {
+    if (field === 'model') {
+      const choice = value as { providerId: string, modelId: string }
+      metadata.model = { thinkingEffort: null, serviceTierId: null, ...metadata.model, ...choice }
+    } else if (field === 'thinkingEffort' || field === 'serviceTierId') {
+      metadata.model = { ...metadata.model!, [field]: value }
+    } else if (field === 'workflow') {
+      metadata.workflow = value as ConversationMetadata['workflow']
+    } else if (field !== 'notifyAgent') {
+      Object.assign(summary, { [field]: value })
+    }
+  }
 }
 
 beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
   records = [record(FIRST, 'first'), record(SECOND, 'second')]
+  metas = new Map()
+  // Each runs on a model, so its socket opens a session.
+  for (const id of [FIRST, SECOND]) {
+    metaOf(id).model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  }
+  pageSockets = []
+  rootBlocks = new Map()
+  subagentEntries = new Map()
+  serverHosts = new Map()
   savedPreferences = { appearance: {}, shortcuts: {} }
   workspaces = []
   serverDrafts = new Map()
@@ -270,11 +322,13 @@ beforeEach(async () => {
       }
       const created = records.find((item) => item.id === body.id) ?? {
         ...record(body.id), title: 'first (Fork)',
-        model: { providerId: 'stub', modelId: 'model', thinkingEffort: 'high', serviceTierId: 'priority' },
         target: { kind: 'cloud' as const, path: '/home/demi/sessions/first' },
       }
-      if (!records.includes(created)) records.unshift(created)
-      return Response.json({ conversation: created }, { status: 201 })
+      if (!records.includes(created)) {
+        records.unshift(created)
+        metaOf(created.id).model = { providerId: 'stub', modelId: 'model', thinkingEffort: 'high', serviceTierId: 'priority' }
+      }
+      return Response.json({ conversation: created, metadata: metaOf(created.id) }, { status: 201 })
     }
     if (path === '/api/conversations') {
       const held = holdCreate
@@ -291,13 +345,12 @@ beforeEach(async () => {
         )
       }
       const existing = records.find((item) => item.id === body.id)
-      const created = existing ?? {
-        ...record(body.id), title: body.title ?? null, pinned: body.pinned ?? false, workflow: body.workflow ?? { type: 'default' },
-      }
+      const created = existing ?? { ...record(body.id), title: body.title ?? null, pinned: body.pinned ?? false }
       if (!existing) {
         records.unshift(created)
+        metaOf(created.id).workflow = body.workflow ?? { type: 'default' }
       }
-      return Response.json({ conversation: created }, { status: existing ? 200 : 201 })
+      return Response.json({ conversation: created, metadata: metaOf(created.id) }, { status: existing ? 200 : 201 })
     }
     if (path === '/api/conversations/batch') {
       const items = body.items as {
@@ -326,7 +379,7 @@ beforeEach(async () => {
             }
             // Telling the agent is no field of the record, and has no result of its own.
             const { notifyAgent: _told, ...fields } = item.patch
-            Object.assign(current, fields)
+            applyPatch(current, fields)
             return {
               status: 'updated',
               id: item.id,
@@ -345,27 +398,34 @@ beforeEach(async () => {
     if (conversationPatch && init?.method === 'PATCH') {
       order?.push('patch')
       const current = records.find((item) => item.id === decodeURIComponent(conversationPatch[1]!))!
-      Object.assign(current, body)
+      applyPatch(current, body)
       return Response.json({
         conversation: current,
+        metadata: metaOf(current.id),
         results: Object.keys(body).map((field) => ({ field, status: 'applied' })),
       })
     }
     if (path.endsWith('/read')) {
       return new Response(null, { status: 204 })
     }
-    if (/^\/api\/conversations\/[^/]+\/cost$/.test(path)) {
-      return Response.json(NO_COST)
+    // A conversation that opens no session reads its metadata and agents,
+    // and the latest page of its root: here one with nothing in it yet.
+    const detail = /^\/api\/conversations\/([^/]+)$/.exec(path)
+    if (detail && (init?.method ?? 'GET') === 'GET') {
+      const id = decodeURIComponent(detail[1]!)
+      return Response.json({
+        conversation: records.find((item) => item.id === id), metadata: metaOf(id),
+        agents: { epoch: 'e', revision: 1 }, entries: [rootEntry(id), ...subagentEntries.get(id) ?? []],
+      })
     }
-    // An opening's other reads: a conversation with nothing in it yet.
-    if (/^\/api\/conversations\/[^/]+\/transcript$/.test(path)) {
-      return Response.json({ start: 0, length: 0, blocks: [], instructions: [], summaries: [] })
+    const page = /^\/api\/conversations\/([^/]+)\/agents\/([^/]+)\/transcript$/.exec(path)
+    if (page) {
+      const blocks = page[1] === page[2] ? rootBlocks.get(decodeURIComponent(page[1]!)) ?? [] : []
+      return Response.json({ ...EMPTY_PAGE, length: blocks.length, blocks })
     }
-    if (/^\/api\/conversations\/[^/]+\/subagents$/.test(path)) {
-      return Response.json({ subagents: [] })
-    }
-    if (/^\/api\/conversations\/[^/]+\/hosts$/.test(path)) {
-      return Response.json({ hosts: [] })
+    const hosts = /^\/api\/conversations\/([^/]+)\/hosts$/.exec(path)
+    if (hosts) {
+      return Response.json({ hosts: serverHosts.get(decodeURIComponent(hosts[1]!)) ?? [] })
     }
     const draft = /^\/api\/conversations\/([^/]+)\/draft(\/replaced)?$/.exec(path)
     if (draft) {
@@ -382,11 +442,20 @@ beforeEach(async () => {
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
   channels = playChannels()
+  globalThis.indexedDB = new IDBFactory()
+  globalThis.IDBKeyRange = IDBKeyRange
+  // The conversation sockets answer as the backend does, unless a test plays them.
+  playPageSockets(backendOpening)
   useConversations()
   await connect()
 })
 
 afterEach(() => {
+  // A test that fails before its own restore leaves no spy to the next.
+  mock.restore()
+  Reflect.set(globalThis, 'WebSocket', realSocket)
+  globalThis.indexedDB = realIndexedDB
+  globalThis.IDBKeyRange = realKeyRange
   useConversations().stopAll()
   usePreferences().stop()
   useProduct().stop()
@@ -407,15 +476,56 @@ async function connect(): Promise<void> {
   await nextTick()
 }
 
+/** The ids of the pings the page sent on `channel`. */
+function pingsOf(channel: ReturnType<typeof channels.last>): number[] {
+  return channel.fromPage.flatMap((message) =>
+    typeof message === 'object' && message !== null && 'ping' in message && typeof message.ping === 'number' ? [message.ping] : [])
+}
+
+/**
+ * The page returns, and the backend answers the return's ping on the
+ * synchronization channel, as a live channel does; the return's check ends.
+ */
+async function returned(): Promise<void> {
+  const channel = channels.last()
+  const asked = new Set(pingsOf(channel))
+  const done = pageReturned()
+  let finished = false
+  void done.then(() => {
+    finished = true
+  })
+  await waitFor(() => finished || pingsOf(channel).some((id) => !asked.has(id)), () => 'the return asked nothing')
+  for (const id of pingsOf(channel).filter((each) => !asked.has(each))) {
+    channel.send({ type: 'pong', id })
+  }
+  await done
+}
+
 /** The channel brings the backend's whole state again, as it does when it connects again. */
 async function reconnected(): Promise<void> {
   channels.last().send({ type: 'snapshot', state: backendState() })
   await nextTick()
 }
 
-/** The channel brings the conversation's summary, as it does once a change of it commits. */
+/** The conversation sockets the page opened, in order, while a test plays them. */
+let pageSockets: TestSocket[] = []
+
+/** `frame` of the conversation `id`, as its socket sends it to each page that shows it. */
+function sendOnSockets(id: string, frame: unknown): void {
+  for (const socket of pageSockets) {
+    if (socket.url.includes(`/conversations/${id}/stream`) && !socket.closed && socket.readyState === TestSocket.OPEN) {
+      socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(frame) }))
+    }
+  }
+}
+
+/**
+ * A change of the conversation committed: the channel brings its summary,
+ * and its socket its metadata to each page that shows it.
+ */
 async function changed(id: string): Promise<void> {
   channels.last().send({ type: 'conversation', conversation: records.find((item) => item.id === id)! })
+  sendOnSockets(id, { type: 'conversation', metadata: metaOf(id) })
   await nextTick()
 }
 
@@ -618,82 +728,88 @@ test('a completed earlier preference write cannot discard a newer model selectio
   expect(savedPreferences.lastModel).toEqual(latest)
 })
 
+/** The entry of the child `id` of `conversation`'s root, its session in `phase` and its round as `parts` change it. */
+function childEntry(
+  conversation: Conversation,
+  id: string,
+  parts: Partial<Extract<AgentEntry['role'], { kind: 'subagent' }>> = {},
+  phase: SessionPhase = 'idle',
+): AgentEntry {
+  return {
+    id,
+    role: {
+      kind: 'subagent', number: 1, parent: conversation.id, description: 'Child', profile: null, model: RUNS_ON, round: 1,
+      forkedFrom: null, state: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null, cwd: '/work', onPath: true,
+      ...parts,
+    },
+    phase,
+    waitedMs: null,
+    pendingCalls: [],
+    context: null,
+    cost: NO_COST,
+  }
+}
+
+/** The revision of the agents the tests below have shown. */
+let agentsRevision = 0
+
+/** The conversation's agents, `entries` the whole of them, as a socket's open brings them. */
+function showAgents(conversation: Conversation, entries: AgentEntry[]): void {
+  agentsRevision += 1
+  applyConversationEvent(conversation, { type: 'agents', version: { epoch: 'e', revision: agentsRevision }, agents: entries, receivedAt: Date.now() })
+}
+
+/** One agent's entry as it changed, after those shown. */
+function changeAgent(conversation: Conversation, entry: AgentEntry): void {
+  agentsRevision += 1
+  applyConversationEvent(conversation, { type: 'agent', revision: agentsRevision, agent: entry, receivedAt: Date.now() })
+}
+
 test('sidebar stays active until the last running child closes after its parent finishes', () => {
   const conversation = useConversations().items[0]!
-  const job = {
-    subagentId: 'child-one',
-    number: 1,
-    parentSessionId: conversation.id,
-    onPath: true,
-    description: 'First child',
-    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
-    phase: 'running' as const,
-    startedAt: '2026-09-13T00:00:00.000Z',
-    endedAt: null,
-  }
   conversation.phase = 'idle'
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  const first = (parts = {}) => childEntry(conversation, 'child-one', { description: 'First child', ...parts })
+  const second = (parts = {}) => childEntry(conversation, 'child-two', { number: 2, ...parts })
+  showAgents(conversation, [first()])
   expect(conversation.status).toBe('active')
-  const other = { ...job, subagentId: 'child-two' }
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job: other })
-  applyConversationEvent(conversation, {
-    type: 'subagent',
-    event: 'closed',
-    job: { ...job, phase: 'completed', endedAt: '2026-09-13T00:01:00.000Z' },
-  })
+  showAgents(conversation, [first(), second()])
+  changeAgent(conversation, first({ state: 'completed', endedAt: '2026-09-13T00:01:00.000Z' }))
   expect(conversation.status).toBe('active')
   conversation.lastError = { message: 'The parent failed while its second child was working', requestId: null }
   updateLiveStatus(conversation)
   expect(conversation.status).toBe('active')
-  applyConversationEvent(conversation, {
-    type: 'subagent',
-    event: 'closed',
-    job: { ...other, phase: 'aborted', endedAt: '2026-09-13T00:02:00.000Z' },
-  })
+  changeAgent(conversation, second({ state: 'aborted', endedAt: '2026-09-13T00:02:00.000Z' }))
   expect(conversation.status).toBe('error')
   conversation.phase = 'running'
   updateLiveStatus(conversation)
   expect(conversation.status).toBe('active')
 })
 
-// A resumed child's line counts its new round: the `started` job of round 2
+// A resumed child's line counts its new round: the entry of round 2
 // replaces the closed round's start and end.
 test('a resumed child\'s record takes its new round\'s start, end and model', () => {
   const conversation = useConversations().items[0]!
-  const job = {
-    subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Look',
-    profile: 'research', model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
-    phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
-  }
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
-  applyConversationEvent(conversation, {
-    type: 'subagent', event: 'closed', job: { ...job, phase: 'completed', endedAt: '2026-09-13T00:01:00.000Z' },
-  })
-  const second = { ...job, round: 2, startedAt: '2026-09-13T00:05:00.000Z', model: { ...RUNS_ON, fast: true } }
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job: second })
+  const round = (parts = {}) => childEntry(conversation, 'child', { description: 'Look', profile: 'research', ...parts })
+  showAgents(conversation, [round()])
+  changeAgent(conversation, round({ state: 'completed', endedAt: '2026-09-13T00:01:00.000Z' }))
+  const model = { ...RUNS_ON, fast: true }
+  changeAgent(conversation, round({ round: 2, startedAt: '2026-09-13T00:05:00.000Z', model }))
   expect(conversation.subagents.find((agent) => agent.id === 'child')).toMatchObject({
-    phase: 'running', round: 2, startedAt: '2026-09-13T00:05:00.000Z', endedAt: undefined, model: second.model,
+    phase: 'running', round: 2, startedAt: '2026-09-13T00:05:00.000Z', endedAt: undefined, model,
   })
 })
 
 // A child's tail row reads its own phase: a child idle beside a command it
 // left running shows no Requesting row, and its phase never becomes the
 // root's.
-test('a live child\'s phase frames set its own phase, not the root\'s', () => {
+test('a live child\'s entry sets its own phase, not the root\'s', () => {
   const conversation = useConversations().items[0]!
   conversation.phase = 'idle'
-  applyConversationEvent(conversation, {
-    type: 'subagent',
-    event: 'started',
-    job: {
-      subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Serve',
-      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
-    },
-  })
+  showAgents(conversation, [childEntry(conversation, 'child', { description: 'Serve' })])
   const child = () => conversation.subagents.find((agent) => agent.id === 'child')!
-  applyConversationEvent(conversation, { type: 'phase', subagentId: 'child', phase: 'running' })
+  changeAgent(conversation, childEntry(conversation, 'child', { description: 'Serve' }, 'running'))
   expect(child().sessionPhase).toBe('running')
-  applyConversationEvent(conversation, { type: 'phase', subagentId: 'child', phase: 'idle' })
+  changeAgent(conversation, childEntry(conversation, 'child', { description: 'Serve' }, 'idle'))
   expect(child().sessionPhase).toBe('idle')
   expect(conversation.phase).toBe('idle')
 })
@@ -706,6 +822,11 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
   }
 }
 
+/** The node `node`'s transcript reset to `blocks` with the failure facts `failures`, as the client tells it. */
+function nodeReset(node: string, blocks: Block[], failures: Record<string, ProviderFailureFacts> = {}): ClientSessionEvent {
+  return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'c', revision: 1 }, versions: [], failures, asked: undefined }
+}
+
 // `crates/agent-server/src/server/tree/live.rs`: every page keeps one record of
 // a command from its live frames, titled by its call's title and opening with
 // its script as the frames carry them, and adds only the characters beyond
@@ -716,6 +837,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   conversation.terminals = []
   const frame = (status: 'running' | 'exited', tail: string, chars: number) => ({
     type: 'shell_output' as const,
+    node: conversation.id,
     status: status === 'running'
       ? { status, commandId: 'cmd', toolUseId: 'call-1', title: 'Run the unit tests', script: 'npm test', tail, chars, runningMs: 10 }
       : { status, commandId: 'cmd', toolUseId: 'call-1', title: 'Run the unit tests', script: 'npm test', tail, chars, runningMs: 10, exitCode: 0 },
@@ -736,16 +858,10 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   expect(conversation.terminals[0]?.endedAt).toBeDefined()
 
   // A subagent's command is titled as its frames say, as the root's is.
-  const job = {
-    subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
-    phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
-  }
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  showAgents(conversation, [childEntry(conversation, 'child')])
+  applyConversationEvent(conversation, nodeReset('child', [execCall('call-1', 'cargo build', 'executing')]))
   applyConversationEvent(conversation, {
-    type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 1, blocks: [execCall('call-1', 'cargo build', 'executing')], failures: {},
-  })
-  applyConversationEvent(conversation, {
-    type: 'shell_output', subagentId: 'child',
+    type: 'shell_output', node: 'child',
     status: { status: 'running', commandId: 'cmd-2', toolUseId: 'call-1', title: 'cargo build', script: 'cargo build', tail: 'Compiling\n', chars: 10, runningMs: 5 },
   })
   expect(toRaw(conversation.terminals)[1]).toMatchObject({
@@ -759,52 +875,32 @@ test('a stopped command stays stopped', () => {
   conversation.history = wholeHistory([execCall('call-1', 'npm run watch', 'executing')])
   conversation.terminals = []
   const view = { commandId: 'cmd', toolUseId: 'call-1', title: 'Watch', script: 'npm run watch', tail: 'watching\n', chars: 9, runningMs: 10 }
-  applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'running', ...view } })
-  applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'aborted', ...view } })
+  applyConversationEvent(conversation, { type: 'shell_output', node: conversation.id, status: { status: 'running', ...view } })
+  applyConversationEvent(conversation, { type: 'shell_output', node: conversation.id, status: { status: 'aborted', ...view } })
   expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
 })
 
 test('a child keeps the failure facts of its transcript, which resets and patches add to', () => {
   const conversation = useConversations().items[0]!
-  const job = {
-    subagentId: 'child',
-    number: 1,
-    parentSessionId: conversation.id,
-    onPath: true,
-    description: 'Child',
-    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
-    phase: 'running' as const,
-    startedAt: '2026-09-13T00:00:00.000Z',
-    endedAt: null,
-  }
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  showAgents(conversation, [childEntry(conversation, 'child')])
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
-  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], failures: { first: lifts } })
-  applyConversationEvent(conversation, { type: 'subagent_transcript_patch', subagentId: 'child', patches: [], failures: { second: { retryAt: null } } })
+  applyConversationEvent(conversation, nodeReset('child', [], { first: lifts }))
+  applyConversationEvent(conversation, {
+    type: 'transcript_patch', node: 'child', patches: [], version: { epoch: 'c', revision: 2 }, failures: { second: { retryAt: null } },
+  })
   expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures)
     .toEqual({ first: lifts, second: { retryAt: null } })
   // A reset brings the blocks from its start; the page may hold those before it, with their facts.
-  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], failures: {} })
+  applyConversationEvent(conversation, nodeReset('child', []))
   expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures)
     .toEqual({ first: lifts, second: { retryAt: null } })
 })
 
-test('a child’s directory follows its changed frames, with the round untouched', () => {
+test('a child’s directory follows its changed entry, with the round untouched', () => {
   const conversation = useConversations().items[0]!
-  const job = {
-    subagentId: 'mover',
-    number: 2,
-    parentSessionId: conversation.id,
-    onPath: true,
-    description: 'Mover',
-    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
-    phase: 'running' as const,
-    startedAt: '2026-09-13T00:00:00.000Z',
-    endedAt: null,
-  }
-  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  showAgents(conversation, [childEntry(conversation, 'mover', { number: 2, description: 'Mover' })])
   expect(conversation.subagents.find((agent) => agent.id === 'mover')?.cwd).toBe('/work')
-  applyConversationEvent(conversation, { type: 'subagent', event: 'changed', job: { ...job, cwd: '/work/slots/2' } })
+  changeAgent(conversation, childEntry(conversation, 'mover', { number: 2, description: 'Mover', cwd: '/work/slots/2' }))
   expect(conversation.subagents.find((agent) => agent.id === 'mover')).toMatchObject({ cwd: '/work/slots/2', round: 1, phase: 'running' })
 })
 
@@ -814,6 +910,8 @@ test('restored running children keep an idle parent active in the sidebar', () =
   conversation.subagents = [{
     id: 'restored-child',
     number: 1,
+    parent: conversation.id,
+    cost: NO_COST,
     name: 'Restored child',
     onPath: true,
     profile: null,
@@ -937,7 +1035,7 @@ test('a choice made while the first message makes the record applies before that
   await retried
   expect(requests.filter((request) => request.path === `/api/conversations/${id}`).map((request) => request.body))
     .toEqual([{ workflow: { type: 'none' } }])
-  expect(records.find((record) => record.id === id)!.workflow).toEqual({ type: 'none' })
+  expect(metaOf(id).workflow).toEqual({ type: 'none' })
   expect(seen).toEqual(['patch', 'submit'])
   submit.mockRestore()
   connect.mockRestore()
@@ -964,128 +1062,6 @@ test('first send failure preserves the conversation and retries its UUID and mes
   ])
 })
 
-// A product check sent the first message of a new conversation right after
-// the page loaded, and it failed with "No available model for this
-// conversation.": the providers changed while the record was made, and the
-// conversation opened on the model list's load that the change replaced.
-test('a first send whose conversation opens while the model list loads again goes once the list answers', async () => {
-  const store = useConversations()
-  const product = useProduct()
-  const sync = channels.last()
-  const id = store.create()
-  await store.activate(id)
-  const conversation = store.items.find((item) => item.id === id)!
-  addStubProvider()
-  const asked = deferred<void>()
-  const answerCreate = deferred<void>()
-  /** Each model list the page asked for, answered when the test says. */
-  const lists: ReturnType<typeof deferred<Response>>[] = []
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) {
-      const list = deferred<Response>()
-      // An aborted request ends as the web browser ends it.
-      init?.signal?.addEventListener('abort', () => list.reject(init.signal!.reason), { once: true })
-      lists.push(list)
-      return list.promise
-    }
-    if (path === '/api/conversations') {
-      asked.resolve()
-      await answerCreate.promise
-    }
-    return originalFetch(input, init)
-  }) as typeof fetch
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
-  try {
-    const loaded = product.loadModels(true)
-    await waitFor(() => lists.length === 1)
-    lists[0]!.resolve(Response.json(stubCatalog()))
-    await loaded
-    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
-    conversation.draft = 'First message'
-    const sending = store.send(conversation)
-    await asked.promise
-    // The entry is renamed while the record is made: the list loads again.
-    const renamed = [{ ...stubProvider, label: 'Stub Account' }]
-    sync.send({ type: 'providers', providers: renamed })
-    await waitFor(() => lists.length === 2)
-    answerCreate.resolve()
-    // The conversation opens: its socket's connection is made beside its reads.
-    await waitFor(() => channels.opened.some((channel) => channel.url.endsWith(`/${id}/stream`)))
-    // The entry's account is read again, which loads the list once more.
-    sync.send({ type: 'providers', providers: renamed })
-    await waitFor(() => lists.length === 3)
-    // The replaced load has ended; the event loop turns once, which a send
-    // that did not wait for the list needed to fail.
-    await new Promise((resolve) => setImmediate(resolve))
-    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual([null])
-    expect(submit).not.toHaveBeenCalled()
-    lists[2]!.resolve(Response.json(stubCatalog()))
-    await sending
-    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual([])
-    expect(submit).toHaveBeenCalledTimes(1)
-  } finally {
-    submit.mockRestore()
-    connect.mockRestore()
-    globalThis.fetch = originalFetch
-  }
-})
-
-// A model list that fails while a message waits for it is why the message
-// did not go, and the message says so.
-test('a first send waiting for the model list ends undelivered with the list’s failure when it fails', async () => {
-  const store = useConversations()
-  const product = useProduct()
-  const id = store.create()
-  await store.activate(id)
-  const conversation = store.items.find((item) => item.id === id)!
-  addStubProvider()
-  const asked = deferred<void>()
-  const answerCreate = deferred<void>()
-  /** Each model list the page asked for, answered when the test says. */
-  const lists: ReturnType<typeof deferred<Response>>[] = []
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) {
-      const list = deferred<Response>()
-      lists.push(list)
-      return list.promise
-    }
-    if (path === '/api/conversations') {
-      asked.resolve()
-      await answerCreate.promise
-    }
-    return originalFetch(input, init)
-  }) as typeof fetch
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
-  try {
-    const loaded = product.loadModels(true)
-    await waitFor(() => lists.length === 1)
-    lists[0]!.resolve(Response.json(stubCatalog()))
-    await loaded
-    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
-    conversation.draft = 'First message'
-    const sending = store.send(conversation)
-    await asked.promise
-    // The entry is renamed while the record is made: the list loads again, and fails.
-    channels.last().send({ type: 'providers', providers: [{ ...stubProvider, label: 'Stub Account' }] })
-    await waitFor(() => lists.length === 2)
-    answerCreate.resolve()
-    lists[1]!.resolve(Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Catalog offline' }, { status: 500 }))
-    await sending
-    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models. Something went wrong on the server.'])
-    expect(submit).not.toHaveBeenCalled()
-  } finally {
-    submit.mockRestore()
-    connect.mockRestore()
-    globalThis.fetch = originalFetch
-  }
-})
-
 /**
  * Answers what opening the conversation `id` reads, beside the backend's own
  * routes, after `intercept` had its look at each request; gives the backend
@@ -1101,7 +1077,7 @@ function answerOpening(id: string, intercept: (path: string) => void = () => {})
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
-      return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
+      return Response.json({ conversation: records.find((item) => item.id === id), metadata: metaOf(id), results: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -1147,7 +1123,7 @@ test('a first send while the backend is away waits without failing and goes once
     expect(submit).not.toHaveBeenCalled()
     away = false
     // The page connects again at once rather than after its wait, and the channel's snapshot ends the banner.
-    await pageReturned()
+    await returned()
     channels.last().connect({ ...backendState(), providers: [stubProvider] })
     await sending
     expect(submit).toHaveBeenCalledTimes(1)
@@ -1609,7 +1585,7 @@ test('the first send keeps the new conversation shown while its record opens', a
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
-      return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
+      return Response.json({ conversation: records.find((item) => item.id === id), metadata: metaOf(id), results: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -1905,15 +1881,14 @@ test('a message sends its text and files in the order the composer shows them', 
 })
 
 /**
- * Runs `check` on the first conversation with its session opened over stubs,
- * the content its messages deliver collected in `sent`.
+ * Runs `check` on the first conversation, whose session the played backend
+ * opens, the content its messages deliver collected in `sent`.
  */
 async function withSession(check: (current: ReturnType<typeof useConversations>['items'][number], sent: ClientContent[][]) => Promise<void>): Promise<void> {
   const store = useConversations()
   const current = store.items[0]!
   addStubProvider()
   const restore = answerOpening(current.id)
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const sent: ClientContent[][] = []
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content) => {
     sent.push(content)
@@ -1923,7 +1898,6 @@ async function withSession(check: (current: ReturnType<typeof useConversations>[
     await check(current, sent)
   } finally {
     submit.mockRestore()
-    connect.mockRestore()
     restore()
   }
 }
@@ -2493,7 +2467,6 @@ test('a message sent just before a reload that cut off its stored draft goes aft
 test('after a reload that cut off a send, the composer stays empty and the backend draft is emptied once the message is taken', async () => {
   const typed = 'Compare these'
   serverDrafts.set(FIRST, { revision: 1, text: typed, files: [], comments: [], replaced: null })
-  records[0]!.draftRevision = 1
   let signOut = signIn()
   const snapshots: draftStorage.SavedDraft[] = []
   const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
@@ -2708,14 +2681,13 @@ test('leaving an empty draft discards it without removing a draft with input', a
 })
 
 test('a page shows the model settings another page chose and writes nothing back', async () => {
-  const store = useConversations()
-  const current = store.items.find((item) => item.id === FIRST)!
-  const record = records.find((item) => item.id === FIRST)!
+  const { conversation: current } = await openWithSession(FIRST)
+  const record = metaOf(FIRST)
   record.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'low', serviceTierId: null }
   await changed(FIRST)
   expect(current.model).toEqual(record.model)
-  // Another page raises the effort and turns Fast on: the summary this
-  // page's channel brings shows both, as the record holds them.
+  // Another page raises the effort and turns Fast on: the metadata this
+  // page's socket brings shows both, as the record holds them.
   record.model = { ...record.model, thinkingEffort: 'high', serviceTierId: 'priority' }
   await changed(FIRST)
   expect(current.model).toEqual({ providerId: 'stub', modelId: 'stub', thinkingEffort: 'high', serviceTierId: 'priority' })
@@ -2724,11 +2696,11 @@ test('a page shows the model settings another page chose and writes nothing back
 
 test('a model change names only the part it changes, so another page\'s change stays, and shows its answer at once', async () => {
   const store = useConversations()
-  const current = store.items.find((item) => item.id === FIRST)!
-  const record = records.find((item) => item.id === FIRST)!
+  const { conversation: current } = await openWithSession(FIRST)
+  const record = metaOf(FIRST)
   record.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'low', serviceTierId: null }
   await changed(FIRST)
-  // Another page turned Fast on; this page's channel has not brought it yet.
+  // Another page turned Fast on; this page's socket has not brought it yet.
   record.model = { ...record.model, serviceTierId: 'priority' }
   const patches: unknown[] = []
   const fetch = globalThis.fetch
@@ -2739,7 +2711,7 @@ test('a model change names only the part it changes, so another page\'s change s
     const change = JSON.parse(String(init.body)) as { thinkingEffort: string }
     patches.push(change)
     record.model = { ...record.model!, thinkingEffort: change.thinkingEffort }
-    return Response.json({ conversation: record, results: [{ field: 'thinking_effort', status: 'applied' }] })
+    return Response.json({ conversation: records[0], metadata: record, results: [{ field: 'thinking_effort', status: 'applied' }] })
   }) as typeof fetch
   try {
     await store.changeModel(current, { thinkingEffort: 'high' })
@@ -2771,57 +2743,20 @@ test('a new snapshot preserves the live transcript and the unsent draft', async 
   expect(current.phase).toBe('running')
 })
 
+// A conversation the user leaves while it opens goes on opening: its
+// socket's answer shows it, and its draft stays. Cost: one opening.
 test('history remains readable during its own connection after navigation', async () => {
-  const store = useConversations()
-  const current = store.items[0]!
-  const cached = [{ type: 'text' as const, id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
-  current.history = wholeHistory(cached)
-  current.draft = 'Keep the draft'
-  addStubProvider()
-  const historyRequested = deferred<void>()
-  const history = deferred<Response>()
-  const connecting = deferred<void>()
-  const connection = deferred<void>()
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockImplementation(() => {
-    connecting.resolve()
-    return connection.promise
-  })
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) {
-      return Response.json(stubCatalog())
-    }
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    if (path.endsWith('/transcript')) {
-      historyRequested.resolve()
-      return history.promise
-    }
-    return originalFetch(input, init)
-  }) as typeof fetch
-  await useProduct().loadModels(true)
-  const opening = store.activate(current.id)
-  try {
-    expect(current).toMatchObject({ load: 'loading' })
-    await historyRequested.promise
-    expect(current).toMatchObject({ load: 'loading' })
-    useProduct().activeConversationId = SECOND
-    history.resolve(Response.json({ start: 0, length: 1, blocks: cached, instructions: [], summaries: [] }))
-    await connecting.promise
-    expect(current).toMatchObject({ load: 'ready' })
-    expect(current.draft).toBe('Keep the draft')
-    connection.reject(new Error('Connection failed'))
-    await opening
-    expect(current).toMatchObject({ load: 'failed' })
-    expect(current.lastError).toEqual({ message: 'Connection failed', requestId: null })
-  } finally {
-    history.resolve(Response.json(EMPTY_PAGE))
-    connection.resolve()
-    await opening
-    connect.mockRestore()
-    globalThis.fetch = originalFetch
-  }
+  const { conversation, sockets, opening } = await startOpening(FIRST)
+  conversation.draft = 'Keep the draft'
+  await openSent(sockets)
+  expect(conversation.load).toBe('loading')
+  useProduct().activeConversationId = SECOND
+  const open = sockets[0]!.sent.find((frame) => frame.type === 'open')!
+  deliver(sockets[0]!, backendOpening(FIRST, open, [FIRST]))
+  await opening
+  expect(conversation.load).toBe('ready')
+  expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
+  expect(conversation.draft).toBe('Keep the draft')
 })
 
 test('batch partial failure applies only the successful server records', async () => {
@@ -3049,8 +2984,9 @@ const shownBlock = { type: 'text' as const, id: 'shown', createdAt: '2026-09-09T
  * answers it. The page's synchronization channel stays the test's. Answers
  * the sockets in the order the page opened them.
  */
-function playPageSockets(handshake?: ServerFrame[]): TestSocket[] {
+function playPageSockets(handshake?: ServerFrame[] | ((id: string, open: Extract<ClientFrame, { type: 'open' }>, nodes: string[]) => unknown[])): TestSocket[] {
   const sockets: TestSocket[] = []
+  pageSockets = sockets
   const channel = globalThis.WebSocket
   function PageSocket(url: string | URL) {
     if (!new URL(url).pathname.endsWith('/stream')) {
@@ -3060,8 +2996,13 @@ function playPageSockets(handshake?: ServerFrame[]): TestSocket[] {
     const send = socket.send.bind(socket)
     socket.send = (data) => {
       send(data)
-      if (handshake && socket.sent.at(-1)?.type === 'open') {
-        queueMicrotask(() => socket.receive({ type: 'opened' }, ...handshake))
+      const open = socket.sent.at(-1)
+      if (handshake && open?.type === 'open') {
+        const id = decodeURIComponent(/conversations\/([^/]+)\/stream/.exec(socket.url)![1]!)
+        const nodes = socket.sent.flatMap((frame) => (frame.type === 'subscribe' ? [frame.node] : []))
+        queueMicrotask(() => {
+          deliver(socket, typeof handshake === 'function' ? handshake(id, open, nodes) : [{ type: 'opened' }, ...handshake])
+        })
       }
     }
     sockets.push(socket)
@@ -3073,30 +3014,83 @@ function playPageSockets(handshake?: ServerFrame[]): TestSocket[] {
   return sockets
 }
 
+/** The root's entry of conversation `id`, its session in `phase`. */
+function rootEntry(id: string, phase: SessionPhase = 'idle'): AgentEntry {
+  return { id, role: { kind: 'root' }, phase, waitedMs: null, pendingCalls: [], context: null, cost: NO_COST }
+}
+
+/** The root's entry of `conversation` changed to `phase`, after the agents it holds. */
+function rootChange(conversation: Conversation, phase: SessionPhase, parts: Partial<AgentEntry> = {}): ServerFrame {
+  return { type: 'agent', revision: conversation.agentsHeld!.revision + 1, agent: { ...rootEntry(conversation.id, phase), ...parts } }
+}
+
+/**
+ * The backend's answer to a page's `open` of conversation `id`: what the
+ * page shows of the conversation, its metadata and its draft when newer
+ * than the one the open names, then the session's handshake with each
+ * subscribed node's transcript, or the refusal of a record that holds no
+ * model (`crates/backend-user-shard/src/conversation/socket.rs`).
+ */
+function backendOpening(
+  id: string,
+  open: Extract<ClientFrame, { type: 'open' }>,
+  nodes: string[],
+  { root = rootBlocks.get(id) ?? [], agents = subagentEntries.get(id) ?? [] }: { root?: Block[], agents?: AgentEntry[] } = {},
+): unknown[] {
+  const metadata = metaOf(id)
+  const draft = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], comments: [], replaced: null }
+  const shown = [
+    { type: 'conversation', metadata },
+    ...(draft.revision > (open.draft ?? -1) ? [{ type: 'draft', draft }] : []),
+  ]
+  if (!metadata.model) {
+    return [...shown, { type: 'error', code: 'model_not_selected', message: 'Choose a model for the conversation before opening it' }]
+  }
+  return [
+    ...shown,
+    { type: 'opened' },
+    { type: 'agents', version: { epoch: 'e', revision: 1 }, agents: [rootEntry(id), ...agents] },
+    { type: 'queue', queue: [] },
+    { type: 'pending_steers', pendingSteers: [] },
+    ...nodes.map((node) => {
+      const blocks = node === id ? root : []
+      return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'e', revision: 1 } }
+    }),
+  ]
+}
+
+/**
+ * One message on a conversation socket, which carries the conversation's
+ * own frames (`ConversationFrame`) beside the session's.
+ */
+function deliver(socket: TestSocket, frames: unknown[]): void {
+  socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(frames) }))
+}
+
 /** Waits until the page's socket `index` has sent `open`. */
 async function openSent(sockets: TestSocket[], index = 0): Promise<void> {
   await waitFor(() => sockets[index]?.sent.some((frame) => frame.type === 'open') === true, () => `socket ${index} sent no open`)
 }
 
 /**
- * Starts opening the conversation `id` with a session: its transcript holds
- * one block, its agents are `subagents`, and its socket opens at once. With
- * a `handshake`, the socket answers `open` as the backend does, with
- * `opened` and the handshake after it in one message; without, the test
- * answers it. `models` holds the model list until it answers. Answers the
+ * Starts opening the conversation `id` with a session. With a `handshake`,
+ * the socket answers `open` as the backend does (`backendOpening`), its
+ * root's transcript one block and its agents the root and `agents`, then
+ * the handshake's frames, in one message; without, the test answers it.
+ * `models` holds the model list until it answers. Answers the
  * conversation, its sockets in the order the page opened them, and the
  * opening.
  */
 async function startOpening(
   id: string,
-  { handshake, subagents = [], models }: {
+  { handshake, agents = [], models }: {
     handshake?: ServerFrame[]
-    /** The subagent list's answer, or when it comes. */
-    subagents?: unknown[] | Promise<unknown[]>
+    /** The entries of the root's subagents. */
+    agents?: AgentEntry[]
     models?: Promise<void>
   } = {},
 ) {
-  records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  metaOf(id).model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(id)
   addStubProvider()
   const answering = globalThis.fetch
@@ -3107,14 +3101,11 @@ async function startOpening(
       return Response.json(stubCatalog())
     }
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/subagents')) return Response.json({ subagents: await subagents })
-    if (path.endsWith('/transcript')) {
-      requests.push({ path, body: null })
-      return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
-    }
     return answering(input, init)
   }) as typeof fetch
-  const sockets = playPageSockets(handshake)
+  rootBlocks.set(id, [shownBlock])
+  subagentEntries.set(id, agents)
+  const sockets = playPageSockets(handshake && ((opened, open, nodes) => [...backendOpening(opened, open, nodes), ...handshake]))
   const listed = useProduct().loadModels(true)
   if (!models) {
     await listed
@@ -3162,103 +3153,65 @@ function shownStep(conversation: ReturnType<typeof useConversations>['items'][nu
   }
 }
 
-// Opening a conversation shows in two steps: production showed the dock's "1 Agent" over the loading pane, the REST
-// list applied before the transcript showed, and a running conversation's
-// sidebar dot went out while it opened, computed from a phase the page had
-// not heard. Cost: one opening, no wait.
-test('a conversation opens in two steps: its transcript with its agents, then its session', async () => {
+// Production showed the dock's "1 Agent" over the loading pane, and a
+// running conversation's sidebar dot went out while it opened, computed
+// from a phase the page had not heard. The socket's answer to the open
+// brings the transcript, the agents and the session together; until then
+// the conversation shows loading with the summary's status. Cost: one
+// opening, no wait.
+test('a conversation opens with its transcript, its agents and its session together, its status the summary\'s meanwhile', async () => {
   records.find((item) => item.id === FIRST)!.status = 'running'
-  const subagents = [child('reader', 1, 'completed')]
-  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents })
-  await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
-
-  // The first step: the transcript with its agents, the status the summary's.
-  // The session that opens sends a live child's transcript when shown.
-  expect(useConversations().streamsSubagents(conversation)).toBe(true)
+  const { conversation, sockets, opening } = await startOpening(FIRST)
+  await openSent(sockets)
   expect(shownStep(conversation)).toEqual({
-    load: 'opening', transcript: ['shown'], agents: ['reader completed'], phase: 'idle', commands: [], status: 'active',
+    load: 'loading', transcript: [], agents: [], phase: 'idle', commands: [], status: 'active',
   })
 
-  sockets[0]!.receive(
-    { type: 'opened' },
-    { type: 'transcript_reset', start: 0, length: 1, blocks: [shownBlock], version: { epoch: 'epoch', revision: 1 } },
-    { type: 'phase', phase: 'running' },
-    { type: 'subagents', subagents: subagents.map((summary) => ({ ...summary, revision: 2 })) },
+  const open = sockets[0]!.sent.find((frame) => frame.type === 'open')!
+  deliver(sockets[0]!, [
+    ...backendOpening(FIRST, open, [FIRST], { agents: [childEntry(conversation, 'reader', { state: 'completed' })] }),
+    { type: 'agent', revision: 2, agent: rootEntry(FIRST, 'running') },
     {
       type: 'shell_output',
+      node: FIRST,
       status: { status: 'running', commandId: 'cmd-1', toolUseId: 'call-cmd-1', title: 'Serve cmd-1', script: 'serve cmd-1', tail: 'one\n', chars: 4, runningMs: 10 },
     },
-  )
+  ])
   await opening
-
-  // The second step: the session's turn and its running command join.
   expect(shownStep(conversation)).toEqual({
     load: 'ready', transcript: ['shown'], agents: ['reader completed'], phase: 'running', commands: ['cmd-1'], status: 'active',
   })
 })
 
-// A large tree's subagent list took a minute to answer after a restart, and
-// the page showed the conversation loading all that time, since its first
-// step waited for the list and its `open` for the first step. The transcript
-// and the session wait for nothing else; the session's own list names the
-// children. Cost: one opening, no wait; the list's read never ends, which holds
-// no timer.
-test('a conversation whose subagent list does not answer shows its transcript and opens its session', async () => {
-  const never = new Promise<unknown[]>(() => {})
-  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: never })
-  await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
-  const first = shownStep(conversation)
-  sockets[0]!.receive(
-    { type: 'opened' },
-    { type: 'transcript_reset', start: 0, length: 1, blocks: [shownBlock], version: { epoch: 'epoch', revision: 1 } },
-    { type: 'phase', phase: 'idle' },
-    { type: 'subagents', subagents: [{ ...child('reader', 1, 'running'), revision: 2 }] },
-  )
-  await opening
-
-  expect(first).toMatchObject({ load: 'opening', transcript: ['shown'], agents: [] })
-  expect(shownStep(conversation)).toMatchObject({ load: 'ready', transcript: ['shown'], agents: ['reader running'] })
-})
-
-// Marking read needs only the transcript, so it comes with the first step,
-// not with a session that may take long to open. Cost: one opening, no wait.
-test('a conversation is marked read at the first step of its opening, before its session opens', async () => {
-  const original = globalThis.document
-  Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
-  try {
-    Object.assign(records.find((item) => item.id === FIRST)!, { unread: true, revision: 4 })
-    const { conversation, sockets } = await startOpening(FIRST)
-    await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
-    expect(conversation.load).toBe('opening')
-
-    await useConversations().markRead(FIRST)
-
-    expect(requests.find((request) => request.path.endsWith('/read'))?.body).toEqual({ revision: 4 })
-    expect(conversation.unread).toBe(false)
-  } finally {
-    Object.defineProperty(globalThis, 'document', { configurable: true, value: original })
-  }
-})
-
-// Retry after a refused opening loads again from nothing: production kept
-// the earlier attempt's agents, so "1 Agent" stood over the loading pane.
-// Cost: two openings, no wait.
-test('Retry after a refused opening shows nothing of the earlier attempt while it loads again', async () => {
+// Retry loads again from nothing the page shows: production kept the
+// earlier attempt's agents, so "1 Agent" stood over the loading pane. What
+// the disk keeps of the agents shows only with a transcript. Cost: two
+// openings, no wait.
+test('Retry of a conversation with no transcript shows nothing of its agents over the loading pane', async () => {
+  const signOut = signIn()
   const store = useConversations()
-  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: [child('reader', 1, 'running')] })
-  await openSent(sockets)
-  sockets[0]!.receive({ type: 'error', message: 'The provider is no longer available', code: 'provider_not_found', requestId: 'req_socket0000000001' })
+  const reader = childEntry(store.items.find((item) => item.id === FIRST)!, 'reader')
+  const { conversation, opening } = await startOpening(FIRST, { handshake: [], agents: [reader] })
+  rootBlocks.set(FIRST, [])
   await opening
-  expect(shownStep(conversation)).toMatchObject({ load: 'failed', transcript: ['shown'], agents: ['reader running'] })
+  // The page hides, and the disk keeps its agents.
+  await store.keepCopies()
+  const copy = await readConversationCopy(productState().user.id, FIRST)
+  expect(copy?.agents.entries.map((entry) => entry.id)).toEqual([FIRST, 'reader'])
+  // Its session failed then, as a refusal ends it.
+  conversation.load = 'failed'
+  conversation.lastError = { message: 'The provider is no longer available', requestId: 'req_socket0000000001' }
+  expect(shownStep(conversation)).toMatchObject({ load: 'failed', transcript: [], agents: ['reader running'] })
 
-  const held = holdOpening()
+  const again = playPageSockets()
   void store.reloadSession(FIRST)
-  await waitFor(() => held.arrived.includes('transcript'), () => 'no transcript read')
+  await openSent(again)
 
   expect(shownStep(conversation)).toEqual({
     load: 'loading', transcript: [], agents: [], phase: 'idle', commands: [], status: conversation.status,
   })
   expect(conversation.lastError).toBeNull()
+  signOut()
 })
 
 // Every first session is an opening: a new conversation's first send whose
@@ -3276,7 +3229,7 @@ test('a new conversation whose first session cannot connect is opening, not reco
     if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
-      return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
+      return Response.json({ conversation: records.find((item) => item.id === id), metadata: metaOf(id), results: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -3322,70 +3275,45 @@ test('a conversation restored from the archive whose first session cannot connec
   }
 })
 
-// A first opening whose socket cannot be made is still an opening: it shows
-// the transcript with its agents and says it connects, never a session it
-// never had. Cost: two sockets, no wait.
-test('a first opening that cannot connect shows its transcript, connects, and only then its session', async () => {
+// A first opening whose socket cannot be made, of a conversation the disk
+// keeps nothing of, says it is offline, never a session it never had, and
+// shows the session once a socket answers. Cost: two sockets, no wait.
+test('a first opening that cannot connect says it is offline, and only then shows its session', async () => {
   records.find((item) => item.id === FIRST)!.status = 'running'
-  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: [child('reader', 1, 'running')] })
-  await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
+  const { conversation, sockets, opening } = await startOpening(FIRST)
+  await openSent(sockets)
   sockets[0]!.end()
-  await waitFor(() => conversation.load !== 'opening', () => 'the lost socket left the opening as it was')
-
+  await waitFor(() => conversation.load === 'offline', () => `it is ${conversation.load}`)
   expect(shownStep(conversation)).toEqual({
-    load: 'connecting', transcript: ['shown'], agents: ['reader running'], phase: 'idle', commands: [], status: 'active',
+    load: 'offline', transcript: [], agents: [], phase: 'idle', commands: [], status: 'active',
   })
+  // It fails nothing meanwhile.
+  expect(conversation.lastError).toBeNull()
 
-  await pageReturned()
-  await waitFor(() => sockets[1]?.sent.some((frame) => frame.type === 'open') === true, () => 'no second open')
-  sockets[1]!.receive({ type: 'opened' }, { type: 'phase', phase: 'running' })
+  await returned()
+  await openSent(sockets, 1)
+  const open = sockets[1]!.sent.find((frame) => frame.type === 'open')!
+  deliver(sockets[1]!, [...backendOpening(FIRST, open, [FIRST]), { type: 'agent', revision: 2, agent: rootEntry(FIRST, 'running') }])
+  await waitFor(() => conversation.load === 'ready', () => `it is ${conversation.load}`)
   await opening
-  expect(shownStep(conversation)).toMatchObject({ load: 'ready', phase: 'running', status: 'active' })
+  expect(shownStep(conversation)).toMatchObject({ load: 'ready', transcript: ['shown'], phase: 'running', status: 'active' })
 })
 
-// History does not wait for the model list; the session does, and the
-// conversation shows its first step until then. Cost: one opening, no wait.
-test('a conversation whose model list has not answered shows its first step until its session opens', async () => {
-  const models = deferred<void>()
-  const { conversation, sockets, opening } = await startOpening(FIRST, {
-    handshake: [{ type: 'phase', phase: 'idle' }],
-    subagents: [child('reader', 1, 'completed')],
-    models: models.promise,
-  })
-  await waitFor(() => conversation.load !== 'loading', () => 'the transcript waited for the model list')
-
-  expect(shownStep(conversation)).toMatchObject({ load: 'opening', transcript: ['shown'], agents: ['reader completed'] })
-  expect(sockets.flatMap((socket) => socket.sent)).toEqual([])
-
-  models.resolve()
-  await opening
-  expect(conversation.load).toBe('ready')
-})
-
-// A conversation that opens no session stops at the first step, its status
-// the summary's: here a turn the process died under, which its transcript
-// alone would not tell. Cost: one opening.
+// A conversation that opens no session shows what the backend holds of it,
+// its status the summary's: here a turn the process died under, which its
+// transcript alone would not tell. Cost: one opening.
 test('a conversation that opens no session shows its transcript with its agents and keeps the summary’s status', async () => {
   records.find((item) => item.id === FIRST)!.status = 'interrupted'
+  metaOf(FIRST).model = null
   await changed(FIRST)
   const store = useConversations()
-  const restoreFetch = answerOpening(FIRST)
-  const served = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [child('reader', 1, 'completed')] })
-    if (path.endsWith('/transcript')) return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
-    return served(input, init)
-  }) as typeof fetch
-  try {
-    await store.activate(FIRST)
-    const conversation = store.items.find((item) => item.id === FIRST)!
-    expect(shownStep(conversation)).toEqual({
-      load: 'ready', transcript: ['shown'], agents: ['reader completed'], phase: 'idle', commands: [], status: 'error',
-    })
-  } finally {
-    restoreFetch()
-  }
+  rootBlocks.set(FIRST, [shownBlock])
+  subagentEntries.set(FIRST, [childEntry(store.items.find((item) => item.id === FIRST)!, 'reader', { state: 'completed' })])
+  await store.activate(FIRST)
+  const conversation = store.items.find((item) => item.id === FIRST)!
+  expect(shownStep(conversation)).toEqual({
+    load: 'ready', transcript: ['shown'], agents: ['reader completed'], phase: 'idle', commands: [], status: 'error',
+  })
 })
 
 // A conversation the backend made without a model, such as an automation's
@@ -3393,111 +3321,78 @@ test('a conversation that opens no session shows its transcript with its agents 
 // backend refused its session. It opens to its transcript and waits for a
 // model, which the composer's choice writes. Cost: one opening.
 test('a conversation whose record holds no model opens to its transcript, not as failed', async () => {
-  records.find((item) => item.id === FIRST)!.model = null
+  metaOf(FIRST).model = null
   await changed(FIRST)
-  addStubProvider()
-  const answering = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    if (path.endsWith('/transcript')) return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
-    return answering(input, init)
-  }) as typeof fetch
-  try {
-    const sockets = playPageSockets()
-    await useProduct().loadModels(true)
-    const store = useConversations()
-    const opening = store.activate(FIRST)
-    // A socket the page opened anyway is refused, as the backend refuses it.
-    void openSent(sockets).then(() => sockets[0]!.receive({
-      type: 'error', message: 'Choose a model for the conversation before opening it', code: 'model_not_selected', requestId: 'req_socket0000000001',
-    }), () => {})
-    await opening.catch(() => {})
-    const conversation = store.items.find((item) => item.id === FIRST)!
-    expect(conversation.load).toBe('ready')
-    expect(conversation.lastError).toBeNull()
-    expect(shownStep(conversation).transcript).toEqual(['shown'])
-    // No session sends a child's transcript: the Agents window reads it.
-    expect(store.streamsSubagents(conversation)).toBe(false)
-  } finally {
-    globalThis.fetch = answering
-  }
+  rootBlocks.set(FIRST, [shownBlock])
+  const store = useConversations()
+  const sockets = pageSockets
+  await store.activate(FIRST)
+  const conversation = store.items.find((item) => item.id === FIRST)!
+  // The socket's open was refused, as the backend refuses it.
+  expect(sockets.some((socket) => socket.sent.some((frame) => frame.type === 'open'))).toBe(true)
+  expect(conversation.load).toBe('ready')
+  expect(conversation.lastError).toBeNull()
+  expect(shownStep(conversation).transcript).toEqual(['shown'])
+  // No session sends a child's transcript: the Agents window reads it.
+  expect(store.streamsSubagents(conversation)).toBe(false)
 })
+
+/** The edge the subscription to conversation `FIRST`'s or `SECOND`'s root on `socket` names as held. */
+const heldOf = (socket: TestSocket) =>
+  socket.sent.flatMap((frame) => (frame.type === 'subscribe' && [FIRST, SECOND].includes(frame.node) ? [frame.held ?? undefined] : []))[0]
 
 const transcriptReads = () => requests.filter((request) => request.path.endsWith('/transcript')).length
 
-// What a reopened socket brings back: production
-// showed a subagent Running with its transcript stopped where the page's
-// socket dropped, though it had finished while the page was away, until a
-// reload. Each open's snapshot lists every child, every running command
-// and every node's usage, and the page takes them whole: the child ended,
-// one that started and ended meanwhile appears, a command ended or is
-// gone, and a usage the open cannot tell clears the figure. Cost: two
+// What a reopened socket brings back: production showed a subagent Running
+// though it had finished while the page was away, until a reload. Each
+// open's answer lists every agent and every running command of the nodes
+// the page shows, and the page takes them whole: the child ended, one that
+// started and ended meanwhile appears, a command ended or is gone, and a
+// context the root's entry no longer has clears the figure. Cost: two
 // openings, no wait.
 test('a conversation that opens again after its socket dropped shows what ended while it was away', async () => {
-  const running = {
-    subagentId: 'reader', number: 1, parentSessionId: FIRST, onPath: true, description: 'Read the notes',
-    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
-    phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
-  }
-  const brief = { ...shownBlock, id: 'brief' }
-  const calls = (status: 'executing' | 'completed') =>
-    ['cmd-1', 'cmd-2'].map((id) => execCall(`call-${id}`, `serve ${id}`, status))
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const reader = (parts: Parameters<typeof childEntry>[2], phase: SessionPhase, waitedMs: number | null = null) =>
+    ({ ...childEntry(first, 'reader', { description: 'Read the notes', ...parts }, phase), waitedMs })
   const usage = { tokens: 10, window: 100, compactFrom: 50, rows: [], account: null }
-  const command = (commandId: string) => ({
-    type: 'shell_output' as const,
-    subagentId: 'reader',
-    status: { status: 'running' as const, commandId, toolUseId: `call-${commandId}`, title: `Serve ${commandId}`, script: `serve ${commandId}`, tail: 'one\n', chars: 4, runningMs: 10 },
+  const command = (commandId: string): ServerFrame => ({
+    type: 'shell_output',
+    node: FIRST,
+    status: { status: 'running', commandId, toolUseId: `call-${commandId}`, title: `Serve ${commandId}`, script: `serve ${commandId}`, tail: 'one\n', chars: 4, runningMs: 10 },
   })
   const handshake: ServerFrame[] = [
-    { type: 'subagents', subagents: [{ ...running, revision: 3 }] },
-    { type: 'subagent', event: 'started', job: running },
-    { type: 'subagent_transcript_reset', subagentId: 'reader', start: 0, length: 3, blocks: [brief, ...calls('executing')], revision: 3 },
-    { type: 'phase', subagentId: 'reader', phase: 'running' },
-    { type: 'waiting', subagentId: 'reader', waitedMs: 1_000 },
+    { type: 'agent', revision: 2, agent: { ...rootEntry(FIRST), context: usage } },
     command('cmd-1'),
     command('cmd-2'),
-    { type: 'context_usage', node: FIRST, usage },
   ]
-  const { conversation, sockets } = await openWithSession(FIRST, handshake)
-  const reader = () => conversation.subagents.find((agent) => agent.id === 'reader')!
-  expect(reader()).toMatchObject({ phase: 'running', sessionPhase: 'running' })
+  const { conversation, sockets } = await startOpening(FIRST, { handshake, agents: [reader({}, 'running', 1_000)] }).then(async (opened) => {
+    await opened.opening
+    return opened
+  })
+  const shown = () => conversation.subagents.find((agent) => agent.id === 'reader')!
+  expect(shown()).toMatchObject({ phase: 'running', sessionPhase: 'running' })
+  expect(shown().waitingSince).not.toBeNull()
   expect(conversation.terminals.map((terminal) => terminal.id)).toEqual(['cmd-1', 'cmd-2'])
   expect(conversation.contextUsage).toEqual(usage)
 
   // While the page is away the reader finishes, agent 2 starts and
-  // finishes, and the reader's commands end, the second one forgotten
-  // with its shells.
-  handshake.splice(
-    0,
-    handshake.length,
-    {
-      type: 'subagents',
-      subagents: [
-        { ...running, phase: 'completed', endedAt: '2026-09-13T00:02:00.000Z', revision: 9 },
-        { ...running, subagentId: 'counter', number: 2, description: 'Count', phase: 'completed', endedAt: '2026-09-13T00:03:00.000Z', revision: 4 },
-      ],
-    },
-    {
-      type: 'shell_output', subagentId: 'reader',
-      status: { status: 'exited', commandId: 'cmd-1', toolUseId: 'call-cmd-1', title: 'Serve cmd-1', script: 'serve cmd-1', tail: 'one\ntwo\n', chars: 8, runningMs: 20, exitCode: 0 },
-    },
-    { type: 'context_usage', node: FIRST, usage: null },
-  )
-  sockets[0]!.end()
-  await pageReturned()
-  await waitFor(
-    () => sockets[1]?.sent.length === 1 && conversation.load === 'ready',
-    () => `it did not open again: ${sockets.length} sockets`,
-  )
-
-  expect(reader()).toMatchObject({
-    phase: 'completed', endedAt: '2026-09-13T00:02:00.000Z', sessionPhase: 'idle', waitingSince: null,
+  // finishes, and the commands end, the second one forgotten with its
+  // shells.
+  subagentEntries.set(FIRST, [
+    reader({ state: 'completed', endedAt: '2026-09-13T00:02:00.000Z' }, 'idle'),
+    childEntry(first, 'counter', { number: 2, description: 'Count', state: 'completed', endedAt: '2026-09-13T00:03:00.000Z' }),
+  ])
+  handshake.splice(0, handshake.length, {
+    type: 'shell_output',
+    node: FIRST,
+    status: { status: 'exited', commandId: 'cmd-1', toolUseId: 'call-cmd-1', title: 'Serve cmd-1', script: 'serve cmd-1', tail: 'one\ntwo\n', chars: 8, runningMs: 20, exitCode: 0 },
   })
-  // Its transcript moved past what the page holds: it is read again when shown.
-  expect(reader().history.windows).toEqual([])
+  sockets[0]!.end()
+  await returned()
+  await waitFor(() => shown().phase === 'completed' && conversation.load === 'ready', () => `it did not open again: ${sockets.length} sockets`)
+
+  expect(shown()).toMatchObject({ endedAt: '2026-09-13T00:02:00.000Z', sessionPhase: 'idle', waitingSince: null })
   expect(conversation.subagents.map((agent) => [agent.id, agent.phase])).toEqual([['reader', 'completed'], ['counter', 'completed']])
   expect(toRaw(conversation.terminals).map((terminal) => [terminal.id, terminal.phase])).toEqual([['cmd-1', 'exited']])
   expect(conversation.contextUsage).toBeNull()
@@ -3516,17 +3411,15 @@ test('a page that returns from sleep after a Resume started shows no refusal and
   store.start(conversation)
   await waitFor(() => sockets[0]!.sent.some((frame) => frame.type === 'resume'), () => 'no resume sent')
   // The session takes the action: it leaves idle.
-  sockets[0]!.receive({ type: 'phase', phase: 'running' })
+  sockets[0]!.receive(rootChange(conversation, 'running'))
   const before = toasts.length
   // The phone sleeps past the 75 seconds the socket may stay silent; on
   // return the page finds the socket broken and replaces it.
   setSystemTime(new Date(Date.now() + 80_000))
   try {
-    await pageReturned()
-    await waitFor(
-      () => sockets[1]?.sent.length === 1 && conversation.load === 'ready',
-      () => `it did not open again: ${sockets.length} sockets`,
-    )
+    await returned()
+    await openSent(sockets, 1)
+    await waitFor(() => conversation.load === 'ready', () => `it is ${conversation.load}`)
   } finally {
     setSystemTime()
   }
@@ -3540,7 +3433,7 @@ test('a page that returns from sleep after a Resume started shows no refusal and
 test('a Stop whose socket drops before the session answers it shows Connection Lost and is not sent again', async () => {
   const { conversation, sockets } = await openWithSession(FIRST)
   const store = useConversations()
-  sockets[0]!.receive({ type: 'phase', phase: 'running' })
+  sockets[0]!.receive(rootChange(conversation, 'running'))
   const before = toasts.length
   const stopping = store.stop(conversation)
   await waitFor(() => sockets[0]!.sent.some((frame) => frame.type === 'abort'), () => 'no abort sent')
@@ -3561,14 +3454,14 @@ test('a Stop whose socket drops before the session answers it shows Connection L
 test('a Stop pressed as the page returns goes on the new socket, never on the one the return finds dead', async () => {
   const { conversation, sockets } = await openWithSession(FIRST)
   const store = useConversations()
-  sockets[0]!.receive({ type: 'phase', phase: 'running' })
+  sockets[0]!.receive(rootChange(conversation, 'running'))
   setSystemTime(new Date(Date.now() + 80_000))
   try {
     const returned = pageReturned()
     const stopping = store.stop(conversation)
     await returned
     await waitFor(() => sockets[1]?.sent.some((frame) => frame.type === 'abort') === true, () => 'no abort on the new socket')
-    expect(sockets[1]!.sent.map((frame) => frame.type)).toEqual(['open', 'abort'])
+    expect(sockets[1]!.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open', 'abort'])
     sockets[1]!.receive({ type: 'abort_result', result: { target: null, canAbortAgain: false } })
     expect(await stopping).toBe(true)
   } finally {
@@ -3599,16 +3492,12 @@ test('a conversation opened during a turn shows its transcript with its steer an
     { flush: 'sync' },
   )
   await openWithSession(FIRST, [
-    { type: 'transcript_reset', start: 0, length: 1, blocks: [shownBlock], version: { epoch: 'epoch', revision: 1 } },
-    { type: 'phase', phase: 'running' },
-    { type: 'queue', queue: [] },
+    { type: 'agent', revision: 2, agent: { ...rootEntry(FIRST, 'running'), waitedMs: 11_000 } },
     { type: 'pending_steers', pendingSteers: [steer] },
-    { type: 'pending_calls', pendingCalls: [] },
-    { type: 'waiting', waitedMs: 11_000 },
   ])
   stop()
-  // The transcript shows first, then the session's turn with its steer and its wait in one change.
-  expect(shown.filter((state) => state !== 'loading')).toEqual(['opening', 'running, steer-1, waited 11s'])
+  // The transcript shows with the session's turn, its steer and its wait, in one change.
+  expect(shown.filter((state) => state !== 'loading')).toEqual(['running, steer-1, waited 11s'])
   expect(shownRows(conversation()).waiting).toEqual(['message:steer-1'])
 })
 
@@ -3630,11 +3519,12 @@ test('archiving the open conversation keeps its transcript, and Undo connects it
   // The backend refuses an archived conversation's socket: it connects once the restore lands.
   expect(sockets).toHaveLength(1)
   backend.release()
-  await waitFor(() => sockets[1]?.sent.length === 1, () => `it did not connect again: ${sockets.length} sockets`)
-  // Its `open` names the blocks it holds, as the first did.
-  expect(sockets[1]!.sent[0]).toEqual(sockets[0]!.sent[0]!)
+  await openSent(sockets, 1)
+  // Its subscription names the blocks it holds.
+  expect(heldOf(sockets[1]!)).toEqual(heldEdge(conversation.history))
+  expect(heldOf(sockets[1]!)).toBeDefined()
   expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
-  expect(transcriptReads()).toBe(1)
+  expect(transcriptReads()).toBe(0)
   expect(loads).toEqual([])
 })
 
@@ -3644,10 +3534,11 @@ test('an archive the backend refuses keeps the open conversation\'s transcript a
   const { conversation, sockets, loads } = await openWithSession(SECOND)
   expect(await store.archive([SECOND])).toBe(false)
   expect(conversation.archived).toBe(false)
-  await waitFor(() => sockets[1]?.sent.length === 1, () => `it did not connect again: ${sockets.length} sockets`)
-  expect(sockets[1]!.sent[0]).toEqual(sockets[0]!.sent[0]!)
+  await openSent(sockets, 1)
+  expect(heldOf(sockets[1]!)).toEqual(heldEdge(conversation.history))
+  expect(heldOf(sockets[1]!)).toBeDefined()
   expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['shown'])
-  expect(transcriptReads()).toBe(1)
+  expect(transcriptReads()).toBe(0)
   expect(loads).toEqual([])
 })
 
@@ -3664,14 +3555,11 @@ test('a subagent\'s running command is titled from its frames, whether or not th
     commandId: '70460', toolUseId: 'call-clone', title: 'Clone the repository',
     script: 'git clone https://example.test/repo.git', runningMs: 10,
   }
-  const frame = (tail: string, chars: number) => ({
-    type: 'shell_output' as const, subagentId: 'researcher',
-    status: { status: 'running' as const, ...view, tail, chars },
+  const frame = (tail: string, chars: number): ServerFrame => ({
+    type: 'shell_output', node: 'researcher',
+    status: { status: 'running', ...view, tail, chars },
   })
-  const handshake: ServerFrame[] = [
-    { type: 'subagents', subagents: [{ ...child('researcher', 1, 'running'), revision: 2 }] },
-    frame('Cloning\n', 8),
-  ]
+  const handshake: ServerFrame[] = [frame('Cloning\n', 8)]
   const reads: string[] = []
   const answering = globalThis.fetch
   globalThis.fetch = ((input, init) => {
@@ -3680,7 +3568,10 @@ test('a subagent\'s running command is titled from its frames, whether or not th
       reads.push(path)
     return answering(input, init)
   }) as typeof fetch
-  const { conversation, sockets } = await openWithSession(FIRST, handshake)
+  const store = useConversations()
+  const researcher = childEntry(store.items.find((item) => item.id === FIRST)!, 'researcher', { description: 'Research' }, 'running')
+  const { conversation, sockets, opening } = await startOpening(FIRST, { handshake, agents: [researcher] })
+  await opening
   const tabs = () => toRaw(conversation.terminals).map(({ id, title, script, subagentId }) => ({ id, title, script, subagentId }))
   const titled = { id: '70460', title: 'Clone the repository', script: 'git clone https://example.test/repo.git', subagentId: 'researcher' }
   expect(conversation.subagents.find((agent) => agent.id === 'researcher')?.history.windows).toEqual([])
@@ -3688,13 +3579,11 @@ test('a subagent\'s running command is titled from its frames, whether or not th
 
   // The page opens again, as after a reload, and the command's next frame
   // names it as the first did.
-  handshake.splice(1, 1, frame('Cloning\nReceiving objects\n', 26))
+  handshake.splice(0, 1, frame('Cloning\nReceiving objects\n', 26))
   sockets[0]!.end()
-  await pageReturned()
-  await waitFor(
-    () => sockets[1]?.sent.length === 1 && conversation.load === 'ready',
-    () => `it did not open again: ${sockets.length} sockets`,
-  )
+  await returned()
+  await openSent(sockets, 1)
+  await waitFor(() => conversation.load === 'ready', () => `it is ${conversation.load}`)
   expect(tabs()).toEqual([titled])
   expect(reads).toEqual([])
 })
@@ -3789,6 +3678,37 @@ test('read acknowledgements use the observed revision and wait for history', asy
   }
 })
 
+// Production: every browser that showed a running conversation sent one
+// acknowledgement for each output the root saved. Marks made while one is
+// on its way wait together and go as one, of the newest revision shown.
+// Cost: two acknowledgements, no wait.
+test('marks made while an acknowledgement is on its way go as one, of the newest revision shown', async () => {
+  const original = globalThis.document
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
+  const held = holdAnswers((path, method) => method === 'POST' && path.endsWith('/read'))
+  try {
+    const store = useConversations()
+    const current = store.items[0]!
+    current.load = 'ready'
+    const shows = (revision: number) => {
+      Object.assign(current, { unread: true, revision })
+      return store.markRead(current.id)
+    }
+    const first = shows(7)
+    await held.arrived(1)
+    const later = [shows(8), shows(9), shows(10)]
+    held.release()
+    await first
+    await held.arrived(1)
+    held.release()
+    await Promise.all(later)
+    expect(requests.filter((request) => request.path.endsWith('/read')).map((request) => request.body)).toEqual([{ revision: 7 }, { revision: 10 }])
+    expect(current.unread).toBe(false)
+  } finally {
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: original })
+  }
+})
+
 test('a request that waits is read with the conversation: the mark settles while the request waits, and a later request lights it again', async () => {
   const original = globalThis.document
   Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
@@ -3857,189 +3777,67 @@ test('failed Fork creates no local conversation; retry forwards the same destina
   expect(store.items.filter((item) => item.id === request.id)).toHaveLength(1)
 })
 
-/** Serves each opening's transcript, held by `gate`, and the attached hosts `hosts` names when asked. */
-function serveHistory(gate?: ReturnType<typeof deferred<void>>, hosts: () => AttachedHost[] = () => []) {
-  const requested = deferred<void>()
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    if (path.endsWith('/hosts') || path.endsWith('/transcript')) {
-      requests.push({ path, body: null })
-      if (path.endsWith('/hosts')) {
-        return Response.json({ hosts: hosts() })
-      }
-      requested.resolve()
-      await gate?.promise
-      return Response.json(EMPTY_PAGE)
-    }
-    return originalFetch(input, init)
-  }) as typeof fetch
-  return requested.promise
-}
-
-/**
- * Serves an opening's reads, each held until the test answers it: the
- * transcript, the attached hosts and the draft. `arrived` names each as it
- * reaches the backend.
- */
-function holdOpening() {
-  const held = {
-    transcript: deferred<void>(),
-    hosts: deferred<void>(),
-    draft: deferred<void>(),
-    arrived: [] as string[],
-  }
-  const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    const read = /\/(transcript|hosts|draft)$/.exec(path)?.[1]
-    if (read && (init?.method ?? 'GET') === 'GET') {
-      held.arrived.push(read)
-      if (read === 'draft') {
-        await held.draft.promise
-        return originalFetch(input, init)
-      }
-      await held[read as 'transcript' | 'hosts'].promise
-      return read === 'hosts' ? Response.json({ hosts: [] }) : Response.json(EMPTY_PAGE)
-    }
-    return originalFetch(input, init)
-  }) as typeof fetch
-  return held
-}
-
-test('opening a conversation sends its reads at once and shows the transcript before its hosts answer', async () => {
-  const held = holdOpening()
+// Production: a child's window and the conversation waited for the
+// transcript, the draft and the cost reads before the page opened its
+// socket. The socket opens at once and its answer shows the conversation;
+// its hosts and its saved list join as they answer. Cost: one opening.
+test('opening a conversation opens its socket at once and shows it before its hosts or its saved list answer', async () => {
+  const held = holdAnswers((path, method) => method === 'GET' && (path.endsWith('/hosts') || path.endsWith('/saved')))
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
+  rootBlocks.set(FIRST, [shownBlock])
   const opened = store.activate(FIRST)
-  await waitFor(() => held.arrived.length === 3)
-  expect(held.arrived.toSorted()).toEqual(['draft', 'hosts', 'transcript'])
-  held.draft.resolve()
-  held.transcript.resolve()
-  await waitFor(() => first.load === 'ready')
-  held.hosts.resolve()
   await opened
+  expect(first.load).toBe('ready')
+  expect(latestBlocks(first.history).map((block) => block.id)).toEqual(['shown'])
+  await held.arrived(2)
+  held.release()
+  held.release()
 })
 
-// A conversation opened while Demi restarts shows it loading under the
-// connection banner, never a failure about the connection, and loads once
-// the page reaches the backend again. Cost: one opening, no timer.
-test('a conversation opened while the backend is away, kept for opening offline nowhere, loads once it is back, without failing', async () => {
-  const store = useConversations()
-  const first = store.items.find((item) => item.id === FIRST)!
-  let away = true
-  let refused = 0
-  const restoreFetch = answerOpening(FIRST)
-  const served = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    if (away && String(input).endsWith('/transcript')) {
-      refused += 1
-      // What the development server's proxy answers while no backend runs behind it.
-      return new Response('Bad Gateway', { status: 502 })
-    }
-    return served(input, init)
-  }) as typeof fetch
-  try {
-    channels.last().end(1001, 'backend_closing')
-    expect(useProduct().connection).toBe('restarting')
-    const opened = store.activate(FIRST)
-    await waitFor(() => refused === 1, () => 'no transcript request')
-    // This web browser keeps no copy of it: it says so meanwhile, and fails
-    // nothing.
-    await waitFor(() => first.load === 'offline', () => `the conversation is ${first.load}`)
-    expect(first.lastError).toBeNull()
-    away = false
-    await pageReturned()
-    channels.last().connect(backendState())
-    await opened
-    expect(first.load).toBe('ready')
-    expect(first.lastError).toBeNull()
-  } finally {
-    restoreFetch()
-  }
-})
-
-// Only the backend's own answer shows the failure pane, at once.
+// A conversation refused by the backend's own answer shows the failure pane,
+// at once. Cost: one opening.
 test('a conversation the backend does not have fails to open at once', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  const restoreFetch = answerOpening(FIRST)
-  const served = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    if (String(input).endsWith('/transcript')) {
-      return Response.json({ requestId: 'req_test000000000001', code: 'conversation_not_found', message: 'Conversation not found' }, { status: 404 })
-    }
-    return served(input, init)
-  }) as typeof fetch
-  try {
-    await store.activate(FIRST)
-    expect(first.load).toBe('failed')
-    expect({ ...first.lastError }).toEqual({ message: 'The conversation wasn’t found.', requestId: 'req_test000000000001' })
-  } finally {
-    restoreFetch()
-  }
+  playPageSockets(() => [{ type: 'error', code: 'conversation_not_found', message: 'No such conversation', requestId: 'req_test000000000001' }])
+  await store.activate(FIRST).catch(() => {})
+  expect(first.load).toBe('failed')
+  expect({ ...first.lastError }).toEqual({ message: 'The conversation wasn’t found.', requestId: 'req_test000000000001' })
 })
 
 // The backend's message names its files and an operator's command: the
 // page says it in its own words and keeps the message for the console.
+// Cost: one opening.
 test('a conversation the server cannot read fails to open in the page’s words', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  const restoreFetch = answerOpening(FIRST)
-  const served = globalThis.fetch
   const message = '/srv/demi/conversations/c.sqlite was made by a newer release or another build of Demi: return to the release that made it, or restore the databases of this release with `demi-server rollback`'
-  globalThis.fetch = (async (input, init) => {
-    if (String(input).endsWith('/transcript')) {
-      return Response.json({ requestId: 'req_test000000000001', code: 'conversation_unreadable', message }, { status: 500 })
-    }
-    return served(input, init)
-  }) as typeof fetch
+  playPageSockets(() => [{ type: 'error', code: 'conversation_unreadable', message, requestId: 'req_test000000000001' }])
   const logged = spyOn(console, 'error').mockImplementation(() => {})
-  try {
-    await store.activate(FIRST)
-    expect(first.load).toBe('failed')
-    // The page's words, and the request whose answer it read.
-    expect(first.lastError).toEqual({ message: codeText('conversation_unreadable')!, requestId: 'req_test000000000001' })
-    expect(logged.mock.calls.some((call) => call.some((value) => value instanceof Error && value.message === message))).toBe(true)
-  } finally {
-    logged.mockRestore()
-    restoreFetch()
-  }
+  await store.activate(FIRST).catch(() => {})
+  expect(first.load).toBe('failed')
+  // The page's words, and the request whose answer it read.
+  expect(first.lastError).toEqual({ message: codeText('conversation_unreadable')!, requestId: 'req_test000000000001' })
+  expect(logged.mock.calls.some((call) => call.some((value) => value instanceof Error && value.message === message))).toBe(true)
 })
 
-test('a conversation that can run makes its socket beside its reads', async () => {
-  records[0]!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
-  await changed(FIRST)
-  const held = holdOpening()
-  const store = useConversations()
-  const opened = store.activate(FIRST)
-  await waitFor(() => held.arrived.includes('transcript'))
-  expect(channels.opened.map((channel) => new URL(channel.url).pathname)).toContain(`/api/conversations/${FIRST}/stream`)
-  held.draft.resolve()
-  held.hosts.resolve()
-  held.transcript.resolve()
-  await opened
-})
-
-test('the first load reads the conversation its address names before the channel\'s first state', async () => {
+// The first load opens the conversation its address names before the
+// channel's first state names it: its socket is made at once, and the
+// opening takes it. Cost: one socket.
+test('the first load opens the socket of the conversation its address names before the channel\'s first state', async () => {
   useConversations().stopAll()
   useProduct().stop()
-  const held = holdOpening()
-  held.draft.resolve()
-  held.hosts.resolve()
-  held.transcript.resolve()
+  const sockets = playPageSockets(backendOpening)
   const store = useConversations()
   await store.activate(FIRST)
-  // Nothing names the conversation yet, and its reads are on their way.
+  // Nothing names the conversation yet, and its socket is on its way.
   expect(store.items).toEqual([])
-  await waitFor(() => held.arrived.length === 3)
+  expect(sockets).toHaveLength(1)
   await connect()
   const first = store.items.find((item) => item.id === FIRST)!
-  await waitFor(() => first.load === 'ready')
-  // The opening took the reads the address started.
-  expect(held.arrived.toSorted()).toEqual(['draft', 'hosts', 'transcript'])
+  await waitFor(() => first.load === 'ready', () => `it is ${first.load}`)
+  expect(sockets).toHaveLength(1)
 })
 
 test('the list waits for the new conversations this web browser keeps, so a reload finds the one its address names', async () => {
@@ -4163,7 +3961,6 @@ test('the first load at a new conversation\'s address that its history entry mar
 })
 
 test('switching between opened sessions performs no reads or load reset', async () => {
-  serveHistory()
   const store = useConversations()
   await store.activate(FIRST)
   const first = store.items.find((item) => item.id === FIRST)!
@@ -4180,9 +3977,10 @@ test('switching between opened sessions performs no reads or load reset', async 
   expect(first.draft).toBe('Keep this input')
 })
 
+/** The sockets the page opened to conversation `id`. */
+const socketsOf = (id: string) => pageSockets.filter((socket) => socket.url.includes(`/conversations/${id}/stream`))
+
 test('output that advances an open conversation\'s revision reads nothing; a raised hosts revision reads and shows its hosts without opening it again', async () => {
-  let hosts: AttachedHost[] = []
-  serveHistory(undefined, () => hosts)
   const store = useConversations()
   await store.activate(FIRST)
   const reads = (route: string) => requests.filter((item) => item.path === `/api/conversations/${FIRST}/${route}`).length
@@ -4194,53 +3992,50 @@ test('output that advances an open conversation\'s revision reads nothing; a rai
   }
   expect(reads('hosts')).toBe(1)
   // A shell on the attached host ended in another directory.
-  hosts = [{ deviceId: 'ci', name: 'ci', cwd: '/work/sub', state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }]
-  records[0]!.hostsRevision = 1
+  serverHosts.set(FIRST, [{ deviceId: 'ci', name: 'ci', cwd: '/work/sub', state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }])
+  metaOf(FIRST).hostsRevision = 1
   await changed(FIRST)
   const first = store.items.find((item) => item.id === FIRST)!
   await waitFor(() => first.attachedHosts.shown.value?.[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
-  expect([reads('hosts'), reads('transcript'), first.load]).toEqual([2, 1, 'ready'])
+  expect([reads('hosts'), socketsOf(FIRST).length, first.load]).toEqual([2, 1, 'ready'])
 })
 
-test('leaving and returning during history loading shares the pending request', async () => {
-  const gate = deferred<void>()
-  serveHistory(gate)
+test('leaving and returning while it opens shares the opening', async () => {
+  const sockets = playPageSockets()
   const store = useConversations()
   const first = store.activate(FIRST)
+  await openSent(sockets)
   await store.activate(null)
   const returning = store.activate(FIRST)
-  gate.resolve()
+  deliver(sockets[0]!, backendOpening(FIRST, sockets[0]!.sent.find((frame) => frame.type === 'open')!, [FIRST]))
   await Promise.all([first, returning])
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(1)
+  expect(sockets).toHaveLength(1)
   expect(store.items[0]!.load).toBe('ready')
 })
 
 test('a raised hosts revision reads the hosts of a conversation opened before and nothing of one never opened; retry explicitly reloads', async () => {
-  serveHistory()
   const store = useConversations()
   await store.activate(FIRST)
   await store.activate(SECOND)
   const hostReads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/hosts`).length
-  const transcripts = () => requests.filter((item) => item.path.endsWith('/transcript')).length
-  records[0]!.hostsRevision = 1
+  metaOf(FIRST).hostsRevision = 1
   await changed(FIRST)
   await waitFor(() => hostReads(FIRST) === 2, () => 'the hosts were not read again')
   await store.activate(FIRST)
-  expect(transcripts()).toBe(2)
+  expect([socketsOf(FIRST).length, socketsOf(SECOND).length]).toEqual([1, 1])
   await store.reloadSession(SECOND)
-  expect(transcripts()).toBe(3)
+  expect(socketsOf(SECOND)).toHaveLength(2)
   // Another page made a conversation this one never opened.
   const third = record('00000000-0000-4000-8000-000000000003')
   records.push(third)
   await changed(third.id)
   expect(store.items.some((item) => item.id === third.id)).toBe(true)
-  third.hostsRevision = 1
+  metaOf(third.id).hostsRevision = 1
   await changed(third.id)
   expect(hostReads(third.id)).toBe(0)
 })
 
-test('a conversation removed and brought back reads its history again', async () => {
-  serveHistory()
+test('a conversation removed and brought back opens again', async () => {
   const store = useConversations()
   await store.activate(FIRST)
   await store.activate(null)
@@ -4249,23 +4044,23 @@ test('a conversation removed and brought back reads its history again', async ()
   records.unshift(removed)
   await reconnected()
   await store.activate(FIRST)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
+  expect(socketsOf(FIRST)).toHaveLength(2)
 })
 
-test('logout cancels pending history and prevents late state restoration', async () => {
-  const gate = deferred<void>()
-  const requested = serveHistory(gate)
+test('logout cancels a pending opening and prevents late state restoration', async () => {
+  const sockets = playPageSockets()
   const store = useConversations()
   const current = store.items[0]!
   const opening = store.activate(FIRST)
-  await requested
+  await openSent(sockets)
+  const open = sockets[0]!.sent.find((frame) => frame.type === 'open')!
   store.stopAll()
-  gate.resolve()
+  deliver(sockets[0]!, backendOpening(FIRST, open, [FIRST], { root: [shownBlock] }))
   await opening
   expect(store.items).toEqual([])
   expect(current.load).toBe('loading')
+  expect(current.history.windows).toEqual([])
 })
-
 
 test('slow or failed model discovery does not hold history behind the loading pane', async () => {
   const store = useConversations()
@@ -4273,26 +4068,21 @@ test('slow or failed model discovery does not hold history behind the loading pa
   const modelResponse = deferred<Response>()
   const originalFetch = globalThis.fetch
   const block = {
-    type: 'user', id: 'visible-history', turnId: 'history-turn', preamble: null, model,
-    createdAt: '2026-09-13T00:00:00.000Z', content: [{ type: 'text', text: 'Read this while models load' }],
+    type: 'user' as const, id: 'visible-history', turnId: 'history-turn', preamble: null, model,
+    createdAt: '2026-09-13T00:00:00.000Z', content: [{ type: 'text' as const, text: 'Read this while models load' }],
   }
+  rootBlocks.set(current.id, [block])
   globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) return modelResponse.promise
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    if (path.endsWith('/transcript')) return Response.json({ ...EMPTY_PAGE, length: 1, blocks: [block] })
+    if (String(input).startsWith('/api/models')) return modelResponse.promise
     return originalFetch(input, init)
   }) as typeof fetch
   const models = useProduct().loadModels(true).catch(error => error)
-  const opening = store.activate(current.id)
-  await new Promise(resolve => setTimeout(resolve, 0))
+  await store.activate(current.id)
   expect(current.lastError).toBeNull()
   expect(current.load).toBe('ready')
   expect(latestBlocks(current.history)[0]?.id).toBe('visible-history')
   modelResponse.reject(new Error('Catalog offline'))
   expect(await models).toBeInstanceOf(Error)
-  await opening
   expect(current.load).toBe('ready')
   expect(latestBlocks(current.history)[0]?.id).toBe('visible-history')
 })
@@ -4376,12 +4166,13 @@ async function settle(): Promise<void> {
   }
 }
 
-/** Another page saves the conversation's draft; this page learns of it from its channel. */
+/** Another page saves the conversation's draft; this page's socket brings it. */
 async function savedElsewhere(id: string, text: string): Promise<void> {
   const current = serverDrafts.get(id)!
-  serverDrafts.set(id, { ...current, revision: current.revision + 1, text })
-  records.find((item) => item.id === id)!.draftRevision = current.revision + 1
-  await changed(id)
+  const draft = { ...current, revision: current.revision + 1, text }
+  serverDrafts.set(id, draft)
+  sendOnSockets(id, { type: 'draft', draft })
+  await nextTick()
 }
 
 const draftSaves = () => requests.filter((request) => request.path.endsWith('/draft') && request.body !== null)
@@ -4391,7 +4182,6 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
   jest.useFakeTimers()
   try {
     serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], comments: [], replaced: null })
-    records[0]!.draftRevision = 1
     const store = useConversations()
     const current = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
@@ -4430,6 +4220,42 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
   }
 })
 
+// The backend announces each draft write to every page that shows the
+// conversation, the writer's own included, which may hear it before the
+// write's answer: the page knows its own text and keeps the composer as
+// it is, offering nothing it replaced and saving nothing again. Cost: one
+// opening, one save.
+test('the page\'s own draft save, brought by its socket before the save\'s answer, changes nothing in the composer', async () => {
+  const signOut = signIn()
+  jest.useFakeTimers()
+  const held = holdWrites({ drafts: true })
+  try {
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], comments: [], replaced: null })
+    const store = useConversations()
+    const current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    const shown = current.draftShown
+    current.draft = 'Fix the login bug'
+    jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
+    await until(() => held.waiting.length === 1, 'the save reaches the backend')
+    const answer = await held.waiting[0]!.apply()
+    sendOnSockets(FIRST, { type: 'draft', draft: serverDrafts.get(FIRST)! })
+    await settle()
+    answer()
+    await until(() => current.record.revision('draft') === 2 && current.record.pending('draft').length === 0, 'the save is answered')
+    jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
+    await settle()
+    expect([current.draft, current.draftShown, current.record.read.value?.draft.replaced ?? null]).toEqual(['Fix the login bug', shown, null])
+    expect(held.waiting).toHaveLength(1)
+    // The draft came with the open and with the write: nothing read it.
+    expect(requests.filter((request) => request.path.endsWith('/draft') && request.body === null)).toEqual([])
+  } finally {
+    held.restore()
+    jest.useRealTimers()
+    signOut()
+  }
+})
+
 // Send to Conversation: the words go to the end of the chosen conversation's
 // draft as a paste there adds them, sent before it opened, so they wait for the
 // draft the backend has, and nothing goes to the agent.
@@ -4448,11 +4274,9 @@ test.each([
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return claimsFetch(input, init)
   }) as typeof fetch
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit')
   try {
     serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], comments: [], replaced: null })
-    records[0]!.draftRevision = 1
     const store = useConversations()
     const current = store.items.find((item) => item.id === FIRST)!
     store.appendToDraft(current, words())
@@ -4464,7 +4288,6 @@ test.each([
     expect([submit.mock.calls.length, current.pendingSends.length]).toEqual([0, 0])
   } finally {
     submit.mockRestore()
-    connect.mockRestore()
     globalThis.fetch = claimsFetch
     restoreClaims()
     signOut()
@@ -4477,7 +4300,6 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   const current = store.items.find((item) => item.id === FIRST)!
   addStubProvider()
   serverDrafts.set(FIRST, { revision: 1, text: 'Ship it', files: [], comments: [], replaced: null })
-  records[0]!.draftRevision = 1
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -4487,7 +4309,6 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
   }) as typeof fetch
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const accepted = deferred<void>()
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => accepted.promise)
   jest.useFakeTimers()
@@ -4514,7 +4335,6 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   } finally {
     jest.useRealTimers()
     submit.mockRestore()
-    connect.mockRestore()
     globalThis.fetch = originalFetch
     signOut()
   }
@@ -4532,7 +4352,6 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
   const later = { id: 'c-later', blockId: 'text-1', start: 40, end: 66, at: 40, quote: 'the same 30-second timeout', text: 'Its own timeout?' }
   const earlier = { id: 'c-earlier', blockId: 'text-1', start: 4, end: 29, at: 4, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
   serverDrafts.set(FIRST, { revision: 1, text: 'Otherwise go ahead', files: [], comments: [], replaced: null })
-  records[0]!.draftRevision = 1
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -4542,7 +4361,6 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
   }) as typeof fetch
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
   const steer = spyOn(ConversationRuntime.prototype, 'steer').mockResolvedValue()
   try {
@@ -4550,8 +4368,8 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
     await store.activate(FIRST)
     // Another page saves a comment: this page's composer shows it waiting.
     serverDrafts.set(FIRST, { ...serverDrafts.get(FIRST)!, revision: 2, comments: [later] })
-    records[0]!.draftRevision = 2
-    await changed(FIRST)
+    sendOnSockets(FIRST, { type: 'draft', draft: serverDrafts.get(FIRST)! })
+    await nextTick()
     await until(() => current.comments.length === 1, 'the other page\'s comment waits here')
     // A comment saved here goes to the backend at once, with the text.
     store.commenting(current).add(earlier)
@@ -4578,7 +4396,6 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
   } finally {
     steer.mockRestore()
     submit.mockRestore()
-    connect.mockRestore()
     globalThis.fetch = originalFetch
     signOut()
   }
@@ -4597,7 +4414,6 @@ test('a draft saved while its pasted files attach restores them attaching, and t
   let restoreFetch = answerClaims(new Promise(() => {}))
   try {
     serverDrafts.set(FIRST, { revision: 1, text: '', files: [], comments: [], replaced: null })
-    records[0]!.draftRevision = 1
     let store = useConversations()
     let current = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
@@ -4645,7 +4461,6 @@ test('a page that closes while typing leaves its text to the next page, which ta
   let words: draftStorage.LastWords | undefined
   try {
     serverDrafts.set(FIRST, { revision: 1, text: 'Fix the lo', files: [], comments: [], replaced: null })
-    records[0]!.draftRevision = 1
     let store = useConversations()
     let current = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
@@ -4660,7 +4475,6 @@ test('a page that closes while typing leaves its text to the next page, which ta
 
     // Its save on close arrived; its IndexedDB record holds an older text.
     serverDrafts.set(FIRST, { revision: 2, text: 'Fix the login bug', files: [], comments: [], replaced: null })
-    records[0]!.draftRevision = 2
     pinia = createPinia()
     setActivePinia(pinia)
     signOut = signIn({
@@ -4688,281 +4502,79 @@ test('a page that closes while typing leaves its text to the next page, which ta
   }
 })
 
-// A child's context card shows the child's own context: its usage lands on its
-// record and leaves the root's, which the runtime keeps for the composer,
-// alone.
-test('a child\'s usage frame sets its own record\'s usage', () => {
-  const conversation = useConversations().items[0]!
-  conversation.contextUsage = null
-  applyConversationEvent(conversation, {
-    type: 'subagent',
-    event: 'started',
-    job: {
-      subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Serve',
-      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+/** A cost of `calls` calls whose price is `price`. */
+function costOf(calls: number, price: number): AgentEntry['cost'] {
+  return {
+    totals: {
+      inputTokens: calls * 10, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0,
+      price: { total: price, input: price, cacheWrite: null, cacheRead: null, output: null },
     },
-  })
-  const usage = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [], account: null }
-  applyConversationEvent(conversation, { type: 'context_usage', node: 'child', usage })
-  expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
-  applyConversationEvent(conversation, { type: 'context_usage', node: conversation.id, usage: { ...usage, tokens: 1_000 } })
-  expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
+    calls,
+  }
+}
+
+/** The call number `number` of an agent, as `/calls` lists it. */
+function costCall(number: number) {
+  return { number, startedAt: '2026-09-13T00:00:00.000Z', inputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 90, price: 0.5, afterCompaction: false, miss: null }
+}
+
+// A child's context card shows the child's own context and cost, which its
+// entry brings; the conversation's card adds every agent's cost to the
+// root's, and a child's change leaves the root's context alone
+// (`docs/decisions/0009-agent-sessions-and-sync.md`). Cost: one opening, no wait.
+test('a child\'s entry shows its own context and cost, and the conversation\'s cost counts it', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const context = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [], account: null }
+  sockets[0]!.receive({ type: 'agents', version: { epoch: 'e', revision: 2 }, agents: [
+    { ...rootEntry(FIRST), cost: costOf(2, 1) },
+    { ...childEntry(conversation, 'child'), context, cost: costOf(3, 0.5) },
+  ] })
+  await nextTick()
+  const store = useConversations()
+  expect(store.costShown(conversation, 'child')?.cost).toMatchObject({ calls: 3, totals: { price: { total: 0.5 } } })
+  expect(store.costShown(conversation)?.cost).toMatchObject({ calls: 5, totals: { price: { total: 1.5 } } })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(context)
   expect(conversation.contextUsage).toBeNull()
 })
 
-/**
- * A conversation opening with a session whose `/cost` reads wait for the
- * test: each read is a request the test answers with a cost, or with a
- * response, as a failure, and whose signal it can look at. The opening's
- * own read has been sent; the opening ends once the test answers it.
- */
-async function costScene() {
-  const totals = (input: number, price: number | null) => ({
-    inputTokens: input, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0,
-    price: { total: price, input: price, cacheWrite: null, cacheRead: null, output: null },
-  })
-  const call = { startedAt: '2026-09-13T00:00:00.000Z', inputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 90, price: 0.5, afterCompaction: false, miss: null }
-  const frame = (rows: number, agent: number, price: number | null): ServerFrame => ({
-    type: 'cost',
-    rows,
-    totals: totals(10, price),
-    agent,
-    profile: null,
-    call,
-  })
-  const cost = (rows: number, input: number, price: number) => ({
-    rows, totals: totals(input, price), agents: [{ agent: 0, profile: null, price }], calls: [call],
-  })
-  const reads: Array<{ answer: ReturnType<typeof deferred<unknown>>, signal: AbortSignal | null, agent: string | null }> = []
+// An open card reads its agent's recent calls once; a call its entry counts
+// later is read after the last the card holds, and a closed card lets them
+// go and reads nothing more. Cost: one opening, two reads, no wait.
+test('an open context card reads its agent\'s calls, then only those its entry counts later, and a closed one reads none', async () => {
+  const reads: string[] = []
   const answering = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const url = new URL(String(input), 'https://demi.test')
-    if (!url.pathname.endsWith(`/conversations/${FIRST}/cost`))
-      return answering(input, init)
-    const read = { answer: deferred<unknown>(), signal: init?.signal ?? null, agent: url.searchParams.get('agent') }
-    reads.push(read)
-    const answer = await read.answer.promise
-    return answer instanceof Response ? answer : Response.json(answer)
+    if (!url.pathname.endsWith('/calls')) return answering(input, init)
+    reads.push(`${url.pathname.split('/').at(-2)}${url.search}`)
+    const after = Number(url.searchParams.get('after') ?? 0)
+    return Response.json({ calls: [costCall(after + 1)] })
   }) as typeof fetch
-  const { conversation, sockets, opening } = await startOpening(FIRST, { handshake: [] })
-  await waitFor(() => reads.length === 1, () => 'the opening did not read the cost')
-  return { conversation, sockets, opening, store: useConversations(), totals, call, frame, cost, reads }
-}
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  store.wantCalls(conversation, null, true)
+  await waitFor(() => store.costShown(conversation)?.calls?.status === 'read', () => 'the calls were not read')
+  expect(reads).toEqual([FIRST])
 
-// Production: the context card showed without its Cost, which popped in
-// when the read it sent as it opened returned. The page reads the cost with
-// the conversation's other reads, and the transcript shows once it holds
-// it, so the card is whole the moment it opens
-// (`packages/web-ui/src/agent/context-cost.ts`). Cost: one opening, one read,
-// no wait.
-test('a conversation shows once the page holds its cost, read with its transcript', async () => {
-  const { conversation, opening, cost, reads } = await costScene()
-  const shownWith: unknown[] = []
-  watch(() => conversation.load, (load) => {
-    if (load !== 'loading')
-      shownWith.push(conversation.cost)
-  }, { flush: 'sync' })
+  sockets[0]!.receive({ type: 'agent', revision: 2, agent: { ...rootEntry(FIRST), cost: costOf(2, 1) } })
+  await waitFor(() => reads.length === 2, () => 'the new call was not read')
+  expect(reads[1]).toBe(`${FIRST}?after=1`)
+  await waitFor(() => {
+    const calls = store.costShown(conversation)?.calls
+    return calls?.status === 'read' && calls.calls.length === 2
+  }, () => 'the new call is not shown')
+
+  store.wantCalls(conversation, null, false)
+  sockets[0]!.receive({ type: 'agent', revision: 3, agent: { ...rootEntry(FIRST), cost: costOf(3, 1.5) } })
   await nextTick()
-  expect(conversation.load).toBe('loading')
-  reads[0]!.answer.resolve(cost(3, 100, 1))
-  await opening
-  expect(shownWith[0]).toEqual({ status: 'read', cost: cost(3, 100, 1) })
-  expect(reads).toHaveLength(1)
-})
-
-// The page adds each `cost` frame that follows what it holds
-// (`packages/web-ui/src/agent/context-cost.ts`): a frame it holds is dropped, one past
-// a gap, as after frames lost while the connection was down, reads the cost
-// again, and of the frames that came while that read was on its way, one
-// its answer includes is dropped and one it does not is added after it.
-// Cost: one opening, two reads, no wait.
-test('the cost a page holds adds each frame that follows it, drops one it holds and reads again past a gap', async () => {
-  const { conversation, sockets, opening, totals, call, frame, reads } = await costScene()
-  reads[0]!.answer.resolve({ rows: 1, totals: totals(100, 1), agents: [{ agent: 0, profile: null, price: 1 }], calls: [call] })
-  await opening
-
-  sockets[0]!.receive(frame(2, 2, 0.25), frame(1, 0, 0.5))
-  await nextTick()
-  expect(conversation.cost).toEqual({
-    status: 'read',
-    cost: {
-      rows: 2,
-      totals: totals(110, 1.25),
-      agents: [
-        { agent: 0, profile: null, price: 1 },
-        { agent: 2, profile: null, price: 0.25 },
-      ],
-      calls: [call],
-    },
-  })
-
-  // Row 3 was lost: row 4 reads the cost again, and the card shows what it
-  // holds until the answer comes. Rows 5 and 6 are written meanwhile, and
-  // the answer includes row 5 but not row 6.
-  sockets[0]!.receive(frame(4, 0, 0.5))
-  await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
-  expect(conversation.cost).toMatchObject({ status: 'read', cost: { rows: 2 } })
-  sockets[0]!.receive(frame(5, 0, 0.5), frame(6, 3, null))
-  reads[1]!.answer.resolve({ rows: 5, totals: totals(140, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] })
-  await waitFor(() => conversation.cost?.status === 'read' && conversation.cost.cost.rows === 6, () => 'the answer was not kept with the frame after it')
-  expect(conversation.cost).toEqual({
-    status: 'read',
-    cost: { rows: 6, totals: totals(150, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] },
-  })
+  expect(store.costShown(conversation)?.calls).toBeNull()
   expect(reads).toHaveLength(2)
-})
-
-// A subagent's context card shows the child's own cost: the page reads it,
-// `?agent=` the child's number, as the child's window opens, adds a frame of
-// that child, counts a frame of any other agent without adding it, reads
-// again past a gap, and lets it go as the window closes
-// (`docs/decisions/0001-agent-cost.md`). Cost: one opening, four reads, no wait.
-test("a shown child reads its own cost, ignores another agent's frame and reads again past a gap", async () => {
-  const { conversation, sockets, opening, store, totals, call, frame, reads } = await costScene()
-  reads[0]!.answer.resolve({ rows: 1, totals: totals(100, 1), agents: [{ agent: 0, profile: null, price: 1 }], calls: [call] })
-  await opening
-  sockets[0]!.receive({
-    type: 'subagent',
-    event: 'started',
-    job: {
-      subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Serve',
-      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
-    },
-  })
-  await nextTick()
-  expect(reads).toHaveLength(1)
-
-  store.showSubagents(conversation, ['child'])
-  await waitFor(() => reads.length === 2, () => "the window did not read the child's cost")
-  expect(reads[1]!.agent).toBe('1')
-  reads[1]!.answer.resolve({ rows: 1, totals: totals(0, null), agents: [], calls: [] })
-  await waitFor(() => conversation.subagentCosts['child']?.status === 'read', () => "the child's cost was not kept")
-
-  // The main conversation's row is counted, the child's added.
-  sockets[0]!.receive(frame(2, 0, 0.5), frame(3, 1, 0.25))
-  await nextTick()
-  expect(conversation.subagentCosts['child']).toEqual({
-    status: 'read',
-    cost: { rows: 3, totals: totals(10, 0.25), agents: [{ agent: 1, profile: null, price: 0.25 }], calls: [call] },
-  })
-  // The conversation's cost adds both, and the main conversation's call alone.
-  expect(conversation.cost?.status === 'read' && [conversation.cost.cost.rows, conversation.cost.cost.calls.length]).toEqual([3, 2])
-
-  // Row 4 was lost: row 5 reads both costs again.
-  sockets[0]!.receive(frame(5, 0, 0.5))
-  await waitFor(() => reads.filter((read) => read.agent === '1').length === 2, () => "a gap did not read the child's cost again")
-  expect(reads.filter((read) => read.agent === null)).toHaveLength(2)
-
-  store.showSubagents(conversation, [])
-  expect(reads.at(-1)!.signal?.aborted).toBe(true)
-  expect(conversation.subagentCosts).toEqual({})
-})
-
-// A call that ends while the page's connection is down leaves the cost
-// stale with no later frame to show it: the connection that attaches again
-// brings the conversation's row count, and a page that holds fewer reads the
-// cost again; one that holds as many reads nothing
-// (`packages/web-ui/src/agent/context-cost.ts`). Cost: two sockets, two reads,
-// no wait.
-test('a page whose connection missed the last row reads the cost again as it attaches again', async () => {
-  const { conversation, sockets, opening, cost, reads } = await costScene()
-  reads[0]!.answer.resolve(cost(2, 100, 1))
-  await opening
-
-  // The connection drops; row 3 is written meanwhile, its frame lost.
-  sockets[0]!.end()
-  reconnectNow()
-  await waitFor(() => sockets[1]?.sent.some((sent) => sent.type === 'open') === true, () => 'no second open')
-  sockets[1]!.receive({ type: 'opened' }, { type: 'phase', phase: 'idle' }, { type: 'cost_rows', rows: 3 })
-  await waitFor(() => reads.length === 2, () => 'the attach did not read the cost again')
-  reads[1]!.answer.resolve(cost(3, 110, 1.5))
-  await waitFor(() => conversation.cost?.status === 'read' && conversation.cost.cost.rows === 3, () => 'the second answer was not kept')
-
-  // Attached again with nothing missed, the page reads nothing.
-  sockets[1]!.end()
-  reconnectNow()
-  await waitFor(() => sockets[2]?.sent.some((sent) => sent.type === 'open') === true, () => 'no third open')
-  sockets[2]!.receive({ type: 'opened' }, { type: 'phase', phase: 'idle' }, { type: 'cost_rows', rows: 3 })
-  await nextTick()
-  expect(reads).toHaveLength(2)
-})
-
-// A read of the cost that fails shows the failure with its request's id,
-// never an empty section a user would take for no calls, and the
-// conversation opens all the same; Retry reads it again
-// (`packages/web-ui/src/agent/ContextUsageIndicator.vue`). Cost: one opening, two
-// reads, no wait.
-test('a failed read of the cost shows its failure, and Retry reads it again', async () => {
-  const { conversation, opening, store, cost, reads } = await costScene()
-  reads[0]!.answer.resolve(new Response(
-    JSON.stringify({ code: 'internal_error', message: 'The database is busy' }),
-    { status: 500, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req_cost00000000001' } },
-  ))
-  await opening
-  expect(conversation.load).toBe('ready')
-  expect(conversation.cost).toMatchObject({ status: 'failed', error: { requestId: 'req_cost00000000001' } })
-
-  store.retryCost(conversation)
-  await waitFor(() => reads.length === 2, () => 'Retry did not read the cost')
-  reads[1]!.answer.resolve(cost(1, 100, 1))
-  await waitFor(() => conversation.cost?.status === 'read', () => 'the answer was not kept')
-  expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
-})
-
-// A conversation that goes from the page while a read of its cost has no
-// answer yet, its opening's or the one a gap started, cancels that read,
-// and an answer that comes anyway is shown nowhere: each read lives as long
-// as the conversation's stay in the page's cache
-// (`packages/web-ui/src/agent/context-cost.ts`). Cost: one opening and one
-// read, then one opening and two
-// reads, no wait.
-test('a conversation that goes while its opening reads its cost cancels the read', async () => {
-  const { conversation, opening, cost, reads } = await costScene()
-  channels.last().send({ type: 'conversation_deleted', id: FIRST })
-  await nextTick()
-  expect(reads[0]!.signal?.aborted).toBe(true)
-  // The stub answers whatever the signal says, as a response already on its way does.
-  reads[0]!.answer.resolve(cost(1, 100, 1))
-  await opening.catch(() => {})
-  expect(conversation.cost).toBeNull()
-})
-
-test('a conversation that goes cancels the read of its cost a gap started', async () => {
-  const { conversation, sockets, opening, cost, frame, reads } = await costScene()
-  reads[0]!.answer.resolve(cost(1, 100, 1))
-  await opening
-  sockets[0]!.receive(frame(3, 0, 0.5))
-  await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
-  channels.last().send({ type: 'conversation_deleted', id: FIRST })
-  await nextTick()
-  expect(reads[1]!.signal?.aborted).toBe(true)
-  reads[1]!.answer.resolve(cost(3, 100, 2))
-  await nextTick()
-  expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
-})
-
-// A page that signs out lets the cost's read go: the read is cancelled, and
-// an answer that comes anyway is kept nowhere
-// (`packages/web-ui/src/agent/context-cost.ts`). Cost: one opening, two reads,
-// no wait.
-test('the cost\'s read goes as the page signs out', async () => {
-  const { conversation, sockets, opening, store, cost, frame, reads } = await costScene()
-  reads[0]!.answer.resolve(cost(1, 100, 1))
-  await opening
-  sockets[0]!.receive(frame(3, 0, 0.5))
-  await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
-  store.stopAll()
-  expect(reads[1]!.signal?.aborted).toBe(true)
-  reads[1]!.answer.resolve(cost(3, 100, 1))
-  await nextTick()
-  expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
 })
 
 // Under 50 ms each: the backend is the stub above.
 test('the messages saved for later show as the conversation opens, and a raised revision reads them again, once', async () => {
-  serveHistory()
   serverSaved.set(FIRST, [savedMessage('dns', 'Check prod’s DNS next')])
-  records[0]!.savedRevision = 1
+  metaOf(records[0]!.id).savedRevision = 1
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
   const reads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/saved`).length
@@ -4973,7 +4585,7 @@ test('the messages saved for later show as the conversation opens, and a raised 
   // Another page saved one: the summary's revision moves ahead, the page
   // reads the list again; the same summary again reads nothing.
   serverSaved.set(FIRST, [savedMessage('ipv6', 'Then the IPv6'), ...serverSaved.get(FIRST)!])
-  records[0]!.savedRevision = 2
+  metaOf(records[0]!.id).savedRevision = 2
   await changed(FIRST)
   await changed(FIRST)
   await until(() => first.record.revision('saved') === 2, 'the list is read again')
@@ -4982,7 +4594,7 @@ test('the messages saved for later show as the conversation opens, and a raised 
   expect(reads(FIRST)).toBe(2)
 
   // A conversation this page never opened reads nothing.
-  records[1]!.savedRevision = 1
+  metaOf(records[1]!.id).savedRevision = 1
   await changed(SECOND)
   await settle()
   expect(reads(SECOND)).toBe(0)
@@ -5040,13 +4652,13 @@ const listed = (conversation: { record: { shown: { value: { saved: SavedMessage[
 
 /** The conversation `FIRST` opened with its draft and its list of messages saved for later read. */
 async function openWithSaved(saved: SavedMessage[]) {
-  serveHistory()
   serverSaved.set(FIRST, saved)
-  records[0]!.savedRevision = 1
+  metaOf(records[0]!.id).savedRevision = 1
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
   await store.activate(FIRST)
-  await until(() => first.record.revision('saved') === 1 && first.record.revision('draft') === 0, 'the list and the draft are read')
+  // A write the page kept from before may go at once and raise the list's revision.
+  await until(() => first.record.revision('saved') >= 1 && first.record.revision('draft') === 0, 'the list and the draft are read')
   return { store, first }
 }
 
@@ -5054,7 +4666,7 @@ async function openWithSaved(saved: SavedMessage[]) {
 async function readAgain(first: { record: { revision: (part: string) => number } }): Promise<void> {
   await changed(FIRST)
   await until(
-    () => first.record.revision('saved') === records[0]!.savedRevision && first.record.revision('draft') === records[0]!.draftRevision,
+    () => first.record.revision('saved') === metaOf(records[0]!.id).savedRevision && first.record.revision('draft') === (serverDrafts.get(FIRST)?.revision ?? 0),
     'the draft and the list are read again',
   )
 }
@@ -5062,9 +4674,7 @@ async function readAgain(first: { record: { revision: (part: string) => number }
 test('Save for Later lists the composer\'s message at once under the id its request names, sent on the revision it was built on', async () => {
   const signOut = signIn()
   try {
-    serveHistory()
-    serverDrafts.set(FIRST, { revision: 1, text: 'Check prod’s DNS', files: [], comments: [], replaced: null })
-    records[0]!.draftRevision = 1
+      serverDrafts.set(FIRST, { revision: 1, text: 'Check prod’s DNS', files: [], comments: [], replaced: null })
     const store = useConversations()
     const first = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
@@ -5188,7 +4798,7 @@ test('Save of a saved message another page deleted meanwhile keeps the edit as N
     store.editSaved(first, 'a')
     typeInEdit(first, 'Message A, edited')
     serverSaved.set(FIRST, [savedMessage('b', 'Message B')])
-    records[0]!.savedRevision += 1
+    metaOf(records[0]!.id).savedRevision += 1
     store.saveSavedEdit(first)
     await until(() => first.notSaved.length === 1, 'the edit stands as Not Saved')
     await readAgain(first)
@@ -5213,7 +4823,7 @@ test('a refused Save of an edit that reads as the draft leaves the draft as it i
     store.editSaved(first, 'a')
     typeInEdit(first, 'Same text')
     serverSaved.set(FIRST, [])
-    records[0]!.savedRevision += 1
+    metaOf(records[0]!.id).savedRevision += 1
     store.saveSavedEdit(first)
     await until(() => first.notSaved.length === 1, 'the edit stands as Not Saved')
     await readAgain(first)
@@ -5321,7 +4931,7 @@ async function withStubModel(first: Parameters<ReturnType<typeof useConversation
     const path = String(input)
     if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path === `/api/conversations/${FIRST}` && init?.method === 'PATCH') {
-      return Response.json({ conversation: records[0], results: [] })
+      return Response.json({ conversation: records[0], metadata: metaOf(records[0]!.id), results: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -5414,7 +5024,7 @@ test('a saved message the session took leaves the list for good once read', asyn
   const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(async () => {
     // The backend takes it off its list as the session takes it.
     serverSaved.set(FIRST, [])
-    records[0]!.savedRevision += 1
+    metaOf(records[0]!.id).savedRevision += 1
     return true
   })
   try {
@@ -5542,7 +5152,7 @@ test('a deleted saved message leaves at once with its Undo toast, and Undo saves
 
 test('a change of the model shows at once and a refusal gives the stored settings back', async () => {
   const { store, first } = await openWithSaved([])
-  records[0]!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  metaOf(records[0]!.id).model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(FIRST)
   expect(first.model.serviceTierId).toBeNull()
   const held = holdWrites()
@@ -5550,7 +5160,7 @@ test('a change of the model shows at once and a refusal gives the stored setting
     const changing = store.changeModel(first, { serviceTierId: 'priority' })
     await until(() => held.waiting.length === 1, 'the change reaches the backend')
     expect(first.model.serviceTierId).toBe('priority')
-    expect(useProduct().snapshot!.conversations[0]!.model?.serviceTierId).toBe('priority')
+    expect(useConversations().metadataOf(FIRST)!.model?.serviceTierId).toBe('priority')
     held.waiting[0]!.answer(refusal('internal_error', 500))
     await changing
     expect(first.model.serviceTierId).toBeNull()

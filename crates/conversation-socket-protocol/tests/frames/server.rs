@@ -15,26 +15,19 @@ fn decode(value: &Value) -> ServerFrame {
 
 #[test]
 fn every_server_frame_keeps_its_wire_shape() {
-    let mut kinds: Vec<String> = Vec::new();
+    let mut kinds = std::collections::BTreeSet::new();
     for fixture in fixtures() {
         let frame = decode(&fixture);
         assert_eq!(serde_json::to_value(&frame).unwrap(), fixture);
-        kinds.push(fixture["type"].as_str().unwrap().to_owned());
+        kinds.insert(fixture["type"].as_str().unwrap().to_owned());
     }
-    kinds.dedup();
-    assert_eq!(kinds.len(), 21, "one fixture of every frame");
+    assert_eq!(kinds.len(), 18, "one fixture of every frame");
 }
 
 #[test]
 fn a_page_accepts_frame_fields_it_does_not_know() {
-    let frame = json!({"type": "phase", "phase": "idle", "since": "2026-09-21T14:13:20.000Z"});
-    assert_eq!(
-        decode(&frame),
-        ServerFrame::Phase {
-            subagent_id: None,
-            phase: demi_shared_types::SessionPhase::Idle
-        }
-    );
+    let frame = json!({"type": "queue", "queue": [], "since": "2026-09-21T14:13:20.000Z"});
+    assert_eq!(decode(&frame), ServerFrame::Queue { queue: Vec::new() });
 
     let schema = serde_json::to_value(schemars::schema_for!(ServerFrame)).unwrap();
     for variant in schema["oneOf"].as_array().unwrap() {
@@ -49,10 +42,8 @@ fn a_page_accepts_frame_fields_it_does_not_know() {
 /// Every block a frame carries.
 fn blocks(frame: &mut ServerFrame) -> Vec<&mut Block> {
     match frame {
-        ServerFrame::TranscriptReset { blocks, .. }
-        | ServerFrame::SubagentTranscriptReset { blocks, .. } => blocks.iter_mut().collect(),
-        ServerFrame::TranscriptPatch { patches, .. }
-        | ServerFrame::SubagentTranscriptPatch { patches, .. } => patched(patches),
+        ServerFrame::TranscriptReset { blocks, .. } => blocks.iter_mut().collect(),
+        ServerFrame::TranscriptPatch { patches, .. } => patched(patches),
         _ => Vec::new(),
     }
 }
@@ -86,6 +77,6 @@ fn a_block_reaches_the_page_without_the_entries_its_provider_kept_on_it() {
         }
         assert_eq!(serde_json::to_value(&frame).unwrap(), fixture);
     }
-    // A reset, an added and a replaced block, and a subagent's reset.
+    // A reset, an added and a replaced block, and a child's reset.
     assert_eq!(holding, 4);
 }

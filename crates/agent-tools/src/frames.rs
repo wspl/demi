@@ -2,16 +2,15 @@
 //! (`crates/agent-server/src/server/tree/live.rs`).
 //!
 //! It holds each command's `shell_output`, and the commands a node's transcript
-//! last saw running. A page that attaches or asks for a fresh transcript
-//! receives them with the ones that run.
+//! last saw running. A page that subscribes to a node receives them with its
+//! transcript.
 
 use demi_conversation_socket_protocol::{CommandView, ServerFrame, ShellStatus};
 use demi_host_interface::{PageState, PageView};
 use demi_shared_types::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
 
-/// The `shell_output` frame of `view`, a command of the subagent `subagent`,
-/// or of the root when none.
-pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
+/// The `shell_output` frame of `view`, a command of the node `node`.
+pub fn shell_output(node: NodeId, view: PageView) -> ServerFrame {
     let command = CommandView {
         command_id: view.command_id,
         tool_use_id: view.tool_use_id,
@@ -42,7 +41,7 @@ pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
         PageState::Lost { reason } => ShellStatus::Lost { command, reason },
     };
     ServerFrame::ShellOutput {
-        subagent_id: subagent,
+        node,
         status: Box::new(status),
     }
 }

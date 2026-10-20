@@ -29,7 +29,7 @@ use jiff::SignedDuration;
 use serde_json::json;
 use tokio::time::Instant;
 
-use crate::support::{Fixture, Gate, is_idle, open, send, session_of, streamed_then_held, until};
+use crate::support::{Fixture, Gate, send, session_of, streamed_then_held, until};
 
 /// The readings among `frames`, in order.
 fn readings(frames: &[ServerFrame]) -> Vec<Option<RequestOutput>> {
@@ -67,7 +67,7 @@ async fn a_page_that_opens_in_the_middle_of_a_request_finds_its_count_and_then_t
     clock.advance(SignedDuration::from_secs(2));
 
     let mut second = fixture.client();
-    second.send(open()).await;
+    second.open().await;
     let handshake = second.next_until(|frame| matches!(frame, ServerFrame::RequestOutput { .. })).await;
     let [Some(reading)] = &readings(&handshake)[..] else {
         panic!("{handshake:?}");
@@ -77,7 +77,7 @@ async fn a_page_that_opens_in_the_middle_of_a_request_finds_its_count_and_then_t
     // The response's own count replaces the estimate, and the turn's end
     // leaves no reading.
     gate.open();
-    let frames = second.next_until(is_idle).await;
+    let frames = second.until_idle().await;
     let ended = readings(&frames);
     let tail: Vec<_> = ended
         .iter()
@@ -129,7 +129,7 @@ async fn a_retried_request_counts_from_zero() {
         .collect();
     assert_eq!(counts, [0, 1], "{frames:?}");
     gate.open();
-    page.next_until(is_idle).await;
+    page.until_idle().await;
 }
 
 // Twenty deltas 100 ms apart: two seconds of paused time, a few
@@ -161,7 +161,7 @@ async fn the_reading_of_a_streaming_request_goes_at_most_every_half_second() {
     for pair in streaming.windows(2) {
         assert!(pair[1] - pair[0] >= Duration::from_millis(500), "{streaming:?}");
     }
-    page.next_until(is_idle).await;
+    page.until_idle().await;
 }
 
 /// The ended readings among `frames`, each request's last, in order.
@@ -186,7 +186,7 @@ async fn a_request_stopped_in_its_first_half_second_ends_with_what_it_streamed()
     let session = session_of(&fixture);
     until(|| session.request_output().is_some_and(|output| output.tokens == 3)).await;
     page.send(ClientFrame::Abort {}).await;
-    let frames = page.next_until(is_idle).await;
+    let frames = page.until_idle().await;
     let shown = readings(&frames);
     let [.., Some(last), None] = &shown[..] else {
         panic!("{frames:?}");
@@ -212,7 +212,7 @@ async fn the_speed_counts_from_the_first_output_that_adds_to_the_count() {
     until(|| session.transcript().blocks.iter().any(|block| matches!(block, Block::Thinking(_)))).await;
     clock.advance(SignedDuration::from_secs(5));
     gate.open();
-    let frames = page.next_until(is_idle).await;
+    let frames = page.until_idle().await;
     let ended: Vec<_> = readings(&frames).into_iter().flatten().filter(|output| output.ended).collect();
     assert_eq!(ended.iter().map(|output| output.streamed_ms).collect::<Vec<_>>(), [Some(0)], "{frames:?}");
 }
@@ -234,7 +234,7 @@ async fn each_response_of_a_run_ends_its_request_and_the_next_counts_from_zero()
     let fixture = Fixture::new(&script);
     let mut page = fixture.opened().await;
     page.send(send("m1", "Answer twice.")).await;
-    let frames = page.next_until(is_idle).await;
+    let frames = page.until_idle().await;
     let ended = ends(&frames);
     assert_eq!(ended.iter().map(|(_, tokens)| *tokens).collect::<Vec<_>>(), [7, 9], "{frames:?}");
     assert_ne!(ended[0].0, ended[1].0);
@@ -271,7 +271,7 @@ async fn a_call_whose_arguments_come_whole_counts_them() {
     // The framing and the 19 characters of `{"path":"notes.md"}`.
     assert_eq!(session.request_output().map(|output| output.tokens), Some(55));
     gate.open();
-    page.next_until(is_idle).await;
+    page.until_idle().await;
 }
 
 // A turn's last response: a few milliseconds.
@@ -281,7 +281,7 @@ async fn a_responses_own_count_goes_out_when_it_ends_before_the_turns_end() {
     let fixture = Fixture::new(&script);
     let mut page = fixture.opened().await;
     page.send(send("m1", "Finish.")).await;
-    let frames = page.next_until(is_idle).await;
+    let frames = page.until_idle().await;
     let ended = frames
         .iter()
         .position(|frame| matches!(frame, ServerFrame::RequestOutput { output: Some(output) } if output.ended && output.tokens == 4))

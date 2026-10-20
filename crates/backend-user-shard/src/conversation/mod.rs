@@ -66,10 +66,10 @@ pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::pending::settle_pending;
 pub use self::restart_resume::resume_after_restart;
-pub use self::announcement::SubagentsError;
+pub use self::announcement::AgentsError;
 pub(crate) use self::product::ShardHosts;
 use self::product::{
-    ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets,
+    ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardAgents, ShardReplyFiles, ShardSubagents, ShardToolsets,
 };
 use self::providers::ConversationProviders;
 use self::small_requests::SmallRequests;
@@ -185,6 +185,8 @@ pub(crate) fn conversation_parts(
                 marks.mark(Part::Conversation(conversation));
             })
         },
+        agents: Rc::new(ShardAgents { shard: shard.clone() }),
+        reply_files: Rc::new(ShardReplyFiles { shard: shard.clone() }),
     });
     ConversationParts { agent, titles }
 }

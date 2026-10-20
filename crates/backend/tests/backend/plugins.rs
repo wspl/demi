@@ -60,16 +60,12 @@ async fn an_open_conversations_prompt_lists_its_commands_until_a_reload_opens_it
         switch(&backend, &master, "skills", false).await,
         StatusCode::NO_CONTENT
     );
-    // One batch: the conversation's summary goes before the plugin list.
+    // The page that shows the conversation hears it from the conversation's
+    // metadata; every page, the plugin list.
+    socket.metadata_until(|metadata| metadata.plugins_changed).await;
     let changes = page
         .until(|event| matches!(event, SyncEvent::Plugins { .. }))
         .await;
-    assert!(
-        changes.iter().any(|event| {
-            matches!(event, SyncEvent::Conversation { conversation } if conversation.plugins_changed)
-        }),
-        "{changes:?}"
-    );
     let Some(SyncEvent::Plugins { plugins }) = changes.last() else {
         unreachable!("the wait ends at the plugin list")
     };
@@ -94,12 +90,9 @@ async fn an_open_conversations_prompt_lists_its_commands_until_a_reload_opens_it
     socket
         .until(|frame| matches!(frame, ServerFrame::Closed))
         .await;
-    page.until(|event| {
-        matches!(event, SyncEvent::Conversation { conversation } if !conversation.plugins_changed)
-    })
-    .await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
+    socket.metadata_until(|metadata| !metadata.plugins_changed).await;
     vendor.respond(answer(&["three"], 1, 1));
     socket.chat("m3", "third").await;
     let reopened = system(&vendor, 2);
@@ -112,7 +105,7 @@ async fn an_open_conversations_prompt_lists_its_commands_until_a_reload_opens_it
         .send(&crate::conversations::send("m4", "fourth"))
         .await;
     socket
-        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase != demi_shared_types::SessionPhase::Idle))
+        .until(|frame| crate::conversations::root_phase(frame).is_some_and(|phase| phase != demi_shared_types::SessionPhase::Idle))
         .await;
     let refused = backend
         .post(

@@ -6,7 +6,6 @@ import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
 import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
 import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
-import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
@@ -361,17 +360,15 @@ const messageRenderer: RendererObject = {
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')
   },
-  // Inline code that names a file the Host has opens it, as a link of words
-  // with the file's icon.
+  // Inline code that names a file the Host has, as the backend found when
+  // the reply ended, opens it, as a link of words with the file's icon.
   codespan(token) {
     const { text } = token
     const code = `<code>${escapeHtml(text)}</code>`
-    const files = activeOptions?.files
-    const existing = activeOptions?.codeFiles
-    if (!files?.open || !existing || openLinks > 0)
+    const target = activeOptions?.codeFiles?.get(text)
+    if (!activeOptions?.files?.open || !target || openLinks > 0)
       return code
-    const target = codeFileTarget(text, files.cwd)
-    return target && existing.has(target.path) ? iconLink((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)), code, tightLinks.has(token)) : code
+    return iconLink((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)), code, tightLinks.has(token))
   },
   link(token) {
     openLinks += 1
@@ -623,19 +620,6 @@ agentMarked.use({
     },
   }],
 })
-
-/**
- * The text of each inline code span of an agent's message, in order, at any
- * depth.
- */
-export function messageCodeSpans(src: string): string[] {
-  const spans: string[] = []
-  agentMarked.walkTokens(agentMarked.lexer(src), (token) => {
-    if (token.type === 'codespan')
-      spans.push(token.text)
-  })
-  return spans
-}
 
 /**
  * The pictures a message shows that open in the media viewer, in order:

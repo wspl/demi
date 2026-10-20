@@ -493,25 +493,25 @@ impl ControlService {
 
     /// Acknowledges the output up to `revision`, and the permission requests
     /// that wait; an acknowledgement never moves the read revision back. A
-    /// request raised later is unread.
+    /// request raised later is unread. Answers whether anything changed.
     pub async fn mark_conversation_read(
         &self,
         id: ConversationId,
         revision: u64,
-    ) -> Result<(), StorageError> {
+    ) -> Result<bool, StorageError> {
         let revision = revision_column(revision);
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            transaction.execute(
-                "UPDATE conversations SET read_revision = MAX(read_revision, ?2) WHERE id = ?1",
+            let read = transaction.execute(
+                "UPDATE conversations SET read_revision = ?2 WHERE id = ?1 AND read_revision < ?2",
                 params![id.as_str(), revision],
             )?;
-            transaction.execute(
-                "UPDATE permission_requests SET read = 1 WHERE conversation_id = ?1 AND decision IS NULL",
+            let requests = transaction.execute(
+                "UPDATE permission_requests SET read = 1 WHERE conversation_id = ?1 AND decision IS NULL AND NOT read",
                 [id.as_str()],
             )?;
             transaction.commit()?;
-            Ok(())
+            Ok(read + requests > 0)
         })
         .await
     }

@@ -785,7 +785,7 @@ async fn a_loss_the_next_steps_look_shows_is_not_reported_and_another_reports_it
     open.send_replace(true);
     // The turn's running phase came before the ends.
     work.socket
-        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }))
+        .until(|frame| crate::conversations::root_phase(frame) == Some(SessionPhase::Idle))
         .await;
 
     // The look shows the loss and the output since the model's last look,

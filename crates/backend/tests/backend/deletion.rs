@@ -124,7 +124,7 @@ async fn deleting_a_running_conversation_stops_its_command_and_nothing_finds_it_
     // The page's tree closes, and an open of it again finds no conversation;
     // the page's synchronization channel drops the conversation.
     socket.until(|frame| *frame == ServerFrame::Closed).await;
-    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
+    socket.send(&ClientFrame::Open { agents: None, draft: None }).await;
     let refused = socket
         .until(|frame| matches!(frame, ServerFrame::Error { .. }))
         .await
@@ -141,7 +141,7 @@ async fn deleting_a_running_conversation_stops_its_command_and_nothing_finds_it_
     // Nothing finds it: its history, a change, another deletion, its socket.
     let not_found = (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound);
     let read = backend
-        .get(&format!("{path}/transcript"), Some(&master))
+        .get(&format!("{path}/agents/{FIRST}/transcript"), Some(&master))
         .await;
     assert_eq!(read.refusal(), not_found);
     let renamed = backend.patch(&path, &master, json!({ "title": "Again" })).await;
@@ -196,7 +196,7 @@ async fn a_start_finishes_a_deletion_a_crash_left_after_its_first_step() {
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     let read = backend
         .get(
-            &format!("/api/conversations/{FIRST}/transcript"),
+            &format!("/api/conversations/{FIRST}/agents/{FIRST}/transcript"),
             Some(&master),
         )
         .await;

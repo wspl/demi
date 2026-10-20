@@ -1,10 +1,12 @@
 import {
   serverFrameSchema,
   type AbortResult,
+  type AgentEntry,
   type Block,
   type ClientContent,
   type ClientFrame,
   type EditRequest,
+  type HeldEdge,
   type MessageComment,
   type PendingCall,
   type PendingSteer,
@@ -15,19 +17,13 @@ import {
   type SavedDelivery,
   type ServerFrame,
   type SessionPhase,
-  type TranscriptVersion,
+  type Version,
   schemaRefusal,
 } from '@demicodes/protocol'
 import { MAX_PAGE_MESSAGE_BYTES } from '@demicodes/protocol'
 import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
 import { FrameTooLargeError, type ConversationClientTransport } from './transport'
-
-/** The root's blocks the page holds, as `open` and `sync_transcript` name them. */
-export interface HeldEdge {
-  from: number
-  edge: string
-}
 
 /**
  * A frame the backend or the session refused. It carries the code the page words
@@ -114,7 +110,7 @@ type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 interface ActionWaiter {
   command: ActionCommand
   messageId: string | null
-  /** The subagent whose action it is, whose phase it follows; null for the root's. */
+  /** The node whose action it is, whose phase it follows; null for the root's. */
   node: string | null
   status: 'sent' | 'queued' | 'running'
   resolve: () => void
@@ -127,14 +123,32 @@ interface Waiter<T> {
 }
 
 /**
- * Where the client's copy of the root transcript is: none yet, current at a
- * version, or stale after a gap in the patch revisions, until the reset the
- * client asked for arrives.
+ * Where the client's copy of a node's transcript is: none yet, current at a
+ * version, or stale after a gap in the patch revisions, until the reset its
+ * subscription asked for again arrives.
  */
 type TranscriptState =
   | { status: 'none' }
-  | { status: 'current'; version: TranscriptVersion }
+  | { status: 'current'; version: Version }
   | { status: 'stale' }
+
+/** A node the page subscribes to, and where its transcript is. */
+interface Subscription {
+  state: TranscriptState
+  /** The index its last subscription named; a reset elsewhere means a rewrite. */
+  asked: number | undefined
+}
+
+/** What the client is constructed with beside its transport. */
+export interface ConversationClientOptions {
+  /**
+   * The frames of the conversation itself that the backend sends on the
+   * socket beside its agents', such as its metadata, which the web app
+   * decodes: answers whether it took `frame`. A frame neither the protocol nor
+   * it takes drops the connection.
+   */
+  conversationFrame?: (frame: unknown) => boolean
+}
 
 /** What a wait decides about one event: to settle, or to keep waiting. */
 type Decision<T> = { resolve: T } | { reject: Error } | undefined
@@ -146,9 +160,11 @@ type Decision<T> = { resolve: T } | { reject: Error } | undefined
  *
  * - Validates every frame it receives with the generated schemas, and drops the
  *   connection when one does not match.
- * - Keeps the patch revisions, the phase, the queue and the pending steers.
- * - Tells its listeners what the transcript frames bring, which the page applies
- *   to the parts of the transcript it holds with the one patch applier.
+ * - Keeps each subscribed node's patch revisions, the agents, the queue and the
+ *   pending steers.
+ * - Tells its listeners what each node's transcript frames bring, which the
+ *   page applies to the parts of that transcript it holds with the one patch
+ *   applier.
  * - Keeps, of the transcript, only which messages and steers it has seen written,
  *   which its waits settle on.
  */
@@ -160,35 +176,27 @@ export class ConversationClient {
   private readonly abortWaiters: Waiter<AbortResult>[] = []
   private readonly detachTransport: () => void
   private disconnected = false
-  private transcriptState: TranscriptState = { status: 'none' }
-  /** The turns of the `user` blocks the stream has brought since the last reset. */
+  /** The nodes the page subscribes to, the root's included. */
+  private readonly subscriptions = new Map<string, Subscription>()
+  /** The root's turns of the `user` blocks the stream has brought since its last reset. */
   private readonly writtenTurns = new Set<string>()
-  /** The ids of the `steer` blocks the stream has brought since the last reset. */
+  /** The ids of the root's `steer` blocks the stream has brought since its last reset. */
   private readonly writtenSteers = new Set<string>()
-  /** The root's blocks the page holds, which `open` and `sync_transcript` name. */
-  private held: () => HeldEdge | undefined = () => undefined
-  /** The index the last `open` or `sync_transcript` named. */
-  private asked: number | undefined
-  /** Each subagent transcript's revision, for the same patch rule as the root's. */
-  private readonly subagentRevisions = new Map<string, number>()
-  /** The children whose transcripts the page shows, as it last named them (`crates/agent-server/src/server/tree.rs`). */
-  private shown = new Set<string>()
-  /**
-   * The children the page stopped showing: a frame of their transcripts
-   * still on its way is dropped, until the page shows them again and their
-   * reset arrives. A side question's node, which no page names, is never one.
-   */
-  private readonly hidden = new Set<string>()
-  /** Each live subagent's phase, which a compact of that child follows. */
-  private readonly subagentPhases = new Map<string, SessionPhase>()
-  private phase: SessionPhase | null = null
+  /** The blocks the page holds of each node it subscribes to. */
+  private held: (node: string) => HeldEdge | undefined = () => undefined
+  /** The conversation's agents by id, as the last frames left them. */
+  private readonly agents = new Map<string, AgentEntry>()
+  /** The version of the agents the client holds; null before the open's. */
+  private agentsVersion: Version | null = null
+  /** The root's node, the conversation's id; null before `open`. */
+  private root: string | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
-  /** The calls the root's model is writing, as the server last listed them. */
-  private calls: PendingCall[] = []
+  private readonly conversationFrame: (frame: unknown) => boolean
 
-  constructor(transport: ConversationClientTransport) {
+  constructor(transport: ConversationClientTransport, options: ConversationClientOptions = {}) {
     this.transport = transport
+    this.conversationFrame = options.conversationFrame ?? (() => false)
     const stopFrames = transport.onFrame((frame) => this.receive(frame))
     const stopClose = transport.onClose((error) => this.disconnect(error))
     this.detachTransport = () => {
@@ -199,15 +207,28 @@ export class ConversationClient {
 
   /**
    * Attaches to the conversation's tree, which runs with the model settings
-   * the conversation's record holds; resolves on `opened`. `held` names the
-   * root's blocks the page holds, now and at each later sync, so the stream
-   * sends none before them.
+   * the conversation's record holds; resolves on `opened`. `root` is the
+   * root's node, the conversation's id. The open names the agents the page
+   * holds, `agents`, and the revision of the draft it holds, `draft`, which
+   * it answers with what changed since. It subscribes to the root and to
+   * `nodes` first, so its handshake brings their messages. `held` names the
+   * blocks the page holds of each node it subscribes to, now and at each
+   * later subscription again, so a reset sends none before them.
    */
-  open(held: () => HeldEdge | undefined = () => undefined): Promise<void> {
-    this.held = held
-    const edge = held()
-    this.asked = edge?.from
-    return this.request({ type: 'open', ...edge }, (event) => {
+  open(options: {
+    root: string
+    nodes?: readonly string[]
+    held?: (node: string) => HeldEdge | undefined
+    agents?: Version
+    draft?: number
+  }): Promise<void> {
+    const { root, agents, draft } = options
+    this.root = root
+    this.held = options.held ?? (() => undefined)
+    for (const node of [root, ...(options.nodes ?? [])]) {
+      this.subscribeTo(node)
+    }
+    return this.request({ type: 'open', ...(agents ? { agents: { ...agents } } : {}), ...(draft === undefined ? {} : { draft }) }, (event) => {
       if (event.type === 'opened') {
         return { resolve: undefined }
       }
@@ -300,7 +321,7 @@ export class ConversationClient {
    * reaches the transcript as patches; a refusal arrives as a `rejected`
    * frame.
    */
-  switchVersion(blockId: string, to: number, version: TranscriptVersion): void {
+  switchVersion(blockId: string, to: number, version: Version): void {
     this.sendFrame({ type: 'switch_version', blockId, to, version })
   }
 
@@ -435,25 +456,31 @@ export class ConversationClient {
   }
 
   /**
-   * Names the children whose transcripts the page shows, the whole set: a
-   * live child it adds streams its transcript from its reset on, and one it
-   * drops streams no more. Sent before `open`, it names those the open sends.
+   * Shows the node `node`'s messages from now on: its transcript arrives as
+   * a reset from the blocks the page holds of it, unless it holds the current
+   * version, while the node is live, then as patches.
    */
-  showSubagents(ids: readonly string[]): void {
-    for (const id of this.shown) {
-      if (!ids.includes(id)) {
-        this.hidden.add(id)
-        this.subagentRevisions.delete(id)
-      }
+  subscribeTo(node: string): void {
+    if (this.subscriptions.has(node)) {
+      return
     }
-    for (const id of ids) {
-      this.hidden.delete(id)
-    }
-    this.shown = new Set(ids)
-    this.sendFrame({ type: 'show_subagents', ids: [...ids] })
+    const held = this.held(node)
+    this.subscriptions.set(node, {
+      state: held ? { status: 'current', version: held.version } : { status: 'none' },
+      asked: held?.from,
+    })
+    this.sendFrame({ type: 'subscribe', node, ...(held ? { held } : {}) })
   }
 
-  /** Stops every live subagent; each settles through its own `subagent` frame. */
+  /** Stops showing the node `node`'s messages; a frame of it still on its way is dropped. */
+  unsubscribeFrom(node: string): void {
+    if (!this.subscriptions.delete(node)) {
+      return
+    }
+    this.sendFrame({ type: 'unsubscribe', node })
+  }
+
+  /** Stops every live subagent; each settles through its own agent entry. */
   abortSubagents(): void {
     this.sendFrame({ type: 'abort_subagents' })
   }
@@ -512,12 +539,18 @@ export class ConversationClient {
     }
   }
 
-  /** The version of the transcript the client holds, or null while it holds none it can vouch for. */
-  transcriptVersion(): TranscriptVersion | null {
-    if (this.disconnected || this.transcriptState.status !== 'current') {
+  /** The version of the node `node`'s transcript the client holds, the root's by default, or null while it holds none it can vouch for. */
+  transcriptVersion(node: string | null = this.root): Version | null {
+    const state = node === null ? undefined : this.subscriptions.get(node)?.state
+    if (this.disconnected || state?.status !== 'current') {
       return null
     }
-    return { ...this.transcriptState.version }
+    return { ...state.version }
+  }
+
+  /** The version of the agents the client holds; null before the open answered. */
+  heldAgents(): Version | null {
+    return this.agentsVersion ? { ...this.agentsVersion } : null
   }
 
   /** The accepted steers not yet in the transcript, as copies. */
@@ -527,7 +560,8 @@ export class ConversationClient {
 
   /** The calls the root's model is writing, as copies. */
   pendingCalls(): PendingCall[] {
-    return structuredClone(this.calls)
+    const root = this.root === null ? undefined : this.agents.get(this.root)
+    return structuredClone(root?.pendingCalls ?? [])
   }
 
   /** Sends `frame` unless the client is detached; answers whether it did. */
@@ -678,6 +712,9 @@ export class ConversationClient {
   private receive(frame: unknown): void {
     const parsed = serverFrameSchema.safeParse(frame)
     if (!parsed.success) {
+      if (this.conversationFrame(frame)) {
+        return
+      }
       this.disconnect(new Error(`Invalid server frame:\n${schemaRefusal(parsed.error)}`))
       return
     }
@@ -688,43 +725,63 @@ export class ConversationClient {
     switch (frame.type) {
       case 'opened':
         this.pending = []
-        this.calls = []
         this.emit(frame)
         return
-      case 'transcript_reset':
-        this.writtenTurns.clear()
-        this.writtenSteers.clear()
-        this.noteWritten(frame.blocks)
-        this.transcriptState = { status: 'current', version: frame.version }
-        this.removeWrittenSteers(true)
+      case 'transcript_reset': {
+        const subscription = this.subscriptions.get(frame.node)
+        if (!subscription) {
+          return
+        }
+        subscription.state = { status: 'current', version: frame.version }
+        const root = frame.node === this.root
+        if (root) {
+          this.writtenTurns.clear()
+          this.writtenSteers.clear()
+          this.noteWritten(frame.blocks)
+          this.removeWrittenSteers(true)
+        }
         this.emit({
           type: 'transcript_reset',
+          node: frame.node,
           start: frame.start,
           length: frame.length,
           blocks: frame.blocks,
+          version: frame.version,
           versions: frame.versions ?? [],
           failures: frame.failures ?? {},
-          asked: this.asked,
+          asked: subscription.asked,
         })
-        this.followSends()
+        if (root) {
+          this.followSends()
+        }
         return
+      }
       case 'transcript_patch':
         this.patchTranscript(frame)
         return
-      case 'phase': {
-        // A subagent's phase belongs to its record, which the host keeps;
-        // only a compact of that child follows it.
-        if (frame.subagentId !== undefined) {
-          const previous = this.subagentPhases.get(frame.subagentId) ?? null
-          this.subagentPhases.set(frame.subagentId, frame.phase)
-          this.emit(frame)
-          this.followPhase(frame.subagentId, previous, frame.phase)
+      case 'agents': {
+        const held = this.agentsVersion
+        if (frame.since === undefined || held === null || held.epoch !== frame.version.epoch) {
+          this.agents.clear()
+        }
+        for (const agent of frame.agents) {
+          this.takeAgent(agent)
+        }
+        this.agentsVersion = frame.version
+        this.emit({ ...frame, receivedAt: Date.now() })
+        return
+      }
+      case 'agent': {
+        const held = this.agentsVersion
+        // The socket brings every change in order; one past what it holds
+        // means frames were lost, which only a new connection mends.
+        if (held === null || frame.revision !== held.revision + 1) {
+          this.disconnect(new Error(`An agent change arrived at revision ${frame.revision} after ${held?.revision ?? 'none'}`))
           return
         }
-        const previous = this.phase
-        this.phase = frame.phase
-        this.emit(frame)
-        this.followPhase(null, previous, frame.phase)
+        this.agentsVersion = { epoch: held.epoch, revision: frame.revision }
+        this.takeAgent(frame.agent)
+        this.emit({ ...frame, receivedAt: Date.now() })
         return
       }
       case 'queue':
@@ -736,14 +793,6 @@ export class ConversationClient {
         this.pending = structuredClone(frame.pendingSteers)
         this.removeWrittenSteers(false)
         this.emitPendingSteers()
-        return
-      case 'pending_calls':
-        if (frame.subagentId === undefined) {
-          this.calls = structuredClone(frame.pendingCalls)
-          this.emit({ type: 'pending_calls', pendingCalls: this.pendingCalls() })
-        } else {
-          this.emit({ type: 'pending_calls', subagentId: frame.subagentId, pendingCalls: structuredClone(frame.pendingCalls) })
-        }
         return
       case 'request_output': {
         const arrived = Date.now()
@@ -761,15 +810,6 @@ export class ConversationClient {
         })
         return
       }
-      case 'waiting': {
-        const since = frame.waitedMs === null ? null : Date.now() - frame.waitedMs
-        if (frame.subagentId === undefined) {
-          this.emit({ type: 'waiting', since })
-        } else {
-          this.emit({ type: 'waiting', subagentId: frame.subagentId, since })
-        }
-        return
-      }
       case 'steer_result':
         this.emit(frame)
         this.settleSteer(frame)
@@ -777,23 +817,6 @@ export class ConversationClient {
       case 'abort_result':
         this.emit(frame)
         this.abortWaiters.shift()?.resolve(frame.result)
-        return
-      case 'subagent_transcript_reset':
-        if (this.hidden.has(frame.subagentId)) {
-          return
-        }
-        this.subagentRevisions.set(frame.subagentId, frame.revision)
-        this.emit({
-          type: 'subagent_transcript_reset',
-          subagentId: frame.subagentId,
-          start: frame.start,
-          length: frame.length,
-          blocks: frame.blocks,
-          failures: frame.failures ?? {},
-        })
-        return
-      case 'subagent_transcript_patch':
-        this.patchSubagentTranscript(frame)
         return
       case 'rejected':
         this.emit(frame)
@@ -821,15 +844,15 @@ export class ConversationClient {
         return
       }
       case 'closed':
-        this.transcriptState = { status: 'none' }
+        for (const subscription of this.subscriptions.values()) {
+          subscription.state = { status: 'none' }
+        }
         this.writtenTurns.clear()
         this.writtenSteers.clear()
-        this.subagentRevisions.clear()
-        this.subagentPhases.clear()
-        this.phase = null
+        this.agents.clear()
+        this.agentsVersion = null
         this.queue = []
         this.pending = []
-        this.calls = []
         this.emit(frame)
         for (const waiter of this.actionWaiters.splice(0)) {
           waiter.resolve()
@@ -839,24 +862,9 @@ export class ConversationClient {
       case 'edit_result':
       case 'remove_result':
       case 'shell_output':
-      case 'subagents':
       case 'shell_write_result':
       case 'retry_scheduled':
-      case 'context_usage':
-      case 'cost':
-      case 'cost_rows':
         this.emit(frame)
-        return
-      case 'subagent':
-        this.emit(frame)
-        // A closed child runs nothing more: what waited on it has ended.
-        if (frame.event === 'closed') {
-          const node = frame.job.subagentId
-          this.subagentPhases.delete(node)
-          for (const waiter of this.actionWaiters.filter((candidate) => candidate.node === node)) {
-            this.settleAction(waiter, () => waiter.resolve())
-          }
-        }
         return
       // A heartbeat only shows that the socket is alive; it changes
       // nothing here.
@@ -871,11 +879,35 @@ export class ConversationClient {
   }
 
   /**
+   * Takes `agent` as its entry: its phase moves the waits of its actions on,
+   * and a closed child's end every wait for it.
+   */
+  private takeAgent(agent: AgentEntry): void {
+    const previous = this.agents.get(agent.id)
+    this.agents.set(agent.id, agent)
+    const node = agent.role.kind === 'root' ? null : agent.id
+    if (previous?.phase !== agent.phase) {
+      this.followPhase(node, previous?.phase ?? null, agent.phase)
+    }
+    // A closed child runs nothing more: what waited on it has ended.
+    if (agent.role.kind === 'subagent' && agent.role.state !== 'running') {
+      for (const waiter of this.actionWaiters.filter((candidate) => candidate.node === agent.id)) {
+        this.settleAction(waiter, () => waiter.resolve())
+      }
+    }
+  }
+
+  /**
    * Applies a patch whose revision is one past the client's, ignores one that
-   * is not past it, and asks for a fresh transcript at a gap.
+   * is not past it or of a node the page does not subscribe to, and
+   * subscribes again at a gap.
    */
   private patchTranscript(frame: ServerFrameOf<'transcript_patch'>): void {
-    const state = this.transcriptState
+    const subscription = this.subscriptions.get(frame.node)
+    if (!subscription) {
+      return
+    }
+    const state = subscription.state
     if (state.status === 'stale') {
       return
     }
@@ -883,44 +915,33 @@ export class ConversationClient {
       return
     }
     if (state.status === 'none' || frame.revision !== state.version.revision + 1) {
-      this.resync()
+      this.resubscribe(frame.node, subscription)
       return
     }
-    this.transcriptState = { status: 'current', version: { epoch: state.version.epoch, revision: frame.revision } }
-    this.noteWritten(frame.patches.flatMap((patch) => (patch.op === 'add' || patch.op === 'replace_block' ? [patch.value] : [])))
-    this.removeWrittenSteers(true)
-    this.emit({ type: 'transcript_patch', patches: frame.patches, failures: frame.failures ?? {} })
-    this.followSends()
-  }
-
-  /** The root's rule, for each subagent's stream. */
-  private patchSubagentTranscript(frame: ServerFrameOf<'subagent_transcript_patch'>): void {
-    if (this.transcriptState.status === 'stale' || this.hidden.has(frame.subagentId)) {
-      return
+    subscription.state = { status: 'current', version: { epoch: state.version.epoch, revision: frame.revision } }
+    const root = frame.node === this.root
+    if (root) {
+      this.noteWritten(frame.patches.flatMap((patch) => (patch.op === 'add' || patch.op === 'replace_block' ? [patch.value] : [])))
+      this.removeWrittenSteers(true)
     }
-    const revision = this.subagentRevisions.get(frame.subagentId)
-    if (revision !== undefined && frame.revision <= revision) {
-      return
-    }
-    if (revision === undefined || frame.revision !== revision + 1) {
-      this.resync()
-      return
-    }
-    this.subagentRevisions.set(frame.subagentId, frame.revision)
     this.emit({
-      type: 'subagent_transcript_patch',
-      subagentId: frame.subagentId,
+      type: 'transcript_patch',
+      node: frame.node,
       patches: frame.patches,
+      version: { ...subscription.state.version },
       failures: frame.failures ?? {},
     })
+    if (root) {
+      this.followSends()
+    }
   }
 
-  /** A patch was missed: the client asks for the transcripts again and ignores patches until they arrive. */
-  private resync(): void {
-    this.transcriptState = { status: 'stale' }
-    const held = this.held()
-    this.asked = held?.from
-    this.sendFrame({ type: 'sync_transcript', ...held })
+  /** A patch was missed: the client subscribes again, naming what it holds, and ignores patches until the reset arrives. */
+  private resubscribe(node: string, subscription: Subscription): void {
+    subscription.state = { status: 'stale' }
+    const held = this.held(node)
+    subscription.asked = held?.from
+    this.sendFrame({ type: 'subscribe', node, ...(held ? { held } : {}) })
   }
 
   private noteWritten(blocks: readonly Block[]): void {

@@ -29,13 +29,12 @@ use demi_shared_types::{Block, BlockId, MediaSource, TurnId, UserContentBlock};
 use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, Revisions};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::saved::{FromDraftAnswer, SavedAnswer, SavedList, SavedMessage, SavedRemoved};
-use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{FIRST, SECOND, Socket, anthropic, answer, choose, create, send, transcript};
 use crate::support::{
-    Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, SyncChannel, TestBackend,
+    Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend,
 };
 use crate::uploads::{png, upload};
 
@@ -136,15 +135,11 @@ async fn draft(backend: &TestBackend, session: &Session) -> ConversationDraft {
         .draft
 }
 
-/// Waits until the page's channel brings the conversation's summary with
-/// `saved` messages at the list's revision `revision`.
-async fn until_saved(page: &mut SyncChannel, id: &str, saved: u64, revision: u64) {
-    page.until(|event| {
-        matches!(event, SyncEvent::Conversation { conversation }
-            if conversation.id.as_str() == id
-                && (conversation.saved, conversation.saved_revision) == (saved, revision))
-    })
-    .await;
+/// Waits until the page's conversation socket brings the conversation's
+/// metadata with `saved` messages at the list's revision `revision`.
+async fn until_saved(page: &mut Socket, saved: u64, revision: u64) {
+    page.metadata_until(|metadata| (metadata.saved, metadata.saved_revision) == (saved, revision))
+        .await;
 }
 
 /// The texts of a list, newest first.
@@ -159,8 +154,7 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     let (backend, laptop) = harness.start_set_up().await;
     let phone = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     create(&backend, &laptop, FIRST).await;
-    let mut phone_page = backend.sync(&phone).await;
-    let first = &phone_page.snapshot().await.conversations[0];
+    let (mut phone_page, first) = Socket::shown(&backend, &phone, FIRST, 0).await;
     assert_eq!((first.saved, first.saved_revision), (0, 0));
 
     // Ana saves the composer's message with a file for later: the draft
@@ -182,7 +176,7 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     );
     assert_eq!((emptied.revision, emptied.text.as_str(), emptied.files.len(), &emptied.replaced), (2, "", 0, &None));
     assert_eq!(draft(&backend, &phone).await, emptied);
-    until_saved(&mut phone_page, FIRST, 1, 1).await;
+    until_saved(&mut phone_page, 1, 1).await;
 
     // The phone wrote a draft the laptop never showed; the laptop's save,
     // built on the revision before, keeps it to restore.
@@ -190,7 +184,7 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     let (_, emptied) = from_draft(&backend, &laptop, 2, "Check prod’s DNS next", &json!([])).await;
     let replaced = emptied.replaced.expect("the phone's draft is kept");
     assert_eq!((emptied.revision, emptied.text.as_str(), replaced.text.as_str()), (4, "", "From the phone"));
-    until_saved(&mut phone_page, FIRST, 2, 2).await;
+    until_saved(&mut phone_page, 2, 2).await;
     let read = list(&backend, &laptop).await;
     assert_eq!((read.revision, texts(&read)), (2, vec!["Check prod’s DNS next", compare.as_str()]));
 
@@ -201,14 +195,14 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     let dns = read.messages[0].clone();
     let removed = delete(&backend, &laptop, &dns.id).await;
     assert_eq!(removed.saved, 3);
-    until_saved(&mut phone_page, FIRST, 1, 3).await;
+    until_saved(&mut phone_page, 1, 3).await;
     assert_eq!(delete(&backend, &laptop, &dns.id).await, removed);
     put_draft(&backend, &laptop, 4, "Then the IPv6", &json!([])).await;
     let typed = draft(&backend, &laptop).await;
     let undone = add(&backend, &laptop, &dns.text, &json!([])).await;
     assert_eq!(undone.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&undone.body));
     assert_eq!(draft(&backend, &laptop).await, typed);
-    until_saved(&mut phone_page, FIRST, 2, 4).await;
+    until_saved(&mut phone_page, 2, 4).await;
     assert_eq!(
         add(&backend, &laptop, "one mark", &files).await.refusal(),
         (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
@@ -233,7 +227,7 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     assert_eq!(full.refusal(), (StatusCode::CONFLICT, ErrorCode::SavedFull));
     // The page words the refusal from its code and the limit it names.
     assert_eq!(full.error().params["limit"], json!(200));
-    until_saved(&mut phone_page, FIRST, 200, 202).await;
+    until_saved(&mut phone_page, 200, 202).await;
     backend.close().await;
 }
 
@@ -305,7 +299,7 @@ async fn an_edits_save_writes_the_message_in_its_place_and_leaves_the_draft() {
     let (backend, laptop) = harness.start_set_up().await;
     let phone = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     create(&backend, &laptop, FIRST).await;
-    let mut phone_page = backend.sync(&phone).await;
+    let (mut phone_page, _) = Socket::shown(&backend, &phone, FIRST, 0).await;
     let dns = save(&backend, &laptop, "Check the DNS", &json!([])).await;
     save(&backend, &laptop, "Then the IPv6", &json!([])).await;
     put_draft(&backend, &laptop, 0, "Half-written", &json!([])).await;
@@ -323,7 +317,7 @@ async fn an_edits_save_writes_the_message_in_its_place_and_leaves_the_draft() {
     assert_eq!((message.id.as_str(), message.text.as_str(), message.saved_at), (dns.id.as_str(), text.as_str(), dns.saved_at));
     assert_eq!(message.files.len(), 1);
     assert_eq!(revisions, Revisions { draft: typed.revision, saved: 3 });
-    until_saved(&mut phone_page, FIRST, 2, 3).await;
+    until_saved(&mut phone_page, 2, 3).await;
     let read = list(&backend, &laptop).await;
     assert_eq!(texts(&read), vec!["Then the IPv6", text.as_str()]);
     assert_eq!(read.messages[1], message);

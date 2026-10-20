@@ -7,10 +7,10 @@ import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/render-vers
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { messageLinkMenu, openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
 import { vLinkMenus, type LinkMenus } from '@demicodes/web-ui/ui/context-menu'
-import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { hostImagePaths, useHostImagesAt } from '@demicodes/web-ui/markdown/host-images'
 import type { HostImage } from '@demicodes/web-ui/files/host-image'
-import type { MessageAttachment } from '@demicodes/web-ui/markdown/types'
+import type { MessageAttachment, MessageFileTarget } from '@demicodes/web-ui/markdown/types'
+import type { CodeFile } from '@demicodes/protocol'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
@@ -37,9 +37,16 @@ const props = withDefaults(defineProps<{
   streaming?: boolean
   /** When each piece of `content` reached the page, so a view that mounts mid-stream fades each from then. */
   arrivals?: readonly TextArrival[]
+  /**
+   * The files of the Host the reply's inline code names, as the backend read
+   * them once the reply ended and kept them with it; absent, inline code
+   * stays code.
+   */
+  codeFiles?: readonly CodeFile[]
 }>(), {
   streaming: false,
   arrivals: undefined,
+  codeFiles: undefined,
 })
 
 const root = ref<HTMLElement>()
@@ -62,8 +69,12 @@ const transcript = useTranscript()
 const renderFiles = useRenderedFiles(files)
 /** A link to a file, a commit or an agent has that object's menu, as the conversation has it when the menu opens. */
 const linkMenus: LinkMenus = (link) => messageLinkMenu(link, files(), agents())
-// The files the reply's inline code names, asked about once it is complete.
-const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, renderFiles.value))
+// The files the reply's inline code names, by the code that names them, as
+// links once the reply is complete and the conversation opens files.
+const codeFiles = computed<ReadonlyMap<string, MessageFileTarget> | null>(() =>
+  props.streaming || !props.codeFiles?.length || !renderFiles.value?.open
+    ? null
+    : new Map(props.codeFiles.map((file) => [file.code, { path: file.path, line: file.line }])))
 
 /** The Host image paths each block that shows names. */
 const blockImagePaths = shallowReactive(new Set<ComputedRef<string[]>>())

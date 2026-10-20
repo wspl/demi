@@ -24,7 +24,8 @@ use std::{
 use demi_agent_session::{
     AgentMessageError, Continuation, ForkError, ForkSeed, ModelSwitch, SessionConfig, fork_seed,
 };
-use demi_agent_store::{AgentTreeStore, NodeRecord, SideOf, StoreError};
+use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
+use demi_conversation_socket_protocol::{AgentEntry, Version};
 use demi_agent_tools::{
     CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -40,7 +41,7 @@ use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
-pub use tree::{AskError, QuiescenceWatch, Tree, side_instruction};
+pub use tree::{AskError, KeptAgents, QuiescenceWatch, SideCard, Tree, side_instruction};
 
 use tree::OpenError;
 
@@ -205,6 +206,21 @@ pub struct ServerDeps<H: HostResolver> {
     /// root's phase changed, or that was disposed: a product that shows each
     /// conversation's status reads it again.
     pub status_changed: Rc<dyn Fn(&NodeId)>,
+    /// What the product keeps of a conversation's agents that their entries
+    /// show, read once as a tree opens; the product tells each change after
+    /// that ([`Tree::cost_changed`], [`Tree::side_card_changed`]).
+    pub agents: Rc<dyn AgentsSource>,
+    /// Which paths a complete text's code spans name are files on the
+    /// conversation's Host (`crates/agent-server/src/node/reply_files.rs`).
+    pub reply_files: Rc<dyn crate::node::ReplyFiles>,
+}
+
+/// What the product keeps of a conversation's agents: what each has cost,
+/// from its usage ledger, and each side question's card.
+pub trait AgentsSource {
+    /// What the product keeps of the agents of the conversation `root`; what
+    /// it cannot read it leaves out, having logged why.
+    fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, KeptAgents>;
 }
 
 /// The conversation's tree works, which a reload does not interrupt.
@@ -307,6 +323,39 @@ impl<H: HostResolver> AgentServer<H> {
     /// The conversation's live tree, if it has one.
     pub fn tree(&self, root: &NodeId) -> Option<Rc<Tree<H>>> {
         self.trees.borrow().get(root).cloned()
+    }
+
+    /// The agents of the conversation `root` as its metadata lists them, and
+    /// their version: the live tree's own, or, with no tree live, as its store
+    /// keeps them while the conversation works at `placement`, at a version of
+    /// their own that an open answers whole.
+    pub async fn agents(
+        &self,
+        root: &NodeId,
+        placement: Option<Placement>,
+    ) -> Result<(Version, Vec<AgentEntry>), StoreError> {
+        if let Some(tree) = self.tree(root) {
+            return Ok(tree.agents());
+        }
+        let store = (self.deps.stores)(root);
+        let subagents = store.subagents().await?;
+        let sides = store.sides().await?;
+        let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model.clone()).collect();
+        let models = self.deps.subagents.runs_on(&selections).await;
+        let kept = self.deps.agents.kept(root).await;
+        // A tree opened meanwhile answers instead, so the answer never
+        // disagrees with an open made before it.
+        if let Some(tree) = self.tree(root) {
+            return Ok(tree.agents());
+        }
+        Ok(tree::stored_agents(
+            self.deps.ids.next_id(),
+            root,
+            subagents.into_iter().zip(models).collect(),
+            sides,
+            placement,
+            kept,
+        ))
     }
 
     /// Restores the conversation `root`'s tree with no connection attached, as

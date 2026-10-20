@@ -23,10 +23,8 @@ use crate::subagents::{
     wait_for_execution,
 };
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, ScriptedShells, TestProduct, agent, agent_call,
-    conversation, held, listed_model, named_node, request_text, scripted_host_server,
-    shell_command, streamed_then_held, until,
-};
+        CommandRun, Fixture, Gate, Model, ScriptedShells, TestProduct, agent, agent_call, conversation, held, listed_model, named_node, request_text, scripted_host_server, shell_command, streamed_then_held, until,
+    };
 
 /// A profile on the parent's model.
 fn research() -> Profile {
@@ -306,7 +304,7 @@ async fn a_fork_has_none_of_its_sources_running_commands() {
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, Rc::new(ScriptedShells::default()), store.clone());
     let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
-    page.send(crate::support::open()).await;
+    page.open().await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
     let source = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;
@@ -419,10 +417,10 @@ async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_n
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
-    page.send(crate::support::open()).await;
+    page.open().await;
     page.next_until(crate::support::is_pending_steers).await;
     page.send(crate::support::send("m1", "Serve.")).await;
-    page.next_until(crate::support::is_idle).await;
+    page.until_idle().await;
     shells.last().lose();
     until_loss_waits(&store, &conversation()).await;
 
@@ -471,7 +469,7 @@ async fn a_subagent_fork_after_a_resident_commands_loss_holds_no_report() {
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
-    page.send(crate::support::open()).await;
+    page.open().await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
     let source = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;

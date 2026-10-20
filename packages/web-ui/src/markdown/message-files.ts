@@ -42,7 +42,6 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
       && previous.home === next.home
       && previous.contents === next.contents
       && !previous.open === !next.open
-      && !previous.codeFiles === !next.codeFiles
       && !previous.attachment === !next.attachment
       && !previous.openCommit === !next.openCommit
     return same ? previous : next

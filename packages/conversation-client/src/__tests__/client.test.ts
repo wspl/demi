@@ -1,7 +1,7 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { ClientFrame } from '@demicodes/protocol'
 import { ActionOutlivedError, EditRejectedError, RefusedError, SavedGoneError, SessionError } from '../client'
-import { createdAt, harness, pendingSteer, settle, text, user } from './harness'
+import { ROOT, createdAt, entry, harness, pendingSteer, settle, text, user } from './harness'
 
 function sentOfType<Type extends ClientFrame['type']>(sent: ClientFrame[], type: Type): Extract<ClientFrame, { type: Type }> {
   const frame = sent.find((candidate): candidate is Extract<ClientFrame, { type: Type }> => candidate.type === type)
@@ -12,9 +12,9 @@ function sentOfType<Type extends ClientFrame['type']>(sent: ClientFrame[], type:
 }
 
 test('open resolves on opened', async () => {
-  const h = harness()
-  const opening = h.client.open()
-  expect(h.sent).toEqual([{ type: 'open' }])
+  const h = harness({ opened: false })
+  const opening = h.client.open({ root: ROOT })
+  expect(h.sent).toEqual([{ type: 'subscribe', node: ROOT }, { type: 'open' }])
   h.receive({ type: 'opened' })
   await opening
 })
@@ -26,11 +26,11 @@ test('a submitted message is confirmed by its own user block or queue entry, bef
     confirmed = true
   })
   const send = sentOfType(h.sent, 'send')
-  h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [user('u0', 'another-turn', 'hello')], version: { epoch: 'e', revision: 1 } })
+  h.phase('running')
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u0', 'another-turn', 'hello')], version: { epoch: 'e', revision: 1 } })
   await settle()
   expect(confirmed).toBe(false)
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: user('u1', send.messageId, 'hello') }], revision: 2 })
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: user('u1', send.messageId, 'hello') }], revision: 2 })
   await pending
 
   const queued = h.client.submit([{ type: 'text', text: 'next' }], 'chosen-id')
@@ -123,7 +123,7 @@ test('an edit waits for its own receipt, even after the replacement appears', as
     accepted = true
   })
   expect(h.sent).toEqual([{ type: 'edit_and_send', request }])
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [user('u2', 'turn-2', 'edited')], version: { epoch: 'e', revision: 2 } })
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u2', 'turn-2', 'edited')], version: { epoch: 'e', revision: 2 } })
   h.receive({ type: 'edit_result', operationId: 'edit-0', outcome: { status: 'accepted', turnId: 'turn-0' } })
   await settle()
   expect(accepted).toBe(false)
@@ -158,7 +158,7 @@ for (const ending of ['rejected', 'disconnected'] as const) {
 test('a connection that ends fails the wait of an action the session took apart from one it has not answered', async () => {
   const h = harness()
   const answered = h.client.resume().catch((error: unknown) => error)
-  h.receive({ type: 'phase', phase: 'running' })
+  h.phase('running')
   const unanswered = h.client.compact().catch((error: unknown) => error)
   const lost = new Error('The agent socket went silent')
   h.client.disconnect(lost)
@@ -178,8 +178,8 @@ test('a queued send ends when the next message runs or the session is idle, and 
   if (firstSend?.type !== 'send' || secondSend?.type !== 'send' || thirdSend?.type !== 'send') {
     throw new Error('three sends were expected')
   }
-  h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [user('u1', firstSend.messageId, 'first')], version: { epoch: 'e', revision: 1 } })
+  h.phase('running')
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u1', firstSend.messageId, 'first')], version: { epoch: 'e', revision: 1 } })
   h.receive({ type: 'queue', queue: [{ id: secondSend.messageId, content: [] }, { id: thirdSend.messageId, content: [] }] })
   const dequeued = h.client.dequeueMessage(secondSend.messageId)
   h.receive({ type: 'queue', queue: [{ id: thirdSend.messageId, content: [] }] })
@@ -189,10 +189,10 @@ test('a queued send ends when the next message runs or the session is idle, and 
   expect(settled).toEqual(['second'])
   // The third message runs right after the first, with no idle between them.
   h.receive({ type: 'queue', queue: [] })
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: user('u3', thirdSend.messageId, 'third') }], revision: 2 })
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: user('u3', thirdSend.messageId, 'third') }], revision: 2 })
   await first
   expect(settled).toEqual(['second', 'first'])
-  h.receive({ type: 'phase', phase: 'idle' })
+  h.phase('idle')
   await third
   expect(settled).toEqual(['second', 'first', 'third'])
 })
@@ -210,11 +210,11 @@ test('a steer resolves on its own accepted result and fails on a rejected one', 
 test('the pending steers leave by id, even when the history arrives before the list', () => {
   const h = harness()
   const written = { ...pendingSteer('first'), type: 'steer' as const, createdAt }
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [written], version: { epoch: 'e', revision: 1 } })
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [written], version: { epoch: 'e', revision: 1 } })
   h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first'), pendingSteer('second')] })
   expect(h.client.pendingSteers()).toEqual([pendingSteer('second')])
   // Both have the same content; only the id says which one the transcript holds.
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: { ...written, id: 'second' } }], revision: 2 })
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: { ...written, id: 'second' } }], revision: 2 })
   expect(h.client.pendingSteers()).toEqual([])
   expect(h.events.filter((event) => event.type === 'pending_steers').at(-1)).toEqual({ type: 'pending_steers', pendingSteers: [] })
 })
@@ -249,27 +249,23 @@ test('the pending steers the client answers are its own copies', () => {
   expect(h.client.pendingSteers()).toEqual([pendingSteer('first')])
 })
 
-test("the calls being written are the root's list until the next one, a subagent's go to its record, and an open starts over", () => {
+test("the calls being written are the root's entry's until its next change, a subagent's are its own, and a whole agents frame starts over", () => {
   const h = harness()
   const writing = { toolUseId: 'call-1', toolName: 'shell', description: null }
-  h.receive({ type: 'pending_calls', pendingCalls: [writing] })
-  h.receive({ type: 'pending_calls', subagentId: 'child', pendingCalls: [{ ...writing, toolUseId: 'call-9' }] })
+  h.calls([writing])
+  h.calls([{ ...writing, toolUseId: 'call-9' }], 'child')
   expect(h.client.pendingCalls()).toEqual([writing])
-  expect(h.events.filter((event) => event.type === 'pending_calls')).toEqual([
-    { type: 'pending_calls', pendingCalls: [writing] },
-    { type: 'pending_calls', subagentId: 'child', pendingCalls: [{ ...writing, toolUseId: 'call-9' }] },
-  ])
-  h.receive({ type: 'pending_calls', pendingCalls: [{ ...writing, description: 'Write the categorizer' }] })
+  h.calls([{ ...writing, description: 'Write the categorizer' }])
   expect(h.client.pendingCalls()[0]?.description).toBe('Write the categorizer')
-  h.receive({ type: 'opened' })
+  h.receive({ type: 'agents', version: { epoch: 'e2', revision: 1 }, agents: [entry(ROOT, 'idle')] })
   expect(h.client.pendingCalls()).toEqual([])
 })
 
 test('a frame the contract does not allow disconnects the client before anything acts on it', () => {
   for (const frame of [
     { type: 'pending_steers', pendingSteers: [{ id: 7 }] },
-    { type: 'transcript_reset', start: 0, length: 1, blocks: [{ type: 'text' }], version: { epoch: 'e', revision: 0 } },
-    { type: 'transcript_patch', patches: [{ op: 'add', path: ['blocks', 0], value: text('a', 'x') }], revision: 1 },
+    { type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [{ type: 'text' }], version: { epoch: 'e', revision: 0 } },
+    { type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', path: ['blocks', 0], value: text('a', 'x') }], revision: 1 },
     { type: 'tool_progress', toolUseId: 't1', output: [] },
   ]) {
     const h = harness()
@@ -285,77 +281,79 @@ test('a frame the contract does not allow disconnects the client before anything
 
 test('a patch at or before the client revision is ignored, and a gap asks for a fresh transcript', () => {
   const h = harness()
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [text('a', 'one')], version: { epoch: 'e', revision: 1 } })
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [text('a', 'one')], version: { epoch: 'e', revision: 1 } })
   expect(h.client.transcriptVersion()).toEqual({ epoch: 'e', revision: 1 })
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'append_text', index: 0, delta: ' again' }], revision: 1 })
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'append_text', index: 0, delta: ' again' }], revision: 1 })
   expect(h.blocks()).toEqual([text('a', 'one')])
 
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('c', 'three') }], revision: 3 })
-  expect(h.sent).toEqual([{ type: 'sync_transcript' }])
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('c', 'three') }], revision: 3 })
+  expect(h.sent).toEqual([{ type: 'subscribe', node: ROOT }])
   expect(h.client.transcriptVersion()).toBeNull()
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: text('d', 'four') }], revision: 4 })
-  expect(h.sent).toEqual([{ type: 'sync_transcript' }])
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('d', 'four') }], revision: 4 })
+  expect(h.sent).toEqual([{ type: 'subscribe', node: ROOT }])
   expect(h.blocks()).toEqual([text('a', 'one')])
 
   h.receive({
     type: 'transcript_reset',
+    node: ROOT,
     start: 0,
     length: 3,
     blocks: [text('a', 'one'), text('b', 'two'), text('c', 'three')],
     version: { epoch: 'e', revision: 4 },
   })
-  h.receive({ type: 'transcript_patch', patches: [{ op: 'append_text', index: 2, delta: ' more' }], revision: 5 })
+  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'append_text', index: 2, delta: ' more' }], revision: 5 })
   expect(h.blocks().at(-1)).toMatchObject(text('c', 'three more'))
   expect(h.client.transcriptVersion()).toEqual({ epoch: 'e', revision: 5 })
 })
 
-test('each subagent transcript follows the same revision rule', () => {
+test('each subscribed node\'s transcript follows the same revision rule, and a node the page does not follow is ignored', () => {
   const h = harness()
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [], version: { epoch: 'e', revision: 0 } })
-  h.receive({ type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], revision: 3 })
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], revision: 4 })
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'append_text', index: 0, delta: ' again' }], revision: 4 })
-  const patches = h.events.filter((event) => event.type === 'subagent_transcript_patch')
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [], version: { epoch: 'e', revision: 0 } })
+  h.client.subscribeTo('child')
+  h.receive({ type: 'transcript_reset', node: 'child', start: 0, length: 0, blocks: [], version: { epoch: 'c', revision: 3 } })
+  h.receive({ type: 'transcript_patch', node: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], revision: 4 })
+  h.receive({ type: 'transcript_patch', node: 'child', patches: [{ op: 'append_text', index: 0, delta: ' again' }], revision: 4 })
+  const patches = h.events.filter((event) => event.type === 'transcript_patch')
   expect(patches).toEqual([
-    { type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], failures: {} },
+    { type: 'transcript_patch', node: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], version: { epoch: 'c', revision: 4 }, failures: {} },
   ])
-  expect(h.sent).toEqual([])
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 6 })
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'unknown', patches: [], revision: 1 })
-  expect(h.sent).toEqual([{ type: 'sync_transcript' }])
+  expect(h.client.transcriptVersion('child')).toEqual({ epoch: 'c', revision: 4 })
+  h.receive({ type: 'transcript_patch', node: 'child', patches: [], revision: 6 })
+  h.receive({ type: 'transcript_patch', node: 'unknown', patches: [], revision: 1 })
+  expect(h.sent).toEqual([{ type: 'subscribe', node: 'child' }, { type: 'subscribe', node: 'child' }])
+  expect(h.client.transcriptVersion('child')).toBeNull()
 })
 
-// A child the page stops showing streams no more
+// A node the page stops showing streams no more
 // (`crates/agent-server/src/server/tree.rs`); a frame of it already on its way
 // is dropped, so it neither writes the transcript the page let go of nor asks
-// for every transcript again, and showing the child again takes its next reset.
-test('a child the page stops showing drops its frames on their way until its reset', () => {
+// for it again, and showing the node again takes its next reset.
+test('a node the page stops showing drops its frames on their way until its reset', () => {
   const h = harness()
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [], version: { epoch: 'e', revision: 0 } })
-  h.client.showSubagents(['child'])
-  h.receive({ type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], revision: 3 })
-  h.client.showSubagents([])
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 4 })
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 6 })
-  h.client.showSubagents(['child'])
-  h.receive({ type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], revision: 7 })
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 8 })
+  h.client.subscribeTo('child')
+  h.receive({ type: 'transcript_reset', node: 'child', start: 0, length: 0, blocks: [], version: { epoch: 'c', revision: 3 } })
+  h.client.unsubscribeFrom('child')
+  h.receive({ type: 'transcript_patch', node: 'child', patches: [], revision: 4 })
+  h.receive({ type: 'transcript_patch', node: 'child', patches: [], revision: 6 })
+  h.client.subscribeTo('child')
+  h.receive({ type: 'transcript_reset', node: 'child', start: 0, length: 0, blocks: [], version: { epoch: 'c', revision: 7 } })
+  h.receive({ type: 'transcript_patch', node: 'child', patches: [], revision: 8 })
 
   expect(h.sent).toEqual([
-    { type: 'show_subagents', ids: ['child'] },
-    { type: 'show_subagents', ids: [] },
-    { type: 'show_subagents', ids: ['child'] },
+    { type: 'subscribe', node: 'child' },
+    { type: 'unsubscribe', node: 'child' },
+    { type: 'subscribe', node: 'child' },
   ])
-  expect(h.events.filter((event) => event.type.startsWith('subagent_transcript')).map((event) => event.type)).toEqual([
-    'subagent_transcript_reset',
-    'subagent_transcript_reset',
-    'subagent_transcript_patch',
+  expect(h.events.filter((event) => event.type.startsWith('transcript')).map((event) => event.type)).toEqual([
+    'transcript_reset',
+    'transcript_reset',
+    'transcript_patch',
   ])
 })
 
 test('closed clears the transcript, the version and the pending steers, and ends the actions', async () => {
   const h = harness()
-  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [text('a', 'one')], version: { epoch: 'e', revision: 1 } })
+  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [text('a', 'one')], version: { epoch: 'e', revision: 1 } })
   h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first')] })
   const action = h.client.send([{ type: 'text', text: 'hi' }])
   const steer = h.client.steer([{ type: 'text', text: 'also' }]).catch((error: unknown) => error)
@@ -370,15 +368,15 @@ test('closed clears the transcript, the version and the pending steers, and ends
 test('retry, resume and compact resolve when their action ends, and a busy session refuses them', async () => {
   const h = harness()
   const retry = h.client.retry()
-  h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'phase', phase: 'idle' })
+  h.phase('running')
+  h.phase('idle')
   await retry
   const resume = h.client.resume()
   const compact = h.client.compact().catch((error: unknown) => error)
-  h.receive({ type: 'phase', phase: 'running' })
+  h.phase('running')
   h.receive({ type: 'rejected', command: 'compact', code: 'session_busy', reason: 'Session is busy (running)' })
   expect(await compact).toMatchObject({ message: 'Session is busy (running)', code: 'session_busy' })
-  h.receive({ type: 'phase', phase: 'idle' })
+  h.phase('idle')
   await resume
   expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume' }, { type: 'compact' }])
 })
@@ -392,47 +390,40 @@ test('a compact of a subagent names it and ends when the child\'s compaction end
     ended = true
   })
   expect(h.sent).toEqual([{ type: 'compact', node: 'child' }])
-  h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'phase', phase: 'idle' })
-  h.receive({ type: 'phase', subagentId: 'child', phase: 'compacting' })
+  h.phase('running')
+  h.phase('idle')
+  h.phase('compacting', 'child')
   await Promise.resolve()
   expect(ended).toBe(false)
-  h.receive({ type: 'phase', subagentId: 'child', phase: 'idle' })
+  h.phase('idle', 'child')
   await compact
   expect(ended).toBe(true)
 })
 
-// A child's phase is the child's: it reaches the listeners and leaves the
-// root's own phase, and what waits on it, alone.
-test('a subagent\'s phase frame is passed on and ends no action of the root', async () => {
+// A child's phase is the child's: its entry reaches the listeners and leaves
+// the root's own phase, and what waits on it, alone.
+test('a subagent\'s entry is passed on and ends no action of the root', async () => {
   const h = harness()
-  const phases: unknown[] = []
-  h.client.subscribe((event) => {
-    if (event.type === 'phase') {
-      phases.push(event)
-    }
-  })
   let retried = false
   const retry = h.client.retry().then(() => {
     retried = true
   })
-  h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'phase', subagentId: 'child', phase: 'idle' })
+  h.phase('running')
+  h.phase('idle', 'child')
   await settle()
   expect(retried).toBe(false)
-  h.receive({ type: 'phase', phase: 'idle' })
+  h.phase('idle')
   await retry
-  expect(phases).toEqual([
-    { type: 'phase', phase: 'running' },
-    { type: 'phase', subagentId: 'child', phase: 'idle' },
-    { type: 'phase', phase: 'idle' },
+  expect(h.events.flatMap((event) => (event.type === 'agent' ? [[event.agent.id, event.agent.phase]] : []))).toEqual([
+    ['child', 'idle'],
+    [ROOT, 'idle'],
   ])
 })
 
 test('a failed turn fails its action with the error frame, and the aborts answer in request order', async () => {
   const h = harness()
   const action = h.client.send([{ type: 'text', text: 'hi' }]).catch((error: unknown) => error)
-  h.receive({ type: 'phase', phase: 'running' })
+  h.phase('running')
   const first = h.client.abort()
   const second = h.client.abort()
   h.receive({ type: 'abort_result', result: { target: 'active_provider_stream', canAbortAgain: true } })
@@ -467,8 +458,8 @@ test('close disposes the tree, then detaches; a server-side end disconnects with
   await closing
   expect(h.closes()).toBe(1)
 
-  const other = harness()
-  const opening = other.client.open().catch((error: unknown) => error)
+  const other = harness({ opened: false })
+  const opening = other.client.open({ root: ROOT }).catch((error: unknown) => error)
   other.end(new Error('The agent socket closed (4001 lagged)'))
   expect(await opening).toBeInstanceOf(Error)
   expect(other.events.at(-1)).toMatchObject({ type: 'disconnected', error: { message: 'The agent socket closed (4001 lagged)' } })

@@ -56,7 +56,7 @@ use std::{
     rc::Rc,
 };
 
-use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob, Versions};
+use demi_conversation_socket_protocol::{JobModel, JobPhase, Subagent, Versions};
 use demi_host_interface::{Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
@@ -463,25 +463,23 @@ impl ChildDirectory {
 }
 
 impl NodeRecord {
-    /// A child as the `subagent` frames, the open's snapshot and the
-    /// conversation's subagents route describe it
+    /// A child as the conversation's agents describe it
     /// (`crates/agent-server/src/server/tree.rs`).
     ///
     /// It runs on `model` while it is live, else as it closed, working where
     /// the conversation's placement `now` puts it; with `now` unknown, in its
     /// own directory. The root, which no node spawned, has none.
-    pub fn child(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<SubagentChild> {
+    pub fn child(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<Subagent> {
         let parent = self.parent.clone()?;
-        Some(SubagentChild {
-            subagent_id: self.id.clone(),
+        Some(Subagent {
             number: self.number,
-            parent_session_id: parent,
+            parent,
             description: self.description.clone(),
             profile: self.profile.clone(),
             model,
             round: self.round,
             forked_from: self.forked_from,
-            phase: self
+            state: self
                 .closed
                 .as_ref()
                 .map_or(JobPhase::Running, |close| close.phase.job_phase()),
@@ -492,19 +490,6 @@ impl NodeRecord {
                 now.map_or(own.cwd.as_str(), |now| own.effective(now)).to_owned()
             },
             on_path,
-        })
-    }
-
-    /// The child as [`child`](Self::child) describes it, with the result of
-    /// a completed round.
-    pub fn job(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<SubagentJob> {
-        let result = match self.closed.as_ref().map(|close| &close.phase) {
-            Some(ClosePhase::Completed { result }) => Some(result.clone()),
-            _ => None,
-        };
-        Some(SubagentJob {
-            child: self.child(model, now, on_path)?,
-            result,
         })
     }
 

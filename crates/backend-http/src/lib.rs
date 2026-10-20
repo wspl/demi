@@ -389,12 +389,14 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/batch", post(conversations::batch))
         .route(
             "/conversations/{id}",
-            patch(conversations::patch).delete(conversations::delete),
+            get(conversations::detail)
+                .patch(conversations::patch)
+                .delete(conversations::delete),
         )
         .route("/conversations/{id}/fork", post(conversations::fork))
         .route(
             "/conversations/{id}/side-questions",
-            get(side_questions::list).post(side_questions::ask),
+            post(side_questions::ask),
         )
         .route(
             "/conversations/{id}/side-questions/{side}",
@@ -413,13 +415,15 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/shares/{token}",
             put(shares::update).delete(shares::remove),
         )
-        .route("/conversations/{id}/transcript", get(history::transcript))
         .route(
-            "/conversations/{id}/transcript/blocks/{block}",
+            "/conversations/{id}/agents/{node}/transcript",
+            get(history::transcript),
+        )
+        .route(
+            "/conversations/{id}/agents/{node}/blocks/{block}",
             get(history::block),
         )
-        .route("/conversations/{id}/subagents", get(history::subagents))
-        .route("/conversations/{id}/cost", get(history::cost))
+        .route("/conversations/{id}/agents/{node}/calls", get(history::calls))
         .route(
             "/conversations/{id}/commands/{command}",
             get(history::command),
@@ -546,7 +550,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
                 .delete(files::remove),
         )
         .route("/conversations/{id}/fs/file", get(files::text))
-        .route("/conversations/{id}/fs/exists", post(files::exists))
         .route(
             "/conversations/{id}/fs/raw",
             get(files::raw).put(files::upload),

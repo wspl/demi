@@ -31,6 +31,7 @@
   },
   {
     "type": "transcript_reset",
+    "node": "conv-1",
     "start": 0,
     "length": 2,
     "blocks": [
@@ -90,6 +91,7 @@
   },
   {
     "type": "transcript_reset",
+    "node": "conv-1",
     "start": 0,
     "length": 0,
     "blocks": [],
@@ -100,6 +102,7 @@
   },
   {
     "type": "transcript_patch",
+    "node": "conv-1",
     "patches": [
       {
         "op": "add",
@@ -161,6 +164,7 @@
   },
   {
     "type": "transcript_patch",
+    "node": "conv-1",
     "patches": [
       {
         "op": "add",
@@ -199,27 +203,294 @@
     }
   },
   {
-    "type": "phase",
-    "phase": "running"
+    "type": "agents",
+    "version": {
+      "epoch": "agents-1",
+      "revision": 4
+    },
+    "agents": [
+      {
+        "id": "conv-1",
+        "role": {
+          "kind": "root"
+        },
+        "phase": "running",
+        "waitedMs": 1500,
+        "pendingCalls": [],
+        "context": {
+          "tokens": 23000,
+          "window": 100000,
+          "compactFrom": 50000,
+          "rows": [
+            {
+              "kind": "messages",
+              "tokens": 17200,
+              "estimated": true
+            },
+            {
+              "kind": "systemPrompt",
+              "tokens": 3600,
+              "estimated": true
+            },
+            {
+              "kind": "commands",
+              "tokens": 1400,
+              "estimated": true
+            },
+            {
+              "kind": "instructions",
+              "tokens": 500,
+              "estimated": true
+            },
+            {
+              "kind": "skills",
+              "tokens": 150,
+              "estimated": true
+            },
+            {
+              "kind": "otherContext",
+              "tokens": 150,
+              "estimated": true
+            },
+            {
+              "kind": "compactionBuffer",
+              "tokens": 33000,
+              "estimated": false
+            },
+            {
+              "kind": "freeSpace",
+              "tokens": 44000,
+              "estimated": false
+            }
+          ],
+          "account": "cred-1"
+        },
+        "cost": {
+          "totals": {
+            "inputTokens": 1200,
+            "cacheWriteTokens": 0,
+            "cacheReadTokens": 800,
+            "outputTokens": 300,
+            "price": {
+              "total": 0.0123,
+              "input": 0.006,
+              "cacheWrite": null,
+              "cacheRead": 0.0003,
+              "output": 0.006
+            }
+          },
+          "calls": 2
+        }
+      },
+      {
+        "id": "child-1",
+        "role": {
+          "kind": "subagent",
+          "number": 1,
+          "parent": "conv-1",
+          "description": "Runs the tests",
+          "profile": null,
+          "model": {
+            "providerId": "anthropic",
+            "provider": "Anthropic",
+            "model": "Claude Opus 5.5",
+            "effort": "off",
+            "fast": true
+          },
+          "round": 2,
+          "forkedFrom": 3,
+          "state": "completed",
+          "startedAt": "2026-09-21T14:13:20.000Z",
+          "endedAt": "2026-09-21T14:15:00.000Z",
+          "cwd": "/home/demi/lib",
+          "onPath": true
+        },
+        "phase": "idle",
+        "waitedMs": null,
+        "pendingCalls": [],
+        "context": null,
+        "cost": {
+          "totals": {
+            "inputTokens": 1200,
+            "cacheWriteTokens": 0,
+            "cacheReadTokens": 800,
+            "outputTokens": 300,
+            "price": {
+              "total": 0.0123,
+              "input": 0.006,
+              "cacheWrite": null,
+              "cacheRead": 0.0003,
+              "output": 0.006
+            }
+          },
+          "calls": 2
+        }
+      },
+      {
+        "id": "side-1",
+        "role": {
+          "kind": "side",
+          "blockId": "t1",
+          "start": 0,
+          "end": 7,
+          "quote": "Working",
+          "question": "On what?",
+          "title": null,
+          "folded": false,
+          "askedAt": "2026-09-21T14:16:00.000Z"
+        },
+        "phase": "idle",
+        "waitedMs": null,
+        "pendingCalls": [],
+        "context": null,
+        "cost": {
+          "totals": {
+            "inputTokens": 1200,
+            "cacheWriteTokens": 0,
+            "cacheReadTokens": 800,
+            "outputTokens": 300,
+            "price": {
+              "total": 0.0123,
+              "input": 0.006,
+              "cacheWrite": null,
+              "cacheRead": 0.0003,
+              "output": 0.006
+            }
+          },
+          "calls": 2
+        }
+      }
+    ]
   },
   {
-    "type": "context_usage",
-    "node": "agent-1",
-    "usage": {
-      "tokens": 23000,
-      "window": 100000,
-      "compactFrom": 50000,
-      "rows": [
-        { "kind": "messages", "tokens": 17200, "estimated": true },
-        { "kind": "systemPrompt", "tokens": 3600, "estimated": true },
-        { "kind": "commands", "tokens": 1400, "estimated": true },
-        { "kind": "instructions", "tokens": 500, "estimated": true },
-        { "kind": "skills", "tokens": 150, "estimated": true },
-        { "kind": "otherContext", "tokens": 150, "estimated": true },
-        { "kind": "compactionBuffer", "tokens": 33000, "estimated": false },
-        { "kind": "freeSpace", "tokens": 44000, "estimated": false }
-      ],
-      "account": "cred-1"
+    "type": "agents",
+    "version": {
+      "epoch": "agents-1",
+      "revision": 6
+    },
+    "since": 4,
+    "agents": [
+      {
+        "id": "child-1",
+        "role": {
+          "kind": "subagent",
+          "number": 1,
+          "parent": "conv-1",
+          "description": "Runs the tests",
+          "profile": null,
+          "model": {
+            "providerId": "anthropic",
+            "provider": "Anthropic",
+            "model": "Claude Opus 5.5",
+            "effort": "off",
+            "fast": true
+          },
+          "round": 2,
+          "forkedFrom": 3,
+          "state": "completed",
+          "startedAt": "2026-09-21T14:13:20.000Z",
+          "endedAt": "2026-09-21T14:15:00.000Z",
+          "cwd": "/home/demi/lib",
+          "onPath": true
+        },
+        "phase": "idle",
+        "waitedMs": null,
+        "pendingCalls": [],
+        "context": null,
+        "cost": {
+          "totals": {
+            "inputTokens": 1200,
+            "cacheWriteTokens": 0,
+            "cacheReadTokens": 800,
+            "outputTokens": 300,
+            "price": {
+              "total": 0.0123,
+              "input": 0.006,
+              "cacheWrite": null,
+              "cacheRead": 0.0003,
+              "output": 0.006
+            }
+          },
+          "calls": 2
+        }
+      }
+    ]
+  },
+  {
+    "type": "agent",
+    "revision": 7,
+    "agent": {
+      "id": "conv-1",
+      "role": {
+        "kind": "root"
+      },
+      "phase": "running",
+      "waitedMs": 1500,
+      "pendingCalls": [],
+      "context": {
+        "tokens": 23000,
+        "window": 100000,
+        "compactFrom": 50000,
+        "rows": [
+          {
+            "kind": "messages",
+            "tokens": 17200,
+            "estimated": true
+          },
+          {
+            "kind": "systemPrompt",
+            "tokens": 3600,
+            "estimated": true
+          },
+          {
+            "kind": "commands",
+            "tokens": 1400,
+            "estimated": true
+          },
+          {
+            "kind": "instructions",
+            "tokens": 500,
+            "estimated": true
+          },
+          {
+            "kind": "skills",
+            "tokens": 150,
+            "estimated": true
+          },
+          {
+            "kind": "otherContext",
+            "tokens": 150,
+            "estimated": true
+          },
+          {
+            "kind": "compactionBuffer",
+            "tokens": 33000,
+            "estimated": false
+          },
+          {
+            "kind": "freeSpace",
+            "tokens": 44000,
+            "estimated": false
+          }
+        ],
+        "account": "cred-1"
+      },
+      "cost": {
+        "totals": {
+          "inputTokens": 1200,
+          "cacheWriteTokens": 0,
+          "cacheReadTokens": 800,
+          "outputTokens": 300,
+          "price": {
+            "total": 0.0123,
+            "input": 0.006,
+            "cacheWrite": null,
+            "cacheRead": 0.0003,
+            "output": 0.006
+          }
+        },
+        "calls": 2
+      }
     }
   },
   {
@@ -306,6 +577,7 @@
   },
   {
     "type": "shell_output",
+    "node": "conv-1",
     "status": {
       "status": "running",
       "commandId": "cmd-1",
@@ -319,7 +591,7 @@
   },
   {
     "type": "shell_output",
-    "subagentId": "node-2",
+    "node": "node-2",
     "status": {
       "status": "exited",
       "commandId": "cmd-2",
@@ -334,6 +606,7 @@
   },
   {
     "type": "shell_output",
+    "node": "conv-1",
     "status": {
       "status": "aborted",
       "commandId": "cmd-1",
@@ -375,81 +648,8 @@
     "message": "The checkpoint could not be saved"
   },
   {
-    "type": "subagent",
-    "event": "started",
-    "job": {
-      "subagentId": "child-1",
-      "number": 1,
-      "parentSessionId": "root",
-      "description": "Runs the tests",
-      "profile": "research",
-      "model": {
-        "providerId": "anthropic",
-        "provider": "Anthropic",
-        "model": "Claude Sonnet 5.5",
-        "effort": "medium",
-        "fast": false
-      },
-      "round": 1,
-      "forkedFrom": null,
-      "phase": "running",
-      "startedAt": "2026-09-21T14:13:20.000Z",
-      "endedAt": null,
-      "cwd": "/home/demi/app", "onPath": true
-    }
-  },
-  {
-    "type": "subagent",
-    "event": "changed",
-    "job": {
-      "subagentId": "child-1",
-      "number": 1,
-      "parentSessionId": "root",
-      "description": "Runs the tests",
-      "profile": "research",
-      "model": {
-        "providerId": "anthropic",
-        "provider": "Anthropic",
-        "model": "Claude Sonnet 5.5",
-        "effort": "medium",
-        "fast": false
-      },
-      "round": 1,
-      "forkedFrom": null,
-      "phase": "running",
-      "startedAt": "2026-09-21T14:13:20.000Z",
-      "endedAt": null,
-      "cwd": "/home/demi/lib", "onPath": true
-    }
-  },
-  {
-    "type": "subagent",
-    "event": "closed",
-    "job": {
-      "subagentId": "child-1",
-      "number": 1,
-      "parentSessionId": "root",
-      "description": "Runs the tests",
-      "profile": null,
-      "model": {
-        "providerId": "anthropic",
-        "provider": "Anthropic",
-        "model": "Claude Opus 5.5",
-        "effort": "off",
-        "fast": true
-      },
-      "round": 2,
-      "forkedFrom": 3,
-      "phase": "completed",
-      "startedAt": "2026-09-21T14:13:20.000Z",
-      "endedAt": "2026-09-21T14:15:00.000Z",
-      "result": "All 12 tests pass.",
-      "cwd": "/home/demi/lib", "onPath": true
-    }
-  },
-  {
-    "type": "subagent_transcript_reset",
-    "subagentId": "child-1",
+    "type": "transcript_reset",
+    "node": "child-1",
     "start": 0,
     "length": 1,
     "blocks": [
@@ -473,11 +673,14 @@
         "text": "Working"
       }
     ],
-    "revision": 1
+    "version": {
+      "epoch": "epoch-3",
+      "revision": 1
+    }
   },
   {
-    "type": "subagent_transcript_patch",
-    "subagentId": "child-1",
+    "type": "transcript_patch",
+    "node": "child-1",
     "patches": [
       {
         "op": "append_text",

@@ -10,8 +10,8 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type Browser } from 'playwright'
-import type { ConversationSummary } from '@demicodes/web/src/api/generated/web-api'
-import { conversationSummary } from '@demicodes/web/src/__tests__/product-state'
+import type { ConversationSummary, LastTurn } from '@demicodes/web/src/api/generated/web-api'
+import { conversationMetadata, conversationSummary } from '@demicodes/web/src/__tests__/product-state'
 import { slotPorts, type Slot } from '../slot'
 import { Failure } from '../tool'
 import { messageOn } from './message'
@@ -25,10 +25,20 @@ const ATTACHING = '00000000-0000-4000-8000-000000000005'
 const DRAFTED = '00000000-0000-4000-8000-000000000006'
 
 /** What the backend holds: a conversation is there once its message was delivered. */
-const conversations: ConversationSummary[] = [
-  conversationSummary(HELPING, 'Helping', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished' } }),
-  conversationSummary(ON_ITS_WAY, 'On its way', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished' } }),
-]
+const conversations = new Map<string, { summary: ConversationSummary, lastTurn: LastTurn }>([
+  held(HELPING, 'Helping', { revision: 1 }, { id: 'block-1', outcome: 'finished' }),
+  held(ON_ITS_WAY, 'On its way', { revision: 1 }, { id: 'block-1', outcome: 'finished' }),
+])
+
+/** A conversation the backend holds, with its root's latest ended turn. */
+function held(
+  id: string,
+  title: string,
+  parts: Partial<ConversationSummary>,
+  lastTurn: LastTurn,
+): [string, { summary: ConversationSummary, lastTurn: LastTurn }] {
+  return [id, { summary: conversationSummary(id, title, parts), lastTurn }]
+}
 
 /**
  * The page of a conversation: a composer whose Enter sends, the Requesting
@@ -114,20 +124,27 @@ const server = Bun.serve({
   hostname: '127.0.0.1',
   async fetch(request) {
     const path = new URL(request.url).pathname
-    if (path === '/api/conversations') {
-      if (sent && ++looks === 3) {
+    if (path.startsWith('/api/conversations/')) {
+      const id = path.slice('/api/conversations/'.length)
+      if (id === ON_ITS_WAY && sent && ++looks === 3) {
         lookedThrice()
       }
-      return Response.json({ conversations })
+      const conversation = conversations.get(id)
+      if (!conversation) {
+        return Response.json({ error: { code: 'not_found', message: 'No such conversation' } }, { status: 404 })
+      }
+      return Response.json({
+        conversation: conversation.summary,
+        metadata: conversationMetadata(id, { lastTurn: conversation.lastTurn }),
+        agents: { epoch: 'e1', revision: 0 },
+        entries: [],
+      })
     }
     if (path === `/chat/${ON_ITS_WAY}/send`) {
       sent = true
       await delivery
       // The message's turn ran and ended by the time its delivery reached the page.
-      conversations[1] = conversationSummary(ON_ITS_WAY, 'On its way', {
-        revision: 2,
-        lastTurn: { id: 'block-2', outcome: 'finished' },
-      })
+      conversations.set(...held(ON_ITS_WAY, 'On its way', { revision: 2 }, { id: 'block-2', outcome: 'finished' }))
       return new Response('')
     }
     if (path === `/chat/${UNDELIVERED}/send`) {
@@ -135,10 +152,7 @@ const server = Bun.serve({
       return new Response(`<div data-delivery-failure>${notice('このメッセージは送信されませんでした。', 'That device is the conversation’s primary host', '再試行')}</div>`)
     }
     if (path === `/chat/${FAILING}/send`) {
-      conversations.push(conversationSummary(FAILING, 'Failing', {
-        revision: 1,
-        lastTurn: { id: 'block-1', outcome: 'failed' },
-      }))
+      conversations.set(...held(FAILING, 'Failing', { revision: 1 }, { id: 'block-1', outcome: 'failed' }))
       return new Response(notice('プロバイダがエラーを返しました。', 'Rate limit exceeded', 'レポートをコピー'))
     }
     if (path === `/chat/${ATTACHING}` || path === `/chat/${DRAFTED}`) {
@@ -152,11 +166,7 @@ const server = Bun.serve({
     }
     if (path === `/chat/${HELPING}/send`) {
       // The message's turn ended, and a subagent it started still runs.
-      conversations[0] = conversationSummary(HELPING, 'Helping', {
-        status: 'running',
-        revision: 2,
-        lastTurn: { id: 'block-2', outcome: 'finished' },
-      })
+      conversations.set(...held(HELPING, 'Helping', { status: 'running', revision: 2 }, { id: 'block-2', outcome: 'finished' }))
       return new Response('')
     }
     return new Response(PAGE, { headers: { 'content-type': 'text/html' } })

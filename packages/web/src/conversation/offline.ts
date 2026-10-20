@@ -1,70 +1,99 @@
 import { toRaw, watch, type WatchStopHandle } from 'vue'
-import { latestWindow } from '@demicodes/web-ui/transport/protocol'
+import type { AgentEntry, ProviderFailureFacts, Version } from '@demicodes/protocol'
+import { latestWindow, windowEnd, type HeldBlock, type HeldTranscript, type TranscriptWindow } from '@demicodes/web-ui/transport/protocol'
 import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { onConversationCopyDropped, writeConversationCopy, writeConversationOpened, type AgentCopy, type ConversationCopy } from '../state/offline'
-import type { Conversation } from '../state/types'
+import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
+import { writeConversationCopy, writeNode, type ConversationCopy, type NodeWrite } from '../state/offline'
+import type { Conversation, SideRecord } from '../state/types'
 
 /**
  * How long the page lets a conversation's changes gather before it writes
- * its copy for opening offline: a turn that streams changes the transcript
- * many times a second.
+ * them to the disk: a turn that streams changes the transcript many times a
+ * second.
  */
 export const COPY_DELAY_MS = 3_000
 
+/** What the page last wrote of a node: each block by its index, the length and the runs. */
+interface Written {
+  blocks: Map<number, HeldBlock>
+  length: number
+}
+
 /**
- * The copies of the conversations the user opens on this page, for opening
- * offline: each opened conversation's copy is replaced whole with what the
- * page holds of it, once as the page first opens it and then at most every
- * `COPY_DELAY_MS` while it changes, and at once on `keep`, as the page
- * hides. Opening it again writes only when it was opened, never its copy,
- * unless the cache has dropped the copy meanwhile, which it then writes.
+ * The disk copies of the conversations the user opens on this page
+ * (`../state/offline.ts`): each opened conversation's metadata and agents,
+ * and each of its nodes' blocks the page holds, written at most every
+ * `COPY_DELAY_MS` while they change and at once on `keep`, as the page
+ * hides. Only the blocks that changed since the last write go, each once it
+ * is complete: a block still streaming waits for its end. A write's runs
+ * join the ones the disk holds, which earlier pages and earlier visits
+ * wrote, while the backend vouched for them: the page showed them from the
+ * disk and its subscription named their edge. Otherwise, as when a reset
+ * left stale blocks or the page never showed the disk's copy, the write's
+ * runs replace the disk's.
  */
 export function createConversationCopies(items: () => Conversation[], userId: () => string | null) {
-  /** When the user last opened each conversation on this page, which each write of its copy carries. */
-  const openedAt = new Map<string, number>()
-  /** The opened conversations whose copy the cache dropped since this page wrote it. */
-  const dropped = new Set<string>()
-  /** What stops hearing of dropped copies; none until a conversation is opened. */
-  let stopDrops: (() => void) | null = null
   /** What watches each opened conversation for a change. */
   const watches = new Map<string, WatchStopHandle>()
-  /** The conversations whose copy is to be written. */
+  /** The conversations whose metadata and agents are to be written. */
   const due = new Set<string>()
+  /** What the page last wrote of each node, by conversation and node. */
+  const written = new Map<string, Map<string, Written>>()
+  /** Each node's history as the page last looked for stale blocks in it. */
+  const looked = new Map<string, HeldTranscript>()
+  /** The nodes whose next write replaces the disk's runs, as a reset held stale blocks in them. */
+  const unvouched = new Set<string>()
   let timer: ReturnType<typeof setTimeout> | null = null
 
   function find(id: string): Conversation | undefined {
     return items().find((item) => item.id === id)
   }
 
-  /** The user opened conversation `id`: its copy is kept from now on, and it was opened now. */
+  /** The user opened conversation `id`: what the page holds of it is kept on disk from now on. */
   function opened(id: string): void {
-    openedAt.set(id, Date.now())
-    stopDrops ??= onConversationCopyDropped((gone) => {
-      if (watches.has(gone)) {
-        dropped.add(gone)
-      }
-    })
-    const user = userId()
-    if (dropped.delete(id)) {
-      changed(id)
-    } else if (user && watches.has(id)) {
-      // A failed write says so itself; the copy stays as it was.
-      void writeConversationOpened(user, id, openedAt.get(id)!)
+    if (watches.has(id)) {
+      return
     }
-    if (!watches.has(id)) {
-      watches.set(id, watch(
-        () => {
-          const conversation = find(id)
-          return conversation
-            ? [conversation.load, conversation.history, conversation.instructions, conversation.summaries,
-                conversation.failures, conversation.subagents.map(agentCopy)]
-            : null
-        },
-        () => changed(id),
-      ))
-      // What the page holds of it was never written by this page.
-      changed(id)
+    watches.set(id, watch(
+      () => {
+        const conversation = find(id)
+        return conversation && transcriptShown(conversation.load)
+          ? [conversation.metadata.read.value, conversation.agentsHeld, conversation.history, conversation.failures,
+              conversation.instructions, conversation.summaries,
+              ...conversation.subagents.map((agent) => agent.history), ...conversation.sides.map((side) => side.history)]
+          : null
+      },
+      (shown) => {
+        const conversation = find(id)
+        if (shown && conversation) {
+          lookForStale(conversation)
+          changed(id)
+        }
+      },
+      { immediate: true },
+    ))
+  }
+
+  /**
+   * Marks the nodes of `conversation` whose history holds a stale block,
+   * which a reset that could not vouch for it left there. It runs before
+   * the page reads that block again, which waits for the backend.
+   */
+  function lookForStale(conversation: Conversation): void {
+    const nodes: [string, HeldTranscript][] = [
+      [conversation.id, conversation.history],
+      ...conversation.subagents.map((agent): [string, HeldTranscript] => [agent.id, agent.history]),
+      ...conversation.sides.map((side): [string, HeldTranscript] => [side.id, side.history]),
+    ]
+    for (const [node, history] of nodes) {
+      if (looked.get(node) === history) {
+        continue
+      }
+      looked.set(node, history)
+      if (history.windows.some((window) => window.blocks.some((block) => block.stale))) {
+        unvouched.add(node)
+      }
     }
   }
 
@@ -73,7 +102,7 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
     timer ??= setTimeout(() => void keep(), COPY_DELAY_MS)
   }
 
-  /** Writes the copies due now; resolves once they are written. */
+  /** Writes what is due now; resolves once it is written. */
   function keep(): Promise<void> {
     if (timer !== null) {
       clearTimeout(timer)
@@ -83,14 +112,52 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
     const writes: Promise<void>[] = []
     for (const id of due) {
       const conversation = find(id)
-      const copy = conversation ? copyOf(conversation) : null
-      if (user && copy) {
-        dropped.delete(id)
-        writes.push(writeConversationCopy(user, id, copy, openedAt.get(id) ?? Date.now()))
+      if (!user || !conversation || !transcriptShown(conversation.load)) {
+        continue
+      }
+      const raw = toRaw(conversation)
+      const copy = copyOf(raw)
+      if (copy) {
+        writes.push(writeConversationCopy(user, id, copy))
+      }
+      const nodes = written.get(id) ?? new Map<string, Written>()
+      written.set(id, nodes)
+      const write = (node: string, history: HeldTranscript, failures: Record<string, ProviderFailureFacts>, active: boolean, root: boolean) => {
+        // A node the page did not show from the disk holds nothing the
+        // backend vouched for the disk's runs by, as a stale block says of one it did.
+        const before = nodes.get(node)
+        const change = nodeWrite(raw, history, failures, active, root, before, before === undefined || unvouched.has(node))
+        if (change) {
+          nodes.set(node, change.written)
+          unvouched.delete(node)
+          writes.push(writeNode(user, node, change.write))
+        }
+      }
+      write(id, raw.history, raw.failures, raw.phase !== 'idle', true)
+      for (const agent of raw.subagents) {
+        write(agent.id, agent.history, agent.failures, agent.sessionPhase !== 'idle', false)
+      }
+      for (const side of raw.sides) {
+        write(side.id, side.history, side.failures, side.sessionPhase !== 'idle', false)
       }
     }
     due.clear()
     return Promise.all(writes).then(() => {})
+  }
+
+  /**
+   * The page shows `history` of node `node` of conversation `id` as the
+   * disk keeps it: those blocks are written already, and only what changes
+   * of them is written again.
+   */
+  function shownFromDisk(id: string, node: string, history: HeldTranscript): void {
+    const nodes = written.get(id) ?? new Map<string, Written>()
+    written.set(id, nodes)
+    const blocks = new Map<number, HeldBlock>()
+    for (const window of history.windows) {
+      window.blocks.forEach((block, offset) => blocks.set(window.start + offset, block))
+    }
+    nodes.set(node, { blocks, length: history.length })
   }
 
   /** Forgets every conversation, as the page's account changes; nothing more is written. */
@@ -103,67 +170,184 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
       stop()
     }
     watches.clear()
-    stopDrops?.()
-    stopDrops = null
-    dropped.clear()
-    openedAt.clear()
+    written.clear()
+    looked.clear()
+    unvouched.clear()
     due.clear()
   }
 
-  return { opened, keep, clear }
+  /** Forgets conversation `id`, which the page let go: what it wrote stays on disk. */
+  function released(id: string): void {
+    watches.get(id)?.()
+    watches.delete(id)
+    for (const node of written.get(id)?.keys() ?? []) {
+      looked.delete(node)
+      unvouched.delete(node)
+    }
+    written.delete(id)
+    due.delete(id)
+  }
+
+  return { opened, shownFromDisk, keep, clear, released }
 }
 
 /**
- * What the page holds of `conversation` as its copy: the latest window of
- * its root as held, each block whole or light as the page holds it, with
- * its agents; none while it shows no transcript, or holds no latest window.
+ * What changed of a node's transcript since `before`, as the disk keeps it;
+ * none when nothing did, or the page holds none of it.
  *
- * The copy is made of the data under the store's proxies (`raw`), which the
- * database's own copy of the record, the browser's structured clone, reads
- * as it is, so nothing walks the transcript to unwrap it. The transcript is
- * frozen, which the store never puts behind a proxy (`heldTranscript`); a
- * field of the conversation the store replaced with a spread of an older
- * value may hold a proxy for each entry it kept, so each entry of those is
- * unwrapped, one level, as the data under it is the page's own.
+ * Every window the page holds is a run, but the latest stops before its
+ * first block that is not complete: the last block while the node works,
+ * and a call still executing. Such a run says no version, which the next
+ * subscription then reads from the stream again. A stale block is no
+ * block's whole copy, so the runs leave it out; `replace` says the runs
+ * replace the disk's.
  */
-function copyOf(conversation: Conversation): ConversationCopy | null {
-  const raw = toRaw(conversation)
-  if (!transcriptShown(raw.load)) {
+function nodeWrite(
+  conversation: Conversation,
+  history: HeldTranscript,
+  failures: Record<string, ProviderFailureFacts>,
+  active: boolean,
+  root: boolean,
+  before: Written | undefined,
+  replace: boolean,
+): { write: NodeWrite, written: Written } | null {
+  if (history.windows.length === 0) {
     return null
   }
-  const { history } = raw
-  const window = latestWindow(history)
-  if (!window && history.length > 0) {
+  const latest = latestWindow(history)
+  let length = history.length
+  let version: Version | undefined = history.version
+  let complete = Infinity
+  if (latest) {
+    const pending = latest.blocks.findIndex((block, offset) =>
+      (block.type === 'tool_call' && block.status === 'executing') || (active && offset === latest.blocks.length - 1))
+    if (pending >= 0) {
+      length = latest.start + pending
+      version = undefined
+      complete = length
+    }
+  }
+  const runs = history.windows.flatMap((window) => freshRuns(window, complete))
+  const blocks: NodeWrite['blocks'] = []
+  const next = new Map<number, HeldBlock>()
+  for (const run of runs) {
+    const window = history.windows.find((each) => each.start <= run.start && run.start < windowEnd(each))!
+    for (let index = run.start; index < run.end; index += 1) {
+      const block = window.blocks[index - window.start]!
+      next.set(index, block)
+      if (before?.blocks.get(index) !== block) {
+        // When each piece of a streamed text arrived only fades it as it arrives.
+        const plain = block.arrivals ? { ...block, arrivals: undefined } : block
+        const failure = failures[block.id]
+        blocks.push({ index, block: plain, ...(failure ? { failure: toRaw(failure) } : {}) })
+      }
+    }
+  }
+  const cut = before !== undefined && length < before.length
+  if (blocks.length === 0 && !cut && !replace && before?.length === length) {
     return null
   }
-  // When each piece of a streamed text arrived only fades it as it arrives.
-  const blocks = (window?.blocks ?? []).map((block) => (block.arrivals ? { ...block, arrivals: undefined } : block))
-  const held = new Set(blocks.map((block) => block.id))
   return {
-    transcript: { length: history.length, start: window?.start ?? 0, blocks },
-    failures: Object.fromEntries(
-      Object.entries(raw.failures).flatMap(([id, facts]) => (held.has(id) ? [[id, toRaw(facts)]] : [])),
-    ),
-    instructions: raw.instructions.map((entry) => toRaw(entry)),
-    summaries: raw.summaries,
-    agents: raw.subagents.map((agent) => agentCopy(toRaw(agent))),
+    write: {
+      conversation: conversation.id,
+      length,
+      ...(version ? { version } : {}),
+      runs: runs.filter((run) => run.end > run.start),
+      instructions: root ? conversation.instructions.map((entry) => toRaw(entry)) : [],
+      summaries: root ? { ...conversation.summaries } : {},
+      blocks,
+      ...(cut ? { cutFrom: length } : {}),
+      ...(replace ? { replaceRuns: true as const } : {}),
+    },
+    written: { blocks: next, length },
   }
 }
 
-/** A child as its job says it, which `subagentJobFields` turns back into its record. */
-function agentCopy(agent: SubagentRecord): AgentCopy {
-  return {
-    subagentId: agent.id,
-    number: agent.number,
-    description: agent.name,
-    profile: agent.profile,
-    model: agent.model,
-    round: agent.round,
-    forkedFrom: agent.forkedFrom,
-    phase: agent.phase,
-    startedAt: agent.startedAt,
-    endedAt: agent.endedAt ?? null,
-    cwd: agent.cwd,
-    onPath: agent.onPath,
+/** The runs of `window`'s blocks that are not stale, before the index `end`. */
+function freshRuns(window: TranscriptWindow, end: number): { start: number, end: number }[] {
+  const runs: { start: number, end: number }[] = []
+  window.blocks.forEach((block, offset) => {
+    const index = window.start + offset
+    if (block.stale || index >= end) {
+      return
+    }
+    const last = runs.at(-1)
+    if (last?.end === index) {
+      last.end = index + 1
+    } else {
+      runs.push({ start: index, end: index + 1 })
+    }
+  })
+  return runs
+}
+
+/**
+ * The conversation's metadata and agents as the disk keeps them: what lives
+ * only while the conversation runs, its waits and the calls being written,
+ * stays out. None before the page holds its metadata and agents.
+ */
+function copyOf(conversation: Conversation): ConversationCopy | null {
+  const metadata = conversation.metadata.read.value
+  const version = conversation.agentsHeld
+  if (!metadata || !version) {
+    return null
   }
+  const entries: AgentEntry[] = [
+    {
+      id: conversation.id,
+      role: { kind: 'root' },
+      phase: conversation.phase,
+      waitedMs: null,
+      pendingCalls: [],
+      context: toRaw(conversation.contextUsage),
+      cost: toRaw(conversation.cost),
+    },
+    ...conversation.subagents.map((agent) => subagentEntry(toRaw(agent))),
+    ...conversation.sides.flatMap((side) => sideEntry(toRaw(side))),
+  ]
+  return { metadata: toRaw(metadata), agents: { version: toRaw(version), entries } }
+}
+
+/** A child as its entry says it. */
+function subagentEntry(agent: SubagentRecord): AgentEntry {
+  return {
+    id: agent.id,
+    role: {
+      kind: 'subagent',
+      number: agent.number,
+      parent: agent.parent,
+      description: agent.name,
+      profile: agent.profile,
+      model: toRaw(agent.model),
+      round: agent.round,
+      forkedFrom: agent.forkedFrom,
+      state: agent.phase,
+      startedAt: agent.startedAt,
+      endedAt: agent.endedAt ?? null,
+      cwd: agent.cwd,
+      onPath: agent.onPath,
+    },
+    phase: agent.sessionPhase,
+    waitedMs: null,
+    pendingCalls: [],
+    context: toRaw(agent.contextUsage),
+    cost: toRaw(agent.cost),
+  }
+}
+
+/** A side question as its entry says it; none for one still being asked, which no entry names yet. */
+function sideEntry(side: SideRecord): AgentEntry[] {
+  if (!side.listed) {
+    return []
+  }
+  const { id: _id, ...role } = toRaw(side.record)
+  return [{
+    id: side.id,
+    role: { kind: 'side', ...role },
+    phase: side.sessionPhase,
+    waitedMs: null,
+    pendingCalls: [],
+    context: null,
+    cost: NO_COST,
+  }]
 }

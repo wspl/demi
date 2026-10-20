@@ -338,7 +338,7 @@ impl Shard {
         self.project_files().plugins.forget(|(kept, _)| kept.as_str() == plugin);
         let marks = self.services().sync.of(self.user());
         for root in self.agent().live_roots() {
-            marks.mark(Part::Conversation(
+            marks.mark(Part::Metadata(
                 demi_backend_host_access::conversation_of(&root),
             ));
         }

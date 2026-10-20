@@ -3,7 +3,7 @@ import { deferred } from '@demicodes/utils'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { ConversationCache } from '../conversation-cache'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
-import { clientHarness } from './agent-harness'
+import { agentsFrame, clientHarness, rootEntry } from './agent-harness'
 
 function fixture(id: string) {
   const state: RuntimeState = {
@@ -41,7 +41,7 @@ test('cached runtimes stay live across switches and all detach on cleanup', asyn
         await item.runtime.connect()
       })
     }
-    first.receive({ type: 'phase', phase: 'running' })
+    first.receive(agentsFrame([rootEntry('first', 'running')]))
     expect(first.state.phase).toBe('running')
     expect(first.state.load).toBe('ready')
     expect(first.connections()).toBe(1)

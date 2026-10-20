@@ -8,43 +8,59 @@
 //! Client frames are strict: an unknown field is refused. Server frames are
 //! tolerant, so a page accepts fields it does not know.
 //!
-//! # The open handshake
+//! # Nodes and subscriptions
 //!
-//! A page that holds blocks up to `from` asks the stream for those from there
-//! on:
+//! Every agent of a conversation, the root, a subagent or a side question, is
+//! a node of its tree, named by its id; the root's is the conversation's. A
+//! page subscribes to each node it shows and ends the subscription when it
+//! stops showing it, and only subscribed nodes' messages reach it
+//! (`docs/decisions/0009-agent-sessions-and-sync.md`).
 //!
 //! ```text
-//! client                          server
-//! open { from, edge } ----------> attach to the live tree
-//!                    <----------- opened
-//!                    <----------- transcript_reset { start, version }
-//!                    <----------- phase, queue, pending_steers,
-//!                                 pending_calls, waiting,
-//!                                 request_output
-//!                    <----------- each live subagent, depth first
-//!                    <----------- shell_output, each live command
-//!                    <----------- transcript_patch { revision + 1 }
+//! client                               server
+//! subscribe { node, held } ----------> (kept until open)
+//! open { agents, draft } ------------> attach to the live tree
+//!                         <----------- opened
+//!                         <----------- agents { version, since? }
+//!                         <----------- queue, pending_steers,
+//!                                      request_output
+//!                         <----------- transcript_reset { node }, each
+//!                                      subscribed live node held stale
+//!                         <----------- shell_output, each live command
+//!                         <----------- transcript_patch { node, revision }
+//!                         <----------- agent { revision }
 //! ```
 //!
-//! The handshake is one step: nothing happens to the session between `opened`
+//! The handshake is one step: nothing happens to the tree between `opened`
 //! and its last frame, so the snapshot frames agree with each other.
 //!
-//! # Patches
+//! # Versions
 //!
-//! - Each `transcript_patch` carries the revision one past the previous
-//!   frame's.
-//! - A client applies a patch whose revision is one past its own, ignores one
-//!   whose revision is not greater, and asks for a fresh transcript with
-//!   `sync_transcript` when it sees a gap.
+//! Every collection carries a [`Version`]: a node's transcript, the agents of
+//! a conversation.
+//!
+//! - A change carries the revision one past the previous one of its
+//!   collection. A client applies a change whose revision is one past its own,
+//!   ignores one whose revision is not greater, and subscribes again, naming
+//!   what it holds, when it sees a gap.
+//! - What the page holds stays on screen as the reset arrives; a reset from
+//!   the blocks the page names replaces only what follows them.
 //! - A response that asks for no tool holds the frames of its turn's end until
 //!   the turn goes on or the conversation goes idle after its closing save, so
-//!   the last patch and `phase: idle` go together. The hold waits for that
-//!   save, never for a timer.
+//!   the last patch and the root going idle go together. The hold waits for
+//!   that save, never for a timer.
+//!
+//! A transcript travels in its light form (`light`): what only an open row
+//! shows, a tool's output or a model's thinking, is read when the row opens.
+//! A page of it is bounded by its size, wherever requests begin and end
+//! ([`page`]), and every block names the request it belongs to, so any
+//! window finds each edit's request.
 //!
 //! The agent resolves the files a client frame's content refers to through the
 //! backend (`agent-server`'s `ContentResolver`) before the session sees the
 //! content.
 
+mod agents;
 mod client;
 mod cost;
 mod ping;
@@ -54,16 +70,16 @@ mod transcript;
 pub use client::{
     ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery,
 };
+pub use agents::{AgentEntry, AgentRole, HeldEdge, SideQuestion, Subagent};
 pub use cost::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
 pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,
-    RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,
+    RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome,
 };
 pub use transcript::{
-    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, Versions,
-    index_u32, latest_page_start, latest_page_start_within, light,
-    least_light_bytes, light_bytes, page, requests, reset_start,
+    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, SIZED_AT_ONCE, TranscriptPatch, Version, Versions,
+    index_u32, latest_page_start, light, least_light_bytes, light_bytes, page,
 };
 
 use demi_shared_types::DecodeError;

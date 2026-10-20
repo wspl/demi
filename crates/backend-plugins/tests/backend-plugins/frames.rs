@@ -107,16 +107,12 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
             .position(|frame| completes(frame, "greeter"))
             .expect("the call's result");
         assert!(greeted < returned, "{frames:?}");
-        let ServerFrame::ShellOutput {
-            subagent_id,
-            status,
-        } = &frames[greeted]
-        else {
+        let ServerFrame::ShellOutput { node, status } = &frames[greeted] else {
             unreachable!("found above");
         };
         assert_eq!(
-            (subagent_id, status.command().tool_use_id.as_str()),
-            (&None, "greeter")
+            (node, status.command().tool_use_id.as_str()),
+            (&conversation(), "greeter")
         );
 
         // A page's write is answered alone; what the command then prints and
@@ -186,16 +182,9 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
                 (long.clone(), true, "long-ready\n".to_owned())
             ]
         );
-        // The live commands' views end the handshake; the usage follows it.
+        // The live commands' views end the handshake.
         assert!(
-            matches!(
-                handshake.as_slice(),
-                [
-                    ..,
-                    ServerFrame::ShellOutput { .. },
-                    ServerFrame::ContextUsage { .. }
-                ]
-            ),
+            matches!(handshake.as_slice(), [.., ServerFrame::ShellOutput { .. }]),
             "{handshake:?}"
         );
         // The command prints after its call returned: both pages see it.

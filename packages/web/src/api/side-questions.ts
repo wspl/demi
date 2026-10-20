@@ -1,31 +1,33 @@
 import { apiRequest, jsonBody, readResponse } from './client'
+import type { SideQuestion } from '@demicodes/protocol'
 import {
   askRequestSchema,
   sideFollowUpSchema,
   sideQuestionAnswerSchema,
   sideQuestionPatchSchema,
-  sideQuestionsSchema,
   type AskRequest,
-  type SideQuestion,
-  type SideQuestions,
+  type SideQuestionAnswer,
 } from './generated/web-api'
+
+/** A side question as an answer names it, with its id. */
+export type AnsweredSide = SideQuestion & { id: string }
+
+function answered(answer: SideQuestionAnswer): AnsweredSide {
+  return { id: answer.id, ...answer.sideQuestion }
+}
 
 /** A conversation's side question routes. */
 function sidesPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/side-questions`
 }
 
-export async function readSideQuestions(conversationId: string): Promise<SideQuestions> {
-  return readResponse(await apiRequest(sidesPath(conversationId)), sideQuestionsSchema)
-}
-
 /** Asks the side question under the id the page chose; the same request again finds it. */
-export async function askSideQuestion(conversationId: string, request: AskRequest): Promise<SideQuestion> {
+export async function askSideQuestion(conversationId: string, request: AskRequest): Promise<AnsweredSide> {
   const response = await apiRequest(sidesPath(conversationId), {
     method: 'POST',
     ...jsonBody(askRequestSchema.parse(request)),
   })
-  return (await readResponse(response, sideQuestionAnswerSchema)).sideQuestion
+  return answered(await readResponse(response, sideQuestionAnswerSchema))
 }
 
 export async function followUpSideQuestion(conversationId: string, sideId: string, text: string): Promise<void> {
@@ -39,10 +41,10 @@ export async function retrySideQuestion(conversationId: string, sideId: string):
   await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/retry`, { method: 'POST' })
 }
 
-export async function foldSideQuestion(conversationId: string, sideId: string, folded: boolean): Promise<SideQuestion> {
+export async function foldSideQuestion(conversationId: string, sideId: string, folded: boolean): Promise<AnsweredSide> {
   const response = await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}`, {
     method: 'PATCH',
     ...jsonBody(sideQuestionPatchSchema.parse({ folded })),
   })
-  return (await readResponse(response, sideQuestionAnswerSchema)).sideQuestion
+  return answered(await readResponse(response, sideQuestionAnswerSchema))
 }

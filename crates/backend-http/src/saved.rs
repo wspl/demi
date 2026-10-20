@@ -58,7 +58,7 @@ pub(super) async fn from_draft(
         .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.base, save.text, files)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok((StatusCode::CREATED, Json(answer)))
 }
 
@@ -77,7 +77,7 @@ pub(super) async fn save(
         .add_saved(record.id.clone(), user.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok((StatusCode::CREATED, Json(answer)))
 }
 
@@ -97,7 +97,7 @@ pub(super) async fn write(
         .write_saved(record.id.clone(), user.id.clone(), message, write.text, files)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok(Json(answer))
 }
 
@@ -113,7 +113,7 @@ pub(super) async fn remove(
         .delete_saved(record.id.clone(), message)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok(Json(SavedRemoved { revisions }))
 }
 

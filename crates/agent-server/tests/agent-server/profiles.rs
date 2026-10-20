@@ -26,8 +26,7 @@ use crate::subagents::{
     spawn_during_turn,
 };
 use crate::support::{
-    Fixture, Gate, Model, TestProduct, agent, agent_call, agent_in, conversation, is_idle,
-    is_waiting, listed_model, open, until,
+    Fixture, Gate, Model, TestProduct, agent, agent_call, agent_in, conversation, listed_model, until, is_pending_steers,
 };
 
 /// A profile the user created, enabled, with the parent's model and
@@ -267,7 +266,7 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     .await;
     again.open();
     client.next_until(is_closed(&one)).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     let asked_again = model.requests_of("task one").pop().unwrap();
     assert!(asked_again.system_prompt.starts_with("system prompt\n"));
     assert!(
@@ -345,7 +344,7 @@ async fn profiles_lists_the_enabled_profiles_with_what_is_missing_and_says_when_
     assert_eq!(from_child, text);
     restricted_gate.open();
     client.next_until(is_closed(&child)).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     change(&fixture, |settings| {
         for profile in &mut settings.profiles {
@@ -432,7 +431,7 @@ async fn turning_subagents_off_stops_spawns_at_every_depth_and_leaves_running_ch
     )
     .await;
     assert_eq!(aborted.code, 0, "{aborted:?}");
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     assert_eq!(closed_phase(&fixture, &outer), Some(ClosePhase::Aborted));
     assert!(fixture.store.numbered(2).is_none());
 }
@@ -538,7 +537,7 @@ async fn a_profile_of_another_entry_runs_its_child_on_a_runtime_of_its_own_close
     )
     .await;
     until(|| other.requests_of("task held").len() == 1).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     client.send(ClientFrame::Close {}).await;
     client
         .next_until(|frame| *frame == ServerFrame::Closed)
@@ -588,9 +587,9 @@ async fn a_restored_child_whose_entry_is_gone_closes_as_an_error_with_its_subtre
     // receives the failed completion.
     fixture.resolver.remove("other");
     let mut reopened = fixture.client();
-    reopened.send(open()).await;
+    reopened.open().await;
     reopened.next_until(is_closed(&outer)).await;
-    reopened.next_until(is_idle).await;
+    reopened.until_idle().await;
 
     assert_eq!(
         closed_phase(&fixture, &outer),
@@ -700,8 +699,8 @@ async fn the_live_limit_counts_the_subagents_of_all_the_users_conversations_toge
     let mut client = fixture.opened().await;
     let other = NodeId::try_from("other conversation").unwrap();
     let mut other_client = TestClient::connect(&fixture.server, &other);
-    other_client.send(open()).await;
-    other_client.next_until(is_waiting).await;
+    other_client.open().await;
+    other_client.next_until(is_pending_steers).await;
 
     // A closed child whose provider the user then removes: its resume
     // fails after the check of the live limit.

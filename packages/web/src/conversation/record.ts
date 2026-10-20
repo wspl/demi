@@ -677,7 +677,12 @@ export function createRecordSync(options: {
     }
   }
 
-  /** Takes a draft read; a change restored from this web browser that the backend holds already only takes its revision. */
+  /**
+   * Takes a draft read or one the socket brought; one no newer than the
+   * draft held, such as this page's own save, whose answer's revision the
+   * page holds already, changes nothing. A change restored from this web
+   * browser that the backend holds already only takes its revision.
+   */
   function receiveDraft(conversation: Conversation, draft: ConversationDraft): void {
     const record = conversation.record
     record.receive('draft', (value) => ({ ...value, draft }), { revision: draft.revision })
@@ -689,19 +694,6 @@ export function createRecordSync(options: {
     }
     follow(conversation)
     schedule(conversation, DRAFT_SAVE_DELAY_MS)
-  }
-
-  /**
-   * Reads the draft, or takes `loaded`, a read of it already under way; its
-   * revision orders it against the writes' answers. A change the backend
-   * has not confirmed, such as one this page restored from the web
-   * browser's storage, is saved after it.
-   */
-  async function readDraft(conversation: Conversation, loaded?: Promise<ConversationDraft>): Promise<void> {
-    const signal = lifetime.signal
-    const draft = await (loaded ?? loadDraft(conversation.id, signal))
-    signal.throwIfAborted()
-    receiveDraft(conversation, draft)
   }
 
   /**
@@ -789,7 +781,7 @@ export function createRecordSync(options: {
     unsaved,
     base,
     restore,
-    readDraft,
+    receiveDraft,
     readSaved,
     act,
     saveForLater,

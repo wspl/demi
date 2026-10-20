@@ -27,6 +27,7 @@ const { readLocalState } = await import('../state/local')
 const { useResources } = await import('../state/resources')
 const { useProduct } = await import('../state/product')
 const { conversationSummary, productState } = await import('../__tests__/product-state')
+const { showMetadata } = await import('../__tests__/shown-metadata')
 const { useConversations } = await import('./store')
 const { useWorkPanel } = await import('./work')
 
@@ -310,15 +311,18 @@ test('a new conversation\'s panel reads and sends nothing until its first send c
   }])
 })
 
-test('the selection is this page\'s own, and a higher revision in the summary reads the panel again', async () => {
+test('the selection is this page\'s own, and a higher revision in the metadata reads the panel again', async () => {
   signIn('one')
   const route = stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://a.test/' } }] })
   const conversations = useConversations()
   const id = conversations.create()
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   const product = useProduct()
-  const summary = (panelRevision: number) => productState({ conversations: [conversationSummary(id, '', { panelRevision })] })
-  product.read = summary(1)
+  const summary = (panelRevision: number) => {
+    useProduct().read = productState({ conversations: [conversationSummary(id, '')] })
+    showMetadata(id, { panelRevision })
+  }
+  summary(1)
   const work = useWorkPanel()
   work.load(id)
   await settled()
@@ -327,9 +331,9 @@ test('the selection is this page\'s own, and a higher revision in the summary re
   await nextTick()
   expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 
-  // Another page added a tab: its summary's revision rose.
+  // Another page added a tab: the metadata's revision rose.
   route.stored = { revision: 2, tabs: [...route.stored.tabs, { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } }] }
-  product.read = summary(2)
+  summary(2)
   await settled()
   expect(work.stateFor(id).panel).toEqual({
     history: ['p1'],
@@ -357,11 +361,14 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   const id = conversations.create()
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   const product = useProduct()
-  const summary = (panelRevision: number) => productState({
-    conversations: [conversationSummary(id, '', { panelRevision })],
-    plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
-  })
-  product.read = summary(1)
+  const summary = (panelRevision: number) => {
+    useProduct().read = productState({
+      conversations: [conversationSummary(id, '')],
+      plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
+    })
+    showMetadata(id, { panelRevision })
+  }
+  summary(1)
   const work = useWorkPanel()
   work.load(id)
   await settled()
@@ -370,13 +377,13 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
 
   // The agent shows t1 while the panel is closed: the plugin raises the tab's count.
   route.stored = { revision: 2, tabs: tabs(1) }
-  product.read = summary(2)
+  summary(2)
   await settled()
   expect([work.stateFor(id).open, work.stateFor(id).history.at(-1)]).toEqual([true, 'b1'])
   // The user's own selection after it stands, however often the panel is read again.
   work.select(id, 'b2')
   route.stored = { revision: 3, tabs: tabs(1) }
-  product.read = summary(3)
+  summary(3)
   await settled()
   expect(work.stateFor(id).history.at(-1)).toBe('b2')
   expect(readLocalState('one').workPanelShown).toEqual({ [id]: { b1: 1 } })
@@ -388,7 +395,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   signIn('one')
   const reloadedRoute = stubPanelRoutes({ revision: 3, tabs: tabs(1) })
   useConversations().items.push(...conversations.items)
-  useProduct().read = summary(3)
+  summary(3)
   const reloaded = useWorkPanel()
   reloaded.setOpen(reloaded.stateFor(id), false)
   reloaded.load(id)
@@ -396,7 +403,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([false, 'b2'])
   // A new showing shows it again.
   reloadedRoute.stored = { revision: 4, tabs: tabs(2) }
-  useProduct().read = summary(4)
+  summary(4)
   await settled()
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([true, 'b1'])
 })
@@ -430,11 +437,16 @@ test('on a phone a conversation comes up without its panel; only a show while th
     return Response.json(stored[id])
   }) as typeof fetch
   const product = useProduct()
-  const summaries = () => productState({
-    conversations: [a, b].map((id) => conversationSummary(id, '', { panelRevision: stored[id]!.revision })),
-    plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
-  })
-  product.read = summaries()
+  const summaries = () => {
+    product.read = productState({
+      conversations: [a, b].map((id) => conversationSummary(id, '')),
+      plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
+    })
+    for (const id of [a, b]) {
+      showMetadata(id, { panelRevision: stored[id]!.revision })
+    }
+  }
+  summaries()
   const work = useWorkPanel()
   width.turn(true)
   const open = (id: string) => {
@@ -451,7 +463,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
   // Shown again while the user is on B, it opens.
   work.select(b, 'b2')
   stored[b] = { revision: 2, tabs: browserTab(2) }
-  product.read = summaries()
+  summaries()
   await settled()
   expect([work.stateFor(b).open, work.stateFor(b).history.at(-1)]).toEqual([true, 'b1'])
   // Left with its panel open, B comes back without it.
@@ -462,7 +474,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
   await open(a)
   work.setOpen(work.stateFor(a), true)
   stored[b] = { revision: 3, tabs: browserTab(3) }
-  product.read = summaries()
+  summaries()
   await settled()
   expect(work.stateFor(a).open).toBe(true)
   await open(b)

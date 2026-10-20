@@ -5,8 +5,9 @@
 //! for the connection, a reply or an event, goes through its one bounded outbox
 //! in causal order; [`FrameRx`] is the outbox's receiving end.
 //!
-//! An event of the tree goes to every attached connection; a reply goes only to
-//! the connection whose frame it answers.
+//! An event of the tree goes to every attached connection, a node's messages
+//! only to those that subscribe to the node, and a reply only to the
+//! connection whose frame it answers.
 //!
 //! Connections that act at once need no rule of their own. Each hands the
 //! session its frames one at a time, and the session takes the frames of all of
@@ -19,7 +20,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::HashMap,
     rc::Rc,
     time::Instant,
 };
@@ -29,8 +30,8 @@ use demi_agent_session::{
 };
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, RegenerateRequest, Refusal, RemoveOutcome,
-    ServerFrame, SteerOutcome,
+    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, HeldEdge, RegenerateRequest, Refusal,
+    RemoveOutcome, ServerFrame, SteerOutcome, Version,
 };
 use demi_provider_common::Ahead;
 use demi_shared_types::{BlockId, NodeId, QueuedMessage, SessionPhase, TurnId};
@@ -39,7 +40,7 @@ use tokio::sync::mpsc::{self, error::TrySendError};
 use super::{
     AgentServer,
     content::{ContentResolver, resolve_edit, resolve_message},
-    tree::{Shown, Tree},
+    tree::{Subscribed, Tree},
 };
 
 /// The refusal of a frame that needs a session when the connection has
@@ -153,9 +154,12 @@ pub struct Connection<H: HostResolver> {
     server: Rc<AgentServer<H>>,
     resolver: Rc<dyn ContentResolver>,
     outbox: Rc<Outbox>,
-    /// The children whose transcripts the page shows, as its last
-    /// `show_subagents` named them, attached or not.
-    shown: Shown,
+    /// The nodes whose messages the page shows, as its `subscribe` and
+    /// `unsubscribe` named them, attached or not.
+    subscribed: Subscribed,
+    /// What the page held of each node it subscribed to before the open,
+    /// which the open's handshake answers.
+    held: RefCell<HashMap<NodeId, Option<HeldEdge>>>,
 }
 
 impl<H: HostResolver> Connection<H> {
@@ -172,7 +176,8 @@ impl<H: HostResolver> Connection<H> {
             server,
             resolver,
             outbox,
-            shown: Shown::default(),
+            subscribed: Subscribed::default(),
+            held: RefCell::default(),
         };
         (connection, frames)
     }
@@ -199,16 +204,21 @@ impl<H: HostResolver> Connection<H> {
     /// becomes, and the page waits for the answer of the `send_saved` it sent.
     pub async fn handle_as(&self, frame: ClientFrame, command: ClientFrameKind) -> bool {
         match frame {
-            ClientFrame::Open { from, edge } => {
-                self.open(from, edge.as_ref()).await;
+            ClientFrame::Open { agents, .. } => {
+                self.open(agents.as_ref()).await;
                 false
             }
             ClientFrame::Close {} => {
                 self.close().await;
                 false
             }
-            ClientFrame::ShowSubagents { ids } => {
-                self.show(ids);
+            ClientFrame::Subscribe { node, held } => {
+                self.subscribe(node, held).await;
+                false
+            }
+            ClientFrame::Unsubscribe { node } => {
+                self.subscribed.borrow_mut().remove(&node);
+                self.held.borrow_mut().remove(&node);
                 false
             }
             frame => match self.attached() {
@@ -276,17 +286,32 @@ impl<H: HostResolver> Connection<H> {
         self.send(ServerFrame::RemoveResult { id, outcome });
     }
 
-    /// Takes `ids` as the children the page shows: one it adds gets its
-    /// transcript now when the connection is attached, and the open sends
-    /// it otherwise; one it drops streams no more to it.
-    fn show(&self, ids: Vec<NodeId>) {
-        let ids: HashSet<NodeId> = ids.into_iter().collect();
-        let added: Vec<NodeId> = ids.difference(&self.shown.borrow()).cloned().collect();
-        self.shown.replace(ids);
-        if let Some(tree) = self.attached() {
-            for frame in tree.subagent_resets(&added) {
-                self.send(frame);
+    /// Shows the node `node`'s messages on this connection from now on: an
+    /// attached connection receives its transcript now, from the blocks the
+    /// page `held`, a closed node's from its last checkpoint, and the open's
+    /// handshake sends it otherwise.
+    async fn subscribe(&self, node: NodeId, held: Option<HeldEdge>) {
+        self.subscribed.borrow_mut().insert(node.clone());
+        match self.attached() {
+            Some(tree) => {
+                for frame in tree.node_frames(&node, held.as_ref()) {
+                    self.send(frame);
+                }
+                self.send_closed(&tree, &node, held.as_ref()).await;
             }
+            None => {
+                self.held.borrow_mut().insert(node, held);
+            }
+        }
+    }
+
+    /// Sends the closed node `node`'s transcript, when the page does not hold
+    /// its closed version, while the connection still subscribes to it.
+    async fn send_closed(&self, tree: &Rc<Tree<H>>, node: &NodeId, held: Option<&HeldEdge>) {
+        match tree.closed_frames(node, held).await {
+            Ok(Some(frame)) if self.subscribed.borrow().contains(node) => self.send(frame),
+            Ok(_) => {}
+            Err(error) => self.error(AgentCode::FrameFailed, error),
         }
     }
 
@@ -295,7 +320,7 @@ impl<H: HostResolver> Connection<H> {
     ///
     /// A live tree already follows the conversation's model selection. A second
     /// `open` on one connection is refused.
-    async fn open(&self, from: Option<u32>, edge: Option<&BlockId>) {
+    async fn open(&self, agents: Option<&Version>) {
         if self.attached().is_some() {
             self.reject(
                 ClientFrameKind::Open,
@@ -319,18 +344,18 @@ impl<H: HostResolver> Connection<H> {
             }
         };
         let open_ms = opening.elapsed().as_millis();
-        // Read before the attach, which takes its frames in one step; the
-        // root's transcript is read last, with nothing awaited after it.
-        let placement = tree.placement().await;
+        // Each live node's context usage is read before the attach, which
+        // takes its frames in one step with nothing awaited.
+        tree.refresh_context().await;
         let building = Instant::now();
-        let reset = match tree.root().session().reset(from, edge).await {
-            Ok(reset) => reset,
-            Err(error) => {
-                self.error(AgentCode::OpenFailed, error);
-                return;
-            }
-        };
-        let frames = tree.attach(self.id, self.outbox.clone(), self.shown.clone(), reset, placement.as_ref());
+        let held = std::mem::take(&mut *self.held.borrow_mut());
+        let frames = tree.attach(self.id, self.outbox.clone(), self.subscribed.clone(), agents, &held);
+        // The closed nodes it subscribes to follow the handshake: their
+        // transcripts are read from the store, and nothing changes them.
+        let nodes: Vec<NodeId> = self.subscribed.borrow().iter().cloned().collect();
+        for node in nodes {
+            self.send_closed(&tree, &node, held.get(&node).and_then(Option::as_ref)).await;
+        }
         tracing::info!(
             root = %self.root,
             was_live,
@@ -338,15 +363,9 @@ impl<H: HostResolver> Connection<H> {
             open_ms,
             handshake_ms = building.elapsed().as_millis(),
             handshake_frames = frames,
-            shown = self.shown.borrow().len(),
+            subscribed = self.subscribed.borrow().len(),
             "a page opened the conversation"
         );
-        // Each node's usage follows the handshake, since the window in use
-        // is asked for. It is the estimate at the moment it is sent, so a
-        // later change still arrives after it.
-        for frame in tree.held_context_usage().await {
-            self.send(frame);
-        }
         // The open is answered. The user will likely send next: its request
         // is known but for its input, and readying it may read the media
         // the open read none of (`crates/provider-claude-code/src/prepared.rs`).
@@ -480,19 +499,7 @@ impl<H: HostResolver> Connection<H> {
                 tree.stop_waiting().await;
                 self.send(ServerFrame::AbortResult { result });
             }
-            ClientFrame::SyncTranscript { from, edge } => {
-                let placement = tree.placement().await;
-                match tree.root().session().reset(from, edge.as_ref()).await {
-                    Ok(reset) => {
-                        let frames = tree.fresh_transcripts(reset, placement.as_ref(), &self.shown.borrow());
-                        for frame in frames {
-                            self.send(frame);
-                        }
-                    }
-                    Err(error) => self.error(AgentCode::FrameFailed, error),
-                }
-            }
-            // The `closed` frames report what these stopped.
+            // The agents' entries show what these stopped.
             ClientFrame::AbortSubagents {} => tree.abort_children_of(tree.root().id()).await,
             ClientFrame::AbortSubagent { subagent_id } => {
                 if tree.is_child_of(&subagent_id, tree.root().id()) {
@@ -553,8 +560,11 @@ impl<H: HostResolver> Connection<H> {
                     self.error(AgentCode::ShellStopFailed, error);
                 }
             }
-            ClientFrame::Open { .. } | ClientFrame::Close {} | ClientFrame::ShowSubagents { .. } => {
-                unreachable!("open, close and show_subagents are handled before dispatch")
+            ClientFrame::Open { .. }
+            | ClientFrame::Close {}
+            | ClientFrame::Subscribe { .. }
+            | ClientFrame::Unsubscribe { .. } => {
+                unreachable!("open, close and subscriptions are handled before dispatch")
             }
         }
         false

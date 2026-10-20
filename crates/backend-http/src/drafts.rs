@@ -58,7 +58,7 @@ pub(super) async fn save(
         )
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok(Json(saved))
 }
 
@@ -76,7 +76,7 @@ pub(super) async fn replaced(
         .change_replaced_draft(record.id.clone(), request.action, request.revision)
         .await?
         .map_err(refused)?;
-    services.sync.mark(&user.id, Part::Conversation(record.id));
+    services.sync.mark(&user.id, Part::Metadata(record.id));
     Ok(Json(changed))
 }
 

@@ -13,7 +13,7 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 
 use demi_agent_server::{
     ServerConfig,
-    testing::{TestClient, TestFiles},
+    testing::{TestClient, TestFiles, root_context, root_entry},
 };
 use demi_agent_store::{
     attachments,
@@ -21,7 +21,7 @@ use demi_agent_store::{
     testing::{MemoryBlobs, MemoryTreeStore, model_of, model_reading, png},
 };
 use demi_conversation_socket_protocol::{
-    AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
+    AbortResult, AbortTarget, ClientContent, ClientFrame, HeldEdge, ServerFrame, TranscriptPatch, Version, light,
 };
 use demi_provider_common::{
     ErrorCode, InferenceItem, MediaBytes, Medium, ProviderEvent, UserPart,
@@ -35,9 +35,8 @@ use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::support::{
-    Fixture, Gate, PluginSource, TestProduct, conversation, held, is_idle, is_pending_steers, kinds, open, send, session_of,
-    switch, until,
-};
+        Fixture, Gate, PluginSource, TestProduct, conversation, held, is_pending_steers, kinds, send, session_of, switch, until, is_root_reset,
+    };
 
 #[tokio::test(flavor = "local")]
 async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript() {
@@ -62,10 +61,10 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     ]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
-    client.send(open()).await;
-    let handshake = client.next_until(is_pending_steers).await;
+    client.open().await;
+    let handshake = client.next_until(is_root_reset).await;
     client.send(send("m1", "List the files")).await;
-    let turn = client.next_until(is_idle).await;
+    let turn = client.until_idle().await;
 
     let reset = handshake
         .into_iter()
@@ -137,15 +136,17 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     assert!(fixture.server.tree(&conversation()).is_none());
     assert_eq!(script.closes(), 1);
     let mut reopened = fixture.client();
-    reopened.send(open()).await;
-    let handshake = reopened.next_until(is_pending_steers).await;
-    let ServerFrame::TranscriptReset {
+    reopened.open().await;
+    let handshake = reopened.next_until(is_root_reset).await;
+    let Some(ServerFrame::TranscriptReset {
         blocks, version, ..
-    } = &handshake[1]
+    }) = handshake.last()
     else {
         panic!("{handshake:?}");
     };
-    assert_eq!(*blocks, live.blocks);
+    // A reset carries the light form, but for its last block, which the
+    // stream may still be writing; a block's whole is read when shown.
+    assert_eq!(*blocks, reset_form(&live.blocks));
     assert_ne!(version.epoch, live.version.epoch);
 
     // A page that holds the blocks up to the last one opens from there: the
@@ -154,18 +155,30 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     let last = live.blocks.len() - 1;
     for (edge, start) in [(live.blocks[last].id().clone(), last), (live.blocks[0].id().clone(), 0)] {
         let mut page = fixture.client();
-        page.send(ClientFrame::Open {
-            from: Some(u32::try_from(last).unwrap()),
-            edge: Some(edge),
-        })
-        .await;
-        let handshake = page.next_until(is_pending_steers).await;
-        let ServerFrame::TranscriptReset { start: sent, length, blocks, .. } = &handshake[1] else {
+        // It holds the blocks at a version older than the transcript's.
+        let held = HeldEdge {
+            version: Version { epoch: live.version.epoch.clone(), revision: 0 },
+            from: u32::try_from(last).unwrap(),
+            edge,
+        };
+        page.send(ClientFrame::Subscribe { node: conversation(), held: Some(held) }).await;
+        page.send(ClientFrame::Open { agents: None, draft: None }).await;
+        let handshake = page.next_until(is_root_reset).await;
+        let Some(ServerFrame::TranscriptReset { start: sent, length, blocks, .. }) = handshake.last() else {
             panic!("{handshake:?}");
         };
         assert_eq!((*sent as usize, *length as usize), (start, live.blocks.len()));
-        assert_eq!(blocks[..], live.blocks[start..]);
+        assert_eq!(blocks[..], reset_form(&live.blocks[start..])[..]);
     }
+}
+
+/// What a reset sends of `blocks`: each light but the last, whole.
+fn reset_form(blocks: &[Block]) -> Vec<Block> {
+    let mut sent = light(blocks);
+    if let (Some(last), Some(whole)) = (sent.last_mut(), blocks.last()) {
+        *last = whole.clone();
+    }
+    sent
 }
 
 /// A failed run ends its turn with an `error` frame, which the page shows with
@@ -275,7 +288,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     files.upload("upload-1", resolved);
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), files);
-    client.send(open()).await;
+    client.open().await;
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
@@ -292,7 +305,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
             ],
         })
         .await;
-    let frames = client.next_until(is_idle).await;
+    let frames = client.until_idle().await;
 
     // At rest and on the wire, the image is its reference, with its size.
     let by_reference = UserContentBlock::Image {
@@ -337,17 +350,17 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
         if message == "m3" {
             blobs.forget(&uploaded);
         }
-        client.send(open()).await;
+        client.open().await;
         client.next_until(is_pending_steers).await;
         client.send(send(message, "and now?")).await;
-        client.next_until(is_idle).await;
+        client.until_idle().await;
     }
     // A blob found missing stays missing for the live tree, even when the
     // same bytes are stored again, so the start of each request stays what
     // the one before sent.
     blobs.put(png.clone()).await.unwrap();
     client.send(send("m4", "and now?")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     // The model reads the record as the tag that names the file.
     let UserContentBlock::Attachment(attachment) = &record else {
@@ -406,7 +419,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     files.upload("upload-1", resolved);
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), files);
-    client.send(open()).await;
+    client.open().await;
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
@@ -418,7 +431,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
             }],
         })
         .await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     // The open and the turn's end ready the next request, once or twice as
     // the open's came before the turn or after it; the last holds the turn.
     let answered = script
@@ -432,7 +445,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
 
     // Restored, the session holds no bytes; the open reads no blob, and the
     // readying after it reads the image's.
-    client.send(open()).await;
+    client.open().await;
     client.next_until(is_pending_steers).await;
     let readied = script.readied(answered + 1).await;
     let (_, request) = &readied[answered];
@@ -482,7 +495,7 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
     let files = TestFiles::new();
     files.upload("upload-1", resolved);
     let mut client = TestClient::connect_with(&fixture.server, &conversation(), files);
-    client.send(open()).await;
+    client.open().await;
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
@@ -494,22 +507,18 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
             }],
         })
         .await;
-    let turn = client.next_until(is_idle).await;
-    assert!(
-        turn.iter().any(|frame| matches!(frame, ServerFrame::ContextUsage { usage: Some(_), .. })),
-        "{turn:?}"
-    );
+    let turn = client.until_idle().await;
+    assert!(turn.iter().any(|frame| root_context(frame).is_some()), "{turn:?}");
     client.send(ClientFrame::Close {}).await;
     client.next_until(|frame| *frame == ServerFrame::Closed).await;
 
-    client.send(open()).await;
+    client.open().await;
     let mut handshake = client.next_until(is_pending_steers).await;
     handshake.extend(client.received());
-    assert!(
-        handshake.iter().any(|frame| matches!(frame,
-            ServerFrame::ContextUsage { node, usage: None } if node == &conversation())),
-        "{handshake:?}"
-    );
+    // The estimate cannot be told without reading the picture: the root's
+    // entry says none.
+    let agents = handshake.iter().find(|frame| matches!(frame, ServerFrame::Agents { .. })).expect("the agents");
+    assert!(root_entry(agents).is_some_and(|entry| entry.context.is_none()), "{handshake:?}");
 }
 
 #[tokio::test(flavor = "local")]
@@ -619,9 +628,9 @@ async fn close_during_a_turn_saves_the_interruption_and_the_queue_and_a_reopen_r
     assert_eq!(script.closes(), 1);
 
     let mut reopened = fixture.client();
-    reopened.send(open()).await;
-    let frames = reopened.next_until(is_idle).await;
-    let ServerFrame::TranscriptReset { blocks, .. } = &frames[1] else {
+    reopened.open().await;
+    let frames = reopened.until_idle().await;
+    let Some(ServerFrame::TranscriptReset { blocks, .. }) = frames.iter().find(|frame| is_root_reset(frame)) else {
         panic!("{frames:?}");
     };
     assert_eq!(kinds(blocks), ["user", "error"]);
@@ -651,11 +660,11 @@ async fn a_crash_during_a_turn_is_recorded_as_an_interruption_when_the_conversat
     let after = ScriptedRuntime::new(Vec::new());
     let restarted = Fixture::with(&after, crashed.clone(), ServerConfig::default());
     let mut reopened = restarted.client();
-    reopened.send(open()).await;
+    reopened.open().await;
     let frames = reopened.received();
 
     assert_eq!(frames[0], ServerFrame::Opened);
-    let ServerFrame::TranscriptReset { blocks, .. } = &frames[1] else {
+    let Some(ServerFrame::TranscriptReset { blocks, .. }) = frames.iter().find(|frame| is_root_reset(frame)) else {
         panic!("{frames:?}");
     };
     // The restore recorded the interruption before anything could arrive,
@@ -698,9 +707,9 @@ async fn a_switch_lands_at_the_next_request_inside_the_running_turn() {
     };
     switch(&fixture, switched).await;
     release.open();
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     client.send(send("m2", "second")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let requests: Vec<(String, Option<ThinkingConfig>, Option<String>)> = script
         .requests()
@@ -778,7 +787,7 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
     fixture.resolver.provide("other", &other);
     let mut client = fixture.opened().await;
     client.send(send("m1", "first")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     for model in [
         model_of("replaced", "replaced-model"),
@@ -788,7 +797,7 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
         switch(&fixture, model).await;
     }
     client.send(send("m2", "second")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     let calls: Vec<String> = fixture
         .resolver
@@ -864,7 +873,7 @@ async fn the_system_prompt_layers_its_parts_in_order_and_a_context_change_is_sav
     let mut client = fixture.opened().await;
 
     client.send(send("m1", "hi")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     assert_eq!(*stored_at_request.borrow(), ["user", "context"]);
     let request = &script.requests()[0];
@@ -896,7 +905,7 @@ async fn the_system_prompt_layers_its_parts_in_order_and_a_context_change_is_sav
     // The next request's hook is shown what the node saw, and the node's
     // system prompt is the same bytes.
     client.send(send("m2", "again")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
     assert_eq!(script.requests()[1].system_prompt, *prompt);
     let seen = fixture.product.seen.borrow();
     assert_eq!(
@@ -931,7 +940,7 @@ async fn the_context_sources_are_asked_at_once_and_answer_in_their_order() {
     let mut client = fixture.opened().await;
 
     client.send(send("m1", "hi")).await;
-    client.next_until(is_idle).await;
+    client.until_idle().await;
 
     // The plugin was asked while the execution context was still reading.
     assert_eq!(*fixture.product.plugin_asked_meanwhile.borrow(), [true]);

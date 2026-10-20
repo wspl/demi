@@ -20,12 +20,11 @@ use std::path::PathBuf;
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::state::SyncEvent;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::conversations::anthropic_at;
-use crate::support::{Answer, Harness, Paired, Session, SyncChannel, TestBackend, pattern};
+use crate::conversations::{Socket, anthropic_at};
+use crate::support::{Answer, Harness, Paired, Session, TestBackend, pattern};
 use crate::work::{Driven, say, shell};
 
 const CONVERSATION: &str = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -86,19 +85,25 @@ async fn hosts(backend: &TestBackend, session: &Session) -> Vec<Value> {
     listed.json::<Value>()["hosts"].as_array().unwrap().clone()
 }
 
-/// The conversation as the list shows it.
+/// The version of what the agent was told of where the conversation
+/// works, which names the message that tells it of a move; the page reads
+/// none of it.
+fn context_version(harness: &Harness, id: &str) -> u64 {
+    harness
+        .control_database()
+        .query_row("SELECT context_version FROM conversations WHERE id = ?1", [id], |row| row.get::<_, i64>(0))
+        .unwrap()
+        .try_into()
+        .unwrap()
+}
+
+/// The conversation's metadata, as a page that shows it reads it.
 async fn summary(backend: &TestBackend, session: &Session) -> Value {
-    let listed: Value = backend
-        .get("/api/conversations?archived=false", Some(session))
+    let detail: Value = backend
+        .get(&format!("/api/conversations/{CONVERSATION}"), Some(session))
         .await
         .json();
-    listed["conversations"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|conversation| conversation["id"] == CONVERSATION)
-        .unwrap()
-        .clone()
+    detail["metadata"].clone()
 }
 
 #[tokio::test]
@@ -123,6 +128,7 @@ async fn a_switch_moves_the_work_and_attaches_the_device_it_leaves() {
     );
     let before = summary(&backend, &master).await;
     assert_eq!(before["cwd"], json!(on_laptop.to_str().unwrap()));
+    let version_before = context_version(&harness, CONVERSATION);
     // The Cloud was never used, so no device is left behind.
     assert!(hosts(&backend, &master).await.is_empty());
 
@@ -137,7 +143,7 @@ async fn a_switch_moves_the_work_and_attaches_the_device_it_leaves() {
     );
     let after = summary(&backend, &master).await;
     assert_eq!(after["cwd"], json!(on_ci.to_str().unwrap()));
-    assert!(after["contextVersion"].as_u64() > before["contextVersion"].as_u64());
+    assert!(context_version(&harness, CONVERSATION) > version_before);
     let listing: Value = backend
         .get(
             &format!("/api/conversations/{CONVERSATION}/fs"),
@@ -189,13 +195,10 @@ async fn a_switch_moves_the_work_and_attaches_the_device_it_leaves() {
     let devices: Vec<&Value> = attached.iter().map(|host| &host["deviceId"]).collect();
     assert_eq!(devices, [&json!(ci.id())]);
     // The conversation's own target is no change.
-    let unchanged = summary(&backend, &master).await;
+    let unchanged = context_version(&harness, CONVERSATION);
     let same = switch(&backend, &master, target(&laptop, &on_laptop)).await;
     assert_eq!(same.status, StatusCode::OK);
-    assert_eq!(
-        summary(&backend, &master).await["contextVersion"],
-        unchanged["contextVersion"]
-    );
+    assert_eq!(context_version(&harness, CONVERSATION), unchanged);
 
     // What the destination names must be the user's.
     let missing = switch(
@@ -350,17 +353,10 @@ async fn a_detach_takes_the_host_from_the_conversation_and_a_device_not_attached
     backend.close().await;
 }
 
-/// Waits until the page receives the conversation's summary at the hosts
+/// Waits until the page receives the conversation's metadata at the hosts
 /// revision `revision`.
-async fn until_hosts_revision(page: &mut SyncChannel, revision: u64) {
-    page.until(|event| {
-        matches!(
-            event,
-            SyncEvent::Conversation { conversation }
-                if conversation.id.as_str() == CONVERSATION && conversation.hosts_revision == revision
-        )
-    })
-    .await;
+async fn until_hosts_revision(page: &mut Socket, revision: u64) {
+    page.metadata_until(|metadata| metadata.hosts_revision == revision).await;
 }
 
 // About a second: two real devices install the builtin package, and a turn
@@ -380,9 +376,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
         StatusCode::OK
     );
     harness.attach(CONVERSATION, ci.id());
-    let mut page = backend.sync(&master).await;
-    let state = page.snapshot().await;
-    assert_eq!(state.conversations[0].hosts_revision, 1);
+    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(1));
     let route = format!("/api/conversations/{CONVERSATION}/hosts");
 
     // A device attached by name runs every command in its home: a `cd` in
@@ -412,12 +406,12 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
         .patch(&format!("/api/devices/{}", ci.id()), &master, json!({ "name": "Build Box" }))
         .await;
     assert_eq!(renamed.status, StatusCode::OK);
-    until_hosts_revision(&mut page, 2).await;
+    until_hosts_revision(&mut driven.socket, 2).await;
     assert_eq!(hosts(&backend, &master).await[0]["name"], json!("Build Box"));
 
     let detached = backend.delete(&format!("{route}/{}", ci.id()), &master).await;
     assert_eq!(detached.status, StatusCode::NO_CONTENT);
-    until_hosts_revision(&mut page, 3).await;
+    until_hosts_revision(&mut driven.socket, 3).await;
     backend.close().await;
 }
 
@@ -427,7 +421,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
 async fn a_move_told_to_the_agent_wakes_the_root_with_one_message_and_a_move_alone_admits_none() {
     use demi_shared_types::{AgentMessageEvent, Block};
 
-    use crate::conversations::{FIRST, Socket, summary as listed, transcript};
+    use crate::conversations::{FIRST, transcript};
     use crate::subagents::{Scripts, say as answer, tree_on};
 
     let scripts = std::sync::Arc::new(Scripts::default());
@@ -496,7 +490,7 @@ async fn a_move_told_to_the_agent_wakes_the_root_with_one_message_and_a_move_alo
         "The user moved this conversation from laptop ({root}/quiet) to laptop ({root}/told). Files did not move. Check what this means for the work so far, and tell the user."
     );
     assert!(woken[1].contains(&expected), "{}", woken[1]);
-    let revision = listed(&backend, &master, FIRST).await.context_version;
+    let revision = context_version(&_harness, FIRST);
     let messages = agent_messages(&transcript(&backend, &master, FIRST).await.blocks);
     assert_eq!(messages.len(), 1, "{messages:?}");
     let message = &messages[0];

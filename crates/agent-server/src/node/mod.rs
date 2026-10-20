@@ -41,6 +41,10 @@
 //! - A child's instructions are read from its own directory; its skills are the
 //!   conversation's.
 
+mod reply_files;
+
+pub use reply_files::{CODE_PATHS_MAX, ReplyFiles, code_path};
+
 use std::{
     cell::RefCell,
     rc::{Rc, Weak},
@@ -102,6 +106,9 @@ pub struct Node<H: HostResolver> {
     role: NodeRole,
     session: AgentSession,
     runtime: Rc<NodeRuntime<H>>,
+    /// Keeps with each text it completes which of its code spans name
+    /// files ([`reply_files`]).
+    _reply_files: reply_files::Following,
 }
 
 impl<H: HostResolver> Node<H> {
@@ -1149,6 +1156,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     /// The longest a call of a command with an interval watches it, in
     /// milliseconds.
     pub(crate) call_window_ms: u32,
+    /// What the product says of the paths a complete text names.
+    pub(crate) reply_files: Rc<dyn ReplyFiles>,
 }
 
 /// A node, and what it has yet to run: what its restore handed back, or a new
@@ -1199,6 +1208,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         config,
         interval_floor_ms,
         call_window_ms,
+        reply_files,
     } = spec;
     let record = origin.record().clone();
     let session_store = store.session_store(&record.id);
@@ -1297,11 +1307,13 @@ pub(crate) async fn assemble<H: HostResolver>(
             (session, continuation)
         }
     };
+    let following = reply_files::follow(&session, Rc::downgrade(&node_runtime), reply_files);
     Ok(Assembled {
         node: Node {
             role,
             session,
             runtime: node_runtime,
+            _reply_files: following,
         },
         continuation,
     })

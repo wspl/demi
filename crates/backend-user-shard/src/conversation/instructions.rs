@@ -31,7 +31,7 @@ use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext};
 use demi_backend_host_access::conversation_of;
-use demi_backend_host_access::kept::{Found, Wait};
+use demi_backend_host_access::kept::Found;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_runner_protocol::files::{Subject, SubscriptionKind};
 use demi_plugin_interface::project;
@@ -87,9 +87,9 @@ impl Instructions {
 /// The instructions of the workflow `id` the conversation chose, as the
 /// shard holds its workflows; none when it has none or cannot be used.
 async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str) -> Option<WorkflowText> {
-    let found = match shard.kept_workflows(conversation, Wait::First).await {
+    let found = match shard.kept_workflows(conversation).await {
         Ok(KeptWorkflows::Found(found)) => found,
-        Ok(KeptWorkflows::None { .. }) => return None,
+        Ok(KeptWorkflows::None) => return None,
         Err(error) => {
             tracing::warn!(%conversation, %error, "the project's workflows were not taken");
             return None;

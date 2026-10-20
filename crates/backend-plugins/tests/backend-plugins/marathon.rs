@@ -12,7 +12,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::CommandId;
 
-use crate::support::{Fixture, is_idle, last_result, reply, resident, scripts, turn, within};
+use crate::support::{Fixture, last_result, reply, resident, scripts, turn, within};
 
 // Several seconds: five scripts over two messages run a shell job each, and
 // the first `demi file` starts the `demi.file` service.
@@ -194,7 +194,7 @@ async fn a_page_feeds_and_stops_commands_left_running_and_their_ends_wake_the_mo
         // Each idle ends what came before it; the last one follows the
         // model's last scripted run.
         loop {
-            frames.extend(client.next_until(is_idle).await);
+            frames.extend(client.until_idle().await);
             if script.remaining() == 1 {
                 break;
             }
@@ -207,7 +207,7 @@ async fn a_page_feeds_and_stops_commands_left_running_and_their_ends_wake_the_mo
             })
             .await;
         loop {
-            frames.extend(client.next_until(is_idle).await);
+            frames.extend(client.until_idle().await);
             if script.remaining() == 0 {
                 break;
             }

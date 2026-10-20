@@ -44,7 +44,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::SystemClock;
 use demi_shared_types::{B64Bytes, BlobRef};
-use demi_shared_types::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
+use demi_shared_types::{Block, CommandId, NodeId, ToolView, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
@@ -160,6 +160,8 @@ impl Fixture {
             config,
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
+            agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
+            reply_files: Rc::new(demi_agent_server::testing::TestHostFiles::default()),
         });
         Self {
             runner,
@@ -184,7 +186,7 @@ impl Fixture {
     /// A client that opened the conversation; its handshake waits unread.
     pub async fn attach(&self) -> TestClient<DeviceHost> {
         let client = TestClient::connect(&self.server, &conversation());
-        client.send(ClientFrame::Open { from: None, edge: None }).await;
+        client.open().await;
         client
     }
 
@@ -484,11 +486,7 @@ pub async fn turn(client: &mut TestClient<DeviceHost>, id: &str, text: &str) -> 
             content: client_text(text),
         })
         .await;
-    client.next_until(is_idle).await
-}
-
-pub fn is_idle(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase == SessionPhase::Idle)
+    client.until_idle().await
 }
 
 /// A `shell` call of `script` that watches it for up to `interval_ms`, and

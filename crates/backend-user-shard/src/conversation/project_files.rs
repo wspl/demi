@@ -7,20 +7,24 @@
 //! - the workflows of each conversation's directory;
 //! - each plugin's project search of it.
 //!
-//! The runner's file watch keeps them current through host access ([`Kept`]). A
-//! request takes what is held; only a directory's first search holds it, for at
-//! most 5 seconds.
+//! The runner's file watch keeps them current through host access ([`Kept`]). An
+//! agent's request takes what is held; only a directory's first search holds
+//! it, for at most 5 seconds. The workflows a page shows are stored as each
+//! search finds them (`host_workflows`), and the page reads what is stored at
+//! once.
 
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::conversation_index::ExecutionTarget;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::conversation_of;
-use demi_backend_host_access::kept::{Found, Kept, SearchError, Subscribe, Wait};
+use demi_backend_host_access::kept::{Found, Kept, SearchError, Shown, Subscribe};
+use demi_backend_page_sync::Part;
 use demi_plugin_interface::{PluginId, WatchSubject};
 use demi_runner_protocol::files::Subject;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::workflows::KeptWorkflowList;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
@@ -52,8 +56,8 @@ impl ProjectFiles {
                         Ok(found)
                     })
                 }),
-                |_| None,
                 subscribe(shard.clone()),
+                None,
             )
         };
         let workflows = {
@@ -71,8 +75,8 @@ impl ProjectFiles {
                         })
                     })
                 }),
-                |found| Some(&found.read_at),
                 subscribe(shard.clone()),
+                Some(shown_workflows(shard.clone())),
             )
         };
         let plugins = {
@@ -107,8 +111,8 @@ impl ProjectFiles {
                         })
                     })
                 }),
-                |_| None,
                 subscribe(shard.clone()),
+                None,
             )
         };
         Self {
@@ -174,7 +178,7 @@ impl Shard {
         };
         self.project_files()
             .instructions
-            .get(id, &device, cwd.to_owned(), at.loaded, Wait::First)
+            .get(id, &device, cwd.to_owned(), at.loaded)
             .await
             // A refusal is logged where the search met it.
             .ok()
@@ -184,25 +188,20 @@ impl Shard {
 
     /// The workflows of the conversation `id`'s directory, or that no search
     /// of it is held, such as on a Host that never ran; the refusal when the
-    /// last search was refused or failed and nothing is held. `wait` says
-    /// whether a search under way for a reported change is waited for.
-    pub(crate) async fn kept_workflows(
-        &self,
-        id: &ConversationId,
-        wait: Wait,
-    ) -> Result<KeptWorkflows, Rc<HostAccessError>> {
+    /// last search was refused or failed and nothing is held.
+    pub(crate) async fn kept_workflows(&self, id: &ConversationId) -> Result<KeptWorkflows, Rc<HostAccessError>> {
         let at = self.kept_at(id).await.map_err(Rc::new)?;
         let Some(device) = at.device else {
-            return Ok(KeptWorkflows::None { directory: at.directory });
+            return Ok(KeptWorkflows::None);
         };
         let found = self
             .project_files()
             .workflows
-            .get(id, &device, at.directory.clone(), at.loaded, wait)
+            .get(id, &device, at.directory.clone(), at.loaded)
             .await?;
         Ok(match found {
             Some(found) => KeptWorkflows::Found(found),
-            None => KeptWorkflows::None { directory: at.directory },
+            None => KeptWorkflows::None,
         })
     }
 
@@ -228,7 +227,7 @@ impl Shard {
         let key = (plugin.clone(), at.directory);
         self.project_files()
             .plugins
-            .get(&id, &at.device?, key, at.loaded, Wait::First)
+            .get(&id, &at.device?, key, at.loaded)
             .await
             // A refusal is logged where the search met it.
             .ok()
@@ -236,13 +235,75 @@ impl Shard {
     }
 }
 
+impl Shard {
+    /// The Workflow menu's list for the conversation `id` as the backend
+    /// stored it, at once (`GET /conversations/:id/workflows`): unknown
+    /// before its first read; the refusal when the last search was refused
+    /// or failed and nothing was ever stored. A loaded conversation keeps it
+    /// current, which announces each change in its metadata.
+    pub async fn shown_workflows(&self, id: &ConversationId) -> Result<KeptWorkflowList, Rc<HostAccessError>> {
+        let at = self.kept_at(id).await.map_err(Rc::new)?;
+        let Some(device) = at.device else {
+            return Ok(KeptWorkflowList::Unknown);
+        };
+        let kept = &self.project_files().workflows;
+        if at.loaded {
+            kept.keep(id, &device, at.directory.clone());
+        }
+        let stored = self
+            .services()
+            .control
+            .host_workflows(device.clone(), at.directory.clone())
+            .await
+            .map_err(|error| Rc::new(HostAccessError::from(error)))?;
+        match stored {
+            Some(stored) => Ok(KeptWorkflowList::Read {
+                list: stored.list,
+                read_at: stored.read_at,
+            }),
+            None => match kept.refused(&device, at.directory) {
+                Some(refused) => Err(refused),
+                None => Ok(KeptWorkflowList::Unknown),
+            },
+        }
+    }
+}
+
+/// Stores each search of a directory's workflows in the menu's form, and
+/// announces a changed one in the metadata of the conversations that use it.
+fn shown_workflows(shard: Weak<Shard>) -> Shown<String, Rc<ProjectWorkflows>> {
+    let announcer = shard.clone();
+    Shown {
+        store: Box::new(move |device: DeviceId, directory: String, found: &Rc<ProjectWorkflows>| {
+            let shard = shard.clone();
+            let list = found.menu();
+            Box::pin(async move {
+                let shard = shard.upgrade().ok_or("the backend is shutting down")?;
+                shard
+                    .services()
+                    .control
+                    .keep_host_workflows(device, directory, list)
+                    .await
+                    .map_err(|error| error.to_string())
+            })
+        }),
+        announce: Box::new(move |conversations| {
+            if let Some(shard) = announcer.upgrade() {
+                for conversation in conversations {
+                    shard.mark(Part::Metadata(conversation.clone()));
+                }
+            }
+        }),
+    }
+}
+
 /// What the shard holds of a conversation's workflows.
 pub(crate) enum KeptWorkflows {
     /// What the last search found.
     Found(Rc<ProjectWorkflows>),
-    /// No search of `directory`, the conversation's working directory, is
-    /// held: its Host is not running, or the first search has not finished.
-    None { directory: String },
+    /// No search of the conversation's working directory is held: its Host
+    /// is not running, or the first search has not finished.
+    None,
 }
 
 /// What a search names to watch, as the runner subscribes to it.

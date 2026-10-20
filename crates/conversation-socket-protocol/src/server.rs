@@ -4,15 +4,14 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{
-    Block, BlockId, CommandId, ContextUsage, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingCall, PendingSteer,
-    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, RequestId, SessionPhase,
-    Timestamp, TurnId,
+    Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingSteer,
+    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, RequestId, TurnId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{BlockVersions, ClientFrameKind, CostCall, CostTotals, TranscriptPatch, TranscriptVersion};
+use crate::{AgentEntry, BlockVersions, ClientFrameKind, TranscriptPatch, Version};
 
 /// What the providers read out of the error blocks a frame carries, by block
 /// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
@@ -56,9 +55,12 @@ pub enum ServerFrame {
         #[garde(skip)]
         request_id: Option<RequestId>,
     },
-    /// The blocks from `start` to the end, whole, with the transcript's
-    /// length and version.
+    /// The node `node`'s blocks from `start` to the end, in their light form,
+    /// with its transcript's length and version: the answer to a
+    /// subscription, and a subscribed node's transcript when it starts.
     TranscriptReset {
+        #[garde(skip)]
+        node: NodeId,
         #[garde(skip)]
         start: u32,
         #[garde(skip)]
@@ -68,7 +70,7 @@ pub enum ServerFrame {
         #[garde(dive)]
         blocks: Vec<Block>,
         #[garde(dive)]
-        version: TranscriptVersion,
+        version: Version,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -82,8 +84,11 @@ pub enum ServerFrame {
         #[garde(dive)]
         versions: Vec<BlockVersions>,
     },
-    /// The patches of one batch; `revision` is one past the previous frame's.
+    /// The patches of one batch of the node `node`'s transcript; `revision`
+    /// is one past the previous one of that node's.
     TranscriptPatch {
+        #[garde(skip)]
+        node: NodeId,
         #[garde(dive)]
         patches: Vec<TranscriptPatch>,
         #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -97,75 +102,25 @@ pub enum ServerFrame {
         #[garde(skip)]
         failures: Option<Failures>,
     },
-    /// A session's phase: the root's, or a live subagent's, which a page
-    /// opening the conversation receives for each live child too.
-    Phase {
-        /// The subagent whose phase it is; absent for the root.
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "NodeId")]
-        #[garde(skip)]
-        subagent_id: Option<NodeId>,
-        #[garde(skip)]
-        phase: SessionPhase,
-    },
-    /// The estimate of a node's next request with the window its
-    /// thresholds use: every node's session, a subagent's as the root's,
-    /// reports it on open, after each response and compaction pass, and
-    /// when an action ends.
-    ContextUsage {
-        /// The agent whose context it is: the root, or a live subagent.
-        #[garde(skip)]
-        node: NodeId,
-        /// None when an open cannot tell it without reading a blob: the
-        /// page then shows no figure rather than one from before.
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<ContextUsage>")]
+    /// The conversation's agents at `version`: every one when `since` is
+    /// absent, else those changed after the revision `since`, which the page
+    /// holds of the same epoch (`crates/agent-server/src/server/tree.rs`).
+    Agents {
         #[garde(dive)]
-        usage: Option<ContextUsage>,
-    },
-    /// What a new usage ledger row of the conversation adds to its cost
-    /// (`crates/backend-database/src/usage.rs`): to the totals, to its
-    /// agent's price when it has one, and the call itself when it is a turn
-    /// call of its agent. A page that holds the conversation's cost adds it,
-    /// one that holds an agent's own adds a frame of that agent and counts
-    /// every other, and any other page ignores it.
-    Cost {
-        /// The number of the conversation's ledger rows up to this one: the
-        /// page adds the frame when it holds one fewer, drops it when it
-        /// holds as many already and reads the cost again when it holds
-        /// fewer still.
+        version: Version,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(range(max = MAX_SAFE_INTEGER))]
-        rows: u64,
+        since: Option<u64>,
         #[garde(dive)]
-        totals: CostTotals,
-        /// The row's agent; null for a row of no agent, as a title's. Its
-        /// price is the totals'.
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<u64>")]
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        agent: Option<u64>,
-        /// The profile the row's subagent was started with; null for none
-        /// and for the main conversation.
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<String>")]
-        #[garde(skip)]
-        profile: Option<String>,
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<CostCall>")]
-        #[garde(dive)]
-        call: Option<CostCall>,
+        agents: Vec<AgentEntry>,
     },
-    /// The number of the conversation's ledger rows, which the backend
-    /// sends with an open's handshake: a page that holds fewer rows of the
-    /// cost missed the last ones while its connection was down and reads
-    /// the cost again (`crates/backend-database/src/usage.rs`).
-    CostRows {
+    /// One agent's entry as it changed; `revision` is one past the previous
+    /// change of the agents.
+    Agent {
         #[garde(range(max = MAX_SAFE_INTEGER))]
-        rows: u64,
+        revision: u64,
+        #[garde(dive)]
+        agent: AgentEntry,
     },
     /// The whole queue.
     Queue {
@@ -176,40 +131,6 @@ pub enum ServerFrame {
     PendingSteers {
         #[garde(dive)]
         pending_steers: Vec<PendingSteer>,
-    },
-    /// The complete list of the calls the model is writing.
-    PendingCalls {
-        /// The subagent whose calls they are; absent for the root's.
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "NodeId")]
-        #[garde(skip)]
-        subagent_id: Option<NodeId>,
-        #[garde(dive)]
-        pending_calls: Vec<PendingCall>,
-    },
-    /// How long a node had waited for the model's answer when the frame
-    /// left, or null when it waits for none. The page counts from its own
-    /// clock when the frame arrives, minus the wait, and compares no time of
-    /// the server's with its own, so a difference between the two clocks never
-    /// shows.
-    Waiting {
-        /// The subagent that waits; absent for the root.
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "NodeId")]
-        #[garde(skip)]
-        subagent_id: Option<NodeId>,
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<u64>")]
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        waited_ms: Option<u64>,
     },
     /// The output of the request the root agent runs, or null when its turn
     /// has none: sent at once when a request starts or ends and when the
@@ -246,15 +167,9 @@ pub enum ServerFrame {
     /// A command's live view (`crates/agent-server/src/server/tree/live.rs`): the same for
     /// every page, whatever any page or the model read.
     ShellOutput {
-        /// The subagent whose command it is; absent for the root's.
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "NodeId")]
+        /// The node whose command it is.
         #[garde(skip)]
-        subagent_id: Option<NodeId>,
+        node: NodeId,
         #[garde(dive)]
         status: Box<ShellStatus>,
     },
@@ -315,60 +230,6 @@ pub enum ServerFrame {
         #[schemars(with = "String")]
         #[garde(skip)]
         request_id: Option<RequestId>,
-    },
-    /// A subagent started or closed.
-    Subagent {
-        #[garde(skip)]
-        event: SubagentEvent,
-        #[garde(dive)]
-        job: SubagentJob,
-    },
-    /// Every child of the tree, finished ones included, which the page
-    /// takes whole: sent on each open, after the root's state
-    /// (`crates/agent-server/src/server/tree.rs`).
-    Subagents {
-        #[garde(dive)]
-        subagents: Vec<SubagentSummary>,
-    },
-    SubagentTranscriptReset {
-        #[garde(skip)]
-        subagent_id: NodeId,
-        /// The index of the first block, the start of the child's latest
-        /// page, and how many blocks its transcript holds.
-        #[garde(skip)]
-        start: u32,
-        #[garde(skip)]
-        length: u32,
-        #[serde(with = "demi_shared_types::client_blocks")]
-        #[schemars(with = "Vec<Block>")]
-        #[garde(dive)]
-        blocks: Vec<Block>,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        revision: u64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "Failures")]
-        #[garde(skip)]
-        failures: Option<Failures>,
-    },
-    SubagentTranscriptPatch {
-        #[garde(skip)]
-        subagent_id: NodeId,
-        #[garde(dive)]
-        patches: Vec<TranscriptPatch>,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        revision: u64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "Failures")]
-        #[garde(skip)]
-        failures: Option<Failures>,
     },
     /// The connection is detached.
     Closed,
@@ -559,109 +420,6 @@ pub enum AbortTarget {
 
 serde_plain::derive_display_from_serialize!(AbortTarget);
 serde_plain::derive_fromstr_from_deserialize!(AbortTarget);
-
-/// Whether a subagent started, changed while it runs, as when `demi agent
-/// cwd` moved it, or closed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum SubagentEvent {
-    Started,
-    Changed,
-    Closed,
-}
-
-serde_plain::derive_display_from_serialize!(SubagentEvent);
-serde_plain::derive_fromstr_from_deserialize!(SubagentEvent);
-
-/// One child as an open's snapshot lists it: what a job says of it but its
-/// result, which the page reads with its transcript when it shows it, and
-/// the revision of its transcript, which tells the page whether the
-/// transcript it holds is still current (`crates/agent-server/src/server/tree.rs`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct SubagentSummary {
-    #[serde(flatten)]
-    #[garde(dive)]
-    pub child: SubagentChild,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub revision: u64,
-}
-
-/// One child agent as the parent's connection sees it: the child, and on a
-/// `completed` close its result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct SubagentJob {
-    #[serde(flatten)]
-    #[garde(dive)]
-    pub child: SubagentChild,
-    /// Only on a `completed` close: the child's last assistant text, at most
-    /// 32 KiB.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String")]
-    #[garde(skip)]
-    pub result: Option<String>,
-}
-
-/// What a job and a summary say of one child.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct SubagentChild {
-    #[garde(skip)]
-    pub subagent_id: NodeId,
-    /// The number the model knows it by, which `demi agent spawn` printed
-    /// and a message links it with as `agent:<number>`.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub number: u64,
-    /// The node that spawned it: the web app keys nested views by it.
-    #[garde(skip)]
-    pub parent_session_id: NodeId,
-    /// The spawn's `--description`, or empty.
-    #[garde(skip)]
-    pub description: String,
-    /// The profile's name; null for the inherit profile.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub profile: Option<String>,
-    /// What the round runs on, from the profile or the parent.
-    #[garde(dive)]
-    pub model: JobModel,
-    /// The round: 1 for the spawn's, one more at each resume.
-    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
-    pub round: u64,
-    /// The number of the agent it was forked from; null for a child that
-    /// was not forked.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<u64>")]
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub forked_from: Option<u64>,
-    #[garde(skip)]
-    pub phase: JobPhase,
-    /// When the round started.
-    #[garde(skip)]
-    pub started_at: Timestamp,
-    /// When it closed; null while it runs.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<Timestamp>")]
-    #[garde(skip)]
-    pub ended_at: Option<Timestamp>,
-    /// Its working directory on the primary Host now, where its `shell`
-    /// calls start (`crates/agent-server/src/node/mod.rs`); a `changed` frame
-    /// tells a change while it runs.
-    #[garde(length(min = 1))]
-    pub cwd: String,
-    /// Whether the call that started it is on its parent's current path:
-    /// the Agents window and `agent:` links show only the children that
-    /// are, and a `changed` frame tells when a switch of versions changes
-    /// it.
-    #[garde(skip)]
-    pub on_path: bool,
-}
 
 /// What a child's round runs on,
 /// in the words the model menu shows.

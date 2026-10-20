@@ -5,26 +5,26 @@
 //!
 //! - Each directory's `.demi/instructions.md` joins the instructions block
 //!   after its `AGENTS.md`.
-//! - The Workflow menu's list reads `.demi/workflows/` with what the page
-//!   watches.
+//! - The Workflow menu's list reads `.demi/workflows/` as the backend keeps it,
+//!   at once, unknown before its first read and kept across a restart while
+//!   the Host is gone.
 //! - A conversation's choice puts the workflow's instructions in the root's
 //!   block and its profiles in place of the user's, a model no entry offers
 //!   making a profile unavailable. No Subagents takes both away.
-//! - What the page watches changes for a workflow added or edited, or a
-//!   `.demi` that comes nearer, and not for the other files of the
-//!   directories searched.
+//! - A workflow added or edited raises the workflows revision the
+//!   conversation's metadata carries, and the page reads the list again.
 
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, INSTRUCTIONS_SOURCE, InstructionEntry, WorkflowChoice};
 use demi_web_api_protocol::conversations::ConversationUpdate;
-use demi_web_api_protocol::workflows::ConversationWorkflows;
+use demi_web_api_protocol::workflows::KeptWorkflowList;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::auth::Role;
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::conversations::{FIRST, anthropic_at, create, transcript};
-use crate::files::{send_watch, watch_message, watch_socket_of};
+use crate::conversations::{FIRST, Socket, anthropic_at, create, transcript};
+use crate::files::watch_message;
 use crate::support::{Harness, Session, TestBackend};
 use crate::support::eventually;
 use crate::work::{Driven, say, shell, switch};
@@ -48,7 +48,7 @@ async fn choose(backend: &TestBackend, master: &Session, choice: serde_json::Val
         .patch(&format!("/api/conversations/{FIRST}"), master, json!({ "workflow": choice }))
         .await;
     assert_eq!(chosen.status, StatusCode::OK, "{}", String::from_utf8_lossy(&chosen.body));
-    chosen.json::<ConversationUpdate>().conversation.workflow
+    chosen.json::<ConversationUpdate>().metadata.workflow
 }
 
 // A few seconds: a real runner on a paired device answers the reads, and
@@ -86,16 +86,11 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
     .unwrap();
     switch(&backend, &master, FIRST, &alpha, &web).await;
     let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
 
-    // The menu's list, with the Host's number and what the page watches:
-    // the `.git` that would make `web` the root, `web/.demi/workflows`,
-    // which would be nearer, and the workflow files.
-    let listed = backend
-        .get(&format!("/api/conversations/{FIRST}/workflows"), Some(&master))
-        .await;
-    assert_eq!(listed.status, StatusCode::OK);
-    assert!(listed.headers.contains_key("x-demi-read-at"));
-    let listed: serde_json::Value = serde_json::to_value(listed.json::<ConversationWorkflows>()).unwrap();
+    // The menu's list, as the backend read it.
+    let mut page = MenuPage::open(&backend, &master).await;
+    let listed = page.when(&backend, &master, |_| true).await;
     let broken = format!(
         "{} does not read: line 3 column 9: validation error: is not 1 to 40 lowercase letters, digits and hyphens starting with a letter for `profiles[0].id`",
         path(&workflows.join("broken.yaml"))
@@ -108,18 +103,12 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
                 { "id": "broken", "name": null, "path": path(&workflows.join("broken.yaml")), "unavailable": broken, "profiles": [] },
                 { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null, "profiles": ["explore", "slow"] },
             ],
-            "watch": [
-                { "kind": "file", "path": path(&web.join(".git")) },
-                { "kind": "file", "path": path(&web.join(".demi/workflows")) },
-                { "kind": "folder_details", "path": path(&workflows), "suffix": ".yaml" },
-            ],
             "unavailable": null,
         })
     );
 
     // Default: Demi's own files follow each directory's AGENTS.md, and no
     // workflow is in the block.
-    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let first = work.turn(vec![say("hello")]).await.first_request();
     let (root, demi_root, demi_web) = (
         first.find("ROOT RULES").expect("the root's AGENTS.md"),
@@ -221,32 +210,55 @@ instructions: |
 profiles: []
 ";
 
-/// The Workflow menu's list of the conversation `FIRST`.
-async fn menu(backend: &TestBackend, master: &Session) -> serde_json::Value {
+/// The Workflow menu's list of the conversation `FIRST` as the backend
+/// stored it; none while it is unknown.
+async fn stored_menu(backend: &TestBackend, master: &Session) -> Option<serde_json::Value> {
     let listed = backend
         .get(&format!("/api/conversations/{FIRST}/workflows"), Some(master))
         .await;
-    assert_eq!(listed.status, StatusCode::OK);
-    serde_json::to_value(listed.json::<ConversationWorkflows>()).unwrap()
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    match listed.json::<KeptWorkflowList>() {
+        KeptWorkflowList::Unknown => None,
+        KeptWorkflowList::Read { list, .. } => Some(serde_json::to_value(list).unwrap()),
+    }
 }
 
-/// The menu's list once `holds` says it holds a change made on the Host,
-/// which the backend learns of through the runner's file watch, as a page
-/// that heard of it reads the list again.
-async fn menu_once(
-    backend: &TestBackend,
-    master: &Session,
-    holds: impl Fn(&serde_json::Value) -> bool,
-) -> serde_json::Value {
-    let listed = std::cell::RefCell::new(serde_json::Value::Null);
-    eventually("the menu holds the change", || async {
-        let now = menu(backend, master).await;
-        let held = holds(&now);
-        listed.replace(now);
-        held
-    })
-    .await;
-    listed.into_inner()
+/// A page that shows the conversation `FIRST` and its Workflow menu: it
+/// reads the list again at each workflows revision its metadata brings.
+struct MenuPage {
+    socket: Socket,
+    /// The latest workflows revision the page heard of.
+    seen: u64,
+}
+
+impl MenuPage {
+    async fn open(backend: &TestBackend, master: &Session) -> Self {
+        let (socket, metadata) = Socket::shown(backend, master, FIRST, 0).await;
+        Self {
+            socket,
+            seen: metadata.workflows_revision,
+        }
+    }
+
+    /// The list once it holds what `holds` asks, as the page reads it now and
+    /// at each later revision; a change made on the Host reaches it through
+    /// the runner's file watch.
+    async fn when(
+        &mut self,
+        backend: &TestBackend,
+        master: &Session,
+        holds: impl Fn(&serde_json::Value) -> bool,
+    ) -> serde_json::Value {
+        loop {
+            if let Some(listed) = stored_menu(backend, master).await
+                && holds(&listed)
+            {
+                return listed;
+            }
+            let seen = self.seen;
+            self.seen = self.socket.metadata_until(|metadata| metadata.workflows_revision > seen).await.workflows_revision;
+        }
+    }
 }
 
 /// The `changed` batches the watch sends until one names `key`: every
@@ -271,18 +283,18 @@ pub(crate) async fn others_until(socket: &mut crate::files::Socket, key: &str) -
 }
 
 // One to four seconds: a real runner on a paired device answers the reads
-// and watches what the page subscribes to.
+// and reports the changes.
 //
-// Planted defect it catches: a search that watches a searched directory's
-// names, or every entry of the workflows directory, so that any file made
-// in a home folder or a repository's root reads the list again.
+// Planted defect it catches: a change the backend's search finds that it
+// never announces, so the page keeps the list it first read.
 #[tokio::test]
-async fn the_page_hears_of_workflows_and_a_nearer_demi_but_not_of_other_files_beside_them() {
+async fn a_page_hears_of_a_workflow_added_or_edited_and_reads_the_list_again() {
+    let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
     create(&backend, &master, FIRST).await;
-    let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
 
     // `repo/app/web` works with the workflows of `repo`; `app` has a
     // `.demi` without workflows, `web` none.
@@ -301,61 +313,27 @@ async fn the_page_hears_of_workflows_and_a_nearer_demi_but_not_of_other_files_be
     assert!(initialized.success());
     std::fs::write(workflows.join("review.yaml"), REVIEW).unwrap();
     switch(&backend, &master, FIRST, &alpha, &web).await;
+    let _work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let names = |listed: &serde_json::Value| -> Vec<String> {
+        listed["workflows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|workflow| workflow["name"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    };
 
-    // The page watches the repository's changes list, so one watch of its
-    // tree carries everything below, in the order it happens.
-    let mut socket = watch_socket_of(&backend, &master, &format!("/api/conversations/{FIRST}/fs/watch")).await;
-    let tree = json!({ "key": "tree", "kind": "worktree", "path": path(&repo) });
-    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": [tree] })).await;
-    let live = watch_message(&mut socket).await;
-    assert_eq!(live["type"], "live", "{live}");
+    let mut page = MenuPage::open(&backend, &master).await;
+    let listed = page.when(&backend, &master, |_| true).await;
+    assert_eq!(names(&listed), ["Review Team"]);
 
-    // It subscribes to what the list says to watch, under keys of its own.
-    let listed = menu(&backend, &master).await;
-    assert_eq!(
-        listed["watch"],
-        json!([
-            { "kind": "file", "path": path(&web.join(".git")) },
-            { "kind": "file", "path": path(&app.join(".git")) },
-            { "kind": "file", "path": path(&web.join(".demi")) },
-            { "kind": "file", "path": path(&app.join(".demi/workflows")) },
-            { "kind": "folder_details", "path": path(&workflows), "suffix": ".yaml" },
-        ])
-    );
-    let subscriptions: Vec<serde_json::Value> = listed["watch"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .enumerate()
-        .map(|(index, subject)| {
-            let mut subscription = subject.clone();
-            subscription["key"] = json!(format!("w{index}"));
-            subscription
-        })
-        .collect();
-    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": subscriptions })).await;
-    for _ in 0..subscriptions.len() {
-        let live = watch_message(&mut socket).await;
-        assert_eq!(live["type"], "live", "{live}");
-    }
-
-    // Files beside what the search looked for, then a new workflow: only
-    // the workflow files' subscription changes.
-    std::fs::write(web.join("notes.txt"), "notes").unwrap();
-    std::fs::write(app.join("notes.txt"), "notes").unwrap();
-    std::fs::write(app.join(".demi/notes.md"), "notes").unwrap();
-    std::fs::write(repo.join("notes.txt"), "notes").unwrap();
+    // A new workflow, then the first one edited in place.
     std::fs::write(workflows.join("docs.yaml"), DOCS).unwrap();
-    assert_eq!(others_until(&mut socket, "w4").await, Vec::<String>::new());
-    // A file of the workflows directory that is no workflow, then a `.demi`
-    // made in the working directory, which may bring workflows nearer: only
-    // the `.demi`'s subscription changes.
-    std::fs::write(workflows.join("README.md"), "notes").unwrap();
-    std::fs::create_dir(web.join(".demi")).unwrap();
-    assert_eq!(others_until(&mut socket, "w2").await, Vec::<String>::new());
-    // A workflow edited in place.
-    std::fs::write(workflows.join("review.yaml"), REVIEW.replace("REVIEW STEPS", "REVIEW STEPS TWO")).unwrap();
-    assert_eq!(others_until(&mut socket, "w4").await, Vec::<String>::new());
+    let listed = page.when(&backend, &master, |listed| names(listed).len() == 2).await;
+    assert_eq!(names(&listed), ["Docs Review", "Review Team"]);
+    std::fs::write(workflows.join("review.yaml"), REVIEW.replace("Review Team", "Review Team Two")).unwrap();
+    let listed = page.when(&backend, &master, |listed| names(listed).contains(&"Review Team Two".to_owned())).await;
+    assert_eq!(names(&listed), ["Docs Review", "Review Team Two"]);
     backend.close().await;
 }
 
@@ -388,8 +366,10 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::write(home.join("elsewhere/outside.yaml"), "name: [\n").unwrap();
     std::fs::write(repo.join("outside.yaml"), DOCS).unwrap();
     switch(&backend, &master, FIRST, &alpha, &repo).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let mut page = MenuPage::open(&backend, &master).await;
 
-    let listed = menu(&backend, &master).await;
+    let listed = page.when(&backend, &master, |_| true).await;
     assert_eq!(
         listed["workflows"],
         json!([
@@ -401,7 +381,6 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
 
     // Chosen, the linked workflow refuses spawns with that reason.
     choose(&backend, &master, json!({ "type": "workflow", "id": "linked" })).await;
-    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let turn = work
         .turn(vec![
             shell(
@@ -447,7 +426,7 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
         .replace("REVIEW STEPS", "REVIEW STEPS TWO")
         .replace("Review Team", "Review Team Two");
     std::fs::write(workflows.join("review.yaml"), changed).unwrap();
-    menu_once(&backend, &master, |listed| listed["workflows"][2]["name"] == "Review Team Two").await;
+    page.when(&backend, &master, |listed| listed["workflows"][2]["name"] == "Review Team Two").await;
     choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
     std::fs::write(&go, "").unwrap();
     work.socket.until_idle().await;
@@ -464,11 +443,10 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::create_dir_all(home.join("shared-workflows")).unwrap();
     std::fs::write(home.join("shared-workflows/review.yaml"), REVIEW).unwrap();
     std::os::unix::fs::symlink(home.join("shared-workflows"), &workflows).unwrap();
-    let listed = menu_once(&backend, &master, |listed| !listed["unavailable"].is_null()).await;
+    let listed = page.when(&backend, &master, |listed| !listed["unavailable"].is_null()).await;
     assert_eq!(listed["directory"], json!(path(&workflows)));
     assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
     assert_eq!(listed["workflows"], json!([]));
-    assert_eq!(listed["watch"], json!([{ "kind": "folder_names", "path": path(&repo.join(".demi")) }]));
 
     // `.demi` itself a link, to a directory whose `workflows` holds a
     // workflow: nothing behind it is listed or read.
@@ -476,16 +454,14 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::create_dir_all(home.join("shared-demi/workflows")).unwrap();
     std::fs::write(home.join("shared-demi/workflows/review.yaml"), REVIEW).unwrap();
     std::os::unix::fs::symlink(home.join("shared-demi"), repo.join(".demi")).unwrap();
-    // Between the rename and the link the repository has no `.demi`, which
-    // the menu also watches for in `repo`, with no directory.
-    let listed = menu_once(&backend, &master, |listed| {
-        listed["watch"][0]["path"] == path(&repo) && listed["directory"] == path(&workflows)
-    })
-    .await;
+    let listed = page
+        .when(&backend, &master, |listed| {
+            listed["directory"] == path(&workflows) && !listed["unavailable"].is_null()
+        })
+        .await;
     assert_eq!(listed["directory"], json!(path(&workflows)));
     assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
     assert_eq!(listed["workflows"], json!([]));
-    assert_eq!(listed["watch"], json!([{ "kind": "folder_names", "path": path(&repo) }]));
 
     // A `.demi` the Host cannot read is not looked past: its workflows are
     // unavailable, and none of a directory above is offered instead. It
@@ -498,10 +474,11 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o300)).unwrap();
     std::fs::remove_file(repo.join(".demi")).unwrap();
     std::fs::rename(&locked, repo.join(".demi")).unwrap();
-    let listed = menu_once(&backend, &master, |listed| {
-        listed["unavailable"].as_str().is_some_and(|reason| reason.starts_with("the Host cannot read"))
-    })
-    .await;
+    let listed = page
+        .when(&backend, &master, |listed| {
+            listed["unavailable"].as_str().is_some_and(|reason| reason.starts_with("the Host cannot read"))
+        })
+        .await;
     std::fs::set_permissions(repo.join(".demi"), std::fs::Permissions::from_mode(0o755)).unwrap();
     let reason = listed["unavailable"].as_str().unwrap_or_default().to_owned();
     assert!(reason.starts_with(&format!("the Host cannot read {}: ", path(&repo.join(".demi")))), "{listed}");
@@ -533,8 +510,9 @@ async fn a_new_conversation_lists_its_directorys_workflows_and_keeps_the_choice_
         )
         .await;
     assert_eq!(listed.status, StatusCode::OK);
-    assert!(listed.headers.contains_key("x-demi-read-at"));
-    let listed = listed.json::<ConversationWorkflows>();
+    let KeptWorkflowList::Read { list: listed, .. } = listed.json::<KeptWorkflowList>() else {
+        panic!("a device's directory is read before it answers");
+    };
     assert_eq!(listed.workflows.len(), 1);
     assert_eq!(listed.workflows[0].name.as_deref(), Some("Review Team"));
 
@@ -570,7 +548,7 @@ async fn a_new_conversation_lists_its_directorys_workflows_and_keeps_the_choice_
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     let created = created.json::<demi_web_api_protocol::conversations::CreatedConversation>();
-    assert_eq!(created.conversation.workflow, WorkflowChoice::Workflow { id: "review".into() });
+    assert_eq!(created.metadata.workflow, WorkflowChoice::Workflow { id: "review".into() });
     backend.close().await;
 }
 
@@ -605,56 +583,45 @@ async fn with_a_workflow_chosen_the_first_request_waits_one_hold_for_both_search
     backend.close().await;
 }
 
-/// The menu's list of `FIRST` when no search of its directory is held: no
-/// workflows, read at no number, with the working directory to watch.
-async fn assert_nothing_held(backend: &TestBackend, master: &Session, directory: &str) {
-    let listed = backend.get(&format!("/api/conversations/{FIRST}/workflows"), Some(master)).await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
-    assert!(!listed.headers.contains_key("x-demi-read-at"));
-    assert_eq!(
-        serde_json::to_value(listed.json::<ConversationWorkflows>()).unwrap(),
-        json!({
-            "directory": null,
-            "unavailable": null,
-            "workflows": [],
-            "watch": [{ "kind": "folder_names", "path": directory }],
-        }),
-    );
-}
-
-// About three seconds: a real runner on a paired device, stopped midway.
+// About three seconds: a real runner on a paired device, gone before the
+// backend restarts.
 //
-// Planted defect it catches: a Host that does not run answering 409
-// host_stopped, as it did, and a refused search answering that too.
+// Planted defect it catches: a list kept in memory only, which a backend
+// that restarts while the Host is gone answers as unknown; or a read that
+// waits for the Host.
 #[tokio::test]
-async fn a_host_that_does_not_run_lists_no_workflows_and_a_refused_search_answers_its_refusal() {
+async fn the_menu_answers_what_was_read_at_once_unknown_before_and_after_a_restart_with_the_host_gone() {
+    let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
 
-    // On the Cloud, which is not made yet.
+    // On the Cloud, which is not made yet: never read.
     create(&backend, &master, FIRST).await;
-    assert_nothing_held(&backend, &master, &format!("/home/demi/sessions/{FIRST}")).await;
+    assert_eq!(stored_menu(&backend, &master).await, None);
 
-    // On a paired device whose runner is gone.
+    // On a paired device, read while the conversation shows.
     let mut alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
     let repo = alpha.runner.home_dir().join("repo");
-    std::fs::create_dir_all(&repo).unwrap();
-    let directory = repo.to_str().unwrap().to_owned();
-    let moved = backend
-        .patch(
-            &format!("/api/conversations/{FIRST}"),
-            &master,
-            json!({ "target": { "kind": "device", "deviceId": alpha.id(), "path": directory }, "notifyAgent": false }),
-        )
-        .await;
-    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
-    alpha.runner.stop().await;
-    assert_nothing_held(&backend, &master, &directory).await;
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::create_dir_all(repo.join(".demi/workflows")).unwrap();
+    std::fs::write(repo.join(".demi/workflows/review.yaml"), REVIEW).unwrap();
+    switch(&backend, &master, FIRST, &alpha, &repo).await;
+    let work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let mut page = MenuPage::open(&backend, &master).await;
+    let listed = page.when(&backend, &master, |_| true).await;
+    assert_eq!(listed["workflows"][0]["name"], "Review Team");
+    drop((work, page));
 
-    // Archived: the search is refused, and the answer says why.
-    let archived = backend.patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true })).await;
-    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
-    let refused = backend.get(&format!("/api/conversations/{FIRST}/workflows"), Some(&master)).await;
-    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
+    // The runner goes, then the backend restarts: the list is what was read.
+    alpha.runner.stop().await;
+    let address = backend.address();
+    backend.close().await;
+    let backend = harness.start_at(address).await;
+    let answer = backend.get(&format!("/api/conversations/{FIRST}/workflows"), Some(&master)).await;
+    let KeptWorkflowList::Read { list, .. } = answer.json::<KeptWorkflowList>() else {
+        panic!("the list read before the restart: {}", String::from_utf8_lossy(&answer.body));
+    };
+    assert_eq!(list.workflows[0].name.as_deref(), Some("Review Team"));
     backend.close().await;
 }
