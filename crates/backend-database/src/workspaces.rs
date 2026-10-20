@@ -281,8 +281,8 @@ pub(crate) fn workspace_at(
     rows.next()?.map(workspace_row).transpose()
 }
 
-/// Inserts the workspace `id` at `path` on `device`, after the user's
-/// others.
+/// Inserts the workspace `id` at `path` on `device`, before the user's
+/// others: a new project is listed first.
 pub(crate) fn insert_workspace(
     connection: &Connection,
     id: WorkspaceId,
@@ -295,7 +295,7 @@ pub(crate) fn insert_workspace(
     connection.execute(
         "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5,
-           (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM workspaces WHERE user_id = ?2), ?6)",
+           (SELECT COALESCE(MIN(sort_order), 1) - 1 FROM workspaces WHERE user_id = ?2), ?6)",
         params![id.as_str(), user.as_str(), device.as_str(), path, name, now.as_millisecond()],
     )?;
     Ok(WorkspaceRecord {
