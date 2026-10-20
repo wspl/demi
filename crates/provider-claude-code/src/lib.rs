@@ -1,21 +1,23 @@
 //! The Claude Code provider: a `claude-code` subscription entry's account,
 //! signed in by the CLI's own login on the Claude Code machine, inferring
-//! through Demi's own copy of the vendor's CLI. A session's runtime keeps
-//! one CLI process and exchanges stream-json with it over the `shell`
-//! process a [`Placement`] starts; a new process resumes a session written
-//! from the conversation's blocks, whose entries the CLI mirrors back onto
-//! them; every process of an account runs in the account's one directory,
-//! where the CLI keeps and renews the sign-in itself; the model's tools
-//! reach Demi over the SDK MCP channel, an rmcp server inside the run, with
-//! the model's parallel tool batches kept whole. The catalog is models.dev's
-//! Claude models, and the account's quota comes from the CLI's own usage
-//! answer and from the rate limits its lines report.
+//! through Demi's own copy of the vendor's CLI.
+//!
+//! - A session's runtime keeps one CLI process and exchanges stream-json with
+//!   it over the `shell` process a [`Placement`] starts.
+//! - A new process resumes a session written from the conversation's blocks,
+//!   whose entries the CLI mirrors back onto them.
+//! - Every process of an account runs in the account's one directory, where the
+//!   CLI keeps and renews the sign-in itself.
+//! - The model's tools reach Demi over the SDK MCP channel, an rmcp server
+//!   inside the run, with the model's parallel tool batches kept whole.
+//! - The catalog is models.dev's Claude models, and the account's quota comes
+//!   from the CLI's own usage answer and from the rate limits its lines report.
 //!
 //! The CLI is Demi's own verified copy, never a `claude` found on `PATH`, and
 //! is started with no tools of its own and no device configuration, so it is a
 //! channel to the vendor and nothing else. It does not touch the workspace,
 //! which is why where it runs is a choice and not a consequence of where the
-//! conversation's files are; the model's tools run where the conversation's
+//! conversation's files are. The model's tools run where the conversation's
 //! tools run, the CLI handing each call back to the agent.
 //!
 //! ```text
@@ -121,11 +123,13 @@ impl ClaudeCodeConfig {
     }
 }
 
-/// A `claude-code` entry's provider for one account, shared by every user
-/// and request of the entry. Its runtimes start their CLI through a
-/// placement ([`ClaudeCodeProvider::process_runtime`]); the generic
-/// [`Provider::runtime`] refuses, since only the backend can choose the
-/// machine (`crates/provider-claude-code/src/placement.rs`).
+/// A `claude-code` entry's provider for one account, shared by every user and
+/// request of the entry.
+///
+/// Its runtimes start their CLI through a placement
+/// ([`ClaudeCodeProvider::process_runtime`]). The generic [`Provider::runtime`]
+/// refuses, since only the backend can choose the machine
+/// (`crates/provider-claude-code/src/placement.rs`).
 pub struct ClaudeCodeProvider {
     shared: Arc<Shared>,
 }
@@ -262,10 +266,11 @@ impl Provider for ClaudeCodeProvider {
 pub mod testing {
     use demi_provider_common::InferenceRequest;
 
-    /// The entries of the session a new CLI process resumes for `request`,
-    /// one JSON line each, after the `environment` entry, which describes
-    /// the process's machine (`crates/provider-claude-code/src/session.rs`),
-    /// written at `timestamp`.
+    /// The entries of the session a new CLI process resumes for `request`, one
+    /// JSON line each, after the `environment` entry, written at `timestamp`.
+    ///
+    /// The `environment` entry describes the process's machine
+    /// (`crates/provider-claude-code/src/session.rs`).
     pub fn session(request: &InferenceRequest, timestamp: &str) -> Vec<u8> {
         crate::session::SessionFile::new(
             &request.session_id,

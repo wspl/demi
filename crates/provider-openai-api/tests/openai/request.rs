@@ -611,10 +611,12 @@ async fn thinking_is_replayed_as_reasoning_content_only_when_the_vendor_policy_a
     );
 }
 
-// OpenAI and xAI both speak Responses with encrypted reasoning: each stamps
-// the reasoning it receives with its vendor, and replays only its own, so a
-// conversation moved between them never sends one vendor's ciphertext to
-// the other, in either direction. Milliseconds.
+// OpenAI and xAI both speak Responses with encrypted reasoning: each stamps the
+// reasoning it receives with its vendor, and replays only its own. So a
+// conversation moved between them never sends one vendor's ciphertext to the
+// other, in either direction.
+//
+// Milliseconds.
 //
 // Planted defect: one stamp for every entry of the family, so the other
 // vendor's item is replayed.

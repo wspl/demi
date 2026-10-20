@@ -1,9 +1,11 @@
 //! The conditional download of a document a backend keeps a copy of
-//! (`crates/provider-common/src/models_dev.rs`, `crates/provider-common/src/media_catalog.rs`):
-//! a `GET` that sends the copy's `ETag` and `Last-Modified`, so an
-//! unchanged document answers 304 without its body. The models.dev client
-//! and the media catalog both download this way; what each keeps and when
-//! it asks is its own.
+//! (`crates/provider-common/src/models_dev.rs`,
+//! `crates/provider-common/src/media_catalog.rs`).
+//!
+//! It is a `GET` that sends the copy's `ETag` and `Last-Modified`, so an
+//! unchanged document answers 304 without its body. The models.dev client and
+//! the media catalog both download this way; what each keeps and when it asks
+//! is its own.
 
 use bytes::Bytes;
 use http::header::{ACCEPT, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};

@@ -1,7 +1,9 @@
-//! Test support (feature `testing`): an in-memory tree store with the
-//! contract's semantics and an in-memory blob namespace, the contract's cases
-//! every realization passes, and the model selections, texts and images the
-//! tests of the agent's crates build on.
+//! Test support (feature `testing`).
+//!
+//! It provides an in-memory tree store with the contract's semantics, an
+//! in-memory blob namespace, the contract's cases every realization passes, and
+//! the model selections, texts and images the tests of the agent's crates build
+//! on.
 
 use std::{
     cell::{Cell, RefCell},
@@ -223,10 +225,11 @@ impl StoredNode {
         self.row(self.carried(row)).follows
     }
 
-    /// The versions at each position of the path from `from` on: a place's
-    /// at the block that stands there, or at the block a compaction carried
-    /// from there, which the boundary then stands in for without showing
-    /// them.
+    /// The versions at each position of the path from `from` on.
+    ///
+    /// A place's versions are those at the block that stands there, or at the
+    /// block a compaction carried from there, which the boundary then stands in
+    /// for without showing them.
     fn versions(&self, from: usize) -> BTreeMap<usize, Versions> {
         let following = Following::of_rows(&self.rows);
         let mut shown: BTreeMap<Option<u64>, (usize, Versions)> = BTreeMap::new();
@@ -1060,12 +1063,19 @@ impl BlobStore for MemoryBlobs {
 }
 
 /// The tree store contract's cases (`crates/agent-store/src/lib.rs`), for any
-/// realization of [`AgentTreeStore`]: create queues the first message with
-/// the node, a save delivers the completions it carries, reopen and delete, a
-/// completion of an earlier round marks nothing delivered, and the blob
-/// namespace names bytes by their SHA-256. Each case takes a store that holds
-/// nothing yet and reads back only through the contract, so the agent's
-/// in-memory store and the backend's database pass the same cases.
+/// realization of [`AgentTreeStore`].
+///
+/// The cases cover:
+///
+/// - create queues the first message with the node;
+/// - a save delivers the completions it carries;
+/// - reopen and delete;
+/// - a completion of an earlier round marks nothing delivered;
+/// - the blob namespace names bytes by their SHA-256.
+///
+/// Each case takes a store that holds nothing yet and reads back only through
+/// the contract, so the agent's in-memory store and the backend's database pass
+/// the same cases.
 pub mod store_contract {
     use demi_shared_types::{
         AgentMessage, AgentMessageBlock, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionId,
@@ -1256,11 +1266,13 @@ pub mod store_contract {
         demi_conversation_socket_protocol::Versions { index, count }
     }
 
-    /// An edit adds a version beside the rows it leaves, which stay as
-    /// written; the session's own rewrite stands in for what it replaces
-    /// and is no version; Regenerate's cut makes the next row a version
-    /// of its own; a switch makes the latest leaf of a version current,
-    /// and the load restores that path.
+    /// An edit adds a version beside the rows it leaves, which stay as written.
+    ///
+    /// - The session's own rewrite stands in for what it replaces and is no
+    ///   version.
+    /// - Regenerate's cut makes the next row a version of its own.
+    /// - A switch makes the latest leaf of a version current, and the load
+    ///   restores that path.
     pub async fn a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(store: &dyn AgentTreeStore) {
         create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
         let root = store.session_store(&id("root"));
@@ -1328,12 +1340,13 @@ pub mod store_contract {
         );
     }
 
-    /// A subagent tells whether the call that started it is on its
-    /// parent's current path; one no call started is on every path.
-    /// Builds the tree the store's own reading of whole subtrees is
-    /// checked on: `root` holds `a1`, which started `kept`; `gone` was
-    /// started by a block the root's path no longer holds, and `under` by
-    /// `g1`, which `gone`'s path holds.
+    /// A subagent tells whether the call that started it is on its parent's
+    /// current path; one no call started is on every path.
+    ///
+    /// This builds the tree the store's own reading of whole subtrees is
+    /// checked on: `root` holds `a1`, which started `kept`; `gone` was started
+    /// by a block the root's path no longer holds, and `under` by `g1`, which
+    /// `gone`'s path holds.
     pub async fn a_subagent_tells_whether_its_start_is_on_its_parents_path(store: &dyn AgentTreeStore) {
         create(store, record("root", None, 0), update(Vec::new(), vec![said("u1"), said("a1")])).await;
         for (node, parent, number, start, blocks) in [
@@ -1359,9 +1372,10 @@ pub mod store_contract {
     }
 
     /// A load reads the current path's window, from its last
-    /// `compaction_boundary` on, and nothing before it; what a session
-    /// reads of the blocks before is read by range, by id, by kind and as
-    /// the ids it keeps.
+    /// `compaction_boundary` on, and nothing before it.
+    ///
+    /// What a session reads of the blocks before is read by range, by id, by
+    /// kind and as the ids it keeps.
     pub async fn a_load_reads_the_window_and_the_rest_on_demand(store: &dyn AgentTreeStore) {
         let user = |turn: &str| {
             Block::User(UserBlock {
@@ -1846,10 +1860,12 @@ pub mod store_contract {
         assert_eq!((early.closed, early.delivered), (Some(close), false));
     }
 
-    /// A side question's node is the root's, beside its children: no list of
-    /// children or subagents holds it, the list of side questions does, in
-    /// the order they were asked, and each keeps what it asks about; a
-    /// retry revives a closed one with its queue as it was.
+    /// A side question's node is the root's, beside its children.
+    ///
+    /// - No list of children or subagents holds it; the list of side questions
+    ///   does, in the order they were asked.
+    /// - Each keeps what it asks about.
+    /// - A retry revives a closed one with its queue as it was.
     pub async fn a_side_question_is_no_subagent_and_keeps_what_it_asks(store: &dyn AgentTreeStore) {
         create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
         create(store, record("child", Some("root"), 1), update(Vec::new(), Vec::new())).await;

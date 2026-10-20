@@ -1,24 +1,28 @@
 //! Where the CLI runs: the backend chooses the machine and readies Demi's CLI
 //! there, and the provider builds the spawn request from what the placement
-//! found. Every process of an account runs in that account's one directory,
-//! the CLI's configuration directory, and writes its session into a directory
-//! of its own under it, which goes when the process does; a sign-in runs in a
-//! new directory, which becomes the account's when it succeeds. Account work
-//! that belongs to no conversation, a sign-in or a usage probe, reaches the
-//! machine through an [`AccountMachine`], from any thread.
+//! found.
+//!
+//! Every process of an account runs in that account's one directory, the CLI's
+//! configuration directory, and writes its session into a directory of its own
+//! under it, which goes when the process does. A sign-in runs in a new
+//! directory, which becomes the account's when it succeeds. Account work that
+//! belongs to no conversation, a sign-in or a usage probe, reaches the machine
+//! through an [`AccountMachine`], from any thread.
 //!
 //! The CLI runs on the Claude Code machine, always (one gVisor sandbox that
 //! belongs to no user and in which nobody has a shell), whatever the
-//! conversation's execution target is, so each account's sign-in lives in one
-//! directory and the CLI has one install to keep and one platform to be right
-//! on. A placement is that one rule in one place: what needs a provider's
-//! process says what the work is, and does not know why it got that machine.
-//! The process is retained between turns and is not activity: a machine with
-//! no work left goes idle and stops with its processes, and the next request
-//! wakes it and resumes the session.
+//! conversation's execution target is. So each account's sign-in lives in one
+//! directory, and the CLI has one install to keep and one platform to be right
+//! on.
+//!
+//! A placement is that one rule in one place: what needs a provider's process
+//! says what the work is, and does not know why it got that machine. The
+//! process is retained between turns and is not activity: a machine with no
+//! work left goes idle and stops with its processes, and the next request wakes
+//! it and resumes the session.
 //!
 //! A process provider cannot build its runtime from the provider alone, since
-//! only the backend chooses the machine, so `Provider::runtime` refuses
+//! only the backend chooses the machine. So `Provider::runtime` refuses
 //! (`ProcessHostRequired`) and the runtime is built over a placement, from the
 //! arguments the provider was built from, so that no code downcasts a provider
 //! to its concrete type:
@@ -31,10 +35,12 @@
 //!     spawn request built by the provider; Host process interface starts it
 //! ```
 //!
-//! The backend holds the machine's admission only while the process starts. A
-//! failure to wake the machine, to install the CLI or to start it, and a
-//! process whose machine went away, fail the request as one that got no
-//! answer, `overloaded`, which the agent retries.
+//! The backend holds the machine's admission only while the process starts.
+//! These fail the request as one that got no answer, `overloaded`, which the
+//! agent retries:
+//!
+//! - a failure to wake the machine, to install the CLI or to start it;
+//! - a process whose machine went away.
 
 use std::any::Any;
 use std::rc::Rc;
@@ -99,21 +105,21 @@ pub enum CliWork {
     Account {
         /// The account's id, which names its directory.
         account: String,
-        /// The sign-in an earlier release kept in the account's record, as
-        /// the CLI's own files, to write into the account's directory
-        /// before the process starts unless the directory holds a sign-in
-        /// already (`crates/provider-claude-code/src/account.rs`).
+        /// The sign-in an earlier release kept in the account's record, as the
+        /// CLI's own files, to write into the account's directory before the
+        /// process starts unless the directory holds a sign-in already
+        /// (`crates/provider-claude-code/src/account.rs`).
         handover: Option<Handover>,
     },
     Login,
 }
 
-/// A sign-in handed over to the account's directory: the CLI's files, each
-/// by its name there and its bytes, written private to the machine's user.
-/// The last is the one whose presence means the directory holds a sign-in:
-/// each file is put in place whole, in order, so the directory holds a
-/// sign-in only once every file is there, and one that holds it already
-/// takes none of them.
+/// A sign-in handed over to the account's directory: the CLI's files, each by
+/// its name there and its bytes, written private to the machine's user.
+///
+/// The last is the one whose presence means the directory holds a sign-in. Each
+/// file is put in place whole, in order, so the directory holds a sign-in only
+/// once every file is there, and one that holds it already takes none of them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Handover {
     pub files: Vec<(String, Bytes)>,
@@ -121,8 +127,9 @@ pub struct Handover {
 
 /// Why a CLI process could not be started: the machine could not be reached,
 /// Demi's CLI could not be installed there, or the Host refused the start.
-/// The message says why, with the version when an install failed, and is
-/// the request's failure as it is.
+///
+/// The message says why, with the version when an install failed, and is the
+/// request's failure as it is.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct StartError(pub String);
@@ -146,9 +153,10 @@ pub enum StartStage {
 /// request is, and runs where the machine is.
 pub type CliStarter = Arc<dyn Fn(&CliSite) -> CliStart + Send + Sync>;
 
-/// A hold of the placement's machine for one piece of work in flight on
-/// it: a run, a sign-in or a usage probe, for its whole life. The machine
-/// does not stop while one is held, and taking one wakes it
+/// A hold of the placement's machine for one piece of work in flight on it: a
+/// run, a sign-in or a usage probe, for its whole life.
+///
+/// The machine does not stop while one is held, and taking one wakes it
 /// (`crates/backend-cloud/src/lib.rs`). Dropping it lets go.
 pub struct WorkLease(#[allow(dead_code, reason = "held for its drop")] Box<dyn Any>);
 
@@ -163,14 +171,17 @@ impl WorkLease {
 /// machine the placement chooses. It lives on the shard of the user whose
 /// work it serves.
 pub trait Placement {
-    /// Starts a new CLI process for `work`: the placement readies the
-    /// machine, Demi's CLI, the configuration directory (the account's, with
-    /// its handover, or a sign-in's new one) and the process's own
-    /// directory under it, `start` says what to start at the site it found,
-    /// and the placement writes its files into the process's directory and
-    /// starts its request on the machine's Host; it reports each stage it
-    /// reaches to `stages`. Dropping the future gives the start up, and
-    /// removes what it made.
+    /// Starts a new CLI process for `work`.
+    ///
+    /// 1. The placement readies the machine, Demi's CLI, the configuration
+    ///    directory (the account's, with its handover, or a sign-in's new one)
+    ///    and the process's own directory under it.
+    /// 2. `start` says what to start at the site it found.
+    /// 3. The placement writes its files into the process's directory and
+    ///    starts its request on the machine's Host.
+    ///
+    /// It reports each stage it reaches to `stages`. Dropping the future gives
+    /// the start up, and removes what it made.
     fn start<'a>(
         &'a self,
         work: CliWork,
@@ -231,15 +242,15 @@ pub trait ConfigDir {
     /// anyone waiting for it.
     fn remove(self: Box<Self>) -> LocalBoxFuture<'static, ()>;
 
-    /// Makes a sign-in's directory, once its process ended with success,
-    /// the directory of `account`: no process of the account starts
-    /// meanwhile, every one it has is closed and awaited, and its
-    /// directory, when it has one, is replaced by this one; a start that
-    /// waited starts in the new one
+    /// Makes a sign-in's directory, once its process ended with success, the
+    /// directory of `account`.
+    ///
+    /// No process of the account starts meanwhile, every one it has is closed
+    /// and awaited, and its directory, when it has one, is replaced by this
+    /// one. A start that waited starts in the new one
     /// (`crates/provider-claude-code/src/account.rs`). Dropping the future
-    /// before the directory is replaced
-    /// gives the adoption up, and the sign-in's directory goes. An
-    /// account's process has nothing to adopt.
+    /// before the directory is replaced gives the adoption up, and the
+    /// sign-in's directory goes. An account's process has nothing to adopt.
     fn adopt<'a>(self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
 }
 
@@ -253,15 +264,17 @@ pub type AccountWork =
 /// as the backend gives it to a sign-in
 /// and a usage probe from any thread.
 pub trait AccountMachine: Send + Sync {
-    /// Runs `work` for the provider entry `entry`, or the login that is to
-    /// make it, where the machine is reached, and answers once it ended.
-    /// Dropping the answer fires the token `work` received; `work` runs to
-    /// its end either way.
+    /// Runs `work` for the provider entry `entry`, or the login that is to make
+    /// it, where the machine is reached, and answers once it ended.
+    ///
+    /// Dropping the answer fires the token `work` received; `work` runs to its
+    /// end either way.
     fn run(&self, entry: String, work: AccountWork) -> BoxFuture<'static, Result<(), StartError>>;
 
-    /// Deletes the directory of the removed account `account`: no process
-    /// of it starts meanwhile, every one it has is closed and awaited
-    /// first, and a start that waited fails with the removal
+    /// Deletes the directory of the removed account `account`.
+    ///
+    /// No process of it starts meanwhile, every one it has is closed and
+    /// awaited first, and a start that waited fails with the removal
     /// (`crates/provider-claude-code/src/account.rs`).
     fn remove_account(&self, account: String) -> BoxFuture<'static, Result<(), StartError>>;
 }

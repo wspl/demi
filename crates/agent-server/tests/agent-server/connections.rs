@@ -1,9 +1,16 @@
-//! Connections to a conversation's live tree: the open handshake, two opens
-//! at once, several connections of one tree with their events, replies and
-//! lag, connections acting at once, the refusals of frames that need a
-//! session, a connection dropped with its socket, and the eviction of a tree
-//! left detached and quiescent. The backend's scenarios show two sockets of
-//! one conversation and a client that falls behind over the real socket.
+//! Connections to a conversation's live tree.
+//!
+//! The tests cover:
+//!
+//! - the open handshake and two opens at once;
+//! - several connections of one tree with their events, replies and lag;
+//! - connections acting at once;
+//! - the refusals of frames that need a session;
+//! - a connection dropped with its socket;
+//! - the eviction of a tree left detached and quiescent.
+//!
+//! The backend's scenarios show two sockets of one conversation and a client
+//! that falls behind over the real socket.
 
 use std::time::Duration;
 
@@ -38,10 +45,11 @@ fn rejected(command: ClientFrameKind, code: AgentCode, reason: &str) -> ServerFr
     }
 }
 
-/// A page that opens a conversation makes its next request known but for
-/// its input, and so does each action's end from then on: the session asks
-/// its runtime to ready that request ahead, with the history the request
-/// then extends (`crates/provider-claude-code/src/prepared.rs`).
+/// A page that opens a conversation makes its next request known but for its
+/// input, and so does each action's end from then on.
+///
+/// The session asks its runtime to ready that request ahead, with the history
+/// the request then extends (`crates/provider-claude-code/src/prepared.rs`).
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_a_conversation_has_its_next_request_readied_ahead_after_each_action() {
     let script = ScriptedRuntime::new([
@@ -121,11 +129,12 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
     assert!(revision > version.revision);
 }
 
-// The model wrote its text and writes a call whose title it has not
-// written: the page says Requesting under the text, from the text's end. A
-// page that opens eleven seconds later receives, after the transcript, how
-// long the root has waited, so a reload goes on counting from 11s. Cost:
-// one held run.
+// The model wrote its text and writes a call whose title it has not written:
+// the page says Requesting under the text, from the text's end. A page that
+// opens eleven seconds later receives, after the transcript, how long the root
+// has waited, so a reload goes on counting from 11s.
+//
+// Cost: one held run.
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_after_the_answers_text_ended_receives_how_long_the_root_has_waited() {
     let gate = Gate::new();
@@ -371,9 +380,10 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
 }
 
 // A tab that stops reading is closed as lagging; the other tab of the
-// conversation receives the whole turn. The run yields after each delta, as
-// a vendor's stream does, so the reading tab empties its outbox as the turn
-// streams.
+// conversation receives the whole turn.
+//
+// The run yields after each delta, as a vendor's stream does, so the reading
+// tab empties its outbox as the turn streams.
 #[tokio::test(flavor = "local")]
 async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_the_turn() {
     let deltas: Vec<ProviderEvent> = (0..40)

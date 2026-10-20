@@ -1,13 +1,15 @@
-//! A CLI process a runtime keeps across the turns of a session:
-//! its input and output, its SDK MCP
-//! server, what it has received of the transcript, the tool calls it holds,
-//! and the blocks its session's entries belong to. Its standard error is
-//! drained all the time, keeping the last 64 KiB. A process is closed,
-//! never killed outright: [`LiveCli::close`] sends SIGTERM, waits up to five
-//! seconds, then sends SIGKILL, removes the process's own directory and
-//! waits; dropping it closes it the same way, as a task nobody waits for,
-//! since a process killed while it renews the account's sign-in stops the
-//! account for a minute.
+//! A CLI process a runtime keeps across the turns of a session.
+//!
+//! It holds the process's input and output, its SDK MCP server, what it has
+//! received of the transcript, the tool calls it holds, and the blocks its
+//! session's entries belong to. Its standard error is drained all the time,
+//! keeping the last 64 KiB.
+//!
+//! A process is closed, never killed outright. [`LiveCli::close`] sends
+//! SIGTERM, waits up to five seconds, then sends SIGKILL, removes the process's
+//! own directory and waits. Dropping it closes it the same way, as a task
+//! nobody waits for, since a process killed while it renews the account's
+//! sign-in stops the account for a minute.
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -63,9 +65,10 @@ type Lines =
     FramedRead<StreamReader<mpsc::UnboundedReceiver<io::Result<Bytes>>, Bytes>, CliLines>;
 
 /// Lines as `LinesCodec` reads them, but output that ends in the middle of a
-/// line, as when the process's machine went away while it wrote, is not a
-/// line: the rest is dropped and `cut` says so, so the end is read by how
-/// the process ended rather than as a line Demi cannot read.
+/// line, as when the process's machine went away while it wrote, is not a line.
+///
+/// The rest is dropped and `cut` says so, so the end is read by how the process
+/// ended rather than as a line Demi cannot read.
 struct CliLines {
     lines: LinesCodec,
     cut: Rc<Cell<bool>>,
@@ -221,10 +224,12 @@ pub(crate) struct LiveCli {
     /// reports it.
     pub(crate) started: Option<StartTiming>,
     /// When the call the output belongs to now started, as the usage ledger
-    /// counts calls: a run's first call with the run, each later one when
-    /// its first line is read. A `rate_limit_event` follows the
-    /// `message_stop` of the call it reports on, so its windows carry this
-    /// time (`crates/provider-common/src/quota.rs`).
+    /// counts calls: a run's first call with the run, each later one when its
+    /// first line is read.
+    ///
+    /// A `rate_limit_event` follows the `message_stop` of the call it reports
+    /// on, so its windows carry this time
+    /// (`crates/provider-common/src/quota.rs`).
     call_requested_at: Timestamp,
     /// Whether the run's first call, which started with the run, is yet to
     /// show its first line.
@@ -232,14 +237,14 @@ pub(crate) struct LiveCli {
 }
 
 impl LiveCli {
-    /// Starts a new process for `request` through `placement`, in the
-    /// account's directory, which the CLI reads its sign-in from; an
-    /// account the vendor signed out starts none. The process resumes the
-    /// session written from the request's blocks
+    /// Starts a new process for `request` through `placement`, in the account's
+    /// directory, which the CLI reads its sign-in from; an account the vendor
+    /// signed out starts none.
+    ///
+    /// The process resumes the session written from the request's blocks
     /// (`crates/provider-claude-code/src/session.rs`). A sign-in an earlier
-    /// release kept in the
-    /// account's record goes to the directory with the start, and the
-    /// record's secret is cleared once the process started.
+    /// release kept in the account's record goes to the directory with the
+    /// start, and the record's secret is cleared once the process started.
     pub(crate) async fn start(
         shared: &Arc<Shared>,
         placement: &dyn Placement,
@@ -358,22 +363,29 @@ impl LiveCli {
         ProviderEvent::Call(CallEvent::Started)
     }
 
-    /// Whether the process can go on with `request`: it still runs, for the
-    /// same session, model and thinking setting, it has an MCP server when
-    /// the request offers tools, the transcript continues what it received,
-    /// and the request gives it something to answer: results for the calls
-    /// it holds, or a new user message. A retry of a failed turn gives it
-    /// neither, and the process would wait for input that never comes.
+    /// Whether the process can go on with `request`.
+    ///
+    /// It can when all of these hold:
+    ///
+    /// - it still runs, for the same session, model and thinking setting;
+    /// - it has an MCP server when the request offers tools;
+    /// - the transcript continues what it received;
+    /// - the request gives it something to answer: results for the calls it
+    ///   holds, or a new user message.
+    ///
+    /// A retry of a failed turn gives it neither, and the process would wait
+    /// for input that never comes.
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
         let gains_input =
             !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count;
         self.continues(request) && gains_input
     }
 
-    /// Whether the process could go on with `request`, whatever its input:
-    /// it still runs, for the same session, model and
-    /// thinking setting, it has an MCP server when the request offers
-    /// tools, and the transcript continues what it received.
+    /// Whether the process could go on with `request`, whatever its input.
+    ///
+    /// It could when it still runs, for the same session, model and thinking
+    /// setting, it has an MCP server when the request offers tools, and the
+    /// transcript continues what it received.
     pub(crate) fn continues(&self, request: &InferenceRequest) -> bool {
         let running = self.exit.clone().now_or_never().is_none();
         let offers_tools = self.mcp.is_some() || request.tools.is_empty();
@@ -383,10 +395,12 @@ impl LiveCli {
             && !self.sent.diverged(&request.items)
     }
 
-    /// Sets a new process up for `request`: when the request offers tools,
-    /// the `initialize` control request that declares the SDK MCP server,
-    /// and its success. The process holds the whole transcript in the
-    /// session it resumed, and answers the input it ends with.
+    /// Sets a new process up for `request`.
+    ///
+    /// When the request offers tools, that is the `initialize` control request
+    /// that declares the SDK MCP server, and its success. The process holds the
+    /// whole transcript in the session it resumed, and answers the input it
+    /// ends with.
     pub(crate) async fn prepare(
         &mut self,
         request: &InferenceRequest,
@@ -402,10 +416,11 @@ impl LiveCli {
         Ok(())
     }
 
-    /// Sends `initialize` and reads until the CLI's answer. The CLI may start
-    /// its MCP handshake meanwhile, so control requests are answered as they
-    /// come; any other line, such as the `system` line the CLI prints first,
-    /// is kept for the run.
+    /// Sends `initialize` and reads until the CLI's answer.
+    ///
+    /// The CLI may start its MCP handshake meanwhile, so control requests are
+    /// answered as they come. Any other line, such as the `system` line the CLI
+    /// prints first, is kept for the run.
     async fn initialize(&mut self, system_prompt: &str) -> Result<(), ProviderFailure> {
         let request_id = uuid::Uuid::new_v4().to_string();
         let request = Input::ControlRequest {
@@ -517,10 +532,11 @@ impl LiveCli {
         }
     }
 
-    /// Answers what a waiting process did: its control requests are
-    /// answered and the MCP server's replies written, and any other line is
-    /// kept for the request that takes it. A process that ends, breaks or
-    /// calls a tool before it was given any input fails.
+    /// Answers what a waiting process did: its control requests are answered
+    /// and the MCP server's replies written.
+    ///
+    /// Any other line is kept for the request that takes it. A process that
+    /// ends, breaks or calls a tool before it was given any input fails.
     pub(crate) async fn answer_waiting(&mut self, waited: Waited) -> Result<(), ProviderFailure> {
         match waited {
             Waited::Reply(request_id, reply) => self.reply(request_id, *reply).await,
@@ -545,14 +561,14 @@ impl LiveCli {
     }
 
     /// Whether the process printed nothing that answers a request since the
-    /// `result` that ended the last run, as a process in step with its
-    /// requests never does (`crates/provider-claude-code/src/run.rs`).
-    /// Its control requests are answered, since they are no turn's output,
-    /// and the lines the decoder does not read, the CLI's status lines such
-    /// as `command_lifecycle`, are read past, since they answer no message;
-    /// any other output waiting, or an end, means the process went on
-    /// without a request, and the run starts a new one from the transcript
-    /// instead.
+    /// `result` that ended the last run, as a process in step with its requests
+    /// never does (`crates/provider-claude-code/src/run.rs`).
+    ///
+    /// - Its control requests are answered, since they are no turn's output.
+    /// - The lines the decoder does not read, the CLI's status lines such as
+    ///   `command_lifecycle`, are read past, since they answer no message.
+    /// - Any other output waiting, or an end, means the process went on without
+    ///   a request, and the run starts a new one from the transcript instead.
     pub(crate) async fn quiet(&mut self) -> bool {
         loop {
             let Some(line) = self.lines.next().now_or_never() else {
@@ -748,9 +764,10 @@ impl LiveCli {
     }
 
     /// Hands `batch` on to the agent and keeps it for the next run, which
-    /// delivers its results: the calls, the entries now placed, and the
-    /// response with the usage of the call that wrote them. The run ends
-    /// with these events.
+    /// delivers its results.
+    ///
+    /// It hands on the calls, the entries now placed, and the response with the
+    /// usage of the call that wrote them. The run ends with these events.
     pub(crate) fn hand_over(
         &mut self,
         batch: Vec<ToolCall>,
@@ -855,10 +872,11 @@ impl LiveCli {
     }
 }
 
-/// A process's control, its end and its own directory: closed, SIGTERM
-/// first, however the process goes, its directory removed once it ended.
-/// Every CLI process the provider holds is held this way, so none is
-/// dropped raw, which would kill it outright.
+/// A process's control, its end and its own directory: closed, SIGTERM first,
+/// however the process goes, its directory removed once it ended.
+///
+/// Every CLI process the provider holds is held this way, so none is dropped
+/// raw, which would kill it outright.
 pub(crate) struct Handle(Option<Parts>);
 
 struct Parts {
@@ -945,10 +963,11 @@ async fn close(parts: Parts) {
     }
 }
 
-/// Closes the process `control` drives, whose end is `exit`, SIGTERM first
-/// and SIGKILL five seconds later, and waits for its end: how anything that
-/// holds a CLI process closes it, a sign-in or the backend's relay of a
-/// process to another user's shard.
+/// Closes the process `control` drives, whose end is `exit`, SIGTERM first and
+/// SIGKILL five seconds later, and waits for its end.
+///
+/// It is how anything that holds a CLI process closes it, a sign-in or the
+/// backend's relay of a process to another user's shard.
 pub async fn close_process(
     control: Box<dyn ProcessControl>,
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,

@@ -26,12 +26,14 @@ fn usage(input: u64, output: u64) -> ProviderEvent {
     }))
 }
 
-/// A turn in which the model called two tools and then answered, as Claude
-/// Code 2.1.296 printed it, with the tools named so that the request offers
-/// neither and the CLI answers them itself. Its result's `usage` sums the
-/// turn's three calls; with telemetry on, its `iterations` lists the last
-/// call, and with `DISABLE_TELEMETRY` it lists none. Either way the
-/// response carries the last call's usage, from its `message_delta`.
+/// A turn in which the model called two tools and then answered, as Claude Code
+/// 2.1.296 printed it.
+///
+/// The tools are named so that the request offers neither and the CLI answers
+/// them itself. Its result's `usage` sums the turn's three calls. With
+/// telemetry on, its `iterations` lists the last call, and with
+/// `DISABLE_TELEMETRY` it lists none. Either way the response carries the last
+/// call's usage, from its `message_delta`.
 // Two runs of a recorded stream: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_turn_of_several_calls_reports_its_last_calls_usage_never_their_sum() {
@@ -176,10 +178,12 @@ async fn the_cli_streams_summarized_thinking_whenever_thinking_is_on() {
     }
 }
 
-/// A turn of Claude Code 2.1.296 run with `--thinking-display summarized`
-/// on Opus: the thinking block's `thinking_delta`s carry its summary, and
-/// the whole message printed after them repeats it. The agent sees one
-/// thinking block, its text streamed once, before the answer.
+/// A turn of Claude Code 2.1.296 run with `--thinking-display summarized` on
+/// Opus: the thinking block's `thinking_delta`s carry its summary, and the
+/// whole message printed after them repeats it.
+///
+/// The agent sees one thinking block, its text streamed once, before the
+/// answer.
 // One run of a recorded stream: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn summarized_thinking_streams_as_one_thinking_block_whose_text_comes_once() {
@@ -353,12 +357,14 @@ async fn a_new_process_starts_with_the_cli_contract_in_its_accounts_directory_wi
     .into_iter()
     .map(String::from)
     .collect();
-    // The process is the account's: its directory is the CLI's
-    // configuration directory, where the CLI keeps and renews the sign-in,
-    // and nothing hands it a token, neither a descriptor nor the
-    // environment, which removes any the machine's own holds. It claims to
-    // be no other client, keeps its session in a directory of its own under
-    // the account's and answers what the session ends with.
+    // The process is the account's: its directory is the CLI's configuration
+    // directory, where the CLI keeps and renews the sign-in.
+    //
+    // - Nothing hands it a token, neither a descriptor nor the environment,
+    //   which removes any the machine's own holds.
+    // - It claims to be no other client.
+    // - It keeps its session in a directory of its own under the account's.
+    // - It answers what the session ends with.
     assert_eq!(
         cli.work,
         CliWork::Account {
@@ -520,13 +526,14 @@ async fn kept_after_first(runtime: &mut Box<dyn ProviderRuntime>, starts: &mut S
     cli
 }
 
-/// The incident: two subagents' receipts written to a kept process, which
-/// the CLI answers in two turns, each with its `result`. Both answers are
-/// responses of the run that wrote the receipts, whole and in order, and the
-/// next run starts clean in the same process. (The run ended at the first
-/// `result`; the next one skipped the start of the second answer, showed its
-/// rest and then its whole line again, and the answer to its own message
-/// printed after it ended.)
+/// The incident: two subagents' receipts written to a kept process, which the
+/// CLI answers in two turns, each with its `result`.
+///
+/// Both answers are responses of the run that wrote the receipts, whole and in
+/// order, and the next run starts clean in the same process. (The run ended at
+/// the first `result`; the next one skipped the start of the second answer,
+/// showed its rest and then its whole line again, and the answer to its own
+/// message printed after it ended.)
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn messages_answered_in_turns_of_their_own_are_responses_of_the_run_that_wrote_them() {
@@ -614,9 +621,9 @@ async fn messages_taken_into_one_turn_end_the_run_at_its_one_result() {
     assert_eq!(placement.starts(), 1);
 }
 
-/// What the CLI prints for a message it answers itself, a command it does
-/// not offer: its own whole answer and a `result`, with no message printed
-/// back and no model call (Claude Code 2.1.296 and 2.1.301 with
+/// What the CLI prints for a message it answers itself, a command it does not
+/// offer: its own whole answer and a `result`, with no message printed back and
+/// no model call (Claude Code 2.1.296 and 2.1.301 with
 /// `--disable-slash-commands`).
 fn answer_locally(cli: &Cli, command: &str) {
     cli.say(json!({
@@ -718,10 +725,11 @@ async fn a_turn_that_fails_before_every_message_was_taken_fails_the_run_and_clos
     assert_eq!(cli.signals(), [Signal::Terminate]);
 }
 
-/// A kept process that printed output after the `result` that ended its
-/// last run went on without a request: the next run closes it, and a new
-/// process resumes the transcript, so none of that output is shown. (The
-/// run skipped it and wrote to the process that printed it.)
+/// A kept process that printed output after the `result` that ended its last
+/// run went on without a request: the next run closes it, and a new process
+/// resumes the transcript, so none of that output is shown.
+///
+/// (The run skipped it and wrote to the process that printed it.)
 // Two runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn output_waiting_before_a_run_writes_closes_the_process() {
@@ -763,9 +771,10 @@ async fn output_waiting_before_a_run_writes_closes_the_process() {
 }
 
 /// A kept process prints status lines between requests, such as the
-/// `command_lifecycle` line when a command ends; they answer no message, so
-/// the next run reads past them and writes to the same process. (Every one
-/// closed the process and rebuilt the session.)
+/// `command_lifecycle` line when a command ends. They answer no message, so the
+/// next run reads past them and writes to the same process.
+///
+/// (Every one closed the process and rebuilt the session.)
 // Two runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_status_line_between_requests_keeps_the_process() {

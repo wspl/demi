@@ -1,7 +1,8 @@
-//! What a session reads of the blocks before its window: a page, a switch,
-//! a Fork and a turn's end each take what they need from the store, and
-//! none copies the path before the window into the session. Each test
-//! writes a path into a memory store and restores the session from it.
+//! What a session reads of the blocks before its window.
+//!
+//! A page, a switch, a Fork and a turn's end each take what they need from the
+//! store, and none copies the path before the window into the session. Each
+//! test writes a path into a memory store and restores the session from it.
 
 use demi_agent_session::ForkSeed;
 use demi_agent_store::{CheckpointState, CheckpointUpdate, testing::test_model};
@@ -98,11 +99,12 @@ fn across_a_boundary(tail: &str) -> Vec<Block> {
     ]
 }
 
-// The latest page of a window that starts inside a request reaches no
-// block before the window: the window's part of that request counts on its
-// own, so a reset with nothing held starts at the window when it all fits,
-// and at its first message when that part does not. Two restored sessions,
-// a few milliseconds.
+// The latest page of a window that starts inside a request reaches no block
+// before the window: the window's part of that request counts on its own, so a
+// reset with nothing held starts at the window when it all fits, and at its
+// first message when that part does not.
+//
+// Two restored sessions, a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_reset_of_a_window_that_starts_inside_a_request_starts_within_the_window() {
     let session = restored(&stored(&across_a_boundary("the rest of A")).await).await;
@@ -116,10 +118,11 @@ async fn a_reset_of_a_window_that_starts_inside_a_request_starts_within_the_wind
     assert_eq!((reset.start, reset.blocks.first().map(Block::id)), (6, Some(&BlockId::try_from("u-b").unwrap())));
 }
 
-// A Fork of a session whose window starts at 4 keeps the blocks before it
-// as the store's rows: the seed names them and holds only the window's,
-// and the node it starts holds the path through the text. One store, a
-// few milliseconds.
+// A Fork of a session whose window starts at 4 keeps the blocks before it as
+// the store's rows: the seed names them and holds only the window's, and the
+// node it starts holds the path through the text.
+//
+// One store, a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_forks_seed_names_the_rows_before_the_window_and_its_node_holds_them() {
     let path = across_a_boundary("the rest of A");
@@ -246,10 +249,12 @@ impl SessionStore for LostAfterSwitch {
 }
 
 // An edited message that a compaction carried past its boundary has its
-// versions where it was: switching back to the first version changes the
-// path from before the window, and the session takes what it then holds
-// from the switch's own transaction, so a store lost right after the commit
-// fails nothing. One restored session, a few milliseconds.
+// versions where it was: switching back to the first version changes the path
+// from before the window, and the session takes what it then holds from the
+// switch's own transaction, so a store lost right after the commit fails
+// nothing.
+//
+// One restored session, a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_switch_before_the_window_adopts_what_its_commit_read() {
     let first = vec![user("u1", "t1", "one"), said("a1", "first"), user("u2", "t2", "two"), said("a2", "second")];

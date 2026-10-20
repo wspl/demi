@@ -1,12 +1,17 @@
-//! What each provider sends of one conversation (`crates/provider-common/src/contract.rs`):
-//! the session's requests go, in each provider's own format, to a scripted
-//! vendor that records them, while the model's answers come from a script.
-//! Each request begins with the previous one, byte for byte apart from the
-//! Anthropic cache marks, which the vendor does not count as content; a
-//! summary request is the answered request that ends at the cut point, here
-//! the latest, with the instruction after it; after a summary only the
-//! messages change, and Anthropic leaves out the reasoning kept past it; a
-//! changed thinking setting changes its own fields alone.
+//! What each provider sends of one conversation
+//! (`crates/provider-common/src/contract.rs`).
+//!
+//! The session's requests go, in each provider's own format, to a scripted
+//! vendor that records them, while the model's answers come from a script. The
+//! tests check that:
+//!
+//! - Each request begins with the previous one, byte for byte apart from the
+//!   Anthropic cache marks, which the vendor does not count as content.
+//! - A summary request is the answered request that ends at the cut point, here
+//!   the latest, with the instruction after it.
+//! - After a summary only the messages change, and Anthropic leaves out the
+//!   reasoning kept past it.
+//! - A changed thinking setting changes its own fields alone.
 
 use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
 use demi_agent_transcript::COMPACTION_NOTE;
@@ -307,11 +312,19 @@ fn extends(family: Family, earlier: &Value, later: &Value, what: &str) {
     );
 }
 
-/// The scripted conversation, with `family`'s signatures: a message with an
-/// image, signed reasoning, two parallel calls of which one returns an image,
-/// a steer and a subagent's result during them, a command left running
-/// after reasoning and its report, a summary, and a message after it. Returns the bodies the vendor received,
-/// as sent.
+/// The scripted conversation, with `family`'s signatures.
+///
+/// It holds:
+///
+/// - a message with an image;
+/// - signed reasoning;
+/// - two parallel calls of which one returns an image;
+/// - a steer and a subagent's result during them;
+/// - a command left running after reasoning, and its report;
+/// - a summary;
+/// - a message after it.
+///
+/// Returns the bodies the vendor received, as sent.
 async fn conversation(family: Family) -> Vec<String> {
     let vendor = MockVendor::start().await;
     for _ in 0..8 {

@@ -295,10 +295,13 @@ fn a_call_of_a_tool_the_request_no_longer_declares_is_replayed_with_its_result_a
     assert_eq!(text, r#"[called yield {"durationMs":600000}: yield scheduled]"#);
 }
 
-/// Planted defects this catches: a tool result's medium replayed by the
-/// model's accepted types alone, so a provider that carries no image or no
-/// document in a tool result would be sent one; and a document replayed
-/// as anything but its bytes and name where the provider carries it.
+/// Planted defects this catches:
+///
+/// - a tool result's medium replayed by the model's accepted types alone, so a
+///   provider that carries no image or no document in a tool result would be
+///   sent one;
+/// - a document replayed as anything but its bytes and name where the provider
+///   carries it.
 #[test]
 fn each_request_replays_a_tool_results_media_only_where_its_provider_carries_their_kind() {
     let model = model_reading("stub", "m", &[FileExtension::Png, FileExtension::Pdf]);

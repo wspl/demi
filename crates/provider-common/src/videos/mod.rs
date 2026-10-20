@@ -1,8 +1,11 @@
-//! The video role of a provider: a provider that makes videos lists its
-//! video models and runs one job for its account or key in three steps, the
-//! ask, the reads of the job's state and the download; the backend chooses
-//! the entry and the account, paces the reads and bounds the job. What
-//! every vendor's request has in common is in [`crate::media`]; the xAI
+//! The video role of a provider.
+//!
+//! A provider that makes videos lists its video models and runs one job for its
+//! account or key in three steps: the ask, the reads of the job's state and the
+//! download. The backend chooses the entry and the account, paces the reads and
+//! bounds the job.
+//!
+//! What every vendor's request has in common is in [`crate::media`]. The xAI
 //! Videos shape, which a Grok subscription, an xAI key and a compatible API
 //! share, is in [`xai`].
 
@@ -180,14 +183,17 @@ pub struct Done {
     pub usage: Option<TokenUsage>,
 }
 
-/// Downloads `url` as Demi's one download (`crates/shared-artifacts/src/download.rs`): resumed after a break or a stall, without an overall
-/// deadline. The entry's `key` headers go only to an address of the origin
-/// of the entry's `endpoint`, never to another host's, a storage bucket's or
-/// a redirect's to another origin, which each get the request without them
-/// ([`follow`]). The first answer is read here, so a refusal is told in the
-/// vendor's words under `label`; an address is no account's, so nothing is
-/// renewed and no limit is read from it. A video over [`ANSWER_LIMIT`]
-/// fails as it arrives.
+/// Downloads `url` as Demi's one download
+/// (`crates/shared-artifacts/src/download.rs`): resumed after a break or a
+/// stall, without an overall deadline.
+///
+/// The entry's `key` headers go only to an address of the origin of the entry's
+/// `endpoint`, never to another host's, a storage bucket's or a redirect's to
+/// another origin, which each get the request without them ([`follow`]).
+///
+/// The first answer is read here, so a refusal is told in the vendor's words
+/// under `label`. An address is no account's, so nothing is renewed and no
+/// limit is read from it. A video over [`ANSWER_LIMIT`] fails as it arrives.
 pub async fn download(
     label: &'static str,
     clock: &dyn Clock,

@@ -1,8 +1,9 @@
-//! Grok Build's device login: OAuth
-//! device authorization (RFC 8628) at `auth.x.ai` with the request contract
-//! of the Grok CLI, its fixed scopes, `referrer=grok-build` and its client
-//! headers, then the team or organization the tokens act for, and the
-//! user's details from the chat proxy's `/user`.
+//! Grok Build's device login: OAuth device authorization (RFC 8628) at
+//! `auth.x.ai` with the request contract of the Grok CLI, its fixed scopes,
+//! `referrer=grok-build` and its client headers.
+//!
+//! After the tokens, the login reads the team or organization the tokens act
+//! for, and the user's details from the chat proxy's `/user`.
 
 use std::{sync::Arc, time::Duration};
 
@@ -139,8 +140,10 @@ impl GrokKit {
         })
     }
 
-    /// Polls for the tokens: waits the interval before each poll, at least a
-    /// second and five seconds longer after each `slow_down`, continues on
+    /// Polls for the tokens.
+    ///
+    /// Before each poll it waits the interval, at least a second and five
+    /// seconds longer after each `slow_down`. It continues on
     /// `authorization_pending`, and ends on any other answer, such as the
     /// `expired_token` of a code that expired. Dropping the future, which the
     /// vault does when the login's lifetime ends, cancels the login at once.
@@ -194,10 +197,11 @@ impl GrokKit {
     }
 
     /// The account's secret document: the tokens and the user they sign in.
+    ///
     /// The proxy's details of the user, when it answers, win over the id
-    /// token's, and its principal over the access token's. When the tokens
-    /// act for a team or organization, that principal is the account's user
-    /// and the account has no email, whoever signed in.
+    /// token's, and its principal over the access token's. When the tokens act
+    /// for a team or organization, that principal is the account's user and the
+    /// account has no email, whoever signed in.
     async fn secret(&self, tokens: Tokens) -> GrokSecret {
         let id = tokens
             .id_token
@@ -330,9 +334,12 @@ impl<'de> Deserialize<'de> for UserCode {
 }
 
 /// The address the user is told to open, so only a scheme a web browser can be
-/// trusted with passes: `https` anywhere, `http` on the loopback host, and
-/// no control characters, which would make the link read differently from
-/// the one shown.
+/// trusted with passes.
+///
+/// - `https` anywhere.
+/// - `http` on the loopback host.
+/// - No control characters, which would make the link read differently from the
+///   one shown.
 struct VerificationUri(String);
 
 impl<'de> Deserialize<'de> for VerificationUri {

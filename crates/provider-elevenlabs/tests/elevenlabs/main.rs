@@ -1,8 +1,13 @@
-//! An ElevenLabs key's speech, music and sound effects, against a scripted vendor
-//! built from ElevenLabs' API reference: Create speech
-//! (elevenlabs.io/docs/api-reference/text-to-speech/convert), Compose music
-//! (…/music/compose), Create sound effect (…/text-to-sound-effects/convert), List
-//! voices (…/voices/search) and List models (…/models/list). No test calls a vendor.
+//! An ElevenLabs key's speech, music and sound effects, against a scripted
+//! vendor built from ElevenLabs' API reference:
+//!
+//! - Create speech (elevenlabs.io/docs/api-reference/text-to-speech/convert);
+//! - Compose music (…/music/compose);
+//! - Create sound effect (…/text-to-sound-effects/convert);
+//! - List voices (…/voices/search);
+//! - List models (…/models/list).
+//!
+//! No test calls a vendor.
 
 use std::sync::Arc;
 
@@ -115,10 +120,12 @@ async fn elevenlabs_speaks_composes_and_makes_effects_in_the_format_asked() {
     );
 }
 
-/// Planted defects this catches: a model that cannot speak listed as
-/// speech; the catalog's music and effect models missing, or listed twice
-/// when the listing names one; a refused key read as other than a key
-/// failure.
+/// Planted defects this catches:
+///
+/// - a model that cannot speak listed as speech;
+/// - the catalog's music and effect models missing, or listed twice when the
+///   listing names one;
+/// - a refused key read as other than a key failure.
 // One scripted vendor, two requests: milliseconds.
 #[tokio::test]
 async fn the_models_are_the_listed_speech_models_then_the_catalogs_and_a_wrong_key_is_refused() {

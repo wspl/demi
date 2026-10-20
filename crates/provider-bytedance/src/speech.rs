@@ -1,28 +1,45 @@
 //! A ByteDance speech key's audio role, BytePlus Speech's and Doubao Speech's
-//! alike, whose request is the model's. Seed speech's models speak through
-//! `POST /api/v3/tts/unidirectional` with the key in `X-Api-Key` and the model
-//! as `X-Api-Resource-Id`, answered with a chunked series of JSON objects, each
-//! with its `code` and the next base64 piece of the audio in `data`, until the
-//! object whose `code` is `20000000`
+//! alike, whose request is the model's.
+//!
+//! # Seed speech
+//!
+//! Seed speech's models speak through `POST /api/v3/tts/unidirectional`, with
+//! the key in `X-Api-Key` and the model as `X-Api-Resource-Id`. The service
+//! answers with a chunked series of JSON objects, each with its `code` and the
+//! next base64 piece of the audio in `data`, until the object whose `code` is
+//! `20000000`
 //! ([BytePlus](https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http),
 //! [Doubao
-//! Speech](https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh));
+//! Speech](https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh)).
+//!
 //! BytePlus also requires its fixed `X-Api-App-Key`. A WAV is asked as 24 kHz
 //! PCM and handed on to be wrapped, as the services repeat a WAV's header in
-//! every piece. Seed Audio's model, which the catalog says makes sound effects,
-//! makes them and speaks through `POST /api/v3/tts/create` with `model`,
-//! `text_prompt`, the instructions before the text, the speaker for speech as
-//! its one `references` item, and `audio_config`, answered with the file in
-//! base64 `audio` ([Audio
+//! every piece.
+//!
+//! # Seed Audio
+//!
+//! Seed Audio's model, which the catalog says makes sound effects, makes them
+//! and speaks through `POST /api/v3/tts/create`. The request holds:
+//!
+//! - `model`;
+//! - `text_prompt`, the instructions before the text;
+//! - the speaker for speech, as its one `references` item;
+//! - `audio_config`.
+//!
+//! The service answers with the file in base64 `audio` ([Audio
 //! 1.0](https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01),
 //! [音频生成](https://docs.volcengine.com/docs/DoubaoVoice/audio-generation-http?lang=zh)).
-//! Neither service has a default speaker, so speech needs `--voice`; the
-//! speakers are the catalog's, as the services list them only to a request
-//! signed with an access key pair, Seed Audio's those of Seed speech 2.0, and
-//! so are the models. A failure is traced by its code and the request's
-//! `X-Tt-Logid`. A key is checked by a Seed Audio request with no prompt, which
-//! the service refuses for its body; neither service documents how it refuses a
-//! key, which is read as HTTP 401 or 403.
+//!
+//! # Common rules
+//!
+//! - Neither service has a default speaker, so speech needs `--voice`.
+//! - The speakers are the catalog's, as the services list them only to a
+//!   request signed with an access key pair. Seed Audio's are those of Seed
+//!   speech 2.0. So are the models.
+//! - A failure is traced by its code and the request's `X-Tt-Logid`.
+//! - A key is checked by a Seed Audio request with no prompt, which the service
+//!   refuses for its body. Neither service documents how it refuses a key,
+//!   which is read as HTTP 401 or 403.
 
 use std::sync::Arc;
 
@@ -241,12 +258,13 @@ struct Piece {
 /// or for the account's concurrency, which only its message tells apart.
 const REQUEST_ERROR: i64 = 45_000_000;
 
-/// The failure a service's `code` and `message` state, traced by the code
-/// and the request's `X-Tt-Logid`
-/// ([Error codes](https://docs.volcengine.com/docs/DoubaoVoice/error-code-query-1?lang=zh)):
-/// a request over the account's concurrency is a rate limit and a server's
-/// failure is one, unless it is a speaker the resource does not hold,
-/// which is refused as any other code is.
+/// The failure a service's `code` and `message` state, traced by the code and
+/// the request's `X-Tt-Logid` ([Error
+/// codes](https://docs.volcengine.com/docs/DoubaoVoice/error-code-query-1?lang=zh)).
+///
+/// A request over the account's concurrency is a rate limit, and a server's
+/// failure is one, unless it is a speaker the resource does not hold, which is
+/// refused as any other code is.
 fn speech_failure(code: i64, message: Option<String>, trace_id: Option<String>) -> MediaFailure {
     let message = message.filter(|message| !message.is_empty()).unwrap_or_else(|| "the speech failed".to_owned());
     let trace = VendorTrace { code: Some(code.to_string()), id: trace_id };

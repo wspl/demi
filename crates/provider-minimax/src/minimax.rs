@@ -1,11 +1,13 @@
-//! What every MiniMax request has in common
-//! ([Error codes](https://platform.minimax.io/docs/api-reference/errorcode)):
-//! the key as a bearer token, and two ways of refusing. The image, speech,
-//! voice and v1 video endpoints answer HTTP 200 to a refused request, so
-//! its `base_resp.status_code` decides: 0 is success, 1004 and 2049 a key
-//! MiniMax does not know, 1008 a used-up balance, 1002 and 1039 a rate
-//! limit. The v2 video endpoints answer with the HTTP status and an
-//! `error` object, 401 for a refused key and 402 for a used-up balance.
+//! What every MiniMax request has in common ([Error
+//! codes](https://platform.minimax.io/docs/api-reference/errorcode)): the key
+//! as a bearer token, and two ways of refusing.
+//!
+//! - The image, speech, voice and v1 video endpoints answer HTTP 200 to a
+//!   refused request, so its `base_resp.status_code` decides: 0 is success,
+//!   1004 and 2049 a key MiniMax does not know, 1008 a used-up balance, 1002
+//!   and 1039 a rate limit.
+//! - The v2 video endpoints answer with the HTTP status and an `error` object,
+//!   401 for a refused key and 402 for a used-up balance.
 
 use bytes::Bytes;
 use demi_provider_common::{
@@ -85,10 +87,11 @@ struct BaseResp {
     status_msg: String,
 }
 
-/// The failure `body`'s `base_resp` states, if it states one, traced by
-/// its code and the request's ID, the body's or else `trace_id`, the
-/// answer's headers'; a body without it is the answer it documents, which
-/// its reader reads.
+/// The failure `body`'s `base_resp` states, if it states one, traced by its
+/// code and the request's ID: the body's or else `trace_id`, the answer's
+/// headers'.
+///
+/// A body without it is the answer it documents, which its reader reads.
 pub(crate) fn base_resp(body: &[u8], trace_id: Option<String>) -> Result<(), MediaFailure> {
     let status: Status =
         serde_json::from_slice(body).map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;

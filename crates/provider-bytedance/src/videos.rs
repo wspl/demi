@@ -1,18 +1,22 @@
 //! The Ark Tasks shape, Seedance's through an Ark key and any compatible API
-//! that chose it: `POST …/contents/generations/tasks` with `model` and
-//! `content`, the prompt its `text` item and each image an `image_url` item
-//! with its role, answers the task's `id` ([Create a video generation
-//! task](https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api));
-//! `GET …/contents/generations/tasks/<id>` answers its `status`, `queued`,
-//! `running`, `succeeded`, `failed`, `cancelled` or `expired`, and once
-//! succeeded its `content.video_url`, kept 24 hours and downloaded without a
-//! header, with the output tokens it was paid by ([Retrieve a video generation
-//! task](https://docs.byteplus.com/en/docs/modelark/get-video-generation-task-api)).
-//! `DELETE` of a task cancels it while it is queued, the one state Ark cancels
-//! in, and deletes the record of a finished one, so a stopped call reads the
-//! task's state first and deletes only a queued one ([Cancel or delete a video
-//! generation
-//! task](https://docs.byteplus.com/en/docs/modelark/cancel-or-delete-video-generation-tasks-api)).
+//! that chose it.
+//!
+//! - `POST …/contents/generations/tasks` with `model` and `content` (the prompt
+//!   its `text` item and each image an `image_url` item with its role) answers
+//!   the task's `id` ([Create a video generation
+//!   task](https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api)).
+//! - `GET …/contents/generations/tasks/<id>` answers its `status`, `queued`,
+//!   `running`, `succeeded`, `failed`, `cancelled` or `expired`. Once succeeded
+//!   it answers its `content.video_url`, kept 24 hours and downloaded without a
+//!   header, with the output tokens it was paid by ([Retrieve a video
+//!   generation
+//!   task](https://docs.byteplus.com/en/docs/modelark/get-video-generation-task-api)).
+//! - `DELETE` of a task cancels it while it is queued, the one state Ark
+//!   cancels in, and deletes the record of a finished one. So a stopped call
+//!   reads the task's state first and deletes only a queued one ([Cancel or
+//!   delete a video generation
+//!   task](https://docs.byteplus.com/en/docs/modelark/cancel-or-delete-video-generation-tasks-api)).
+//!
 //! A video comes as the vendor makes it for its API: `watermark: false`.
 
 use std::sync::Arc;
@@ -143,9 +147,10 @@ impl VideoMaker for ArkVideos {
     }
 }
 
-/// The video role of a compatible entry whose video shape is Ark Tasks:
-/// Ark's requests under its `base`, with its `key` when it has one,
-/// offering the `models` its user added; `name` is the entry's, which its
+/// The video role of a compatible entry whose video shape is Ark Tasks: Ark's
+/// requests under its `base`, with its `key` when it has one.
+///
+/// It offers the `models` its user added; `name` is the entry's, which its
 /// failures name.
 pub fn compatible_videos(
     name: String,

@@ -8,10 +8,13 @@ use crate::media_catalog::Catalog;
 /// any size of it.
 const LONG_SIDE: u32 = 1536;
 
-/// The `size` an OpenAI-shaped image request sends for OpenAI's `model`
-/// and the shape asked: `auto` without one; for a model the catalog says
-/// takes only some sizes, the one nearest the shape; else the shape at a
-/// longer side of 1536.
+/// The `size` an OpenAI-shaped image request sends for OpenAI's `model` and the
+/// shape asked.
+///
+/// - `auto` without a shape.
+/// - For a model the catalog says takes only some sizes, the one nearest the
+///   shape.
+/// - Otherwise the shape at a longer side of 1536.
 pub fn size(catalog: &Catalog, model: &str, aspect: Option<Aspect>) -> String {
     let Some(aspect) = aspect else {
         return "auto".to_owned();

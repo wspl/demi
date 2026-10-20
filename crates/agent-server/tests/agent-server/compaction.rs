@@ -1,7 +1,11 @@
-//! Compaction at the socket: the usage the page shows, the `compact` frame
-//! the user may send only from half the window, a failed compaction, which
-//! is a failure record like any failed request, and what a pass tells the
-//! model still runs.
+//! Compaction at the socket.
+//!
+//! The tests cover:
+//!
+//! - the usage the page shows;
+//! - the `compact` frame, which the user may send only from half the window;
+//! - a failed compaction, which is a failure record like any failed request;
+//! - what a pass tells the model still runs.
 
 use std::{rc::Rc, sync::Arc};
 
@@ -220,10 +224,11 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
     assert_eq!(script.remaining(), 0);
 }
 
-/// A pass appends a `context` block after its marker that names what the
-/// agent still runs: its command left running, by its number and title,
-/// and its live subagent, by its number and description; a pass while
-/// nothing runs appends none. The next request carries the block.
+/// A pass appends a `context` block after its marker that names what the agent
+/// still runs: its command left running, by its number and title, and its live
+/// subagent, by its number and description.
+///
+/// A pass while nothing runs appends none. The next request carries the block.
 // One tree, a scripted command and a child held at its first request, on a
 // paused clock, which the command's quiet start-up waits on: a few
 // milliseconds.
@@ -305,10 +310,11 @@ fn is_usage_of(node: &NodeId, tokens: u64) -> impl Fn(&ServerFrame) -> bool + '_
     move |frame| matches!(frame, ServerFrame::ContextUsage { node: shown, usage: Some(usage) } if shown == node && usage.tokens == tokens)
 }
 
-/// A subagent's session reports its usage as the root's does, naming the
-/// child: after its response, and to a page that opens; the child's context
-/// card compacts that child with `compact { node }`, and the root keeps its
-/// transcript.
+/// A subagent's session reports its usage as the root's does, naming the child:
+/// after its response, and to a page that opens.
+///
+/// The child's context card compacts that child with `compact { node }`, and
+/// the root keeps its transcript.
 // One tree, a child idle beside the command it left running, on a paused
 // clock, which the command's quiet start-up waits on: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]

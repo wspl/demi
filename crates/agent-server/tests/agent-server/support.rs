@@ -218,11 +218,13 @@ impl RpcHandler for Hello {
     }
 }
 
-/// The provider of every node of a tree: the root's requests are answered
-/// from the root's script, a child's from the script whose key the first
-/// user message of its first request contains, in order, from then on by
-/// its session, whatever a compaction made of that message. A run beyond
-/// its script panics: the test did not script it.
+/// The provider of every node of a tree.
+///
+/// The root's requests are answered from the root's script. A child's are
+/// answered from the script whose key the first user message of its first
+/// request contains, in order, from then on by its session, whatever a
+/// compaction made of that message. A run beyond its script panics: the test
+/// did not script it.
 #[derive(Clone, Default)]
 pub struct Model(Rc<RefCell<Scripts>>);
 
@@ -270,7 +272,6 @@ impl Model {
             .collect()
     }
 
-    /// The root's requests.
     pub fn root_requests(&self) -> Vec<InferenceRequest> {
         self.requests()
             .into_iter()
@@ -491,9 +492,10 @@ impl PortTransport for NodePort {
 pub const AGENT_CALL: &str = "call";
 
 /// Runs `demi agent <verb>` with `args` as a job of `node`'s call
-/// [`AGENT_CALL`] would, through the node's commands; `cancel` is the
-/// call's cancellation. A verb of a subgroup is its path, such as
-/// `profiles list`.
+/// [`AGENT_CALL`] would, through the node's commands.
+///
+/// `cancel` is the call's cancellation. A verb of a subgroup is its path, such
+/// as `profiles list`.
 pub async fn agent_call<H: HostResolver>(
     server: &Rc<AgentServer<H>>,
     node: &NodeId,
@@ -856,7 +858,6 @@ pub fn kinds(blocks: &[Block]) -> Vec<String> {
         .collect()
 }
 
-/// The frame's `type`.
 pub fn frame_type(frame: &ServerFrame) -> String {
     serde_json::to_value(frame).unwrap()["type"]
         .as_str()
@@ -957,11 +958,13 @@ impl HostResolver for LiveHosts {
     }
 }
 
-/// One node's environment: its command runs until the test ends it, and
-/// prints what the test hands it, which it reports to the node's feed. Like
-/// a runner that has not answered yet, a stop only marks the command
-/// stopping: it ends when the test says (`crates/runner-shell/src/job.rs`). Commands started while one runs, as the parallel calls of
-/// one response, run beside it, numbered after it.
+/// One node's environment: its command runs until the test ends it, and prints
+/// what the test hands it, which it reports to the node's feed.
+///
+/// Like a runner that has not answered yet, a stop only marks the command
+/// stopping: it ends when the test says (`crates/runner-shell/src/job.rs`).
+/// Commands started while one runs, as the parallel calls of one response, run
+/// beside it, numbered after it.
 pub struct ScriptedShell {
     /// The directory each of its jobs started in, in order; none for one
     /// that starts where the Host starts its work.

@@ -1,8 +1,9 @@
-//! Test support (feature `testing`): a scripted runtime for the tests of what
-//! sits above providers, a scripted vendor server for the tests of providers,
-//! waits for a run's events that fail instead of hanging, the check of an
-//! API-key entry's built-in catalog, event builders and a fixed clock. No test
-//! calls a real model.
+//! Test support (feature `testing`).
+//!
+//! It provides a scripted runtime for the tests of what sits above providers, a
+//! scripted vendor server for the tests of providers, waits for a run's events
+//! that fail instead of hanging, the check of an API-key entry's built-in
+//! catalog, event builders and a fixed clock. No test calls a real model.
 
 use std::{
     cell::RefCell,
@@ -182,11 +183,12 @@ impl Turn {
     }
 }
 
-/// A runtime that plays scripted runs in order, one per `run`. A runtime and
-/// its [`fresh`](ProviderRuntime::fresh) copies share one script, because a
-/// test describes one ordered scenario across a session and its compaction
-/// copy. A run honors its request's cancellation like a real one. A run
-/// beyond the script panics: the test did not script it.
+/// A runtime that plays scripted runs in order, one per `run`.
+///
+/// A runtime and its [`fresh`](ProviderRuntime::fresh) copies share one script,
+/// because a test describes one ordered scenario across a session and its
+/// compaction copy. A run honors its request's cancellation like a real one. A
+/// run beyond the script panics: the test did not script it.
 #[derive(Clone)]
 pub struct ScriptedRuntime {
     script: Rc<RefCell<Script>>,
@@ -307,10 +309,11 @@ impl ProviderRuntime for ScriptedRuntime {
     }
 }
 
-/// How long a provider test waits for what it awaits before it fails. It
-/// only guards against a hang (`testing.md` § Time and stability): every wait
-/// of these tests ends far sooner, on a paused clock too, where the longest
-/// is the Claude Code runtime's five seconds before it kills a process.
+/// How long a provider test waits for what it awaits before it fails.
+///
+/// It only guards against a hang (`testing.md` § Time and stability): every
+/// wait of these tests ends far sooner, on a paused clock too, where the
+/// longest is the Claude Code runtime's five seconds before it kills a process.
 const HANG_GUARD: Duration = Duration::from_secs(10);
 
 /// Awaits `future`, and fails the test when it has not completed within the
@@ -387,7 +390,6 @@ impl ManualClock {
         *now = Timestamp::truncate(moved);
     }
 
-    /// Sets the clock to `to`.
     pub fn set(&self, to: Timestamp) {
         *self.0.lock().unwrap() = to;
     }
@@ -507,7 +509,6 @@ pub struct RecordedRequest {
 }
 
 impl RecordedRequest {
-    /// The body as JSON.
     pub fn json(&self) -> serde_json::Value {
         serde_json::from_slice(&self.body).expect("the request body is JSON")
     }
@@ -611,10 +612,12 @@ impl MockVendor {
         Self::serve(bind().await, "http")
     }
 
-    /// The vendor over HTTPS, presenting `certificate`, a PEM certificate
-    /// chain for `127.0.0.1`, with its PEM `key`: for a client that accepts
-    /// nothing but `https`, such as `demi.claude-code` downloading from a
-    /// distribution. The client trusts the chain's issuer by its own means.
+    /// The vendor over HTTPS, presenting `certificate`, a PEM certificate chain
+    /// for `127.0.0.1`, with its PEM `key`.
+    ///
+    /// It is for a client that accepts nothing but `https`, such as
+    /// `demi.claude-code` downloading from a distribution. The client trusts
+    /// the chain's issuer by its own means.
     pub async fn start_tls(certificate: &[u8], key: &[u8]) -> Self {
         Self::serve(TlsListener::bind(certificate, key).await, "https")
     }
@@ -657,10 +660,11 @@ impl MockVendor {
         self.lock().responses.push_back(response);
     }
 
-    /// Queues the answer to the next request to `path`, such as
-    /// `/oauth/token`, which it takes before the answers of
-    /// [`respond`](Self::respond): concurrent requests to different paths
-    /// then get their own answers whatever order they arrive in.
+    /// Queues the answer to the next request to `path`, such as `/oauth/token`,
+    /// which it takes before the answers of [`respond`](Self::respond).
+    ///
+    /// Concurrent requests to different paths then get their own answers
+    /// whatever order they arrive in.
     pub fn respond_at(&self, path: &str, response: MockResponse) {
         self.lock()
             .routes
@@ -682,10 +686,12 @@ impl MockVendor {
             .expect("the vendor receives the requests");
     }
 
-    /// Waits until the vendor has received `count` requests, with no
-    /// deadline of its own: for a test on a paused clock, whose deadline
-    /// is the caller's and which lets the clock run to the timer that sends
-    /// the request, as [`received`](Self::received)'s would fire first.
+    /// Waits until the vendor has received `count` requests, with no deadline
+    /// of its own.
+    ///
+    /// It is for a test on a paused clock, whose deadline is the caller's and
+    /// which lets the clock run to the timer that sends the request, as
+    /// [`received`](Self::received)'s would fire first.
     pub async fn requested(&self, count: usize) {
         loop {
             // Created before the count is read, so a request that arrives

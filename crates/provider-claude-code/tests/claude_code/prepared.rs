@@ -1,12 +1,16 @@
 //! Processes prepared ahead of their request
-//! (`crates/provider-claude-code/src/prepared.rs`): the request that was known
-//! but for its input takes the
-//! prepared process as a kept one; any other request closes it and starts
-//! its own; a prepared process goes after ten minutes unused, its machine
-//! holds two at most, and a preparation that fails or has no answered
-//! history to resume leaves the request as it would have been. Each test
-//! costs a few milliseconds; the one that waits ten minutes does so on a
-//! paused clock.
+//! (`crates/provider-claude-code/src/prepared.rs`).
+//!
+//! - The request that was known but for its input takes the prepared process as
+//!   a kept one.
+//! - Any other request closes it and starts its own.
+//! - A prepared process goes after ten minutes unused.
+//! - Its machine holds two at most.
+//! - A preparation that fails or has no answered history to resume leaves the
+//!   request as it would have been.
+//!
+//! Each test costs a few milliseconds; the one that waits ten minutes does so
+//! on a paused clock.
 
 use std::time::Duration;
 

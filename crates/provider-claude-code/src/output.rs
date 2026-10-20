@@ -1,8 +1,10 @@
-//! What the CLI writes on its standard output,
-//! as Demi reads it: one type for each line Demi reads, decoded by its `type`
-//! tag, and the events a line becomes. A line, content block, stream event
-//! or delta of a type Demi does not read is skipped, so a CLI release that
-//! adds one does not break a run; one Demi reads that is malformed fails it.
+//! What the CLI writes on its standard output, as Demi reads it: one type for
+//! each line Demi reads, decoded by its `type` tag, and the events a line
+//! becomes.
+//!
+//! A line, content block, stream event or delta of a type Demi does not read is
+//! skipped, so a CLI release that adds one does not break a run. One Demi reads
+//! that is malformed fails the run.
 
 use demi_provider_common::wire::{
     Reported, ReportedString, Tagged,
@@ -352,13 +354,14 @@ pub(crate) struct ResultLine {
     api_error: ReportedString,
 }
 
-/// The token counts of the CLI's latest API call, which the response
-/// carries, read from the API's stream events
-/// the CLI passes through as the Anthropic API's provider reads them
-/// ([`CallUsage`]). The `result` line's `usage` is never read: it sums every
-/// call of the CLI's turn, which spans every tool call the model made, and
-/// its `iterations`, which would list the calls, are empty when the CLI runs
-/// with `DISABLE_TELEMETRY` (Claude Code 2.1.296).
+/// The token counts of the CLI's latest API call, which the response carries.
+///
+/// They are read from the API's stream events the CLI passes through, as the
+/// Anthropic API's provider reads them ([`CallUsage`]). The `result` line's
+/// `usage` is never read: it sums every call of the CLI's turn, which spans
+/// every tool call the model made. Its `iterations`, which would list the
+/// calls, are empty when the CLI runs with `DISABLE_TELEMETRY` (Claude Code
+/// 2.1.296).
 #[derive(Default)]
 pub(crate) struct LastCall(CallUsage);
 
@@ -454,12 +457,12 @@ enum ShownKind {
 }
 
 /// The assistant response the CLI is streaming
-/// (`crates/provider-claude-code/src/mcp.rs`): the id its `message_start`
-/// names, which every whole
-/// assistant line that repeats a block of it carries, and what its events
-/// showed, block by block. A whole line of another message is a complete
-/// answer: the CLI's retry without streaming after the stream failed, which
-/// replaces this response.
+/// (`crates/provider-claude-code/src/mcp.rs`).
+///
+/// It holds the id its `message_start` names, which every whole assistant line
+/// that repeats a block of it carries, and what its events showed, block by
+/// block. A whole line of another message is a complete answer: the CLI's retry
+/// without streaming after the stream failed, which replaces this response.
 #[derive(Default)]
 pub(crate) struct Streaming {
     id: Option<String>,
@@ -485,10 +488,11 @@ impl Streaming {
         self.id.as_deref()
     }
 
-    /// Notes an event the run yielded of this response, which went to the
-    /// block at `at` ([`crate::mirror::Mirror::last_block`]). A tool use
-    /// being written is no block, and a thinking start opens none until
-    /// the next event.
+    /// Notes an event the run yielded of this response, which went to the block
+    /// at `at` ([`crate::mirror::Mirror::last_block`]).
+    ///
+    /// A tool use being written is no block, and a thinking start opens none
+    /// until the next event.
     pub(crate) fn observe(&mut self, event: &ProviderEvent, at: Option<usize>) {
         let Some(at) = at else {
             return;
@@ -541,14 +545,17 @@ pub(crate) enum Answered {
     New(bool),
 }
 
-/// What an abandoned stream showed, which the complete answer that
-/// replaces it is shown against. An answer that resumes what streamed
-/// repeats the blocks that showed whole, then continues the one the stream
-/// broke off in: as long as it does, only the rest is shown, so the agent's
-/// blocks go on as the answer's. From the first block that departs from
-/// what showed, the answer is shown whole, after what showed, since the
-/// agent's blocks are only ever added to; the shown blocks it did not
-/// repeat stay on the page, and the CLI left them out of its history.
+/// What an abandoned stream showed, which the complete answer that replaces it
+/// is shown against.
+///
+/// An answer that resumes what streamed repeats the blocks that showed whole,
+/// then continues the one the stream broke off in. As long as it does, only the
+/// rest is shown, so the agent's blocks go on as the answer's.
+///
+/// From the first block that departs from what showed, the answer is shown
+/// whole, after what showed, since the agent's blocks are only ever added to.
+/// The shown blocks it did not repeat stay on the page, and the CLI left them
+/// out of its history.
 pub(crate) struct Replaced {
     shown: std::vec::IntoIter<Shown>,
     unrepeated: Vec<usize>,
@@ -653,10 +660,10 @@ impl StreamEvent {
     /// The events of a streamed piece: a thinking block's start, the text,
     /// reasoning and signatures as they come, and a tool use's start and its
     /// input pieces, for display only
-    /// (`crates/provider-claude-code/src/mcp.rs`): the call itself is read from
-    /// the whole message, the only
-    /// place its input is whole. `writing` keeps the tool uses opened, by
-    /// their block's index.
+    /// (`crates/provider-claude-code/src/mcp.rs`).
+    ///
+    /// The call itself is read from the whole message, the only place its input
+    /// is whole. `writing` keeps the tool uses opened, by their block's index.
     pub(crate) fn events(self, writing: &mut HashMap<u64, String>) -> Vec<ProviderEvent> {
         match self {
             Self::BlockStart(start) => match start.content_block.and_then(|block| block.0) {
@@ -741,11 +748,10 @@ impl ResultLine {
                 parts.join("\n")
             };
             let status = self.api_error_status;
-            // The CLI's own sign of a used-up account comes first, whatever
-            // the status. Otherwise the status decides, as for any HTTP
-            // failure: the CLI words every call the vendor refused `API
-            // Error: <status> …`, which its words alone read as a server
-            // error.
+            // The CLI's own sign of a used-up account comes first, whatever the
+            // status. Otherwise the status decides, as for any HTTP failure:
+            // the CLI words every call the vendor refused `API Error: <status>
+            // …`, which its words alone read as a server error.
             let code = if self.api_error.as_deref() == Some(USAGE_LIMIT) {
                 Some(ErrorCode::UsageLimit)
             } else {

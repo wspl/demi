@@ -1,13 +1,20 @@
-//! The supervisor operations of a conversation's tree: the agent directory of
-//! its live nodes; starting children (spawn, fork, resume and restore) and
-//! closing them (a completion, a failure or an abort); delivering their
-//! completions; messages between agents; and the `list` and `show` reads. Every
-//! node supervises its own children the same way; only the root's lifecycle is
-//! its client's.
+//! The supervisor operations of a conversation's tree.
 //!
-//! A child exists because a parent's context is expensive: it works in a
-//! session of its own and only its result returns to the parent, never its tool
-//! history. It is not a session copy: compaction's copy carries history, a
+//! The operations are:
+//!
+//! - the agent directory of its live nodes;
+//! - starting children (spawn, fork, resume and restore);
+//! - closing them (a completion, a failure or an abort);
+//! - delivering their completions;
+//! - messages between agents;
+//! - the `list` and `show` reads.
+//!
+//! Every node supervises its own children the same way; only the root's
+//! lifecycle is its client's.
+//!
+//! A child exists because a parent's context is expensive. It works in a
+//! session of its own, and only its result returns to the parent, never its
+//! tool history. It is not a session copy: compaction's copy carries history, a
 //! child starts empty.
 //!
 //! ```text
@@ -17,45 +24,56 @@
 //!  any live node --send, show, list--> any live node  (the agent directory)
 //! ```
 //!
-//! Authority is split by verb, never by depth: whoever spawns an agent owns its
-//! life, so the lifecycle verbs act only on the caller's own children, while
-//! `send`, `show` and `list` reach any live agent through the directory with no
-//! routing along the tree. No command is stripped at a depth; the user's limits
-//! fail a spawn instead.
+//! Authority is split by verb, never by depth. Whoever spawns an agent owns its
+//! life, so the lifecycle verbs act only on the caller's own children. `send`,
+//! `show` and `list` reach any live agent through the directory with no routing
+//! along the tree. No command is stripped at a depth; the user's limits fail a
+//! spawn instead.
 //!
-//! Guarantees that span the operations:
+//! # Guarantees
+//!
+//! These guarantees span the operations:
+//!
 //! - Deciding that a child is quiescent and closing it are one step with no
-//!   await: a message accepted before it keeps the child open, one sent after
-//!   it is refused.
-//! - The result is saved before its completion goes to the parent, and the
+//!   await: a message accepted before it keeps the child open, and one sent
+//!   after it is refused.
+//! - The result is saved before its completion goes to the parent. The
 //!   completion's id names the round (`subagent:<child>:<round>`), so no older
 //!   completion acknowledges the next round of a resumed child.
 //! - A start runs in a task of the tree, so a creation command cancelled after
-//!   reaching the supervisor still creates its child; a start under way counts
+//!   reaching the supervisor still creates its child. A start under way counts
 //!   as a live child of its owner, which therefore does not close under it.
-//! - An abort does not wait for the child's commands to end: a command turns
-//!   stopped only on its runner's word, and a runner that is away, or a job it
-//!   cannot end, would hold the abort as long. The child closes at once and
-//!   each command still stopping stays the closed child's (`StoppingShells`)
-//!   until its runner reports the end; nothing writes to a closed child's
-//!   transcript. Dispose is not abort: it detaches the subtree for restore.
+//! - An abort does not wait for the child's commands to end, because a command
+//!   turns stopped only on its runner's word, and a runner that is away, or a
+//!   job it cannot end, would hold the abort as long. The child closes at once,
+//!   and each command still stopping stays the closed child's
+//!   (`StoppingShells`) until its runner reports the end. Nothing writes to a
+//!   closed child's transcript.
+//! - Dispose is not abort: it detaches the subtree for restore.
 //!
-//! A child that leaves a command running for its parent stays live until it
-//! ends, so it tells the parent with `demi agent send parent`; told only to
-//! leave a server running, a child detached it from its job (`nohup`, then
-//! `setsid`), which left a process no command stands for. A fork runs on the
-//! profile the caller names or inherits the caller's, never the source's, so it
-//! carries no configuration the caller did not ask for; `resume` takes no
-//! profile, so changing profile is a fork. `show` and `list` are supervisor
-//! reads and never messages to the target: a stuck child cannot report on
-//! itself, since a steer waits for a boundary that a hung tool never reaches.
+//! # Design decisions
 //!
-//! Not offered: resident children that idle for mail (an accepted message only
-//! defers a close), `send --wait` (reciprocal waits would block each other;
-//! ask-and-answer is a close then `resume`), `wait` or `result` verbs (the
-//! completion message is the outcome), lifecycle authority over other agents'
-//! children, and tailing a child's transcript into its parent's context, the
-//! failure subagents exist to avoid.
+//! - A child that leaves a command running for its parent stays live until it
+//!   ends, so it tells the parent with `demi agent send parent`. Told only to
+//!   leave a server running, a child detached it from its job (`nohup`, then
+//!   `setsid`), which left a process no command stands for.
+//! - A fork runs on the profile the caller names or inherits the caller's,
+//!   never the source's, so it carries no configuration the caller did not ask
+//!   for. `resume` takes no profile, so changing profile is a fork.
+//! - `show` and `list` are supervisor reads and never messages to the target. A
+//!   stuck child cannot report on itself, since a steer waits for a boundary
+//!   that a hung tool never reaches.
+//!
+//! # Not offered
+//!
+//! - Resident children that idle for mail (an accepted message only defers a
+//!   close).
+//! - `send --wait`: reciprocal waits would block each other, and ask-and-answer
+//!   is a close then `resume`.
+//! - `wait` or `result` verbs: the completion message is the outcome.
+//! - Lifecycle authority over other agents' children.
+//! - Tailing a child's transcript into its parent's context, the failure
+//!   subagents exist to avoid.
 
 use tracing::Instrument as _;
 use std::{
@@ -345,9 +363,11 @@ impl<H: HostResolver> Tree<H> {
         Ok(())
     }
 
-    /// Check 6 of a spawn, and of a resume: the user is under the limit of
-    /// live subagents across all the conversations of `server`, the user's
-    /// shard, counting in each tree the starts that passed this check and
+    /// Check 6 of a spawn, and of a resume: the user is under the limit of live
+    /// subagents.
+    ///
+    /// The limit counts across all the conversations of `server`, the user's
+    /// shard, and counts in each tree the starts that passed this check and
     /// have not yet joined its directory. The slot answered holds the new
     /// child's place until it joins the directory or its start fails.
     fn reserve_live(
@@ -383,11 +403,11 @@ impl<H: HostResolver> Tree<H> {
         self.children.borrow().len() + self.admitted.get()
     }
 
-    /// Starts a child of `caller` for `demi agent spawn`, `fork` or `resume`:
-    /// creates or reopens the
-    /// child in a task of the tree, so the start runs to its end even when
-    /// the call is cancelled. Starts of one owner take turns. Answers the
-    /// child's number.
+    /// Starts a child of `caller` for `demi agent spawn`, `fork` or `resume`.
+    ///
+    /// It creates or reopens the child in a task of the tree, so the start runs
+    /// to its end even when the call is cancelled. Starts of one owner take
+    /// turns. Answers the child's number.
     pub(crate) async fn start(
         self: &Rc<Self>,
         caller: &NodeId,
@@ -435,10 +455,12 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Spawns a child of `owner` with the next agent number and `prompt`
-    /// queued, under the user's current subagent settings and the profile
-    /// `profile_name`, none for the inherit profile, working in `owner`'s
-    /// directory or the one `cwd` names against it. A check that fails
-    /// creates nothing. Answers its number.
+    /// queued.
+    ///
+    /// The spawn runs under the user's current subagent settings and the
+    /// profile `profile_name`, none for the inherit profile. The child works in
+    /// `owner`'s directory or the one `cwd` names against it. A check that
+    /// fails creates nothing. Answers its number.
     async fn spawn(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
@@ -498,16 +520,20 @@ impl<H: HostResolver> Tree<H> {
         Ok(number)
     }
 
-    /// Forks the child of `owner` the model knows by `source`:
-    /// a new child of `owner` with the next agent
-    /// number, whose history is the source's through its newest completed
-    /// text, and whose next user message is `message`. The checks are a
-    /// spawn's, and the profile `profile_name`, none for the inherit profile,
-    /// sets what it runs on; `description` defaults to the source's with
-    /// ` (fork)`. Its first request switches from the source's
-    /// model to that profile's as a model switch does, compacting first with
-    /// the source's model when the history is over the new model's
-    /// threshold. The source is untouched. Answers its number.
+    /// Forks the child of `owner` the model knows by `source`.
+    ///
+    /// The fork is a new child of `owner` with the next agent number, whose
+    /// history is the source's through its newest completed text, and whose
+    /// next user message is `message`. The source is untouched. Answers its
+    /// number.
+    ///
+    /// - The checks are a spawn's.
+    /// - The profile `profile_name`, none for the inherit profile, sets what it
+    ///   runs on.
+    /// - `description` defaults to the source's with ` (fork)`.
+    /// - Its first request switches from the source's model to that profile's
+    ///   as a model switch does, compacting first with the source's model when
+    ///   the history is over the new model's threshold.
     async fn fork(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
@@ -610,10 +636,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The provider runtime of a child of `owner` that infers with `model`
-    /// (`crates/agent-server/src/node/mod.rs`): a fork of the owner's runtime when that
-    /// serves the model's provider entry, else one the product builds for
-    /// the entry. Either way the runtime is the child's own, and its session
-    /// closes it.
+    /// (`crates/agent-server/src/node/mod.rs`).
+    ///
+    /// It is a fork of the owner's runtime when that serves the model's
+    /// provider entry, else one the product builds for the entry. Either way
+    /// the runtime is the child's own, and its session closes it.
     pub(super) async fn child_runtime(
         &self,
         server: &AgentServer<H>,
@@ -711,14 +738,20 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Everything spawn, fork, reopen and restore share: the child's node
-    /// from the assembly, new with its first message queued in the create
-    /// commit or from the store, on `runtime`, with what it was spawned
-    /// with; then the model `switch` a fork lands at its first request, its
-    /// place in the directory and its frames, what it has yet to run, its
-    /// own children, and its supervision. A start's `slot` ends once the
-    /// child is in the directory, which counts it from then on; a restore
-    /// takes none, since it brings back what was live.
+    /// Everything spawn, fork, reopen and restore share.
+    ///
+    /// In order, it sets up:
+    ///
+    /// 1. The child's node from the assembly, new with its first message queued
+    ///    in the create commit or from the store, on `runtime`, with what it
+    ///    was spawned with.
+    /// 2. The model `switch` a fork lands at its first request.
+    /// 3. Its place in the directory and its frames.
+    /// 4. What it has yet to run, its own children, and its supervision.
+    ///
+    /// A start's `slot` ends once the child is in the directory, which counts
+    /// it from then on; a restore takes none, since it brings back what was
+    /// live.
     async fn start_child(
         self: &Rc<Self>,
         server: &Rc<AgentServer<H>>,
@@ -801,11 +834,12 @@ impl<H: HostResolver> Tree<H> {
         Ok(id)
     }
 
-    /// Whether `record`'s child belongs to the conversation's current
-    /// path: the call that started it is on its parent's current path, and
-    /// so is each ancestor's. A live parent's session tells whether it
-    /// holds the call; a closed one's path is the one it closed with. A
-    /// child no call started is on every path.
+    /// Whether `record`'s child belongs to the conversation's current path.
+    ///
+    /// It does when the call that started it is on its parent's current path,
+    /// and so is each ancestor's. A live parent's session tells whether it
+    /// holds the call; a closed one's path is the one it closed with. A child
+    /// no call started is on every path.
     fn on_path(&self, record: &NodeRecord) -> bool {
         let summaries = self.summaries.borrow();
         let mut at = Some(record.clone());
@@ -918,11 +952,12 @@ impl<H: HostResolver> Tree<H> {
         Ok(node.directory_at(&now))
     }
 
-    /// Moves the live child `caller` to `dir`, read against its directory,
-    /// from its next `shell` call on, and tells the pages; the root works
-    /// in the conversation's directory, and a directory the primary Host
-    /// does not have changes nothing (`crates/agent-server/src/node/mod.rs`).
-    /// Answers the new directory.
+    /// Moves the live child `caller` to `dir`, read against its directory, from
+    /// its next `shell` call on, and tells the pages.
+    ///
+    /// The root works in the conversation's directory. A directory the primary
+    /// Host does not have changes nothing
+    /// (`crates/agent-server/src/node/mod.rs`). Answers the new directory.
     pub(crate) async fn change_cwd(&self, caller: &NodeId, dir: &str) -> Result<String, String> {
         if caller == self.root.id() {
             return Err(ROOT_CWD.to_owned());
@@ -1047,10 +1082,14 @@ impl<H: HostResolver> Tree<H> {
 
     /// Brings `owner`'s children back from the store
     /// (`crates/agent-store/src/lib.rs`) from what each was spawned with, never
-    /// from the user's profiles: a closed child whose completion never reached
-    /// the owner is delivered now, and a live one is restored and continues. A
-    /// live one whose provider runtime cannot be built, or whose stored state
-    /// does not rebuild, closes as an error with the reason, its rows kept.
+    /// from the user's profiles.
+    ///
+    /// - A closed child whose completion never reached the owner is delivered
+    ///   now.
+    /// - A live one is restored and continues.
+    /// - A live one whose provider runtime cannot be built, or whose stored
+    ///   state does not rebuild, closes as an error with the reason, its rows
+    ///   kept.
     pub(super) fn restore_children<'a>(
         self: &'a Rc<Self>,
         owner: &'a Rc<Node<H>>,
@@ -1121,9 +1160,11 @@ impl<H: HostResolver> Tree<H> {
 
     /// Takes up the commands the closed child `record` and its closed
     /// descendants still ran when the backend restarted or the tree was
-    /// disposed: restore skips the children, not
-    /// their commands, which show as stopping again, are asked to stop
-    /// again, and end as their runners report.
+    /// disposed.
+    ///
+    /// Restore skips the children, not their commands. The commands show as
+    /// stopping again, are asked to stop again, and end as their runners
+    /// report.
     fn take_up_stopping<'a>(self: &'a Rc<Self>, record: &'a NodeRecord) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
             let feed = self.live.feed(Some(record.id.clone()));
@@ -1162,10 +1203,12 @@ impl<H: HostResolver> Tree<H> {
         self.close_unbuilt(owner, record, runs_on, error).await;
     }
 
-    /// Closes the stored live child `record` of `owner`, whose round runs
-    /// on `runs_on` and which no provider runtime can be built for, as an
-    /// error with `reason`: its live descendants close as aborted first, as
-    /// an abort closes them, and `owner` receives the failed completion.
+    /// Closes the stored live child `record` of `owner`, whose round runs on
+    /// `runs_on` and which no provider runtime can be built for, as an error
+    /// with `reason`.
+    ///
+    /// Its live descendants close as aborted first, as an abort closes them,
+    /// and `owner` receives the failed completion.
     async fn close_unbuilt(
         &self,
         owner: &Node<H>,
@@ -1199,9 +1242,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The block of the stored transcript of the closed child `id` its
-    /// completion names, by how it closed `phase`: its last answer, or a
-    /// failed child's failure record; none when it has none, or when its
-    /// transcript does not load, which only costs the receipt its link.
+    /// completion names, by how it closed `phase`: its last answer, or a failed
+    /// child's failure record.
+    ///
+    /// None when it has none, or when its transcript does not load, which only
+    /// costs the receipt its link.
     async fn stored_origin(&self, id: &NodeId, phase: &ClosePhase) -> Option<BlockId> {
         match self.store.session_store(id).load().await {
             Ok(checkpoint) => checkpoint.and_then(|checkpoint| match phase {
@@ -1250,12 +1295,17 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Looks at `child` and decides, in one step with no await, whether it
-    /// closes: a message accepted before this step
-    /// keeps it open, one sent after it is refused. A child is quiescent
-    /// once nothing is left for it to do: no action runs or waits, no agent
-    /// message or command report waits to be read, no child of its own is
-    /// live and no command it started still runs. It closes with its last
-    /// answer.
+    /// closes.
+    ///
+    /// A message accepted before this step keeps it open, and one sent after it
+    /// is refused. A child is quiescent once nothing is left for it to do:
+    ///
+    /// - no action runs or waits;
+    /// - no agent message or command report waits to be read;
+    /// - no child of its own is live;
+    /// - no command it started still runs.
+    ///
+    /// It closes with its last answer.
     fn decide(&self, child: &Child<H>) -> Decision {
         if child.closing.get() || self.disposing.get() {
             return Decision::Stop;
@@ -1311,11 +1361,13 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Closes a child: an abort or a
-    /// failure first stops what it still runs and then closes its subtree;
-    /// its session saves its final checkpoint, the close is committed, the
-    /// child leaves the directory with a `closed` frame, and its completion
-    /// goes to its parent, whose save marks it delivered.
+    /// Closes a child.
+    ///
+    /// An abort or a failure first stops what the child still runs and then
+    /// closes its subtree. Then its session saves its final checkpoint, the
+    /// close is committed, the child leaves the directory with a `closed`
+    /// frame, and its completion goes to its parent, whose save marks it
+    /// delivered.
     async fn close(self: &Rc<Self>, child: &Rc<Child<H>>, kind: CloseKind) {
         let record = child.node.record().clone();
         let owner = self.node(&child.parent());
@@ -1329,10 +1381,10 @@ impl<H: HostResolver> Tree<H> {
             // its final checkpoint for a later round.
             session.hold();
             stop_all(session).await;
-            // Its commands are asked to stop too, and the close does not
-            // wait for their ends, which only their runners report: a
-            // runner that is away, or a job it cannot end, would hold the
-            // close as long. They stay stopping meanwhile.
+            // Its commands are asked to stop too, and the close does not wait
+            // for their ends, which only their runners report: a runner that is
+            // away, or a job it cannot end, would hold the close as long. They
+            // stay stopping meanwhile.
             let shells = child.node.stop_shells().await;
             self.keep_stopping(&record, shells);
             // A start of its own under way ends first, so its child is
@@ -1439,10 +1491,11 @@ impl<H: HostResolver> Tree<H> {
         );
     }
 
-    /// Hands a closed round's completion, which comes from the block
-    /// `origin` of the child's transcript, to its parent; the parent's save
-    /// marks it delivered. A parent that is closing leaves it undelivered
-    /// for its restore.
+    /// Hands a closed round's completion, which comes from the block `origin`
+    /// of the child's transcript, to its parent; the parent's save marks it
+    /// delivered.
+    ///
+    /// A parent that is closing leaves it undelivered for its restore.
     async fn deliver(
         &self,
         owner: &Node<H>,
@@ -1461,9 +1514,11 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Sends a message from `caller` to any live agent of the tree, which
-    /// `target` names by its number, or to its parent; returns the recipient's number once the
-    /// message is accepted durably. The message comes from the caller's call
-    /// `call`, the `shell` call whose command sends it.
+    /// `target` names by its number, or to its parent.
+    ///
+    /// Returns the recipient's number once the message is accepted durably. The
+    /// message comes from the caller's call `call`, the `shell` call whose
+    /// command sends it.
     pub(crate) async fn send_message(
         &self,
         caller: &NodeId,
@@ -1538,10 +1593,11 @@ impl<H: HostResolver> Tree<H> {
         Ok(recipient.record().number)
     }
 
-    /// Each live child's `started` frame, with its transcript when it is
-    /// one of `shown`, depth first in spawn order: what a connection that
-    /// attaches or syncs receives. Each works where the conversation's
-    /// placement `placement` puts it.
+    /// Each live child's `started` frame, with its transcript when it is one of
+    /// `shown`, depth first in spawn order.
+    ///
+    /// It is what a connection that attaches or syncs receives. Each works
+    /// where the conversation's placement `placement` puts it.
     pub(super) fn replay(&self, placement: Option<&Placement>, shown: &HashSet<NodeId>) -> Vec<ServerFrame> {
         self.descendants()
             .iter()
@@ -1581,10 +1637,12 @@ impl<H: HostResolver> Tree<H> {
             .collect()
     }
 
-    /// Every child as [`subagent_summaries`](Self::subagent_summaries)
-    /// lists it, each with the result of a completed round: what the
-    /// conversation's subagent list answers while the tree is live, so the
-    /// open's `subagents` frame never takes back a child the list showed.
+    /// Every child as [`subagent_summaries`](Self::subagent_summaries) lists
+    /// it, each with the result of a completed round.
+    ///
+    /// It is what the conversation's subagent list answers while the tree is
+    /// live, so the open's `subagents` frame never takes back a child the list
+    /// showed.
     pub fn subagent_jobs(&self, placement: Option<&Placement>) -> Vec<SubagentJob> {
         self.summaries
             .borrow()
@@ -1732,9 +1790,10 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// A bounded snapshot of the child the model knows by `number`, live or
-    /// archived, as JSON and as text;
-    /// none for the root, for a child whose start is under way and for a
-    /// number no child of the tree has.
+    /// archived, as JSON and as text.
+    ///
+    /// None for the root, for a child whose start is under way and for a number
+    /// no child of the tree has.
     pub(crate) async fn show(&self, number: u64) -> Result<Option<(ShownAgent, String)>, String> {
         let now = self.clock.now().as_millisecond();
         let placement = self.root.placement().await.map_err(|error| error.to_string())?;
@@ -1891,10 +1950,11 @@ impl<H: HostResolver> Drop for Starting<H> {
     }
 }
 
-/// The supervision of one child: waits for any change of its session's
-/// status, of the tree's children, or of its failure, and closes it once
-/// [`Tree::decide`] says so. It holds neither the tree nor the child while
-/// it waits.
+/// The supervision of one child.
+///
+/// It waits for any change of its session's status, of the tree's children, or
+/// of its failure, and closes the child once [`Tree::decide`] says so. It holds
+/// neither the tree nor the child while it waits.
 async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>) {
     let (mut status, mut changes, wake) = {
         let (Some(live_tree), Some(live_child)) = (tree.upgrade(), child.upgrade()) else {
@@ -1985,9 +2045,11 @@ fn child_reset<H: HostResolver>(child: &Child<H>) -> ServerFrame {
 }
 
 /// A closed round's completion message
-/// (`crates/shared-types/src/agent_message.rs`): its id names the round, and
-/// its body is the result, or the failure text, which can be empty; it comes
-/// from the block `origin` of the child's transcript.
+/// (`crates/shared-types/src/agent_message.rs`).
+///
+/// Its id names the round, and its body is the result, or the failure text,
+/// which can be empty. It comes from the block `origin` of the child's
+/// transcript.
 fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>) -> AgentMessage {
     let round = CompletionId {
         child: record.id.clone(),
@@ -2504,10 +2566,10 @@ impl ToolStatus {
     }
 }
 
-/// A child's or a side question's transcript from the start of its latest
-/// page, which the page holds none of until it shows it: the window its
-/// session holds holds that page, as the root's does
-/// ([`demi_agent_session::latest_page`]).
+/// A child's or a side question's transcript from the start of its latest page.
+///
+/// The page holds none of it until it shows it. The window its session holds
+/// holds that page, as the root's does ([`demi_agent_session::latest_page`]).
 pub(super) fn subagent_reset(subagent_id: NodeId, transcript: &demi_agent_transcript::TranscriptLog) -> ServerFrame {
     let start = demi_agent_session::latest_page(transcript);
     ServerFrame::SubagentTranscriptReset {

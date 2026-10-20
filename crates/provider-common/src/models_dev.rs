@@ -1,9 +1,10 @@
-//! The models.dev client: the one
-//! copy of the document a backend keeps, revalidated with the copy's `ETag`
-//! and `Last-Modified`, shared by concurrent readers, and kept after a failed
-//! request as a stale copy; and the mapping of its models onto the catalog's
-//! shape. The client knows nothing of vendors: its readers pick what they
-//! need, such as one vendor's model list.
+//! The models.dev client: the one copy of the document a backend keeps.
+//!
+//! The copy is revalidated with its `ETag` and `Last-Modified`, shared by
+//! concurrent readers, and kept after a failed request as a stale copy. The
+//! module also maps the document's models onto the catalog's shape. The client
+//! knows nothing of vendors: its readers pick what they need, such as one
+//! vendor's model list.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -251,17 +252,18 @@ impl ModelsDevSnapshot {
         self.document.0.get(id)
     }
 
-    /// The models an agent can work with ([`ModelsDevModel::agentic`]),
-    /// whose name or id holds each word of `query`, in
-    /// any case and order, newest release first, at most `limit`
-    /// (`crates/backend-providers/src/llm/vendors.rs`). A model several vendors
-    /// list is
-    /// one match: the listing of `vendor` when it lists the model, else
-    /// the publisher's ([`Listing::publisher`]). Two listings are the same
-    /// model when they name the same model without a vendor's prefix: the
-    /// part after the maker in `canonical_model_id`, where the document
-    /// gives one, else the last part of the listing's own id, both without
-    /// regard to case. A query without a word matches nothing.
+    /// The models an agent can work with ([`ModelsDevModel::agentic`]), whose
+    /// name or id holds each word of `query`, in any case and order, newest
+    /// release first, at most `limit`
+    /// (`crates/backend-providers/src/llm/vendors.rs`).
+    ///
+    /// A model several vendors list is one match: the listing of `vendor` when
+    /// it lists the model, else the publisher's ([`Listing::publisher`]).
+    ///
+    /// Two listings are the same model when they name the same model without a
+    /// vendor's prefix: the part after the maker in `canonical_model_id`, where
+    /// the document gives one, else the last part of the listing's own id, both
+    /// without regard to case. A query without a word matches nothing.
     pub fn search(&self, query: &str, vendor: Option<&str>, limit: usize) -> Vec<ModelsDevMatch> {
         let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         if words.is_empty() {
@@ -314,12 +316,12 @@ impl ModelsDevSnapshot {
         self.listed(vendor_id, |_| true)
     }
 
-    /// The models of vendor `vendor_id` an agent can work with, as the
-    /// catalog of an entry added from the vendor list
-    /// (`crates/shared-types/src/catalog.rs`): the search's models, so a
-    /// vendor's speech, image
-    /// and video models stay out; `None` for a vendor the document does not
-    /// list.
+    /// The models of vendor `vendor_id` an agent can work with, as the catalog
+    /// of an entry added from the vendor list
+    /// (`crates/shared-types/src/catalog.rs`).
+    ///
+    /// They are the search's models, so a vendor's speech, image and video
+    /// models stay out. `None` for a vendor the document does not list.
     pub fn agent_models(&self, vendor_id: &str) -> Option<ProviderModelList> {
         self.listed(vendor_id, ModelsDevModel::agentic)
     }
@@ -375,10 +377,11 @@ impl Listing<'_> {
         }
     }
 
-    /// The vendor that makes the model, as the listing names it: the first
-    /// part of `canonical_model_id`, else of an id such as an aggregator's
-    /// `google/gemini-3.8-flash`; none for a bare id without a canonical
-    /// one.
+    /// The vendor that makes the model, as the listing names it.
+    ///
+    /// It is the first part of `canonical_model_id`, else of an id such as an
+    /// aggregator's `google/gemini-3.8-flash`. None for a bare id without a
+    /// canonical one.
     fn maker(&self) -> Option<&str> {
         match &self.model.canonical_model_id {
             Some(canonical) => canonical.split_once('/').map(|(maker, _)| maker),
@@ -396,10 +399,11 @@ impl Listing<'_> {
         named.to_lowercase()
     }
 
-    /// The listing of the vendor that publishes the model: the one whose
-    /// vendor is the maker its listings name, such as Google for Gemini;
-    /// when the maker lists it nowhere, the first that names it by a bare
-    /// id of its own; else the first.
+    /// The listing of the vendor that publishes the model.
+    ///
+    /// It is the one whose vendor is the maker its listings name, such as
+    /// Google for Gemini. When the maker lists it nowhere, it is the first that
+    /// names it by a bare id of its own; else the first.
     fn publisher<'l, 'a>(listings: &'l [Listing<'a>]) -> Option<&'l Listing<'a>> {
         let maker = listings.iter().find_map(Listing::maker);
         maker
@@ -523,10 +527,12 @@ struct Cost {
 }
 
 impl ModelsDevModel {
-    /// Whether an agent can work with the model: the document states that
-    /// its output includes text, that it calls tools, and its context
-    /// window, which compaction needs. A model that writes only speech or
-    /// images, calls no tool, or states no window is not one.
+    /// Whether an agent can work with the model: the document states that its
+    /// output includes text, that it calls tools, and its context window, which
+    /// compaction needs.
+    ///
+    /// A model that writes only speech or images, calls no tool, or states no
+    /// window is not one.
     fn agentic(&self) -> bool {
         let writes_text = self
             .modalities
@@ -541,14 +547,18 @@ impl ModelsDevModel {
         writes_text && self.tool_call == Some(true) && windowed
     }
 
-    /// The model as a catalog model: `limit.context` and `limit.output` are its token limits,
-    /// an output limit above the window stating none, as some speech and
-    /// video models' do,
-    /// the types its input modalities give its accepted types
-    /// (`crates/shared-types/src/model.rs`), `reasoning` its thinking
-    /// support, the values of its `effort` reasoning option its efforts,
-    /// `tool_call` its tool support and `cost` its prices. What the document
-    /// does not state is unknown.
+    /// The model as a catalog model.
+    ///
+    /// - `limit.context` and `limit.output` are its token limits, an output
+    ///   limit above the window stating none, as some speech and video models'
+    ///   do.
+    /// - The types its input modalities give are its accepted types
+    ///   (`crates/shared-types/src/model.rs`).
+    /// - `reasoning` is its thinking support, and the values of its `effort`
+    ///   reasoning option are its efforts.
+    /// - `tool_call` is its tool support and `cost` its prices.
+    ///
+    /// What the document does not state is unknown.
     fn catalog(&self, id: &str) -> ProviderModel {
         let limit = self.limit.as_ref();
         let context_window = limit.and_then(|limit| tokens(limit.context));

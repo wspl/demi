@@ -19,14 +19,16 @@ pub(super) struct Asked {
 }
 
 impl Asked {
-    /// The side question `id` asking `of`, from its transcript: `earlier`,
-    /// the messages and texts its store holds from its first message up to
-    /// its window, read when the window does not hold that message
-    /// ([`Self::earlier`]), then the window's `blocks`; its last turn
-    /// `ended` or still works: the question the user typed, then each later
-    /// message of its own, each with the last text its turn wrote. A turn
-    /// still working, or one that wrote no text, as a failed one, is told
-    /// once it answers.
+    /// The side question `id` asking `of`, from its transcript.
+    ///
+    /// `earlier` holds the messages and texts its store holds from its first
+    /// message up to its window, read when the window does not hold that
+    /// message ([`Self::earlier`]). `blocks` is the window's blocks. `ended`
+    /// says whether its last turn ended or still works.
+    ///
+    /// The result is the question the user typed, then each later message of
+    /// its own, each with the last text its turn wrote. A turn still working,
+    /// or one that wrote no text, as a failed one, is told once it answers.
     pub(super) fn of(id: &NodeId, of: SideOf, earlier: &[Block], blocks: &[Block], ended: bool) -> Self {
         let first = |block: &Block| matches!(block, Block::User(user) if user.turn_id.as_str() == id.as_str());
         let since = match earlier.iter().position(first) {
@@ -61,11 +63,12 @@ impl Asked {
 }
 
 impl Asked {
-    /// What [`Asked::of`] reads before the window of the side question
-    /// `id`, whose window starts at `start` and `holds` its first message
-    /// or not: the messages and texts from that message on, read from its
-    /// `store` through the index of block types; none when the window holds
-    /// the message.
+    /// What [`Asked::of`] reads before the window of the side question `id`.
+    ///
+    /// The window starts at `start` and `holds` its first message or not. The
+    /// result is the messages and texts from that message on, read from its
+    /// `store` through the index of block types; none when the window holds the
+    /// message.
     pub(super) async fn earlier(
         store: &dyn SessionStore,
         id: &NodeId,

@@ -1,10 +1,16 @@
-//! An OpenAI key's speech and a compatible API's of the OpenAI Speech
-//! shape, against a scripted vendor built from OpenAI's Create speech reference
-//! (developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create):
-//! the body with a built-in voice by name and a custom one as `{ "id" }`, the bytes answered
-//! as the file; the built-in voices the catalog names, as OpenAI lists none; a compatible
-//! API's `GET …/audio/voices`, and none where the server has no such route. No test calls a
-//! vendor.
+//! An OpenAI key's speech and a compatible API's of the OpenAI Speech shape,
+//! against a scripted vendor built from OpenAI's Create speech reference
+//! (developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create).
+//!
+//! The tests cover:
+//!
+//! - the body with a built-in voice by name and a custom one as `{ "id" }`, the
+//!   bytes answered as the file;
+//! - the built-in voices the catalog names, as OpenAI lists none;
+//! - a compatible API's `GET …/audio/voices`, and none where the server has no
+//!   such route.
+//!
+//! No test calls a vendor.
 
 use std::sync::Arc;
 
@@ -47,11 +53,13 @@ const CATALOG: &[u8] = br#"{ "updated": "2026-10-01T00:00:00Z", "models": [
     { "vendor": "openai", "id": "gpt-image-2", "kind": "image", "name": "GPT Image 2" }
 ] }"#;
 
-/// Planted defects this catches: OpenAI's speech taken as having a default
-/// voice; a custom voice sent by name, or a built-in
-/// one as an object; `response_format` or `instructions` left out; the
-/// listing keeping a model the catalog does not know as audio; the voices
-/// not read from the catalog or not narrowed by the search.
+/// Planted defects this catches:
+///
+/// - OpenAI's speech taken as having a default voice;
+/// - a custom voice sent by name, or a built-in one as an object;
+/// - `response_format` or `instructions` left out;
+/// - the listing keeping a model the catalog does not know as audio;
+/// - the voices not read from the catalog or not narrowed by the search.
 // One scripted vendor, two requests: milliseconds.
 #[tokio::test]
 async fn an_openai_key_speaks_with_a_built_in_or_custom_voice_and_lists_the_catalogs_voices() {
@@ -100,13 +108,16 @@ async fn an_openai_key_speaks_with_a_built_in_or_custom_voice_and_lists_the_cata
     assert_eq!(vendor.requests().len(), 3, "OpenAI's voices are the catalog's, read with no request");
 }
 
-/// Planted defects this catches: a compatible API's voices taken from the
-/// catalog; vLLM-Omni's and SGLang-Omni's `uploaded_voices` left out or
-/// listed twice; a listed object with both `id` and `name`, or with
-/// `display_name` and `language`, failing the listing; a server without
-/// `/audio/voices` read as a failure rather than as listing none; a
-/// compatible server taken to need a voice, which it does not; its models
-/// not marked as speech.
+/// Planted defects this catches:
+///
+/// - a compatible API's voices taken from the catalog;
+/// - vLLM-Omni's and SGLang-Omni's `uploaded_voices` left out or listed twice;
+/// - a listed object with both `id` and `name`, or with `display_name` and
+///   `language`, failing the listing;
+/// - a server without `/audio/voices` read as a failure rather than as listing
+///   none;
+/// - a compatible server taken to need a voice, which it does not;
+/// - its models not marked as speech.
 // One scripted vendor, four requests: milliseconds.
 #[tokio::test]
 async fn a_compatible_api_lists_the_voices_it_serves_in_each_servers_shape_and_none_without_the_route() {

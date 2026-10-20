@@ -1,6 +1,10 @@
-//! One run (`crates/provider-common/src/contract.rs`): resolve the account's credentials, post
-//! the Chat Completions request to the chat proxy, and map its stream. A
-//! request refused with HTTP 401 before any event refreshes the token that
+//! One run (`crates/provider-common/src/contract.rs`).
+//!
+//! 1. Resolve the account's credentials.
+//! 2. Post the Chat Completions request to the chat proxy.
+//! 3. Map its stream.
+//!
+//! A request refused with HTTP 401 before any event refreshes the token that
 //! was refused, once, and is sent again.
 
 use std::sync::Arc;
@@ -125,11 +129,13 @@ pub(crate) fn run(
     }
 }
 
-/// `failure` with the code `usage_limit` when its answer is Grok Build's
-/// sign of a used-up account, as the Grok CLI reads it: a 402, whatever its
-/// body, or a 403 whose text says the account ran out of credits. Any other
-/// 403 stays a refused request (`permission_denied`), and a 429 only
-/// throttles.
+/// `failure` with the code `usage_limit` when its answer is Grok Build's sign
+/// of a used-up account, as the Grok CLI reads it.
+///
+/// - A 402 is one, whatever its body.
+/// - A 403 whose text says the account ran out of credits is one.
+/// - Any other 403 stays a refused request (`permission_denied`).
+/// - A 429 only throttles.
 pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
     let used_up = failure
         .diagnostics

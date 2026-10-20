@@ -1,10 +1,13 @@
-//! One agent's session: a cloneable handle over the session's state, which
-//! one worker task changes by running one action at a time while commands
-//! from the connection change it between the worker's awaits. The worker,
-//! the persister, the tasks that watch the commands that report to it and
-//! every command change the state only through [`SessionShared::update`],
-//! whose synchronous closure ends before any await, and each change's events
-//! reach the listeners after the state is released.
+//! One agent's session: a cloneable handle over the session's state.
+//!
+//! One worker task changes the state by running one action at a time, while
+//! commands from the connection change it between the worker's awaits. The
+//! worker, the persister, the tasks that watch the commands that report to the
+//! session and every command change the state only through
+//! [`SessionShared::update`].
+//!
+//! The closure it takes is synchronous and ends before any await. Each
+//! change's events reach the listeners after the state is released.
 //!
 //! ```text
 //!   connection
@@ -17,27 +20,34 @@
 //!      '--> SessionStore (checkpoint saves, blobs)
 //! ```
 //!
-//! The session knows no product and no plugin; its node's [`SessionRuntime`]
+//! The session knows no product and no plugin. Its node's [`SessionRuntime`]
 //! answers what it needs, and a tool never reaches into the session.
-//!
-//! The phase, the visible queue and whether the session has settled are
-//! derived from one status and the waiting actions; no second flag records
-//! them. The session is idle only once the save that ends an action has
-//! committed and no other action starts, so a client that sees `idle` can
-//! edit at once and what it then reads from the backend includes the finished
-//! turn. A send is never refused for being busy: it waits in the queue, and
-//! its message id makes a repeated send harmless. `retry`, `resume` and
-//! `compact` need an idle session. While an edit is prepared, the session
-//! refuses sends, steers, agent messages and command reports, and a model
-//! switch waits for it, so the edit never discards one.
 //!
 //! A session runs a tool only through the tool-call contract it defines
 //! (`ToolInvocation`, `ToolOutcome`, `ToolEffect`, `ToolFailure`), which the
 //! tools implement.
 //!
+//! # Status and queue
+//!
+//! The phase, the visible queue and whether the session has settled are derived
+//! from one status and the waiting actions; no second flag records them.
+//!
+//! - The session is idle only once the save that ends an action has committed
+//!   and no other action starts. A client that sees `idle` can edit at once,
+//!   and what it then reads from the backend includes the finished turn.
+//! - A send is never refused for being busy: it waits in the queue, and its
+//!   message id makes a repeated send harmless.
+//! - `retry`, `resume` and `compact` need an idle session.
+//! - While an edit is prepared, the session refuses sends, steers, agent
+//!   messages and command reports, and a model switch waits for it, so the edit
+//!   never discards one.
+//!
+//! # Cancellation
+//!
 //! A turn races provider streams, tools, backoff sleeps and admission waits
-//! against its cancellation token and drops them, but never races a store save;
-//! work that must outlive its waiter is owned by a task of the session, never
+//! against its cancellation token and drops them. It never races a store save.
+//!
+//! Work that must outlive its waiter is owned by a task of the session, never
 //! by the waiting future.
 
 mod ahead;
@@ -558,10 +568,11 @@ impl SessionShared {
         self.update(|core| core.outbox.push(event));
     }
 
-    /// Holds the events of the changes from now on until `release_events`:
-    /// a response that requested no tool may have ended the turn, whose end
-    /// reaches clients as one change, the response's last text with the
-    /// phase that goes idle after the closing save.
+    /// Holds the events of the changes from now on until `release_events`.
+    ///
+    /// A response that requested no tool may have ended the turn. That end
+    /// reaches clients as one change: the response's last text with the phase
+    /// that goes idle after the closing save.
     fn hold_events(&self) {
         self.bus.hold();
     }
@@ -609,21 +620,31 @@ impl AgentSession {
         Self::start(SessionCore::new(parts), deps)
     }
 
-    /// A session from its checkpoint. A tool call still marked executing
-    /// completes as interrupted and never runs again, naming the command it
-    /// started when `running`, the node's commands the conversation records
-    /// running, holds one of the call's, which then reports to the node as one
-    /// a call left running does; the session is idle, watches the commands its
-    /// calls left running again, and hands back its queue and whether a turn
-    /// was interrupted. Waiting input arrives only once the restored hold is
-    /// in place: before any watch starts, a root's interrupted turn ends with
-    /// its interruption record, which holds what arrives as any failed root's
-    /// turn does, and a child is held until its supervisor looks at it or its
-    /// next action starts (`crates/agent-server/src/server/tree/supervisor.rs`).
+    /// A session from its checkpoint.
     ///
-    /// The session holds the checkpoint's window, and of a checkpoint that
-    /// holds its whole path, such as a Fork's seed, the blocks from its last
-    /// `compaction_boundary` on; it reads what it keeps of the blocks before
+    /// A tool call still marked executing completes as interrupted and never
+    /// runs again. `running` is the node's commands that the conversation
+    /// records as running. When it holds one of the call's commands, the call
+    /// names that command, which then reports to the node as one a call left
+    /// running does.
+    ///
+    /// The restored session:
+    ///
+    /// - is idle;
+    /// - watches again the commands its calls left running;
+    /// - hands back its queue and whether a turn was interrupted.
+    ///
+    /// Waiting input arrives only once the restored hold is in place, before
+    /// any watch starts:
+    ///
+    /// - A root's interrupted turn ends with its interruption record, which
+    ///   holds what arrives as any failed root's turn does.
+    /// - A child is held until its supervisor looks at it or its next action
+    ///   starts (`crates/agent-server/src/server/tree/supervisor.rs`).
+    ///
+    /// The session holds the checkpoint's window. Of a checkpoint that holds
+    /// its whole path, such as a Fork's seed, it holds the blocks from its last
+    /// `compaction_boundary` on. It reads what it keeps of the blocks before
     /// from the store.
     pub async fn restore(
         checkpoint: Checkpoint,
@@ -862,19 +883,22 @@ impl AgentSession {
     }
 
     /// The transcript a reset sends to a page that holds its blocks up to
-    /// `from`, whose block there is `edge`: the blocks it starts with
-    /// before the window are read from the store. Nothing awaits between
-    /// the reading of the window and the return, so a caller that sends it
-    /// at once sends the transcript as it is then.
+    /// `from`, whose block there is `edge`.
+    ///
+    /// The blocks before the window that the transcript starts with are read
+    /// from the store. Nothing awaits between the reading of the window and the
+    /// return, so a caller that sends it at once sends the transcript as it is
+    /// then.
     pub async fn reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> Result<Reset, StoreError> {
         window::reset(&self.shared, from, edge).await
     }
 
     /// The automation's run whose message is the latest the user or an
-    /// automation sent this agent, with when it came: every turn it starts
-    /// or that continues from it works for that run, until the user writes
-    /// again, in a message or a steer. None when the user's own is the latest,
-    /// or neither came.
+    /// automation sent this agent, with when it came.
+    ///
+    /// Every turn it starts or that continues from it works for that run, until
+    /// the user writes again, in a message or a steer. None when the user's own
+    /// is the latest, or neither came.
     pub fn automation_input(&self) -> Option<(AutomationMark, Timestamp)> {
         self.shared.read(|core| core.transcript.user_input().flatten())
     }
@@ -982,9 +1006,10 @@ impl AgentSession {
     }
 
     /// Unwinds the unfinished turn to its resume point and continues it.
-    /// `reason`, when given, is what the model reads before it goes on:
-    /// Demi's own for a resume of its own, such as a subagent's after a
-    /// backend restart.
+    ///
+    /// `reason`, when given, is what the model reads before it goes on: Demi's
+    /// own for a resume of its own, such as a subagent's after a backend
+    /// restart.
     pub fn resume(&self, reason: Option<&str>) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| {
             core.admit(ActionKind::Resume {
@@ -1008,17 +1033,19 @@ impl AgentSession {
     }
 
     /// The usage as [`context_usage`](Self::context_usage) says it, without
-    /// reading a blob: none while a block the estimate weighs references a
-    /// medium the session holds nothing for, as a restored session can.
-    /// The estimate is read when the window in use is known, with nothing
-    /// awaited after it, so it is the session's estimate at the moment this
-    /// returns.
+    /// reading a blob.
+    ///
+    /// None while a block the estimate weighs references a medium the session
+    /// holds nothing for, as a restored session can. The estimate is read when
+    /// the window in use is known, with nothing awaited after it, so it is the
+    /// session's estimate at the moment this returns.
     pub async fn held_context_usage(&self) -> Option<ContextUsage> {
         compaction::held_context_usage(&self.shared).await
     }
 
-    /// Why the user's `compact` would be refused now, or none when it is
-    /// taken: below half the window in use, unless the unfinished turn
+    /// Why the user's `compact` would be refused now, or none when it is taken.
+    ///
+    /// It is refused below half the window in use, unless the unfinished turn
     /// failed for its size. A usage that cannot be read refuses it with the
     /// read's failure.
     pub async fn compaction_refusal(&self) -> Option<Refusal> {
@@ -1170,13 +1197,14 @@ impl AgentSession {
         self.shared.read(|core| core.transcript.holds_call(id))
     }
 
-    /// The `text`, `error`, `response` and `user` blocks after the message
-    /// that opened `turn`, through the next message, which tells the turn
-    /// ended, or to the transcript's end: what tells how the turn ended. A
-    /// turn whose message is before the window, as when a compaction ran
-    /// inside it or later turns went on and compacted, is read from the
-    /// store up to the window, through the index of block types. None when
-    /// the path holds no message of `turn`.
+    /// The blocks that tell how `turn` ended.
+    ///
+    /// These are the `text`, `error`, `response` and `user` blocks after the
+    /// message that opened `turn`, through the next message, which tells the
+    /// turn ended, or to the transcript's end. A turn whose message is before
+    /// the window, as when a compaction ran inside it or later turns went on
+    /// and compacted, is read from the store up to the window, through the
+    /// index of block types. None when the path holds no message of `turn`.
     pub async fn turn_blocks(&self, turn: &TurnId) -> Result<Option<Vec<Block>>, StoreError> {
         let kinds = [Kind::Text, Kind::Error, Kind::Response, Kind::User];
         let of_kinds = |block: &Block| kinds.iter().any(|kind| kind.holds(block));
@@ -1264,12 +1292,14 @@ impl AgentSession {
         })
     }
 
-    /// A Fork's seed from this live session, through the completed text
-    /// `end` names: captured in one step, with the model a switch the
-    /// session accepted would use. The blocks before the window are named as
-    /// the store's rows, which the destination's store copies, under the
-    /// session's save order, so no rewrite before the window comes between
-    /// the capture and the naming.
+    /// A Fork's seed from this live session, through the completed text `end`
+    /// names.
+    ///
+    /// The seed is captured in one step, with the model a switch the session
+    /// accepted would use. The blocks before the window are named as the
+    /// store's rows, which the destination's store copies, under the session's
+    /// save order, so no rewrite before the window comes between the capture
+    /// and the naming.
     pub async fn prepare_fork(&self, end: ForkEnd<'_>) -> Result<ForkSeed, ForkError> {
         let capture = |core: &SessionCore| {
             let state = demi_agent_store::CheckpointState {
@@ -1292,10 +1322,11 @@ impl AgentSession {
         self.shared.update(SessionCore::wake);
     }
 
-    /// Keeps waiting input from opening a continuation until the next
-    /// action starts, as a restored interrupted session does: a closing
-    /// child admits what its own children deliver, keeps it in its final
-    /// checkpoint, and runs nothing more.
+    /// Keeps waiting input from opening a continuation until the next action
+    /// starts, as a restored interrupted session does.
+    ///
+    /// A closing child admits what its own children deliver, keeps it in its
+    /// final checkpoint, and runs nothing more.
     pub fn hold(&self) {
         self.shared.update(SessionCore::hold);
     }
@@ -1307,9 +1338,11 @@ impl AgentSession {
     }
 
     /// Changes how often `command`, which one of the session's calls left
-    /// running, reports from now on: every `interval_ms`, or only its end
-    /// when none (`crates/agent-session/src/reports.rs`). False when the session
-    /// does not watch it.
+    /// running, reports from now on.
+    ///
+    /// It reports every `interval_ms`, or only at its end when none
+    /// (`crates/agent-session/src/reports.rs`). False when the session does not
+    /// watch it.
     pub fn set_interval(&self, command: &CommandId, interval_ms: Option<u32>) -> bool {
         if !self
             .shared
@@ -1349,9 +1382,10 @@ impl AgentSession {
         }
     }
 
-    /// Stops the running action and returns once it recorded the stop;
-    /// what waits to run stays, and runs once admission lets it.
-    /// `hold` names the hold, as the stopped calls' results say it
+    /// Stops the running action and returns once it recorded the stop.
+    ///
+    /// What waits to run stays, and runs once admission lets it. `hold` names
+    /// the hold, as the stopped calls' results say it
     /// (`crates/agent-session/src/core.rs`), such as "the Cloud is being
     /// reset".
     pub async fn stop_running(&self, hold: &str) {
@@ -1361,18 +1395,20 @@ impl AgentSession {
         }
     }
 
-    /// Records a model switch, which lands at the next provider request; one
-    /// that arrives while an edit is being prepared waits for the edit. A
-    /// runtime the switch replaces is closed once it serves no run. A session
-    /// that is closing gives the switch back.
+    /// Records a model switch, which lands at the next provider request.
+    ///
+    /// A switch that arrives while an edit is being prepared waits for the
+    /// edit. A runtime the switch replaces is closed once it serves no run. A
+    /// session that is closing gives the switch back.
     pub fn update_model(&self, switch: ModelSwitch) -> Result<(), ModelSwitch> {
         self.shared.update(|core| core.record_switch(switch))
     }
 
     /// Readies ahead what the session's next request needs, now that it is
-    /// known but for its input (`crates/provider-claude-code/src/prepared.rs`):
-    /// a page opened the conversation, or the user chose another
-    /// model, effort or account for it. From then on each action's end
+    /// known but for its input (`crates/provider-claude-code/src/prepared.rs`).
+    ///
+    /// It is called when a page opened the conversation, or the user chose
+    /// another model, effort or account for it. From then on each action's end
     /// readies it again. It is done once the session is idle; a subagent's
     /// session is never asked.
     pub fn prepare_ahead(&self, ahead: Ahead) {
@@ -1393,10 +1429,11 @@ impl AgentSession {
     }
 
     /// A runtime fork of the session's current runtime, when that runtime
-    /// serves the provider entry `provider_id`: the same provider and
-    /// configuration, none of its execution state; none when it serves
-    /// another entry. A run in progress holds the runtime, so the fork waits
-    /// until it is back.
+    /// serves the provider entry `provider_id`.
+    ///
+    /// The fork has the same provider and configuration and none of its
+    /// execution state. It is none when the runtime serves another entry. A run
+    /// in progress holds the runtime, so the fork waits until it is back.
     pub async fn fork_runtime_for(
         &self,
         provider_id: &str,
@@ -1430,7 +1467,9 @@ impl AgentSession {
     /// Disposes the session: refuses new actions, stops a running one as a
     /// shutdown, keeps the queue, the waiting input and the commands that
     /// report to it, saves the final checkpoint and closes the provider
-    /// runtimes. The error is a final checkpoint that could not be saved.
+    /// runtimes.
+    ///
+    /// The error is a final checkpoint that could not be saved.
     pub async fn dispose(&self) -> Result<(), StoreError> {
         let first = self.shared.update(SessionCore::begin_dispose);
         let mut status = self.shared.status.subscribe();

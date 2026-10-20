@@ -10,10 +10,12 @@ use serde::Deserialize;
 use crate::{CallOutcome, VendorCall};
 
 /// A stored tool call id as the Messages API takes a tool use's and its
-/// result's, which allows letters, digits, `_` and `-`: each other
-/// character becomes `_`, so Codex's `call_7Qm…|fc_68e…` goes as
-/// `call_7Qm…_fc_68e…`. It follows from the stored id alone, so every request
-/// sends the same bytes; an id the API allows goes as it is.
+/// result's.
+///
+/// The API allows letters, digits, `_` and `-`: each other character becomes
+/// `_`, so Codex's `call_7Qm…|fc_68e…` goes as `call_7Qm…_fc_68e…`. It follows
+/// from the stored id alone, so every request sends the same bytes; an id the
+/// API allows goes as it is.
 pub fn tool_use_id(id: &str) -> Cow<'_, str> {
     let allowed = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
     if id.chars().all(allowed) {
@@ -54,12 +56,13 @@ impl MessagesUsage {
     }
 }
 
-/// The token counts of the stream's latest API call: its last
-/// `message_delta`'s, the API's own count of that call, each count the delta
-/// leaves out as the same call's `message_start` stated it, since the API's
-/// counts are cumulative over a message. A count the delta states, even 0,
-/// is that count. None until a `message_delta` states counts: nothing stands
-/// in for a count the API did not send.
+/// The token counts of the stream's latest API call.
+///
+/// They are its last `message_delta`'s, the API's own count of that call, each
+/// count the delta leaves out as the same call's `message_start` stated it,
+/// since the API's counts are cumulative over a message. A count the delta
+/// states, even 0, is that count. None until a `message_delta` states counts:
+/// nothing stands in for a count the API did not send.
 #[derive(Debug, Default)]
 pub struct CallUsage {
     /// The id of the latest call's message.

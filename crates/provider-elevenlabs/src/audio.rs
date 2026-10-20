@@ -1,17 +1,26 @@
-//! An ElevenLabs key's audio role: speech from `POST
-//! /v1/text-to-speech/<voice>`, music from `POST /v1/music` and sound effects
-//! from `POST /v1/sound-generation`, each answered with the audio's bytes in
-//! the `output_format` its query names ([Create
-//! speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert),
-//! [Compose music](https://elevenlabs.io/docs/api-reference/music/compose),
-//! [Create sound
-//! effect](https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert)).
-//! Speech needs a voice, as ElevenLabs has no default one; music never sends a
-//! seed, which ElevenLabs takes only with a composition plan; WAV of music or
-//! an effect, which ElevenLabs does not make, is asked as 44.1 kHz PCM and
-//! handed on to be wrapped. The voices are `GET /v2/voices`, every page ([List
-//! voices](https://elevenlabs.io/docs/api-reference/voices/search)), and the
-//! speech models `GET /v1/models` with `can_do_text_to_speech` ([List
+//! An ElevenLabs key's audio role.
+//!
+//! Each kind of audio is one request, answered with the audio's bytes in the
+//! `output_format` its query names:
+//!
+//! - Speech is `POST /v1/text-to-speech/<voice>` ([Create
+//!   speech](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)).
+//! - Music is `POST /v1/music` ([Compose
+//!   music](https://elevenlabs.io/docs/api-reference/music/compose)).
+//! - Sound effects are `POST /v1/sound-generation` ([Create sound
+//!   effect](https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert)).
+//!
+//! Rules of the requests:
+//!
+//! - Speech needs a voice, as ElevenLabs has no default one.
+//! - Music never sends a seed, which ElevenLabs takes only with a composition
+//!   plan.
+//! - WAV of music or an effect, which ElevenLabs does not make, is asked as
+//!   44.1 kHz PCM and handed on to be wrapped.
+//!
+//! The voices are `GET /v2/voices`, every page ([List
+//! voices](https://elevenlabs.io/docs/api-reference/voices/search)). The speech
+//! models are `GET /v1/models` with `can_do_text_to_speech` ([List
 //! models](https://elevenlabs.io/docs/api-reference/models/list)).
 
 use std::sync::Arc;
@@ -260,9 +269,12 @@ impl AudioMaker for KeyAudio {
 }
 
 /// The `output_format` a call of `kind` asks for `format`, and the PCM it
-/// answers for one ElevenLabs makes no file of: speech has MP3, WAV and
-/// Opus; music and effects MP3 and Opus, and PCM for a WAV. None asks
-/// ElevenLabs' default, MP3; FLAC, which it does not make, comes as MP3.
+/// answers for one ElevenLabs makes no file of.
+///
+/// - Speech has MP3, WAV and Opus.
+/// - Music and effects have MP3 and Opus, and PCM for a WAV.
+/// - None asks ElevenLabs' default, MP3.
+/// - FLAC, which it does not make, comes as MP3.
 fn output_format(kind: AudioKind, format: AudioFormatAsk) -> (Option<&'static str>, Option<Pcm>) {
     match (kind, format) {
         (_, AudioFormatAsk::Mp3 | AudioFormatAsk::Flac) => (None, None),

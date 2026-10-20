@@ -1,9 +1,10 @@
-//! The one HTTP client of the requests the backend makes to provider
-//! entries: a turn, a model list, an
-//! image. A request whose host is a device id goes to the backend's
-//! [`DeviceRoute`], which hands it to that device's runner when the device
-//! is one of the entry owner's Hosts and the port is exposed; every other
-//! request, and one naming no device of the owner's, goes to the network.
+//! The one HTTP client of the requests the backend makes to provider entries: a
+//! turn, a model list, an image.
+//!
+//! A request whose host is a device id goes to the backend's [`DeviceRoute`],
+//! which hands it to that device's runner when the device is one of the entry
+//! owner's Hosts and the port is exposed. Every other request, and one naming
+//! no device of the owner's, goes to the network.
 
 use std::fmt;
 use std::sync::Arc;
@@ -160,10 +161,12 @@ impl ProviderHttp {
         }
     }
 
-    /// The same way to the network and the devices on a client that follows
-    /// no redirect, for a caller that follows them itself, choosing each
-    /// hop's headers: reqwest sets its redirect policy per client, not per
-    /// request. It builds a client, its own connection pool included.
+    /// The same way to the network and the devices on a client that follows no
+    /// redirect, for a caller that follows them itself, choosing each hop's
+    /// headers.
+    ///
+    /// reqwest sets its redirect policy per client, not per request. It builds
+    /// a client, its own connection pool included.
     pub fn without_redirects(&self) -> Result<Self, reqwest::Error> {
         let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build()?;
         Ok(Self {

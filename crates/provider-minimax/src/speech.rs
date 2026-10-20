@@ -1,13 +1,17 @@
-//! MiniMax's speech through its key: `POST /v1/t2a_v2` on the entry's origin reads
-//! `text` aloud in `voice_setting.voice_id` at `voice_setting.speed`, in the format
-//! `audio_setting.format` names, and answers the audio as hexadecimal text in
+//! MiniMax's speech through its key.
+//!
+//! `POST /v1/t2a_v2` on the entry's origin reads `text` aloud in
+//! `voice_setting.voice_id` at `voice_setting.speed`, in the format
+//! `audio_setting.format` names. It answers the audio as hexadecimal text in
 //! `data.audio`, or the refusal its `base_resp` states ([Text to
-//! speech](https://platform.minimax.io/docs/api-reference/speech-t2a-http)). Its
-//! voices, the system's, the cloned and the designed ones, are what `POST
+//! speech](https://platform.minimax.io/docs/api-reference/speech-t2a-http)).
+//!
+//! Its voices, the system's, the cloned and the designed ones, are what `POST
 //! /v1/get_voice` lists for `voice_type: "all"` ([Get
 //! voice](https://platform.minimax.io/docs/api-reference/voice-management-get)).
-//! MiniMax has no default voice, so a call without `--voice` fails before it is sent,
-//! and makes no music: it closed its music API to new users.
+//!
+//! MiniMax has no default voice, so a call without `--voice` fails before it is
+//! sent. It makes no music: it closed its music API to new users.
 
 use std::sync::Arc;
 

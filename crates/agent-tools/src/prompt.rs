@@ -1,29 +1,39 @@
-//! A node's system prompt: the identity, the harness guide, the rules of
-//! the `shell` tool, the capability index of the node's commands and the
-//! model identity, in that order, then the instructions a subagent profile
-//! added.
+//! A node's system prompt.
+//!
+//! It holds these layers, in this order:
+//!
+//! 1. the identity;
+//! 2. the harness guide;
+//! 3. the rules of the `shell` tool;
+//! 4. the capability index of the node's commands;
+//! 5. the model identity;
+//! 6. the instructions a subagent profile added.
 //!
 //! The prompt is rendered once, when the node is assembled, and holds no time,
 //! id, Host or state, so the prefix of every request changes only when the
 //! node's command set changes, with a Demi release, or on a model switch.
-//! What changes, or differs by Host, user or project, reaches the model as a
-//! `context` block appended to the transcript, never as a change to a layer;
-//! details reach it when it asks, as a command's `--help` result. The prompt
-//! never lists what the user can change, such as the subagent profiles, the
-//! skills or the models, which would go stale and cost every request its
-//! tokens: it names the command that answers at call time. Every request
-//! carries the whole prompt, so it is kept short.
 //!
-//! The identity says what Demi is, not one job it does, and guidance that
-//! holds only for software is written as a working habit that applies to any
-//! work. A profile's instructions never replace it, so a profile's node is
-//! Demi with the same harness, tools, capabilities and model, told what its
-//! kind of work is. A rule belongs in the harness guide only when its moment
-//! arises during ordinary work rather than while the model reads one
-//! command's help; otherwise it belongs in that command's help. The model
-//! identity line is generated from the node's selection and never written by
-//! hand: a name that does not follow the configuration makes the model claim
-//! to be another.
+//! - What changes, or differs by Host, user or project, reaches the model as a
+//!   `context` block appended to the transcript, never as a change to a layer.
+//! - Details reach it when it asks, as a command's `--help` result.
+//! - The prompt never lists what the user can change, such as the subagent
+//!   profiles, the skills or the models, which would go stale and cost every
+//!   request its tokens. It names the command that answers at call time.
+//! - Every request carries the whole prompt, so it is kept short.
+//!
+//! Writing the layers:
+//!
+//! - The identity says what Demi is, not one job it does. Guidance that holds
+//!   only for software is written as a working habit that applies to any work.
+//! - A profile's instructions never replace the identity, so a profile's node
+//!   is Demi with the same harness, tools, capabilities and model, told what
+//!   its kind of work is.
+//! - A rule belongs in the harness guide only when its moment arises during
+//!   ordinary work rather than while the model reads one command's help;
+//!   otherwise it belongs in that command's help.
+//! - The model identity line is generated from the node's selection and never
+//!   written by hand: a name that does not follow the configuration makes the
+//!   model claim to be another.
 
 use demi_agent_session::{PromptLayer, SystemPrompt};
 use demi_host_interface::CapabilityIndex;
@@ -31,11 +41,12 @@ use demi_host_interface::CapabilityIndex;
 use crate::input::DESCRIPTION;
 
 /// The rules of the `shell` tool, which every node's system prompt carries.
+///
 /// Waiting is ending the turn: a call that watches a `sleep` holds the turn
 /// while the user watches the agent wait, and the work's end wakes the model
 /// anyway. Piping into `head` or `tail` is discouraged because it hides the
-/// command's exit status behind the pipe's, hides a long command's output
-/// until it ends and turns a returned image into a fragment of its bytes.
+/// command's exit status behind the pipe's, hides a long command's output until
+/// it ends and turns a returned image into a fragment of its bytes.
 const TOOL_RULES: &[&str] = &[
     "The shell tool:",
     "- Use shell to run a script. Every call starts in your working directory. intervalMs says how often a command still running when its call returns reports to you: a number from 15000 to 600000 for a command that ends, such as a build or a test suite, which reports every interval until it ends, and when it ends. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its start-up output is quiet, and the command reports only its end.",
@@ -60,12 +71,13 @@ pub struct ModelIdentity<'a> {
     pub id: &'a str,
 }
 
-/// The system prompt of a node by its layers: the product's `identity`,
-/// the product's harness `guide`, the rules of the `shell` tool, the
-/// capability `index` of its commands when it has any, the line naming
-/// `model`, and last, under a heading of their own, the instructions its
-/// subagent profile `added`, which never replace any of the product's
-/// layers.
+/// The system prompt of a node by its layers.
+///
+/// The layers are the product's `identity`, the product's harness `guide`, the
+/// rules of the `shell` tool, the capability `index` of its commands when it
+/// has any, the line naming `model`, and last, under a heading of their own,
+/// the instructions its subagent profile `added`, which never replace any of
+/// the product's layers.
 pub fn system_prompt(
     identity: &str,
     guide: &str,

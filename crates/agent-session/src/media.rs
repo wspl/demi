@@ -16,17 +16,19 @@ pub(super) async fn model_view(
     held(s, cancel, SessionCore::model_view).await
 }
 
-/// What `of` makes of the session once it holds the media `of` needs. First
-/// the session lets go of the media nothing references any more; then it
-/// reads the blobs of the media `of` names that it holds nothing for, which
-/// after a restore is every one. A stop ends the reads, and what they found
-/// is dropped.
+/// What `of` makes of the session once it holds the media `of` needs.
 ///
-/// Inside an action one read covers what `of` needs: only the running
-/// action changes the transcript, and the action that asked is waiting
-/// here. Outside an action, as when a `compact` frame asks for the usage,
-/// an action may change the transcript during the read; the session then
-/// reads what is still missing.
+/// 1. The session lets go of the media nothing references any more.
+/// 2. It reads the blobs of the media `of` names that it holds nothing for,
+///    which after a restore is every one.
+///
+/// A stop ends the reads, and what they found is dropped.
+///
+/// Inside an action one read covers what `of` needs: only the running action
+/// changes the transcript, and the action that asked is waiting here. Outside
+/// an action, as when a `compact` frame asks for the usage, an action may
+/// change the transcript during the read; the session then reads what is still
+/// missing.
 pub(super) async fn held<T>(
     s: &SessionShared,
     cancel: &TurnCancel,

@@ -1,7 +1,8 @@
-//! The Messages API request body (`crates/shared-types/src/model.rs`): the
-//! transcript as alternating user and assistant messages, the tools, the
-//! output limit, thinking, the service tier, and the marks where the vendor
-//! caches a session's requests.
+//! The Messages API request body (`crates/shared-types/src/model.rs`).
+//!
+//! It holds the transcript as alternating user and assistant messages, the
+//! tools, the output limit, thinking, the service tier, and the marks where the
+//! vendor caches a session's requests.
 
 use std::borrow::Cow;
 
@@ -25,12 +26,14 @@ const DEFAULT_MAX_TOKENS: u32 = 32_000;
 /// keeps below `max_tokens`.
 const MIN_THINKING_BUDGET: u32 = 1_024;
 
-/// How long the vendor keeps an entry after the request that wrote or last
-/// read it: an hour, because a session's requests are often more than five
-/// minutes apart (a `shell` call watches a command for up to ten, and a user
-/// reads an answer before replying), and a lost entry costs 1.25 times the
-/// input price on the whole history where the hour costs twice the input price
-/// on what each request adds.
+/// How long the vendor keeps an entry after the request that wrote or last read
+/// it: an hour.
+///
+/// A session's requests are often more than five minutes apart (a `shell` call
+/// watches a command for up to ten, and a user reads an answer before
+/// replying). A lost entry costs 1.25 times the input price on the whole
+/// history, where the hour costs twice the input price on what each request
+/// adds.
 const CACHE_LIFETIME: &str = "1h";
 
 /// A mark on the block where the vendor writes a cache entry, and where a
@@ -231,13 +234,18 @@ fn body(request: &InferenceRequest, policy: VendorPolicy) -> Body<'_> {
         system.push(Content::from(prompt));
     }
     let mut tools: Vec<Tool<'_>> = request.tools.iter().map(Tool::from).collect();
-    // The API writes a cache entry only at a marked block, and a mark finds
-    // an earlier entry only within the 20 blocks that end at it. A turn can
-    // add more than that (ten parallel tool calls with their results), and one
-    // mark at the end would miss the previous request's entry, so a session's
-    // request carries up to three: the shared prefix, the last block the
-    // session's latest answered request carried, and the request's last
-    // block. They are the block form, not the top-level automatic one, which
+    // The API writes a cache entry only at a marked block, and a mark finds an
+    // earlier entry only within the 20 blocks that end at it. A turn can add
+    // more than that (ten parallel tool calls with their results), and one mark
+    // at the end would miss the previous request's entry.
+    //
+    // So a session's request carries up to three marks:
+    //
+    // - the shared prefix;
+    // - the last block the session's latest answered request carried;
+    // - the request's last block.
+    //
+    // They are the block form, not the top-level automatic one, which
     // compatible endpoints do not all accept.
     let messages = match request.prompt_cache {
         PromptCache::Off => messages(&request.items, 0).0,
@@ -303,15 +311,18 @@ fn last_position(messages: &[Message<'_>]) -> Option<Position> {
     Some((messages.len() - 1, last.content.len() - 1))
 }
 
-/// The thinking setting as the Messages API takes it: a budget as a budget,
-/// kept at least the API's minimum and below `max_tokens`; an effort or an
-/// adaptive setting as adaptive thinking at that effort, which streams a
-/// summary unless the setting turns summaries off, or, for a vendor that
-/// takes only budgets, as the effort's budget; off or no setting as no
-/// thinking field. The newest Claude models refuse a token budget, which is why
-/// an effort never becomes one on Anthropic's own API; adaptive thinking and
-/// `output_config` are Anthropic's own, so a vendor on the same wire gets the
-/// budget.
+/// The thinking setting as the Messages API takes it.
+///
+/// - A budget is a budget, kept at least the API's minimum and below
+///   `max_tokens`.
+/// - An effort or an adaptive setting is adaptive thinking at that effort,
+///   which streams a summary unless the setting turns summaries off. For a
+///   vendor that takes only budgets, it is the effort's budget.
+/// - Off or no setting is no thinking field.
+///
+/// The newest Claude models refuse a token budget, which is why an effort never
+/// becomes one on Anthropic's own API. Adaptive thinking and `output_config`
+/// are Anthropic's own, so a vendor on the same wire gets the budget.
 fn thinking(
     config: Option<&ThinkingConfig>,
     max_tokens: u32,
@@ -349,11 +360,11 @@ fn thinking(
     }
 }
 
-/// The transcript as messages: consecutive items of one role share a
-/// message, so a turn's text, thinking and tool uses form one assistant
-/// message and the tool results that answer them one user message. Also the
-/// position of the last block of the first `answered` items, none while they
-/// have no block.
+/// The transcript as messages: consecutive items of one role share a message.
+///
+/// So a turn's text, thinking and tool uses form one assistant message, and the
+/// tool results that answer them one user message. Also the position of the
+/// last block of the first `answered` items, none while they have no block.
 fn messages(items: &[InferenceItem], answered: usize) -> (Vec<Message<'_>>, Option<Position>) {
     let mut messages: Vec<Message<'_>> = Vec::new();
     let mut answered_end = None;
@@ -387,13 +398,14 @@ fn item_content(item: &InferenceItem) -> Option<(Role, Vec<Content<'_>>)> {
             kept_past_summary,
             ..
         } => {
-            // Unsigned thinking and another vendor's signature cannot be
-            // sent back; the vendor needs only its own. The vendor's newest
-            // models check each replayed thinking block against the history
-            // before it, and after compaction the latest answer's reasoning
-            // follows a summary instead of that history, so reasoning kept
-            // past a summary is left out (leaving blocks out at the start of
-            // the history is allowed).
+            // Unsigned thinking and another vendor's signature cannot be sent
+            // back; the vendor needs only its own.
+            //
+            // The vendor's newest models check each replayed thinking block
+            // against the history before it. After compaction the latest
+            // answer's reasoning follows a summary instead of that history, so
+            // reasoning kept past a summary is left out (leaving blocks out at
+            // the start of the history is allowed).
             if *kept_past_summary {
                 return None;
             }
@@ -495,9 +507,9 @@ fn user_content(content: &[UserPart]) -> Vec<Block<'_>> {
 }
 
 /// A tool result's content: text, images and documents
-/// (`crates/provider-common/src/contract.rs`); a video becomes a placeholder
-/// that names its
-/// type.
+/// (`crates/provider-common/src/contract.rs`).
+///
+/// A video becomes a placeholder that names its type.
 fn tool_result_content(output: &[ResultPart]) -> Vec<ResultBlock<'_>> {
     output
         .iter()

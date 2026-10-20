@@ -1,7 +1,9 @@
 //! The lists of changed files a transcript's shell calls carry
-//! (`crates/agent-store/src/changes.rs`): a call's own, its run's and its request's, as the session
-//! lists a call within its agent's directory and a stored transcript is
-//! listed again in order.
+//! (`crates/agent-store/src/changes.rs`): a call's own, its run's and its
+//! request's.
+//!
+//! The session lists a call within its agent's directory, and a stored
+//! transcript is listed again in order.
 
 use std::collections::HashMap;
 
@@ -377,12 +379,14 @@ fn a_run_counts_a_file_from_before_the_run_and_a_request_from_before_the_request
 
 #[test]
 fn only_files_within_the_agents_directory_show_and_a_move_into_it_brings_its_edits() {
-    // The agent works in `/home/u/shop`. Its first call writes a scratch
-    // file in `/tmp`, edits `~/.zshrc`, writes in the conversation's scratch
-    // directory under `~/.demi` and in a sibling checkout whose name
-    // begins with the directory's, and edits `src/cart.ts`: only
-    // `src/cart.ts` shows. Its second moves the scratch file over
-    // `src/page.ts`, which then shows with the edit made in `/tmp`.
+    // The agent works in `/home/u/shop`.
+    //
+    // - Its first call writes a scratch file in `/tmp`, edits `~/.zshrc`,
+    //   writes in the conversation's scratch directory under `~/.demi` and in a
+    //   sibling checkout whose name begins with the directory's, and edits
+    //   `src/cart.ts`. Only `src/cart.ts` shows.
+    // - Its second moves the scratch file over `src/page.ts`, which then shows
+    //   with the edit made in `/tmp`.
     let mut copies = Copies::default();
     let fresh = |copies: &mut Copies, text: &str| copies.edit("", text);
     let cart = copies.edit("a\n", "a\nb\n");
@@ -473,11 +477,13 @@ fn a_path_out_through_dot_dot_or_in_windows_spelling_is_judged_by_its_parts() {
 
 #[test]
 fn a_calls_files_are_judged_against_the_directory_it_started_in_and_never_again() {
-    // The first call starts in `shop` and writes `src/a.ts` there; then the
+    // The first call starts in `shop` and writes `src/a.ts` there. Then the
     // agent's directory becomes `shop/docs`, where the second call writes
-    // `guide.md`. The second call's lists keep `src/a.ts`, judged as the
-    // first call was stored, beside `guide.md`; its own `src/b.ts`, outside
-    // `shop/docs`, is left out.
+    // `guide.md`.
+    //
+    // The second call's lists keep `src/a.ts`, judged as the first call was
+    // stored, beside `guide.md`. Its own `src/b.ts`, outside `shop/docs`, is
+    // left out.
     let mut copies = Copies::default();
     let (a, guide, b) = (copies.edit("", "a\n"), copies.edit("", "g\n"), copies.edit("", "b\n"));
     let mut blocks = vec![

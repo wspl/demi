@@ -1,18 +1,22 @@
 //! A session's runtime and its runs (`crates/provider-claude-code/src/mcp.rs`,
-//! `crates/provider-claude-code/src/live.rs`). The runtime keeps
-//! at most one CLI process. A run takes it, or starts a new one, and hands it
-//! back only where the conversation can go on in it: at the `result` printed
-//! once the CLI took every message the run wrote, and at a batch of tool calls
-//! whose results the next
-//! run delivers. It hands
-//! it back before the run's last event, since the agent stops reading a run
-//! at its failure. Every other end closes it, SIGTERM first.
-//! When the next request is known but for its input, the runtime prepares
-//! its process ahead, and the request takes that one as a kept process
-//! when it is the request it was prepared for (`crates/provider-claude-code/src/prepared.rs`).
+//! `crates/provider-claude-code/src/live.rs`).
+//!
+//! The runtime keeps at most one CLI process. A run takes it, or starts a new
+//! one, and hands it back only where the conversation can go on in it:
+//!
+//! - at the `result` printed once the CLI took every message the run wrote;
+//! - at a batch of tool calls whose results the next run delivers.
+//!
+//! It hands it back before the run's last event, since the agent stops reading
+//! a run at its failure. Every other end closes it, SIGTERM first.
+//!
+//! When the next request is known but for its input, the runtime prepares its
+//! process ahead, and the request takes that one as a kept process when it is
+//! the request it was prepared for
+//! (`crates/provider-claude-code/src/prepared.rs`).
 //!
 //! A request that gains nothing over what a kept process received, no new user
-//! message and no results for held calls, is a retry of a turn that failed: the
+//! message and no results for held calls, is a retry of a turn that failed. The
 //! process already holds the transcript and would wait for input that never
 //! comes, so a new one resumes the history the retry cut back to.
 //!
@@ -21,11 +25,13 @@
 //! batch's results), each with a `result`. Ending the run at the first would
 //! leave the second answer to reach no request: the next run would take part of
 //! it for its own, and the answer to its own input would print after it ended,
-//! never shown. So the CLI prints each user message back as it takes it into a
-//! turn (`--replay-user-messages`), and a `result` ends the run only once every
+//! never shown.
+//!
+//! So the CLI prints each user message back as it takes it into a turn
+//! (`--replay-user-messages`), and a `result` ends the run only once every
 //! message the run wrote has been printed back before it. A message the CLI
-//! answers itself without the model, such as `/cost`, is never printed back;
-//! its `result` stands for the oldest message not yet printed back, so a
+//! answers itself without the model, such as `/cost`, is never printed back.
+//! Its `result` stands for the oldest message not yet printed back, so a
 //! message starting with `/` never leaves a run waiting.
 
 use std::rc::Rc;
@@ -62,9 +68,11 @@ pub(crate) struct ClaudeCodeRuntime {
     /// The process prepared for the next request; a runtime that keeps a
     /// process prepares none.
     prepared: Option<Prepared>,
-    /// The hold of the machine for the session's action that infers here,
-    /// from its first request to its end, across the tool calls between its
-    /// requests, so a CLI that waits on a long tool keeps its machine awake
+    /// The hold of the machine for the session's action that infers here, from
+    /// its first request to its end, across the tool calls between its
+    /// requests.
+    ///
+    /// A CLI that waits on a long tool therefore keeps its machine awake
     /// (`crates/backend-cloud/src/lib.rs`).
     action: Option<WorkLease>,
 }
@@ -82,9 +90,10 @@ impl ClaudeCodeRuntime {
 }
 
 /// Whether `items` end with the model's answer, so a process resuming them
-/// waits for input: they are no empty history, which the CLI cannot
-/// resume, and end in no input still to answer, such as a message whose
-/// turn failed or a call's result.
+/// waits for input.
+///
+/// They are no empty history, which the CLI cannot resume, and end in no input
+/// still to answer, such as a message whose turn failed or a call's result.
 fn answered(items: &[InferenceItem]) -> bool {
     matches!(
         items.last(),
@@ -135,12 +144,13 @@ impl ProviderRuntime for ClaudeCodeRuntime {
         true
     }
 
-    /// Prepares the process of the next request, `request` but for its
-    /// input, when the runtime holds none that would serve it: as a page
-    /// opens the conversation or the user picks another model, effort or
-    /// account. A prepared process the history moved away from is closed,
-    /// as an action's end finds it. A history that does not end with an answer prepares nothing.
-    /// Nothing here waits for a process: the session readies while the
+    /// Prepares the process of the next request, `request` but for its input,
+    /// when the runtime holds none that would serve it: as a page opens the
+    /// conversation or the user picks another model, effort or account.
+    ///
+    /// A prepared process the history moved away from is closed, as an action's
+    /// end finds it. A history that does not end with an answer prepares
+    /// nothing. Nothing here waits for a process: the session readies while the
     /// user may be sending, so what it closes ends by itself.
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
@@ -185,13 +195,15 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 }
 
 /// One run: the process kept for the session when it can go on with the
-/// request, else a new one that resumes the session written from the
-/// request's blocks; then the CLI's output until the end of the turn that
-/// answers the last message the run wrote, each earlier turn's answer a
-/// response of its own, or a batch of tool calls, with the entries the CLI
-/// mirrors of its session. A turn
-/// whose sign-in the vendor refused fails with the authentication error and
-/// marks the account signed out (`crates/provider-claude-code/src/account.rs`).
+/// request, else a new one that resumes the session written from the request's
+/// blocks.
+///
+/// The run yields the CLI's output until the end of the turn that answers the
+/// last message the run wrote: each earlier turn's answer a response of its
+/// own, or a batch of tool calls, with the entries the CLI mirrors of its
+/// session. A turn whose sign-in the vendor refused fails with the
+/// authentication error and marks the account signed out
+/// (`crates/provider-claude-code/src/account.rs`).
 fn run(
     runtime: &mut ClaudeCodeRuntime,
     request: InferenceRequest,
@@ -388,14 +400,16 @@ fn run(
                         }
                     }
                     Some(Line::Assistant(message)) => {
-                        // A whole line of the response being streamed repeats
-                        // a block that streamed, but its tool uses are whole
-                        // only here. Any other line is a complete answer, as
-                        // the CLI's retry without streaming after a stream
-                        // failed: it replaces the abandoned response, whose
-                        // calls never run, shows without what of it already
-                        // showed, and hands its batch on at once, since no
-                        // message_stop follows it.
+                        // A whole line of the response being streamed repeats a
+                        // block that streamed, but its tool uses are whole only
+                        // here.
+                        //
+                        // Any other line is a complete answer, as the CLI's
+                        // retry without streaming after a stream failed. It
+                        // replaces the abandoned response, whose calls never
+                        // run, shows without what of it already showed, and
+                        // hands its batch on at once, since no message_stop
+                        // follows it.
                         let id = message.message_id();
                         // What a complete answer replaces; none for a line
                         // that repeats what streamed.
@@ -557,8 +571,8 @@ fn run(
                         let usage = live.last_call.take();
                         let end = line.end();
                         // A turn the CLI answered itself, with no message
-                        // printed back and no model call, as for a `/cost`
-                        // it does not offer, took the oldest message not yet
+                        // printed back and no model call, as for a `/cost` it
+                        // does not offer, took the oldest message not yet
                         // printed back. A failed turn is never one: a call the
                         // vendor refused starts no stream either.
                         if !std::mem::take(&mut live.turn_began) && matches!(end, TurnEnd::Answered) {

@@ -1,18 +1,20 @@
-//! Compaction: passes before a turn, inside a turn and before a model
-//! switch, the session copy that writes the summary, the `compact`
-//! action, and the request prefix a provider caches.
+//! Compaction: passes before a turn, inside a turn and before a model switch,
+//! the session copy that writes the summary, the `compact` action, and the
+//! request prefix a provider caches.
 //!
 //! A compacted history is what every later request of the conversation rests
 //! on: a pass that leaves an invalid request breaks the conversation for good.
-//! So compaction is verified at four levels beyond these scenarios: the
-//! invariants over generated sessions (`generated.rs`); the request after a
-//! pass pinned whole for each provider (`golden.rs`), so any change to what
-//! the model receives shows in review; a real model, by hand, over the large
-//! recorded conversation (`crates/agent-server/fixtures/compaction`), run
-//! against DeepSeek before a release that changes compaction; and the
-//! product, a conversation on the development backend with a small context
-//! limit, a command left running and a subagent working through several
-//! passes.
+//! So compaction is verified at four levels beyond these scenarios:
+//!
+//! - the invariants over generated sessions (`generated.rs`);
+//! - the request after a pass pinned whole for each provider (`golden.rs`), so
+//!   any change to what the model receives shows in review;
+//! - a real model, by hand, over the large recorded conversation
+//!   (`crates/agent-server/fixtures/compaction`), run against DeepSeek before a
+//!   release that changes compaction;
+//! - the product, a conversation on the development backend with a small
+//!   context limit, a command left running and a subagent working through
+//!   several passes.
 
 use demi_agent_session::{
     TranscriptSnapshot, compaction_refusal, testing::COMPACTION_SUMMARY_INSTRUCTION,
@@ -391,12 +393,13 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
         assert_eq!(request.system_prompt, a.system_prompt);
         assert_eq!(request.tools, a.tools);
     }
-    // A pass starts the prefix again at its boundary, which stands at the
-    // end of a, the latest answered request that leaves the recent work
-    // after it: the 166 estimated tokens after its end, the question B
-    // among them, reach the 150 a 1,000-token window keeps, and the 23
-    // after b do not. The boundary keeps the message A, with what came
-    // after a's end as it was written, and the next request repeats that.
+    // A pass starts the prefix again at its boundary, which stands at the end
+    // of a, the latest answered request that leaves the recent work after it:
+    // the 166 estimated tokens after its end, the question B among them, reach
+    // the 150 a 1,000-token window keeps, and the 23 after b do not.
+    //
+    // The boundary keeps the message A, with what came after a's end as it was
+    // written, and the next request repeats that.
     assert_eq!(
         c.items.as_ref(),
         [
@@ -467,11 +470,14 @@ async fn a_summary_request_that_exceeds_the_context_is_retried_with_the_window_t
         .await
         .unwrap();
 
-    // The first summary request held the whole history, five items, the
-    // instruction joined to the third message; the second the window alone,
-    // what the second request carried, three items, the instruction joined
-    // to its second message; the third the first half of that window, two
-    // blocks, and the instruction after the answer.
+    // The three summary requests held:
+    //
+    // - The first, the whole history, five items, the instruction joined to the
+    //   third message.
+    // - The second, the window alone, what the second request carried, three
+    //   items, the instruction joined to its second message.
+    // - The third, the first half of that window, two blocks, and the
+    //   instruction after the answer.
     assert_eq!(summary_sizes(&provider), [5, 3, 3]);
     let blocks = session.history().await.unwrap().blocks;
     let boundaries = blocks
@@ -1494,11 +1500,11 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
 
     session.retry().unwrap().await.unwrap();
 
-    // Rewound to its message, the history is over the threshold: the pass
-    // asks with the rerun's request and the instruction joined to its
-    // message, and summarizes what the first request carried before the
-    // rerun, whose request starts with the summary and that request's
-    // answer.
+    // Rewound to its message, the history is over the threshold: the pass asks
+    // with the rerun's request and the instruction joined to its message, and
+    // summarizes what the first request carried before the rerun.
+    //
+    // The rerun's request starts with the summary and that request's answer.
     let requests = provider.requests();
     let [summary, rerun] = &requests[2..] else {
         panic!("{requests:?}");
@@ -1589,11 +1595,12 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
 
     session.resume(None).unwrap().await.unwrap();
 
-    // No request was answered since the last pass, so the window ends
-    // before the stopped message: the pass summarizes the summary and the
-    // answer kept with it, and the model reads the message as the user
-    // wrote it, what it wrote before the stop and the resume after the new
-    // summary.
+    // No request was answered since the last pass, so the window ends before
+    // the stopped message: the pass summarizes the summary and the answer kept
+    // with it.
+    //
+    // The model reads the message as the user wrote it, what it wrote before
+    // the stop and the resume after the new summary.
     let requests = provider.requests();
     let [summary, continuation] = &requests[3..] else {
         panic!("{requests:?}");
@@ -1696,11 +1703,12 @@ async fn input_too_large_for_the_model_on_its_own_is_never_summarized_and_its_re
 
     let failed = session.send(text(&huge), turn("t2")).unwrap().await;
 
-    // The pass before the turn summarized what the first request carried;
-    // the pass after the refusal found no answered request since, and
-    // summarized what came before the message. Neither summary request
-    // carried the message; each request of the turn carried it after a
-    // summary, and the second refusal failed the turn.
+    // The pass before the turn summarized what the first request carried; the
+    // pass after the refusal found no answered request since, and summarized
+    // what came before the message.
+    //
+    // Neither summary request carried the message; each request of the turn
+    // carried it after a summary, and the second refusal failed the turn.
     assert_eq!(
         failed.unwrap_err().code.as_deref(),
         Some("context_length_exceeded")
@@ -1878,10 +1886,11 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
         panic!("{requests:?}");
     };
     // The summary request carries the call and its result, the instruction
-    // after them as a message of its own, which a provider puts in the
-    // results' message; the pass summarizes what the round's request
-    // carried, the call and its result are kept, and the model continues
-    // after them.
+    // after them as a message of its own, which a provider puts in the results'
+    // message.
+    //
+    // The pass summarizes what the round's request carried, the call and its
+    // result are kept, and the model continues after them.
     let [message, call, result, instruction] = summary.items.as_ref() else {
         panic!("{:?}", summary.items);
     };
@@ -2985,12 +2994,13 @@ async fn five_calls(output_text: String) -> Vec<demi_provider_common::InferenceR
 // Two sessions of seven scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn the_cut_keeps_the_recent_work_at_the_end_of_an_answered_request() {
-    // Each call and its result weigh about 80 estimated tokens, so the
-    // last two leave the 150 a 1,000-token window keeps: the window ends
-    // where the request that carried the third call's result ended, and the
-    // fourth and fifth calls stay as they were, each with its result.
-    // The summary request is the fifth request, the fifth call and its
-    // result, then the instruction.
+    // Each call and its result weigh about 80 estimated tokens, so the last two
+    // leave the 150 a 1,000-token window keeps: the window ends where the
+    // request that carried the third call's result ended, and the fourth and
+    // fifth calls stay as they were, each with its result.
+    //
+    // The summary request is the fifth request, the fifth call and its result,
+    // then the instruction.
     let requests = five_calls("o".repeat(240)).await;
     let (fifth, summary, continuation) = (&requests[4], &requests[5], &requests[6]);
     let (sent, after) = summary.items.split_at(fifth.items.len());
@@ -3114,11 +3124,12 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
 
     session.compact().unwrap().await.unwrap();
 
-    // Newest first: the last message, the steer and the third message
-    // whole; the second crosses the 10,000 tokens a 100,000-token window
-    // keeps, 10% of it, and keeps its text up to them, without its
-    // screenshot; the first is left to the summary, and so is the agent's
-    // message.
+    // Newest first:
+    //
+    // - The last message, the steer and the third message are kept whole.
+    // - The second crosses the 10,000 tokens a 100,000-token window keeps, 10%
+    //   of it, and keeps its text up to them, without its screenshot.
+    // - The first is left to the summary, and so is the agent's message.
     let blocks = session.history().await.unwrap().blocks;
     let boundary = blocks
         .iter()
@@ -3260,11 +3271,12 @@ async fn a_session_of_many_compactions_holds_only_its_last_window_and_reads_the_
     assert_eq!((held.start, held.blocks), (0, path));
 }
 
-// A compaction inside a turn lets go of the request's first call, and the
-// next call's list of the request still holds what it changed: the lists
-// start at the request's own message, whose calls before the window are
-// read from the store. One session, four scripted requests: a few
-// milliseconds.
+// A compaction inside a turn lets go of the request's first call, and the next
+// call's list of the request still holds what it changed: the lists start at
+// the request's own message, whose calls before the window are read from the
+// store.
+//
+// One session, four scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_request_that_a_compaction_cut_lists_its_calls_from_its_own_message() {
     use demi_shared_types::EditKind;

@@ -1,9 +1,10 @@
 //! What Demi writes to the CLI's standard input
-//! (`crates/provider-claude-code/src/run.rs`): the `initialize` control request
-//! that
-//! declares the SDK MCP server, the user messages a kept process gains, and
-//! the answers to the CLI's control requests. Each is one JSON line. A user
-//! message is the same message in the session a new process resumes.
+//! (`crates/provider-claude-code/src/run.rs`).
+//!
+//! It writes the `initialize` control request that declares the SDK MCP server,
+//! the user messages a kept process gains, and the answers to the CLI's control
+//! requests. Each is one JSON line. A user message is the same message in the
+//! session a new process resumes.
 
 use std::borrow::Cow;
 

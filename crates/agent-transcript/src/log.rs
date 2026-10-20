@@ -1,8 +1,9 @@
-//! The transcript itself: the blocks of its window in order, changed only
-//! through methods that record each change in the journal, and its version.
-//! The window is the part of the path a live session holds: from a
-//! position, `start`, to the path's end. Every index here is a position on
-//! the whole path.
+//! The transcript itself: the blocks of its window in order, and its version.
+//!
+//! The blocks change only through methods that record each change in the
+//! journal. The window is the part of the path a live session holds: from a
+//! position, `start`, to the path's end. Every index here is a position on the
+//! whole path.
 
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
@@ -341,19 +342,21 @@ impl TranscriptLog {
         self.record_replace(self.start + at);
     }
 
-    /// Replaces every block held with `blocks`, the path's from the
-    /// window's start on, as a history rewrite publishes
-    /// its retained history, and answers the batch that publishes it: a
-    /// `truncate` at the first block that differs and an `add` for each
-    /// block from there, never the blocks before it. The changes recorded
-    /// before it are superseded, and the rewrite's own save wrote its rows, so
-    /// the batch marks none.
+    /// Replaces every block held with `blocks`, the path's from the window's
+    /// start on, as a history rewrite publishes its retained history.
     ///
-    /// The rows the rewrite leaves stay stored on their branch: an edit or
-    /// Regenerate, `version`, begins a new version at the first block that
-    /// differs, the latest of its place; the session's own rewrite stands
-    /// in for what it replaced, so the place keeps its versions. The places
-    /// after it hold none.
+    /// Answers the batch that publishes it: a `truncate` at the first block
+    /// that differs and an `add` for each block from there, never the blocks
+    /// before it. The changes recorded before it are superseded, and the
+    /// rewrite's own save wrote its rows, so the batch marks none.
+    ///
+    /// The rows the rewrite leaves stay stored on their branch:
+    ///
+    /// - An edit or Regenerate, `version`, begins a new version at the first
+    ///   block that differs, the latest of its place.
+    /// - The session's own rewrite stands in for what it replaced, so the place
+    ///   keeps its versions.
+    /// - The places after it hold none.
     pub fn replace_all(&mut self, blocks: Vec<Block>, version: bool) -> PatchBatch {
         let kept = self.start + kept(&self.blocks, &blocks);
         let mut versions = std::mem::take(&mut self.versions);
@@ -382,10 +385,11 @@ impl TranscriptLog {
         self.replace_from(position, blocks, kept)
     }
 
-    /// Replaces the path from `position` on with what a switch of versions
-    /// made current from a place before the window: the window starts at
-    /// `start` now, with `blocks` from there and the `versions` of their
-    /// places, and `earlier` keeps what is before it.
+    /// Replaces the path from `position` on with what a switch of versions made
+    /// current from a place before the window.
+    ///
+    /// The window starts at `start` now, with `blocks` from there and the
+    /// `versions` of their places, and `earlier` keeps what is before it.
     pub fn switch_window(
         &mut self,
         position: usize,
@@ -628,9 +632,10 @@ impl TranscriptLog {
     }
 
     /// A requested call, saved as executing until the session completes it.
-    /// Its input is kept as text: a vendor that could not parse the input
-    /// hands its text over as a JSON string, and a call without input has an
-    /// empty object.
+    ///
+    /// Its input is kept as text: a vendor that could not parse the input hands
+    /// its text over as a JSON string, and a call without input has an empty
+    /// object.
     pub fn push_tool_call(&mut self, model: &ModelSelection, call: ToolCall) {
         let input = match call.input {
             Value::String(text) => text,

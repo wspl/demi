@@ -1,8 +1,9 @@
 //! What the provider reads of the CLI's lines
 //! (`crates/provider-claude-code/src/output.rs`,
-//! `crates/provider-common/src/wire/mod.rs`): the events of streamed and whole
-//! messages, the lines and blocks it skips, and the failures of lines it
-//! cannot read.
+//! `crates/provider-common/src/wire/mod.rs`).
+//!
+//! The tests cover the events of streamed and whole messages, the lines and
+//! blocks it skips, and the failures of lines it cannot read.
 
 use demi_host_interface::Signal;
 use demi_provider_common::{ErrorCode, Provider as _, ProviderEvent, ProviderFailure};
@@ -269,14 +270,17 @@ async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_
     }
 }
 
-/// The CLI's own sign of a used-up account, `api_error:
-/// usage_limit_reached` on its `result` line, is a usage limit whatever the
-/// status, which the agent does not retry, and it waits until the reset its
-/// refused call names on the assistant line the CLI makes up for it, never
-/// the account's quota. A 429 the CLI says only throttles is a rate limit,
-/// though its words mention a usage limit and its quota event says
-/// rejected. The lines are the CLI 2.1.296's against a scripted vendor
-/// (investigation 285).
+/// The CLI's own sign of a used-up account, `api_error: usage_limit_reached` on
+/// its `result` line, is a usage limit whatever the status.
+///
+/// - The agent does not retry it.
+/// - It waits until the reset its refused call names on the assistant line the
+///   CLI makes up for it, never the account's quota.
+/// - A 429 the CLI says only throttles is a rate limit, though its words
+///   mention a usage limit and its quota event says rejected.
+///
+/// The lines are the CLI 2.1.296's against a scripted vendor (investigation
+/// 285).
 #[tokio::test(flavor = "local")]
 async fn a_usage_limit_is_the_clis_cause_and_waits_until_the_reset_its_refusal_names() {
     let provider = provider().await;

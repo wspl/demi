@@ -1,12 +1,21 @@
-//! A turn: write waiting input, request the provider, retry what waiting can
-//! fix and compact once after a refusal for its tokens, apply its events to
-//! the transcript as they stream, save, run the requested tools in steps,
-//! compact when the usage reached the threshold, and ask again until a
-//! response requests no tool, unless input arrived during the round. A
-//! request's size never compacts. Every wait on the provider, a hook or a
-//! tool is raced against the action's stop and dropped when it comes; a save
-//! is never raced. A message the user sends now cuts a provider request and
-//! a step's calls short without stopping anything.
+//! A turn: the provider requests and tool steps of one action, until a response
+//! requests no tool.
+//!
+//! A turn does these in order:
+//!
+//! 1. Write waiting input.
+//! 2. Request the provider, retry what waiting can fix and compact once after a
+//!    refusal for its tokens.
+//! 3. Apply the events to the transcript as they stream.
+//! 4. Save, and run the requested tools in steps.
+//! 5. Compact when the usage reached the threshold.
+//! 6. Ask again until a response requests no tool, unless input arrived during
+//!    the round.
+//!
+//! A request's size never compacts. Every wait on the provider, a hook or a
+//! tool is raced against the action's stop and dropped when it comes; a save is
+//! never raced. A message the user sends now cuts a provider request and a
+//! step's calls short without stopping anything.
 //!
 //! ```text
 //! action starts
@@ -27,11 +36,13 @@
 //! action ends: discard the human steers still pending, save, start the next
 //! ```
 //!
-//! A human steer is written only at the boundary before a provider request,
-//! never after a stream or a tool step: until the model is about to read it,
-//! it stays pending where the user can still recall it. Agent messages and
-//! command reports use all three boundaries. No provider receives input while
-//! it streams.
+//! Input reaches the model at three boundaries:
+//!
+//! - A human steer is written only at the boundary before a provider request,
+//!   never after a stream or a tool step. Until the model is about to read it,
+//!   it stays pending where the user can still recall it.
+//! - Agent messages and command reports use all three boundaries.
+//! - No provider receives input while it streams.
 
 use std::rc::Rc;
 
@@ -173,10 +184,12 @@ async fn estimate(s: &SessionShared, cancel: &TurnCancel) -> Result<u64, TurnErr
     Ok(s.read(|core| context_tokens(&core.request_view(&view), &system_prompt)))
 }
 
-/// Lands the recorded model switch: the history is first compacted to fit
-/// the new model with the current one, then the switch becomes current and
-/// the runtimes it replaced are closed. Returns whether it compacted; a
-/// switch whose compaction failed stays recorded.
+/// Lands the recorded model switch.
+///
+/// The history is first compacted to fit the new model with the current one,
+/// then the switch becomes current and the runtimes it replaced are closed.
+/// Returns whether it compacted; a switch whose compaction failed stays
+/// recorded.
 pub(super) async fn apply_switch(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -243,15 +256,19 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
     Ok(())
 }
 
-/// One provider request, from building it to the end of its stream,
-/// retrying transient failures while everything the attempt wrote can be
-/// unwound. A request refused for its tokens compacts once and goes again;
-/// one refused for its size does not. `continues` says it continues a
-/// running turn, so a pass is followed by a `resume` block. Returns the
-/// trigger of a pass when the usage of a response that requested a tool
-/// reached the compaction threshold. The stage stays streaming across the
-/// waits, so steers keep being accepted. A message the user sent now cuts
-/// the stream, or the wait before a retry, short: what streamed stays.
+/// One provider request, from building it to the end of its stream.
+///
+/// It retries transient failures while everything the attempt wrote can be
+/// unwound. A request refused for its tokens compacts once and goes again; one
+/// refused for its size does not. `continues` says it continues a running turn,
+/// so a pass is followed by a `resume` block.
+///
+/// Returns the trigger of a pass when the usage of a response that requested a
+/// tool reached the compaction threshold.
+///
+/// The stage stays streaming across the waits, so steers keep being accepted. A
+/// message the user sent now cuts the stream, or the wait before a retry,
+/// short: what streamed stays.
 async fn stream(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -327,10 +344,11 @@ async fn stream(
     }
 }
 
-/// One compaction pass, started by `trigger`, before a request; a pass that
-/// compacted inside a running turn appends a `resume` block, while before a
-/// turn's first request its new input is last already. Returns whether it
-/// compacted.
+/// One compaction pass, started by `trigger`, before a request.
+///
+/// A pass that compacted inside a running turn appends a `resume` block, while
+/// before a turn's first request its new input is last already. Returns whether
+/// it compacted.
 async fn compact_before_request(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -417,15 +435,19 @@ pub(super) async fn system_prompt(
     }
 }
 
-/// Applies a run's events as they arrive. A thinking start waits until
-/// something follows it, so that an empty lifecycle leaves nothing behind;
-/// open answer text completes when anything but more text follows it. The
-/// run's failure is handed back unrecorded, for the retry to decide on; the
+/// Applies a run's events as they arrive.
+///
+/// - A thinking start waits until something follows it, so that an empty
+///   lifecycle leaves nothing behind.
+/// - Open answer text completes when anything but more text follows it.
+///
+/// The run's failure is handed back unrecorded, for the retry to decide on. The
 /// inner result is the trigger of a pass when the usage of a response that
 /// requested a tool reached the compaction threshold of the run's `model`,
-/// whose window in use is `window`. A message the user sent now ends it
-/// where it is, cancelling the request through `request_cancel`, as a Stop
-/// would, and what streamed stays.
+/// whose window in use is `window`.
+///
+/// A message the user sent now ends it where it is, cancelling the request
+/// through `request_cancel`, as a Stop would, and what streamed stays.
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
@@ -469,9 +491,10 @@ async fn read(
                     s.release_events();
                 }
                 // The response's end, without a call to run, ends the turn
-                // unless the turn goes on: its text completes, and the
-                // closing save follows before the phase goes idle. The
-                // events wait for that end, or for the turn to go on
+                // unless the turn goes on: its text completes, and the closing
+                // save follows before the phase goes idle.
+                //
+                // The events wait for that end, or for the turn to go on
                 // (`run_turn`), so a page never sees the finished text of a
                 // running turn that has nothing more to run.
                 let answered = matches!(event, ProviderEvent::Response(_))
@@ -494,11 +517,12 @@ async fn read(
                 {
                     reached = Some(trigger);
                 }
-                // The page says Requesting under text the model finished,
-                // so its end starts the wait again within the run, until
-                // something else shows; the response's end is the run's,
-                // after which the turn ends or its next request waits. One
-                // update, so an event that shows, such as a whole call,
+                // The page says Requesting under text the model finished, so
+                // its end starts the wait again within the run, until something
+                // else shows. The response's end is the run's, after which the
+                // turn ends or its next request waits.
+                //
+                // One update, so an event that shows, such as a whole call,
                 // ends that wait before any page hears of it.
                 let within_run = !matches!(event, ProviderEvent::Response(_));
                 s.update(|core| {
@@ -522,17 +546,21 @@ fn complete_text(s: &SessionShared) {
     });
 }
 
-/// Runs the calls the last response requested, after saving them as
-/// executing, in steps (`crates/agent-tools/src/lib.rs`): consecutive
-/// calls of a tool that runs together start together, and each other call
-/// is a step of its own. A step ends when each of its calls has returned;
-/// each result is recorded as its call returns, in its call's place, and a
-/// Stop keeps those of the calls that returned before it. Input that arrives
-/// meanwhile, but a human steer, is written after each step, unless the turn
-/// is about to compact. An action that fails before its calls ran, such as
-/// when the save before dispatch fails, completes them as aborted with that
-/// failure as the reason, as a stop does, so the next request replays no call
-/// without a result. Returns whether the response requested any call.
+/// Runs the calls the last response requested, after saving them as executing,
+/// in steps (`crates/agent-tools/src/lib.rs`).
+///
+/// - Consecutive calls of a tool that runs together start together, and each
+///   other call is a step of its own.
+/// - A step ends when each of its calls has returned.
+/// - Each result is recorded as its call returns, in its call's place, and a
+///   Stop keeps those of the calls that returned before it.
+/// - Input that arrives meanwhile, but a human steer, is written after each
+///   step, unless the turn is about to compact.
+///
+/// An action that fails before its calls ran, such as when the save before
+/// dispatch fails, completes them as aborted with that failure as the reason,
+/// as a stop does, so the next request replays no call without a result.
+/// Returns whether the response requested any call.
 async fn run_tools(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -594,11 +622,13 @@ async fn run_tools(
                 })
                 .collect();
             let mut returned = s.runtime.invoke_step(invocations);
-            // Each result is recorded as its call returns, so the page shows
-            // a call's end, its changed files among it, while the step's
-            // other calls run. Only the wait is cancelled: a Stop during the
-            // step ends the calls still running, and one that returned keeps
-            // its result, even one that returned as the Stop came.
+            // Each result is recorded as its call returns, so the page shows a
+            // call's end, its changed files among it, while the step's other
+            // calls run.
+            //
+            // Only the wait is cancelled: a Stop during the step ends the calls
+            // still running, and one that returned keeps its result, even one
+            // that returned as the Stop came.
             loop {
                 match cancel.guard(returned.next()).await {
                     Ok(Some((index, outcome))) => {
@@ -637,13 +667,15 @@ async fn run_tools(
     Ok(true)
 }
 
-/// `view` with the lists the conversation shows of the shell call that
-/// `at` finds in the transcript (`crates/agent-store/src/changes.rs`): its own files, its run's and its request's, within the working
+/// `view` with the lists the conversation shows of the shell call that `at`
+/// finds in the transcript (`crates/agent-store/src/changes.rs`).
+///
+/// The lists are its own files, its run's and its request's, within the working
 /// directory, counted from the edit copies in the conversation's blob
 /// namespace. The call's own files are judged against `started_in`, the
-/// directory it started in; with none they keep the marks `view` has, as a
-/// call listed again does. A call the transcript no longer holds, as after
-/// an edit cut it, keeps `view` as it is.
+/// directory it started in; with none they keep the marks `view` has, as a call
+/// listed again does. A call the transcript no longer holds, as after an edit
+/// cut it, keeps `view` as it is.
 async fn with_lists(
     s: &SessionShared,
     at: impl Fn(&SessionCore) -> Option<usize>,
@@ -710,9 +742,11 @@ async fn request_calls_before(s: &SessionShared, start: usize) -> Result<Vec<Blo
 }
 
 /// Lists again the shell calls after `tool_use_id` in its request that
-/// completed before it, as the calls of one step can: each call's lists
-/// are of the calls before it in the transcript, whatever order they
-/// returned in, and are final once the calls before it have returned.
+/// completed before it, as the calls of one step can.
+///
+/// Each call's lists are of the calls before it in the transcript, whatever
+/// order they returned in, and are final once the calls before it have
+/// returned.
 async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
     let later: Vec<(BlockId, ShellToolView)> = s.read(|core| {
         let blocks = core.transcript.blocks();

@@ -1,7 +1,8 @@
-//! The Grok Build provider at its boundaries: the requests it sends to a
-//! scripted chat proxy and issuer, the events it makes of recorded streams,
-//! its token refresh, catalog, quota and device login. No test calls the real
-//! vendor.
+//! The Grok Build provider at its boundaries.
+//!
+//! The tests cover the requests it sends to a scripted chat proxy and issuer,
+//! the events it makes of recorded streams, its token refresh, catalog, quota
+//! and device login. No test calls the real vendor.
 
 mod auth;
 mod images;
@@ -77,8 +78,9 @@ pub(crate) fn releases_at(vendor: &MockVendor, clock: Arc<dyn Clock>) -> GrokRel
     GrokReleases::new(vendor.url(STABLE).parse().unwrap(), reqwest::Client::new(), clock)
 }
 
-/// A provider whose chat proxy and issuer are the scripted vendor. Its
-/// release is the built-in one, believed as read now, so every request
+/// A provider whose chat proxy and issuer are the scripted vendor.
+///
+/// Its release is the built-in one, believed as read now, so every request
 /// names it, the vendor sees only the provider's requests, and no read's
 /// timeout moves a paused clock.
 pub(crate) fn provider(

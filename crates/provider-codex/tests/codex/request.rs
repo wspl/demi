@@ -259,10 +259,11 @@ async fn a_fedramp_account_says_so() {
     );
 }
 
-/// Codex → Claude → Codex: the history keeps each call's id as its
-/// provider gave it, so Codex's own call goes back with its call id and its
-/// item id as Codex gave them, whatever form Claude was sent, and Claude's
-/// call is a call id whole.
+/// Codex → Claude → Codex: the history keeps each call's id as its provider
+/// gave it.
+///
+/// So Codex's own call goes back with its call id and its item id as Codex gave
+/// them, whatever form Claude was sent, and Claude's call is a call id whole.
 // Cost: one request to a local stub, a few milliseconds.
 #[tokio::test]
 async fn codexs_ids_come_back_as_codex_gave_them_after_another_vendor() {

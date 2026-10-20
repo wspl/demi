@@ -21,10 +21,12 @@ use tokio_tungstenite::tungstenite::Utf8Bytes;
 
 use crate::{SIGNATURE_TAG, auth::Credentials};
 
-/// A request's body, encoded once: over server-sent events as it is, and
-/// over a WebSocket as one `response.create` message with the same fields, in
-/// the same bytes, so that a request extends the previous one for the vendor's
-/// cache whichever way each went.
+/// A request's body, encoded once: over server-sent events as it is, and over a
+/// WebSocket as one `response.create` message with the same fields, in the same
+/// bytes.
+///
+/// So a request extends the previous one for the vendor's cache whichever way
+/// each went.
 #[derive(Debug, Clone)]
 pub(crate) struct Encoded {
     pub(crate) http: Bytes,
@@ -105,7 +107,6 @@ struct Text {
     verbosity: &'static str,
 }
 
-/// The headers that authenticate a request of the account.
 pub(crate) fn account_headers(credentials: &Credentials, user_agent: &HeaderValue) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(AUTHORIZATION, credentials.access_token.bearer());
@@ -117,9 +118,10 @@ pub(crate) fn account_headers(credentials: &Credentials, user_agent: &HeaderValu
     headers
 }
 
-/// The headers of an inference request: the account's, the Responses beta,
-/// and the session and request the backend reads the conversation from. The
-/// backend derives the cache key from `session-id` and refuses one over 64
+/// The headers of an inference request: the account's, the Responses beta, and
+/// the session and request the backend reads the conversation from.
+///
+/// The backend derives the cache key from `session-id` and refuses one over 64
 /// characters, so the session id is clamped as the body's key is.
 pub(crate) fn inference_headers(
     credentials: &Credentials,

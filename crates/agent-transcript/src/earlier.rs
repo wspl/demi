@@ -1,7 +1,9 @@
-//! What a session keeps of its path's blocks before its window: the few
-//! facts its decisions read about the whole path, so that answering them
-//! never needs the blocks. A block the window lets go of is folded in; a
-//! restore reads them from the store.
+//! What a session keeps of its path's blocks before its window: the few facts
+//! its decisions read about the whole path, so that answering them never needs
+//! the blocks.
+//!
+//! A block the window lets go of is folded in; a restore reads them from the
+//! store.
 
 use std::collections::HashSet;
 

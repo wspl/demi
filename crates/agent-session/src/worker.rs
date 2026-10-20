@@ -1,6 +1,7 @@
-//! The action worker: one task per session runs one action at a time. An
-//! action holds the tree's admission while it runs, records how it ended,
-//! saves its checkpoint, and then starts the next waiting action; the session
+//! The action worker: one task per session runs one action at a time.
+//!
+//! An action holds the tree's admission while it runs, records how it ended,
+//! saves its checkpoint, and then starts the next waiting action. The session
 //! shows idle only once that save has committed and nothing waits.
 
 use std::rc::{Rc, Weak};
@@ -282,10 +283,12 @@ async fn rerun(s: &Rc<SessionShared>, cancel: &TurnCancel, turn: TurnId) -> Resu
     turn::run(s, cancel).await
 }
 
-/// Finishes an unfinished turn: unwinds it to its resume point, keeping the
-/// compactions after it, marks the stop it continues as resumed, appends a
-/// `resume` block and infers again. A turn that left nothing but leftovers
-/// runs again from its input, as a retry does.
+/// Finishes an unfinished turn.
+///
+/// It unwinds the turn to its resume point, keeping the compactions after it,
+/// marks the stop it continues as resumed, appends a `resume` block and infers
+/// again. A turn that left nothing but leftovers runs again from its input, as
+/// a retry does.
 async fn resume(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -324,12 +327,12 @@ async fn resume(
     turn::run(s, cancel).await
 }
 
-/// Records how the body ended, unless dispose stopped it: a stop leaves its
-/// marker in the transcript, a failure is reported.
-/// Ends a switch of versions: one that failed or was stopped changed
-/// nothing, so it leaves no stop marker and no failure record, and one that
-/// completed is answered as completed whatever came after its commit. The
-/// closing save records the session idle again.
+/// Ends a switch of versions, unless dispose stopped it.
+///
+/// A switch that failed or was stopped changed nothing, so it leaves no stop
+/// marker and no failure record. One that completed is answered as completed
+/// whatever came after its commit. The closing save records the session idle
+/// again.
 async fn end_switch(
     s: &SessionShared,
     cancel: &TurnCancel,

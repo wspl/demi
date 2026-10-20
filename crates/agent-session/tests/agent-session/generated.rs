@@ -1,23 +1,26 @@
 //! Compaction over generated sessions, the first level of its verification.
-//! Each fixed seed drives one session through turns of text, signed
-//! reasoning of several vendors, parallel and sequential calls with text
-//! and image results, steers and agent messages that arrive during a call,
-//! a Stop and Continue, a resume after a restart, messages with images and
-//! model switches, some answered by the new model before the pass, and
-//! compacts it after every step, besides the passes its thresholds start. After every step the test checks:
+//!
+//! Each fixed seed drives one session through turns of text, signed reasoning
+//! of several vendors, parallel and sequential calls with text and image
+//! results, steers and agent messages that arrive during a call, a Stop and
+//! Continue, a resume after a restart, messages with images and model switches,
+//! some answered by the new model before the pass. It compacts after every
+//! step, besides the passes its thresholds start.
+//!
+//! After every step the test checks:
 //!
 //! - every request, encoded by every provider's request builder, is one its
-//!   vendor takes: roles in order, every result after its call, no call
-//!   without its result, signed reasoning only where its vendor accepts it;
-//! - every summary request, without its instruction, begins with the
-//!   latest request the session sent to the same model since the summary
-//!   request before, encoded byte for byte the same by every builder;
-//! - each new boundary stands at the cut point the recent work's budget
-//!   gives, and keeps the user's words within theirs;
+//!   vendor takes: roles in order, every result after its call, no call without
+//!   its result, signed reasoning only where its vendor accepts it;
+//! - every summary request, without its instruction, begins with the latest
+//!   request the session sent to the same model since the summary request
+//!   before, encoded byte for byte the same by every builder;
+//! - each new boundary stands at the cut point the recent work's budget gives,
+//!   and keeps the user's words within theirs;
 //! - the estimate after each pass is under the threshold, or the pass freed
 //!   nothing;
-//! - no block left the transcript, but for the leftovers of a stopped
-//!   request that a Continue unwinds.
+//! - no block left the transcript, but for the leftovers of a stopped request
+//!   that a Continue unwinds.
 //!
 //! A seed that ever failed is kept in [`FIXED_SEEDS`].
 
@@ -140,10 +143,12 @@ pub(super) fn is_summary(request: &InferenceRequest) -> bool {
     })
 }
 
-/// The items of `request` without the summary instruction, when it is a
-/// summary request: the instruction is the last text block of its last
-/// user message, which holds nothing else when the history ended with
-/// something other than the user's input.
+/// The items of `request` without the summary instruction, when it is a summary
+/// request.
+///
+/// The instruction is the last text block of its last user message, which holds
+/// nothing else when the history ended with something other than the user's
+/// input.
 fn without_instruction(request: &InferenceRequest) -> Option<Vec<InferenceItem>> {
     let mut items = request.items.to_vec();
     let (InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content }) =
@@ -792,11 +797,13 @@ enum HistoryEnd {
     Answer,
 }
 
-/// Every summary request is the session's next request with the
-/// instruction added: every builder encodes it as it encodes that request,
-/// but for the instruction, and it begins with the latest request the
-/// session sent to the same model since the summary request before, with
-/// the same system prompt and tools. Returns how its history ended.
+/// Every summary request is the session's next request with the instruction
+/// added.
+///
+/// Every builder encodes it as it encodes that request, but for the
+/// instruction. It begins with the latest request the session sent to the same
+/// model since the summary request before, with the same system prompt and
+/// tools. Returns how its history ended.
 fn check_summary(earlier: &[InferenceRequest], summary: &InferenceRequest, context: &str) -> HistoryEnd {
     let items = without_instruction(summary).unwrap_or_else(|| {
         panic!("{context}: the instruction is not the last block of the last user message")
@@ -851,12 +858,14 @@ fn check_summary(earlier: &[InferenceRequest], summary: &InferenceRequest, conte
     end
 }
 
-/// An encoded request without the summary instruction: each value that
-/// holds it goes, with the object or the array element it is in, and an
-/// array that held nothing else goes with it, up to the message. A format
-/// that joins a message's texts into one string, as Chat Completions and Grok do,
-/// keeps the input's text before a line break and the instruction: the
-/// text stays a prefix of what its vendor caches, which caches prefixes
+/// An encoded request without the summary instruction.
+///
+/// Each value that holds it goes, with the object or the array element it is
+/// in, and an array that held nothing else goes with it, up to the message.
+///
+/// A format that joins a message's texts into one string, as Chat Completions
+/// and Grok do, keeps the input's text before a line break and the instruction:
+/// the text stays a prefix of what its vendor caches, which caches prefixes
 /// without marks. `joins` says whether `builder` is such a format.
 fn without_instruction_json(value: Value, joins: bool) -> Option<Value> {
     match value {
@@ -903,10 +912,11 @@ fn uncached(mut body: Value) -> Value {
     body
 }
 
-/// The signatures of `request`'s reasoning that `tag` marks as its
-/// vendor's, without the tag; with `checks_history`, a vendor that checks
-/// reasoning against the history before it, not the reasoning kept past a
-/// summary.
+/// The signatures of `request`'s reasoning that `tag` marks as its vendor's,
+/// without the tag.
+///
+/// With `checks_history`, a vendor that checks reasoning against the history
+/// before it, not the reasoning kept past a summary.
 fn signatures(request: &InferenceRequest, tag: &str, checks_history: bool) -> Vec<String> {
     request
         .items
@@ -1175,8 +1185,10 @@ async fn drive(seed: u64) -> HashSet<HistoryEnd> {
 
 // Four seeds of 24 steps take every kind of step, about 400 requests and 120
 // passes, each request encoded by seven builders and checked: about 5 s in a
-// debug build. It is the one test that meets passes at moments no scripted
-// scenario reaches, such as right after a Stop, a restart or a switch.
+// debug build.
+//
+// It is the one test that meets passes at moments no scripted scenario reaches,
+// such as right after a Stop, a restart or a switch.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn generated_sessions_stay_valid_for_every_provider_through_every_pass() {
     let mut history_ends = HashSet::new();

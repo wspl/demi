@@ -1,22 +1,27 @@
-//! Processes prepared ahead:
-//! when a session's next request is known but for its input, its process
-//! starts before the request, resumes the history and waits, and the
-//! request takes it as it would take a kept process. A task owns the
-//! process while it waits: it answers the CLI's MCP handshake, hands the
-//! process to the request that matches it, and closes it once it went
-//! unused for ten minutes, when the runtime drops it, or when its machine
-//! needs its seat. A preparation that fails is logged and forgotten.
+//! Processes prepared ahead.
 //!
-//! A request that finds no kept process waits for a new one (on a production
+//! When a session's next request is known but for its input, its process starts
+//! before the request, resumes the history and waits, and the request takes it
+//! as it would take a kept process.
+//!
+//! A task owns the process while it waits. It answers the CLI's MCP handshake,
+//! hands the process to the request that matches it, and closes it once it went
+//! unused for ten minutes, when the runtime drops it, or when its machine needs
+//! its seat. A preparation that fails is logged and forgotten.
+//!
+//! A request that finds no kept process waits for a new one. On a production
 //! server a subagent's median first turn waited 3.0 s before its CLI was ready
-//! and 5.7 s for its first word, against 1.4 s for a kept process), so the
+//! and 5.7 s for its first word, against 1.4 s for a kept process. So the
 //! process is started whenever the request it will serve is known but for its
-//! input. A preparation does everything a start does, so it reads the blobs of
-//! the media its history replays, after the page's open is answered: the rule
-//! that an open reads no blob holds for the open itself. It never gets in the
-//! way: it takes no admission the user's own commands wait for, and one that
-//! fails is logged and forgotten. A user has at most two prepared processes not
-//! yet used; a third closes the oldest.
+//! input.
+//!
+//! - A preparation does everything a start does, so it reads the blobs of the
+//!   media its history replays, after the page's open is answered: the rule
+//!   that an open reads no blob holds for the open itself.
+//! - It never gets in the way: it takes no admission the user's own commands
+//!   wait for, and one that fails is logged and forgotten.
+//! - A user has at most two prepared processes not yet used; a third closes the
+//!   oldest.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -40,9 +45,10 @@ pub(crate) const UNUSED_FOR: Duration = Duration::from_secs(10 * 60);
 const MOST_ON_A_MACHINE: usize = 2;
 
 /// The processes prepared ahead on one machine and not yet used, of every
-/// runtime that starts its processes there. It holds at most two: a third
-/// preparation closes the oldest. It lives with its machine's placement on
-/// the machine's user's shard.
+/// runtime that starts its processes there.
+///
+/// It holds at most two: a third preparation closes the oldest. It lives with
+/// its machine's placement on the machine's user's shard.
 #[derive(Default)]
 pub struct PreparedProcesses {
     seats: RefCell<VecDeque<SeatRecord>>,
@@ -222,11 +228,13 @@ impl Prepared {
     }
 }
 
-/// The task of a prepared process: it starts the process as a request
-/// would, then answers what the CLI asks while it waits, until a request
-/// takes it or it is closed. Ten minutes after the preparation began, a
-/// process no request took is closed. Closing a process still starting
-/// gives its start up, which closes what it started.
+/// The task of a prepared process: it starts the process as a request would,
+/// then answers what the CLI asks while it waits, until a request takes it or
+/// it is closed.
+///
+/// Ten minutes after the preparation began, a process no request took is
+/// closed. Closing a process still starting gives its start up, which closes
+/// what it started.
 async fn wait(
     shared: Arc<Shared>,
     placement: Rc<dyn Placement>,

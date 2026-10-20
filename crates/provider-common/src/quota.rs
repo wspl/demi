@@ -1,16 +1,22 @@
-//! The vendor quota of a subscription account: a family's quota source, which
-//! probes the vendor's usage endpoint
-//! and reads the quota a live response reports; the account's snapshot
-//! store; the one merge both paths update the snapshot by; and the helpers a
-//! source reads a vendor's windows with. The snapshot's shape is `core`'s,
-//! because the web app receives it.
+//! The vendor quota of a subscription account.
 //!
-//! Every probe is free: it reads a usage endpoint and spends no inference.
-//! That matters most when the limit is reached, since a request is then refused
-//! and a probe that needed one could not say why. An observation costs nothing
-//! extra and never fails a request: a response it cannot read is ignored. A
-//! snapshot is information for the user and for choosing an account under
-//! rotation; inference admission never reads it and the model never sees it. A
+//! The module holds:
+//!
+//! - a family's quota source, which probes the vendor's usage endpoint and
+//!   reads the quota a live response reports;
+//! - the account's snapshot store;
+//! - the one merge both paths update the snapshot by;
+//! - the helpers a source reads a vendor's windows with.
+//!
+//! The snapshot's shape is `core`'s, because the web app receives it.
+//!
+//! Every probe is free: it reads a usage endpoint and spends no inference. That
+//! matters most when the limit is reached, since a request is then refused and
+//! a probe that needed one could not say why. An observation costs nothing
+//! extra and never fails a request: a response it cannot read is ignored.
+//!
+//! A snapshot is information for the user and for choosing an account under
+//! rotation. Inference admission never reads it and the model never sees it. A
 //! window the vendor does not report is absent, never a made-up percentage.
 
 use std::sync::{Arc, Mutex, PoisonError};
@@ -21,10 +27,11 @@ use demi_shared_types::{
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, StatusCode};
 
-/// The quota of the one account a provider stands for. Its probes and
-/// observations read and write that account's snapshot only, so a request
-/// that outlives a change of the active account still credits the account
-/// that made it.
+/// The quota of the one account a provider stands for.
+///
+/// Its probes and observations read and write that account's snapshot only, so
+/// a request that outlives a change of the active account still credits the
+/// account that made it.
 pub struct ProviderQuota {
     source: Box<dyn QuotaSource>,
     store: Arc<dyn QuotaSnapshotStore>,
@@ -51,9 +58,11 @@ impl ProviderQuota {
     }
 
     /// When the account can be used again after a usage limit received at
-    /// `received_at`, as its kept snapshot says: the latest reset still to
-    /// come among the windows it shows used up, since a request succeeds
-    /// only once every one has reset; `None` when it shows none.
+    /// `received_at`, as its kept snapshot says.
+    ///
+    /// It is the latest reset still to come among the windows it shows used up,
+    /// since a request succeeds only once every one has reset; `None` when it
+    /// shows none.
     pub fn used_up_until(&self, received_at: Timestamp) -> Option<Timestamp> {
         self.latest()?
             .windows
@@ -70,11 +79,13 @@ impl ProviderQuota {
         self.source.probe_cost()
     }
 
-    /// Asks the vendor's usage endpoint about the account and merges the
-    /// answer into its snapshot: the probe sets the plan and the account
-    /// label and replaces the windows it names whose value comes from a
-    /// request that started no later than the probe. A family whose probe
-    /// would spend an inference request is never probed.
+    /// Asks the vendor's usage endpoint about the account and merges the answer
+    /// into its snapshot.
+    ///
+    /// The probe sets the plan and the account label and replaces the windows
+    /// it names whose value comes from a request that started no later than the
+    /// probe. A family whose probe would spend an inference request is never
+    /// probed.
     pub async fn probe(&self) -> Result<Arc<QuotaSnapshot>, QuotaError> {
         match self.source.probe_cost() {
             None => return Err(QuotaError::Unsupported),
@@ -93,13 +104,15 @@ impl ProviderQuota {
         }))
     }
 
-    /// Merges the windows a live response reports into the account's
-    /// snapshot, keeping its plan and label, and answers them, which the
-    /// call's usage ledger row keeps (`crates/backend-database/src/usage.rs`).
-    /// `requested_at` is when the inference request whose response it reads
-    /// started: a window whose value comes from a request that started later
-    /// keeps it. A response the source cannot read changes nothing and
-    /// answers none, and observing never fails the request.
+    /// Merges the windows a live response reports into the account's snapshot,
+    /// keeping its plan and label, and answers them.
+    ///
+    /// The answered windows are what the call's usage ledger row keeps
+    /// (`crates/backend-database/src/usage.rs`). `requested_at` is when the
+    /// inference request whose response it reads started: a window whose value
+    /// comes from a request that started later keeps it. A response the source
+    /// cannot read changes nothing and answers none, and observing never fails
+    /// the request.
     pub fn observe(
         &self,
         observation: Observation<'_>,
@@ -273,13 +286,14 @@ enum Update {
     Observation(ObservedWindows),
 }
 
-/// The one merge both paths update a snapshot by: a probe
-/// sets the plan and the account label; an observation keeps them; either
-/// removes the windows it states do not exist, replaces each window it
-/// names whose value comes from a request that started no later than its
-/// own, `requested_at`, keeps the others, and adds new ones after them in
-/// the order it read them. A window keeps the time of the request its value
-/// came from.
+/// The one merge both paths update a snapshot by.
+///
+/// - A probe sets the plan and the account label; an observation keeps them.
+/// - Either removes the windows it states do not exist.
+/// - Either replaces each window it names whose value comes from a request that
+///   started no later than its own, `requested_at`, keeps the others, and adds
+///   new ones after them in the order it read them.
+/// - A window keeps the time of the request its value came from.
 fn merge(
     previous: Option<&QuotaSnapshot>,
     update: Update,

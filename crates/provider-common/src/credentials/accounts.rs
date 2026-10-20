@@ -1,9 +1,10 @@
 //! The account operations of a subscription family
-//! (`crates/backend-providers/src/vault/entries.rs`): listing, selecting and
-//! logging in the accounts of the
-//! provider's entry; the vault removes them. One implementation, [`Accounts`], serves
-//! every family over its credential pool; a family supplies only what differs,
-//! its [`AccountKit`]: how it logs in, and how an account names itself.
+//! (`crates/backend-providers/src/vault/entries.rs`).
+//!
+//! They list, select and log in the accounts of the provider's entry; the vault
+//! removes them. One implementation, [`Accounts`], serves every family over its
+//! credential pool. A family supplies only what differs, its [`AccountKit`]:
+//! how it logs in, and how an account names itself.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -18,7 +19,6 @@ use crate::{
     credentials::{AccountMeta, CredentialPool, PoolError, credential_id_for, find_by_identity},
 };
 
-/// The accounts of one subscription entry.
 pub trait SubscriptionAccounts: Send + Sync {
     fn capability(&self) -> AccountsCapability;
 
@@ -30,16 +30,19 @@ pub trait SubscriptionAccounts: Send + Sync {
 
     fn set_active<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
 
-    /// Runs the family's login and stores the account. The login reports what
-    /// the user must do to `io.pending`, takes the codes the user pastes from
-    /// `io.codes`, and once `io.stop` fires ends with [`LoginError::Stopped`]
-    /// as soon as it has released what it holds. Dropping the future cancels
-    /// it as well. A login that does not complete stores nothing.
+    /// Runs the family's login and stores the account.
+    ///
+    /// The login reports what the user must do to `io.pending`, takes the codes
+    /// the user pastes from `io.codes`, and once `io.stop` fires ends with
+    /// [`LoginError::Stopped`] as soon as it has released what it holds.
+    /// Dropping the future cancels it as well. A login that does not complete
+    /// stores nothing.
     fn login<'a>(&'a self, io: LoginIo<'a>) -> BoxFuture<'a, Result<AccountInfo, LoginError>>;
 
-    /// Deletes what the family keeps of the account `id` outside its
-    /// record, before the vault removes the record: Claude Code's directory
-    /// of the account on its machine
+    /// Deletes what the family keeps of the account `id` outside its record,
+    /// before the vault removes the record.
+    ///
+    /// An example is Claude Code's directory of the account on its machine
     /// (`crates/provider-claude-code/src/account.rs`). Most families keep
     /// nothing.
     fn forget<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
@@ -68,13 +71,13 @@ pub enum LoginKind {
 /// codes the user pastes, and when to stop.
 pub struct LoginIo<'a> {
     pub pending: &'a (dyn Fn(LoginPending) + Send + Sync),
-    /// What the login waits for before it has anything to show, for a
-    /// family whose login prepares in steps the user should see, such as a
-    /// Claude sign-in waiting for the Claude Code machine
+    /// What the login waits for before it has anything to show, for a family
+    /// whose login prepares in steps the user should see.
+    ///
+    /// An example is a Claude sign-in waiting for the Claude Code machine
     /// (`crates/provider-claude-code/src/account.rs`). A login is `preparing`
-    /// until it reports another stage,
-    /// and `waiting_for_user` once it reports `pending`; a family whose
-    /// login prepares in one step reports none.
+    /// until it reports another stage, and `waiting_for_user` once it reports
+    /// `pending`. A family whose login prepares in one step reports none.
     pub stage: &'a (dyn Fn(LoginStage) + Send + Sync),
     /// The codes the user pastes, in order; a login that takes none leaves
     /// them.
@@ -186,10 +189,11 @@ impl<K: AccountKit> Accounts<K> {
         Self { pool, kit, clock }
     }
 
-    /// Stores the account a login made: an account with the same identity key
-    /// is replaced, keeping its id; a new one gets an id derived from its
-    /// identity, and the first account of an entry without an active one
-    /// becomes its active account.
+    /// Stores the account a login made.
+    ///
+    /// An account with the same identity key is replaced, keeping its id. A new
+    /// one gets an id derived from its identity, and the first account of an
+    /// entry without an active one becomes its active account.
     async fn import(&self, account: NewAccount) -> Result<AccountInfo, LoginError> {
         let stored = |error: PoolError| LoginError::Failed(AccountsError::from(error).to_string());
         let NewAccount { secret, label } = account;

@@ -1,10 +1,13 @@
-//! The live output of commands (`crates/agent-server/src/server/tree/live.rs`) at a tree's
-//! connections: what a command prints while no page is attached, and what
-//! waited when the last page left, never reaches the next page as new
-//! output; that page finds the command's current view in its handshake, and
-//! only output after it attached arrives on its own. The command runs in a
-//! scripted shell environment ([`ScriptedShells`]) that prints when the test
-//! says, on Tokio's paused clock.
+//! The live output of commands (`crates/agent-server/src/server/tree/live.rs`)
+//! at a tree's connections.
+//!
+//! What a command prints while no page is attached, and what waited when the
+//! last page left, never reaches the next page as new output. That page finds
+//! the command's current view in its handshake, and only output after it
+//! attached arrives on its own.
+//!
+//! The command runs in a scripted shell environment ([`ScriptedShells`]) that
+//! prints when the test says, on Tokio's paused clock.
 
 use std::{rc::Rc, time::Duration};
 

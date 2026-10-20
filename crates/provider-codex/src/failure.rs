@@ -1,7 +1,9 @@
-//! How the Codex provider reads its failure records: a used-up account is
-//! told by Codex's own error type or code, as the Codex CLI tells it; a
-//! usage limit says when it lifts, in the failure's own fields, and anything
-//! else falls back to the standard reading.
+//! How the Codex provider reads its failure records.
+//!
+//! - A used-up account is told by Codex's own error type or code, as the Codex
+//!   CLI tells it.
+//! - A usage limit says when it lifts, in the failure's own fields.
+//! - Anything else falls back to the standard reading.
 
 use demi_provider_common::{
     ErrorCode, HttpFailureRecord, ProviderFailure, quota::unix_seconds, read_http_failure,
@@ -12,12 +14,18 @@ use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, ProviderFailure
 /// window is used up.
 const USAGE_LIMIT_REACHED: &str = "usage_limit_reached";
 
-/// `failure` with the code `usage_limit` when its record is Codex's sign of
-/// a used-up account: a 429, over HTTP or in a WebSocket error frame, whose
-/// error type is `usage_limit_reached`, or any failure, with a status or
-/// none as in a `response.failed` frame, whose error type or code says the
-/// quota, the credits or a spend or usage cap is used up. Any other failure
-/// keeps its code.
+/// `failure` with the code `usage_limit` when its record is Codex's sign of a
+/// used-up account.
+///
+/// The record is one of these:
+///
+/// - a 429, over HTTP or in a WebSocket error frame, whose error type is
+///   `usage_limit_reached`;
+/// - any failure, with a status or none as in a `response.failed` frame, whose
+///   error type or code says the quota, the credits or a spend or usage cap is
+///   used up.
+///
+/// Any other failure keeps its code.
 pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
     if failure.diagnostics.as_deref().is_some_and(is_usage_limit) {
         failure.code = Some(ErrorCode::UsageLimit);
@@ -51,12 +59,15 @@ struct Failure {
     error: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
-/// The failure a record holds: an HTTP failure's status and body, or a
-/// stream frame. A frame may come in a WebSocket envelope, `{"event": …}`;
-/// its error is the frame's `error`, or a failed response's
-/// `response.error`; a WebSocket error frame names its status as `status`,
-/// or as `status_code` as the Codex CLI also reads it. `None` for a record
-/// that is not JSON.
+/// The failure a record holds: an HTTP failure's status and body, or a stream
+/// frame.
+///
+/// - A frame may come in a WebSocket envelope, `{"event": …}`.
+/// - Its error is the frame's `error`, or a failed response's `response.error`.
+/// - A WebSocket error frame names its status as `status`, or as `status_code`
+///   as the Codex CLI also reads it.
+///
+/// `None` for a record that is not JSON.
 fn failure(diagnostics: &ProviderErrorDiagnostics) -> Option<Failure> {
     let (status, text) = match diagnostics.source {
         FailureSource::Http => {
@@ -80,10 +91,12 @@ fn failure(diagnostics: &ProviderErrorDiagnostics) -> Option<Failure> {
     Some(Failure { status, error })
 }
 
-/// The facts of a Codex failure record: `resets_at`, a Unix time in seconds,
-/// or `resets_in_seconds`, counted from when the failure was received, of
-/// the failure's error object, out of every envelope (`failure`). A value that is not a number reads as
-/// absent; without either, the standard `Retry-After` reading applies.
+/// The facts of a Codex failure record: `resets_at`, a Unix time in seconds, or
+/// `resets_in_seconds`, counted from when the failure was received, of the
+/// failure's error object, out of every envelope (`failure`).
+///
+/// A value that is not a number reads as absent; without either, the standard
+/// `Retry-After` reading applies.
 pub fn read_codex_failure(
     diagnostics: &ProviderErrorDiagnostics,
     received_at: Timestamp,

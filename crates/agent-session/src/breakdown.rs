@@ -1,7 +1,8 @@
 //! What fills the context: the rows of the context card, one figure each,
 //! computed from what the session holds, with no request to count.
-//! Messages is the rest of the estimate after the rows above it, so the
-//! rows add up to the estimate by construction.
+//!
+//! Messages is the rest of the estimate after the rows above it, so the rows
+//! add up to the estimate by construction.
 
 use std::collections::HashSet;
 
@@ -15,11 +16,13 @@ use super::{
     runtime::{PromptLayer, SystemPrompt},
 };
 
-/// The rows of `core`'s next request with `prompt`, whose text is
-/// `prompt_text`, and whose estimate is `estimate`, in `window`, the window
-/// in use, in the order of `ContextRowKind`, the rows with no tokens left
-/// out. A replayed block whose media the session holds nothing for, as
-/// after a restore, cannot be weighed: what it weighs stays in Messages.
+/// The rows of `core`'s next request, in the order of `ContextRowKind`.
+///
+/// The request is built with `prompt`, whose text is `prompt_text`, and whose
+/// estimate is `estimate`, in `window`, the window in use. The rows with no
+/// tokens are left out. A replayed block whose media the session holds nothing
+/// for, as after a restore, cannot be weighed: what it weighs stays in
+/// Messages.
 pub(super) fn rows(
     core: &SessionCore,
     prompt: &SystemPrompt,

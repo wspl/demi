@@ -206,11 +206,12 @@ impl Mapper {
         }
     }
 
-    /// The run's end at `message_stop`: the response when the model
-    /// finished, else the failure that says why the reply is cut short. A
-    /// message that named no stop reason finished, as `message_stop` says.
-    /// The response carries the message's counts as its `message_delta`
-    /// stated them, and none when no `message_delta` did.
+    /// The run's end at `message_stop`: the response when the model finished,
+    /// else the failure that says why the reply is cut short.
+    ///
+    /// A message that named no stop reason finished, as `message_stop` says.
+    /// The response carries the message's counts as its `message_delta` stated
+    /// them, and none when no `message_delta` did.
     fn stop(&self) -> ProviderEvent {
         let response = || ProviderEvent::response(self.usage.usage(), LABEL, &self.model);
         let Some((reason, received)) = &self.stopped else {

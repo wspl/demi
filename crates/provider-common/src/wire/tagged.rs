@@ -1,8 +1,11 @@
-//! The two-step decode of vendor payloads tagged by `type`: the tag first,
-//! then the payload the tag names. An unregistered tag decodes to nothing, so
-//! a vendor that adds an event does not break a stream Demi otherwise reads; a
-//! registered tag with a malformed payload is an error that names the field;
-//! a payload without a tag is an error.
+//! The two-step decode of vendor payloads tagged by `type`: the tag first, then
+//! the payload the tag names.
+//!
+//! - An unregistered tag decodes to nothing, so a vendor that adds an event
+//!   does not break a stream Demi otherwise reads.
+//! - A registered tag with a malformed payload is an error that names the
+//!   field.
+//! - A payload without a tag is an error.
 
 use std::borrow::Cow;
 
@@ -144,9 +147,11 @@ impl<'de, T: TaggedWire> Deserialize<'de> for Tagged<T> {
 }
 
 /// A field Demi only reads to report or to label, such as a vendor error's
-/// message or a claim of a token: a value that is not a `T` reads as absent,
-/// so a malformed error payload still surfaces as that error instead of as a
-/// protocol failure. Use it with `#[serde(default)]`.
+/// message or a claim of a token.
+///
+/// A value that is not a `T` reads as absent, so a malformed error payload
+/// still surfaces as that error instead of as a protocol failure. Use it with
+/// `#[serde(default)]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reported<T>(pub Option<T>);
 

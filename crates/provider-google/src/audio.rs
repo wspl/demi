@@ -1,12 +1,18 @@
-//! The audio role of a Gemini API key: speech from the TTS models and music from Lyria, each one
-//! `POST …/interactions` with the key in `x-goog-api-key`, whose `model_output` step holds the
-//! audio as base64 ([Speech generation](https://ai.google.dev/gemini-api/docs/speech-generation),
-//! [Music generation](https://ai.google.dev/gemini-api/docs/music-generation), [Interactions
-//! API](https://ai.google.dev/api/interactions-api)). Speech takes its instructions as the turn's
-//! `speech_metadata` style and its voice in `generation_config.speech_config`; a block of WAV is
-//! written as it came, one of raw PCM (`audio/l16`, as the older TTS models answer) is handed on
-//! to be wrapped. The models are those Google lists for the key whose ID names TTS or Lyria; the
-//! voices are `GET …/voices`, every page.
+//! The audio role of a Gemini API key: speech from the TTS models and music
+//! from Lyria.
+//!
+//! Each is one `POST …/interactions` with the key in `x-goog-api-key`, whose
+//! `model_output` step holds the audio as base64 ([Speech
+//! generation](https://ai.google.dev/gemini-api/docs/speech-generation), [Music
+//! generation](https://ai.google.dev/gemini-api/docs/music-generation),
+//! [Interactions API](https://ai.google.dev/api/interactions-api)).
+//!
+//! - Speech takes its instructions as the turn's `speech_metadata` style and
+//!   its voice in `generation_config.speech_config`.
+//! - A block of WAV is written as it came. One of raw PCM (`audio/l16`, as the
+//!   older TTS models answer) is handed on to be wrapped.
+//! - The models are those Google lists for the key whose ID names TTS or Lyria.
+//! - The voices are `GET …/voices`, every page.
 
 use bytes::Bytes;
 use demi_provider_common::{
@@ -187,10 +193,12 @@ struct SpeechVoice<'a> {
     voice: &'a str,
 }
 
-/// The interaction `request` asks for: speech with its voice and its
-/// instructions as the turn's style, and the vendor's default format, WAV
-/// for the current models; music from its prompt, asking WAV only when
-/// `--format wav` does, MP3 being Lyria's default.
+/// The interaction `request` asks for.
+///
+/// - Speech carries its voice and its instructions as the turn's style, and the
+///   vendor's default format, WAV for the current models.
+/// - Music comes from its prompt, asking WAV only when `--format wav` does, MP3
+///   being Lyria's default.
 fn encode(request: &AudioRequest) -> Vec<u8> {
     let body = match request.kind {
         AudioKind::Speech => Body {

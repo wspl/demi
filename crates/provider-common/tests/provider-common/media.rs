@@ -1,7 +1,8 @@
-//! A media call's answer and its redirects, against scripted servers: a
-//! file read within 256 MiB as it arrives, and a vendor's own key header
-//! sent only to the origin the call started at, whichever way a redirect
-//! leads.
+//! A media call's answer and its redirects, against scripted servers.
+//!
+//! - A file is read within 256 MiB as it arrives.
+//! - A vendor's own key header is sent only to the origin the call started at,
+//!   whichever way a redirect leads.
 
 use bytes::Bytes;
 use demi_provider_common::media::{ANSWER_LIMIT, MediaCall, MediaCredential, MediaFailure};
@@ -32,8 +33,9 @@ fn clock() -> FixedClock {
 
 /// A speech answered with more than 256 MiB fails as it arrives, without a
 /// length announced first, rather than being kept whole.
-/// Planted defect this catches: the answer read whole, as
-/// `response.bytes()` reads it.
+///
+/// Planted defect this catches: the answer read whole, as `response.bytes()`
+/// reads it.
 // One scripted server streaming 257 MiB of one shared chunk: about a
 // second, and 256 MiB of memory at most.
 #[tokio::test]
@@ -60,11 +62,15 @@ async fn a_file_answer_past_the_limit_fails_as_it_arrives() {
     }
 }
 
-/// A call's key header goes to its own origin, and never to another a
-/// redirect leads to: a 307 keeps the `POST` and its body without the key,
-/// a 303 turns into a `GET`, and a redirect within the origin keeps it.
-/// Planted defect this catches: redirects followed by the client, which
-/// drops only `Authorization` across hosts and so sends `xi-api-key` or
+/// A call's key header goes to its own origin, and never to another a redirect
+/// leads to.
+///
+/// - A 307 keeps the `POST` and its body without the key.
+/// - A 303 turns into a `GET`.
+/// - A redirect within the origin keeps the key.
+///
+/// Planted defect this catches: redirects followed by the client, which drops
+/// only `Authorization` across hosts and so sends `xi-api-key` or
 /// `x-goog-api-key` on to whoever the vendor's answer names.
 // Two scripted servers, five requests: milliseconds.
 #[tokio::test]

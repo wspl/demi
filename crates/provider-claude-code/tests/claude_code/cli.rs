@@ -1,10 +1,11 @@
-//! A scripted Claude Code CLI: a placement whose every start hands the test
-//! the other end of a process that speaks stream-json as the test says, in
-//! its account's directory with a directory of its own whose removal the
-//! test sees. The test reads what the provider writes, line by line, writes
-//! the CLI's output, and ends the process; the process ends as a real one
-//! does on SIGTERM and SIGKILL, and when its handle is dropped. A scripted
-//! machine runs a sign-in's or a probe's work on the same placement.
+//! A scripted Claude Code CLI: a placement whose every start hands the test the
+//! other end of a process that speaks stream-json as the test says, in its
+//! account's directory with a directory of its own whose removal the test sees.
+//!
+//! The test reads what the provider writes, line by line, writes the CLI's
+//! output, and ends the process. The process ends as a real one does on SIGTERM
+//! and SIGKILL, and when its handle is dropped. A scripted machine runs a
+//! sign-in's or a probe's work on the same placement.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -279,7 +280,6 @@ impl ScriptedPlacement {
         (placement, Starts(starts))
     }
 
-    /// The next start fails with `message`.
     pub fn fail_next(&self, message: &str) {
         *self.failure.borrow_mut() = Some(StartError(message.into()));
     }

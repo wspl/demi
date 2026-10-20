@@ -1,12 +1,15 @@
 //! The audio role of an OpenAI key and of a compatible entry whose audio shape
-//! is OpenAI Speech: `POST …/audio/speech` under the entry's base URL with the
-//! key as a bearer token, answered with the audio's bytes ([Create
+//! is OpenAI Speech.
+//!
+//! `POST …/audio/speech` under the entry's base URL with the key as a bearer
+//! token is answered with the audio's bytes ([Create
 //! speech](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)).
-//! An OpenAI key lists the speech models OpenAI lists for it that the catalog
-//! knows, and its voices are the catalog's built-ins, as OpenAI's API lists
-//! none; a custom voice, `voice_…`, is sent as `{ "id": … }`. A compatible
-//! entry offers the speech models its user added, and its voices are what its
-//! `GET …/audio/voices` lists, as vLLM-Omni serves it, or none.
+//!
+//! - An OpenAI key lists the speech models OpenAI lists for it that the catalog
+//!   knows. Its voices are the catalog's built-ins, as OpenAI's API lists none;
+//!   a custom voice, `voice_…`, is sent as `{ "id": … }`.
+//! - A compatible entry offers the speech models its user added. Its voices are
+//!   what its `GET …/audio/voices` lists, as vLLM-Omni serves it, or none.
 
 use std::sync::Arc;
 
@@ -171,10 +174,11 @@ impl AudioMaker for KeyAudio {
     }
 }
 
-/// The audio role of a compatible entry whose audio shape is OpenAI
-/// Speech: OpenAI's speech request under its `base`, with its `key` when it
-/// has one, offering the `models` its user added, each making speech;
-/// `name` is the entry's, which its failures name.
+/// The audio role of a compatible entry whose audio shape is OpenAI Speech:
+/// OpenAI's speech request under its `base`, with its `key` when it has one.
+///
+/// It offers the `models` its user added, each making speech; `name` is the
+/// entry's, which its failures name.
 pub fn compatible_audio(
     name: String,
     key: Option<Secret>,
@@ -224,15 +228,18 @@ fn speech_body(request: &AudioRequest) -> Vec<u8> {
     })
 }
 
-/// `GET …/audio/voices` as vLLM-Omni and SGLang-Omni answer it: `voices`,
-/// the model's preset voices by name, which vLLM-Omni's list includes its
-/// uploaded ones in, and `uploaded_voices`, the server's own, each with its
-/// `name` and the `speaker_description` it was uploaded with
+/// `GET …/audio/voices` as vLLM-Omni and SGLang-Omni answer it
 /// ([vLLM-Omni](https://docs.vllm.ai/projects/vllm-omni/en/latest/serving/speech_api/),
 /// [SGLang-Omni](https://github.com/sgl-project/sglang-omni/blob/main/sglang_omni/serve/speech_voices.py)).
+///
+/// - `voices` is the model's preset voices by name, which vLLM-Omni's list
+///   includes its uploaded ones in.
+/// - `uploaded_voices` is the server's own, each with its `name` and the
+///   `speaker_description` it was uploaded with.
+///
 /// A server that lists objects instead, each with its `id`, `voice_id` or
-/// `name` and its `display_name` or `name`, `description` and `language`,
-/// reads too.
+/// `name` and its `display_name` or `name`, `description` and `language`, reads
+/// too.
 #[derive(Deserialize)]
 struct VoiceListing {
     #[serde(default)]
@@ -272,10 +279,13 @@ struct UploadedVoice {
 }
 
 impl VoiceListing {
-    /// The voices, each once: a preset by its name, the server's own with
-    /// what it was uploaded with, in the list's order, then any uploaded
-    /// voice the list leaves out. A described voice with no id is skipped:
-    /// `--voice` could not name it.
+    /// The voices, each once, in this order.
+    ///
+    /// 1. A preset by its name.
+    /// 2. The server's own with what it was uploaded with, in the list's order.
+    /// 3. Any uploaded voice the list leaves out.
+    ///
+    /// A described voice with no id is skipped: `--voice` could not name it.
     fn into_voices(self) -> Vec<Voice> {
         let mut voices: Vec<Voice> = self
             .voices

@@ -1,8 +1,9 @@
-//! The SDK MCP channel: Demi's MCP server for one CLI process, an rmcp server in local
-//! mode on the user's shard, reached through an in-memory transport. The run
-//! passes it each MCP message the CLI sends in a control request and writes
-//! its replies back. A `tools/call` waits for the agent's result, which a
-//! later run delivers; rmcp handles each request on its own task, so `ping`
+//! The SDK MCP channel: Demi's MCP server for one CLI process, an rmcp server
+//! in local mode on the user's shard, reached through an in-memory transport.
+//!
+//! The run passes it each MCP message the CLI sends in a control request and
+//! writes its replies back. A `tools/call` waits for the agent's result, which
+//! a later run delivers. rmcp handles each request on its own task, so `ping`
 //! and `tools/list` are answered meanwhile.
 //!
 //! The server is built with rmcp, the official Rust MCP SDK, because the
@@ -11,18 +12,23 @@
 //! shard, one thread. Calls and results are matched by the original tool-use ID
 //! in `_meta` (`claudecode/toolUseId`).
 //!
+//! # Parallel tool batches
+//!
 //! The CLI's SDK MCP channel exposes only the first `tools/call` of an
 //! assistant message with several `tool_use` blocks: a later call may stay
 //! blocked until the earlier has its result. Handled as each arrived, the agent
 //! would see one call per run and mistake the delayed calls for separate model
-//! turns. So the provider yields the whole batch, collected until
-//! `message_stop`, before answering any call, and keeps the process; the next
-//! run delivers the results, every call of the batch must have one, and each
-//! later `tools/call` is answered at once from its stored result. A `tool_use`
-//! that names a tool the request does not offer is no part of the batch: the
-//! CLI answers it itself with an error result and the model corrects itself
-//! within the turn, where failing the run would end it for a slip the model
-//! recovers from.
+//! turns.
+//!
+//! So the provider yields the whole batch, collected until `message_stop`,
+//! before answering any call, and keeps the process. The next run delivers the
+//! results, every call of the batch must have one, and each later `tools/call`
+//! is answered at once from its stored result.
+//!
+//! A `tool_use` that names a tool the request does not offer is no part of the
+//! batch. The CLI answers it itself with an error result and the model corrects
+//! itself within the turn, where failing the run would end it for a slip the
+//! model recovers from.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -135,10 +141,11 @@ impl Mcp {
         self.board.borrow_mut().tools = tools;
     }
 
-    /// Passes one MCP message the CLI sent in control request `request_id`
-    /// to the server. A request is answered by the server's reply, later; any
-    /// other message is acknowledged at once, and the acknowledgment is
-    /// returned to be written.
+    /// Passes one MCP message the CLI sent in control request `request_id` to
+    /// the server.
+    ///
+    /// A request is answered by the server's reply, later. Any other message is
+    /// acknowledged at once, and the acknowledgment is returned to be written.
     pub(crate) fn pass(
         &mut self,
         request_id: &str,
@@ -167,10 +174,11 @@ impl Mcp {
         }
     }
 
-    /// The server's next reply or the next call it opened. A call that is no
-    /// longer open, such as one answered from a stored result, is skipped. A
-    /// server that ended has nothing more; the CLI learns that from the
-    /// answers to what it sends ([`Mcp::pass`]).
+    /// The server's next reply or the next call it opened.
+    ///
+    /// A call that is no longer open, such as one answered from a stored
+    /// result, is skipped. A server that ended has nothing more; the CLI learns
+    /// that from the answers to what it sends ([`Mcp::pass`]).
     pub(crate) async fn next(&mut self) -> McpEvent {
         loop {
             tokio::select! {
@@ -313,11 +321,13 @@ impl ServerHandler for Server {
     }
 }
 
-/// A tool's result as MCP content: text, an image as base64 with its media
-/// type, and a video or a document as text naming its media type, since MCP
-/// has no video and the CLI saves a PDF resource to a file rather than give
-/// it to the model (`crates/provider-common/src/contract.rs`); a failed tool
-/// sets the error flag.
+/// A tool's result as MCP content.
+///
+/// - Text is text, and an image is base64 with its media type.
+/// - A video or a document is text naming its media type, since MCP has no
+///   video and the CLI saves a PDF resource to a file rather than give it to
+///   the model (`crates/provider-common/src/contract.rs`).
+/// - A failed tool sets the error flag.
 pub(crate) fn tool_result(output: &[ResultPart], is_error: bool) -> CallToolResult {
     let content = output
         .iter()

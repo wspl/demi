@@ -1,14 +1,19 @@
 //! Readying the next request's runtime ahead
-//! (`crates/provider-claude-code/src/prepared.rs`): once the session is idle,
-//! the worker builds the request the next one is but for its input, as the
-//! selection that request lands with sees the history, and hands it to the
-//! runtime that request lands on, which readies what it needs. It takes no
-//! admission: what the runtime starts goes on by itself. Building the request
-//! reads the blobs of the media its history replays that the session holds
-//! nothing for, as after a restore; it runs after a page's open was answered,
-//! so the open itself reads none. A runtime that readies nothing gets no
-//! request, and no blob is read for it. A request that cannot be built now
-//! readies nothing, and the request says why when it is sent.
+//! (`crates/provider-claude-code/src/prepared.rs`).
+//!
+//! Once the session is idle, the worker builds the request the next one is but
+//! for its input, as the selection that request lands with sees the history. It
+//! hands the request to the runtime that request lands on, which readies what
+//! it needs.
+//!
+//! - It takes no admission: what the runtime starts goes on by itself.
+//! - Building the request reads the blobs of the media its history replays that
+//!   the session holds nothing for, as after a restore. It runs after a page's
+//!   open was answered, so the open itself reads none.
+//! - A runtime that readies nothing gets no request, and no blob is read for
+//!   it.
+//! - A request that cannot be built now readies nothing, and the request says
+//!   why when it is sent.
 
 use demi_provider_common::Ahead;
 

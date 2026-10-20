@@ -1,10 +1,11 @@
-//! The ElevenLabs provider: an ElevenLabs entry of the
-//! `media` family, which makes no text, authenticated by its key in
-//! `xi-api-key`. Its key makes speech, music and sound effects, each one
-//! request answered with the audio's bytes; its voices are its account's
-//! list, every page; its models are the speech models it lists for the
-//! key and the music and effect models of the catalog, and reading that
-//! list is what checks the key.
+//! The ElevenLabs provider: an ElevenLabs entry of the `media` family, which
+//! makes no text, authenticated by its key in `xi-api-key`.
+//!
+//! - Its key makes speech, music and sound effects, each one request answered
+//!   with the audio's bytes.
+//! - Its voices are its account's list, every page.
+//! - Its models are the speech models it lists for the key and the music and
+//!   effect models of the catalog. Reading that list is what checks the key.
 
 mod audio;
 

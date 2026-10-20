@@ -1,33 +1,39 @@
-//! The Hailuo shape: MiniMax's videos through its key, on the entry's
-//! origin, each model by the request the catalog's `api` names for it.
+//! The Hailuo shape: MiniMax's videos through its key, on the entry's origin,
+//! each model by the request the catalog's `api` names for it.
 //!
-//! - `v2`, the H3 models: `POST /v2/video_generation` with `model` and
-//!   `content`, the prompt its `text` item and each image an `image_url`
-//!   item with its role, answers the task's `task_id`
-//!   ([Create](https://platform.minimax.io/docs/api-reference/video-generation-v2-create));
-//!   `GET /v2/query/video_generation/<task_id>` answers its `task.status`,
+//! # `v2`, the H3 models
+//!
+//! - `POST /v2/video_generation` with `model` and `content` (the prompt its
+//!   `text` item and each image an `image_url` item with its role) answers the
+//!   task's `task_id`
+//!   ([Create](https://platform.minimax.io/docs/api-reference/video-generation-v2-create)).
+//! - `GET /v2/query/video_generation/<task_id>` answers its `task.status`,
 //!   `queued`, `running`, `succeeded`, `failed` or `cancelled`, and once
 //!   succeeded its `task.content.url`
 //!   ([Query](https://platform.minimax.io/docs/api-reference/video-generation-v2-query)).
-//!   v2 needs a resolution, a duration and, for a video from text alone, a
-//!   ratio: a call that asks none sends `768P`, the model's shortest
-//!   duration and `16:9`. Its refusals are HTTP statuses with an `error`.
-//!   `DELETE /v2/video_generation/<task_id>` cancels a queued task and
-//!   deletes the record of a finished one, so a stopped call reads the
-//!   task first and deletes only a queued one
-//!   ([Cancel or delete](https://platform.minimax.io/docs/api-reference/video-generation-v2-delete)).
-//! - `v1`, Hailuo 2.3 and 02: `POST /v1/video_generation` with `model`,
-//!   `prompt` and the frames as `first_frame_image` and `last_frame_image`
-//!   ([Text to video](https://platform.minimax.io/docs/api-reference/video-generation-t2v),
-//!   [First and last frame](https://platform.minimax.io/docs/api-reference/video-generation-fl2v));
-//!   `GET /v1/query/video_generation?task_id=` answers `Preparing`,
-//!   `Queueing`, `Processing`, `Success` or `Fail`
+//! - v2 needs a resolution, a duration and, for a video from text alone, a
+//!   ratio. A call that asks none sends `768P`, the model's shortest duration
+//!   and `16:9`.
+//! - Its refusals are HTTP statuses with an `error`.
+//! - `DELETE /v2/video_generation/<task_id>` cancels a queued task and deletes
+//!   the record of a finished one, so a stopped call reads the task first and
+//!   deletes only a queued one ([Cancel or
+//!   delete](https://platform.minimax.io/docs/api-reference/video-generation-v2-delete)).
+//!
+//! # `v1`, Hailuo 2.3 and 02
+//!
+//! - `POST /v1/video_generation` with `model`, `prompt` and the frames as
+//!   `first_frame_image` and `last_frame_image` ([Text to
+//!   video](https://platform.minimax.io/docs/api-reference/video-generation-t2v),
+//!   [First and last
+//!   frame](https://platform.minimax.io/docs/api-reference/video-generation-fl2v)).
+//! - `GET /v1/query/video_generation?task_id=` answers `Preparing`, `Queueing`,
+//!   `Processing`, `Success` or `Fail`
 //!   ([Query](https://platform.minimax.io/docs/api-reference/video-generation-query)),
-//!   and a finished task's `file_id`, whose
-//!   `GET /v1/files/retrieve?file_id=` names its `file.download_url`,
-//!   kept an hour
-//!   ([Retrieve file](https://platform.minimax.io/docs/api-reference/file-management-retrieve)).
-//!   v1 refuses with HTTP 200 and a `base_resp`, and MiniMax cancels no v1
+//!   and a finished task's `file_id`. `GET /v1/files/retrieve?file_id=` names
+//!   its `file.download_url`, kept an hour ([Retrieve
+//!   file](https://platform.minimax.io/docs/api-reference/file-management-retrieve)).
+//! - v1 refuses with HTTP 200 and a `base_resp`, and MiniMax cancels no v1
 //!   task.
 //!
 //! The video's address takes no header.
@@ -328,7 +334,6 @@ struct V2Error {
     message: Option<String>,
 }
 
-/// The state one read of a v2 task answered.
 fn read_v2_state(body: &[u8]) -> Result<JobState, MediaFailure> {
     let answer: V2Answer =
         serde_json::from_slice(body).map_err(|error| unreadable(format!("its task's state could not be read: {error}")))?;
@@ -355,7 +360,6 @@ enum V1State {
     Other(JobState),
 }
 
-/// The state one read of a v1 task answered.
 fn read_v1_state(body: &[u8]) -> Result<V1State, MediaFailure> {
     #[derive(Deserialize)]
     struct State {

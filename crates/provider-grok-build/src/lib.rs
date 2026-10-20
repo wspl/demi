@@ -1,11 +1,15 @@
-//! The Grok Build provider: a `grok-build` subscription entry's account, signed in by OAuth
-//! device authorization at `auth.x.ai`, inferring over Chat Completions
-//! through the chat proxy Grok's own CLI uses. It refreshes the account's
-//! OIDC tokens by the one protocol of `crates/provider-grok-build/src/auth.rs`, reads
-//! the model catalog from `/v1/models`, and keeps the account's quota from a
-//! free billing and subscription probe and the rate-limit headers of every
-//! chat response. It makes images and videos through the proxy's image and
-//! video endpoints.
+//! The Grok Build provider: a `grok-build` subscription entry's account, signed
+//! in by OAuth device authorization at `auth.x.ai`, inferring over Chat
+//! Completions through the chat proxy Grok's own CLI uses.
+//!
+//! The provider:
+//!
+//! - refreshes the account's OIDC tokens by the one protocol of
+//!   `crates/provider-grok-build/src/auth.rs`;
+//! - reads the model catalog from `/v1/models`;
+//! - keeps the account's quota from a free billing and subscription probe and
+//!   the rate-limit headers of every chat response;
+//! - makes images and videos through the proxy's image and video endpoints.
 
 mod auth;
 mod images;
@@ -255,7 +259,6 @@ impl ProviderRuntime for GrokRuntime {
 pub mod testing {
     use demi_provider_common::InferenceRequest;
 
-    /// The body of `request`.
     pub fn body(request: &InferenceRequest) -> Vec<u8> {
         crate::request::encode(request)
     }

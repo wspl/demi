@@ -2,31 +2,41 @@
 //! and the line about a binary stdout, and the bounded view the user sees, all
 //! from one command status.
 //!
-//! The model keeps its own place in each command's output and a result shows
+//! The model keeps its own place in each command's output, and a result shows
 //! the output since its last look; what the pages are sent never moves it. A
 //! result is cut once, where it is made, by one rule for every model, so replay
-//! sends it unchanged. `idleMs` counts from the last time the output grew, also
-//! beyond the first 8 KiB the backend holds (the runner reports such growth
-//! within seconds), so a build that logged a second ago is not taken for a hung
-//! one. A script that has ended while a background task keeps its command
-//! running says so, since a model that started `nohup server &` took such a
-//! command for a hang.
+//! sends it unchanged.
+//!
+//! `idleMs` counts from the last time the output grew, also beyond the first 8
+//! KiB the backend holds (the runner reports such growth within seconds), so a
+//! build that logged a second ago is not taken for a hung one. A script that
+//! has ended while a background task keeps its command running says so, since a
+//! model that started `nohup server &` took such a command for a hang.
+//!
+//! # Media
 //!
 //! Media reach the model only in the result that reports the job's end, the
 //! `shell` result or the end report, so each medium is attached once and a
-//! job's media arrive together in order; a `demi shell status` that shows the
+//! job's media arrive together in order. A `demi shell status` that shows the
 //! end attaches nothing, and the end report then still comes carrying the media
-//! alone. The limits on what a result attaches exist so that a request stays
-//! small and every provider takes it: one step's result is a small part of a
-//! request, the media's base64 takes at most half of the model's body limit to
-//! leave room for the history, and a medium that does not fit is skipped while
-//! a later, smaller one may still be attached. A line about a medium says it
-//! was shown to the model, never attached, which the model would read as
-//! delivered to the user. The runner keeps media apart from the output, so no
-//! cut of the output touches them. When the job ends the backend stores each
-//! medium the result attaches as a blob before the result reports the end, and
-//! stores none it does not attach: the model views the file again when it needs
-//! it.
+//! alone.
+//!
+//! The limits on what a result attaches exist so that a request stays small and
+//! every provider takes it:
+//!
+//! - One step's result is a small part of a request.
+//! - The media's base64 takes at most half of the model's body limit to leave
+//!   room for the history.
+//! - A medium that does not fit is skipped while a later, smaller one may still
+//!   be attached.
+//!
+//! A line about a medium says it was shown to the model, never attached, which
+//! the model would read as delivered to the user.
+//!
+//! The runner keeps media apart from the output, so no cut of the output
+//! touches them. When the job ends the backend stores each medium the result
+//! attaches as a blob before the result reports the end, and stores none it
+//! does not attach: the model views the file again when it needs it.
 
 use std::sync::Arc;
 
@@ -83,10 +93,12 @@ pub enum Moved {
     TimePassed { interval_ms: u32 },
 }
 
-/// The `shell` call's outcome for `status`: its text, the media it attaches
-/// and the lines about them, and its view. `model` is the call's, and its
-/// vendor takes requests within `limits`. A command that exited with a
-/// status other than 0, or was stopped or lost, is an error to the provider.
+/// The `shell` call's outcome for `status`: its text, the media it attaches and
+/// the lines about them, and its view.
+///
+/// `model` is the call's, and its vendor takes requests within `limits`. A
+/// command that exited with a status other than 0, or was stopped or lost, is
+/// an error to the provider.
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
@@ -130,11 +142,13 @@ pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
     result_text(status, &unseen_output(status), look)
 }
 
-/// What a look at `command` shows the model from its whole output `whole`,
-/// from the node's own place `seen` in it: the look of a node that does not
-/// hold the command, such as at another agent's command, or at one whose
-/// shells ended (`crates/agent-server/src/server/shell_output.rs`). The command is
-/// in `state`, has run `running_ms` and printed nothing for `idle_ms`.
+/// What a look at `command` shows the model from its whole output `whole`, from
+/// the node's own place `seen` in it.
+///
+/// This is the look of a node that does not hold the command, such as at
+/// another agent's command, or at one whose shells ended
+/// (`crates/agent-server/src/server/shell_output.rs`). The command is in
+/// `state`, has run `running_ms` and printed nothing for `idle_ms`.
 pub fn whole_look_text(
     command: &CommandId,
     state: CommandState,
@@ -202,12 +216,16 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
     }
 }
 
-/// The lines the model reads: first the look's note, then the status, the
-/// handles and timings that matter, the output since the model's last look
-/// within the replay bound, while the command runs each stream's newest
-/// lines beyond its start, and the next step, after the line that says why
-/// the command moved to the background when the call returned while it
-/// ran.
+/// The lines the model reads.
+///
+/// In order, they are:
+///
+/// 1. the look's note;
+/// 2. the status, the handles and timings that matter;
+/// 3. the output since the model's last look within the replay bound, while the
+///    command runs each stream's newest lines beyond its start;
+/// 4. the next step, after the line that says why the command moved to the
+///    background when the call returned while it ran.
 fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
@@ -286,9 +304,11 @@ fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String
 }
 
 /// What a command's report carries of `status`'s output
-/// (`crates/agent-session/src/reports.rs`): the output since the node's last
-/// look as a result shows it, within `budget` characters, the lines that name
-/// what it leaves out among them; empty when there is none.
+/// (`crates/agent-session/src/reports.rs`).
+///
+/// It is the output since the node's last look as a result shows it, within
+/// `budget` characters, the lines that name what it leaves out among them;
+/// empty when there is none.
 pub fn report_output(status: &CommandStatus, budget: usize) -> String {
     let text = unseen_output(status);
     let newest = newest_of(status);
@@ -300,10 +320,11 @@ pub fn report_output(status: &CommandStatus, budget: usize) -> String {
     lines.join("\n")
 }
 
-/// What the result of a call that something other than its tool ended
-/// shows of the command it watched (`crates/agent-session/src/core.rs`): its
-/// output since the node's last look as a report carries it, within
-/// `budget` characters, and the user's view of the call.
+/// What the result of a call that something other than its tool ended shows of
+/// the command it watched (`crates/agent-session/src/core.rs`).
+///
+/// It is the command's output since the node's last look as a report carries
+/// it, within `budget` characters, and the user's view of the call.
 pub fn interrupted_look(status: &CommandStatus, budget: usize) -> (String, ShellToolView) {
     (report_output(status, budget), shell_view(status, &unseen_output(status)))
 }
@@ -331,10 +352,11 @@ fn unreceived_line(status: &CommandStatus, newest: &[&Newest]) -> Option<String>
     })
 }
 
-/// The output lines a result shows within `budget` characters: the output
-/// since the model's last look from its start, and each stream's newest
-/// lines after the line that counts what lies between, each part within
-/// half of the budget when there are newest lines.
+/// The output lines a result shows within `budget` characters.
+///
+/// They are the output since the model's last look from its start, and each
+/// stream's newest lines after the line that counts what lies between, each
+/// part within half of the budget when there are newest lines.
 fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budget: usize) -> Vec<String> {
     // The start takes all of the bound, or half of it beside newest lines.
     let start_budget = if newest.is_empty() {
@@ -444,11 +466,12 @@ impl Shown {
 }
 
 /// The lines of `text` from line `from` on within `budget` characters, each
-/// with its newline: all of them when they fit; otherwise as many whole lines
-/// from the start and from the end as fit in half each of what the budget
-/// leaves after the line between them, which names what it leaves out and
-/// the command that prints it. A single line too long for its half shows in
-/// part.
+/// with its newline.
+///
+/// All of them when they fit. Otherwise as many whole lines from the start and
+/// from the end as fit in half each of what the budget leaves after the line
+/// between them, which names what it leaves out and the command that prints it.
+/// A single line too long for its half shows in part.
 fn cut(text: &OutputText, from: u64, command: &CommandId, budget: usize) -> Vec<String> {
     let mut all = Vec::new();
     let mut used = 0;
@@ -623,10 +646,12 @@ impl Budget {
     }
 }
 
-/// What the end report of a command whose job viewed `media` attaches, as
-/// the `shell` result would have: the media, by number, while `model`
-/// reads them and they fit the bounds of requests within `limits`, then the
-/// text of the lines about them; nothing when it viewed none.
+/// What the end report of a command whose job viewed `media` attaches, as the
+/// `shell` result would have.
+///
+/// It attaches the media, by number, while `model` reads them and they fit the
+/// bounds of requests within `limits`, then the text of the lines about them;
+/// nothing when it viewed none.
 pub async fn report_media(
     media: &[CommandMedium],
     model: &Model,
@@ -639,10 +664,12 @@ pub async fn report_media(
     parts
 }
 
-/// What a result that reports a command's end attaches: the media its job viewed, by number, each
-/// while the model reads it in a tool result and it fits the result's
-/// bounds; and the lines that tell of each one not attached or attached in
-/// another form than it came, and of a binary stdout, which is never shown.
+/// What a result that reports a command's end attaches.
+///
+/// - The media its job viewed, by number, each while the model reads it in a
+///   tool result and it fits the result's bounds.
+/// - The lines that tell of each one not attached or attached in another form
+///   than it came, and of a binary stdout, which is never shown.
 async fn attached_media(
     media: &[CommandMedium],
     binary: Option<&BinaryOutput>,
@@ -1214,10 +1241,12 @@ mod tests {
         assert_eq!(shown[20..], lines);
     }
 
-    /// Planted defects this catches: a budget that counts each medium alone
-    /// rather than all of the result's (the fourth would be attached), and
-    /// one that stops at the first medium that breaks it rather than
-    /// skipping it (the third would not).
+    /// Planted defects this catches:
+    ///
+    /// - a budget that counts each medium alone rather than all of the result's
+    ///   (the fourth would be attached);
+    /// - one that stops at the first medium that breaks it rather than skipping
+    ///   it (the third would not).
     #[tokio::test]
     async fn a_medium_past_half_the_body_limit_is_skipped_and_a_later_smaller_one_attached() {
         let small = demi_agent_store::testing::png(4, 3, 1);
@@ -1245,10 +1274,12 @@ mod tests {
         );
     }
 
-    /// Planted defects this catches: a medium attached in a type the model
-    /// does not read, or of a kind its provider does not carry in a tool
-    /// result; a fitted image attached without its line; and a document
-    /// left out.
+    /// Planted defects this catches:
+    ///
+    /// - a medium attached in a type the model does not read, or of a kind its
+    ///   provider does not carry in a tool result;
+    /// - a fitted image attached without its line;
+    /// - a document left out.
     #[tokio::test]
     async fn each_medium_not_attached_or_fitted_has_its_line() {
         let wide = demi_agent_store::testing::png(2_400, 10, 1).into_bytes();

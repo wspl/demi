@@ -1,7 +1,8 @@
-//! A session's transcript: its blocks, the patches that record every change
-//! to them, the identities it gives blocks and turns, the points it is cut
-//! at, the model's replay of them, the token estimates compaction decides
-//! by.
+//! A session's transcript.
+//!
+//! The crate holds the blocks, the patches that record every change to them,
+//! the identities it gives blocks and turns, the points it is cut at, the
+//! model's replay of them, and the token estimates compaction decides by.
 //!
 //! The crate runs no turn, calls no provider and stores nothing itself.
 
@@ -65,13 +66,14 @@ pub fn replay_start(blocks: &[Block]) -> usize {
         .unwrap_or(0)
 }
 
-/// Where the answer to the session's latest answered request begins: that
-/// request's `response` block comes last, after the last
+/// Where the answer to the session's latest answered request begins.
+///
+/// That request's `response` block comes last, after the last
 /// `compaction_marker`, and its answer is the run of thinking, text and
 /// tool-call blocks directly before that `response` block. What the blocks
-/// before the answer replay is what the request carried. None when no
-/// request was answered since the last compaction. A boundary whose marker
-/// an edit cut counts as the last compaction.
+/// before the answer replay is what the request carried. None when no request
+/// was answered since the last compaction. A boundary whose marker an edit cut
+/// counts as the last compaction.
 pub(crate) fn latest_answer(blocks: &[Block]) -> Option<usize> {
     answered_ends(blocks).last().copied()
 }

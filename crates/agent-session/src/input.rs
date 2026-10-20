@@ -1,18 +1,23 @@
 //! A session's waiting input: the human steers it accepted, the agent messages
 //! it admitted and the command reports that arrived, each waiting for a
-//! continuation boundary. Pure state: the session decides when a boundary
-//! takes them.
+//! continuation boundary.
 //!
-//! An agent message enters the same queue as a human steer: its delivery is
+//! Pure state: the session decides when a boundary takes them.
+//!
+//! An agent message enters the same queue as a human steer. Its delivery is
 //! steering (it enters an active turn at its next boundary, and no provider
 //! receives input in the middle of a request) and its representation is the
 //! `agent_message` block. There is no separate inbox, scheduler or delivery
-//! loop for it. It never cancels a tool or restarts the turn, so a boundary can
-//! come later than the arrival, and the page must not claim the model has read
-//! a receipt because the runtime accepted it. Pending input is checked again
-//! before the session commits idle or a child closes, so a race between
-//! finishing and admission cannot lose a message; a compaction keeps it outside
-//! the compacted prefix and takes it before inference resumes.
+//! loop for it.
+//!
+//! It never cancels a tool or restarts the turn, so a boundary can come later
+//! than the arrival, and the page must not claim the model has read a receipt
+//! because the runtime accepted it.
+//!
+//! Pending input is checked again before the session commits idle or a child
+//! closes, so a race between finishing and admission cannot lose a message. A
+//! compaction keeps it outside the compacted prefix and takes it before
+//! inference resumes.
 //!
 //! The human steers are not part of the checkpoint: a steer that never reached
 //! the transcript is lost with a restart, and nothing else keeps a copy of it
@@ -61,11 +66,12 @@ pub(super) enum Take {
     Everything,
     /// A shutdown writes the human steers; the rest stays in the checkpoint.
     Steers,
-    /// The boundary after a response's stream writes only the agent
-    /// messages: the command reports wait until the response's tools have
-    /// run, so a look among them that shows a command's end takes its
-    /// report (`crates/agent-session/src/reports.rs`), and the human steers wait
-    /// for the request that carries them.
+    /// The boundary after a response's stream writes only the agent messages.
+    ///
+    /// The command reports wait until the response's tools have run, so a look
+    /// among them that shows a command's end takes its report
+    /// (`crates/agent-session/src/reports.rs`). The human steers wait for the
+    /// request that carries them.
     AgentMessages,
     /// The boundary after a step of tool calls writes all but the human
     /// steers, which stay pending until the request that carries them.
@@ -214,7 +220,6 @@ impl InputQueue {
         self.entries.iter().any(|input| input.id() == Some(id))
     }
 
-    /// The waiting agent message with this id.
     pub(super) fn agent_message(&self, id: &BlockId) -> Option<&AgentMessage> {
         self.entries.iter().find_map(|input| match input {
             Input::Agent(input) if &input.message.id == id => Some(&input.message),

@@ -1,8 +1,9 @@
 //! Conversation titles: the title the first message gives at once, the small
-//! request that writes a better one, and the title in its answer. The backend
-//! decides when a request starts, runs it on the user's small model, keeps the
-//! one in flight per conversation, and writes the title only while it is still
-//! the one the request began from.
+//! request that writes a better one, and the title in its answer.
+//!
+//! The backend decides when a request starts, runs it on the user's small
+//! model, keeps the one in flight per conversation, and writes the title only
+//! while it is still the one the request began from.
 
 use std::num::NonZeroU32;
 
@@ -24,18 +25,22 @@ pub const TITLE_MAX_CHARS: usize = 80;
 /// How much of the first message a request reads, in Unicode scalar values.
 pub const INPUT_MAX_CHARS: usize = 4_000;
 
-/// A title request's cap on its output (`crates/provider-common/src/contract.rs`). It
-/// leaves room for the lowest thinking effort and one line of text: a
+/// A title request's cap on its output
+/// (`crates/provider-common/src/contract.rs`).
+///
+/// It leaves room for the lowest thinking effort and one line of text: a
 /// reasoning model counts its thinking against the limit, so a cap sized for
 /// the line alone can end before any text. A model whose own output limit is
 /// lower sends that one. At 1,024 the baseline model's lowest effort left about
 /// one title in ten empty, its thinking spending the whole limit.
 pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(4_096).expect("the cap is not zero");
 
-/// The whole system prompt of a title request. It describes the place the title
-/// is shown rather than a length per language, and holds no examples: a model
-/// copies an example's language and shape, and gave an English request a
-/// half-Chinese title when the examples ended in Chinese ones.
+/// The whole system prompt of a title request.
+///
+/// It describes the place the title is shown rather than a length per language,
+/// and holds no examples: a model copies an example's language and shape, and
+/// gave an English request a half-Chinese title when the examples ended in
+/// Chinese ones.
 pub const TITLE_INSTRUCTION: &str = "You are a title generator. You output ONLY a conversation title. Nothing else.
 
 The input is the first message the user sent in a conversation. Title the
@@ -73,8 +78,8 @@ pub fn title_input(message: &str) -> String {
     prefix(&one_line(&plain_text(message)), INPUT_MAX_CHARS).to_owned()
 }
 
-/// A user message's Markdown as the user reads it, plain text: `` `pnpm
-/// build` `` is `pnpm build`, and no mark or escape shows.
+/// A user message's Markdown as the user reads it, plain text: `` `pnpm build`
+/// `` is `pnpm build`, and no mark or escape shows.
 ///
 /// The message dialect keeps some CommonMark as typed: each line reads only
 /// inline constructs, so a list, heading or quote marker at a line's start
@@ -234,13 +239,15 @@ pub fn title_request(message: &str) -> Option<SmallRequest> {
     })
 }
 
-/// The user turn of a request: `input` framed as the message to title, not
-/// a question put to the model. Bare, a model reads the message as its own
-/// request and at times answers it despite the instruction: DeepSeek V4.1
-/// Flash at its lowest effort titled "What is 5 times 8?" "40" or "5 times 8
-/// is 40." in 3 of 257 requests; framed, "5 times 8 equals 40" in 1 of 428;
-/// framed and with the instruction's line that a question's title holds no
-/// answer, in none of 341.
+/// The user turn of a request: `input` framed as the message to title, not a
+/// question put to the model.
+///
+/// Bare, a model reads the message as its own request and at times answers it
+/// despite the instruction. DeepSeek V4.1 Flash at its lowest effort titled
+/// "What is 5 times 8?" "40" or "5 times 8 is 40." in 3 of 257 requests.
+/// Framed, it wrote "5 times 8 equals 40" in 1 of 428. Framed and with the
+/// instruction's line that a question's title holds no answer, it did so in
+/// none of 341.
 fn framed(input: &str) -> String {
     format!("Write the title of the conversation that begins with this message:\n\n<message>\n{input}\n</message>")
 }

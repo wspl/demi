@@ -1,9 +1,9 @@
-//! The video role of an xAI key and of a compatible entry with a video
-//! shape: the xAI Videos shape under the entry's base URL for either, and
-//! for a compatible API the OpenAI Videos or the OpenRouter Videos shape
-//! it chose, each with the key as a bearer token. An xAI key lists the
-//! video models xAI lists for it; a compatible entry offers the video
-//! models its user added.
+//! The video role of an xAI key and of a compatible entry with a video shape.
+//!
+//! The xAI Videos shape under the entry's base URL serves either. A compatible
+//! API uses the OpenAI Videos or the OpenRouter Videos shape it chose, each
+//! with the key as a bearer token. An xAI key lists the video models xAI lists
+//! for it; a compatible entry offers the video models its user added.
 
 use std::sync::Arc;
 
@@ -195,9 +195,10 @@ impl VideoMaker for KeyVideos {
 }
 
 /// The video role of a compatible entry with a video shape: the shape's
-/// requests under its `base`, with its `key` when it has one, offering the
-/// `models` its user added; `name` is the entry's, which its failures
-/// name.
+/// requests under its `base`, with its `key` when it has one.
+///
+/// It offers the `models` its user added; `name` is the entry's, which its
+/// failures name.
 pub fn compatible_videos(
     name: String,
     shape: VideoShape,
@@ -246,10 +247,11 @@ fn openai_fields(request: &VideoRequest) -> OpenAiFields {
     }
 }
 
-/// The size of `aspect` at `resolution`, its shorter side the
-/// resolution's, each side a multiple of 16: 1280×720 for 16:9 at 720p.
-/// Either alone takes the other's usual value, 16:9 or 720p; neither sends
-/// no size, so the server's default stands.
+/// The size of `aspect` at `resolution`, its shorter side the resolution's,
+/// each side a multiple of 16: 1280×720 for 16:9 at 720p.
+///
+/// Either alone takes the other's usual value, 16:9 or 720p. Neither sends no
+/// size, so the server's default stands.
 fn openai_size(aspect: Option<Aspect>, resolution: Option<VideoResolution>) -> Option<String> {
     if aspect.is_none() && resolution.is_none() {
         return None;

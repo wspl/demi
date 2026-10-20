@@ -1,17 +1,26 @@
-//! Stopping a running action: one token per action, why it was cancelled,
-//! and the acknowledgement that the action recorded the stop, which
-//! `abort()` waits for and which says whether another `abort` would then
-//! have stopped more.
+//! Stopping a running action.
 //!
-//! Each `abort` stops one thing, in this order: the running action, else the
-//! first waiting action, else nothing. The stopped action records the stop
-//! itself, because a cancelled provider run ends without an event, and the
-//! stop is acknowledged only once the record is in the transcript; an action
-//! that was saving a history rewrite records it after the rewrite is
-//! published, so a rewrite never loses a stop. A Stop stops only what the node
-//! does at that moment and holds nothing afterwards: its subagents run on, and
-//! an agent message or a command report that arrives later wakes the node as
-//! it wakes an idle one.
+//! An action has one token and a reason it was cancelled. It also has an
+//! acknowledgement that it recorded the stop, which `abort()` waits for and
+//! which says whether another `abort` would then have stopped more.
+//!
+//! Each `abort` stops one thing, in this order:
+//!
+//! 1. The running action.
+//! 2. Otherwise the first waiting action.
+//! 3. Otherwise nothing.
+//!
+//! The stopped action records the stop itself, because a cancelled provider run
+//! ends without an event. The stop is acknowledged only once the record is in
+//! the transcript. An action that was saving a history rewrite records it after
+//! the rewrite is published, so a rewrite never loses a stop.
+//!
+//! A Stop stops only what the node does at that moment and holds nothing
+//! afterwards:
+//!
+//! - Its subagents run on.
+//! - An agent message or a command report that arrives later wakes the node as
+//!   it wakes an idle one.
 
 use std::{cell::RefCell, future::Future, rc::Rc};
 

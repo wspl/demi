@@ -1,8 +1,9 @@
-//! The agent server of one user shard: it holds each open conversation's
-//! live tree and hands out the connections that attach conversation sockets
-//! to them. The backend owns the sockets, decodes each client frame, and
-//! passes it to its connection; the connection's outbox carries every server
-//! frame back.
+//! The agent server of one user shard.
+//!
+//! It holds each open conversation's live tree and hands out the connections
+//! that attach conversation sockets to them. The backend owns the sockets,
+//! decodes each client frame, and passes it to its connection; the connection's
+//! outbox carries every server frame back.
 
 mod commands;
 mod connection;
@@ -46,10 +47,11 @@ use tree::OpenError;
 use crate::Node;
 
 /// Where the agent gets a conversation's model selection and the provider
-/// runtimes its sessions infer with. The backend holds each conversation's
-/// selection in its record, resolves the provider entry a selection names
-/// and builds the runtime on the shard that will own it; the agent never sees
-/// the provider itself.
+/// runtimes its sessions infer with.
+///
+/// The backend holds each conversation's selection in its record, resolves the
+/// provider entry a selection names and builds the runtime on the shard that
+/// will own it. The agent never sees the provider itself.
 pub trait ProviderResolver {
     /// The model selection the conversation `root`'s tree opens with: the
     /// one its record holds.
@@ -66,12 +68,14 @@ pub trait ProviderResolver {
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>>;
 
-    /// The window the token thresholds and the usage of a session that
-    /// infers with `model` use: the model's context window, or the limit
-    /// the user set on it (`crates/shared-types/src/context_limit.rs`); for a subagent
-    /// whose profile chose a Context `own`, that one in place of the user's
-    /// (`crates/agent-server/src/server/tree/profiles.rs`). Either applies while the window offers
-    /// it, and the full window otherwise.
+    /// The window the token thresholds and the usage of a session that infers
+    /// with `model` use.
+    ///
+    /// It is the model's context window, or the limit the user set on it
+    /// (`crates/shared-types/src/context_limit.rs`). For a subagent whose
+    /// profile chose a Context `own`, that one replaces the user's
+    /// (`crates/agent-server/src/server/tree/profiles.rs`). Either applies
+    /// while the window offers it, and the full window otherwise.
     fn context_window<'a>(
         &'a self,
         model: &'a ModelSelection,
@@ -86,11 +90,12 @@ pub trait ProviderResolver {
     ) -> LocalBoxFuture<'a, Result<String, ResolveError>>;
 
     /// The model selection a child of a profile with the model settings `model`
-    /// infers with, built from the entry's current catalog as a conversation's
-    /// is on a model switch
-    /// (`crates/agent-server/src/server/tree/profiles.rs`); what is missing
-    /// when the entry, the model, its effort or its tier is gone. Nothing falls
-    /// back.
+    /// infers with.
+    ///
+    /// It is built from the entry's current catalog as a conversation's is on a
+    /// model switch (`crates/agent-server/src/server/tree/profiles.rs`). The
+    /// error says what is missing when the entry, the model, its effort or its
+    /// tier is gone. Nothing falls back.
     fn profile_selection<'a>(
         &'a self,
         model: &'a ProfileModel,
@@ -246,10 +251,11 @@ impl<H: HostResolver> AgentServer<H> {
         Connection::new(self.clone(), id, root, resolver)
     }
 
-    /// The commands a root node that opens now starts from: the product's
-    /// current ones with the server's `demi agent` and `demi shell` groups
-    /// grafted, whose declarations, such as their permission categories,
-    /// the product reads beside its own.
+    /// The commands a root node that opens now starts from.
+    ///
+    /// They are the product's current ones with the server's `demi agent` and
+    /// `demi shell` groups grafted, whose declarations, such as their
+    /// permission categories, the product reads beside its own.
     pub async fn node_commands(self: &Rc<Self>) -> Result<Rc<CommandSet>, String> {
         let toolset = self.toolset().await?;
         self.runtime_commands(&toolset.commands, true)
@@ -289,10 +295,11 @@ impl<H: HostResolver> AgentServer<H> {
         self.trees.borrow().get(root).cloned()
     }
 
-    /// Restores the conversation `root`'s tree with no connection attached,
-    /// as an `open` does: it continues as a restored tree does, and once it
-    /// is quiescent the idle rule evicts it. A tree that is live already is
-    /// left as it is.
+    /// Restores the conversation `root`'s tree with no connection attached, as
+    /// an `open` does.
+    ///
+    /// It continues as a restored tree does, and once it is quiescent the idle
+    /// rule evicts it. A tree that is live already is left as it is.
     pub async fn restore(self: &Rc<Self>, root: &NodeId) -> Result<(), RestoreError> {
         let _turn = self.opening.acquire(root.clone()).await;
         let (tree, continuation) = self
@@ -305,10 +312,11 @@ impl<H: HostResolver> AgentServer<H> {
         Ok(())
     }
 
-    /// Takes up the command of the conversation `root`'s live tree whose
-    /// job is `job`, as the job's `rpc` call asks once the tree is restored
-    /// (`crates/agent-session/src/reports.rs`); why it could not be, when it could
-    /// not.
+    /// Takes up the command of the conversation `root`'s live tree whose job is
+    /// `job`, as the job's `rpc` call asks once the tree is restored
+    /// (`crates/agent-session/src/reports.rs`).
+    ///
+    /// The error says why it could not be taken up, when it could not.
     pub async fn take_up_job(&self, root: &NodeId, job: &str) -> Result<(), String> {
         let unknown = || "rpc requires a live job dispatched to this device".to_owned();
         let tree = self.tree(root).ok_or_else(unknown)?;
@@ -320,10 +328,11 @@ impl<H: HostResolver> AgentServer<H> {
         Err(unknown())
     }
 
-    /// The conversation `root`'s live tree, or its tree opened from the store
-    /// with what the restored tree does next, which the caller hands to
-    /// [`Tree::continue_restored`] once it attached what it attaches. The
-    /// caller holds the root's opening order.
+    /// The conversation `root`'s live tree, or its tree opened from the store.
+    ///
+    /// An opened tree comes with what the restored tree does next, which the
+    /// caller hands to [`Tree::continue_restored`] once it attached what it
+    /// attaches. The caller holds the root's opening order.
     async fn live_or_open(
         self: &Rc<Self>,
         root: &NodeId,
@@ -335,8 +344,10 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Readies ahead the next request of every conversation a page has open
-    /// whose model is of the provider entry `provider_id`, or of every one
-    /// with none, as when the entry's active account changed
+    /// whose model is of the provider entry `provider_id`, or of every one with
+    /// none.
+    ///
+    /// With none is the case when the entry's active account changed
     /// (`crates/provider-claude-code/src/prepared.rs`).
     pub fn prepare_open(&self, provider_id: Option<&str>) {
         let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
@@ -350,10 +361,11 @@ impl<H: HostResolver> AgentServer<H> {
         }
     }
 
-    /// Prepares a switch of the conversation `root`'s live tree to `model`: a
-    /// model of another provider than the root's latest selection gets its
-    /// runtime now, so one that cannot run fails before anything changes.
-    /// None when no tree is live, since a tree opens with the selection the
+    /// Prepares a switch of the conversation `root`'s live tree to `model`.
+    ///
+    /// A model of another provider than the root's latest selection gets its
+    /// runtime now, so one that cannot run fails before anything changes. None
+    /// when no tree is live, since a tree opens with the selection the
     /// conversation's record holds.
     pub async fn prepare_switch(
         &self,
@@ -375,9 +387,11 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Switches the conversation `root`'s live tree to a prepared switch; it
-    /// lands at the root's next provider request. With no tree live, or one
-    /// that is closing, the switch's runtime is closed: the conversation's
-    /// next open takes the selection from its record.
+    /// lands at the root's next provider request.
+    ///
+    /// With no tree live, or one that is closing, the switch's runtime is
+    /// closed: the conversation's next open takes the selection from its
+    /// record.
     pub async fn switch_model(&self, root: &NodeId, switch: ModelSwitch) {
         let refused = match self.tree(root) {
             Some(tree) => {
@@ -398,11 +412,13 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Admits a message from the user into the agent `asking` of the
-    /// conversation `root`'s open tree, or, when that agent is closed or
-    /// closing, into its nearest live ancestor, the root at last. `message`
-    /// builds the message for the recipient it is given. Answers the
-    /// recipient once its session accepted the message durably; an error when
-    /// no tree is open or the recipient refused it.
+    /// conversation `root`'s open tree.
+    ///
+    /// When that agent is closed or closing, the message goes into its nearest
+    /// live ancestor, the root at last. `message` builds the message for the
+    /// recipient it is given. Answers the recipient once its session accepted
+    /// the message durably; an error when no tree is open or the recipient
+    /// refused it.
     pub async fn admit_from_user(
         &self,
         root: &NodeId,
@@ -444,9 +460,11 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// A Fork's seed from the root `source` through its completed text
-    /// `target`: captured from the live session in one step when the
-    /// conversation is open, else read from its committed checkpoint. The
-    /// source keeps running either way.
+    /// `target`.
+    ///
+    /// It is captured from the live session in one step when the conversation
+    /// is open, else read from its committed checkpoint. The source keeps
+    /// running either way.
     pub async fn prepare_fork(
         &self,
         source: &NodeId,
@@ -464,11 +482,13 @@ impl<H: HostResolver> AgentServer<H> {
         stored_fork_seed(store.as_ref(), source, end).await
     }
 
-    /// Asks the side question `side` of the conversation `root`, whose tree
-    /// is open, about `of`: its history is the root's through `of`'s block,
-    /// captured from the live root in one step; the root goes on with whatever
-    /// it does, and never learns of it. The same question again under its id
-    /// asks nothing; answers whether this call asked it.
+    /// Asks the side question `side` of the conversation `root`, whose tree is
+    /// open, about `of`.
+    ///
+    /// Its history is the root's through `of`'s block, captured from the live
+    /// root in one step. The root goes on with whatever it does, and never
+    /// learns of it. The same question again under its id asks nothing; answers
+    /// whether this call asked it.
     pub async fn ask(&self, root: &NodeId, side: NodeId, of: SideOf) -> Result<bool, AskError> {
         self.tree(root).ok_or(AskError::NotOpen)?.ask(side, of).await
     }
@@ -486,9 +506,11 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Stores a Fork's seed as the first checkpoint of the new root
-    /// `destination`, in one create commit; opening the conversation
-    /// assembles its runtime. A seed that is not idle, or holds waiting work
-    /// or edit receipts, is refused.
+    /// `destination`, in one create commit; opening the conversation assembles
+    /// its runtime.
+    ///
+    /// A seed that is not idle, or holds waiting work or edit receipts, is
+    /// refused.
     pub async fn initialize_fork(
         &self,
         destination: &NodeId,
@@ -514,26 +536,28 @@ impl<H: HostResolver> AgentServer<H> {
             .map_err(fork_store)
     }
 
-    /// The conversation `root` works elsewhere now, after a move or a
-    /// switch of its Host: its live children's pages hear where each works,
-    /// the conversation's new directory, which no write to the children
-    /// records (`crates/agent-server/src/node/mod.rs`). Each child's next
-    /// request learns it from its `working_directory` block.
+    /// The conversation `root` works elsewhere now, after a move or a switch of
+    /// its Host.
+    ///
+    /// Its live children's pages hear where each works, the conversation's new
+    /// directory, which no write to the children records
+    /// (`crates/agent-server/src/node/mod.rs`). Each child's next request
+    /// learns it from its `working_directory` block.
     pub async fn placement_changed(&self, root: &NodeId) {
         if let Some(tree) = self.tree(root) {
             tree.placement_changed().await;
         }
     }
 
-    /// The roots of the live trees.
     pub fn live_roots(&self) -> Vec<NodeId> {
         self.trees.borrow().keys().cloned().collect()
     }
 
-    /// Closes the conversation `root`'s live tree, so that it opens again
-    /// with the product's current toolset: its attached connections receive
-    /// `closed` and connect again. A tree that works is not closed; with no
-    /// live tree there is nothing to do.
+    /// Closes the conversation `root`'s live tree, so that it opens again with
+    /// the product's current toolset.
+    ///
+    /// Its attached connections receive `closed` and connect again. A tree that
+    /// works is not closed; with no live tree there is nothing to do.
     pub async fn reload(&self, root: &NodeId) -> Result<(), Working> {
         let _turn = self.opening.acquire(root.clone()).await;
         let Some(tree) = self.tree(root) else {
@@ -554,10 +578,11 @@ impl<H: HostResolver> AgentServer<H> {
         self.evictions.wait().await;
     }
 
-    /// Disposes the conversation's live tree, under its opening order,
-    /// whatever it does: its attached connections receive `closed`. A
-    /// conversation that is deleted closes its tree once its work is
-    /// stopped (`Tree::interrupt`); with no live tree there is nothing to do.
+    /// Disposes the conversation's live tree, under its opening order, whatever
+    /// it does; its attached connections receive `closed`.
+    ///
+    /// A conversation that is deleted closes its tree once its work is stopped
+    /// (`Tree::interrupt`); with no live tree there is nothing to do.
     pub async fn close_tree(&self, root: &NodeId) {
         let _turn = self.opening.acquire(root.clone()).await;
         let Some(tree) = self.tree(root) else {

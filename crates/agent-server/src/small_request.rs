@@ -1,10 +1,11 @@
-//! A small request (`crates/backend-providers/src/llm/small_model.rs`): one request with a fixed
-//! instruction as its system prompt and one user message, for a small job
-//! that serves a conversation rather than answers it, such as its title. It
-//! goes to the runtime the caller supplies, the metered one a turn uses, and
-//! is no session turn: nothing is added to a transcript. The caller resolves
-//! the small model and its thinking; the job gives the instruction, the
-//! message and its output limit.
+//! A small request (`crates/backend-providers/src/llm/small_model.rs`): one
+//! request with a fixed instruction as its system prompt and one user message.
+//!
+//! It serves a small job that supports a conversation rather than answers it,
+//! such as its title. It goes to the runtime the caller supplies, the metered
+//! one a turn uses, and is no session turn: nothing is added to a transcript.
+//! The caller resolves the small model and its thinking; the job gives the
+//! instruction, the message and its output limit.
 
 use std::{num::NonZeroU32, sync::Arc};
 
@@ -37,10 +38,10 @@ pub enum SmallRequestError {
     Failed(String),
 }
 
-/// Runs `request` for the conversation `session` on `runtime` with the
-/// small model `selection` and its thinking, and answers the text of the
-/// response; thinking output is ignored. A request that `cancel` stops is
-/// none.
+/// Runs `request` for the conversation `session` on `runtime` with the small
+/// model `selection` and its thinking, and answers the text of the response.
+///
+/// Thinking output is ignored. A request that `cancel` stops is none.
 pub async fn run_small_request(
     runtime: &mut dyn ProviderRuntime,
     session: &str,

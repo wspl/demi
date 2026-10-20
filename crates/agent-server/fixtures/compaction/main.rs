@@ -1,24 +1,27 @@
 //! The compaction fixture's harness (`README.md` beside it), the real-model
-//! check of compaction, the third level of its verification: it opens the committed
-//! large-context session as a conversation of an agent server, talks to the
-//! real DeepSeek through the OpenAI-compatible provider, compacts it several
-//! times, and after each pass checks that the facts, the constraint and the
-//! open task planted at its start survive, that the model continues without
-//! restating the summary, and that the summary request read the vendor's
-//! cache. Each check's question goes to a throwaway copy of the
-//! conversation, so no check's answer reaches the history a later pass
-//! summarizes.
+//! check of compaction, the third level of its verification.
+//!
+//! The harness opens the committed large-context session as a conversation of
+//! an agent server, talks to the real DeepSeek through the OpenAI-compatible
+//! provider, and compacts it several times. After each pass it checks that:
+//!
+//! - the facts, the constraint and the open task planted at the start survive;
+//! - the model continues without restating the summary;
+//! - the summary request read the vendor's cache.
+//!
+//! Each check's question goes to a throwaway copy of the conversation, so no
+//! check's answer reaches the history a later pass summarizes.
 //!
 //! ```sh
 //! target/debug/examples/compaction-fixture recall --passes 3
 //! target/debug/examples/compaction-fixture switch --passes 2
 //! ```
 //!
-//! It calls a real model, so no test runs it; every build of the one
-//! selection compiles it, as it compiles every example. It observes
-//! compaction only through the transcript (a new `compaction_boundary`), the
-//! session's context usage and what the provider reports, so it holds no
-//! copy of the compaction rules.
+//! It calls a real model, so no test runs it; every build of the one selection
+//! compiles it, as it compiles every example. It observes compaction only
+//! through the transcript (a new `compaction_boundary`), the session's context
+//! usage and what the provider reports, so it holds no copy of the compaction
+//! rules.
 
 use std::{
     cell::RefCell, collections::HashSet, io::Read, process::ExitCode, rc::Rc, sync::Arc,
@@ -181,10 +184,11 @@ fn window(variable: &str, default: u32) -> Result<u32, String> {
     }
 }
 
-/// The fixture as the run uses it: its recorded compactions removed, so that
-/// the history is whole again and the run's own passes summarize its start,
-/// and the constraint and the open task planted in its first message. The
-/// file on disk is never changed.
+/// The fixture as the run uses it.
+///
+/// Its recorded compactions are removed, so that the history is whole again and
+/// the run's own passes summarize its start, and the constraint and the open
+/// task are planted in its first message. The file on disk is never changed.
 fn load_fixture() -> Result<Fixture, String> {
     let compressed = std::fs::read(FIXTURE).map_err(|error| format!("{FIXTURE}: {error}"))?;
     let mut json = String::new();
@@ -578,9 +582,10 @@ impl Conversation {
 
     /// Asks `text` on a throwaway copy of the conversation as it stands, and
     /// returns its turn: the conversation's history never holds a check.
-    /// The copy is stored as a fork's seed is, with the whole transcript
-    /// rather than a fork's cut through a completed answer, which would
-    /// leave out the usage of the latest request and a boundary after it.
+    ///
+    /// The copy is stored as a fork's seed is, with the whole transcript rather
+    /// than a fork's cut through a completed answer, which would leave out the
+    /// usage of the latest request and a boundary after it.
     async fn ask(&mut self, text: &str) -> Turn {
         self.copies += 1;
         let copy = NodeId::try_from(format!("{}-check-{}", self.root, self.copies))
@@ -949,13 +954,15 @@ impl Checks {
     }
 }
 
-/// The checks after a step that began with `before` boundaries, each asked
-/// on its own copy of the conversation: what next, the constraint, and the
-/// secrets. `landed` is the conversation's own turn that ran a pass, when
-/// one did: a switch's landing turn or a filler turn. That turn's answer,
-/// and the answer to what next, the first question after the pass, must not
-/// restate a summary the step wrote. After a switch from the window
-/// `previous`, the step's passes must be that model's.
+/// The checks after a step that began with `before` boundaries, each asked on
+/// its own copy of the conversation: what next, the constraint, and the
+/// secrets.
+///
+/// `landed` is the conversation's own turn that ran a pass, when one did: a
+/// switch's landing turn or a filler turn. That turn's answer, and the answer
+/// to what next, the first question after the pass, must not restate a summary
+/// the step wrote. After a switch from the window `previous`, the step's passes
+/// must be that model's.
 async fn check(
     conversation: &mut Conversation,
     label: String,
@@ -1080,10 +1087,11 @@ fn loaded(conversation: &Conversation, built: Built, run: &Run) {
     );
 }
 
-/// Baseline on the large window, then `passes` compactions on the small
-/// one: the first by the switch to it, each later one forced with `compact`
-/// once filler turns made the session admit it, or by the session itself
-/// when the filler reached its threshold first.
+/// Baseline on the large window, then `passes` compactions on the small one.
+///
+/// The first compaction comes from the switch to the small window. Each later
+/// one is forced with `compact` once filler turns made the session admit it, or
+/// comes from the session itself when the filler reached its threshold first.
 async fn recall(fixture: Fixture, run: &Run) -> Result<bool, String> {
     let built = Built::of(&fixture);
     let mut conversation = Conversation::open(fixture, deepseek_model(run.large)).await?;

@@ -1,8 +1,11 @@
-//! The quota of a Claude Code account:
-//! a probe that asks the CLI, in a process of the account's directory that
-//! sends no message, for its usage (`get_usage`), and the
-//! `rate_limit_event` lines the CLI prints when the vendor's rate-limit
-//! headers change.
+//! The quota of a Claude Code account.
+//!
+//! It has two sources:
+//!
+//! - A probe that asks the CLI, in a process of the account's directory that
+//!   sends no message, for its usage (`get_usage`).
+//! - The `rate_limit_event` lines the CLI prints when the vendor's rate-limit
+//!   headers change.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -51,10 +54,12 @@ impl QuotaSource for ClaudeQuota {
         Some(ProbeCost::Free)
     }
 
-    /// The CLI's `get_usage` answer, in a process of the account's
-    /// directory on the Claude Code machine: its `rate_limits`, the vendor's
-    /// usage object, and its `subscription_type`, the plan. A sign-in an
-    /// earlier release kept in the account's record is handed over first.
+    /// The CLI's `get_usage` answer, in a process of the account's directory on
+    /// the Claude Code machine.
+    ///
+    /// It holds its `rate_limits`, the vendor's usage object, and its
+    /// `subscription_type`, the plan. A sign-in an earlier release kept in the
+    /// account's record is handed over first.
     fn probe(&self) -> BoxFuture<'_, Result<ProbeReading, QuotaError>> {
         Box::pin(async move {
             let machine = self.machine.clone().ok_or_else(|| {
@@ -138,12 +143,14 @@ struct UsageAnswer {
     subscription_type: Option<String>,
 }
 
-/// Starts the probe's process for `work` through `placement`, asks it for
-/// its usage and closes it, within thirty seconds: the answer of its
-/// `get_usage` request. It gives up when nobody waits for it any more
-/// (`abandoned`). Its process is held outside what gives up, and closed,
-/// SIGTERM first, however the probe ends: on its answer, its timeout or
-/// its abandonment alike (`crates/provider-claude-code/src/live.rs`).
+/// Starts the probe's process for `work` through `placement`, asks it for its
+/// usage and closes it, within thirty seconds: the answer of its `get_usage`
+/// request.
+///
+/// It gives up when nobody waits for it any more (`abandoned`). Its process is
+/// held outside what gives up, and closed, SIGTERM first, however the probe
+/// ends: on its answer, its timeout or its abandonment alike
+/// (`crates/provider-claude-code/src/live.rs`).
 async fn ask_usage(
     placement: &dyn Placement,
     work: CliWork,
@@ -298,10 +305,11 @@ fn named_window(
     })
 }
 
-/// The `rate_limit_info` of a `rate_limit_event` line: the window the
-/// vendor's headers name as binding, and every window they report. The CLI
-/// passes the headers through: a utilization is a fraction of one, and a
-/// reset time is Unix seconds (Claude Code 2.1.286).
+/// The `rate_limit_info` of a `rate_limit_event` line: the window the vendor's
+/// headers name as binding, and every window they report.
+///
+/// The CLI passes the headers through: a utilization is a fraction of one, and
+/// a reset time is Unix seconds (Claude Code 2.1.286).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RateLimitInfo {

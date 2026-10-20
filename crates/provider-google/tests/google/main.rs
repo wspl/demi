@@ -1,7 +1,9 @@
-//! The Google Gemini provider at its boundaries: the request it sends to a
-//! scripted vendor, the events it makes of recorded streams, its failures,
-//! its cancellation, what it says about itself, and a Gemini key's images
-//! and videos. No test calls the real vendor.
+//! The Google Gemini provider at its boundaries.
+//!
+//! The tests cover the request it sends to a scripted vendor, the events it
+//! makes of recorded streams, its failures, its cancellation, what it says
+//! about itself, and a Gemini key's images and videos. No test calls the real
+//! vendor.
 
 mod audio;
 mod images;

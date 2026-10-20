@@ -109,10 +109,14 @@ struct GeminiThinking {
     thinking_budget: Option<u32>,
 }
 
-/// The thinking setting as Gemini's budget: a budget as it is, an effort
-/// through its ladder, thinking turned off as a budget of zero without
-/// thoughts. Thought summaries are asked for otherwise, because the model
-/// thinks, and bills for it, either way.
+/// The thinking setting as Gemini's budget.
+///
+/// - A budget is as it is.
+/// - An effort goes through its ladder.
+/// - Thinking turned off is a budget of zero without thoughts.
+///
+/// Thought summaries are asked for otherwise, because the model thinks, and
+/// bills for it, either way.
 fn thinking(config: Option<&ThinkingConfig>) -> Option<GeminiThinking> {
     let budget = match config {
         None => None,
@@ -208,13 +212,14 @@ struct ToolOutput {
 /// The transcript as Gemini contents; consecutive parts of one role share a
 /// content.
 ///
-/// Gemini hands back a thought signature on each function call and requires
-/// it verbatim when the call is replayed. The provider streams it as a
-/// signed thinking item just before the call, so on replay the thinking item
-/// in front of a tool use carries that call's signature. A tool use without
-/// a signature of this provider's, typically history from another provider,
-/// is replayed as text, and so is its result, because Gemini refuses a
-/// function call without a signature.
+/// Gemini hands back a thought signature on each function call and requires it
+/// verbatim when the call is replayed. The provider streams it as a signed
+/// thinking item just before the call, so on replay the thinking item in front
+/// of a tool use carries that call's signature.
+///
+/// A tool use without a signature of this provider's, typically history from
+/// another provider, is replayed as text, and so is its result, because Gemini
+/// refuses a function call without a signature.
 fn contents(items: &[InferenceItem]) -> Vec<Content<'_>> {
     let mut contents: Vec<Content<'_>> = Vec::new();
     // A function response names its tool, which only the tool use carries.
@@ -395,9 +400,10 @@ fn output_text(output: &[ResultPart]) -> String {
         .join("\n")
 }
 
-/// The keywords Gemini's function-declaration schema accepts. It is an
-/// OpenAPI 3.0 subset rather than JSON Schema, and it refuses the whole
-/// request at the first keyword it does not know, such as the
+/// The keywords Gemini's function-declaration schema accepts.
+///
+/// It is an OpenAPI 3.0 subset rather than JSON Schema, and it refuses the
+/// whole request at the first keyword it does not know, such as the
 /// `additionalProperties: false` a careful tool author writes.
 const GEMINI_SCHEMA_KEYS: [&str; 15] = [
     "type",
@@ -418,9 +424,10 @@ const GEMINI_SCHEMA_KEYS: [&str; 15] = [
 ];
 
 /// A tool's input schema without the keywords Gemini refuses, through the
-/// containers that hold nested schemas. The dropped keywords only constrain
-/// what the model may send, and the tool checks its own input anyway, so a
-/// looser schema is the right failure.
+/// containers that hold nested schemas.
+///
+/// The dropped keywords only constrain what the model may send, and the tool
+/// checks its own input anyway, so a looser schema is the right failure.
 fn gemini_schema(schema: &serde_json::Value) -> serde_json::Value {
     let Some(object) = schema.as_object() else {
         return serde_json::json!({});

@@ -1,10 +1,15 @@
-//! ByteDance's media through its keys, against scripted vendors built from
-//! its API references: Ark's Image generation API, Create, Retrieve and
-//! Cancel or delete a video generation task
-//! (docs.byteplus.com/en/docs/modelark/…), BytePlus Speech's TTS
-//! Unidirectional Streaming (HTTP) and Audio 1.0 (…/byteplusvoice/…), and
-//! Doubao Speech's HTTP Chunked/SSE V3
-//! (docs.volcengine.com/docs/DoubaoVoice/…). No test calls a vendor.
+//! ByteDance's media through its keys, against scripted vendors built from its
+//! API references:
+//!
+//! - Ark's Image generation API;
+//! - Create, Retrieve and Cancel or delete a video generation task
+//!   (docs.byteplus.com/en/docs/modelark/…);
+//! - BytePlus Speech's TTS Unidirectional Streaming (HTTP) and Audio 1.0
+//!   (…/byteplusvoice/…);
+//! - Doubao Speech's HTTP Chunked/SSE V3
+//!   (docs.volcengine.com/docs/DoubaoVoice/…).
+//!
+//! No test calls a vendor.
 
 use std::sync::Arc;
 
@@ -100,11 +105,15 @@ fn audio(kind: AudioKind, model: &str, text: &str) -> AudioRequest {
     }
 }
 
-/// Planted defects this catches: the image asked for as an address rather
-/// than base64, or with Ark's watermark, its JPEG or its group of images;
-/// a shape sent as other than the catalog's size of it, or a size sent
-/// with no shape asked; one edit image sent as an array, or several as one;
-/// the key other than a bearer token; an image Ark refused read as made.
+/// Planted defects this catches:
+///
+/// - the image asked for as an address rather than base64, or with Ark's
+///   watermark, its JPEG or its group of images;
+/// - a shape sent as other than the catalog's size of it, or a size sent with
+///   no shape asked;
+/// - one edit image sent as an array, or several as one;
+/// - the key other than a bearer token;
+/// - an image Ark refused read as made.
 // One scripted vendor, four requests: milliseconds.
 #[tokio::test]
 async fn seedream_generates_and_edits_as_base64_in_the_catalogs_size() {
@@ -152,11 +161,14 @@ async fn seedream_generates_and_edits_as_base64_in_the_catalogs_size() {
     );
 }
 
-/// Planted defects this catches: the prompt or an image outside `content`,
-/// or an image in the wrong role; an option sent other than in its field,
-/// or the watermark left on; a status read wrongly, `running` as queued,
-/// `cancelled` or `expired` as made; the video's address or its tokens
-/// not read; the key sent to the video's address.
+/// Planted defects this catches:
+///
+/// - the prompt or an image outside `content`, or an image in the wrong role;
+/// - an option sent other than in its field, or the watermark left on;
+/// - a status read wrongly, `running` as queued, `cancelled` or `expired` as
+///   made;
+/// - the video's address or its tokens not read;
+/// - the key sent to the video's address.
 // One scripted vendor, nine requests: milliseconds.
 #[tokio::test]
 async fn an_ark_task_is_asked_read_through_its_states_and_downloaded() {
@@ -271,14 +283,18 @@ fn speech_answer(pieces: &[&[u8]]) -> MockResponse {
         .chunk(json!({ "code": 20000000, "message": "ok", "data": null, "usage": { "text_words": 12 } }).to_string())
 }
 
-/// Planted defects this catches: the pieces not joined in order, or read
-/// past the end; a text object read as audio; WAV asked as `wav`, whose
-/// header the services repeat in every piece, or not marked as 24 kHz PCM;
-/// the speed's rate counted wrongly; the model outside
-/// `X-Api-Resource-Id`; BytePlus' fixed app key left out or sent to Doubao
-/// Speech; a failure code read as speech, or its code or log ID lost; the
-/// account's concurrency read as a refusal; an answer that ends early read
-/// as whole.
+/// Planted defects this catches:
+///
+/// - the pieces not joined in order, or read past the end;
+/// - a text object read as audio;
+/// - WAV asked as `wav`, whose header the services repeat in every piece, or
+///   not marked as 24 kHz PCM;
+/// - the speed's rate counted wrongly;
+/// - the model outside `X-Api-Resource-Id`;
+/// - BytePlus' fixed app key left out or sent to Doubao Speech;
+/// - a failure code read as speech, or its code or log ID lost;
+/// - the account's concurrency read as a refusal;
+/// - an answer that ends early read as whole.
 // Two scripted vendors, six requests: milliseconds.
 #[tokio::test]
 async fn seed_speech_joins_its_pieces_until_the_end_and_wraps_pcm_for_wav() {
@@ -345,13 +361,18 @@ async fn seed_speech_joins_its_pieces_until_the_end_and_wraps_pcm_for_wav() {
     assert_eq!(zh_sent.json()["req_params"]["audio_params"], json!({ "format": "mp3", "sample_rate": 24000 }));
 }
 
-/// Planted defects this catches: an effect, or Seed Audio's speech, sent
-/// to Seed speech's endpoint, or with a resource header; the speaker or
-/// the instructions left out of Seed Audio's speech, or the speaker sent
-/// outside its one `references` item, or the instructions sent with an
-/// effect; the format or the speed's rate not asked; the base64 not
-/// decoded; an answer without audio read as made; the options a Seed
-/// speech model does not take said of Seed Audio's, or its name.
+/// Planted defects this catches:
+///
+/// - an effect, or Seed Audio's speech, sent to Seed speech's endpoint, or with
+///   a resource header;
+/// - the speaker or the instructions left out of Seed Audio's speech, or the
+///   speaker sent outside its one `references` item, or the instructions sent
+///   with an effect;
+/// - the format or the speed's rate not asked;
+/// - the base64 not decoded;
+/// - an answer without audio read as made;
+/// - the options a Seed speech model does not take said of Seed Audio's, or its
+///   name.
 // One scripted vendor, three requests: milliseconds.
 #[tokio::test]
 async fn seed_audio_makes_an_effect_and_speaks_as_base64() {
@@ -400,10 +421,13 @@ async fn seed_audio_makes_an_effect_and_speaks_as_base64() {
     );
 }
 
-/// Planted defects this catches: a key checked by a listing ByteDance does
-/// not answer to a key; a refusal of the probe's body read as a refused
-/// key, or a refused key read as a pass; the probe sent with a prompt that
-/// would make something; the models not the catalog's, or not named.
+/// Planted defects this catches:
+///
+/// - a key checked by a listing ByteDance does not answer to a key;
+/// - a refusal of the probe's body read as a refused key, or a refused key read
+///   as a pass;
+/// - the probe sent with a prompt that would make something;
+/// - the models not the catalog's, or not named.
 // Two scripted vendors, four requests: milliseconds.
 #[tokio::test]
 async fn a_key_passes_on_a_body_refusal_and_fails_on_a_key_refusal() {

@@ -90,14 +90,19 @@ async fn replied_reading(model: &Model, reads: &[FileExtension]) -> (Fixture, Te
     (fixture, client)
 }
 
-// The root answers, a side question asks about its words, then the root
-// takes its next message. The side's request is the root's next request up
-// to the root's own new message, byte for byte: the same system prompt,
-// tools and items, so it reads the root's prompt-cache entry; it then ends
-// with one user message of the quote, the instruction and the question. The
-// root hears of it only with its next message, as what the user asked and
-// was answered, and no agent learns of it otherwise: no agent number, no
-// lifecycle frame, no message. Two short trees: a few milliseconds.
+// The root answers, a side question asks about its words, then the root takes
+// its next message.
+//
+// The side's request is the root's next request up to the root's own new
+// message, byte for byte: the same system prompt, tools and items, so it reads
+// the root's prompt-cache entry. It then ends with one user message of the
+// quote, the instruction and the question.
+//
+// The root hears of it only with its next message, as what the user asked and
+// was answered. No agent learns of it otherwise: no agent number, no lifecycle
+// frame, no message.
+//
+// Two short trees: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_only_what_was_asked() {
     let model = Model::default();
@@ -168,8 +173,9 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
 
 // A side question about a picture of the reply: its first message carries the
 // picture as its quote, then the picture's instruction and the question, after
-// the root's history as a question about words has it. One short tree: a few
-// milliseconds.
+// the root's history as a question about words has it.
+//
+// One short tree: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_side_question_about_a_picture_carries_the_picture_as_its_quote() {
     let model = Model::default();
@@ -277,11 +283,12 @@ async fn a_side_question_starts_no_subagent_and_sends_no_message() {
     assert_eq!(model.requests().len(), 2);
 }
 
-// The root answers, a compaction summarizes the answer, and then the user
-// asks about the answer's words: the reply lives only in the summary, so the
-// side question starts from the conversation's context as it stands, the
-// summary, and its request is the root's next one up to the root's own
-// message. One tree with a compaction: a few milliseconds.
+// The root answers, a compaction summarizes the answer, and then the user asks
+// about the answer's words. The reply lives only in the summary, so the side
+// question starts from the conversation's context as it stands, the summary,
+// and its request is the root's next one up to the root's own message.
+//
+// One tree with a compaction: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_side_question_about_a_compacted_reply_starts_from_the_summary() {
     const SUMMARY: &str = "Summary: the card reads a stale cache.";
@@ -321,10 +328,11 @@ async fn a_side_question_about_a_compacted_reply_starts_from_the_summary() {
     assert!(last_user_text(side_request).ends_with("Why is it stale?"));
 }
 
-// A page goes away while a side question answers, the answer ends, and the
-// page comes back: its open brings the side question as it ended, its
-// whole answer and idle, though the side question is no longer live. A few
-// milliseconds.
+// A page goes away while a side question answers, the answer ends, and the page
+// comes back: its open brings the side question as it ended, its whole answer
+// and idle, though the side question is no longer live.
+//
+// A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_page_that_comes_back_receives_a_side_question_that_ended_while_it_was_away() {
     let model = Model::default();
@@ -381,12 +389,16 @@ async fn told_blocks(fixture: &Fixture) -> Vec<String> {
 
 const TOLD: &str = "The user asked these aside and was answered there; they show what the user was unsure of, for you to know, with no need to answer them again.";
 
-// The user asks about the root's reply aside, then sends the root a
-// message: its first request carries what the user asked and was answered,
-// under the asked words. A follow-up asked while that turn works reaches no
-// request of the turn; the next message carries the follow-up alone, and a
-// message after it nothing more. After a compaction, the next message
-// carries them all again. One tree, a few milliseconds.
+// The user asks about the root's reply aside, then sends the root a message:
+// its first request carries what the user asked and was answered, under the
+// asked words.
+//
+// - A follow-up asked while that turn works reaches no request of the turn.
+// - The next message carries the follow-up alone, and a message after it
+//   nothing more.
+// - After a compaction, the next message carries them all again.
+//
+// One tree, a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn the_root_hears_of_a_side_question_with_the_users_next_message_once_and_never_mid_turn() {
     let model = Model::default();
@@ -458,8 +470,9 @@ async fn the_root_hears_of_a_side_question_with_the_users_next_message_once_and_
 
 // The user sends the root a message while a side question is still being
 // answered, its answer half written: the root hears nothing of it then, and
-// hears of it, answered, with the next message once it ended. One tree, a
-// few milliseconds.
+// hears of it, answered, with the next message once it ended.
+//
+// One tree, a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_side_question_still_being_answered_is_told_only_once_answered() {
     let model = Model::default();
@@ -500,10 +513,11 @@ async fn a_side_question_still_being_answered_is_told_only_once_answered() {
     );
 }
 
-// A side question's follow-up compacts its history, so its window starts
-// after the question the user first asked: the root still hears every
-// question and its answer, read from the side question's store. One tree,
-// a few milliseconds.
+// A side question's follow-up compacts its history, so its window starts after
+// the question the user first asked: the root still hears every question and
+// its answer, read from the side question's store.
+//
+// One tree, a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_side_question_whose_history_was_compacted_still_tells_what_it_was_asked_first() {
     let model = Model::default();

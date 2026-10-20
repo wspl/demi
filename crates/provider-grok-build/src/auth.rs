@@ -25,10 +25,11 @@ pub(crate) const FAMILY: &str = "Grok";
 /// How long before its expiry a token is refreshed.
 const EXPIRY_SKEW: Duration = Duration::from_secs(5 * 60);
 
-/// The Grok Build family's secret document: the OAuth tokens and their
-/// expiry, the issuer and client that issued them, the team or organization
-/// the tokens act for, and the user they belong to. Demi defines it; it is
-/// not the Grok CLI's `auth.json`.
+/// The Grok Build family's secret document: the OAuth tokens and their expiry,
+/// the issuer and client that issued them, the team or organization the tokens
+/// act for, and the user they belong to.
+///
+/// Demi defines it; it is not the Grok CLI's `auth.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct GrokSecret {
@@ -236,10 +237,11 @@ impl GrokAuth {
     }
 
     /// The credentials of a request, refreshed first when the access token
-    /// expires within five minutes, or when it is still the one a request
-    /// was `refused` with, as with HTTP 401. A refresh that waited behind
-    /// another uses the other's tokens unless they expire as soon. A sign-in
-    /// without a refresh token is used as it is.
+    /// expires within five minutes, or when it is still the one a request was
+    /// `refused` with, as with HTTP 401.
+    ///
+    /// A refresh that waited behind another uses the other's tokens unless they
+    /// expire as soon. A sign-in without a refresh token is used as it is.
     pub(crate) async fn credentials(
         &self,
         http: &demi_provider_common::ProviderHttp,

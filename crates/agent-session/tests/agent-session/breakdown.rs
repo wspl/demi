@@ -86,10 +86,11 @@ fn row(usage: &ContextUsage, kind: ContextRowKind) -> Option<&demi_shared_types:
     usage.rows.iter().find(|row| row.kind == kind)
 }
 
-/// The rows are in the card's order and add up: those before the buffer to
-/// the estimate, or to the rows above Messages when those alone exceed it;
-/// the buffer is the window less the threshold, and the free space the
-/// rest. Only the buffer and the free space are exact.
+/// The rows are in the card's order and add up: those before the buffer to the
+/// estimate, or to the rows above Messages when those alone exceed it.
+///
+/// The buffer is the window less the threshold, and the free space the rest.
+/// Only the buffer and the free space are exact.
 fn assert_adds_up(usage: &ContextUsage) {
     let order = [
         ContextRowKind::Messages,

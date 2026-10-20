@@ -1,39 +1,58 @@
-//! The one tool, `shell`: it reaches the conversation's current Host through
-//! the product's resolver and runs in the node's shell environment for that
-//! Host, which the product makes. A tool never reaches into its session: it
-//! returns its outcome, and a call that leaves its command running asks the
-//! session to watch it, so the command reports to the node. What the `demi
-//! shell` commands and the reports show of a command is made here as well. The
-//! product also supplies the context sources, and the rules of the tool are a
-//! layer of every node's system prompt.
+//! The one tool, `shell`.
 //!
-//! There is one tool because a tool is only what the shell cannot do: start a
-//! script and watch it. Looking at a command, writing to its input and stopping
-//! it are shell work, so they are the `demi shell` commands, which a script
-//! combines with anything else; ending a turn needs no tool, and neither does
-//! waiting, since the work's end wakes the node. Two tools were dropped: one to
-//! look at a command, which a command does as well, and a `yield` that ended
-//! the turn and set a timer, which models used to wait for work that wakes them
-//! anyway and whose timer, fired after the work ended, opened a turn that only
-//! said so.
+//! It reaches the conversation's current Host through the product's resolver
+//! and runs in the node's shell environment for that Host, which the product
+//! makes. A tool never reaches into its session: it returns its outcome, and a
+//! call that leaves its command running asks the session to watch it, so the
+//! command reports to the node.
+//!
+//! What the `demi shell` commands and the reports show of a command is made
+//! here as well. The product also supplies the context sources, and the rules
+//! of the tool are a layer of every node's system prompt.
+//!
+//! # Why one tool
+//!
+//! A tool is only what the shell cannot do: start a script and watch it.
+//!
+//! - Looking at a command, writing to its input and stopping it are shell work,
+//!   so they are the `demi shell` commands, which a script combines with
+//!   anything else.
+//! - Ending a turn needs no tool, and neither does waiting, since the work's
+//!   end wakes the node.
+//!
+//! Two tools were dropped:
+//!
+//! - One to look at a command, which a command does as well.
+//! - A `yield` that ended the turn and set a timer. Models used it to wait for
+//!   work that wakes them anyway, and its timer, fired after the work ended,
+//!   opened a turn that only said so.
+//!
+//! # Watching a command
 //!
 //! `intervalMs` is required, with no default, so the model decides how a
-//! command is watched when it starts it. A call never holds the turn longer
-//! than [`CALL_WINDOW_MS`], and no tool text mentions it, so a user's steer
-//! waits at most that long to be read (a ten-minute interval used to hold the
-//! turn ten); a human steer ends no window, since steering rather than sending
-//! now means the user chose to wait. A value outside the bounds is taken as the
-//! nearest bound with a line that says so, because the command goes on either
-//! way and a refusal only cost the model a call each time.
+//! command is watched when it starts it.
 //!
-//! Every call starts a job of its own in its node's working directory and
-//! nothing of an earlier command carries over: a carried directory made `cd
+//! - A call never holds the turn longer than [`CALL_WINDOW_MS`], and no tool
+//!   text mentions it, so a user's steer waits at most that long to be read (a
+//!   ten-minute interval used to hold the turn ten). A human steer ends no
+//!   window, since steering rather than sending now means the user chose to
+//!   wait.
+//! - A value outside the bounds is taken as the nearest bound with a line that
+//!   says so, because the command goes on either way and a refusal only cost
+//!   the model a call each time.
+//!
+//! # Calls and steps
+//!
+//! Every call starts a job of its own in its node's working directory, and
+//! nothing of an earlier command carries over. A carried directory made `cd
 //! ./browse` fail inside `browse`, and models began every script with `cd
 //! <workspace>` because the context block's directory stopped being true after
-//! the first `cd`. Consecutive `shell` calls are one step and start together,
-//! each result recorded as its call returns, and each call takes its own lease
-//! of the conversation's file gate, so a step's calls never take a lease while
-//! holding another.
+//! the first `cd`.
+//!
+//! Consecutive `shell` calls are one step and start together, each result
+//! recorded as its call returns. Each call takes its own lease of the
+//! conversation's file gate, so a step's calls never take a lease while holding
+//! another.
 //!
 //! The crate creates no session, node or tree and owns no shell interpreter.
 
@@ -262,9 +281,10 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     }
 
     /// Where a child's next job starts: its own directory while the
-    /// conversation works where it did when that was set, the
-    /// conversation's otherwise; none for the root, whose jobs start where
-    /// the Host starts its work.
+    /// conversation works where it did when that was set, the conversation's
+    /// otherwise.
+    ///
+    /// None for the root, whose jobs start where the Host starts its work.
     async fn cwd(&self) -> Result<Option<String>, CallError> {
         let Some(own) = self.directory.own() else {
             return Ok(None);
@@ -282,13 +302,14 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         Ok(Some(own.effective(&now).to_owned()))
     }
 
-    /// Runs one step of a round:
-    /// `shell` calls, which start together, each a job of its own, or a call
-    /// of a tool the node does not have, which completes as `Tool not
-    /// found`. Yields each call's outcome, by its index, as the call
-    /// returns. A refused input completes its call as an error that names
-    /// the offending field; a failure of the Host or its environment
-    /// completes it as `Tool failed: <message>`.
+    /// Runs one step of a round, yielding each call's outcome, by its index, as
+    /// the call returns.
+    ///
+    /// A step is `shell` calls, which start together, each a job of its own, or
+    /// a call of a tool the node does not have, which completes as `Tool not
+    /// found`. A refused input completes its call as an error that names the
+    /// offending field; a failure of the Host or its environment completes it
+    /// as `Tool failed: <message>`.
     pub fn invoke_step(self, calls: Vec<ToolInvocation>) -> StepOutcomes<'a> {
         let calls: FuturesUnordered<_> = calls
             .into_iter()
@@ -420,9 +441,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         environment.release_command(command).await;
     }
 
-    /// Takes up `running`, a command the node ran that the conversation
-    /// records running and that started `ran` ago, in the node's
-    /// environment for the conversation's current Host
+    /// Takes up `running`, a command the node ran that the conversation records
+    /// running and that started `ran` ago, in the node's environment for the
+    /// conversation's current Host
     /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
         let cwd = self.cwd().await?;
@@ -490,9 +511,13 @@ impl Drop for CallStop {
     }
 }
 
-/// Watches `command` until the first of: it
-/// ends; `window_ms` passes, or for a resident command, its output has
-/// been quiet for 2 seconds or 30 seconds have passed; or `until` resolves.
+/// Watches `command` until the first of these happens:
+///
+/// - it ends;
+/// - `window_ms` passes, or for a resident command, its output has been quiet
+///   for 2 seconds or 30 seconds have passed;
+/// - `until` resolves.
+///
 /// Then returns its status, with what `until` gave when it ended the watch.
 /// Ending the watch never stops the command.
 async fn watch<T>(

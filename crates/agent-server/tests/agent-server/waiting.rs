@@ -1,10 +1,16 @@
-//! A command whose start waits for its Host, a paired device whose runner
-//! is away (`crates/backend-host-access/src/access.rs`): it sends no
-//! interval report while it waits, a turn that ends leaves it waiting and
-//! the user's Stop of any later turn ends it, and the tree says, when it only waits for the
-//! device, that a move stops nothing (§ Switch the primary target). The
-//! commands run in scripted shell environments ([`ScriptedShells`]) that the
-//! test marks waiting, on Tokio's paused clock.
+//! A command whose start waits for its Host, a paired device whose runner is
+//! away (`crates/backend-host-access/src/access.rs`).
+//!
+//! The tests cover:
+//!
+//! - It sends no interval report while it waits.
+//! - A turn that ends leaves it waiting, and the user's Stop of any later turn
+//!   ends it.
+//! - The tree says, when it only waits for the device, that a move stops
+//!   nothing (§ Switch the primary target).
+//!
+//! The commands run in scripted shell environments ([`ScriptedShells`]) that
+//! the test marks waiting, on Tokio's paused clock.
 
 use std::{cell::Cell, rc::Rc, time::Duration};
 

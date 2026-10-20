@@ -1,18 +1,24 @@
-//! The building blocks every HTTP provider decodes its vendor's answers with:
-//! server-sent event framing, the
-//! two-step decode of payloads tagged by `type`, fields Demi only reports,
-//! the OpenAI-shaped Responses and Chat Completions streams with their
-//! mappers onto a run's events, and the token counts of the Anthropic
-//! Messages stream.
+//! The building blocks every HTTP provider decodes its vendor's answers with.
+//!
+//! They are:
+//!
+//! - server-sent event framing;
+//! - the two-step decode of payloads tagged by `type`;
+//! - fields Demi only reports;
+//! - the OpenAI-shaped Responses and Chat Completions streams with their
+//!   mappers onto a run's events;
+//! - the token counts of the Anthropic Messages stream.
 //!
 //! Everything a vendor sends is untrusted input, decoded into a type where it
-//! enters. A run ends with a response only when the vendor said the reply is
-//! complete (a Responses completion event, a Chat Completions `finish_reason`,
-//! an Anthropic `message_stop`; the closing `data: [DONE]` is not required,
-//! since gateways leave it out). A body that ends before that is a failure of
-//! the run even when a usage count came with it, because a gateway that sends
-//! running totals in every chunk makes a cut reply look complete, and the
-//! agent would answer the next request from half a sentence.
+//! enters.
+//!
+//! A run ends with a response only when the vendor said the reply is complete:
+//! a Responses completion event, a Chat Completions `finish_reason`, or an
+//! Anthropic `message_stop`. The closing `data: [DONE]` is not required, since
+//! gateways leave it out. A body that ends before that is a failure of the run
+//! even when a usage count came with it. A gateway that sends running totals in
+//! every chunk makes a cut reply look complete, and the agent would answer the
+//! next request from half a sentence.
 
 pub mod chat_completions;
 pub mod messages;
@@ -39,11 +45,16 @@ pub mod __private {
     pub use serde;
 }
 
-/// The vendor a shared stream mapper reads for: its name in the failures the
-/// mapper composes, such as `Codex stream error`, the reader that finds the
-/// wait in its failure records, the clock that says when a failure was
-/// received, and the model the run asked for, which a response without usage
-/// names in its log.
+/// The vendor a shared stream mapper reads for.
+///
+/// It holds:
+///
+/// - its name in the failures the mapper composes, such as `Codex stream
+///   error`;
+/// - the reader that finds the wait in its failure records;
+/// - the clock that says when a failure was received;
+/// - the model the run asked for, which a response without usage names in its
+///   log.
 #[derive(Clone)]
 pub struct Vendor {
     pub label: &'static str,
@@ -52,10 +63,11 @@ pub struct Vendor {
     pub model: String,
 }
 
-/// The usage an OpenAI-shaped API reports, whose input count includes what
-/// it read from its cache and what it wrote to it: Demi keeps the three
-/// apart, so both leave the input count. An absent
-/// count is zero.
+/// The usage an OpenAI-shaped API reports, whose input count includes what it
+/// read from its cache and what it wrote to it.
+///
+/// Demi keeps the three apart, so both leave the input count. An absent count
+/// is zero.
 pub(crate) fn usage_with_cached_input(
     input: Option<u64>,
     output: Option<u64>,

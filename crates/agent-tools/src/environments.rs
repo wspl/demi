@@ -1,10 +1,14 @@
 //! A node's shell environments: one per Host the node used, keyed by the Host's
-//! key. Concurrent calls for one Host make one environment, and a handle
-//! belongs to the environment that made it, so a `commandId` of another Host's
-//! environment is refused. Beside them, what the node's command reports need to
-//! know of its commands' ends: whose end a look showed the node, who stopped
-//! one, and which commands a running look covers. The repeat guard keeps a
-//! model that loops on one call from running it again and again.
+//! key.
+//!
+//! Concurrent calls for one Host make one environment, and a handle belongs to
+//! the environment that made it, so a `commandId` of another Host's environment
+//! is refused.
+//!
+//! Beside them, this module holds what the node's command reports need to know
+//! of its commands' ends: whose end a look showed the node, who stopped one,
+//! and which commands a running look covers. The repeat guard keeps a model
+//! that loops on one call from running it again and again.
 
 use std::{
     cell::{Cell, RefCell},
@@ -31,18 +35,21 @@ const REPEAT_WINDOW: Duration = Duration::from_secs(60);
 pub struct Environments {
     slots: RefCell<Vec<Rc<Slot>>>,
     disposed: Cell<bool>,
-    /// The node's place in the output of each command it looked at through
-    /// its whole output, the commands of other nodes among them; all of it
-    /// for a command whose end a look showed the node, whose end tells it
-    /// nothing more (`crates/agent-server/src/server/shell_output.rs`).
+    /// The node's place in the output of each command it looked at through its
+    /// whole output, the commands of other nodes among them.
+    ///
+    /// It is all of the output for a command whose end a look showed the node,
+    /// whose end tells it nothing more
+    /// (`crates/agent-server/src/server/shell_output.rs`).
     places: RefCell<HashMap<CommandId, Seen>>,
     /// Who stopped each command that was stopped, which its end's report
     /// names.
     stops: RefCell<HashMap<CommandId, Stopper>>,
-    /// How many of the node's looks at each command run now, such as a
-    /// `demi shell status --wait` that waits for its end: an end report of
-    /// such a command ends no window, since the look shows the end itself
-    /// (`crates/agent-session/src/reports.rs`).
+    /// How many of the node's looks at each command run now, such as a `demi
+    /// shell status --wait` that waits for its end.
+    ///
+    /// An end report of such a command ends no window, since the look shows the
+    /// end itself (`crates/agent-session/src/reports.rs`).
     looks: RefCell<HashMap<CommandId, usize>>,
 }
 
@@ -100,9 +107,11 @@ pub(super) enum Handle<'a> {
 
 impl Environments {
     /// The environment for the Host `key`, made with `create` unless it was
-    /// made before; a concurrent call for the same Host waits for the same
-    /// creation. The handle `handle` must be this environment's: one another
-    /// Host's environment owns is refused, as is one two environments claim.
+    /// made before.
+    ///
+    /// A concurrent call for the same Host waits for the same creation. The
+    /// handle `handle` must be this environment's: one another Host's
+    /// environment owns is refused, as is one two environments claim.
     pub(super) async fn resolve(
         &self,
         key: HostKey,
@@ -215,10 +224,11 @@ impl Environments {
     }
 
     /// Asks every command of every environment made so far to stop, without
-    /// waiting for its end, and hands those environments over: the node
-    /// forgets them, as [`end_all`](Self::end_all) does, so its disposal
-    /// lets none of their commands go. Each command reads as stopping until
-    /// its runner reports its end, which its environment then records
+    /// waiting for its end, and hands those environments over.
+    ///
+    /// The node forgets them, as [`end_all`](Self::end_all) does, so its
+    /// disposal lets none of their commands go. Each command reads as stopping
+    /// until its runner reports its end, which its environment then records
     /// (`crates/agent-server/src/server/tree/supervisor.rs`).
     pub async fn stop_all(&self) -> Vec<Rc<dyn ShellEnvironment>> {
         let environments = self.forget_all();
@@ -321,10 +331,11 @@ impl Environments {
 const DISPOSED: &str = "The node's shells are closed";
 
 impl Slot {
-    /// Counts `script` against the repeat guard: within the window of the
-    /// previous call, the same script runs six times in a row, and the
-    /// seventh and later are suppressed; another script starts the count
-    /// again.
+    /// Counts `script` against the repeat guard.
+    ///
+    /// Within the window of the previous call, the same script runs six times
+    /// in a row, and the seventh and later are suppressed. Another script
+    /// starts the count again.
     pub(super) fn repeated(&self, script: &str) -> Option<ToolOutcome> {
         let now = Instant::now();
         let mut repeat = self.repeat.borrow_mut();

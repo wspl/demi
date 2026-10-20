@@ -175,10 +175,11 @@ async fn a_whole_batch_reaches_the_agent_before_any_answer_and_a_later_call_is_a
     assert_eq!(placement.starts(), 1);
 }
 
-/// A Claude Code turn of several tool calls is several runs, one per batch:
-/// each run that stops at a batch ends with the usage of the call that wrote
-/// it, so the agent can compact at the call that crossed its threshold
-/// rather than at the turn's `result`.
+/// A Claude Code turn of several tool calls is several runs, one per batch.
+///
+/// Each run that stops at a batch ends with the usage of the call that wrote
+/// it, so the agent can compact at the call that crossed its threshold rather
+/// than at the turn's `result`.
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn each_run_that_stops_at_a_batch_ends_with_the_usage_of_the_call_that_wrote_it() {
@@ -488,12 +489,13 @@ async fn a_batch_without_all_its_results_or_results_never_asked_for_fail_the_run
     );
 }
 
-/// A steer written with a batch's results, which the CLI answers in a turn
-/// of its own after the batch's turn ended, is answered in the run that
-/// wrote it: that run ends at the second `result`, the one after the CLI
-/// printed the steer back, and the next run starts clean in the same
-/// process. (The run ended at the first `result`, and the steer's answer
-/// was skipped as output of no request.)
+/// A steer written with a batch's results, which the CLI answers in a turn of
+/// its own after the batch's turn ended, is answered in the run that wrote it.
+///
+/// That run ends at the second `result`, the one after the CLI printed the
+/// steer back, and the next run starts clean in the same process. (The run
+/// ended at the first `result`, and the steer's answer was skipped as output of
+/// no request.)
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_steer_written_with_a_batchs_results_and_answered_in_a_turn_of_its_own_is_answered_in_its_run() {
@@ -621,12 +623,14 @@ async fn the_whole_lines_of_a_streamed_message_repeat_it_and_its_batch_waits_for
     assert!(cli.unread().is_empty());
 }
 
-/// Claude Code retries a call whose stream failed without streaming, and
-/// prints its answer as one whole line that no `message_start` or
-/// `message_stop` frames. That answer shows, and its batch reaches the agent
-/// at once, in a process that streamed before: the CLI runs the call and
-/// waits for its result (a conversation stalled for good when the answer
-/// was taken for a repeat of what streamed).
+/// Claude Code retries a call whose stream failed without streaming, and prints
+/// its answer as one whole line that no `message_start` or `message_stop`
+/// frames.
+///
+/// That answer shows, and its batch reaches the agent at once, in a process
+/// that streamed before: the CLI runs the call and waits for its result. (A
+/// conversation stalled for good when the answer was taken for a repeat of what
+/// streamed.)
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_complete_answer_shows_and_hands_its_tool_call_on_at_once_after_streamed_ones() {

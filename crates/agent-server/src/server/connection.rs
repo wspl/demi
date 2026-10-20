@@ -1,16 +1,21 @@
-//! One conversation socket's frame handling: the backend decodes each client
-//! frame, resolves its content, and hands it to [`Connection::handle`], one
-//! frame at a time in arrival order. Every frame for the connection, a reply
-//! or an event, goes through its one bounded outbox in causal order;
-//! [`FrameRx`] is the outbox's receiving end.
+//! One conversation socket's frame handling.
 //!
-//! An event of the tree goes to every attached connection; a reply goes only
-//! to the connection whose frame it answers. Connections that act at once need
-//! no rule of their own: each hands the session its frames one at a time, and
-//! the session takes the frames of all of them in the order they reach it, so
-//! the rule that decides a lone client's frame decides each. Two sends run in
-//! the order they arrive, an edit is refused while another connection's send
-//! runs or waits, and each `abort` stops one thing.
+//! The backend decodes each client frame, resolves its content, and hands it to
+//! [`Connection::handle`], one frame at a time in arrival order. Every frame
+//! for the connection, a reply or an event, goes through its one bounded outbox
+//! in causal order; [`FrameRx`] is the outbox's receiving end.
+//!
+//! An event of the tree goes to every attached connection; a reply goes only to
+//! the connection whose frame it answers.
+//!
+//! Connections that act at once need no rule of their own. Each hands the
+//! session its frames one at a time, and the session takes the frames of all of
+//! them in the order they reach it, so the rule that decides a lone client's
+//! frame decides each:
+//!
+//! - Two sends run in the order they arrive.
+//! - An edit is refused while another connection's send runs or waits.
+//! - Each `abort` stops one thing.
 
 use std::{
     cell::{Cell, RefCell},
@@ -172,22 +177,26 @@ impl<H: HostResolver> Connection<H> {
         (connection, frames)
     }
 
-    /// Handles one decoded frame to its end; a frame whose handling waits,
-    /// such as a send whose uploads are being numbered and read or an
-    /// `abort` waiting for the stop to be recorded, delays the frames behind
-    /// it. A failure is answered as a frame, never returned. Answers whether
-    /// the session took the message the frame carries: a `send` it admitted
-    /// or a `steer` it accepted, which the backend needs to know of a
-    /// message saved for later.
+    /// Handles one decoded frame to its end.
+    ///
+    /// A frame whose handling waits, such as a send whose uploads are being
+    /// numbered and read or an `abort` waiting for the stop to be recorded,
+    /// delays the frames behind it. A failure is answered as a frame, never
+    /// returned.
+    ///
+    /// Answers whether the session took the message the frame carries: a `send`
+    /// it admitted or a `steer` it accepted, which the backend needs to know of
+    /// a message saved for later.
     pub async fn handle(&self, frame: ClientFrame) -> bool {
         let command = frame.kind();
         self.handle_as(frame, command).await
     }
 
     /// Handles `frame` as [`handle`](Self::handle) does, refusing it as the
-    /// page's `command`: the backend hands the session a message saved for
-    /// later as the `send` it becomes, and the page waits for the answer of
-    /// the `send_saved` it sent.
+    /// page's `command`.
+    ///
+    /// The backend hands the session a message saved for later as the `send` it
+    /// becomes, and the page waits for the answer of the `send_saved` it sent.
     pub async fn handle_as(&self, frame: ClientFrame, command: ClientFrameKind) -> bool {
         match frame {
             ClientFrame::Open { from, edge } => {
@@ -282,9 +291,10 @@ impl<H: HostResolver> Connection<H> {
     }
 
     /// Attaches the connection to the conversation's tree beside any other,
-    /// restoring the tree when it is not live; a live tree already follows
-    /// the conversation's model selection. A second `open` on one connection
-    /// is refused.
+    /// restoring the tree when it is not live.
+    ///
+    /// A live tree already follows the conversation's model selection. A second
+    /// `open` on one connection is refused.
     async fn open(&self, from: Option<u32>, edge: Option<&BlockId>) {
         if self.attached().is_some() {
             self.reject(
@@ -559,10 +569,9 @@ impl<H: HostResolver> Connection<H> {
             self.reject(kind, refusal);
             return;
         }
-        // The user compacts only a context that is full enough. The
-        // estimate may read media, during which an action can start, so
-        // the phase is checked again with nothing awaited before the
-        // admission.
+        // The user compacts only a context that is full enough. The estimate
+        // may read media, during which an action can start, so the phase is
+        // checked again with nothing awaited before the admission.
         if kind == ClientFrameKind::Compact {
             let refusal = session
                 .compaction_refusal()
@@ -583,10 +592,11 @@ impl<H: HostResolver> Connection<H> {
         }
     }
 
-    /// An edit's acceptance: a repeated request is answered from its
-    /// receipt, or shares the acceptance in flight, before any of its files
-    /// is resolved; a new one resolves its content and returns once the
-    /// replacement is durable.
+    /// An edit's acceptance.
+    ///
+    /// A repeated request is answered from its receipt, or shares the
+    /// acceptance in flight, before any of its files is resolved. A new one
+    /// resolves its content and returns once the replacement is durable.
     async fn edit(&self, session: &AgentSession, request: EditRequest) -> Result<TurnId, Refusal> {
         let digest = edit_digest(&request);
         let check = session

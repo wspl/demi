@@ -1,14 +1,17 @@
-//! Compaction: when the history nears a model's window, a session copy
-//! summarizes its older part, and the summary replaces that part in what the
-//! model receives. The transcript keeps every block.
+//! Compaction: a session copy summarizes the older part of the history when it
+//! nears a model's window, and the summary replaces that part in what the model
+//! receives.
 //!
-//! Compaction runs on tokens only, and its threshold leaves just the room the
-//! answer and the summary request need: a summary written late is written
-//! once, where an early one is written again and again, each losing detail.
+//! The transcript keeps every block.
+//!
+//! Compaction runs on tokens only. Its threshold leaves just the room the
+//! answer and the summary request need: a summary written late is written once,
+//! where an early one is written again and again, each losing detail.
+//!
 //! A request's bytes and its number of images never start a pass. Images are
-//! kept light where they enter, and a request the vendor still refuses for
-//! its size fails the turn with `request_too_large`, which the user's
-//! `compact` continues by summarizing the media away.
+//! kept light where they enter, and a request the vendor still refuses for its
+//! size fails the turn with `request_too_large`, which the user's `compact`
+//! continues by summarizing the media away.
 
 use std::{future::Future, mem, rc::Rc, sync::Arc};
 
@@ -109,13 +112,13 @@ const KEPT_WORK_PERCENT: u8 = 15;
 const KEPT_WORDS: u64 = 20_000;
 const KEPT_WORDS_PERCENT: u8 = 10;
 
-/// The window in use for `model`, in tokens: the model's context window, or
-/// the limit the user set on it, as the node answers it
-/// (`crates/shared-types/src/context_limit.rs`); none for a model that reports
-/// no window. Every token
-/// threshold, the share from which the user may compact and the usage the
-/// page shows are of it. It is asked at each use, so a changed limit counts
-/// from the next one.
+/// The window in use for `model`, in tokens: the model's context window, or the
+/// limit the user set on it, as the node answers it
+/// (`crates/shared-types/src/context_limit.rs`).
+///
+/// None for a model that reports no window. Every token threshold, the share
+/// from which the user may compact and the usage the page shows are of it. It
+/// is asked at each use, so a changed limit counts from the next one.
 pub(super) async fn window_in_use(s: &SessionShared, model: &ModelSelection) -> Option<u64> {
     let window = s.runtime.context_window(model).await;
     (window > 0).then(|| u64::from(window))
@@ -139,8 +142,9 @@ pub fn token_threshold(window: u64, output_limit: Option<u32>) -> u64 {
 /// When a session compacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactionConfig {
-    /// Whether the session compacts without being asked: before a turn,
-    /// after a response or a refusal for its tokens, before a model switch.
+    /// Whether the session compacts without being asked: before a turn, after a
+    /// response or a refusal for its tokens, before a model switch.
+    ///
     /// A session copy does not, so its refused summary request comes back to
     /// its pass.
     pub automatic: bool,
@@ -165,11 +169,12 @@ impl CompactionConfig {
         Some(token_threshold(window, model.output_limit))
     }
 
-    /// The trigger of a pass when one response's usage reached the
-    /// threshold of `model`, whose window in use is `window`; none when it
-    /// did not. An input above the model's own window cannot be one call's,
-    /// so it reaches nothing and is logged with its provider: a provider
-    /// that misreports is found rather than compacting every turn.
+    /// The trigger of a pass when one response's usage reached the threshold of
+    /// `model`, whose window in use is `window`; none when it did not.
+    ///
+    /// An input above the model's own window cannot be one call's, so it
+    /// reaches nothing and is logged with its provider: a provider that
+    /// misreports is found rather than compacting every turn.
     pub(crate) fn reached(
         &self,
         window: Option<u64>,
@@ -316,9 +321,10 @@ async fn over_threshold_of(
 }
 
 /// Runs `work` in the compacting stage, which clients see as the phase
-/// `compacting`, and returns to the stage before it. A wait for the model
-/// pauses meanwhile, since the page shows the pass instead, and starts
-/// again at its end.
+/// `compacting`, and returns to the stage before it.
+///
+/// A wait for the model pauses meanwhile, since the page shows the pass
+/// instead, and starts again at its end.
 pub(super) async fn compacting<T>(
     s: &SessionShared,
     work: impl Future<Output = Result<T, TurnError>>,
@@ -341,10 +347,12 @@ pub(super) async fn compacting<T>(
     result
 }
 
-/// The usage the page shows: the estimate of the next request of the
-/// current model, with the window in use and the estimate from which the
-/// user may compact. It reads the media of the blocks the estimate weighs
-/// when the session holds nothing for them, as after a restore.
+/// The usage the page shows: the estimate of the next request of the current
+/// model, with the window in use and the estimate from which the user may
+/// compact.
+///
+/// It reads the media of the blocks the estimate weighs when the session holds
+/// nothing for them, as after a restore.
 pub(super) async fn context_usage(
     s: &SessionShared,
     cancel: &TurnCancel,
@@ -372,10 +380,11 @@ pub(super) async fn held_context_usage(s: &SessionShared) -> Option<ContextUsage
     s.read(|core| usage_at(core, &prompt, window).ok())
 }
 
-/// The usage of `core`'s next request with `prompt` in `window`, the window
-/// in use, with what fills it; or the blobs to read first. A model without a
-/// window has no share from which the user may compact: no threshold
-/// relieves it, so the user may always compact.
+/// The usage of `core`'s next request with `prompt` in `window`, the window in
+/// use, with what fills it; or the blobs to read first.
+///
+/// A model without a window has no share from which the user may compact: no
+/// threshold relieves it, so the user may always compact.
 fn usage_at(
     core: &SessionCore,
     prompt: &SystemPrompt,
@@ -395,10 +404,11 @@ fn usage_at(
     })
 }
 
-/// Tells the clients the usage after a response, a pass or an action. A
-/// media read that fails here leaves the clients with the usage they had:
-/// the next request reads the same media and reports its failure where the
-/// turn can act on it.
+/// Tells the clients the usage after a response, a pass or an action.
+///
+/// A media read that fails here leaves the clients with the usage they had: the
+/// next request reads the same media and reports its failure where the turn can
+/// act on it.
 pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel) {
     if let Ok(usage) = context_usage(s, cancel).await {
         s.emit(SessionEvent::ContextUsageChanged { usage });
@@ -406,9 +416,10 @@ pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel)
 }
 
 /// Why a `compact` frame is refused at `usage`, or none when it is taken.
-/// A history whose unfinished turn failed for its size (`size_refused`)
-/// takes it at any share: its media, not its tokens, are what the vendor
-/// refused, and summarizing them away is how the user continues it.
+///
+/// A history whose unfinished turn failed for its size (`size_refused`) takes
+/// it at any share: its media, not its tokens, are what the vendor refused, and
+/// summarizing them away is how the user continues it.
 pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<Refusal> {
     if size_refused || usage.admits_compaction() {
         return None;
@@ -453,11 +464,13 @@ pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Res
     Ok(())
 }
 
-/// Before a model switch lands: passes with the current model, since the new
-/// one may not be able to load the history it would have to summarize, until the
-/// history's estimate is under the token threshold of `target`, whose
-/// vendor takes requests within `limits`, at most eight, stopping when a
-/// pass compacts nothing. Returns whether any pass compacted.
+/// Compacts before a model switch lands, until the history fits `target`.
+///
+/// The passes run with the current model, since the new one may not be able to
+/// load the history it would have to summarize. They go on until the history's
+/// estimate is under the token threshold of `target`, whose vendor takes
+/// requests within `limits`. There are at most eight, and they stop when a pass
+/// compacts nothing. Returns whether any pass compacted.
 pub(super) async fn compact_to_fit(
     s: &Rc<SessionShared>,
     target: &ModelSelection,
@@ -483,17 +496,24 @@ pub(super) async fn compact_to_fit(
     .await
 }
 
-/// One pass: the window, from the last boundary to the end of the latest
-/// request the current model answered that leaves the recent work after it,
-/// is summarized by a session copy, whose request is the session's next
-/// request, the whole history, with the instruction after it, so the vendor
-/// reads it from its cache; a boundary holding the summary and the user's
-/// messages it keeps is inserted where the window ends, with a marker at the
-/// end and a `context` block naming what still runs after it. Returns
-/// whether it compacted anything. A summary request that exceeds the context
-/// is asked again for the window alone, then for its first half, down to one
-/// block after the previous boundary; when that one exceeds it too, the pass
-/// fails. The pass logs its `trigger` first.
+/// One pass: a session copy summarizes the window.
+///
+/// The window is from the last boundary to the end of the latest request the
+/// current model answered that leaves the recent work after it. The copy's
+/// request is the session's next request, the whole history, with the
+/// instruction after it, so the vendor reads it from its cache.
+///
+/// A boundary is inserted where the window ends. It holds the summary and the
+/// user's messages it keeps, with a marker at the end and a `context` block
+/// naming what still runs after it.
+///
+/// A summary request that exceeds the context is asked again:
+///
+/// 1. for the window alone;
+/// 2. then for its first half, down to one block after the previous boundary.
+///
+/// When that one exceeds it too, the pass fails. Returns whether it compacted
+/// anything. The pass logs its `trigger` first.
 pub(super) async fn run_pass(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -602,11 +622,15 @@ pub(super) async fn run_pass(
                 return Ok(true);
             }
             Summary::TooLong(report) => {
-                // The request itself exceeds the context: the window alone,
-                // when the history went on after it, then the first half of
-                // the window, unless no smaller window is left; then the
-                // overflow fails the pass like any other failure of the
-                // summary request.
+                // The request itself exceeds the context. Ask again, in this
+                // order:
+                //
+                // - for the window alone, when the history went on after it;
+                // - for the first half of the window, unless no smaller window
+                //   is left.
+                //
+                // Then the overflow fails the pass like any other failure of
+                // the summary request.
                 if mem::take(&mut whole) && cut < view.blocks.len() {
                     continue;
                 }
@@ -619,9 +643,10 @@ pub(super) async fn run_pass(
     }
 }
 
-/// The text of the `context` block a pass appends after its marker: each
-/// command of the agent that still runs, by its number and title, and
-/// each of its live subagents, by its number and description; none when
+/// The text of the `context` block a pass appends after its marker.
+///
+/// It names each command of the agent that still runs, by its number and title,
+/// and each of its live subagents, by its number and description; none when
 /// nothing runs.
 fn running_text(running: &RunningWork) -> Option<String> {
     if running.commands.is_empty() && running.subagents.is_empty() {
@@ -652,14 +677,17 @@ fn record_failure(s: &SessionShared, report: Box<ErrorReport>) -> TurnError {
     TurnError::Failed(report)
 }
 
-/// Joins the summary instruction, the last item of a session copy's
-/// request, to the user input before it, as one more text block of that
-/// message: as a message of its own, the Claude Code CLI would join the two
-/// by adding a line break to the input's last text, which changes a block
-/// the vendor may have cached. The block keeps its vendor entries; a
-/// provider whose entry recorded the input extends it with the blocks the
-/// item gained. After a tool's results the instruction stays an item of its
-/// own, which the providers put in the results' message.
+/// Joins the summary instruction to the user input before it, as one more text
+/// block of that message.
+///
+/// The instruction is the last item of a session copy's request. As a message
+/// of its own, the Claude Code CLI would join the two by adding a line break to
+/// the input's last text, which changes a block the vendor may have cached.
+///
+/// The block keeps its vendor entries; a provider whose entry recorded the
+/// input extends it with the blocks the item gained. After a tool's results the
+/// instruction stays an item of its own, which the providers put in the
+/// results' message.
 pub(super) fn join_instruction(replayed: &mut Replay) {
     let [.., previous, InferenceItem::UserMessage { content }] = replayed.items.as_slice() else {
         return;
@@ -801,14 +829,21 @@ async fn ask_copy(
     outcome
 }
 
-/// A session copy of `history`: the session's id, which its requests carry
-/// so that the vendor keeps them with the session's, the session's model,
-/// retry policy, system prompt and tools, a fresh runtime of the same
-/// provider, the bytes the session holds for the history's media. It sends
-/// one request and runs no tool, never compacts, saves nowhere, and runs
-/// inside the session's action without an admission of its own. It is
-/// neither a subagent, which starts with an empty transcript and lives in the
-/// session tree, nor a Fork, a persistent root at an earlier message: it
+/// A session copy of `history`.
+///
+/// The copy has:
+///
+/// - the session's id, which its requests carry so that the vendor keeps them
+///   with the session's;
+/// - the session's model, retry policy, system prompt and tools;
+/// - a fresh runtime of the same provider;
+/// - the bytes the session holds for the history's media.
+///
+/// It sends one request and runs no tool, never compacts, saves nowhere, and
+/// runs inside the session's action without an admission of its own.
+///
+/// It is neither a subagent, which starts with an empty transcript and lives in
+/// the session tree, nor a Fork, a persistent root at an earlier message. It
 /// copies part of the history in memory for one summary request, is closed on
 /// every path, and nothing it does changes the session's transcript.
 fn session_copy(s: &Rc<SessionShared>, history: Vec<Block>, media: HeldMedia) -> AgentSession {
@@ -853,10 +888,12 @@ fn session_copy(s: &Rc<SessionShared>, history: Vec<Block>, media: HeldMedia) ->
     AgentSession::start(SessionCore::new(parts), deps)
 }
 
-/// A session copy's view of its session's runtime: the same prompts and
-/// tools, which its request declares but never runs, an admission of its own
-/// that nothing reserves, and no context text, which the history already
-/// carries, nor an identity before the instruction, which is one text block.
+/// A session copy's view of its session's runtime.
+///
+/// It has the same prompts and tools, which its request declares but never
+/// runs, and an admission of its own that nothing reserves. It has no context
+/// text, which the history already carries, and no identity before the
+/// instruction, which is one text block.
 struct CopyRuntime {
     session: Rc<dyn SessionRuntime>,
     admission: ActivityGate,

@@ -1,25 +1,31 @@
-//! The `demi shell` command group: `status` looks at commands of the
-//! conversation as a result shows them, waits for their end and changes how
-//! often they report; `input` writes to a command's input; `output` prints a
-//! command's whole output; `stop` stops a running command through the shell
-//! environment that runs it, as a page's stop does.
+//! The `demi shell` command group.
+//!
+//! - `status` looks at commands of the conversation as a result shows them,
+//!   waits for their end and changes how often they report.
+//! - `input` writes to a command's input.
+//! - `output` prints a command's whole output.
+//! - `stop` stops a running command through the shell environment that runs it,
+//!   as a page's stop does.
 //!
 //! Looking, answering and stopping are things a shell does, so they are
-//! commands and not tools: each is an `rpc` command handled in the backend from
+//! commands and not tools. Each is an `rpc` command handled in the backend from
 //! any of the conversation's shells, so one script combines them with anything
 //! else. They work on any command of the conversation, whichever agent ran it;
 //! only the place a look moves is the calling node's own. `stop` succeeds on a
 //! command that had already ended, so stopping is safe to repeat.
 //!
-//! `output` is sized for the model: a page never exceeds `PAGE_CHARS`, so its
-//! own result is never cut, and a long line shows in part so it cannot fill a
-//! page. `--raw` is the bytes with the pages' line numbering, so `grep -n` on
-//! it gives the numbers `--lines` takes; the command has no search of its own.
-//! It reads a running command from its Host through host access and an ended
-//! one from the store, where the backend put it before any result reported the
-//! end. A Host keeps at most 16 MiB of a command's output (all of it, or its
-//! first and last 8 MiB), so a command that prints without end costs 16 MiB on
-//! its Host and in the backend alike.
+//! `output` is sized for the model:
+//!
+//! - A page never exceeds `PAGE_CHARS`, so its own result is never cut, and a
+//!   long line shows in part so it cannot fill a page.
+//! - `--raw` is the bytes with the pages' line numbering, so `grep -n` on it
+//!   gives the numbers `--lines` takes. The command has no search of its own.
+//! - It reads a running command from its Host through host access and an ended
+//!   one from the store, where the backend put it before any result reported
+//!   the end.
+//! - A Host keeps at most 16 MiB of a command's output (all of it, or its first
+//!   and last 8 MiB), so a command that prints without end costs 16 MiB on its
+//!   Host and in the backend alike.
 
 use std::{rc::Weak, sync::Arc, time::Duration};
 
@@ -120,7 +126,6 @@ struct StopArgs {
     id: Vec<String>,
 }
 
-/// The `shell` group.
 pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
     GroupBuilder::new("shell", GROUP_SUMMARY)
         .index_entry(GROUP_ENTRY)
@@ -162,10 +167,12 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
 /// or only its end when none.
 type IntervalChange = Option<u32>;
 
-/// Looks at each of the conversation's commands the call names, in order,
-/// once they ended or `--wait` passed; changes first how each reports when
-/// the call says so. A command that cannot be looked at is told on stderr,
-/// and the next is looked at all the same.
+/// Looks at each of the conversation's commands the call names, in order, once
+/// they ended or `--wait` passed; changes first how each reports when the call
+/// says so.
+///
+/// A command that cannot be looked at is told on stderr, and the next is looked
+/// at all the same.
 async fn status<H: HostResolver>(
     call: Invoked<H, StatusArgs>,
     port: RpcPort,
@@ -202,10 +209,10 @@ async fn status<H: HostResolver>(
             Ok(wait) => Duration::from_millis(wait),
             Err(reason) => return refuse(&format!("--wait {text}: {reason}")),
         };
-        // A stopped call stops waiting, and lets go of its look with it:
-        // nobody reads what it would show, and a handler left waiting would
-        // show the end to no one (`crates/agent-session/src/reports.rs`). A call
-        // stopped as the commands end is stopped all the same.
+        // A stopped call stops waiting, and lets go of its look with it: nobody
+        // reads what it would show, and a handler left waiting would show the
+        // end to no one (`crates/agent-session/src/reports.rs`). A call stopped
+        // as the commands end is stopped all the same.
         tokio::select! {
             biased;
             () = port.cancelled() => return Ok(CANCELLED),
@@ -378,13 +385,13 @@ async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Du
     let _ = tokio::time::timeout(wait, ends).await;
 }
 
-/// What a look at the conversation's command `id` shows the node `caller`;
-/// first, `change`
-/// changes how the command reports. The node that runs the command looks
-/// from its place in the command's record; any other node, and a node
-/// whose command no shells hold any more, from its own place in the
-/// command's whole output: each look shows the output since the node's own
-/// last look and moves only its place, once the caller printed it.
+/// What a look at the conversation's command `id` shows the node `caller`.
+///
+/// First, `change` changes how the command reports. The node that runs the
+/// command looks from its place in the command's record. Any other node, and a
+/// node whose command no shells hold any more, looks from its own place in the
+/// command's whole output. Each look shows the output since the node's own last
+/// look and moves only its place, once the caller printed it.
 async fn status_one<H: HostResolver>(
     tree: &Tree<H>,
     caller: &NodeId,
@@ -592,8 +599,9 @@ async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Res
 }
 
 /// Stops the conversation's command `id` for the node `caller` through the
-/// shell environment of the node that runs it, and waits until it has
-/// ended: what the command prints of it, or why it could not. The end's
+/// shell environment of the node that runs it, and waits until it has ended.
+///
+/// The result is what the command prints of it, or why it could not. The end's
 /// report says which agent stopped it, and the node that stopped its own
 /// command, which it was told so, hears nothing more of it.
 async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) -> Result<String, String> {
@@ -726,14 +734,15 @@ async fn output<H: HostResolver>(
 }
 
 impl<H: HostResolver> Tree<H> {
-    /// Page `page`, from 1, of what `demi conversation history open` shows
-    /// of the conversation's command `id`: `head`, the line that names the
-    /// call, on every page, then the script after `$ `, then the whole
-    /// output, both streams, its lines as `demi shell output` shows them
-    /// under its header, all cut into pages of [`PAGE_CHARS`] less
-    /// `reserve`, the line the caller adds under a page; and how many pages
-    /// there are. One pass over the output finds both. A page past the last
-    /// fails, naming how many there are.
+    /// Page `page`, from 1, of what `demi conversation history open` shows of
+    /// the conversation's command `id`; also how many pages there are.
+    ///
+    /// A page is `head`, the line that names the call, on every page, then the
+    /// script after `$ `, then the whole output, both streams, its lines as
+    /// `demi shell output` shows them under its header. All of it is cut into
+    /// pages of [`PAGE_CHARS`] less `reserve`, the line the caller adds under a
+    /// page. One pass over the output finds both. A page past the last fails,
+    /// naming how many there are.
     pub async fn command_page(
         &self,
         id: &CommandId,
@@ -830,11 +839,12 @@ impl Page<'_> {
     }
 }
 
-/// Cuts `lead`, then the output that `start` yields from its first line,
-/// into pages of `budget` characters, an entry whole on one page, and
-/// answers page `wanted`'s entries, none when there is no such page, with
-/// how many pages there are. The output is read once, from its start: a
-/// page never makes it scan again.
+/// Cuts `lead`, then the output that `start` yields from its first line, into
+/// pages of `budget` characters, an entry whole on one page.
+///
+/// Answers page `wanted`'s entries, none when there is no such page, with how
+/// many pages there are. The output is read once, from its start: a page never
+/// makes it scan again.
 fn paginate<I: Iterator<Item = Entry>>(
     lead: impl Iterator<Item = Entry>,
     start: impl FnOnce(u64) -> I,

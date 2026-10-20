@@ -1,8 +1,14 @@
-//! The audio role of a provider: a provider that makes audio lists its
-//! audio models, makes one file of speech, music or a sound effect in one
-//! request for its key, and lists the voices a speech model speaks in.
+//! The audio role of a provider.
+//!
+//! A provider that makes audio:
+//!
+//! - lists its audio models;
+//! - makes one file of speech, music or a sound effect in one request for its
+//!   key;
+//! - lists the voices a speech model speaks in.
+//!
 //! Every vendor answers within the call, so a call is one request, as an
-//! image's is; what every vendor's request has in common is in
+//! image's is. What every vendor's request has in common is in
 //! [`crate::media`]. The backend chooses the entry.
 
 use bytes::Bytes;
@@ -36,9 +42,10 @@ pub trait AudioMaker: MediaMaker {
     ) -> BoxFuture<'a, MediaAnswer<MadeAudio>>;
 
     /// The voices speech model `model` speaks in, the vendor's own and the
-    /// account's, read when asked; `search`, when given, narrows them as
-    /// the vendor searches. None for a vendor that lists none, whose
-    /// `--voice` is sent as given.
+    /// account's, read when asked; `search`, when given, narrows them as the
+    /// vendor searches.
+    ///
+    /// None for a vendor that lists none, whose `--voice` is sent as given.
     fn voices<'a>(
         &'a self,
         http: &'a crate::ProviderHttp,
@@ -47,10 +54,11 @@ pub trait AudioMaker: MediaMaker {
         search: Option<&'a str>,
     ) -> BoxFuture<'a, Result<Option<Vec<Voice>>, MediaFailure>>;
 
-    /// The options `request` gives that its request has no field for,
-    /// which are not sent: its shape's ([`unsent`]), unless the maker's
-    /// models take different requests, as ByteDance's Seed Audio and Seed
-    /// speech do.
+    /// The options `request` gives that its request has no field for, which are
+    /// not sent.
+    ///
+    /// They are its shape's ([`unsent`]), unless the maker's models take
+    /// different requests, as ByteDance's Seed Audio and Seed speech do.
     fn unsent(&self, _catalog: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
         unsent(self.shape(), request)
     }
@@ -62,10 +70,11 @@ pub trait AudioMaker: MediaMaker {
         self.shape().name(request.kind)
     }
 
-    /// The factors of the voice's speed the vendor takes, ends included; a
-    /// speed outside them is sent as the nearer end, which the call's
-    /// summary warns of. None for a vendor that states none, whose speed
-    /// is sent as asked.
+    /// The factors of the voice's speed the vendor takes, ends included.
+    ///
+    /// A speed outside them is sent as the nearer end, which the call's summary
+    /// warns of. None for a vendor that states none, whose speed is sent as
+    /// asked.
     fn speeds(&self) -> Option<(f64, f64)> {
         None
     }

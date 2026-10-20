@@ -1,9 +1,14 @@
 //! A Gemini API key's images against a scripted vendor built from Google's
-//! documented shapes: the image generation guide
-//! (ai.google.dev/gemini-api/docs/image-generation), the `models.list` and
-//! `generateContent` references (ai.google.dev/api/models,
-//! ai.google.dev/api/generate-content) and the troubleshooting guide's errors
-//! (ai.google.dev/gemini-api/docs/troubleshooting). No test calls a vendor.
+//! documented shapes:
+//!
+//! - the image generation guide
+//!   (ai.google.dev/gemini-api/docs/image-generation);
+//! - the `models.list` and `generateContent` references
+//!   (ai.google.dev/api/models, ai.google.dev/api/generate-content);
+//! - the troubleshooting guide's errors
+//!   (ai.google.dev/gemini-api/docs/troubleshooting).
+//!
+//! No test calls a vendor.
 
 use demi_provider_common::media_catalog::Catalog;
 use std::sync::Arc;
@@ -69,10 +74,14 @@ const GENERATE: &str = "/v1beta/models/gemini-nano-banana-2.1:generateContent";
 
 // Milliseconds.
 //
-// Planted defects: a second page left unread; a model whose ID has the
-// word `banana` but not `image` left out, or one that cannot generate
-// content listed; the ratio sent when none was asked; an edit's images
-// not sent as inline data; the image looked for in the wrong part.
+// Planted defects:
+//
+// - a second page left unread;
+// - a model whose ID has the word `banana` but not `image` left out, or one
+//   that cannot generate content listed;
+// - the ratio sent when none was asked;
+// - an edit's images not sent as inline data;
+// - the image looked for in the wrong part.
 #[tokio::test]
 async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_documented() {
     let vendor = MockVendor::start().await;
@@ -154,11 +163,15 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
 
 // Milliseconds.
 //
-// Planted defects: a blocked prompt or answer read as an unreadable one,
-// without Google's reason; a day's quota read as a rate limit, so the call
-// does not go on with another entry; a minute's read as a usage limit; a
-// key Google does not accept told as a refusal of the request; a key it
-// does not allow here (403) recorded as an expired one.
+// Planted defects:
+//
+// - a blocked prompt or answer read as an unreadable one, without Google's
+//   reason;
+// - a day's quota read as a rate limit, so the call does not go on with another
+//   entry;
+// - a minute's read as a usage limit;
+// - a key Google does not accept told as a refusal of the request;
+// - a key it does not allow here (403) recorded as an expired one.
 #[tokio::test]
 async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_googles_words() {
     let vendor = MockVendor::start().await;

@@ -1,7 +1,9 @@
 //! Making images: the Codex backend's image endpoints with the account's
-//! headers, the asked options sent as asked, an edit's images as data
-//! URLs, the image and its counts read from the answer, and the failures
-//! a call ends with.
+//! headers.
+//!
+//! The tests cover the asked options sent as asked, an edit's images as data
+//! URLs, the image and its counts read from the answer, and the failures a call
+//! ends with.
 
 use demi_provider_common::media_catalog::Catalog;
 use bytes::Bytes;
@@ -164,9 +166,9 @@ async fn a_failed_call_says_whether_the_account_is_used_up_the_vendor_refused_or
     assert_eq!(sent.last().unwrap().header("authorization"), Some("Bearer new-access"));
 }
 
-/// The windows an image answer reports, a refusal's too, update the
-/// account's snapshot as a turn's do, and the call answers them for its
-/// ledger row.
+/// The windows an image answer reports, a refusal's too, update the account's
+/// snapshot as a turn's do, and the call answers them for its ledger row.
+///
 /// Planted defect this catches: a refusal's headers left unread.
 #[tokio::test]
 async fn the_quota_an_image_answer_or_refusal_reports_updates_the_accounts_snapshot() {
@@ -198,10 +200,11 @@ async fn the_quota_an_image_answer_or_refusal_reports_updates_the_accounts_snaps
     assert_eq!(used(), [Some(43.0)]);
 }
 
-/// The deadline bounds the whole call: a refusal whose body never ends
-/// fails when it passes. The clock is paused, so the 120 s pass at once.
-/// Planted defect this catches: a refusal's body read without the
-/// deadline, which hangs the call.
+/// The deadline bounds the whole call: a refusal whose body never ends fails
+/// when it passes. The clock is paused, so the 120 s pass at once.
+///
+/// Planted defect this catches: a refusal's body read without the deadline,
+/// which hangs the call.
 #[tokio::test(start_paused = true)]
 async fn a_refusal_whose_body_never_ends_fails_at_the_deadline() {
     let vendor = MockVendor::start().await;

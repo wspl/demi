@@ -1,12 +1,13 @@
-//! What a live session holds of a long conversation, measured with a
-//! counting allocator, in its own binary: the allocator counts every
-//! allocation of the process, so a test running next to it would be
-//! counted as the session's.
+//! What a live session holds of a long conversation, measured with a counting
+//! allocator, in its own binary.
+//!
+//! The allocator counts every allocation of the process, so a test running next
+//! to it would be counted as the session's.
 //!
 //! One test: a 20,000-block path with a compaction boundary near its end,
 //! written to a memory store, then restored. It prints what the whole path
-//! weighs decoded, which the session held before it held only its window,
-//! and what the restored session holds; about a second in a debug build.
+//! weighs decoded, which the session held before it held only its window, and
+//! what the restored session holds; about a second in a debug build.
 
 use std::{
     alloc::{GlobalAlloc, Layout, System},

@@ -1,10 +1,14 @@
 //! An account's sign-in, which its CLI keeps in the account's directory
-//! (`crates/provider-claude-code/src/account.rs`): a sign-in the vendor refused
-//! marks the account signed out and fails with the authentication error,
-//! and the account starts no process until it signs in again; a sign-in an
-//! earlier release kept in the record goes to the account's directory with
-//! the first start, as the CLI's own files, and leaves the record. Each
-//! test costs a few milliseconds.
+//! (`crates/provider-claude-code/src/account.rs`).
+//!
+//! - A sign-in the vendor refused marks the account signed out and fails with
+//!   the authentication error, and the account starts no process until it signs
+//!   in again.
+//! - A sign-in an earlier release kept in the record goes to the account's
+//!   directory with the first start, as the CLI's own files, and leaves the
+//!   record.
+//!
+//! Each test costs a few milliseconds.
 
 use demi_host_interface::Signal;
 use demi_provider_claude_code::{CliWork, Handover};
@@ -17,8 +21,9 @@ use crate::cli::*;
 
 /// The lines Claude Code 2.1.301 prints for a turn whose sign-in the vendor
 /// refused and the CLI could not renew: its made-up assistant line saying
-/// `authentication_failed`, then a failed result, which names no status;
-/// with `status`, the result names it, as a refusal of the call does.
+/// `authentication_failed`, then a failed result, which names no status.
+///
+/// With `status`, the result names it, as a refusal of the call does.
 fn refused(status: Option<u16>) -> Vec<Value> {
     let words = "Failed to authenticate: OAuth session expired and could not be refreshed";
     vec![

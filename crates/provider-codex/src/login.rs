@@ -1,8 +1,13 @@
-//! Codex's device login, the
-//! protocol of the Codex CLI's own device-code sign-in: ask for a user code,
-//! let the user confirm it at `…/codex/device` from any web browser, poll until
-//! the service issues an authorization code with its own PKCE verifier, and
-//! exchange that for tokens. No vendor CLI and no web browser on the backend.
+//! Codex's device login, the protocol of the Codex CLI's own device-code
+//! sign-in.
+//!
+//! 1. Ask for a user code.
+//! 2. Let the user confirm it at `…/codex/device` from any web browser.
+//! 3. Poll until the service issues an authorization code with its own PKCE
+//!    verifier.
+//! 4. Exchange that for tokens.
+//!
+//! No vendor CLI and no web browser on the backend.
 
 use std::{sync::Arc, time::Duration};
 
@@ -115,10 +120,11 @@ impl CodexKit {
         })
     }
 
-    /// Polls until the user confirms: 403 and 404 mean not yet, and any
-    /// other failure ends the login. Dropping the future, which the vault
-    /// does when the login's lifetime ends, cancels the login at once, even
-    /// between polls.
+    /// Polls until the user confirms: 403 and 404 mean not yet, and any other
+    /// failure ends the login.
+    ///
+    /// Dropping the future, which the vault does when the login's lifetime
+    /// ends, cancels the login at once, even between polls.
     async fn authorization(&self, code: &UserCode) -> Result<Authorization, LoginError> {
         let body = serde_json::json!({ "device_auth_id": code.device_auth_id, "user_code": code.user_code });
         loop {
