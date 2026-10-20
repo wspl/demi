@@ -7,7 +7,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 
@@ -286,6 +286,8 @@ struct Stored {
     running: BTreeMap<NodeId, Vec<RunningCommand>>,
     /// How far each node looked in each running command's output.
     places: BTreeMap<(CommandId, NodeId), demi_host_interface::Seen>,
+    /// How many reads asked for one node's children or running commands.
+    node_reads: usize,
 }
 
 /// Calls waiting until a test lets them through.
@@ -367,6 +369,13 @@ impl MemoryTreeStore {
     /// product's keeper does when the command ends.
     pub fn keep_output(&self, command: CommandId, stored: StoredCommand) {
         self.stored.borrow_mut().outputs.insert(command, stored);
+    }
+
+    /// How many reads have asked for one node's children or one node's
+    /// running commands: what a store behind a database answers with a
+    /// query each.
+    pub fn node_reads(&self) -> usize {
+        self.stored.borrow().node_reads
     }
 
     /// Records `running` as a command `node` ran that runs, as the
@@ -748,6 +757,7 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         parent: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<NodeRecord>, StoreError>> {
+        self.stored.borrow_mut().node_reads += 1;
         Box::pin(async move {
             let hold = self.stored.borrow().children_holds.get(parent).cloned();
             if let Some(hold) = hold {
@@ -990,7 +1000,21 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         node: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<RunningCommand>, StoreError>> {
-        let running = self.stored.borrow().running.get(node).cloned().unwrap_or_default();
+        let mut stored = self.stored.borrow_mut();
+        stored.node_reads += 1;
+        let running = stored.running.get(node).cloned().unwrap_or_default();
+        Box::pin(async move { Ok(running) })
+    }
+
+    fn running_nodes(&self) -> LocalBoxFuture<'_, Result<BTreeSet<NodeId>, StoreError>> {
+        let running = self
+            .stored
+            .borrow()
+            .running
+            .iter()
+            .filter(|(_, commands)| !commands.is_empty())
+            .map(|(node, _)| node.clone())
+            .collect();
         Box::pin(async move { Ok(running) })
     }
 

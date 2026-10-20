@@ -9,7 +9,7 @@
 //! A backend that starts again reads them to take the commands up when their
 //! runners connect (`crates/backend-remote-host/src/device_jobs.rs`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use demi_host_interface::{Seen, UnsentStart};
 use demi_shared_types::{CommandId, NodeId, Timestamp, TurnId};
@@ -192,6 +192,17 @@ pub fn of_node(connection: &Connection, node: &NodeId) -> Result<Vec<RunningComm
         running.push(decode_row(row)?);
     }
     Ok(running)
+}
+
+/// Every node that ran a command that runs.
+pub fn nodes(connection: &Connection) -> Result<BTreeSet<NodeId>, StorageError> {
+    let mut statement = connection.prepare_cached("SELECT DISTINCT node_id FROM running_commands")?;
+    let mut rows = statement.query([])?;
+    let mut nodes = BTreeSet::new();
+    while let Some(row) = rows.next()? {
+        nodes.insert(decode("running_commands", "node_id", NodeId::try_from(row.get::<_, String>(0)?))?);
+    }
+    Ok(nodes)
 }
 
 fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {

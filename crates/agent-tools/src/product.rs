@@ -308,10 +308,18 @@ pub struct ProfileEdit {
 pub trait SubagentSource {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>>;
 
-    /// What a round on `selection` runs on, in the names the model menu
-    /// shows now ([`runs_on`]).
-    fn runs_on<'a>(&'a self, selection: &'a ModelSelection) -> LocalBoxFuture<'a, JobModel> {
-        Box::pin(async move { runs_on(selection, None, None) })
+    /// What rounds on `selections` run on, in their order, in the names the
+    /// model menu shows now ([`runs_on`]).
+    ///
+    /// One call answers a whole tree, so a tree that opens reads the names
+    /// once, not once per agent.
+    fn runs_on<'a>(&'a self, selections: &'a [ModelSelection]) -> LocalBoxFuture<'a, Vec<JobModel>> {
+        Box::pin(async move {
+            selections
+                .iter()
+                .map(|selection| runs_on(selection, None, None))
+                .collect()
+        })
     }
 
     /// Creates a profile; answers it as stored, or why it was refused.

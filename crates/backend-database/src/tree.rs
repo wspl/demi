@@ -20,7 +20,7 @@
 //! path (`path`) is derived from them and stored beside them for page reads:
 //! with the search index, one of the two stored copies of derived data.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::{ControlFlow, Range};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -550,6 +550,17 @@ impl AgentTreeStore for SqliteTreeStore {
                     unsent: row.unsent,
                 })
                 .collect())
+        })
+    }
+
+    fn running_nodes(&self) -> LocalBoxFuture<'_, Result<BTreeSet<NodeId>, StoreError>> {
+        Box::pin(async move {
+            Ok(self
+                .db
+                .read(running::nodes)
+                .await
+                .map_err(store_error)?
+                .unwrap_or_default())
         })
     }
 

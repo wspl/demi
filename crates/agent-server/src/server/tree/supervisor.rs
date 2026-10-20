@@ -78,7 +78,7 @@
 use tracing::Instrument as _;
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     rc::{Rc, Weak},
 };
 
@@ -88,7 +88,7 @@ use demi_agent_session::{
 };
 use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement};
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
     JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob, SubagentSummary, TranscriptPatch, index_u32,
 };
@@ -765,7 +765,7 @@ impl<H: HostResolver> Tree<H> {
         // A fork's round runs on the model it switches to at its first
         // request.
         let model = switch.as_ref().map_or(origin.model(), |switch| &switch.model);
-        let runs_on = deps.subagents.runs_on(model).await;
+        let runs_on = runs_on(deps.subagents.as_ref(), model).await;
         let activity = self.admission.enter(Purpose::Demand).await;
         let record = origin.record();
         // A profile's child has the product's prompt with what its profile
@@ -1109,6 +1109,11 @@ impl<H: HostResolver> Tree<H> {
                     return;
                 }
             };
+            let stopping = if records.iter().any(|record| record.closed.is_some()) {
+                self.stopping_subtrees().await
+            } else {
+                HashSet::new()
+            };
             for record in records {
                 if self.disposing.get() {
                     return;
@@ -1117,7 +1122,7 @@ impl<H: HostResolver> Tree<H> {
                     continue;
                 }
                 if let Some(close) = &record.closed {
-                    self.take_up_stopping(&record).await;
+                    self.take_up_stopping(&record, &stopping).await;
                     if !record.delivered {
                         let origin = self.stored_origin(&record.id, &close.phase).await;
                         self.deliver(owner, &record, close, origin).await;
@@ -1139,7 +1144,7 @@ impl<H: HostResolver> Tree<H> {
                     // store for the next restore.
                     Err(RuntimeError::OwnerClosing) => return,
                     Err(RuntimeError::Unbuilt(reason)) => {
-                        let runs_on = server.deps.subagents.runs_on(origin.model()).await;
+                        let runs_on = runs_on(server.deps.subagents.as_ref(), origin.model()).await;
                         self.close_unbuilt(owner, record, runs_on, reason).await;
                         continue;
                     }
@@ -1158,15 +1163,56 @@ impl<H: HostResolver> Tree<H> {
         })
     }
 
+    /// The nodes the store records running commands of, with every
+    /// subagent above each: the subtrees a restore takes commands up in.
+    ///
+    /// One read of the store answers every closed child, so a tree of
+    /// hundreds of closed children costs one query, not two per child. The
+    /// subagents above each are found in the tree's summaries, which hold
+    /// every subagent of the tree.
+    async fn stopping_subtrees(&self) -> HashSet<NodeId> {
+        let running = match self.store.running_nodes().await {
+            Ok(running) => running,
+            Err(error) => {
+                self.report(format!("the commands of the closed children were not read: {error}"));
+                return HashSet::new();
+            }
+        };
+        let summaries = self.summaries.borrow();
+        let parents: HashMap<&NodeId, &NodeId> = summaries
+            .values()
+            .filter_map(|summary| Some((&summary.record.id, summary.record.parent.as_ref()?)))
+            .collect();
+        let mut subtrees = HashSet::new();
+        for node in running {
+            let mut next = Some(&node);
+            while let Some(id) = next {
+                if !subtrees.insert(id.clone()) {
+                    break;
+                }
+                next = parents.get(id).copied();
+            }
+        }
+        subtrees
+    }
+
     /// Takes up the commands the closed child `record` and its closed
     /// descendants still ran when the backend restarted or the tree was
-    /// disposed.
+    /// disposed, when it is one of the subtrees `stopping` names
+    /// ([`stopping_subtrees`](Self::stopping_subtrees)).
     ///
     /// Restore skips the children, not their commands. The commands show as
     /// stopping again, are asked to stop again, and end as their runners
     /// report.
-    fn take_up_stopping<'a>(self: &'a Rc<Self>, record: &'a NodeRecord) -> LocalBoxFuture<'a, ()> {
+    fn take_up_stopping<'a>(
+        self: &'a Rc<Self>,
+        record: &'a NodeRecord,
+        stopping: &'a HashSet<NodeId>,
+    ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
+            if !stopping.contains(&record.id) {
+                return;
+            }
             let feed = self.live.feed(Some(record.id.clone()));
             let shells = self
                 .root
@@ -1181,7 +1227,7 @@ impl<H: HostResolver> Tree<H> {
                 }
             };
             for child in children.iter().filter(|child| child.closed.is_some()) {
-                self.take_up_stopping(child).await;
+                self.take_up_stopping(child, stopping).await;
             }
         })
     }
@@ -2077,6 +2123,15 @@ fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>) -
         event: AgentMessageEvent::Completion { outcome },
         origin,
     }
+}
+
+/// What one round on `model` runs on.
+async fn runs_on(subagents: &dyn SubagentSource, model: &ModelSelection) -> JobModel {
+    subagents
+        .runs_on(std::slice::from_ref(model))
+        .await
+        .pop()
+        .expect("one model for one selection")
 }
 
 /// `text` cut at a character boundary to at most [`RESULT_MAX_BYTES`].
