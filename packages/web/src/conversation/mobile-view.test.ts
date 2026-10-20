@@ -111,7 +111,7 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
   await area(300, 500)
   streams[0]!.data(framed({
     type: 'state',
-    devices: [{ id: 'm1', name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', recording: false }],
+    devices: [{ id: 'm1', name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording: false }],
     watched: 'm1',
   }))
   streams[0]!.data(framed({

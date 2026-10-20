@@ -750,6 +750,7 @@ async fn state(
             name: open.name.clone(),
             platform: open.platform,
             os: open.os.clone(),
+            model: (!open.model.is_empty()).then(|| open.model.clone()),
             recording: open.recording.lock().expect("the recording is intact").is_some(),
         })
         .collect();

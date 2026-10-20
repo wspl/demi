@@ -1,5 +1,6 @@
 {
   "toolbar": {
+    "model": "（{model}）",
     "rotateLeft": "左に回転",
     "rotateRight": "右に回転",
     "appearance": "外観モードを切り替える",

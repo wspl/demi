@@ -1,5 +1,6 @@
 {
   "toolbar": {
+    "model": "({model})",
     "rotateLeft": "왼쪽으로 회전",
     "rotateRight": "오른쪽으로 회전",
     "appearance": "화면 모드 전환",

@@ -8,14 +8,15 @@ import { t } from '../locales/text'
 
 /**
  * What a `mobile` tab keeps: the device the agent opened, its native id,
- * its name and its system, which the plugin writes as it opens the tab
- * (`packages/plugin-mobile/src/index.ts`).
+ * its name, its system and, when its driver knows it, its model, which the
+ * plugin writes as it opens the tab (`packages/plugin-mobile/src/index.ts`).
  */
 export const mobileTabDataSchema = z.looseObject({
   device: z.string(),
   nativeId: z.string().optional(),
   name: z.string(),
   platform: mobilePlatformSchema,
+  model: z.string().optional(),
 })
 export type MobileTabData = z.infer<typeof mobileTabDataSchema>
 

@@ -14,7 +14,8 @@ import { t } from '../locales/text'
  * The toolbar:
  *
  * - Starts with the device's system's logo and name where the whole name fits,
- *   never on a phone, whose tab names the device.
+ *   then its model in grey where that fits too, never on a phone, whose tab
+ *   names the device.
  * - Holds the panel's controls, each the operation of the command that does the
  *   same.
  */
@@ -29,6 +30,14 @@ const props = defineProps<{
 const { files, errors, overlays } = usePage()
 /** Whether the device records, as the device says, whoever started it. */
 const recording = computed(() => props.session.session.recording(props.data.device))
+/**
+ * The device's model as its driver reads it: the live list's once it lists
+ * the device, the tab's until then; none when the driver knows none.
+ */
+const model = computed(() => {
+  const listed = props.session.session.state.devices.find((device) => device.id === props.data.device)
+  return listed ? listed.model : props.data.model ?? null
+})
 /** The controls of the device's platform: Back on Android alone. */
 const controls = computed(() => deviceControls(props.session.session.platform(props.data.device)))
 
@@ -79,14 +88,18 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
   <div class="flex min-h-0 flex-1 flex-col">
     <Toolbar :actions="actions" :overlay-store="overlays" :more-label="t('toolbar.more')">
       <template #leading>
-        <!-- The name shows whole or not at all: beside the empty first item it
-             fits on the one line, or wraps to the next, which the row cuts off.
+        <!-- The name and the model each show whole or not at all: beside the
+             empty first item each fits on the one line, or wraps to the next,
+             which the row cuts off, the model first, as it comes after the name.
              A phone's tab already names the device. -->
         <div class="flex h-10 min-w-0 flex-1 flex-wrap items-center overflow-hidden phone:invisible">
           <span class="h-10 w-0" />
-          <span class="flex h-10 items-center gap-1.5 whitespace-nowrap px-2 text-[13px] text-fg-body">
+          <span class="flex h-10 items-center gap-1.5 whitespace-nowrap pl-2 text-[13px] text-fg-body" :class="model ? 'pr-1' : 'pr-2'">
             <MobilePlatformLogo :platform="data.platform" class="text-fg-subtle" />
             {{ data.name }}
+          </span>
+          <span v-if="model" class="flex h-10 items-center whitespace-nowrap pr-2 text-[13px] text-fg-subtle">
+            {{ t('toolbar.model', { model }) }}
           </span>
         </div>
       </template>

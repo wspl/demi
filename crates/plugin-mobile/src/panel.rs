@@ -132,12 +132,17 @@ impl Work {
             if shown.contains(device) {
                 continue;
             }
-            let data = fields([
+            let mut data = fields([
                 ("device", Value::from(*device)),
                 ("nativeId", Value::from(simulator.native_id.clone())),
                 ("name", Value::from(simulator.name.clone())),
                 ("platform", Value::from(simulator.platform.to_string())),
             ]);
+            // The model the driver reads, which the toolbar shows after the
+            // name; a device whose driver knows none has none.
+            if !simulator.model.is_empty() {
+                data.insert("model".into(), Value::from(simulator.model.clone()));
+            }
             let create = CreatePanelTab {
                 id: added_id(device),
                 kind: KIND.into(),

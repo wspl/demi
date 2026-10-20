@@ -116,8 +116,8 @@ test('the view follows the agent’s activity on the device it watches, and on n
   session.start()
   const host = streams[0]!
   const devices = [
-    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', recording: false },
-    { id: 'm2', name: 'iPad Air', platform: 'ios' as const, os: 'iOS 26.5', recording: false },
+    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPhone 17', recording: false },
+    { id: 'm2', name: 'iPad Air', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPad Air 11-inch (M3)', recording: false },
   ]
   host.data(framed({ type: 'state', devices, watched: 'm1' }))
   expect(session.state.activity).toEqual({ active: false })
@@ -224,7 +224,7 @@ test('Record stops a recording the device announces, whoever started it', () => 
   const record = DEVICE_CONTROLS.at(-1)!
   const recordingOf = (recording: boolean) => framed({
     type: 'state',
-    devices: [{ id: 'm1', name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', recording }],
+    devices: [{ id: 'm1', name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording }],
     watched: 'm1',
   })
   expect(record.call('m1', { recording: session.recording('m1') }).params).toEqual({ device: 'm1', action: 'start' })
@@ -281,8 +281,8 @@ test('each device keeps its last frame across a switch of tabs until a newer one
   })
   const frameOf = (device: string, radius: number) => framed({ type: 'frame', device, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawn(radius) })
   const devices = [
-    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', recording: false },
-    { id: 'm2', name: 'Pixel 10', platform: 'android' as const, os: 'Android 16', recording: false },
+    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPhone 17', recording: false },
+    { id: 'm2', name: 'Pixel 10', platform: 'android' as const, os: 'Android 16', model: 'Pixel 10', recording: false },
   ]
   session.showing('m1')
   session.frame(800, 1200, 2)
