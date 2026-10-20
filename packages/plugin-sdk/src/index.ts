@@ -61,12 +61,17 @@ export {
   type PageContext,
   type PagePlugin,
   type PanelKind,
+  type HistoryDirection,
+  type TabUpdate,
   type PluginCallOptions,
   type PluginPage,
   type PluginSettingsSection,
   type PluginState,
 } from '@demicodes/web-ui/plugins/page'
 export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'
+// Where a pinned tab is, as the page's address holds it
+// (`docs/decisions/0014-the-work-panel-has-addresses.md`).
+export { definePlace, type PanelPlace, type PlaceFields } from '@demicodes/web-ui/plugins/place'
 // What a page keeps live while its plugin is on, apart from the panel
 // (`docs/decisions/0008-plugin-architecture.md`): its stores, which its page
 // context's `store` reaches, its sessions by key that outlive the views

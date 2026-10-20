@@ -373,7 +373,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :subagents-streamed="store.streamsSubagents(conversation)"
     @read-subagent="(id) => readHistory(store.history.readBefore(conversation!, id))"
     @show-subagents="store.showSubagents(conversation!, $event)"
-    @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
+    @open-aside="work.setOpen(conversation.id, true)"
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"
     :subagent-cost="(id) => store.costShown(conversation!, id)"

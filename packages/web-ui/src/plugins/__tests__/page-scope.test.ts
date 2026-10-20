@@ -47,7 +47,7 @@ function host(): PageHost {
     hostStarting: unused,
     files: unused,
     intents: { open: unused, canOpen: unused },
-    panel: { tabs: unused, select: unused },
+    panel: { tabs: unused, select: unused, canGo: unused, go: unused },
     openSettings: unused,
     openLink: unused,
     overlays: createOverlayStore(),

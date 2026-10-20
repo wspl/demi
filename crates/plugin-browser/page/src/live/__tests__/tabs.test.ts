@@ -166,7 +166,7 @@ function storeHost(views: RecordedView[], list: BrowserTabList): PageHost {
     hostStarting: () => false,
     files: unused,
     intents: { open: unused, canOpen: () => false },
-    panel: { tabs: () => [], select: () => {} },
+    panel: { tabs: () => [], select: () => {}, canGo: () => false, go: () => {} },
     openSettings: unused,
     openLink: unused,
     overlays: { open: unused } as never,

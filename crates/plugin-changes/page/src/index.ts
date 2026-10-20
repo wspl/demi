@@ -8,7 +8,7 @@ import { PLUGIN } from './generated/plugin'
 import { t } from './locales/text'
 import ChangeBadge from './ChangeBadge.vue'
 import ChangeTab from './ChangeTab.vue'
-import { changeDataSchema, firstChangeData, showCommit, showRequestEdit, type ChangeData } from './data'
+import { changeDataSchema, changePlace, firstChangeData, showCommit, showRequestEdit, type ChangeData } from './data'
 
 const ChangeMark = defineComponent({
   setup: () => () => h(FileDiff, { size: ICON_PX.markIn28 }),
@@ -23,6 +23,7 @@ export const changeKind: PanelKind<ChangeData> = {
   content: ChangeTab,
   badge: ChangeBadge,
   pinned: { data: firstChangeData },
+  place: changePlace,
   intents: {
     edit: (payload, current) => showRequestEdit(current ?? firstChangeData(), payload),
     commit: (payload, current) => showCommit(current ?? firstChangeData(), payload),

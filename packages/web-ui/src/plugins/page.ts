@@ -32,6 +32,7 @@ import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import { pluginCache, type PluginCache } from './cache'
 import { pluginStore, type PluginStore } from './stores'
 import type { OpenUserStream } from './streams'
+import type { PanelPlace } from './place'
 import type { Operation } from '../ui/operations'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
@@ -217,6 +218,14 @@ export interface PageHost {
      * selected once it arrives.
      */
     select(conversation: string, kind: string, id: string): void
+    /**
+     * Whether the web browser's Back or Forward would stay in the
+     * conversation's work panel, read reactively: an address bar of the
+     * panel offers it only then.
+     */
+    canGo(conversation: string, direction: HistoryDirection): boolean
+    /** The web browser's Back or Forward, as the panel's address bar takes it. */
+    go(direction: HistoryDirection): void
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
@@ -232,6 +241,20 @@ export interface PageHost {
    */
   openLink(url: string | Promise<string>): Promise<void>
   overlays: OverlayStore
+}
+
+/** A step of the web browser's history: Back or Forward. */
+export type HistoryDirection = 'back' | 'forward'
+
+/**
+ * How a tab's content asks for its next `data`. By default the update is a
+ * move to another place, such as another file, which is a step of the web
+ * browser's history; `replace` says it changes only how the same place is
+ * seen, such as Preview or Source, or what the tab holds beside its place,
+ * and the address changes in place.
+ */
+export interface TabUpdate {
+  replace?: boolean
 }
 
 /** A plugin's state, validated with the page's schema: null until it arrives. */
@@ -347,8 +370,9 @@ export interface PanelKind<Data> {
    * - Props: `conversation`, `tabId`, `data`, and `shown`, whether the tab is the
    *   panel's selection. What it keeps live beyond its mount is in its page's
    *   stores.
-   * - Emits `update` with the tab's next `data`, and `close` to have the panel close
-   *   the tab as its user would.
+   * - Emits `update` with the tab's next `data` and, for a change that is no
+   *   step of the history, a `TabUpdate` that says so; and `close` to have the
+   *   panel close the tab as its user would.
    */
   content: Component
   /**
@@ -357,6 +381,12 @@ export interface PanelKind<Data> {
    * lives in the page's memory. Its id is the kind's id.
    */
   pinned?: { data(): Data }
+  /**
+   * Where the pinned tab is, which the page's address holds while the panel
+   * shows it (`./place.ts`); without it the address names the tab alone. A
+   * tab that is not pinned is named by its id, which says where it is.
+   */
+  place?: PanelPlace<Data>
   /**
    * What the tab's menu offers before its Close commands, such as a
    * browser tab's Reload, read when the menu opens.
@@ -652,6 +682,8 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
         own(kind)
         host.panel.select(conversation, kind, id)
       },
+      canGo: (conversation, direction) => host.panel.canGo(conversation, direction),
+      go: (direction) => host.panel.go(direction),
     },
     settings: { open: (section) => host.openSettings(section) },
     links: { open: (url) => host.openLink(url) },
@@ -744,7 +776,7 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
       data: { required: true },
       shown: { type: Boolean, required: true },
     },
-    emits: { update: (_data: unknown) => true, close: () => true },
+    emits: { update: (_data: unknown, _how?: TabUpdate) => true, close: () => true },
     setup(props, { emit }) {
       providePage(context)
       // A tab that is not the selected one keeps its views but follows nothing.
@@ -755,7 +787,7 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
           tabId: props.tabId,
           data: props.data,
           shown: props.shown,
-          onUpdate: (data: unknown) => emit('update', data),
+          onUpdate: (data: unknown, how?: TabUpdate) => emit('update', data, how),
           onClose: () => emit('close'),
         })
     },

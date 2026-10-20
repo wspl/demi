@@ -239,7 +239,7 @@ const asideOpen = computed({
   get: () => activeId.value !== null && work.stateFor(activeId.value).open,
   set: (open: boolean) => {
     if (activeId.value !== null) {
-      work.setOpen(work.stateFor(activeId.value), open)
+      work.setOpen(activeId.value, open)
     }
   },
 })

@@ -47,7 +47,7 @@ const kinds = useBoundKinds(
     @select="work.select(conversationId, $event)"
     @move-tab="(id, index) => work.move(conversationId, id, index)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"
-    @update-pinned="(kind, data) => work.updatePinned(conversationId, kind, data)"
+    @update-pinned="(kind, data, how) => work.updatePinned(conversationId, kind, data, how)"
     @close-tabs="work.closeTabs(conversationId, $event)"
     @close="emit('close')"
   />

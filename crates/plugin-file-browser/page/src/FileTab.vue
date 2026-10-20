@@ -1,21 +1,16 @@
-<script lang="ts">
-import { ref } from 'vue'
-
-// Markdown and SVG: whether the view shows them rendered or as source holds
-// across files and conversations for the page's lifetime.
-const mode = ref<'preview' | 'source'>('preview')
-</script>
-
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { FileView, treeLayout, usePage } from '@demicodes/plugin-sdk'
-import { goBack, goForward, shownPath, showFile, treeShown, type FileData } from './data'
+import { computed, ref, watch } from 'vue'
+import { FileView, treeLayout, usePage, type TabUpdate } from '@demicodes/plugin-sdk'
+import { fileView, locateFolder, shownPath, showFile, showMode, treeShown, type FileData } from './data'
 import { t } from './locales/text'
 
 /**
  * The File view of one conversation: one file of its Host beside the Host's
  * tree, over the conversation's files service. A file picked in the tree or a
- * link in a Markdown preview replaces the file, and Back returns to it.
+ * link in a Markdown preview replaces the file, and a folder the crumb row
+ * goes to is found in the tree, each a step of the web browser's history,
+ * which the view's Back and Forward take while they stay in the
+ * conversation's panel.
  */
 const props = defineProps<{
   conversation: string
@@ -23,9 +18,10 @@ const props = defineProps<{
   data: FileData
   shown: boolean
 }>()
-const emit = defineEmits<{ update: [data: FileData] }>()
+const emit = defineEmits<{ update: [data: FileData, how?: TabUpdate] }>()
 
-const files = usePage().files(props.conversation)
+const page = usePage()
+const files = page.files(props.conversation)
 const workspace = computed(() => files.workspace)
 
 /** The directory the view was opened for, whose tree it shows: the conversation's unless a child's link opened it. */
@@ -36,13 +32,26 @@ function open(path: string): void {
   emit('update', showFile(props.data, path, undefined, props.data.root))
 }
 
+/** A folder the crumb row went to; the view lets go of one as another file opens, which says so itself. */
+function locate(folder: string | null): void {
+  if (folder !== null) {
+    emit('update', locateFolder(props.data, folder))
+  }
+}
+
+/** Preview or Source, chosen here: the user's choice from now on, and this file's in the address. */
+function choose(chosen: 'preview' | 'source'): void {
+  fileView.value = chosen
+  emit('update', showMode(props.data, chosen), { replace: true })
+}
+
 const view = ref<InstanceType<typeof FileView> | null>(null)
 // Show in Files: once the view shows the file, its tree shows it too. After the render, so the view has the file.
 watch([() => props.data.tree, view], ([tree, shown]) => {
   if (!tree || !shown) {
     return
   }
-  emit('update', treeShown(props.data))
+  emit('update', treeShown(props.data), { replace: true })
   void shown.showInTree()
 }, { immediate: true, flush: 'post' })
 </script>
@@ -53,17 +62,20 @@ watch([() => props.data.tree, view], ([tree, shown]) => {
     ref="view"
     v-model:tree="treeLayout.open.value"
     v-model:tree-width="treeLayout.width.value"
-    v-model:mode="mode"
+    :mode="data.view ?? fileView"
+    :folder="data.folder ?? null"
     :source="workspace.source"
     :root="root"
     :root-name="data.root === undefined ? workspace.name : undefined"
     :path="data.path ? shownPath(root, data.path) : null"
     :line="data.line ?? null"
-    :can-back="data.back.length > 0"
-    :can-forward="data.forward.length > 0"
+    :can-back="page.panel.canGo(conversation, 'back')"
+    :can-forward="page.panel.canGo(conversation, 'forward')"
+    @update:mode="choose"
+    @update:folder="locate"
     @open="open"
-    @back="emit('update', goBack(data))"
-    @forward="emit('update', goForward(data))"
+    @back="page.panel.go('back')"
+    @forward="page.panel.go('forward')"
   />
   <div
     v-else

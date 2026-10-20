@@ -67,7 +67,7 @@ function reset(): void {
     openPage()
   selectAt(props.select === 'first' ? 0 : -1)
   if (props.file) {
-    work.updatePinned('file', { path: props.file, back: [], forward: [] })
+    work.updatePinned('file', { path: props.file })
     work.select('file')
   }
 }

@@ -57,11 +57,10 @@ import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work-panel'
+import { galleryHistory } from '../fixtures/browser-history'
 import {
   changePath,
   firstChangeData,
-  goBack as changeBack,
-  goForward as changeForward,
   holdShownChange,
   placeBranch,
   showBranch,
@@ -624,13 +623,27 @@ function useChangeTab(
   then: (data: ChangeData) => ChangeData = (data) => data,
 ) {
   const tab = ref(then(request ? showRequestEdit(firstChangeData(), request) : showChange(firstChangeData(), mode, path)))
+  /** What the view showed, as the web browser's history keeps the product's panel. */
+  const steps = galleryHistory(() => ({ open: true, data: tab.value }), (step) => (tab.value = step.data))
+  /** A move of the view: a step Back returns from. */
+  function move(next: ChangeData) {
+    if (next !== tab.value) {
+      tab.value = next
+      steps.step()
+    }
+  }
+  /** What the view holds beside where it is: no step. */
+  function hold(next: ChangeData) {
+    tab.value = next
+    steps.replace()
+  }
   /** The file the view holds in its mode, else the first there is, which it then holds. */
   const selected = computed(() => changePath(tab.value, tab.value.mode, changes.uncommitted.files))
   watch(selected, () => {
-    tab.value = holdShownChange(tab.value, changes.uncommitted.files)
+    hold(holdShownChange(tab.value, changes.uncommitted.files))
   }, { immediate: true })
   function show(mode: ChangeMode, path: string | null) {
-    tab.value = showChange(tab.value, mode, path)
+    move(showChange(tab.value, mode, path))
   }
   return {
     tab,
@@ -643,12 +656,14 @@ function useChangeTab(
     edit: computed(() => tab.value.request?.edit ?? null),
     setMode: (mode: ChangeMode) => show(mode, changePath(tab.value, mode)),
     select: (path: string | null) => show(tab.value.mode, path),
-    setEdit: (edit: RequestEditRef | null) => (tab.value = showEdit(tab.value, edit)),
-    back: () => (tab.value = changeBack(tab.value)),
-    forward: () => (tab.value = changeForward(tab.value)),
-    setCommit: (commit: string | null) => (tab.value = showItem(tab.value, commit)),
-    setBranch: (branch: string | null) => (tab.value = showBranch(tab.value, branch)),
-    placed: (branch: string | null) => (tab.value = placeBranch(tab.value, branch)),
+    setEdit: (edit: RequestEditRef | null) => move(showEdit(tab.value, edit)),
+    canBack: computed(() => steps.canGo('back')),
+    canForward: computed(() => steps.canGo('forward')),
+    back: () => steps.go('back'),
+    forward: () => steps.go('forward'),
+    setCommit: (commit: string | null) => move(showItem(tab.value, commit)),
+    setBranch: (branch: string | null) => hold(showBranch(tab.value, branch)),
+    placed: (branch: string | null) => hold(placeBranch(tab.value, branch)),
   }
 }
 const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
@@ -4140,8 +4155,8 @@ onBeforeUnmount(() => {
               :changes="specimen.work.changes.value"
               :root="workspace.root"
               :root-name="specimen.rootName"
-              :can-back="specimen.work.tab.value.back.length > 0"
-              :can-forward="specimen.work.tab.value.forward.length > 0"
+              :can-back="specimen.work.canBack.value"
+              :can-forward="specimen.work.canForward.value"
               @update:mode="specimen.work.setMode"
               @update:selected="specimen.work.select"
               @update:commit="specimen.work.setCommit"

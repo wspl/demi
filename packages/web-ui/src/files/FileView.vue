@@ -21,7 +21,7 @@ import type { FileBrowserSource } from './types'
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
  * decides. The host keeps whether it is open, its width, and the Preview or
- * Source choice (v-model), so they hold across files.
+ * Source choice (v-model), so they hold across the files it shows.
  *
  * What asks the host to show another file here:
  *
@@ -29,7 +29,8 @@ import type { FileBrowserSource } from './types'
  * - A pick from a crumb's menu.
  * - A link in a Markdown document.
  *
- * Back and Forward before the crumbs ask for the files shown before and after.
+ * Back and Forward before the crumbs ask the host to go back or forward, as a
+ * web browser's do; the host says when it can.
  * A path typed into the crumb row opens that file, or finds that folder in the
  * tree and selects it there; a relative one starts from the workspace.
  *
@@ -51,7 +52,7 @@ const props = defineProps<{
    * of it, until Preview is chosen.
    */
   line?: number | null
-  /** Whether the host has a file to go back or forward to in this view. */
+  /** Whether the host can go back or forward from what this view shows. */
   canBack?: boolean
   canForward?: boolean
 }>()
@@ -71,8 +72,11 @@ const mode = defineModel<'preview' | 'source'>('mode', { default: 'preview' })
 
 const content = ref<InstanceType<typeof FileContent> | null>(null)
 
-// A directory typed into the crumb row: selected in the tree until another file opens.
-const located = ref<string | null>(null)
+/**
+ * A directory typed into the crumb row, selected in the tree until another
+ * file opens: the host's, as a place it shows, or the view's own without one.
+ */
+const located = defineModel<string | null>('folder', { default: null })
 const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
 const treeView = ref<InstanceType<typeof FileTree> | null>(null)
 let going: AbortController | null = null
@@ -160,10 +164,16 @@ async function go(target: string): Promise<void> {
     return
   }
   located.value = target
+}
+
+// The folder located, by the crumb row or by the host showing it again, is found in the tree.
+watch(located, async (folder) => {
+  if (folder === null)
+    return
   frame.value?.show()
   await nextTick()
-  treeView.value?.reveal(target, true)
-}
+  treeView.value?.reveal(folder, true)
+}, { immediate: true, flush: 'post' })
 
 function openFromTree(path: string): void {
   frame.value?.dismiss()
