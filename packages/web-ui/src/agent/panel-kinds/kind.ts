@@ -37,8 +37,9 @@ export interface PanelTabKind<Data = unknown> {
   busy?(data: Data, id: string): boolean
   /**
    * The tab's content. Props: `tabId`, `data`, and `shown`, whether the tab is
-   * the panel's selection. Emits `update` with the tab's next `data`, and
-   * `close` to have the panel close the tab as its user would.
+   * the panel's selection. Emits `update` with the tab's next `data` and,
+   * for a change that is no step of the history, a `TabUpdate` saying so;
+   * and `close` to have the panel close the tab as its user would.
    */
   content: Component
   /**

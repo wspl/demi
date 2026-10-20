@@ -1,24 +1,16 @@
-<script lang="ts">
-import { ref } from 'vue'
-
-// Markdown and SVG: whether the view shows their text diff or both sides
-// rendered holds across files and conversations for the page's lifetime.
-const presentation = ref<'diff' | 'preview'>('diff')
-</script>
-
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { ChangeView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
+import { ChangeView, joinPath, treeLayout, usePage, type TabUpdate } from '@demicodes/plugin-sdk'
 import {
   changePath,
-  goBack,
-  goForward,
+  changeView,
   holdShownChange,
   placeBranch,
   showBranch,
   showChange,
   showEdit,
   showItem,
+  showPresentation,
   viewDirectory,
   type ChangeData,
 } from './data'
@@ -28,7 +20,9 @@ import { useChangeSources } from './sources'
  * The Change view of one conversation: the repository's commits and uncommitted
  * changes in Commits, a request's in Conversation, over the conversation's
  * files service, which reads the request from the transcript as it is now, so
- * the view follows calls that end later.
+ * the view follows calls that end later. Each move of the view is a step of
+ * the web browser's history, which its Back and Forward take while they stay
+ * in the conversation's panel.
  */
 const props = defineProps<{
   conversation: string
@@ -36,7 +30,7 @@ const props = defineProps<{
   data: ChangeData
   shown: boolean
 }>()
-const emit = defineEmits<{ update: [data: ChangeData] }>()
+const emit = defineEmits<{ update: [data: ChangeData, how?: TabUpdate] }>()
 
 const page = usePage()
 const files = page.files(props.conversation)
@@ -57,8 +51,14 @@ const root = computed(() => viewRoot.value ?? files.workspace?.root ?? files.roo
 watch(selected, () => {
   const held = holdShownChange(props.data, changes.value.uncommitted.files)
   if (held !== props.data)
-    emit('update', held)
+    emit('update', held, { replace: true })
 }, { immediate: true })
+
+/** Diff or Preview, chosen here: the user's choice from now on, and this change's in the address. */
+function choose(chosen: 'diff' | 'preview'): void {
+  changeView.value = chosen
+  emit('update', showPresentation(props.data, chosen), { replace: true })
+}
 
 /** A changed file opens in whatever shows files, by its absolute path. */
 function open(path: string): void {
@@ -72,7 +72,7 @@ function open(path: string): void {
     v-model:tree="treeLayout.open.value"
     v-model:tree-width="treeLayout.width.value"
     v-model:commits-height="treeLayout.commitsHeight.value"
-    v-model:presentation="presentation"
+    :presentation="data.view ?? changeView"
     :mode="data.mode"
     :selected="selected"
     :commit="data.commit"
@@ -83,17 +83,18 @@ function open(path: string): void {
     :root="root"
     :root-name="viewRoot === undefined ? files.workspace?.name : undefined"
     :contents="files.workspace?.source.contents"
-    :can-back="data.back.length > 0"
-    :can-forward="data.forward.length > 0"
+    :can-back="page.panel.canGo(conversation, 'back')"
+    :can-forward="page.panel.canGo(conversation, 'forward')"
     :opens="opens"
     @update:mode="emit('update', showChange(data, $event, changePath(data, $event)))"
     @update:edit="emit('update', showEdit(data, $event))"
     @update:selected="emit('update', showChange(data, data.mode, $event))"
     @update:commit="emit('update', showItem(data, $event))"
-    @update:branch="emit('update', showBranch(data, $event))"
-    @placed="emit('update', placeBranch(data, $event))"
-    @back="emit('update', goBack(data))"
-    @forward="emit('update', goForward(data))"
+    @update:presentation="choose"
+    @update:branch="emit('update', showBranch(data, $event), { replace: true })"
+    @placed="emit('update', placeBranch(data, $event), { replace: true })"
+    @back="page.panel.go('back')"
+    @forward="page.panel.go('forward')"
     @open="open"
   />
 </template>

@@ -9,7 +9,7 @@ import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demico
 import { PLUGIN } from './generated/plugin'
 import { t } from './locales/text'
 import FileTab from './FileTab.vue'
-import { fileDataSchema, firstFileData, openFile, type FileData } from './data'
+import { fileDataSchema, filePlace, firstFileData, openFile, type FileData } from './data'
 import { attachmentKind } from './attachment'
 import { mediaKind } from './media'
 
@@ -29,6 +29,7 @@ export const fileKind: PanelKind<FileData> = {
   mark: FileMark,
   content: FileTab,
   pinned: { data: firstFileData },
+  place: filePlace,
   intents: {
     file: (payload, current) => openFile(current ?? firstFileData(), payload),
   },

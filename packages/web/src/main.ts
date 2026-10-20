@@ -40,6 +40,7 @@ import { startServiceWorker } from './offline/page'
 import { startAccountCache } from './state/offline'
 import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
+import { useWorkPanel } from './conversation/work'
 import { onSessionExpired } from './api/client'
 import { sendPageErrorReport } from './api/page-errors'
 import { useSession } from './auth/session'
@@ -106,6 +107,10 @@ const router = createRouter({
 router.beforeEach(() => historySettled())
 setHistoryTraversal((delta) => router.options.history.go(delta, false))
 const resources = useResources(pinia)
+// The work panel's state is the page's address while it shows a conversation
+// (`docs/decisions/0014-the-work-panel-has-addresses.md`); it follows the
+// router from the first navigation on.
+const stopPanelAddress = useWorkPanel(pinia).attach(router)
 const conversations = useConversations(pinia)
 const session = useSession(pinia)
 const product = useProduct(pinia)
@@ -360,6 +365,7 @@ if (import.meta.hot) {
     window.removeEventListener('focus', refreshVisible)
     document.removeEventListener('visibilitychange', refreshVisible)
     stopPhonePage()
+    stopPanelAddress()
     app.unmount()
     disposePinia(pinia)
   })

@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
 
 // The work store on a page of happy-dom, whose width the tests turn between
-// the desktop's and a phone's (`phone.ts`); the panel's routes are stubbed.
+// the desktop's and a phone's (`phone.ts`), and whose address and history a
+// router over the page's own history keeps; the panel's routes are stubbed.
 // A few ms each, besides the start of the page.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
@@ -20,7 +21,10 @@ const width = new Width()
 Object.defineProperty(window, 'matchMedia', { value: () => width, configurable: true })
 
 const { createPinia, disposePinia, setActivePinia } = await import('pinia')
-const { nextTick } = await import('vue')
+const { defineComponent, nextTick } = await import('vue')
+const { z } = await import('zod')
+const { waitFor } = await import('@demicodes/utils')
+const { createRouter, createWebHistory } = await import('vue-router')
 const { useSession } = await import('../auth/session')
 const { identitySchema } = await import('../api/generated/web-api')
 const { readLocalState } = await import('../state/local')
@@ -97,7 +101,7 @@ test('panel open and closed choices survive reload with the panel share in the s
   const work = useWorkPanel()
   expect(work.stateFor('a').open).toBe(false)
   useResources().asideShare = 0.5
-  work.setOpen(work.stateFor('a'), true)
+  work.setOpen('a', true)
   await nextTick()
   expect(readLocalState('one')).toMatchObject({ asideShare: 0.5, workPanelOpen: { a: true } })
 
@@ -109,7 +113,7 @@ test('panel open and closed choices survive reload with the panel share in the s
   expect(restored.stateFor('a').open).toBe(true)
   expect(restored.stateFor('b').open).toBe(false)
   expect(useResources().asideShare).toBe(0.5)
-  restored.setOpen(restored.stateFor('a'), false)
+  restored.setOpen('a', false)
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(false)
 })
@@ -167,7 +171,7 @@ test('a pill or a file link opens what it names, and on what the panel already s
   expect(state.pinned.change).toMatchObject({ mode: 'conversation', request: { edit: { segment: 0 } } })
   // Closed by its own control, the panel opens again on the pill as it was.
   const again = state.pinned.change
-  work.setOpen(state, false)
+  work.setOpen('a', false)
   work.openIn('a', first)
   expect(state.open).toBe(true)
   expect(state.pinned.change).toBe(again)
@@ -214,7 +218,7 @@ test('a link’s Open in Work Panel opens its page in a new tab of the conversat
     { url: 'https://example.com/api' },
   ])
 
-  work.setOpen(state, false)
+  work.setOpen('a', false)
   work.openIn('a', { intent: 'file', payload: { path: '/work/src/a.ts', tree: true } })
   expect(state.open).toBe(true)
   expect(state.panel.history.at(-1)).toBe('file')
@@ -397,7 +401,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   useConversations().items.push(...conversations.items)
   summary(3)
   const reloaded = useWorkPanel()
-  reloaded.setOpen(reloaded.stateFor(id), false)
+  reloaded.setOpen(id, false)
   reloaded.load(id)
   await settled()
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([false, 'b2'])
@@ -448,10 +452,14 @@ test('on a phone a conversation comes up without its panel; only a show while th
   }
   summaries()
   const work = useWorkPanel()
+  const router = attachRouter(work)
   width.turn(true)
-  const open = (id: string) => {
-    work.shown(id)
-    work.load(id)
+  // As the frame does once the address shows the conversation.
+  const open = async (id: string) => {
+    await arrive(router, `/chat/${id}`, () => {
+      work.shown(id)
+      work.load(id)
+    })
     return settled()
   }
 
@@ -472,7 +480,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
   expect(work.stateFor(b).open).toBe(false)
   // Shown again while the user looks at A's panel, A's stays and B comes up closed.
   await open(a)
-  work.setOpen(work.stateFor(a), true)
+  work.setOpen(a, true)
   stored[b] = { revision: 3, tabs: browserTab(3) }
   summaries()
   await settled()
@@ -485,4 +493,217 @@ test('on a phone a conversation comes up without its panel; only a show while th
   expect(work.stateFor(a).open).toBe(true)
   await settled()
   expect(readLocalState('one').workPanelOpen).toEqual({ [a]: true })
+})
+
+const Page = defineComponent({ render: () => null })
+/** What a test's routers leave behind: each lets go of the page's history and of the store. */
+const detached: (() => void)[] = []
+
+afterEach(() => {
+  for (const detach of detached.splice(0)) {
+    detach()
+  }
+})
+
+/** A router over the page's own history, as the product's, which holds `work`'s panel. */
+function attachRouter(work: ReturnType<typeof useWorkPanel>) {
+  const router = createRouter({ history: createWebHistory(), routes: [{ path: '/chat/:id?', component: Page }] })
+  const stop = work.attach(router)
+  detached.push(() => {
+    stop()
+    router.options.history.destroy()
+  })
+  return router
+}
+
+/** The end of the router's next navigation, the store's own or the history's (Back, Forward). */
+function navigated(router: ReturnType<typeof createRouter>): Promise<void> {
+  return new Promise((resolve) => {
+    const stop = router.afterEach(() => {
+      stop()
+      resolve()
+    })
+  })
+}
+
+/** The page's address now, as its user reads it. */
+const address = () => decodeURIComponent(window.location.pathname + window.location.search)
+
+/** A page signed in with Files and Changes on, its store at `/chat/<id>`. */
+async function panelPage(id: string) {
+  signIn('one')
+  const plugin = (name: string) => ({ id: name, name, description: 'A plugin.', enabled: true, packages: [] })
+  useProduct().read = productState({ plugins: [plugin('changes'), plugin('file-browser')] })
+  const work = useWorkPanel()
+  const router = attachRouter(work)
+  await arrive(router, `/chat/${id}`)
+  return { work, router }
+}
+
+/**
+ * Opens `path` as a link does, does what the frame does once the address
+ * shows it (`shown`), and waits until the panel has said in the address, in
+ * its place, what it shows there.
+ */
+async function arrive(router: ReturnType<typeof createRouter>, path: string, shown = () => {}): Promise<void> {
+  const arrived = navigated(router)
+  void router.push(path)
+  await arrived
+  shown()
+  await waitFor(() => z.object({ workPanel: z.literal(true) }).safeParse(window.history.state).success)
+}
+
+/** Does `act`, a move of the store or of the history, and waits for the router to reach where it goes. */
+async function moving(router: ReturnType<typeof createRouter>, act: () => void): Promise<void> {
+  const arrived = navigated(router)
+  act()
+  await arrived
+}
+
+// The panel's place is in the page's address, so a reload shows the panel
+// where it was (`docs/decisions/0014-the-work-panel-has-addresses.md`).
+// Planted defect this catches: an address that names the tab and not its
+// place, which a reload shows at the File view's start.
+test('a reload shows the panel at the file it showed', async () => {
+  const { work, router } = await panelPage('a')
+  await moving(router, () => work.openIn('a', { intent: 'file', payload: { path: '/work/src/a.ts', line: 3 } }))
+  expect(address()).toBe('/chat/a?panel=file&path=/work/src/a.ts&line=3&view=preview')
+
+  // The reload: a new page at the same address, its memory empty.
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  const reloaded = await panelPage('a?panel=file&path=/work/src/a.ts&line=3&view=preview')
+  const state = reloaded.work.stateFor('a')
+  expect([state.open, state.panel.history.at(-1)]).toEqual([true, 'file'])
+  expect(state.pinned.file).toEqual({ path: '/work/src/a.ts', line: 3, view: 'preview' })
+})
+
+// Planted defect this catches: a file opened in the File view in place of
+// the address, as a change that is no step, which leaves Back nothing to
+// return to in the panel.
+test('Back after another file opened in the File view returns to the first, and Forward to the second', async () => {
+  const { work, router } = await panelPage('a')
+  await moving(router, () => work.openIn('a', { intent: 'file', payload: { path: '/work/a.md' } }))
+  // The view's own pick, as its tree emits it.
+  await moving(router, () => work.updatePinned('a', 'file', { path: '/work/b.md' }))
+  expect(address()).toBe('/chat/a?panel=file&path=/work/b.md&view=preview')
+  expect(work.canGo('a', 'back')).toBe(true)
+
+  await moving(router, () => work.go('back'))
+  expect(address()).toBe('/chat/a?panel=file&path=/work/a.md&view=preview')
+  expect(work.stateFor('a').pinned.file).toEqual({ path: '/work/a.md', view: 'preview' })
+  expect(work.canGo('a', 'forward')).toBe(true)
+  await moving(router, () => work.go('forward'))
+  expect(work.stateFor('a').pinned.file).toEqual({ path: '/work/b.md', view: 'preview' })
+})
+
+// Planted defect this catches: Back offered whenever the history has an
+// entry before, which from the panel's first step closes the panel, or
+// leaves the conversation, from inside its own address bar.
+test('the address bar’s Back is unavailable at the conversation’s first panel step', async () => {
+  const { work, router } = await panelPage('a')
+  await moving(router, () => work.setOpen('a', true))
+  expect(address()).toBe('/chat/a?panel=change&view=diff')
+  // The entry before is the conversation with its panel closed.
+  expect(work.canGo('a', 'back')).toBe(false)
+  await moving(router, () => work.openIn('a', { intent: 'file', payload: { path: '/work/a.md' } }))
+  expect(work.canGo('a', 'back')).toBe(true)
+  expect(work.canGo('a', 'forward')).toBe(false)
+
+  // Another conversation's panel is not this one's: its first step offers no Back either.
+  await moving(router, () => void router.push('/chat/b'))
+  await moving(router, () => work.setOpen('b', true))
+  expect(work.canGo('b', 'back')).toBe(false)
+})
+
+// Planted defect this catches: a selection the address names kept after the
+// page read that the tab is gone, which leaves the address naming a tab the
+// panel cannot show.
+test('a link naming a closed tab shows what the panel would without it, its address corrected in place', async () => {
+  signIn('one')
+  stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://example.test/' } }] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  const plugin = (name: string) => ({ id: name, name, description: 'A plugin.', enabled: true, packages: [] })
+  useProduct().read = productState({
+    conversations: [conversationSummary(id, '')],
+    plugins: [plugin('changes'), plugin('file-browser')],
+  })
+  showMetadata(id, { panelRevision: 1 })
+  const work = useWorkPanel()
+  const router = attachRouter(work)
+  await moving(router, () => void router.push(`/chat/${id}?panel=t7`))
+  const length = window.history.length
+  // Until the page reads the tabs, the address names what may be there.
+  expect(address()).toBe(`/chat/${id}?panel=t7`)
+
+  const corrected = navigated(router)
+  work.load(id)
+  await corrected
+  expect(address()).toBe(`/chat/${id}?panel=change&view=diff`)
+  expect(window.history.length).toBe(length)
+  expect(work.stateFor(id).open).toBe(true)
+})
+
+// Planted defect this catches: every update of a tab a step, so Preview and
+// Source each add one that Back must step through.
+test('Preview or Source changes the address in place, with no step', async () => {
+  const { work, router } = await panelPage('a')
+  await moving(router, () => work.openIn('a', { intent: 'file', payload: { path: '/work/README.md' } }))
+  const length = window.history.length
+  await moving(router, () => work.updatePinned('a', 'file', { path: '/work/README.md', view: 'source' }, { replace: true }))
+  expect(address()).toBe('/chat/a?panel=file&path=/work/README.md&view=source')
+  expect(window.history.length).toBe(length)
+  // Back leaves the file, and does not return to its preview.
+  expect(work.canGo('a', 'back')).toBe(false)
+})
+
+// Planted defect this catches: a panel open on a phone that is no entry of
+// the history, which Back leaves with the conversation.
+test('on a phone Back from the panel closes it and shows the conversation, as its Back to Conversation does', async () => {
+  width.turn(true)
+  const { work, router } = await panelPage('a')
+  await moving(router, () => work.setOpen('a', true))
+  expect(work.stateFor('a').open).toBe(true)
+  await moving(router, () => router.back())
+  expect(address()).toBe('/chat/a')
+  expect(work.stateFor('a').open).toBe(false)
+
+  // The panel's own Back to Conversation goes back to the entry it was opened from.
+  await moving(router, () => work.setOpen('a', true))
+  const length = window.history.length
+  await moving(router, () => work.setOpen('a', false))
+  expect([address(), window.history.length, work.stateFor('a').open]).toEqual(['/chat/a', length, false])
+})
+
+// Production: a copied link to a file opened on a browser tab the agent had
+// shown before: the first read of the tabs applied that show over the link.
+// Planted defect this catches: shows of the first read applied over an
+// address that names what the panel shows.
+test('a show from before the page read the tabs leaves an address that names a file as it is', async () => {
+  signIn('one')
+  stubPanelRoutes({ revision: 1, tabs: [{ id: 'b1', kind: 'browser', data: { url: 'https://example.test/', tab: 't1', shows: 1 } }] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  const plugin = (name: string) => ({ id: name, name, description: 'A plugin.', enabled: true, packages: [] })
+  useProduct().read = productState({
+    conversations: [conversationSummary(id, '')],
+    plugins: [plugin('browser'), plugin('file-browser')],
+  })
+  showMetadata(id, { panelRevision: 1 })
+  const work = useWorkPanel()
+  const router = attachRouter(work)
+  const link = `/chat/${id}?panel=file&path=/work/a.md&view=preview`
+  await moving(router, () => void router.push(link))
+  work.shown(id)
+  work.load(id)
+  await waitFor(() => work.stateFor(id).tabsRead)
+  await settled()
+  expect(address()).toBe(link)
+  expect(work.stateFor(id).history.at(-1)).toBe('file')
+  // The show counts as applied: it opens its tab neither now nor later.
+  expect(readLocalState('one').workPanelShown).toEqual({ [id]: { b1: 1 } })
 })

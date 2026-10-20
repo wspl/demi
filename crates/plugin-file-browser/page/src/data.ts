@@ -1,20 +1,12 @@
+import { ref } from 'vue'
 import { z } from 'zod'
-import { isAbsoluteHostPath, joinPath, type IntentPayloads } from '@demicodes/plugin-sdk'
-
-/**
- * A file the view showed, with the directory its tree was rooted at then
- * (absent: the conversation's), which Back and Forward return to.
- */
-const fileEntrySchema = z.object({
-  path: z.string(),
-  root: z.string().optional(),
-})
-type FileEntry = z.infer<typeof fileEntrySchema>
+import { definePlace, isAbsoluteHostPath, joinPath, type IntentPayloads } from '@demicodes/plugin-sdk'
 
 /**
  * What the File view shows: one file of the conversation's Host, by its
- * absolute path; the files Back and Forward return to; and the directory it was
- * opened for.
+ * absolute path, and the directory it was opened for. The files it showed
+ * before are the web browser's history, through the page's address
+ * (`filePlace`).
  */
 export const fileDataSchema = z.object({
   /** Empty while it shows no file. */
@@ -27,10 +19,17 @@ export const fileDataSchema = z.object({
   root: z.string().optional(),
   /** The line the file was opened at, which the view scrolls to and marks for a moment; absent for none. */
   line: z.number().int().positive().optional(),
-  /** The files shown before, latest last, each with the directory it was shown under. */
-  back: z.array(fileEntrySchema),
-  /** The files left by Back, latest last. */
-  forward: z.array(fileEntrySchema),
+  /**
+   * Whether a Markdown or SVG file shows its preview or its source, as the
+   * address records it for the file shown; absent, the view the user last
+   * chose anywhere (`fileView`), which the address records with the file.
+   */
+  view: z.enum(['preview', 'source']).optional(),
+  /**
+   * A folder the crumb row went to, found and selected in the view's tree
+   * while the file stays shown, until another file opens.
+   */
+  folder: z.string().optional(),
   /**
    * Show in Files asked to see the file in the view's tree: the view shows
    * the tree with the file selected and in view, once, and drops it.
@@ -48,41 +47,43 @@ export function shownPath(root: string, path: string): string {
   return isAbsoluteHostPath(path) ? path : joinPath(root, path)
 }
 
-/** The view as a conversation's panel first shows it: no file, nothing to go back to. */
+/**
+ * Markdown and SVG: the view the user last chose, Preview or Source, for the
+ * page's lifetime, in which a file the address names no view for shows.
+ */
+export const fileView = ref<'preview' | 'source'>('preview')
+
+/** The view as a conversation's panel first shows it: no file. */
 export function firstFileData(): FileData {
-  return { path: '', back: [], forward: [] }
-}
-
-/** The directory a view or an entry keeps, as a field that is absent for the conversation's. */
-function rootOf(of: { root?: string }): { root?: string } {
-  return of.root === undefined ? {} : { root: of.root }
-}
-
-/** What the view shows now, as an entry. */
-function entryOf(data: FileData): FileEntry {
-  return { path: data.path, ...rootOf(data) }
+  return { path: '' }
 }
 
 /**
  * The view showing `path`, at `line` when one is named, opened for the
- * directory `root` (absent: the conversation's), the file it showed kept
- * for Back with its own directory; another line or directory of the file
- * shown moves within it.
+ * directory `root` (absent: the conversation's); another line or directory
+ * of the file shown moves within it.
  */
 export function showFile(data: FileData, path: string, line?: number, root?: string): FileData {
   if (data.path === path && data.line === line && data.root === root) {
     return data
   }
-  const at = { ...(line === undefined ? {} : { line }), ...(root === undefined ? {} : { root }) }
-  if (data.path === path) {
-    return { path, ...at, back: data.back, forward: data.forward }
-  }
   return {
     path,
-    ...at,
-    back: data.path ? [...data.back, entryOf(data)] : data.back,
-    forward: [],
+    ...(line === undefined ? {} : { line }),
+    ...(root === undefined ? {} : { root }),
+    // The same file keeps the view it shows in.
+    ...(data.path === path && data.view !== undefined ? { view: data.view } : {}),
   }
+}
+
+/** The view showing `folder` in its tree, the file shown staying: a move, as to another file. */
+export function locateFolder(data: FileData, folder: string): FileData {
+  return data.folder === folder ? data : { ...data, folder }
+}
+
+/** The view showing its file as `mode` says: a change of how the file is seen, not of the file. */
+export function showMode(data: FileData, mode: 'preview' | 'source'): FileData {
+  return data.view === mode ? data : { ...data, view: mode }
 }
 
 /** The view showing `path` as the `file` intent asks: in the tree too when `tree`, as Show in Files asks. */
@@ -97,20 +98,38 @@ export function treeShown(data: FileData): FileData {
   return rest
 }
 
-/** The view showing what it showed before, under the directory it had then, the current file kept for Forward. */
-export function goBack(data: FileData): FileData {
-  const previous = data.back.at(-1)
-  if (previous === undefined) {
-    return data
-  }
-  return { ...previous, back: data.back.slice(0, -1), forward: [...data.forward, entryOf(data)] }
-}
-
-/** The view showing what Back left, the current file kept for Back. */
-export function goForward(data: FileData): FileData {
-  const next = data.forward.at(-1)
-  if (next === undefined) {
-    return data
-  }
-  return { ...next, forward: data.forward.slice(0, -1), back: [...data.back, entryOf(data)] }
-}
+/**
+ * The File view's place in the page's address: the file, its directory, its
+ * line, the folder its tree went to, and whether it shows the preview or the
+ * source, as `?panel=file&path=/work/README.md&view=source`. A file opened
+ * without a view is written with the one last chosen (`fileView`), in the
+ * same move.
+ */
+export const filePlace = definePlace({
+  schema: z.object({
+    path: z.string().optional(),
+    root: z.string().optional(),
+    line: z.coerce.number<string>().int().positive().optional(),
+    view: z.enum(['preview', 'source']).optional(),
+    folder: z.string().optional(),
+  }),
+  write: (data: FileData) => ({
+    path: data.path === '' ? undefined : data.path,
+    root: data.root,
+    line: data.line === undefined ? undefined : String(data.line),
+    view: data.path === '' ? undefined : data.view ?? fileView.value,
+    folder: data.folder,
+  }),
+  read: (place, current) => {
+    const path = place.path ?? ''
+    return {
+      path,
+      ...(place.root === undefined ? {} : { root: place.root }),
+      ...(place.line === undefined ? {} : { line: place.line }),
+      ...(place.view === undefined ? {} : { view: place.view }),
+      ...(place.folder === undefined ? {} : { folder: place.folder }),
+      // Show in Files is asked of the file it was asked for.
+      ...(current.tree && current.path === path ? { tree: true as const } : {}),
+    }
+  },
+})

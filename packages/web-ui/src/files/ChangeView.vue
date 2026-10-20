@@ -590,7 +590,7 @@ function pick(path: string): void {
 <template>
   <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" tree="changes">
     <template #header>
-      <!-- Back and Forward move through what this view has shown, mode and file. -->
+      <!-- Back and Forward ask the host to go back or forward, as a web browser's do; the host says when it can. -->
       <div class="flex shrink-0 items-center">
         <Tooltip :content="t('actions.back')">
           <IconButton :icon="ArrowLeft" variant="ghost" :aria-label="t('actions.back')" :disabled="!canBack" @click="emit('back')" />

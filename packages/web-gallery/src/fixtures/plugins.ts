@@ -124,6 +124,9 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     panel: shell.panel ?? {
       tabs: () => [],
       select: (_conversation, kind) => productWould(`Select the ${kind} Tab in the Work Panel`),
+      // A specimen without a panel has no history of one.
+      canGo: () => false,
+      go: () => {},
     },
     openSettings: (section) => productWould(`Open ${section} Settings`),
     openLink: shell.openLink ?? (async (url) => {

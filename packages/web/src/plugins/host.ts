@@ -142,8 +142,10 @@ export function productPageHost(): PageHost {
         work.stateFor(conversation).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       select: (conversation, _kind, id) => {
         work.select(conversation, id)
-        work.setOpen(work.stateFor(conversation), true)
+        work.setOpen(conversation, true)
       },
+      canGo: (conversation, direction) => work.canGo(conversation, direction),
+      go: (direction) => work.go(direction),
     },
     openSettings: (section) => void settings.open(section),
     openLink,

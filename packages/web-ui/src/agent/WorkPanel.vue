@@ -19,6 +19,7 @@ import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
 import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
+import type { TabUpdate } from '../plugins/page'
 
 /**
  * The work panel's frame: the pinned tab of each pinned kind, the strip of the
@@ -64,8 +65,9 @@ const emit = defineEmits<{
   select: [selection: string]
   /** The tab `id` moved to `index` among the others, as the user dragged it. */
   moveTab: [id: string, index: number]
-  updateTab: [id: string, data: unknown]
-  updatePinned: [kind: string, data: unknown]
+  /** A tab's next data; `how` says when it is no step of the history (`TabUpdate`). */
+  updateTab: [id: string, data: unknown, how?: TabUpdate]
+  updatePinned: [kind: string, data: unknown, how?: TabUpdate]
   closeTabs: [ids: string[]]
   close: []
 }>()
@@ -329,7 +331,7 @@ function reorder(from: number, to: number): void {
           :tab-id="content.id"
           :data="content.data"
           :shown="content.id === selection"
-          @update="content.pinned ? emit('updatePinned', content.id, $event) : emit('updateTab', content.id, $event)"
+          @update="(data: unknown, how?: TabUpdate) => content.pinned ? emit('updatePinned', content.id, data, how) : emit('updateTab', content.id, data, how)"
           @close="content.pinned || emit('closeTabs', [content.id])"
         />
       </div>

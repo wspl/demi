@@ -34,7 +34,7 @@ function host(parts: Partial<PageHost> = {}): PageHost {
     hostStarting: unused,
     files: unused,
     intents: { open: unused, canOpen: unused },
-    panel: { tabs: unused, select: unused },
+    panel: { tabs: unused, select: unused, canGo: unused, go: unused },
     openSettings: unused,
     openLink: unused,
     overlays: createOverlayStore(),
@@ -109,7 +109,7 @@ test('a page selects tabs only of its own kinds', () => {
     plugin: 'notes',
     kinds: [{ kind: 'note', schema: z.string(), title: (data: string) => data, mark: nothing, content: nothing }],
   })
-  const context = pageContext(host({ panel: { tabs: () => [], select: (_conversation, kind) => void selected.push(kind) } }), page)
+  const context = pageContext(host({ panel: { tabs: () => [], select: (_conversation, kind) => void selected.push(kind), canGo: () => false, go: () => {} } }), page)
   context.panel.select('c1', 'note', 'n1')
   expect(() => context.panel.select('c1', 'browser', 'b1')).toThrow('has no kind browser')
   expect(selected).toEqual(['note'])

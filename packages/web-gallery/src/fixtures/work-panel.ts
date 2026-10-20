@@ -14,6 +14,7 @@ import {
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
+import type { TabUpdate } from '@demicodes/web-ui/plugins/page'
 import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
 import {
   intentKind,
@@ -31,6 +32,7 @@ import { galleryMobile } from './live-mobile'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
 import { createSlotChangeSet, type createGalleryWorkspace } from './workspace'
 import { sharedHistory } from './history'
+import { galleryHistory } from './browser-history'
 import { browserPlugin, galleryPageHost } from './plugins'
 
 /** The gallery workspace as the work panel's kinds read a conversation's files. */
@@ -117,14 +119,25 @@ export function useGalleryWork(
   const history = ref<readonly string[]>(selection === null ? [] : [selection])
   const pinned = ref<PinnedTabs>({})
   const panel = computed<PanelState>(() => ({ history: history.value, tabs: tabs.tabs.value }))
+  /** Whether the specimen's panel is open, which a tab its kind asks to show opens. */
+  const open = ref(true)
+  /**
+   * The web browser's history of the panel, as the product's address keeps
+   * it (`packages/web-ui/src/agent/panel-address.ts`): each move is a step,
+   * and Back and Forward show the panel as it was there.
+   */
+  const steps = galleryHistory(() => ({ open: open.value, history: history.value, pinned: pinned.value }), (step) => {
+    open.value = step.open
+    history.value = step.history
+    pinned.value = step.pinned
+  })
 
   function select(id: string) {
     history.value = selectTab(history.value, id)
+    steps.step()
   }
   /** Each tab's showings the panel applied, as the product keeps them beside the history. */
   let applied: AppliedShows = {}
-  /** Whether the specimen's panel is open, which a tab its kind asks to show opens. */
-  const open = ref(true)
   // A tab its kind asks to show opens the panel and is selected once, as the product's work store does it.
   watch(() => tabs.tabs.value, (current) => {
     const pending = pendingShows(current, shown, enabled, applied)
@@ -168,8 +181,13 @@ export function useGalleryWork(
   function update(id: string, data: unknown) {
     updatePanelTab(tabs, id, data)
   }
-  function updatePinned(kind: string, data: unknown) {
+  function updatePinned(kind: string, data: unknown, how?: TabUpdate) {
     pinned.value = { ...pinned.value, [kind]: data }
+    if (how?.replace) {
+      steps.replace()
+    } else {
+      steps.step()
+    }
   }
   /** Closed tabs go at once; the panel shows what was selected before a closed one. */
   function closeTabs(ids: string[]) {
@@ -182,6 +200,7 @@ export function useGalleryWork(
       },
     }
     closePanelTabs(selection, tabs, ids)
+    steps.replace()
   }
   /** Opens an intent as the product's work store does: what the panel already shows stays as it is. */
   function openIn(request: IntentRequest) {
@@ -193,8 +212,8 @@ export function useGalleryWork(
     if (opened.created) {
       tabs.change({ type: 'create', tab: opened.created })
     }
-    select(opened.selection)
     open.value = true
+    select(opened.selection)
   }
 
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin }, {
@@ -208,9 +227,11 @@ export function useGalleryWork(
     panel: {
       tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       select: (_conversation, _kind, id) => {
-        select(id)
         open.value = true
+        select(id)
       },
+      canGo: (_conversation, direction) => steps.canGo(direction),
+      go: (direction) => steps.go(direction),
     },
   })
   const kinds = useBoundKinds(() => shown.filter((page) => enabled(page.plugin)), host, () => CONVERSATION)
@@ -251,6 +272,7 @@ export function useGalleryWork(
     closeTabs(tabs.tabs.value.map((tab) => tab.id))
     history.value = selection === null ? [] : [selection]
     pinned.value = {}
+    steps.reset()
   }
   /**
    * The agent shows `tab` with `demi browser show`: the browser tells the

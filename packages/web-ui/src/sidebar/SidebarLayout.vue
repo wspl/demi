@@ -42,9 +42,10 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
  *   and Back. A swipe right from the screen's left edge (`SCREEN_EDGE_PX`) opens
  *   it, following the finger in as the closing swipe follows it out.
  * - The work panel opens full screen over the conversation, sliding in from the
- *   right. A swipe right from that edge takes it back, as do its back button and
- *   Back (`useBackClose`). While it is open the edge is its swipe, not the
- *   drawer's.
+ *   right. A swipe right from that edge takes it back, as does its back button.
+ *   The browser's Back closes it through the host, whose page address holds
+ *   whether it is open (`asideOpen`), as a pushed page's does. While it is open
+ *   the edge is its swipe, not the drawer's.
  * - Every swipe follows the finger and settles by one rule (`finger-drag.ts`).
  * - Opening one closes the other.
  * - The frame shows one top bar there: a page with its own puts the sidebar's
@@ -105,10 +106,7 @@ provide(sidebarDrawerKey, {
   },
 })
 
-// The full-screen panel is a place Back leaves, as a pushed page is, and the drawer a layer Back closes.
-useBackClose(() => asideOpen.value, () => {
-  asideOpen.value = false
-}, () => phone.value)
+// The drawer is a layer Back closes; the full-screen panel is a place of the host's address.
 useBackClose(() => open.value, () => {
   open.value = false
 }, () => phone.value)
