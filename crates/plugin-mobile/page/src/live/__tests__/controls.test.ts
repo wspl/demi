@@ -272,7 +272,7 @@ test('the view asks for the frame of its laid-out size and pixel ratio once, aga
   streams[0]!.data(framed({ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawnFrame }))
   expect(session.state.frames).toEqual({})
   streams[0]!.data(framed({ type: 'frame', device: 'm2', width: 1000, height: 1200, scale: 1, orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame }))
-  expect(session.state.frames).toEqual({ m2: { device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame } })
+  expect(session.state.frames).toEqual({ m2: { 'landscape-left': { device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame } } })
   session.close()
 })
 
@@ -301,14 +301,14 @@ test('each device keeps its last frame across a switch of tabs until a newer one
   session.hiding('m1')
   await Promise.resolve()
   expect(session.state.watched).toBeNull()
-  expect(session.state.frames.m1?.frame).toEqual(drawn(55))
+  expect(session.state.frames.m1?.portrait?.frame).toEqual(drawn(55))
   const asked = sent.filter((message) => message.type === 'frame').length
   session.showing('m1')
-  expect(session.state.frames.m1?.frame).toEqual(drawn(55))
+  expect(session.state.frames.m1?.portrait?.frame).toEqual(drawn(55))
   // The frame is asked for again, and the newer one replaces the kept one.
   expect(sent.filter((message) => message.type === 'frame')).toHaveLength(asked + 1)
   streams[0]!.data(frameOf('m1', 60))
-  expect(session.state.frames.m1?.frame).toEqual(drawn(60))
+  expect(session.state.frames.m1?.portrait?.frame).toEqual(drawn(60))
   // m1 closes: its frame goes with it.
   streams[0]!.data(framed({ type: 'state', devices: [devices[1]!], watched: null }))
   expect(session.state.frames).toEqual({})
@@ -639,7 +639,7 @@ test('a return to a conversation shows its device’s kept picture and frame at 
   const back = devices.watch('c1')
   expect(back.session.devices.session).toBe(session)
   expect(session.keptPicture('m1')).toBe(picture)
-  expect(session.state.frames.m1?.frame).toEqual(DRAWN)
+  expect(session.state.frames.m1?.portrait?.frame).toEqual(DRAWN)
   session.showing('m1')
   expect(streams).toHaveLength(1)
   expect(told).toEqual([false, true])
@@ -704,7 +704,7 @@ test('a device shows the frame the disk cache keeps for its model, size, pixel r
   // A reload: the same model at the same size shows the frame before the Host draws it.
   const again = open()
   await waitFor(() => again.session.state.frames.m1 !== undefined)
-  expect(again.session.state.frames.m1).toEqual({ device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN })
+  expect(again.session.state.frames.m1?.portrait).toEqual({ device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN })
   again.session.close()
   // Another size, pixel ratio or model waits for the Host's.
   for (const other of [open(IPHONE, 1000), open(IPHONE, 800, 1), open({ ...IPHONE, model: 'iPhone 17 Pro' })]) {
@@ -731,7 +731,7 @@ test('a reloaded view shows the cached frame before the device sends a picture o
 
   const reloaded = cachedSession(kept, IPHONE, 800, 2, false)
   await waitFor(() => reloaded.session.state.frames.m1 !== undefined)
-  expect(reloaded.session.state.frames.m1).toEqual({ device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN })
+  expect(reloaded.session.state.frames.m1?.portrait).toEqual({ device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN })
   reloaded.session.close()
   // A device whose screen reports another orientation waits for the Host's frame.
   const turned = cachedSession(kept, { ...IPHONE, orientation: 'landscape-left' as const }, 800, 2, false)
@@ -768,6 +768,6 @@ test('a panel resized while a frame is under way keeps and shows each frame only
 
   const same = cachedSession(kept)
   await waitFor(() => same.session.state.frames.m1 !== undefined)
-  expect(same.session.state.frames.m1?.frame).toEqual(DRAWN)
+  expect(same.session.state.frames.m1?.portrait?.frame).toEqual(DRAWN)
   same.session.close()
 })

@@ -171,9 +171,12 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
   await nextTick()
   const canvas = root.querySelector('canvas')!
   return {
+    session,
     sent,
     area,
     canvas,
+    /** The device's screen, which the picture fills, under the frame. */
+    screen: canvas.parentElement!,
     stream: streams[0]!,
     shown: () => sent.filter((message) => message.type === 'shown'),
     /** The next message the view sends of `type`. */
@@ -194,7 +197,7 @@ test('a drag of the panel’s edge moves the picture at once and tells the Host 
   if (view.shown().length === 0) {
     await view.next('shown')
   }
-  const style = () => ({ width: parseFloat(view.canvas.style.width), height: parseFloat(view.canvas.style.height) })
+  const style = () => ({ width: parseFloat(view.screen.style.width), height: parseFloat(view.screen.style.height) })
   const first = style()
   expect(view.shown()).toEqual([{ type: 'shown', device: 'm1', ...first }])
 
@@ -216,10 +219,10 @@ test('a drag of the panel’s edge moves the picture at once and tells the Host 
 test('the scroll wheel turns the device’s screen by as far in its points', async () => {
   const view = await viewing()
   const { width, height, left, top } = {
-    width: parseFloat(view.canvas.style.width),
-    height: parseFloat(view.canvas.style.height),
-    left: parseFloat(view.canvas.style.left),
-    top: parseFloat(view.canvas.style.top),
+    width: parseFloat(view.screen.style.width),
+    height: parseFloat(view.screen.style.height),
+    left: parseFloat(view.screen.style.left),
+    top: parseFloat(view.screen.style.top),
   }
   // The picture's width and height are each whole pixels: each axis maps by its own.
   const scale = 400 / width
@@ -260,7 +263,7 @@ test('under a drawn frame’s image the picture is bounded by the device’s sil
     height: 860,
     screen: { x: 20, y: 30, width: 400, height: 800 },
   })
-  const style = view.canvas.style
+  const style = view.screen.style
   const scale = parseFloat(style.width) / 400
   expect(style.clipPath).toBe('')
   expect(style.getPropertyValue('mask-image')).toBe('url(data:image/png;base64,U0lM)')
@@ -278,9 +281,9 @@ test('under the frame the view draws the picture reaches halfway into its bezel'
   const round = { kind: 'round' as const, radius: 60 }
   const corners = { topLeft: round, topRight: round, bottomRight: round, bottomLeft: round }
   const view = await viewing({ kind: 'drawn', corners, buttons: [] })
-  const width = parseFloat(view.canvas.style.width)
-  const height = parseFloat(view.canvas.style.height)
-  const clip = view.canvas.style.clipPath.match(/path\('(.*)'\)/)![1]!
+  const width = parseFloat(view.screen.style.width)
+  const height = parseFloat(view.screen.style.height)
+  const clip = view.screen.style.clipPath.match(/path\('(.*)'\)/)![1]!
   const points = pathPoints(clip)
   const half = drawnFrameBezel({ width, height }) / 2
   // Half a bezel out from each of the screen's edges, its corners round.
@@ -290,6 +293,74 @@ test('under the frame the view draws the picture reaches halfway into its bezel'
   expect(Math.max(...points.map((point) => point.y))).toBeCloseTo(height + half, 1)
   expect(clip).toContain('A')
 })
+
+/** The quarter turns, clockwise, of a `rotate` in `element`'s style. */
+function quartersOf(element: Element | null): number {
+  const turn = element instanceof HTMLElement ? element.style.transform.match(/rotate\((-?\d+)deg\)/) : null
+  return turn ? Number(turn[1]) / 90 : 0
+}
+
+/** A box of the area, in CSS pixels. */
+type Box = { left: number; top: number; width: number; height: number }
+
+/**
+ * Where `element` shows in an area of `area`: its box, turned with the device
+ * by the quarter turns of the element that holds it, about the area's center.
+ */
+function shownBox(element: HTMLElement, area: { width: number; height: number }): Box {
+  const box = { left: parseFloat(element.style.left), top: parseFloat(element.style.top), width: parseFloat(element.style.width), height: parseFloat(element.style.height) }
+  let x = box.left + box.width / 2 - area.width / 2
+  let y = box.top + box.height / 2 - area.height / 2
+  let { width, height } = box
+  for (let turn = 0; turn < ((quartersOf(element.parentElement) % 4) + 4) % 4; turn++) {
+    [x, y, width, height] = [-y, x, height, width]
+  }
+  return { left: area.width / 2 + x - width / 2, top: area.height / 2 + y - height / 2, width, height }
+}
+
+/** A view whose device's pictures the test announces and paints, `size` pixels each. */
+async function playing(frame?: LiveFrame) {
+  let size = { width: 800, height: 1600 }
+  stubDecoding(() => size)
+  const view = await viewing(frame)
+  let generation = 0
+  const orientationPoints = (orientation: 'portrait' | 'landscape-right') => orientation === 'portrait'
+    ? { width: 400, height: 800 }
+    : { width: 800, height: 400 }
+  return {
+    ...view,
+    /** The device announces its pictures in `orientation`. */
+    announce: (orientation: 'portrait' | 'landscape-right') => {
+      generation += 1
+      const points = orientationPoints(orientation)
+      size = { width: points.width * 2, height: points.height * 2 }
+      view.stream.data(framed({
+        type: 'stream', device: 'm1', generation, width: size.width, height: size.height,
+        pointsWidth: points.width, pointsHeight: points.height, orientation, scale: 1,
+      }))
+      return nextTick()
+    },
+    /** The first picture of the pictures announced last is decoded and painted. */
+    picture: () => {
+      view.stream.data(encodeVideo({
+        source: 'm1', generation, sequence: generation, key: true, timestamp: generation * 1000,
+        width: size.width, height: size.height, data: new Uint8Array([0, 0, 0, 1, 0x65]),
+      }))
+      return nextTick()
+    },
+    /** The Host draws the device's frame, `drawn`, for `orientation`. */
+    frame: (orientation: 'portrait' | 'landscape-right', drawn: LiveFrame) => {
+      const points = orientationPoints(orientation)
+      view.stream.data(framed({
+        type: 'frame', device: 'm1', width: 300, height: 500, scale: 1, orientation,
+        pointsWidth: points.width, pointsHeight: points.height, frame: drawn,
+      }))
+      return nextTick()
+    },
+    /** The quarter turns, clockwise, the canvas's picture shows turned by, with the device's and its own. */
+    turned: () => quartersOf(view.screen.parentElement) + quartersOf(view.canvas),
+  }
+}
 
 /**
  * The device announces its pictures in a new orientation before the first of
@@ -301,41 +372,127 @@ test('under the frame the view draws the picture reaches halfway into its bezel'
  * at once, which stretches the old picture into the new shape.
  */
 test('a picture keeps its shape, turned, until the device’s pictures in their new orientation are painted', async () => {
-  let size = { width: 800, height: 1600 }
-  stubDecoding(() => size)
-  const view = await viewing()
-  const announce = (generation: number, orientation: 'portrait' | 'landscape-right', points: { width: number; height: number }) => {
-    view.stream.data(framed({
-      type: 'stream', device: 'm1', generation, width: size.width, height: size.height,
-      pointsWidth: points.width, pointsHeight: points.height, orientation, scale: 1,
-    }))
-  }
-  const picture = (generation: number) => {
-    view.stream.data(encodeVideo({
-      source: 'm1', generation, sequence: generation, key: true, timestamp: generation * 1000,
-      width: size.width, height: size.height, data: new Uint8Array([0, 0, 0, 1, 0x65]),
-    }))
-  }
-  announce(1, 'portrait', { width: 400, height: 800 })
-  picture(1)
-  await nextTick()
+  const view = await playing()
+  await view.announce('portrait')
+  await view.picture()
   // The placement is in whole pixels: the shape is close to the picture's, not exact.
   const shape = () => parseFloat(view.canvas.style.width) / parseFloat(view.canvas.style.height)
-  const turned = () => view.canvas.parentElement!.style.transform
   expect(shape()).toBeCloseTo(0.5, 1)
-  expect(turned()).toBe('')
+  expect(view.turned()).toBe(0)
 
-  size = { width: 1600, height: 800 }
-  announce(2, 'landscape-right', { width: 800, height: 400 })
-  await nextTick()
+  await view.announce('landscape-right')
   // Announced, not painted: the portrait picture stays portrait, turned a quarter.
   expect([view.canvas.width, view.canvas.height]).toEqual([800, 1600])
   expect(shape()).toBeCloseTo(0.5, 1)
-  expect(turned()).toContain('rotate(90deg)')
+  expect(view.turned()).toBe(1)
 
-  picture(2)
-  await nextTick()
+  await view.picture()
   expect([view.canvas.width, view.canvas.height]).toEqual([1600, 800])
   expect(shape()).toBeCloseTo(2, 1)
-  expect(turned()).toBe('')
+  expect(view.turned()).toBe(0)
+})
+
+/** A frame's image of 440 × 860 pixels whose screen is 400 × 800 of them, and the same frame turned to landscape-right. */
+const IMAGE_FRAMES = {
+  'portrait': { kind: 'image', png: 'UE5H', silhouette: null, width: 440, height: 860, screen: { x: 20, y: 30, width: 400, height: 800 } },
+  'landscape-right': { kind: 'image', png: 'TEFO', silhouette: null, width: 860, height: 440, screen: { x: 30, y: 20, width: 800, height: 400 } },
+} as const satisfies Record<string, LiveFrame>
+const ROUND = { kind: 'round' as const, radius: 60 }
+const DRAWN_FRAME: LiveFrame = { kind: 'drawn', corners: { topLeft: ROUND, topRight: ROUND, bottomRight: ROUND, bottomLeft: ROUND }, buttons: [] }
+const DRAWN_FRAMES = { 'portrait': DRAWN_FRAME, 'landscape-right': DRAWN_FRAME }
+
+/**
+ * Where the device shows: its screen and, for a frame's image, the image,
+ * each as it shows in an area of `area`; a frame the view draws lies around
+ * the screen, so its screen places it.
+ */
+function deviceBoxes(view: Awaited<ReturnType<typeof playing>>, area: { width: number; height: number }): { screen: Box; image: Box | null } {
+  const image = view.screen.parentElement!.querySelector('img')
+  return { screen: shownBox(view.screen, area), image: image ? shownBox(image, area) : null }
+}
+
+function expectSameBoxes(actual: { screen: Box; image: Box | null }, expected: { screen: Box; image: Box | null }): void {
+  const close = (box: Box | null) => box && Object.fromEntries(Object.entries(box).map(([side, value]) => [side, Math.round(value * 1000) / 1000]))
+  expect({ screen: close(actual.screen), image: close(actual.image) }).toEqual({ screen: close(expected.screen), image: close(expected.image) })
+}
+
+/**
+ * A press of Rotate turns the device at once, laid out as the device's
+ * pictures in the new orientation will be, so their first paint leaves the
+ * device where it is, at a wide and a narrow panel's size, turning portrait,
+ * landscape and back three times.
+ *
+ * Planted defect this catches: turning the device as it was laid out, its
+ * scale capped at 1, which shows a portrait turned back from landscape at
+ * the small landscape's size until its first picture paints.
+ */
+test.each([
+  ['a frame’s image', 'wide', IMAGE_FRAMES, { width: 473, height: 916 }],
+  ['a frame’s image', 'narrow', IMAGE_FRAMES, { width: 600, height: 816 }],
+  ['the frame the view draws', 'wide', DRAWN_FRAMES, { width: 473, height: 916 }],
+  ['the frame the view draws', 'narrow', DRAWN_FRAMES, { width: 600, height: 816 }],
+] as const)('a turned device shows in %s where its new pictures paint, in a %s panel', async (_, _width, frames, area) => {
+  const view = await playing(frames.portrait)
+  await view.area(area.width, area.height)
+  await view.announce('portrait')
+  await view.picture()
+  const portrait = deviceBoxes(view, area)
+  for (let cycle = 0; cycle < 3; cycle++) {
+    for (const [turn, orientation] of [['right', 'landscape-right'], ['left', 'portrait']] as const) {
+      view.session.turning('m1', turn)
+      await nextTick()
+      const turned = deviceBoxes(view, area)
+      expect(view.turned()).toBe(turn === 'right' ? 1 : -1)
+      // The device draws its frame for the new orientation, then announces and paints its pictures.
+      await view.frame(orientation, frames[orientation])
+      expectSameBoxes(deviceBoxes(view, area), turned)
+      await view.announce(orientation)
+      expectSameBoxes(deviceBoxes(view, area), turned)
+      await view.picture()
+      expect(view.turned()).toBe(0)
+      expectSameBoxes(deviceBoxes(view, area), turned)
+      if (orientation === 'portrait') {
+        expectSameBoxes(turned, portrait)
+      }
+    }
+  }
+})
+
+/**
+ * Quick presses of Rotate Right then Left: the device draws its landscape
+ * frame and announces its landscape pictures, then draws its portrait frame
+ * before the first landscape picture paints, as a distant server's pictures
+ * come late. The device, turned back, shows portrait in its portrait frame
+ * throughout, the late landscape picture turned into its screen.
+ *
+ * Planted defect this catches: keeping only the newest frame and the shown
+ * picture's, which paints the late landscape picture with no frame at all,
+ * square-cornered and resized.
+ */
+test('quick turns back and forth never show the device without its frame', async () => {
+  const view = await playing(IMAGE_FRAMES.portrait)
+  const area = { width: 473, height: 916 }
+  await view.area(area.width, area.height)
+  await view.announce('portrait')
+  await view.picture()
+  const framedImage = () => view.screen.parentElement!.querySelector('img')?.getAttribute('src') ?? null
+  const portrait = deviceBoxes(view, area)
+  expect(framedImage()).toBe('data:image/png;base64,UE5H')
+  view.session.turning('m1', 'right')
+  view.session.turning('m1', 'left')
+  await nextTick()
+  const steps = [
+    () => view.frame('landscape-right', IMAGE_FRAMES['landscape-right']),
+    () => view.announce('landscape-right'),
+    () => view.frame('portrait', IMAGE_FRAMES.portrait),
+    () => view.picture(),
+    () => view.announce('portrait'),
+    () => view.picture(),
+  ]
+  for (const step of [() => Promise.resolve(), ...steps]) {
+    await step()
+    expect(framedImage()).toBe('data:image/png;base64,UE5H')
+    expectSameBoxes(deviceBoxes(view, area), portrait)
+  }
+  expect(view.turned()).toBe(0)
 })
