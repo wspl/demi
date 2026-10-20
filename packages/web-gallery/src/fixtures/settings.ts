@@ -1195,10 +1195,10 @@ export function createSettingsState() {
         title: 'OAuth refresh token rotation',
         detail: 'Archived Aug 2'
       },
-      { id: 'icons', title: 'Icon theme survey', detail: 'Archived Jul 21' },
+      { id: 'icons', title: 'Holiday schedule survey', detail: 'Archived Jul 21' },
       {
         id: 'perf',
-        title: 'Sidebar scroll performance',
+        title: 'Spreadsheet formula cleanup',
         detail: 'Archived Jul 3'
       },
     ] satisfies SettingsArchivedConversation[],

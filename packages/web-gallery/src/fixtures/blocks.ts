@@ -1729,7 +1729,7 @@ export function runningRunBlocks(): Block[] {
     ...inRun(
       { type: 'thinking', id: 'running-run-think', createdAt: iso(98_000), model: demoModel, text: 'Check the branch is clean, then merge and run the suite.', signature: null },
       shell('running-run-status', 96_000, 'git status', 'Check the branch', true),
-      shell(RUNNING_RUN_CALL, 92_000, 'git merge --no-ff fix/reset-wording && bun run test', 'Review and merge the reset wording', false),
+      shell(RUNNING_RUN_CALL, 92_000, 'git merge --no-ff fix/reset-wording && bun run test', 'Review and merge the pricing page copy', false),
     ),
   ]
 }

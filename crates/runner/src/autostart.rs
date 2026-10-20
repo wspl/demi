@@ -663,7 +663,7 @@ mod windows {
     /// What the task's XML says in place of the user, which [`REGISTER`]
     /// replaces with the security identifier of the user this process runs
     /// as: the environment's `USERDOMAIN` and `USERNAME` may name no
-    /// account, as `WORKGROUP\ana` named none on a Windows 11 that a
+    /// account, as `WORKGROUP\alex` named none on a Windows 11 that a
     /// runner served.
     const USER: &str = "DEMI-TASK-USER";
 
