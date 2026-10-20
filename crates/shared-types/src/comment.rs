@@ -1,7 +1,6 @@
-//! A comment on a reply's words or on a picture in it (`comments-and-ask.md`):
-//! what the user selected in a text block of the agent's reply and what they
-//! wrote about it, waiting in the conversation's draft and then sent with a
-//! message.
+//! A comment on a reply's words or on a picture in it: what the user selected
+//! in a text block of the agent's reply and what they wrote about it, waiting
+//! in the conversation's draft and then sent with a message.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -13,11 +12,10 @@ use crate::{BlockId, MAX_SAFE_INTEGER, MediaSource, UserContentBlock, is_blank};
 /// text as the page renders it. `quote` is the text it quotes, which the
 /// model reads and the message's bubble shows whatever became of the block.
 ///
-/// A comment on a picture (`comments-and-ask.md` § Images) has `picture`,
-/// the picture it quotes: `start` is the picture's place among the block's
-/// pictures as the page renders them, from 0, `end` the next place, and
-/// `quote` the picture's alt text or name, which a reader without the
-/// picture reads.
+/// A comment on a picture has `picture`, the picture it quotes: `start` is the
+/// picture's place among the block's pictures as the page renders them, from 0,
+/// `end` the next place, and `quote` the picture's alt text or name, which a
+/// reader without the picture reads.
 ///
 /// `at` is where the comment stands in the block's reading order, text and
 /// pictures together: a comment on words its `start`, a comment on a

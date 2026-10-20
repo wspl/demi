@@ -17,11 +17,10 @@ const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
  * bottom, which is the scroller's own rule. Every transcript scroller applies
  * this one, so a send reads the same in the product and the gallery. A
  * message read from a page of history, in its light form, was not just
- * sent, wherever the page puts it (`web-application.md` § Transcript
- * windows); nor is a message not delivered, which shows where it was sent
- * once the window that holds that place is read, and was on its way, a
- * row already, when it was sent. A message is named by `keyOf` across its stages, so the server
- * confirming a message sent is not another send.
+ * sent, wherever the page puts it; nor is a message not delivered, which shows where it was
+ * sent once the window that holds that place is read, and was on its way, a row already, when
+ * it was sent. A message is named by `keyOf` across its stages, so the server confirming a
+ * message sent is not another send.
  */
 export function useFollowSentMessages(
   blocks: () => readonly MessageListBlock[],

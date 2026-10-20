@@ -6,5 +6,5 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The changes plugin's own text (`localization.md` § Where the text lives). */
+/** The changes plugin's own text. */
 export const { t } = definePluginText(PLUGIN, { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })

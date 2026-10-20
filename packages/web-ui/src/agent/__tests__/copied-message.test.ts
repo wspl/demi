@@ -16,10 +16,9 @@ import {
 } from '../message-input/copied-message'
 import { splitMessageContent } from '../message-input/message-content'
 
-// A sent message on the clipboard and back in a composer (`composer.md`
-// § Writing a message): Demi's own form carries each file as the message
-// holds it, so a paste brings the files back as capsules without their
-// bytes. About 10 ms in all.
+// A sent message on the clipboard and back in a composer: Demi's own form
+// carries each file as the message holds it, so a paste brings the files back
+// as capsules without their bytes. About 10 ms in all.
 
 const BEFORE = 'b'.repeat(64)
 const AFTER = 'a'.repeat(64)

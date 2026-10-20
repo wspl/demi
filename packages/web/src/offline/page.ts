@@ -2,8 +2,7 @@
  * The page's side of its one service worker (`offline/service-worker.ts`):
  * it registers the worker, answers the direct channel's raw requests the
  * worker hands it, and tells the worker the build it runs, which the worker
- * then keeps for opening offline (`web-application.md` § Installing and
- * opening offline).
+ * then keeps for opening offline.
  */
 import { answerRawRequests } from '../direct/raw-bridge'
 

@@ -56,18 +56,16 @@ function findLanguage(name: string): (() => Promise<Extension>) | null {
 /**
  * The full name of the language a file's text is colored as, by its name,
  * as the language data names it: `TypeScript`, `Markdown`; null for a file
- * the editor colors as no language (`file-previews.md` § The File view's
- * bars).
+ * the editor colors as no language.
  */
 export function languageName(path: string): string | null {
   return nameLanguage(baseName(path))?.name ?? null
 }
 
 /**
- * The language a code fence names (`file-previews.md` § Code), by its name
- * or one of its short names (`typescript`, `ts`) or else by its files'
- * extension (`rs`); null for one the highlighter does not know, which shows
- * as plain text.
+ * The language a code fence names, by its name or one of its short names
+ * (`typescript`, `ts`) or else by its files' extension (`rs`); null for one the
+ * highlighter does not know, which shows as plain text.
  */
 export function fenceLanguage(fence: string): LanguageDescription | null {
   // A fence of plain text names no language, as on GitHub, though LaTeX

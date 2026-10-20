@@ -1,7 +1,6 @@
-//! Side questions at the tree's boundary (`comments-and-ask.md` § Side
-//! questions): a side conversation from the root's history through one of
-//! its replies, whose first request is the one the root would send next
-//! with the side's message, and which the root never learns of.
+//! Side questions at the tree's boundary: a side conversation from the root's
+//! history through one of its replies, whose first request is the one the root
+//! would send next with the side's message, and which the root never learns of.
 
 use demi_agent_server::{side_instruction, testing::TestClient};
 use demi_agent_store::{ClosePhase, SideOf};
@@ -167,10 +166,10 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
     )));
 }
 
-// A side question about a picture of the reply (`comments-and-ask.md` §
-// Images): its first message carries the picture as its quote, then the
-// picture's instruction and the question, after the root's history as a
-// question about words has it. One short tree: a few milliseconds.
+// A side question about a picture of the reply: its first message carries the
+// picture as its quote, then the picture's instruction and the question, after
+// the root's history as a question about words has it. One short tree: a few
+// milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_side_question_about_a_picture_carries_the_picture_as_its_quote() {
     let model = Model::default();

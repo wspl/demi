@@ -1,10 +1,9 @@
 /**
- * Where a comment stands in a reply's text block (`comments-and-ask.md`
- * § Sending them): character offsets into the block's rendered text, so a
- * mark survives the reply being drawn again, as a theme change re-coloring
- * its code does, where a kept DOM Range would not. Text inside a control
- * set into the reply, such as a code block's Copy, is not the reply's and is
- * skipped.
+ * Where a comment stands in a reply's text block: character offsets into the
+ * block's rendered text, so a mark survives the reply being drawn again, as a
+ * theme change re-coloring its code does, where a kept DOM Range would not.
+ * Text inside a control set into the reply, such as a code block's Copy, is not
+ * the reply's and is skipped.
  */
 export interface TextAnchor {
   start: number
@@ -131,12 +130,11 @@ export function staticOf(range: Range): StaticRangeInit {
 }
 
 /**
- * The pictures of a reply's text block `root` as it renders them, in order
- * (`comments-and-ask.md` § Images): its images and the stand-ins of those
- * still being read or missing, leaving out an icon, which the page hides
- * from assistive technology, and those of a control or card set into it, as
- * a side question's answer. A comment on a picture names it by its place
- * among them.
+ * The pictures of a reply's text block `root` as it renders them, in order: its
+ * images and the stand-ins of those still being read or missing, leaving out an
+ * icon, which the page hides from assistive technology, and those of a control
+ * or card set into it, as a side question's answer. A comment on a picture
+ * names it by its place among them.
  */
 export function picturesOf(root: HTMLElement): Element[] {
   return [...root.querySelectorAll(PICTURE)].filter((picture) => picture.closest('button, [data-no-anchor], [aria-hidden="true"]') === null)
@@ -154,11 +152,10 @@ function offsetBefore(root: HTMLElement, element: Element): number {
 }
 
 /**
- * Where the picture `picture` of `root` stands (`comments-and-ask.md`
- * § Images): its place among the block's pictures, and `at`, the offset in
- * the block's text where it stands, by which its comment takes its place
- * among the block's others in reading order; null for a picture the block
- * does not hold.
+ * Where the picture `picture` of `root` stands: its place among the block's
+ * pictures, and `at`, the offset in the block's text where it stands, by which
+ * its comment takes its place among the block's others in reading order; null
+ * for a picture the block does not hold.
  */
 export function pictureAnchor(root: HTMLElement, picture: Element): (TextAnchor & { at: number }) | null {
   const place = picturesOf(root).indexOf(picture)

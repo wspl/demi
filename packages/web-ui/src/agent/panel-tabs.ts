@@ -16,9 +16,8 @@ export interface PanelTab {
 }
 
 /**
- * What the work panel shows (`web-application.md` § Work panel): what the
- * page selected, and the tabs in their order, which the backend keeps
- * (`web-api-conversations.md` § Work panel state).
+ * What the work panel shows: what the page selected, and the tabs in their
+ * order, which the backend keeps.
  */
 export interface PanelState {
   /** The tabs' and pinned kinds' ids the page selected, the newest last (`selectTab`). */
@@ -27,9 +26,8 @@ export interface PanelState {
 }
 
 /**
- * The pinned tabs' data, by kind, as the page keeps it in memory
- * (`web-application.md` § Work panel): a kind that has none yet shows its
- * first data.
+ * The pinned tabs' data, by kind, as the page keeps it in memory: a kind that
+ * has none yet shows its first data.
  */
 export type PinnedTabs = Readonly<Record<string, unknown>>
 
@@ -71,11 +69,10 @@ export interface IntentOutcome {
  * pinned tab or in a tab it creates. When the panel's selected tab is that
  * kind's and the kind, which alone knows what its data means, would show
  * the same data for the request, the tab stays as it is, its data the same
- * value, so a second click on a pill or a link leaves the panel showing it
- * (`web-application.md` § Work panel). A kind that keys its tabs selects the
- * tab whose data has the request's key, where the strip holds one, as a
- * second click on an attachment's card shows its tab again. Null when no
- * kind opens the intent.
+ * value, so a second click on a pill or a link leaves the panel showing it. A
+ * kind that keys its tabs selects the tab whose data has the request's key,
+ * where the strip holds one, as a second click on an attachment's card shows
+ * its tab again. Null when no kind opens the intent.
  */
 export function openIntent(
   shown: ShownPanel,
@@ -163,8 +160,8 @@ export function removeTabs(state: PanelState, ids: readonly string[]): PanelStat
 
 /**
  * Each tab's highest count of the times something asked that the user see
- * it, as the page last applied it, by tab id (`web-application.md` § Work
- * panel); it stands beside the page's selection history.
+ * it, as the page last applied it, by tab id; it stands beside the page's
+ * selection history.
  */
 export type AppliedShows = Readonly<Record<string, number>>
 
@@ -198,10 +195,9 @@ export function pendingShows(
 }
 
 /**
- * The tabs and pinned kinds whose contents the panel keeps on the page
- * (`web-application.md` § Work panel, Contents stay): each one once shown,
- * in the order first shown, until it leaves the panel (`present` lists the
- * ids it has). The selection joins at the end.
+ * The tabs and pinned kinds whose contents the panel keeps on the page: each
+ * one once shown, in the order first shown, until it leaves the panel
+ * (`present` lists the ids it has). The selection joins at the end.
  */
 export function keptContents(
   kept: readonly string[],

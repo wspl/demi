@@ -1,7 +1,5 @@
 //! Provider entries, their accounts and logins, and the account-wide model
-//! catalog (`web-api-settings.md` § Model configuration and provider inspection, §
-//! Subscription accounts). No body the backend answers carries key or token
-//! material.
+//! catalog. No body the backend answers carries key or token material.
 
 use demi_shared_types::{
     AccountInfo, AudioKind, AudioShape, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
@@ -343,7 +341,7 @@ pub struct EntryMedia {
     pub audio: AudioMedia,
     /// When the media catalog that describes its models was published: a
     /// newer catalog changes it, so the page reads the entry's media models
-    /// again (`web-api-settings.md` § Models).
+    /// again.
     pub catalog: Timestamp,
 }
 
@@ -812,7 +810,7 @@ pub enum LoginState {
 }
 
 /// One of the user's sign-ins, as the `logins` message and the product
-/// state list them (`web-api-sync.md` § Page synchronization).
+/// state list them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedLogin {
@@ -858,7 +856,7 @@ pub struct CatalogProvider {
     /// The image models the entry offers, newest first: a vendor entry's
     /// vendor's as the media catalog describes them, a compatible entry's
     /// those its user added; listed whether or not its Image Generation is
-    /// on (`web-api-settings.md` § Models).
+    /// on.
     pub image_models: Vec<EntryMediaModel>,
     /// The video models the entry offers, as `image_models` lists its
     /// image models.

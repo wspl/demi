@@ -1,11 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A conversation's File view shows symbolic links as their targets
-// (`file-previews.md` § Symbolic links), on a page of happy-dom whose
-// backend is a stubbed fetch answering the file routes as the backend
-// does, from a Host the test changes between steps. The workspace `/w`
-// holds `vendor`, a link to a folder, `config.json`, a link to a file,
+// A conversation's File view shows symbolic links as their targets, on a page
+// of happy-dom whose backend is a stubbed fetch answering the file routes as
+// the backend does, from a Host the test changes between steps. The workspace
+// `/w` holds `vendor`, a link to a folder, `config.json`, a link to a file,
 // `old.log`, a link to a file that is gone, and `secret`, a link behind a
 // folder closed to the user. Cost: no I/O; tens of milliseconds a test.
 

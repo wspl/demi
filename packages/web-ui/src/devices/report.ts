@@ -2,9 +2,8 @@ import { t } from './locales/text'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
- * What a device's runner last reported about the machine and about itself
- * (`web-api-hosts.md` § Workspaces, devices, and attached hosts); each is null
- * before its runner first connected.
+ * What a device's runner last reported about the machine and about itself; each
+ * is null before its runner first connected.
  */
 export interface DeviceReport {
   /**

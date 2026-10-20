@@ -5,10 +5,9 @@ import { t } from './locales/text'
 import type { WorkStep } from './work-groups'
 
 /**
- * One thing a call shows of its result's media (`file-previews.md` § Media
- * a tool returned): an image or a video its result carries, named by the
- * call's title, small in the call's row, or the line that says a medium is
- * gone and why, under it.
+ * One thing a call shows of its result's media: an image or a video its result
+ * carries, named by the call's title, small in the call's row, or the line that
+ * says a medium is gone and why, under it.
  */
 export type ToolMedium =
   | { kind: 'image' | 'video'; source: ToolMediaSource; name: string }
@@ -18,9 +17,8 @@ export type ToolMedium =
 export type ToolPicture = Extract<ToolMedium, { kind: 'image' | 'video' }>
 
 /**
- * A row's media apart (`file-previews.md` § Media a tool returned): its
- * pictures, which stand in its line, and the lines of those that are gone,
- * which stand under it.
+ * A row's media apart: its pictures, which stand in its line, and the lines of
+ * those that are gone, which stand under it.
  */
 export function splitMedia(media: readonly ToolMedium[]): { pictures: ToolPicture[]; gone: string[] } {
   return {
@@ -68,8 +66,7 @@ export function reportMedia(report: CommandReport): ToolMedium[] {
 /**
  * What a folded work group shows of its steps' media: the media of its
  * calls and of its command notices, in their order, each named as its own
- * row names it; open, each row shows its own (`file-previews.md` § Media a
- * tool returned).
+ * row names it; open, each row shows its own.
  */
 export function foldedMedia(steps: readonly WorkStep[]): ToolMedium[] {
   return steps.flatMap((step) => {

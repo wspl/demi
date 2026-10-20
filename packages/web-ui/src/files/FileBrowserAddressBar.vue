@@ -217,8 +217,7 @@ function startEdit() {
 /**
  * Goes to the typed path. The path shown now goes there too, as Enter in a
  * web browser's address bar loads the page again: the caller reads it
- * again, so a link whose target came or went since is shown as it is now
- * (`file-previews.md` § Symbolic links).
+ * again, so a link whose target came or went since is shown as it is now.
  */
 function commit() {
   editing.value = false

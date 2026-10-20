@@ -1,7 +1,6 @@
-//! Workspaces (`web-api-hosts.md` § Workspaces, devices, and attached hosts): a
-//! named directory on one of the user's devices, which conversations can
-//! target and the page calls a project. A workspace is a pointer: renaming or
-//! deleting it touches no file.
+//! Workspaces: a named directory on one of the user's devices, which
+//! conversations can target and the page calls a project. A workspace is a
+//! pointer: renaming or deleting it touches no file.
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use garde::Validate;
@@ -28,8 +27,7 @@ pub struct WorkspaceDto {
     pub name: String,
     pub created_at: Timestamp,
     /// The model settings the project's next conversation starts with, as
-    /// last chosen in it (`web-api-settings.md` § User preferences); absent before
-    /// the first choice.
+    /// last chosen in it; absent before the first choice.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "ModelSettings")]
     pub last_model: Option<ModelSettings>,

@@ -8,11 +8,10 @@ import { usePhone } from '../ui/phone'
 import { t } from './locales/text'
 
 /**
- * How to get notifications on an iPhone or iPad (`turns.md` §
- * Notifications): Safari sends push notifications only to Demi added to the
- * Home Screen, so turning them on in Safari shows these three steps, each
- * beside the icon it names, instead of the browser's question. A sheet on a
- * phone, a dialog on an iPad's wider screen.
+ * How to get notifications on an iPhone or iPad: Safari sends push
+ * notifications only to Demi added to the Home Screen, so turning them on in
+ * Safari shows these three steps, each beside the icon it names, instead of the
+ * browser's question. A sheet on a phone, a dialog on an iPad's wider screen.
  */
 defineProps<{
   open: boolean

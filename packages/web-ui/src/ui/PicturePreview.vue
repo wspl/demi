@@ -20,25 +20,23 @@ import Tooltip from './Tooltip.vue'
 defineOptions({ inheritAttrs: false })
 
 /**
- * A picture's preview on hover (`file-previews.md` § A picture's preview
- * on hover), for every picture the page shows smaller than the card: a
- * row's pictures, a message's pictures, a sent message's image capsule.
- * Resting the pointer on the picture for 300 ms shows a card above it, or
- * below it when the page has no room above, kept within the page, and on
- * the side with more room, scaled down to fit it, when neither side has room
- * (`previewPlacement`), never over the picture: the
- * picture at its own size on the screen, its pixels one to one, scaled down
- * to fit 70% of the page's width and height and never enlarged
- * (`previewBox`), over a checkerboard where it is transparent, a video's
- * first frame, and under it one line, what the picture belongs to, cut at
- * its end, then its pixel size. Its box comes from `size` and the screen's
- * pixel ratio, known before the bytes arrive, so it never grows as they
- * load, and follows the window's resizing and its move to another screen.
- * The card takes no pointer: leaving the picture closes it at
- * once, and a press on the picture, which opens the viewer, and Escape
- * close it. A touch shows none. It is a `Tooltip` card (`card`, `warmMs`,
- * `placeBy`), so it dismisses, stacks and yields to other overlays as every
- * tip does; this component sizes its picture and picks its side.
+ * A picture's preview on hover, for every picture the page shows smaller than
+ * the card: a row's pictures, a message's pictures, a sent message's image
+ * capsule. Resting the pointer on the picture for 300 ms shows a card above it,
+ * or below it when the page has no room above, kept within the page, and on the
+ * side with more room, scaled down to fit it, when neither side has room
+ * (`previewPlacement`), never over the picture: the picture at its own size on
+ * the screen, its pixels one to one, scaled down to fit 70% of the page's width
+ * and height and never enlarged (`previewBox`), over a checkerboard where it is
+ * transparent, a video's first frame, and under it one line, what the picture
+ * belongs to, cut at its end, then its pixel size. Its box comes from `size`
+ * and the screen's pixel ratio, known before the bytes arrive, so it never
+ * grows as they load, and follows the window's resizing and its move to another
+ * screen. The card takes no pointer: leaving the picture closes it at once, and
+ * a press on the picture, which opens the viewer, and Escape close it. A touch
+ * shows none. It is a `Tooltip` card (`card`, `warmMs`, `placeBy`), so it
+ * dismisses, stacks and yields to other overlays as every tip does; this
+ * component sizes its picture and picks its side.
  *
  * The picture is the slot, or an element the page did not render through a
  * component, `trigger`, such as an image in a rendered message.
@@ -104,7 +102,7 @@ function onOpen(): void {
   placed.value = null
 }
 
-// A phone has no hover, and shows no card (`file-previews.md`).
+// A phone has no hover, and shows no card.
 const phone = usePhone()
 
 function onLoaded(event: Event): void {

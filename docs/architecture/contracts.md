@@ -132,13 +132,13 @@ These are the points where values enter, and what a failure does:
 
 | Where a value enters | Decoded by | When it fails |
 |---|---|---|
-| A web app request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason ([Web API](../product/web-api.md)) |
+| A web app request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason (`crates/web-api-protocol/src/lib.rs`) |
 | A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/rendering.md#frame-protocol)) |
 | A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes (`crates/runner/src/main.rs`) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
-| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api-sync.md#plugin-calls)) |
+| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field (`crates/backend-http/src/plugins.rs`) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
 | A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing (`crates/runner/src/main.rs`) |
@@ -286,7 +286,7 @@ by case:
 
 | Logic | Owner | How |
 |---|---|---|
-| The file-type table: which files the product previews, by extension, and which the page shows in place | `shared-types` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
+| The file-type table: which files the product previews, by extension, and which the page shows in place | `shared-types` | The page must choose a viewer before any byte arrives (`crates/shared-types/src/file_types.rs`), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
 | The context limits a model's window offers, and whether a stored limit applies | `shared-types` | The model menu offers them and the usage indicator counts against the limit, while sessions compact at it (`crates/shared-types/src/context_limit.rs`), so the steps and their lookups are emitted into `@demicodes/protocol` |
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |

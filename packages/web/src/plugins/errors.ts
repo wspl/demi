@@ -4,9 +4,8 @@ import { ApiError, UnreadableResponse } from '../api/client'
 
 /**
  * A refusal the backend answered, as a page sees it: the plugin's reason
- * with the plugin's own English, which its page words by the reason
- * (`localization.md` § Text from the backend), or the backend's code with
- * the page's words for it, and the answer's status.
+ * with the plugin's own English, which its page words by the reason, or the
+ * backend's code with the page's words for it, and the answer's status.
  */
 function refusal(error: ApiError): PluginCallError {
   return new PluginCallError(

@@ -20,18 +20,16 @@ import AskCard from './AskCard.vue'
 import { cardContent, pageToRead, readKey, type ReplyAsking, type ShownSideQuestion } from './asks'
 
 /**
- * The comments and side questions on a transcript's replies
- * (`comments-and-ask.md`), drawn over the list `root` holds: each comment's
- * text tinted and underlined, a sent one dimmer, a comment mark in the
- * reply's right margin at its line, the card that shows a comment under the
- * pointer or pinned by a click, and the box a new one is written in under
- * its selection; each side question's words in purple, its card set into
- * the reply after the block holding the words' end, folded into a purple
- * mark in the margin. A comment or a side question on a picture outlines
- * the picture in its color, its margin mark at the picture's top
- * (`comments-and-ask.md` § Images). A reply is found by its text block's id
- * (`data-reply-text`), so the marks follow the rows the list draws as it
- * scrolls; a row it does not draw shows none.
+ * The comments and side questions on a transcript's replies, drawn over the
+ * list `root` holds: each comment's text tinted and underlined, a sent one
+ * dimmer, a comment mark in the reply's right margin at its line, the card that
+ * shows a comment under the pointer or pinned by a click, and the box a new one
+ * is written in under its selection; each side question's words in purple, its
+ * card set into the reply after the block holding the words' end, folded into a
+ * purple mark in the margin. A comment or a side question on a picture outlines
+ * the picture in its color, its margin mark at the picture's top. A reply is
+ * found by its text block's id (`data-reply-text`), so the marks follow the
+ * rows the list draws as it scrolls; a row it does not draw shows none.
  */
 const props = defineProps<{
   /** The element the list's rows stand in, which this layer covers. */
@@ -199,10 +197,9 @@ function selectionTools(reply: { blockId: string; root: HTMLElement }, streaming
 
 /**
  * Comment and Ask for the picture `image` of the reply `reply`, the text
- * block `blockId` whose rendered text is `root` (`comments-and-ask.md`
- * § Images); disabled while the reply is being written, as for its words.
- * None for a picture the reply does not hold, as one in a side question's
- * card.
+ * block `blockId` whose rendered text is `root`; disabled while the reply is
+ * being written, as for its words. None for a picture the reply does not hold,
+ * as one in a side question's card.
  */
 function pictureTools(reply: { blockId: string; root: HTMLElement }, image: HTMLImageElement, streaming: () => boolean): ContextMenuEntry[] {
   const at = reply.root.querySelector<HTMLElement>('.markdown-body')

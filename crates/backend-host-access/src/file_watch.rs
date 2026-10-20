@@ -1,14 +1,13 @@
-//! The file watch (`web-api-hosts.md` § File watch, `sessions-and-targets.md`
-//! § Every way to a Host): a page's subscriptions to what it keeps of a
-//! Host's files, and the Host's word that one of them changed. A
-//! conversation's watch carries its primary Host's subscriptions and, under
-//! a subscription's `host`, an attached host's; each host is admitted as a
-//! user stream is when a subscription first names it, never wakes a stopped
-//! Cloud, and is no activity. A device's folder dialog watches its one
-//! device through device access. The shard holds each page's subscriptions
-//! on each Host, which pages that hold the same subject share
-//! (`RemoteHost::subscriber`), and renews them while the page renews them.
-//! The edge carries the messages, and holds the lease.
+//! The file watch (`sessions-and-targets.md` § Every way to a Host): a page's
+//! subscriptions to what it keeps of a Host's files, and the Host's word that
+//! one of them changed. A conversation's watch carries its primary Host's
+//! subscriptions and, under a subscription's `host`, an attached host's; each
+//! host is admitted as a user stream is when a subscription first names it,
+//! never wakes a stopped Cloud, and is no activity. A device's folder dialog
+//! watches its one device through device access. The shard holds each page's
+//! subscriptions on each Host, which pages that hold the same subject share
+//! (`RemoteHost::subscriber`), and renews them while the page renews them. The
+//! edge carries the messages, and holds the lease.
 //!
 //! What a page's subscriptions ask of a Host's, and the messages the page
 //! hears, are `PageSubscriptions`', which a direct channel's watch on the

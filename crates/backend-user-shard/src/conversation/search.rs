@@ -1,7 +1,6 @@
-//! Finding a conversation (`conversations.md` § Finding a conversation,
-//! `web-api-conversations.md` § Search, `storage.md` § Search index): the user's indexer,
-//! which keeps the user's search index in step with the conversations, and
-//! the search the edge answers from that index alone.
+//! Finding a conversation (`storage.md` § Search index): the user's indexer, which keeps
+//! the user's search index in step with the conversations, and the search the edge
+//! answers from that index alone.
 //!
 //! The indexer follows each save of a root's checkpoint by what it changed:
 //! the save hands over the version it follows and the one it makes, the

@@ -7,8 +7,8 @@ import { t } from './locales/text'
 /**
  * The screen over the whole app once the page loaded itself for the build
  * the backend serves and still got another one, as when a cache in front of
- * the backend keeps an earlier page (`web-application.md` § A page of
- * another build). It says why and offers to load the page again.
+ * the backend keeps an earlier page. It says why and offers to load the page
+ * again.
  */
 defineEmits<{ reload: [] }>()
 </script>

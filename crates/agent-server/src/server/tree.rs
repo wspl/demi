@@ -63,8 +63,8 @@ pub struct Tree<H: HostResolver> {
     /// directory (`crates/agent-server/src/server/tree/supervisor.rs`). A
     /// closing child stays until its close is complete.
     children: RefCell<HashMap<NodeId, Rc<Child<H>>>>,
-    /// Every live side question, by its node (`comments-and-ask.md` § Side
-    /// questions): beside the agent directory, never in it.
+    /// Every live side question, by its node: beside the agent directory, never
+    /// in it.
     sides: RefCell<HashMap<NodeId, Rc<Side<H>>>>,
     /// What each closed side question ended with, which a page that
     /// attaches receives, so a side question that finished while it was
@@ -662,9 +662,8 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Whether the tree will go on working without the user, which makes its
-    /// conversation running (`web-api-conversations.md` § Sidebar mutations and read
-    /// state): a child is live, or the root runs or waits to run. A command
-    /// that outlives its turn does not count, as that section says.
+    /// conversation running: a child is live, or the root runs or waits to run. A
+    /// command that outlives its turn does not count, as that section says.
     pub fn works(&self) -> bool {
         !self.children.borrow().is_empty()
             || !self.starting.borrow().is_empty()

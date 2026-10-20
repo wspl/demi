@@ -181,10 +181,9 @@ test('send now on a pending steer or a queued message stops nothing and never tu
   }
 })
 
-// Remove on a steer or a queued message (`turns.md` § Steer or queue): the
-// session answers whether it removed the message or the message had gone on
-// (`runtime.md` § Pending steers), and the removal settles on that answer
-// alone, whatever frames come before it.
+// Remove on a steer or a queued message: the session answers whether it removed
+// the message or the message had gone on (`runtime.md` § Pending steers), and
+// the removal settles on that answer alone, whatever frames come before it.
 test.each([
   { kind: 'steer', outcome: 'removed' },
   { kind: 'steer', outcome: 'gone_on' },
@@ -886,10 +885,9 @@ test('failure facts arrive beside the transcript and accumulate across patches a
 })
 
 // A Resume another page started first is no failure: the session refuses
-// this one as busy running the turn, which runs on (`web-application.md`
-// § Responding to the user). Busy with another page's Compact, which may
-// end without running the turn, the refusal is a failure, as is a refusal
-// of another kind.
+// this one as busy running the turn, which runs on. Busy with another page's
+// Compact, which may end without running the turn, the refusal is a failure, as
+// is a refusal of another kind.
 test.each([
   { busy: 'running', failed: false },
   { busy: 'compacting', failed: true },

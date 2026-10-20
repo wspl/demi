@@ -20,8 +20,7 @@ const fileSchema = z.object({
   upload: uploadSchema.nullable(),
   /**
    * The stored file a pasted message names, while it is not attached yet,
-   * with the picture its copy carried for when the paste cannot use it
-   * (`composer.md` § Writing a message).
+   * with the picture its copy carried for when the paste cannot use it.
    */
   claim: z.object({ file: copiedStoredFileSchema, picture: z.instanceof(File).nullable() }).optional(),
   /** A text file's opening, as the backend answered its upload. */
@@ -43,7 +42,7 @@ export const draftSchema = z.object({
       id: z.uuid(),
       text: z.string(),
       fileIds: z.array(z.string()),
-      /** The comments it carries (`comments-and-ask.md` § Sending them). */
+      /** The comments it carries. */
       comments: z.array(messageCommentSchema),
       error: z.string().nullable(),
       /** The request ID of the refusal that left it undelivered, shown beside `error`; absent with none. */
@@ -110,7 +109,7 @@ export type SavedFile = z.infer<typeof fileSchema>
 /**
  * The version of the page's draft database: raised with each change of a
  * record's shape, whose upgrade turns the previous release's records into
- * the new one (`web-application.md` § Persistence and adapters).
+ * the new one.
  */
 const DRAFTS_VERSION = 4
 
@@ -266,14 +265,13 @@ export async function deleteDraft(
 }
 
 /**
- * What a conversation's page held as it closed (`web-application.md`
- * § Drafts): the composer's text the backend does not have, with the
- * revision it was built on and the files of its marks, and the messages on
- * their way, with what their files are without their bytes, which the
- * IndexedDB record carries. An IndexedDB write still under way when the page
- * goes can be lost, such as a send's, whose files make it long, so the page
- * writes this where the web browser writes at once, and the next page of the
- * conversation takes it over the record.
+ * What a conversation's page held as it closed: the composer's text the backend
+ * does not have, with the revision it was built on and the files of its marks,
+ * and the messages on their way, with what their files are without their bytes,
+ * which the IndexedDB record carries. An IndexedDB write still under way when
+ * the page goes can be lost, such as a send's, whose files make it long, so the
+ * page writes this where the web browser writes at once, and the next page of
+ * the conversation takes it over the record.
  */
 const lastWordsSchema = z.object({
   composer: z

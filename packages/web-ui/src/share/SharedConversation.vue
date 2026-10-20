@@ -12,16 +12,16 @@ import { sharedRows, type SharedItem } from './shared-items'
 import { t } from './locales/text'
 
 /**
- * A share's read-only page (`sharing.md`): what was said in the
- * conversation, its messages and texts, with each run of the agent's work
- * between them as one line that counts its steps, under its title and with
- * nothing that acts on a conversation. A link to a Host's file, a commit or
- * an agent is its text, since the page reaches neither a Host nor the work.
+ * A share's read-only page: what was said in the conversation, its messages and
+ * texts, with each run of the agent's work between them as one line that counts
+ * its steps, under its title and with nothing that acts on a conversation. A
+ * link to a Host's file, a commit or an agent is its text, since the page
+ * reaches neither a Host nor the work.
  */
 const props = withDefaults(defineProps<{
   /** The conversation's title when shared; null while it was the placeholder. */
   title: string | null
-  /** The parts of the share the page holds (`web-application.md` § Transcript windows). */
+  /** The parts of the share the page holds. */
   history: HeldTranscript<SharedItem>
   /** Each compaction marker's boundary's summary size, by the marker's id, as pages named them. */
   summaries?: Record<string, number>

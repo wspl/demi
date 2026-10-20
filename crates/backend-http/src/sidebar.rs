@@ -1,5 +1,4 @@
-//! `POST /sidebar/reorder` (`web-api.md` § Sidebar mutations, read state and
-//! page synchronization): the user's explicit order, one move at a time,
+//! `POST /sidebar/reorder`: the user's explicit order, one move at a time,
 //! within the moved row's partition.
 
 use std::sync::Arc;

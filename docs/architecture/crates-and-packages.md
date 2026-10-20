@@ -189,7 +189,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   (`light`), its requests and the page budget that selects a page of them
   (`requests`, `page`), and where a reset starts (`reset_start`), which the
   history routes and the stream share
-  ([Conversation history](../product/web-api-conversations.md#conversation-history)).
+  (`crates/backend-http/src/history.rs`).
 - **Public boundary:** the types above. The agent resolves the files a
   frame's content refers to through the backend (`agent-server`'s
   `ContentResolver`) before the session sees the content. The protocol's
@@ -424,7 +424,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   log line is its own type: the runner wire carries its time as integer
   milliseconds, and the web app receives it as an RFC 3339 time.
 - **Public boundary:** the types above; their TypeScript form is generated into
-  `web`. Behavior: [Web API](../product/web-api.md).
+  `web`. Behavior: `crates/web-api-protocol/src/lib.rs`.
 - **Must not:** hold route handling or domain logic.
 
 ### Libraries
@@ -1206,8 +1206,8 @@ demi-backend (executable: configuration, composition)
   email-change delivery, push subscriptions and sending push notifications, and each user's preferences and subagent settings,
   the Subagent switch and the profile records with their name and text rules
   ([Authentication and ownership](../backend/backend.md#authentication-and-ownership),
-  [User preferences](../product/web-api-settings.md#user-preferences),
-  [Subagents](../product/web-api-settings.md#subagents)).
+  `crates/web-api-protocol/src/settings.rs`,
+  `crates/backend-http/src/subagents.rs`).
 - **Public boundary:** the account, session, preference and subagent settings services. The key
   that email codes are derived from, and the VAPID key, each derived from
   the instance secret under its own label, are given to it; it does not
@@ -1393,7 +1393,7 @@ demi-backend (executable: configuration, composition)
   routes, the conversation permissions routes, runner acceptance, and
   the byte copies of file transfers, pipes and user streams,
   and the signaling socket of [direct channels](../execution/direct-channel.md),
-  with its device access check ([Web API](../product/web-api.md)).
+  with its device access check (`crates/web-api-protocol/src/lib.rs`).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
   state its routes reach (`AppState`, `Site`). Its `testing` feature holds
   the runners' hellos at the token's lookup (`Backend::hold_hellos`).
@@ -1743,7 +1743,7 @@ under `packages/`.
   connecting again, which the synchronization channel, the conversation
   sockets and the live views share, and the check of every socket when the
   page comes back (`transport/liveness.ts`,
-  [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection));
+  `packages/web-ui/src/transport/liveness.ts`);
   and the live view's page side where it is not about its source
   (`live/`, Mobile simulators (`crates/command-package-mobile/src/live.rs`)): its
   frames, the stream's lifecycle that every source's view runs on
@@ -1803,7 +1803,7 @@ under `packages/`.
 - **Integration boundary:** authentication calls the backend over same-origin
   HTTP; the product state follows the synchronization channel, a WebSocket;
   chat uses the agent client over WebSocket; operations on resources and
-  settings use REST. [Web application](../product/web-application.md) owns
+  settings use REST. `packages/web/src/App.vue` owns
   state ownership and operation contracts. The web app contract suite in this
   package drives the backend binary ([Scenarios](../delivery/scenarios.md)).
 - **Public boundary:** `bun run web:dev` and the production build; no library
@@ -1857,8 +1857,8 @@ Each plugin page package is **private** and has the same boundary:
 | `@demicodes/plugin-mobile` | The `mobile` work panel kind and the live view of the conversation's simulators (`crates/command-package-mobile/src/live.rs`): the device tabs and their toolbar, the device's frame, touches and keys over the SDK's live view, with the plugin's page types and the simulators' live view messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |
-| `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
-| `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service ([File previews](../product/file-previews.md)) |
+| `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service (`packages/web-ui/src/files/ChangeView.vue`) |
+| `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service (`packages/web-ui/src/files/FileView.vue`) |
 
 #### `cloud-guest-image` (not a workspace package)
 

@@ -11,8 +11,7 @@ import { t } from '../locales/text'
  * own; a title nothing can show is plain text. Where it came from may lie in a
  * child's transcript, which the Agents window opens on or switches to, so the
  * title is that window's control, as its chip is: a press on it is not one
- * outside the session's windows (`KEEPS_WINDOWS`, `turns.md` § the dock's
- * chips). On a narrow row the title gives way first, down to a few characters,
+ * outside the session's windows (`KEEPS_WINDOWS`). On a narrow row the title gives way first, down to a few characters,
  * and then the words, each ending in an ellipsis.
  */
 defineProps<{

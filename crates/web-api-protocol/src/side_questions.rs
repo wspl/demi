@@ -1,8 +1,7 @@
-//! A conversation's side questions (`comments-and-ask.md` § Side questions):
-//! the list a page reads, asking one, a follow-up, a Retry and folding its
-//! card. The answers themselves are the side question's transcript, which a
-//! page reads by its pages with `?node=` and follows on the conversation's
-//! socket, as a subagent's.
+//! A conversation's side questions: the list a page reads, asking one, a
+//! follow-up, a Retry and folding its card. The answers themselves are the side
+//! question's transcript, which a page reads by its pages with `?node=` and
+//! follows on the conversation's socket, as a subagent's.
 
 use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, Timestamp, is_blank};
 use schemars::JsonSchema;
@@ -28,7 +27,7 @@ pub struct SideQuestion {
     pub quote: String,
     /// The picture a side question about a picture asks of, whose place
     /// among the block's pictures `start` and `end` are, as a comment on a
-    /// picture's (`comments-and-ask.md` § Images); absent for words.
+    /// picture's; absent for words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub picture: Option<MediaSource>,
     /// The first question; a follow-up is a `user` block of its transcript.
@@ -45,8 +44,7 @@ pub struct SideQuestion {
 
 /// `GET /conversations/:id/side-questions`: every side question, in the
 /// order they were asked, with the revision they were read at, which the
-/// summary's `sideQuestionsRevision` is compared with (`web-api-sync.md`
-/// § Revisions counted in memory).
+/// summary's `sideQuestionsRevision` is compared with.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct SideQuestions {

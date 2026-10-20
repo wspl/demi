@@ -472,11 +472,10 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Asks the side question `side` of the conversation `root`, whose tree
-    /// is open, about `of` (`comments-and-ask.md` § Side questions): its
-    /// history is the root's through `of`'s block, captured from the live
-    /// root in one step; the root goes on with whatever it does, and never
-    /// learns of it. The same question again under its id asks nothing;
-    /// answers whether this call asked it.
+    /// is open, about `of`: its history is the root's through `of`'s block,
+    /// captured from the live root in one step; the root goes on with whatever
+    /// it does, and never learns of it. The same question again under its id
+    /// asks nothing; answers whether this call asked it.
     pub async fn ask(&self, root: &NodeId, side: NodeId, of: SideOf) -> Result<bool, AskError> {
         self.tree(root).ok_or(AskError::NotOpen)?.ask(side, of).await
     }

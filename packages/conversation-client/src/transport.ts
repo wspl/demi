@@ -13,7 +13,7 @@ export interface ConversationClientTransport {
   close(): void
 }
 
-/** A frame larger than the backend takes on a page's socket (`web-api.md` § Request bodies). */
+/** A frame larger than the backend takes on a page's socket. */
 export class FrameTooLargeError extends Error {
   constructor(bytes: number) {
     super(`The message is ${bytes} bytes, over the ${MAX_PAGE_MESSAGE_BYTES} bytes the conversation socket takes`)
@@ -48,9 +48,9 @@ export interface WebSocketLike {
  * The conversation socket as a transport: each message is JSON text, one
  * frame or an array of the frames the backend had ready at once, as a
  * turn's end, which are handed over in order within the message's event, so
- * the page applies them as one change (`turns.md` § Following the agent's
- * work). A message that is not JSON text is a peer that does not speak the
- * protocol, and the transport closes rather than skipping it.
+ * the page applies them as one change. A message that is not JSON text is a
+ * peer that does not speak the protocol, and the transport closes rather than
+ * skipping it.
  */
 export function createWebSocketTransport(socket: WebSocketLike): ConversationClientTransport {
   const frameHandlers = new Set<(frame: unknown) => void>()

@@ -8,12 +8,11 @@ import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../..
 import type { MessageEditContent } from '../message-editing'
 import { contentMessage, type MessageCapsule } from '../message-editor/capsules'
 
-// A sent message on the clipboard (`composer.md` § Writing a message): its
-// Markdown with each file by name for plain text, its formatting for HTML,
-// and Demi's own form, which a composer reads to bring the files back as
-// capsules without sending their bytes again. Demi's own form travels as a
-// JSON attribute of the HTML's outermost element, since browsers keep HTML on
-// the clipboard and no format of a page's own.
+// A sent message on the clipboard: its Markdown with each file by name for
+// plain text, its formatting for HTML, and Demi's own form, which a composer
+// reads to bring the files back as capsules without sending their bytes again.
+// Demi's own form travels as a JSON attribute of the HTML's outermost element,
+// since browsers keep HTML on the clipboard and no format of a page's own.
 
 /** The attribute of the copied HTML's outermost element that holds Demi's own form. */
 export const COPIED_MESSAGE_ATTRIBUTE = 'data-demi-message'
@@ -97,12 +96,11 @@ function trimParagraphLines(content: readonly JSONContent[], end: boolean): JSON
 }
 
 /**
- * A document's blocks without the blank lines at its start and its end
- * (`composer.md` § Writing a message): blank paragraphs there go, and the
- * first and last paragraphs lose their blank lines on that side; the lines
- * between, and each line's indentation, stay. `from` and `to` are the range
- * of `blocks` kept, so a slice knows whether its open ends were dropped.
- * Code is kept as it is.
+ * A document's blocks without the blank lines at its start and its end: blank
+ * paragraphs there go, and the first and last paragraphs lose their blank lines
+ * on that side; the lines between, and each line's indentation, stay. `from`
+ * and `to` are the range of `blocks` kept, so a slice knows whether its open
+ * ends were dropped. Code is kept as it is.
  */
 export function trimBlankLines(blocks: readonly JSONContent[]): { blocks: JSONContent[]; from: number; to: number } {
   let from = 0
@@ -168,7 +166,7 @@ export function messageClipboard(whole: JSONContent): MessageClipboard {
 /**
  * A message the session holds, from its content, as Demi's own form of a
  * copy of it: what Recall pastes back into the composer, each file a
- * capsule again without its bytes (`turns.md` § Steer or queue).
+ * capsule again without its bytes.
  */
 export function contentCopy(content: readonly MessageEditContent[]): CopiedMessage {
   const { markdown, capsules } = contentMessage(content)
@@ -211,8 +209,8 @@ export function copiedMessageHtml(message: CopiedMessage, content: Node): string
  * A drag of an attachment's link or picture in an agent's message carries
  * the file in Demi's own form, as a copy of a message holding it alone
  * would, so a composer it is dropped on makes a capsule of the same file and
- * uploads nothing (`composer.md` § Attachments). The browser's own forms,
- * the address and the picture, stay for any other place.
+ * uploads nothing. The browser's own forms, the address and the picture, stay
+ * for any other place.
  */
 export function attachmentDrag(event: DragEvent): void {
   const link = event.target instanceof Element ? event.target.closest(`[${ATTACHMENT_FILE_ATTRIBUTE}]`) : null
@@ -239,15 +237,15 @@ export function transferCopiedMessage(transfer: DataTransfer): CopiedMessage | n
 }
 
 /**
- * How a composer takes the files of a pasted message (`composer.md` § Writing
- * a message). A stored file is a capsule at once, and attaches beside it as
- * an upload does: the backend makes an upload of the user's own stored file,
- * sending no bytes. `kept` answers whether the capsule stays: true once the
- * file is attached, or when the paste could not use it and `picture`, the
- * picture the copy carried, uploads in its place under the file's name;
- * false when neither could, and the composer puts the file's name where the
- * capsule stood. A device file is its reference, or null when the composer
- * cannot take files, as an edit that is no longer editable cannot.
+ * How a composer takes the files of a pasted message. A stored file is a
+ * capsule at once, and attaches beside it as an upload does: the backend makes
+ * an upload of the user's own stored file, sending no bytes. `kept` answers
+ * whether the capsule stays: true once the file is attached, or when the paste
+ * could not use it and `picture`, the picture the copy carried, uploads in its
+ * place under the file's name; false when neither could, and the composer puts
+ * the file's name where the capsule stood. A device file is its reference, or
+ * null when the composer cannot take files, as an edit that is no longer
+ * editable cannot.
  */
 export interface PasteHost {
   claim(file: CopiedStoredFile, picture: File | null): { capsule: MessageCapsule; kept: Promise<boolean> }

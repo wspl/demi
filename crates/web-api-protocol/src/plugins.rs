@@ -1,6 +1,6 @@
-//! A user's plugins (`web-api-sync.md` § A user's plugins): the backend's
-//! plugins as the settings page lists them, the switch that turns one on
-//! or off for the user, and a plugin's state for one conversation.
+//! A user's plugins: the backend's plugins as the settings page lists them, the
+//! switch that turns one on or off for the user, and a plugin's state for one
+//! conversation.
 
 use demi_shared_types::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
@@ -29,10 +29,9 @@ pub struct PluginSwitch {
     pub enabled: bool,
 }
 
-/// `GET /conversations/:id/plugins/:plugin/state` (`web-api-sync.md`
-/// § Conversation state of plugins): the plugin's state for the
-/// conversation, valid against the plugin's declared schema, and the
-/// revision it was read at.
+/// `GET /conversations/:id/plugins/:plugin/state`: the plugin's state for the
+/// conversation, valid against the plugin's declared schema, and the revision
+/// it was read at.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginStateAnswer {

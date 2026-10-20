@@ -24,7 +24,7 @@ defineProps<{
   /**
    * Shows a remove button on hover, on the desktop. A phone has no hover, and a row's end is
    * where a tap meant to open it lands, so there the entry's page removes it instead, at its
-   * bottom (`web-application.md` § The phone layout).
+   * bottom.
    */
   removable?: boolean
   removing?: boolean

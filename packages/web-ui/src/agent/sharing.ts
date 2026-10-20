@@ -4,10 +4,10 @@ import { errorCode, reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
 import { t } from './locales/text'
 
-/** What a share holds: the conversation, or the answer that the text block `blockId` ends (`sharing.md`). */
+/** What a share holds: the conversation, or the answer that the text block `blockId` ends. */
 export type ShareTarget = { kind: 'conversation' } | { kind: 'answer'; blockId: string }
 
-/** A share the conversation has, as its state lists it (`web-api-conversations.md` § Sharing). */
+/** A share the conversation has, as its state lists it. */
 export type ExistingShare = { kind: 'conversation'; token: string } | { kind: 'answer'; token: string; blockId: string }
 
 /** A share's link. */
@@ -52,14 +52,13 @@ export type SharePhase =
 export type ShownShare = { target: ShareTarget } & SharePhase
 
 /**
- * The flow of the share dialog (`sharing.md` § Making, updating and removing
- * a share), one for a session. `start(target)` opens the dialog at once: on
- * the share the conversation has already, or on a new one it makes there,
- * Creating link… until its link stands, already copied. A failure to make
- * it stays in the dialog with Try Again (`retry`); the dialog's Copy Link,
- * Update Link and Stop Sharing act on the share shown, and their failures
- * are toasts. The host's `service` answers each step; absent, nothing can
- * be shared.
+ * The flow of the share dialog, one for a session. `start(target)` opens the
+ * dialog at once: on the share the conversation has already, or on a new one it
+ * makes there, Creating link… until its link stands, already copied. A failure
+ * to make it stays in the dialog with Try Again (`retry`); the dialog's Copy
+ * Link, Update Link and Stop Sharing act on the share shown, and their failures
+ * are toasts. The host's `service` answers each step; absent, nothing can be
+ * shared.
  *
  * `start` and `retry` run inside the click that asks for the link: they put
  * the link on the clipboard there, as an item whose text is still being

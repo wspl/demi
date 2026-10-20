@@ -1,15 +1,14 @@
-//! A URL trigger's calls (`automations.md` § An automation): a `POST` with
-//! the secret as a bearer token, signed with it as GitHub signs, or signed
-//! as Stripe signs with the signing secret the user pasted, starts a run;
-//! any other is refused, and the caller cannot tell an unknown address from
-//! a wrong secret. A delivery ID seen in the last hour is answered as the
-//! first and starts nothing; once the day's limit is reached a call is
-//! answered and counted in the day's skipped run. Calls in a burst make one
-//! run: each restarts a 30-second wait, up to 2 minutes from the first; a
-//! call that comes while a run of the automation works waits for its end
-//! and joins the next one. Each call is kept in the database as it is
-//! taken, with its delivery ID, until a run takes it, so a restart loses
-//! none and starts the wait again. The edge holds the size and rate limits.
+//! A URL trigger's calls: a `POST` with the secret as a bearer token, signed
+//! with it as GitHub signs, or signed as Stripe signs with the signing secret
+//! the user pasted, starts a run; any other is refused, and the caller cannot
+//! tell an unknown address from a wrong secret. A delivery ID seen in the last
+//! hour is answered as the first and starts nothing; once the day's limit is
+//! reached a call is answered and counted in the day's skipped run. Calls in a
+//! burst make one run: each restarts a 30-second wait, up to 2 minutes from the
+//! first; a call that comes while a run of the automation works waits for its
+//! end and joins the next one. Each call is kept in the database as it is
+//! taken, with its delivery ID, until a run takes it, so a restart loses none
+//! and starts the wait again. The edge holds the size and rate limits.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -42,10 +41,9 @@ pub(crate) const DELIVERY_MEMORY: Duration = Duration::from_secs(3600);
 /// How old a Stripe signature may be, as Stripe advises.
 pub(crate) const STRIPE_TOLERANCE_SECONDS: i64 = 300;
 
-/// The headers a run's message leaves out (`automations.md` § What a run
-/// sends): the secret and what proves it, and those Demi's own server and
-/// the proxies and CDNs in front of it add, which describe Demi, not the
-/// call.
+/// The headers a run's message leaves out: the secret and what proves it, and
+/// those Demi's own server and the proxies and CDNs in front of it add, which
+/// describe Demi, not the call.
 const STRIPPED: [&str; 14] = [
     "authorization",
     "cookie",

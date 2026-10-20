@@ -23,9 +23,9 @@ import {
   type VendorCatalog,
 } from '../api/generated/web-api'
 
-/** The close code of a channel whose session ended (`web-api-sync.md` § Page synchronization). */
+/** The close code of a channel whose session ended. */
 const SESSION_ENDED = 4002
-/** The close of a channel whose backend shuts down, and will be back (`web-api-sync.md` § Page synchronization). */
+/** The close of a channel whose backend shuts down, and will be back. */
 const BACKEND_CLOSING = 1001
 /** The close the web browser reports for a socket that ended without a close frame, as one that could not connect. */
 const ABNORMAL_CLOSURE = 1006
@@ -44,9 +44,8 @@ export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartE
 export type Answer = PartEvent | ((read: ProductState) => PartEvent)
 
 /**
- * A change of this page's own that its write has not landed yet
- * (`web-application.md` § Responding to the user): the page shows it over
- * the state it last read from the moment the user made it.
+ * A change of this page's own that its write has not landed yet: the page shows
+ * it over the state it last read from the moment the user made it.
  */
 export interface ProductChange {
   /** Its write goes out now; a value the channel brings of its part from here may be newer than the write's. */
@@ -213,7 +212,7 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
 /**
  * The build a snapshot names, read before the rest of it: a snapshot of
  * another build, whose other parts this page may not read, still says which
- * build to load (`web-application.md` § A page of another build).
+ * build to load.
  */
 const snapshotBuildSchema = z.object({
   type: z.literal('snapshot'),
@@ -252,20 +251,18 @@ function smallModelInputs(preferences: Preferences | undefined): string {
 }
 
 /**
- * The product state this page shows around its conversations
- * (`web-application.md` § Page synchronization): the one module that follows
- * it, through the synchronization channel. The channel's snapshot is the
- * whole copy, and each later message replaces one part of it; each state of
- * the page follows the copy by its own rule. The copy is a slot
- * (`web-ui/infra/slot`) read in parts. Nothing asks for this state on a
- * timer or after a write: a write's answer goes through `answered`, or
- * lands the change the write made (`change`).
+ * The product state this page shows around its conversations: the one module
+ * that follows it, through the synchronization channel. The channel's snapshot
+ * is the whole copy, and each later message replaces one part of it; each state
+ * of the page follows the copy by its own rule. The copy is a slot
+ * (`web-ui/infra/slot`) read in parts. Nothing asks for this state on a timer
+ * or after a write: a write's answer goes through `answered`, or lands the
+ * change the write made (`change`).
  */
 export const useProduct = defineStore('product', () => {
   /**
    * The state as the channel and the writes' answers last left it, with this
-   * page's changes not landed yet, in the order the user made them, on top
-   * (`web-application.md` § Responding to the user).
+   * page's changes not landed yet, in the order the user made them, on top.
    */
   const slot = new Slot<ProductState>()
   const read = slot.read
@@ -296,14 +293,14 @@ export const useProduct = defineStore('product', () => {
   const activeConversationId = ref<string | null>(null)
   /**
    * The backend closed the channel because it shuts down, and has not
-   * brought a snapshot since (`web-application.md` § A page of another build).
+   * brought a snapshot since.
    */
   const restarting = ref(false)
   /** Consecutive connections that ended before their snapshot. */
   const failures = ref(0)
   /**
    * Why the page cannot reach the backend, which its connection banner says;
-   * null while it can (`web-application.md` § A page of another build).
+   * null while it can.
    */
   const connection = computed(() => connectionProblem({
     online: browserOnline.value,
@@ -314,15 +311,14 @@ export const useProduct = defineStore('product', () => {
   /**
    * The page has no state yet and could not reach the backend so far, as a
    * page loaded while Demi restarts: it says it connects where the app will
-   * be (`web-application.md` § Page synchronization).
+   * be.
    */
   const connecting = computed(() => snapshot.value === null && (failures.value > 0 || !browserOnline.value))
   /** The build of the web app the backend serves, as the last snapshot named it. */
   const servedBuild = ref<string | null>(null)
   /**
    * The build the backend serves when it is another than this page's, which
-   * a reload loads; null otherwise (`web-application.md` § A page of another
-   * build).
+   * a reload loads; null otherwise.
    */
   const newBuild = computed(() => {
     const page = pageBuild()
@@ -352,7 +348,7 @@ export const useProduct = defineStore('product', () => {
   let socket: WebSocket | null = null
   /** The wait before the channel connects again, while it is closed. */
   let retry: ReconnectWait | null = null
-  /** The open channel's silence watch (`web-application.md` § Liveness and reconnection). */
+  /** The open channel's silence watch. */
   let silence: SilenceWatch | null = null
   /**
    * The conversation this page shows, focused and visible, which the channel
@@ -462,7 +458,7 @@ export const useProduct = defineStore('product', () => {
       // Before the first snapshot, only the backend's own failure, a close
       // it sent, fails the regions; a channel that could not reach it, or
       // that the backend closed to restart, keeps them loading while it
-      // connects again (`web-application.md` § Page synchronization).
+      // connects again.
       if (!snapshot.value && close.code !== ABNORMAL_CLOSURE && close.code !== BACKEND_CLOSING) {
         load.value = 'failed'
       }
@@ -504,8 +500,7 @@ export const useProduct = defineStore('product', () => {
     if (event.type === 'snapshot') {
       // The backend is back after it was away: each other socket of the page
       // that waits to connect connects at once, as at the page's return, so
-      // nothing still says it connects once the banner goes (`web-application.md`
-      // § Liveness and reconnection).
+      // nothing still says it connects once the banner goes.
       const returned = failures.value > 0 || restarting.value
       failures.value = 0
       restarting.value = false
@@ -574,9 +569,8 @@ export const useProduct = defineStore('product', () => {
 
   /**
    * Shows `apply`, a change the user made of `part`, over the state at once,
-   * until its write lands (`web-application.md` § Responding to the user).
-   * The caller sends the write, in order with its other writes, and says how
-   * it ended through the change it gets.
+   * until its write lands. The caller sends the write, in order with its other
+   * writes, and says how it ended through the change it gets.
    */
   function change(part: Part, apply: (state: ProductState) => ProductState): ProductChange {
     const entry = slot.change(apply, { parts: [part] })
@@ -803,8 +797,7 @@ export const useProduct = defineStore('product', () => {
   /**
    * Shows `state`, the account's copy kept for opening offline, until the
    * channel's first snapshot replaces it, as a later snapshot replaces the
-   * copy (`web-application.md` § Installing and opening offline). A page
-   * that holds a state already keeps it.
+   * copy. A page that holds a state already keeps it.
    */
   function showCopy(state: ProductState): void {
     if (read.value !== null) {

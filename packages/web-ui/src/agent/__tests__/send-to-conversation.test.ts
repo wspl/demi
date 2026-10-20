@@ -1,12 +1,11 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, jest, test } from 'bun:test'
 
-// Send to Conversation's submenu (`web-application.md` § Context menus): a
-// search field, then New Conversation and the eight conversations the user
-// was last active in, leaving out the one shown and the archived ones; what
-// the field finds includes the archived ones. The submenu runs on a page of
-// happy-dom; the search's pause runs on bun's fake clock. A few ms, besides
-// the start of the page every happy-dom test pays.
+// Send to Conversation's submenu: a search field, then New Conversation and the
+// eight conversations the user was last active in, leaving out the one shown
+// and the archived ones; what the field finds includes the archived ones. The
+// submenu runs on a page of happy-dom; the search's pause runs on bun's fake
+// clock. A few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 await import('../../__tests__/vue-components')

@@ -9,14 +9,13 @@ import { hostImagePaths, useHostImagesAt } from '../host-images'
 import { messageMedia } from '../render'
 import type { MessageFiles } from '../types'
 
-// A message's Host image shows the file as it is now
-// (`file-previews.md` § Files named in messages): the screenshot a reply
+// A message's Host image shows the file as it is now: the screenshot a reply
 // showed is overwritten, and that reply and a later one naming the same path
 // show the new picture, learned from the Host's watch, and so does the media
-// viewer opened on it. The web browser keeps
-// the picture it decoded for an address for as long as the page lives, so the
-// new version must be a new address. Played against a simulated Host's watch
-// and numbers. Cost: no I/O, fake timers; a few milliseconds.
+// viewer opened on it. The web browser keeps the picture it decoded for an
+// address for as long as the page lives, so the new version must be a new
+// address. Played against a simulated Host's watch and numbers. Cost: no I/O,
+// fake timers; a few milliseconds.
 
 beforeEach(() => {
   jest.useFakeTimers()

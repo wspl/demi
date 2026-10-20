@@ -1,8 +1,7 @@
-//! Request bodies read whole (`web-api.md` § Request bodies): a body over
-//! its limit is refused with 413 `too_large` before more than that is read,
-//! and before any of it when its declared length is over; a JSON body is at
-//! most 1 MiB and must match its request type exactly; a page's WebSocket
-//! message is at most 1 MiB too.
+//! Request bodies read whole: a body over its limit is refused with 413
+//! `too_large` before more than that is read, and before any of it when its
+//! declared length is over; a JSON body is at most 1 MiB and must match its
+//! request type exactly; a page's WebSocket message is at most 1 MiB too.
 
 use axum::Json;
 use axum::body::Bytes;

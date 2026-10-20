@@ -16,7 +16,7 @@ function deviceName(device: SidebarDevice): string {
 /**
  * The projects whose row names its device in words: those that share their name with a project on
  * another host, where the mark alone cannot tell them apart. Two projects of one name on one
- * host are not told apart by it, so they do not count (`conversations.md` § Conversations and projects).
+ * host are not told apart by it, so they do not count.
  */
 export function projectsNamingTheirHost(projects: readonly SidebarProject[]): Set<string> {
   const hostsByName = new Map<string, Set<string>>()

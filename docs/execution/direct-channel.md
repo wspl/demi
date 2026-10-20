@@ -45,7 +45,7 @@ for a conversation whose primary Host is a paired device:
 | A file written by the page, such as an upload | `PUT …/fs/raw` | A `write` channel |
 | A file's text | `GET …/fs/file` | A `text` channel |
 | A directory listing, a folder made, a file deleted | `GET`, `POST`, `DELETE …/fs` | `list`, `mkdir` and `delete` channels |
-| The [file watch](../product/web-api-hosts.md#file-watch) | `WS …/fs/watch` | A `watch` channel carrying the same messages |
+| The `crates/backend-http/src/file_watch.rs` | `WS …/fs/watch` | A `watch` channel carrying the same messages |
 
 Everything else stays on the backend: messages and the conversation socket,
 the synchronization channel, permissions, the work panel's state, the working
@@ -61,7 +61,7 @@ was not told about.
 
 1. **The signaling socket.** A page that shows a conversation whose primary
    Host is a paired device with a connected runner opens
-   `WS /api/devices/:deviceId/direct` ([Direct channel route](../product/web-api-hosts.md#direct-channel)),
+   `WS /api/devices/:deviceId/direct` (`crates/backend-http/src/direct.rs`),
    one per device, whichever of its conversations it shows. The upgrade
    checks the session cookie, the `Origin` header and that the caller owns
    the device. The backend gives the socket a peer id.
@@ -189,7 +189,7 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `list` | `{ path? }` | `{ ok, path, home, entries, readAt }` |
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
 | `video` | The live view's acknowledgements | The live view's video chunks; the channel is reliable and unordered, opened beside the view's `stream` channel and ending with it: the page opens it first with `{ op: "video" }`, which the runner answers with its number on the peer, and then the view's `stream` naming that number, which binds the two; a `video` on a peer that is not `live` is refused |
-| `watch` | The relay's `subscribe`, `unsubscribe` and `renew` messages | The relay's `live`, `changed`, `unavailable`, `refused`, `renewed`, `offline` and `heartbeat` messages ([File watch](../product/web-api-hosts.md#file-watch)) |
+| `watch` | The relay's `subscribe`, `unsubscribe` and `renew` messages | The relay's `live`, `changed`, `unavailable`, `refused`, `renewed`, `offline` and `heartbeat` messages (`crates/backend-http/src/file_watch.rs`) |
 
 The `probe` channel is the one exception to one channel per operation: it
 lives as long as the peer, is unordered and never retransmitted, and carries
@@ -234,7 +234,7 @@ refuses more with `busy`, which sends the page's operation to the relay.
 
 The page keeps one choice per device: `relay` or `direct`. The device's
 route, which the user picks on its page and every page of the user follows
-(the device's `route` field, [Workspaces, devices, and attached hosts](../product/web-api-hosts.md#workspaces-devices-and-attached-hosts)),
+(the device's `route` field, `crates/backend-http/src/workspaces.rs`),
 says how the page makes it:
 
 | Route | The page makes a peer | The choice is `direct` while |
@@ -347,11 +347,11 @@ channel, and answers with the bytes and the headers the relay's route gives
 them: the media type of the [file-type table](../architecture/contracts.md#logic-the-web-app-and-backend-share),
 `nosniff`, the content policy of an image shown in place, `Range` answers,
 the ETag, the cache rule of a `version`ed URL and `Content-Disposition` for a
-download ([File text and working tree changes](../product/web-api-hosts.md#file-text-and-working-tree-changes)).
+download (`crates/backend-http/src/files.rs`).
 A request for a conversation that is not direct, or one the page cannot
 answer, goes to the network unchanged. The same service worker keeps the
 page for opening offline
-([Installing and opening offline](../product/web-application.md#installing-and-opening-offline)),
+(`packages/web/src/offline/service-worker.ts`),
 and intercepts nothing else.
 
 ## Liveness
@@ -360,7 +360,7 @@ A data channel has no traffic of its own when nothing happens, so each
 long-lived operation keeps the heartbeat it has on the relay: the live view's
 module every quarter second, the file watch every 30 seconds. The page treats
 each as it treats the relay's sockets
-([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+(`packages/web-ui/src/transport/liveness.ts`).
 WebRTC's own consent checks end a peer whose other end is gone within about
 30 seconds; the page sets the choice to `relay` as soon as the peer's
 connection state is `failed` or `closed`.

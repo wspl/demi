@@ -99,14 +99,13 @@ pub trait PermissionShard {
     fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String>;
 
     /// When the message of a run a URL started came, while every turn of
-    /// the conversation works for it, until the user next writes to it
-    /// (`automations.md` § What a run sends): each credential read since
-    /// asks. None while the user's own message is the latest.
+    /// the conversation works for it, until the user next writes to it: each
+    /// credential read since asks. None while the user's own message is the
+    /// latest.
     fn url_message_since<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, Option<Timestamp>>;
 
     /// The conversation asks the user what `ask` says, by the request
-    /// `request`, which the user's browsers are notified of (`turns.md`
-    /// § Notifications).
+    /// `request`, which the user's browsers are notified of.
     fn asked(&self, conversation: &ConversationId, request: PermissionRequestId, ask: PushAsk);
 
     /// A call's request is stored and its pages told, before the call
@@ -214,8 +213,7 @@ impl Drop for Wait {
 }
 
 /// Why a page's read or decision failed. A credential's refusals are in
-/// words for the user, who reads them as they are (`web-api-conversations.md`
-/// § Credentials).
+/// words for the user, who reads them as they are.
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionError {
     #[error("The conversation is archived")]

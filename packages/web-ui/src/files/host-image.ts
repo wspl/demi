@@ -15,8 +15,7 @@ export type HostImage =
  * What shows of the Host image at `path`, from the description of its file
  * the page keeps (`entry`): its bytes at the version the description names,
  * so a new version is a new address the web browser loads, never one it
- * answers from the picture it already decoded for the same address
- * (`file-previews.md` § Files named in messages).
+ * answers from the picture it already decoded for the same address.
  */
 export function hostImage(
   entry: ShownEntry<FileDescription> | null | undefined,

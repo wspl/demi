@@ -23,7 +23,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 /**
  * A small window over the page, as Quick Look's and Preview's are on a Mac:
  * it blocks nothing, so the page beside and beneath it stays usable, with no
- * scrim and no focus held inside it (`file-previews.md` § The media viewer).
+ * scrim and no focus held inside it.
  *
  * Move and resize: dragging the title bar moves it, and dragging any edge or
  * corner resizes it, with the matching cursor; it stays at least 320 × 240,

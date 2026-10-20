@@ -2,10 +2,12 @@ import type { JSONContent } from '@tiptap/core'
 import { Lexer, type Token } from 'marked'
 import { markdownReader } from './reader'
 
-// A user message's Markdown and the editor document that shows it, both ways
-// (`composer.md` § Writing a message). The message is lines: every line break
-// is kept as typed, a fenced code block is the only block, and each line reads
-// only the inline constructs the dialect below keeps.
+// A user message's Markdown and the editor document that shows it, both ways.
+// The message is lines: every line break is kept as typed, a fenced code block
+// is the only block, and each line reads only the inline constructs the dialect
+// below keeps. The page reads and writes this Markdown itself rather than
+// through tiptap's Markdown extension, which backslash-escapes every `_` and
+// writes `<` as `&lt;` in what the model would read.
 
 /**
  * Where a file's capsule sits in a message's Markdown; the files follow in the

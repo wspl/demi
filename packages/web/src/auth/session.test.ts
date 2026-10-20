@@ -188,8 +188,7 @@ describe('cookie session', () => {
   })
 
   // A first check the backend fails with its own answer shows that failure
-  // with Retry, never the sign-in page (`web-application.md` § Page
-  // synchronization); only a 401 signs the page out.
+  // with Retry, never the sign-in page; only a 401 signs the page out.
   test('a first check the backend fails shows the failure, and its Retry signs in', async () => {
     const session = useSession()
     respond({ requestId: 'req_test000000000001', code: 'internal_error', message: 'The session store could not be read' }, 500)

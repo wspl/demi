@@ -1,5 +1,5 @@
-//! Query parameters (`web-api.md` § Query parameters). Queries are read by
-//! the backend alone and are not part of the generated TypeScript.
+//! Query parameters. Queries are read by the backend alone and are not part of
+//! the generated TypeScript.
 
 use serde::{Deserialize, Deserializer, de};
 

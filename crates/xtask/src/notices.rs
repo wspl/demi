@@ -26,8 +26,7 @@ use serde::Deserialize;
 use crate::native::Executable;
 
 /// The notices in a built web app. The name has an extension: the backend
-/// answers a path without one with the page (`web-api.md` § Serving the web
-/// app build).
+/// answers a path without one with the page.
 pub const WEB_NOTICES: &str = "third-party-notices.txt";
 
 /// What Vite's `build.license` writes into a built web app: the bundled

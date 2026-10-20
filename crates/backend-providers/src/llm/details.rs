@@ -1,6 +1,5 @@
-//! What the product shows of an entry's provider (`web-api-settings.md` § Model
-//! configuration and provider inspection): its health, its accounts with the
-//! quota kept for each, and its capabilities, read when the backend answers
+//! What the product shows of an entry's provider: its health, its accounts with
+//! the quota kept for each, and its capabilities, read when the backend answers
 //! and never stored. A user who only infers with an entry learns whether it
 //! works, not whose account it is or how much of it is used
 //! (`crates/backend-providers/src/vault/entries.rs`).

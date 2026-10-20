@@ -1,9 +1,8 @@
 import { expect, test } from 'bun:test'
 import { previewBox, previewPlacement } from '../picture-preview'
 
-// The size of a picture in its hover card and where the card goes
-// (`file-previews.md` § A picture's preview on hover, The card and Where),
-// on numbers alone: a few milliseconds.
+// The size of a picture in its hover card and where the card goes, on numbers
+// alone: a few milliseconds.
 
 const page = { width: 1440, height: 900 }
 

@@ -57,9 +57,8 @@ const props = defineProps<{
   /** The entries after Search, before Automations and Archived, each opening its settings section. */
   sectionEntries?: readonly SidebarEntry[]
   /**
-   * The Automations entry above Archived, which ends the list (`automations.md` § Where the user
-   * sees them): its count, the runs that notified and whose conversation
-   * was not opened since, and whether its page is the one open; none
+   * The Automations entry above Archived, which ends the list: its count, the runs that notified
+   * and whose conversation was not opened since, and whether its page is the one open; none
    * without the entry.
    */
   automations?: { count: number; open: boolean }

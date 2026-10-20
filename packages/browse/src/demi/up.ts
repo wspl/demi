@@ -47,8 +47,7 @@ export interface UpOptions {
   /**
    * Serves the web app as `vite build` makes it, through `vite preview`,
    * instead of the development server: for a check of what only a build
-   * has, such as the service worker's page for opening offline
-   * (`web-application.md` § Installing and opening offline). The build is
+   * has, such as the service worker's page for opening offline. The build is
    * made as the web app starts; a web app already up is kept as it is.
    */
   built?: boolean

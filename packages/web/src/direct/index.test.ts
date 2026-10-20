@@ -90,9 +90,8 @@ test('showing a conversation on a paired device opens its signaling at once, and
 })
 
 // Run On shows the path this browser found to a device last time, fainter,
-// until the page finds a current one (`hosts.md` § Where a conversation
-// runs). An earlier page found the desk by LAN; this one reaches it by the
-// relay, since its signaling never opens here.
+// until the page finds a current one. An earlier page found the desk by LAN;
+// this one reaches it by the relay, since its signaling never opens here.
 test('a device not reached yet shows the path found last time, and the path the page finds replaces it', async () => {
   saved.set(`demi.devicePath.${DESK}`, 'localNetwork')
   expect(runOn(DESK)).toMatchObject({ path: null, lastPath: 'localNetwork' })

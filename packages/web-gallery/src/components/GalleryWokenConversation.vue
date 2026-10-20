@@ -12,9 +12,8 @@ import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
- * A conversation automations wake (`automations.md` § Where the user sees
- * them): the chip above its composer, listing them, and their runs'
- * messages in its transcript, each marked with its automation.
+ * A conversation automations wake: the chip above its composer, listing them,
+ * and their runs' messages in its transcript, each marked with its automation.
  */
 const props = defineProps<{
   id: string

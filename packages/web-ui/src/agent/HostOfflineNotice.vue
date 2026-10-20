@@ -13,15 +13,14 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
  * The conversation's primary Host is a paired device whose runner is not
- * connected (`turns.md` § Recovering an unfinished turn): offered above
- * the composer with how to start the runner again, and Move to Another
- * Host…, which lists Run On's online Hosts once the conversation's work
- * is idle; choosing one is the host's to carry out, as the header's host
- * menu's choice is. Gone once the device is online. The row owns the
- * button's inset from its edges. On a phone the sentence is never cut for
+ * connected: offered above the composer with how to start the runner again, and
+ * Move to Another Host…, which lists Run On's online Hosts once the
+ * conversation's work is idle; choosing one is the host's to carry out, as the
+ * header's host menu's choice is. Gone once the device is online. The row owns
+ * the button's inset from its edges. On a phone the sentence is never cut for
  * the button: it wraps, and the button moves under it, at its leading edge,
- * when the two do not fit on one line, as iOS's inline notices keep their
- * text whole.
+ * when the two do not fit on one line, as iOS's inline notices keep their text
+ * whole.
  */
 defineProps<{
   /** The device's name. */

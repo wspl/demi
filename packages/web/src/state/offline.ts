@@ -15,14 +15,12 @@ import { IndexedDatabase } from './indexed-db'
 import { t } from './locales/text'
 
 /**
- * The account's cache for opening offline (`web-application.md`
- * § Installing and opening offline): the page's copy of the product state
+ * The account's cache for opening offline: the page's copy of the product state
  * with the account the session names, and, for each conversation the user
- * opened on this device, the latest window of its root agent as the page
- * held it, with its agents. It is read only while the backend cannot be
- * reached, and it is disposable: written by one build and read by that
- * build alone, a record of another build is dropped, never migrated, and
- * it is the account's alone.
+ * opened on this device, the latest window of its root agent as the page held
+ * it, with its agents. It is read only while the backend cannot be reached, and
+ * it is disposable: written by one build and read by that build alone, a record
+ * of another build is dropped, never migrated, and it is the account's alone.
  */
 
 /** The build the records belong to; Vite's development server names none. */

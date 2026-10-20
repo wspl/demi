@@ -10,8 +10,7 @@ export type MediaSource = ContentMediaSource | DocumentSource | ToolMediaSource
 
 /**
  * Where the page loads a blob of the user's own, seen as `mediaType`: the
- * product's blob route, or a gallery's fixture (`web-application.md`
- * § Persistence and adapters).
+ * product's blob route, or a gallery's fixture.
  */
 export type BlobUrl = (ref: string, mediaType: string) => string
 

@@ -11,7 +11,7 @@ import { t as shared } from '../locales/text'
 export interface AnswerActionsSource {
   fork?: () => Promise<void>
   forkState?: MessageForkState
-  /** No Fork at all, as on a share's page, which acts on no conversation (`sharing.md` § Safety). */
+  /** No Fork at all, as on a share's page, which acts on no conversation. */
   hideFork?: boolean
   share?: AnswerShare
   /** Share waits until the message completes, as Fork does. */
@@ -37,9 +37,9 @@ export interface AnswerAction {
 
 /**
  * An answer's actions, the one owner of which there are, in which order and
- * when each is disabled (`web-application.md` § Context menus): Copy, Fork,
- * Share, Regenerate, each where it is offered. The footer draws them as
- * buttons, and the answer's menu as rows. `copy` copies the answer.
+ * when each is disabled: Copy, Fork, Share, Regenerate, each where it is
+ * offered. The footer draws them as buttons, and the answer's menu as rows.
+ * `copy` copies the answer.
  */
 export function answerActions(source: AnswerActionsSource, copy: () => unknown): AnswerAction[] {
   const actions: AnswerAction[] = [

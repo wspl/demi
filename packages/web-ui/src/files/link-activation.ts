@@ -1,9 +1,9 @@
 /**
- * What a symbolic link is now, read when it is expanded or opened
- * (`file-previews.md` § Symbolic links): a row says of its target what its
- * folder's listing said, which the folder's watch does not change when the
- * target alone does, so a link that is used has its folder listed again,
- * which reads each link's target, and the caller acts on what that found.
+ * What a symbolic link is now, read when it is expanded or opened: a row says
+ * of its target what its folder's listing said, which the folder's watch does
+ * not change when the target alone does, so a link that is used has its folder
+ * listed again, which reads each link's target, and the caller acts on what
+ * that found.
  */
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'

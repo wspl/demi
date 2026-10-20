@@ -1,8 +1,7 @@
-//! A conversation's history as its database holds it (`web-api-conversations.md`
-//! § Conversation history): one page of an agent's transcript at a time,
-//! in light form, a block whole, the conversation's subagents, where
-//! the call that started a command lies, and what the conversation cost. Every route reads the database
-//! alone: it wakes no Host and needs no live session.
+//! A conversation's history as its database holds it: one page of an agent's transcript at a time, in
+//! light form, a block whole, the conversation's subagents, where the call that started a command lies,
+//! and what the conversation cost. Every route reads the database alone: it wakes no Host and needs no
+//! live session.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -25,8 +24,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
 
-/// `GET /conversations/:id/transcript`: one page of an agent's transcript
-/// (`web-api-conversations.md` § Pages).
+/// `GET /conversations/:id/transcript`: one page of an agent's transcript.
 pub(super) async fn transcript(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -127,7 +125,7 @@ pub(super) fn page_answer(
 }
 
 /// `GET /conversations/:id/transcript/blocks/:blockId`: a block whole, for
-/// a row the page opens (`web-api-conversations.md` § Light form).
+/// a row the page opens.
 pub(super) async fn block(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -210,7 +208,7 @@ pub(super) async fn cost(
 }
 
 /// `GET /conversations/:id/commands/:commandId`: where the call that started
-/// a command lies (`web-api-conversations.md` § Subagents and commands).
+/// a command lies.
 pub(super) async fn command(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

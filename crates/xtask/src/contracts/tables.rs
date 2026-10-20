@@ -26,7 +26,7 @@ pub fn module(header: &str) -> String {
     push_doc(
         &mut source,
         Some(
-            "The file-type table (`file-previews.md` § Choosing a view): the media type\n\
+            "The file-type table: the media type\n\
              the product knows a file by, from its extension, and whether the page shows\n\
              it in place. The backend serves files by the same table.",
         ),
@@ -44,8 +44,7 @@ pub fn module(header: &str) -> String {
     push_doc(
         &mut source,
         Some(
-            "The content policy an image served in place carries (`file-previews.md`\n\
-             § Keeping file content inert).",
+            "The content policy an image served in place carries.",
         ),
         0,
     );
@@ -95,7 +94,7 @@ pub fn module(header: &str) -> String {
     push_doc(
         &mut source,
         Some(
-            "The largest message a page sends on any of its WebSockets (`web-api.md` § Request bodies).",
+            "The largest message a page sends on any of its WebSockets.",
         ),
         0,
     );
@@ -109,7 +108,7 @@ pub fn module(header: &str) -> String {
     for (name, description, value) in [
         (
             "TEXT_FILE_BYTES",
-            "The most bytes of a file the text route reads; a larger text file shows its first this many (`file-previews.md` § Getting the bytes).",
+            "The most bytes of a file the text route reads; a larger text file shows its first this many.",
             count(demi_command_protocol::EDIT_FILE_BYTES),
         ),
         (

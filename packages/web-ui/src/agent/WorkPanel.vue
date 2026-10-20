@@ -21,12 +21,12 @@ import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedT
 import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
 
 /**
- * The work panel's frame (`web-application.md` § Work panel): the pinned
- * tab of each pinned kind, the strip of the user's tabs, and what the
- * selected one shows. Every tab is of a kind a plugin registers; the panel
- * shows it through its kind and knows nothing else about it. A content once
- * shown stays on the page, hidden and told it is not shown, until its tab
- * closes or the panel binds other kinds, as for another conversation.
+ * The work panel's frame: the pinned tab of each pinned kind, the strip of the
+ * user's tabs, and what the selected one shows. Every tab is of a kind a plugin
+ * registers; the panel shows it through its kind and knows nothing else about
+ * it. A content once shown stays on the page, hidden and told it is not shown,
+ * until its tab closes or the panel binds other kinds, as for another
+ * conversation.
  *
  * On a phone it takes the whole screen (SidebarLayout) under one bar of its
  * own: a back button, its chevron alone and named Back to Conversation,

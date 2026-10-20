@@ -258,13 +258,12 @@ fn access_refusal(error: HostAccessError) -> PortFailure {
     })
 }
 
-/// A package call that did not answer (`web-api-sync.md` § Plugin calls): the
-/// host access's refusal when the Host cannot be reached or takes no
-/// operations, as its routes answer it; a service that did not start, which
-/// the plugin names in its own words; a call whose connection to the Host
-/// broke partway, 409 `host_operation_failed`; and otherwise the call's own
-/// failure, such as an answer over its bound, which a page call answers as
-/// the plugin's failure.
+/// A package call that did not answer: the host access's refusal when the Host
+/// cannot be reached or takes no operations, as its routes answer it; a service
+/// that did not start, which the plugin names in its own words; a call whose
+/// connection to the Host broke partway, 409 `host_operation_failed`; and
+/// otherwise the call's own failure, such as an answer over its bound, which a
+/// page call answers as the plugin's failure.
 fn call_failure(error: UserCallError) -> PortFailure {
     match error {
         UserCallError::Access(error) => access_refusal(error),

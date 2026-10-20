@@ -2,8 +2,8 @@ import { expect, spyOn, test } from 'bun:test'
 import type { PushMessage } from '../api/generated/web-api'
 import { notificationOf, productPage, pushedNotification, type NotificationWords } from './notifications'
 
-// How the service worker shows a push (`turns.md` § Notifications), worded
-// from the words the page left it. Pure functions; under a millisecond.
+// How the service worker shows a push, worded from the words the page left it.
+// Pure functions; under a millisecond.
 
 const ID = '00000000-0000-4000-8000-000000000001'
 

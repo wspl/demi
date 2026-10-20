@@ -445,7 +445,7 @@ changes its cache ([The cache](#the-cache)); an executable is listed as the
 others are. The backend keeps each device's last list with the device's
 record, so it outlives the connection: a stopped Cloud keeps showing what
 its cache held, since the cache lies on its home image. The product state
-carries each device's list ([Page synchronization](../product/web-api-sync.md#page-synchronization)).
+carries each device's list (`crates/backend-http/src/sync.rs`).
 A plugin reads it for its own package's artifacts; the runner and the
 backend know no artifact's meaning.
 
@@ -640,7 +640,7 @@ backend, the runner, and every native service link:
 | --- | --- |
 | `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it (`crates/runner-jobs/src/tasks.rs`). |
 | `caller` | Who started the work: `agent`, with the agent's `number` as the model knows it ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), or `user`, for a [user stream](#user-streams). |
-| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the web app last reported for the conversation's user ([User preferences](../product/web-api-settings.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
+| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the web app last reported for the conversation's user (`crates/web-api-protocol/src/settings.rs`), or `UTC` and `en-US` until it reports them. |
 | `colorScheme` | `light` or `dark`, the scheme the web app last reported for the user, `light` until it reports one; the conversation browser starts with it (`crates/command-package-browser-chrome/src/driver/launch.rs`). |
 
 The backend is the context's only source, and nothing reads it from

@@ -139,8 +139,8 @@ pub trait AgentTreeStore {
     /// (`crates/agent-server/src/server/tree.rs`). A side question is no subagent.
     fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<StoredSubagent>, StoreError>>;
 
-    /// Every side question of the tree (`comments-and-ask.md` § Side
-    /// questions), live and closed, in the order they were asked.
+    /// Every side question of the tree, live and closed, in the order they were
+    /// asked.
     fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>>;
 
     /// The node's record and its first checkpoint in one commit, so that a
@@ -366,19 +366,16 @@ pub struct NodeRecord {
     /// What a side question's node asks about; none for every agent. Its
     /// parent is the root, it works in the conversation's directory as the
     /// root does, and its can-spawn is the root's, so that its commands and
-    /// its system prompt are the root's (`comments-and-ask.md` § Side
-    /// questions).
+    /// its system prompt are the root's.
     pub side: Option<SideOf>,
 }
 
-/// What a side question asks about (`comments-and-ask.md` § Side
-/// questions): the root's text block its history ends at, the character
-/// offsets of the asked words in the block's text as the page renders it,
-/// the words, as a comment keeps them, the user's question, and when it was
-/// asked, the start of its first round. A side question about a picture
-/// has the picture, and its place among the block's pictures as `start`
-/// and `end`, as a comment on a picture does (`comments-and-ask.md`
-/// § Images).
+/// What a side question asks about: the root's text block its history ends at,
+/// the character offsets of the asked words in the block's text as the page
+/// renders it, the words, as a comment keeps them, the user's question, and
+/// when it was asked, the start of its first round. A side question about a
+/// picture has the picture, and its place among the block's pictures as `start`
+/// and `end`, as a comment on a picture does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SideOf {
     pub block: BlockId,

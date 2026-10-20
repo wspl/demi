@@ -29,13 +29,12 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
 }
 
 /**
- * The user's credentials as Settings › Credentials changes them
- * (`web-api-conversations.md` § Credentials): a saved or deleted credential shows its
- * answer, and the synchronization channel's `credentials` part brings the
- * same to every other page, each visible field with its value and never a
- * secret one's. A secret value comes only from the reveal, which the page
- * shows and does not keep, and which the backend answers only for a browser
- * the user confirmed in the last five minutes.
+ * The user's credentials as Settings › Credentials changes them: a saved or deleted
+ * credential shows its answer, and the synchronization channel's `credentials` part
+ * brings the same to every other page, each visible field with its value and never a
+ * secret one's. A secret value comes only from the reveal, which the page shows and
+ * does not keep, and which the backend answers only for a browser the user confirmed
+ * in the last five minutes.
  */
 export const useCredentialSettings = defineStore('credential-settings', () => {
   const product = useProduct()

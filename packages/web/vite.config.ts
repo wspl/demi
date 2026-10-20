@@ -6,10 +6,12 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
 /**
- * Names each build of the web app (`web-application.md` § A page of
- * another build): the page carries the id as `import.meta.env.DEMI_WEB_BUILD`,
- * and `build.json` beside it tells the backend that serves it. Vite's
- * development server serves sources, which name no build.
+ * Names each build of the web app: the page carries the id as
+ * `import.meta.env.DEMI_WEB_BUILD`, and `build.json` beside it tells the
+ * backend that serves it. Vite's development server serves sources, which name
+ * no build. Each build gets a new random id, so a rebuild of the same sources is
+ * another build: comparing ids needs no version scheme, and a needless reload
+ * costs a moment.
  */
 function webBuild(): Plugin {
   const build = randomUUID()
@@ -18,7 +20,7 @@ function webBuild(): Plugin {
     apply: 'build',
     config: () => ({ define: { 'import.meta.env.DEMI_WEB_BUILD': JSON.stringify(build) } }),
     // The app's page names its build too, so the service worker keeps it
-    // under that build (`web-application.md` § Installing and opening offline).
+    // under that build.
     transformIndexHtml: (html, context) =>
       context.filename.endsWith('/index.html')
         ? html.replace('</head>', `  <meta name="demi-build" content="${build}" />\n  </head>`)
@@ -46,9 +48,8 @@ function workspaceVersion(): string {
 
 /**
  * The page's one service worker (`direct-channel.md` § Bytes the browser
- * fetches itself, `web-application.md` § Installing and opening offline),
- * served from the root so that its scope is the whole origin: the
- * development server transforms it on request, and the build emits it
+ * fetches itself), served from the root so that its scope is the whole origin:
+ * the development server transforms it on request, and the build emits it
  * beside the page under its fixed name.
  */
 function serviceWorker(): Plugin {
@@ -124,10 +125,9 @@ function directHotUpdates(): Plugin {
 }
 
 /**
- * The shared page's own entry (`sharing.md` § Safety): the build emits
- * `share.html` beside `index.html`, which the backend serves at
- * `/s/:token`; the development server answers that address with it the
- * same way.
+ * The shared page's own entry: the build emits `share.html` beside
+ * `index.html`, which the backend serves at `/s/:token`; the development server
+ * answers that address with it the same way.
  */
 function sharedPage(): Plugin {
   return {
@@ -183,7 +183,7 @@ export default defineConfig({
         target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
         ws: true,
       },
-      // An automation's URL, which other systems call (`automations.md` § Triggers).
+      // An automation's URL, which other systems call.
       '/hooks': {
         target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
       },

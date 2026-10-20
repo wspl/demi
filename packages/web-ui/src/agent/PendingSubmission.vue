@@ -10,14 +10,13 @@ import type { PendingSubmissionState } from './types'
  * its attachments among the media. Its delivery is part of the wait for the
  * answer, which the tail row tells, and a lost connection the Connecting row
  * or the connection banner; the bubble itself never says either, so it does
- * not change height when the message arrives (`turns.md` § Following the
- * agent's work). A failed delivery is told by the row under it
- * (`DeliveryFailureRow`), which takes the Requesting row's place, and the
- * message's own hover actions offer Edit and Delete; the dock's Retry sends
- * it again. A steer or a queued message shows as the one it will be from
- * the send, with its line and its controls (`turns.md` § Steer or queue),
- * which the host keeps as the user's wish until the session holds it; one
- * that was not delivered is a message to try again, without them.
+ * not change height when the message arrives. A failed delivery is told by the
+ * row under it (`DeliveryFailureRow`), which takes the Requesting row's place,
+ * and the message's own hover actions offer Edit and Delete; the dock's Retry
+ * sends it again. A steer or a queued message shows as the one it will be from
+ * the send, with its line and its controls, which the host keeps as the user's
+ * wish until the session holds it; one that was not delivered is a message to
+ * try again, without them.
  */
 const props = defineProps<PendingSubmissionState & {
   /** What it will be when it waits for the agent, which its line says (`waitingAs`). */

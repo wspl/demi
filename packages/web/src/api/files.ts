@@ -19,9 +19,8 @@ import type { Device } from '../state/types'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
 /**
- * A raw file answer's headers as a file description (`web-api-hosts.md` § File
- * text and working tree changes): its size, its modification time when the
- * route knows it, and the version a preview pins.
+ * A raw file answer's headers as a file description: its size, its modification
+ * time when the route knows it, and the version a preview pins.
  */
 const fileHeadersSchema = z.object({
   size: z.string().regex(/^\d+$/).transform(Number),
@@ -39,8 +38,7 @@ const fileHeadersSchema = z.object({
 })
 
 /**
- * `X-Demi-Read-At: <epoch>.<number>`, the Host's number before it read
- * (`web-api-hosts.md` § File text and working tree changes).
+ * `X-Demi-Read-At: <epoch>.<number>`, the Host's number before it read.
  */
 const readAtSchema = z.string().regex(/^.+\.\d+$/).transform((value): ReadAt => {
   const dot = value.lastIndexOf('.')
@@ -136,9 +134,9 @@ function browserError(error: unknown): never {
 }
 
 /**
- * The bytes behind a raw file route (`web-api-hosts.md` § File text and working
- * tree changes): `endpoint` serves `?path=`, with `version` and `download`,
- * and answers `HEAD` with a file's size, modification time and version.
+ * The bytes behind a raw file route: `endpoint` serves `?path=`, with `version`
+ * and `download`, and answers `HEAD` with a file's size, modification time and
+ * version.
  */
 export function rawFileContents(endpoint: string, fixed: Record<string, string> = {}): ContentReads {
   return {
@@ -196,9 +194,8 @@ export interface FileRoutes {
 }
 
 /**
- * A conversation's Host file routes (`web-api-hosts.md` § File text and working
- * tree changes): its directory listing, file text and raw bytes, uploads
- * and deletes.
+ * A conversation's Host file routes: its directory listing, file text and raw
+ * bytes, uploads and deletes.
  */
 export function conversationFileRoutes(conversationId: string): Required<FileRoutes> {
   const base = `/conversations/${encodeURIComponent(conversationId)}/fs`
@@ -221,8 +218,7 @@ export function hostFiles(deviceId: string): HostFiles {
 /**
  * A listing's entry as the file browser lists it, over the relay or the
  * direct channel alike: a symbolic link is what its target is, a folder
- * when it leads to a directory, and keeps where it points
- * (`file-previews.md` § Symbolic links).
+ * when it leads to a directory, and keeps where it points.
  */
 export function fileBrowserEntry(entry: DirectoryEntry): FileBrowserEntry {
   const { link } = entry

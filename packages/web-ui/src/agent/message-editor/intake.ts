@@ -9,13 +9,12 @@ import { transferCopiedMessage, type CopiedMessage } from '../message-input/copi
 import { capsuleOf, type MessageCapsule } from './capsules'
 import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slices'
 
-// What a composer takes in (`composer.md` § Attachments): whatever is pasted
-// or dropped, from Finder, a web page, another app or Demi's own transcript,
-// becomes text in the user dialect or a capsule as it enters. Files and
-// images whose bytes the page can read become capsules, as a pasted
-// screenshot does; an image it cannot read becomes its link; rich text keeps
-// the dialect's formats, which the schema's parse rules are, and every other
-// element becomes its text.
+// What a composer takes in: whatever is pasted or dropped, from Finder, a web
+// page, another app or Demi's own transcript, becomes text in the user dialect
+// or a capsule as it enters. Files and images whose bytes the page can read
+// become capsules, as a pasted screenshot does; an image it cannot read becomes
+// its link; rich text keeps the dialect's formats, which the schema's parse
+// rules are, and every other element becomes its text.
 
 /**
  * The attribute an image of the dialect, `![alt](target)`, carries in the

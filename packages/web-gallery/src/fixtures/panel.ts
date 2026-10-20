@@ -1,7 +1,7 @@
 /**
  * A conversation's work panel as the backend keeps it, and the browser
- * plugin's part in its tabs, in memory (`web-api-conversations.md` § Work panel state): the gallery's panels change
- * the way the product's do, a beat late, over the gallery's own browser.
+ * plugin's part in its tabs, in memory: the gallery's panels change the way the product's do, a beat late, over the
+ * gallery's own browser.
  */
 import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData, type TabFailure } from '@demicodes/plugin-browser/live/tabs'
 import { SERVER_FAILED } from './plugins'

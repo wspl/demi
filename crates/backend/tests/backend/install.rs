@@ -1,8 +1,8 @@
-//! The public installation routes (`web-api.md` § Resource index): the
-//! installer of the backend's current runner release, and each release's
-//! executables. An installer run here installs this build's runner for its
-//! backend and starts it, and the runner then waits to be paired; the test
-//! stops every runner it installed ([`DetachedRunners`]).
+//! The public installation routes: the installer of the backend's current
+//! runner release, and each release's executables. An installer run here
+//! installs this build's runner for its backend and starts it, and the runner
+//! then waits to be paired; the test stops every runner it installed
+//! ([`DetachedRunners`]).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};

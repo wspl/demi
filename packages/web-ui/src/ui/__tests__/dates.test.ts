@@ -110,10 +110,9 @@ test.each([
 })
 
 // Each language says a date and a time as Intl says them in it, and the
-// compact forms Intl has no words for from its catalogue
-// (`localization.md` § Where the text lives). Intl's own wording is compared
-// without a space between a number and a CJK word: the ICU of macOS writes
-// "5分鐘前" and the ICU of Linux "5 分鐘前", the same wording.
+// compact forms Intl has no words for from its catalogue. Intl's own wording is
+// compared without a space between a number and a CJK word: the ICU of macOS
+// writes "5分鐘前" and the ICU of Linux "5 分鐘前", the same wording.
 const intl = (text: string) => text.replace(/(\d) (?=[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af])/g, '$1')
 test.each<{ language: Language; age: string; day: string; past: string; reset: string; span: string }>([
   { language: 'en', age: '2h', day: 'October 7, 2026', past: '5 minutes ago', reset: 'Resets in 3h 42m', span: '2m 14s' },

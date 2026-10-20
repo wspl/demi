@@ -2,10 +2,10 @@ import type { ModelSettings } from './model-selection'
 import type { WorkflowChoice, WorkflowList } from './workflow-menu'
 
 /**
- * What a new conversation starts with (`web-api-settings.md` § User preferences): the
- * model settings and the workflow last chosen in its project, or outside
- * projects for a conversation outside one. A project keeps them on its
- * workspace, the conversations outside a project in the preferences.
+ * What a new conversation starts with: the model settings and the workflow last
+ * chosen in its project, or outside projects for a conversation outside one. A
+ * project keeps them on its workspace, the conversations outside a project in the
+ * preferences.
  */
 export interface RememberedChoices {
   lastModel?: ModelSettings

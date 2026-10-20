@@ -9,12 +9,11 @@ export interface TextArrival {
 /**
  * A block as the page holds it: whole, as the stream and a whole read send
  * it, or `light`, as a page of the transcript sends it, without what only
- * its open row shows (`web-api-conversations.md` § Light form). A text or thinking block
- * the stream brings keeps when each piece of its text arrived, `arrivals`,
- * so a row that shows it fades each piece from then, even a row that mounts
- * later; a block read whole has none, and a replaced block loses them. A
- * block whose place on the path holds other versions keeps where it stands
- * among them, `versions` (`message-editing.md` § Versions).
+ * its open row shows. A text or thinking block the stream brings keeps when each piece
+ * of its text arrived, `arrivals`, so a row that shows it fades each piece from then,
+ * even a row that mounts later; a block read whole has none, and a replaced block loses
+ * them. A block whose place on the path holds other versions keeps where it stands among
+ * them, `versions` (`message-editing.md` § Versions).
  */
 export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[]; versions?: Versions }
 
@@ -50,10 +49,9 @@ export interface TranscriptWindow<B extends Held = HeldBlock> {
 }
 
 /**
- * The parts of one agent's transcript the page holds
- * (`web-application.md` § Transcript windows): windows in order, none
- * meeting another, as windows that meet are joined; and how many blocks
- * the transcript holds, so a window knows whether it reaches the end.
+ * The parts of one agent's transcript the page holds: windows in order, none
+ * meeting another, as windows that meet are joined; and how many blocks the
+ * transcript holds, so a window knows whether it reaches the end.
  */
 export interface HeldTranscript<B extends Held = HeldBlock> {
   length: number
@@ -164,7 +162,7 @@ function joined<B extends Held>(
  * reset starts): its blocks replace every held block from `start` on.
  * A reset that starts elsewhere than at `asked`, the index the page named,
  * means the transcript was rewritten under the page: the page then keeps
- * only the reset (`web-application.md` § Rewrites).
+ * only the reset.
  */
 export function resetTranscript(
   held: HeldTranscript,
@@ -177,10 +175,9 @@ export function resetTranscript(
 }
 
 /**
- * The transcript with a page of it the page read (`web-api-conversations.md` § Pages),
- * its blocks light. A block the page already holds stays as it is. A page
- * tells the transcript's length as the database holds it, which the page
- * takes only while no stream told it one.
+ * The transcript with a page of it the page read, its blocks light. A block the page
+ * already holds stays as it is. A page tells the transcript's length as the database
+ * holds it, which the page takes only while no stream told it one.
  */
 export function addPage(
   held: HeldTranscript,

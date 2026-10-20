@@ -3,8 +3,7 @@
 //! page, `@demicodes/plugin-file-browser`, shows the work panel's File view
 //! over the product's file routes (`plugin-pages.md` § Registration), and an
 //! attachment's stored copy in a tab of the `attachment` kind, which the
-//! page opens for an attachment block's card (`file-previews.md`
-//! § Attachment blocks).
+//! page opens for an attachment block's card.
 
 use std::rc::Rc;
 

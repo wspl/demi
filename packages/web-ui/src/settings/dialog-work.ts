@@ -9,11 +9,10 @@ export interface WorkDialog {
 
 /**
  * Carries out a dialog's work on one thing, such as saving credential
- * *GitHub* (`web-application.md` § Responding to the user): its answer goes
- * only to the dialog it was started from. `shown` finds that dialog, or null
- * once it was closed or another opened in its place. Done, the work closes
- * it; refused, it says why there (`refusal`), or, the dialog gone, a toast
- * titled `title` does, so no refusal goes unsaid.
+ * *GitHub*: its answer goes only to the dialog it was started from. `shown`
+ * finds that dialog, or null once it was closed or another opened in its place.
+ * Done, the work closes it; refused, it says why there (`refusal`), or, the
+ * dialog gone, a toast titled `title` does, so no refusal goes unsaid.
  */
 export async function answerInDialog(
   shown: () => WorkDialog | null,

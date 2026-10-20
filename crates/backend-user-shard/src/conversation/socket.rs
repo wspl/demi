@@ -181,8 +181,7 @@ impl Shard {
                         Outgoing::Frame(frame) => {
                             // The frames the outbox holds at once, as a
                             // turn's end, go in one message, which the page
-                            // applies as one change (`turns.md`
-                            // § Following the agent's work).
+                            // applies as one change.
                             let mut batch = vec![frame];
                             let mut after = None;
                             while let Some(next) = frames.try_recv() {
@@ -404,7 +403,7 @@ impl Shard {
             Err(error) => {
                 tracing::error!(%conversation, error = &error as &dyn std::error::Error, "a frame was not prepared");
                 // A send's failure inside the backend is told as one, with
-                // the request ID beside it (`turns.md` § Requesting).
+                // the request ID beside it.
                 let code = match command {
                     ClientFrameKind::Send | ClientFrameKind::SendSaved => ErrorCode::SendFailed,
                     _ => ErrorCode::FrameDeliveryFailed,
@@ -415,12 +414,11 @@ impl Shard {
         handled
     }
 
-    /// What the backend does before the agent sees `frame` (`web-api.md`
-    /// § Sidebar mutations, read state and page synchronization): the
-    /// conversation must not be archived, except to close it; an `open` needs
-    /// the model the conversation's record holds, of a provider of the user's
-    /// scope; a `send` is activity in the conversation; a `resume` carries
-    /// the reason the model reads.
+    /// What the backend does before the agent sees `frame`: the conversation
+    /// must not be archived, except to close it; an `open` needs the model the
+    /// conversation's record holds, of a provider of the user's scope; a `send`
+    /// is activity in the conversation; a `resume` carries the reason the model
+    /// reads.
     async fn prepare_frame(
         &self,
         conversation: &ConversationId,
@@ -470,7 +468,7 @@ impl Shard {
                     .touch_conversation(record.id.clone())
                     .await?;
                 // The user's message lets a run's conversation into the
-                // sidebar (`automations.md` § Runs).
+                // sidebar.
                 self.answered_by_user(&record.id).await;
                 self.mark(Part::Conversation(record.id));
             }
@@ -503,10 +501,9 @@ impl Shard {
     }
 
     /// Sends `frames` as one message: a frame alone as itself, several as
-    /// a JSON array of them in order, which the page applies as one change
-    /// (`turns.md` § Following the agent's work). Every `error` and
-    /// `rejected` frame carries the request ID of the socket's upgrade, and every refused
-    /// send of `conversation` is logged.
+    /// a JSON array of them in order, which the page applies as one change. Every `error`
+    /// and `rejected` frame carries the request ID of the socket's upgrade, and every
+    /// refused send of `conversation` is logged.
     async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, mut frames: Vec<ServerFrame>) -> bool {
         // An open's handshake starts with `opened`; its size and how long it
         // takes to write are logged, as what a page waits for to open.
@@ -541,7 +538,7 @@ impl Shard {
             } = &frame
             {
                 // The backend decides a send failed, and says so here, under
-                // the socket's request ID (`turns.md` § Requesting).
+                // the socket's request ID.
                 tracing::warn!(
                     %conversation,
                     command = ?command,
@@ -666,7 +663,7 @@ enum Prepared {
 fn refused_frame(frame: ClientFrame, command: ClientFrameKind, code: ErrorCode, message: String) -> ServerFrame {
     if matches!(command, ClientFrameKind::Send | ClientFrameKind::SendSaved) {
         // A send is refused as itself, so the page marks its message not
-        // delivered with the cause (`turns.md` § Requesting).
+        // delivered with the cause.
         return ServerFrame::Rejected {
             command,
             refusal: Refusal::new(code, message),
@@ -836,7 +833,10 @@ fn to_text(frame: &ServerFrame) -> String {
 /// conversation's next attachment number, and a remote file becomes its
 /// reference once its device may be read. The uploads are numbered first, in
 /// the order of the content, so a frame whose upload cannot be read grants
-/// no remote file.
+/// no remote file. A send writes nothing to the Host: most files are only for
+/// the model to read, which it does from the blob, so a Host that is slow to
+/// reach, offline or a stopped Cloud never holds a message; a command that
+/// needs the file fetches it with `demi attachment download`.
 struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,

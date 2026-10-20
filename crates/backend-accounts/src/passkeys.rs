@@ -1,9 +1,9 @@
-//! Passkeys (`backend.md` § Authentication and ownership, `web-api-settings.md`
-//! § Account API): signing in with one, without an email first, and adding
-//! one to an account, each in two requests around the browser's own step.
-//! `webauthn-rs` makes every challenge and does every check; this module
-//! keeps the challenges in the control store between the two requests,
-//! finds the account a passkey names, and names a new passkey.
+//! Passkeys (`backend.md` § Authentication and ownership): signing in with one,
+//! without an email first, and adding one to an account, each in two requests
+//! around the browser's own step. `webauthn-rs` makes every challenge and does
+//! every check; this module keeps the challenges in the control store between
+//! the two requests, finds the account a passkey names, and names a new
+//! passkey.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;

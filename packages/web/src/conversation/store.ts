@@ -158,8 +158,7 @@ export const useConversations = defineStore('conversations', () => {
   const deleted = reactive(new Set<string>())
   /**
    * The conversations with a change the page shows in progress until the
-   * backend answers, as a move to another Host (`web-application.md`
-   * § Responding to the user, What it does not).
+   * backend answers, as a move to another Host.
    */
   const pendingChanges = ref<string[]>([])
   /**
@@ -178,17 +177,15 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * What the sidebar lists: every conversation not archived; a new
    * conversation whose draft holds nothing yet only while it is the open
-   * one, so it shows the moment it opens and goes when it is left empty
-   * (`conversations.md` § Conversations and projects).
+   * one, so it shows the moment it opens and goes when it is left empty.
    */
-  // A run's conversation filed under its automation stays out of the sidebar (`automations.md` § Runs).
+  // A run's conversation filed under its automation stays out of the sidebar.
   const listed = computed(() => items.value.filter((item) =>
     !item.archived && !item.filed && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
   /**
    * The writes on their way, by the conversation they change, or by
    * `conversation_order` for a move: each conversation's go one at a time in
-   * order, and a write of several waits for each of them
-   * (`web-application.md` § Responding to the user).
+   * order, and a write of several waits for each of them.
    */
   const writes = new SerialQueue()
   // Reactive: words sent to a conversation wait for its draft to be restored (`appendToDraft`).
@@ -208,12 +205,12 @@ export const useConversations = defineStore('conversations', () => {
   })
   let lifetime = new AbortController()
   const cache = new ConversationCache()
-  /** The history a conversation's page reads beyond its opening (`web-application.md` § Transcript windows). */
+  /** The history a conversation's page reads beyond its opening. */
   const history = createConversationHistoryReads(
     () => lifetime.signal,
     (conversation) => cache.get(conversation.id)?.runtime != null,
   )
-  /** The copies of the conversations opened here, for opening offline (`web-application.md` § Installing and opening offline). */
+  /** The copies of the conversations opened here, for opening offline. */
   const copies = createConversationCopies(() => items.value, () => session.user?.id ?? null)
   /**
    * Counts the times New gave the user the draft already shown, whose
@@ -229,21 +226,19 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * The deliveries of the messages sent, by conversation: each
    * conversation's go one at a time, in the order they were sent, so a
-   * message never overtakes the one before it (`turns.md` § Steer or
-   * queue).
+   * message never overtakes the one before it.
    */
   let deliveries = new SerialQueue()
   /**
    * Recall or Send Now pressed on a steer or a queued message still on
    * its way, by its message id: the user's latest wish, carried out once the
-   * session holds the message (`web-application.md` § Responding to the
-   * user).
+   * session holds the message.
    */
   const wishes = new Map<string, 'recall' | 'sendNow'>()
   /**
    * The messages on their way that a comment's Send Now made, each holding
    * that comment alone: one not delivered leaves no failed message, its
-   * comment going back to the waiting ones (`comments-and-ask.md` § Comments).
+   * comment going back to the waiting ones.
    */
   const commentSends = new Set<string>()
   /** The draft storage failures this page reported, each once. */
@@ -261,9 +256,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reports, once a page, that the draft storage failed to save or restore,
-   * or that a record it holds did not read and was set aside
-   * (`web-application.md` § Persistence and adapters). The toast says it in
-   * words; what failed goes to the console.
+   * or that a record it holds did not read and was set aside. The toast says it
+   * in words; what failed goes to the console.
    */
   function storageError(error: unknown, what: 'save' | 'restore'): void {
     const kind = error instanceof UnreadableDraftError ? 'unreadable' : what
@@ -302,7 +296,7 @@ export const useConversations = defineStore('conversations', () => {
       return 'active'
     }
     // A turn the process died under is a failure, like a provider's; only the
-    // user's own Stop is an abort (`turns.md` § Recovering an unfinished turn).
+    // user's own Stop is an abort.
     if (status === 'error' || status === 'interrupted') {
       return 'error'
     }
@@ -358,9 +352,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * A conversation shows the model settings its record holds, whichever page
-   * or device changed them last (`web-api-conversations.md` § Sidebar mutations and read
-   * state). A record without a model leaves the page's own settings, which a
-   * send writes to it.
+   * or device changed them last. A record without a model leaves the page's own
+   * settings, which a send writes to it.
    */
   function followRecordModel(
     conversation: Conversation,
@@ -440,13 +433,12 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Keeps everything the conversation shows as its archive flag changes
-   * (`conversations.md` § Conversations and projects): archived, it lets its
-   * socket go, which the backend would close; brought back, it connects
-   * again from the blocks it holds once the restore lands, or, opened while
-   * archived, starts its session then. Nothing is read again; a change of
-   * its draft held back while it was archived is saved once the restore
-   * lands.
+   * Keeps everything the conversation shows as its archive flag changes:
+   * archived, it lets its socket go, which the backend would close; brought
+   * back, it connects again from the blocks it holds once the restore lands,
+   * or, opened while archived, starts its session then. Nothing is read again;
+   * a change of its draft held back while it was archived is saved once the
+   * restore lands.
    */
   function followArchive(conversation: Conversation): void {
     if (!conversation.archived) {
@@ -771,7 +763,7 @@ export const useConversations = defineStore('conversations', () => {
         conversation.persistence = draft.local.phase
         conversation.load = 'ready'
         // Drafts lead the list, newest first, whether the channel's state
-        // is here yet or not (`conversations.md` § Conversations and projects).
+        // is here yet or not.
         const index = items.value.findIndex((item) =>
           item.persistence === 'synced' || item.createdAt < conversation.createdAt)
         items.value.splice(index < 0 ? items.value.length : index, 0, conversation)
@@ -850,8 +842,8 @@ export const useConversations = defineStore('conversations', () => {
       signal.throwIfAborted()
       if (draft) {
         // A message whose answer the page did not hear is still on its way,
-        // as a message: the backend may hold it already (`turns.md`
-        // § Following the agent's work). One refused stays not delivered.
+        // as a message: the backend may hold it already. One refused stays not
+        // delivered.
         conversation.pendingSends = draft.pendingSends.map((pending) => ({ ...pending, way: 'send' }))
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         // A draft holds model settings only for a conversation without a
@@ -918,8 +910,8 @@ export const useConversations = defineStore('conversations', () => {
     changedDraft(conversation.id, persisted(conversation))
     // A file of a message not delivered whose upload did not finish failed
     // with it: its capsule says so, as before the page closed, and only the
-    // dock's Retry uploads it again (`composer.md` § Writing a message). One
-    // with nothing to upload from is gone, which it says already.
+    // dock's Retry uploads it again. One with nothing to upload from is gone,
+    // which it says already.
     const undelivered = new Set(conversation.pendingSends.flatMap((pending) => pending.error === null ? [] : pending.fileIds))
     for (const file of conversation.files) {
       if (undelivered.has(file.id) && isComposerFile(file) && !file.upload && (file.file || file.claim)) {
@@ -929,8 +921,8 @@ export const useConversations = defineStore('conversations', () => {
     for (const file of conversation.files) {
       if (isComposerFile(file) && !file.upload && !undelivered.has(file.id)) {
         // A pasted file whose attaching the page did not see end attaches
-        // again, and falls back as a paste does (`composer.md` § Writing a message).
-        // Any other failure its capsule shows, with Retry.
+        // again, and falls back as a paste does. Any other failure its capsule
+        // shows, with Retry.
         const claimed = !!file.claim
         void uploadInComposer(file).then((uploaded) => {
           if (!uploaded && claimed && !file.file) {
@@ -1031,9 +1023,8 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Changes the comments waiting in the conversation's draft
-   * (`comments-and-ask.md` § Waiting comments), which the draft saves at
-   * once, a change made in one step rather than typed.
+   * Changes the comments waiting in the conversation's draft, which the draft
+   * saves at once, a change made in one step rather than typed.
    */
   function setComments(conversation: Conversation, comments: MessageComment[]): void {
     if (conversation.archived) {
@@ -1101,9 +1092,8 @@ export const useConversations = defineStore('conversations', () => {
     const conversation = items.value.find((item) => item.id === id)
     if (!conversation) {
       // The first load opens the conversation its address names by its id,
-      // before the channel's first state names it (`web-application.md`
-      // § Requests for one action), but not a new conversation's, which has
-      // no record before its first send.
+      // before the channel's first state names it, but not a new
+      // conversation's, which has no record before its first send.
       if (id && !options.newConversation && !product.snapshot && !earlyReads.has(id)) {
         earlyReads.set(id, openingReads(id, lifetime.signal))
       }
@@ -1144,8 +1134,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * The reads an opening needs that name only the conversation: the latest
    * page of its transcript, its subagents, its attached hosts, its draft
-   * and its cost, sent together (`web-application.md` § Requests for one
-   * action).
+   * and its cost, sent together.
    */
   interface OpeningReads {
     transcript: Promise<TranscriptPage>
@@ -1339,8 +1328,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Shows the conversation loading, as an opening begins: nothing of an
    * earlier attempt shows meanwhile, neither its transcript and agents nor
-   * its session or its failure (`web-application.md` § Opening a
-   * conversation shows in two steps).
+   * its session or its failure.
    */
   function startLoading(conversation: Conversation): void {
     conversation.load = 'loading'
@@ -1375,12 +1363,11 @@ export const useConversations = defineStore('conversations', () => {
    * Reads what the page shows of a conversation it opens, all at once: its
    * transcript, its agents, its hosts, its draft and its cost, and shows
    * the first step of its opening, the transcript, once it, the draft and
-   * the cost are read, so its context card never shows without its cost
-   * (`web-application.md` § Opening a conversation shows in two steps):
-   * `runnable`, its session opens next, which the second step shows;
-   * otherwise it stops there. The agents and the hosts join when they
-   * arrive; it answers once the transcript is held, with the hosts' read,
-   * which neither the transcript nor the session's opening waits for.
+   * the cost are read, so its context card never shows without its cost:
+   * `runnable`, its session opens next, which the second step shows; otherwise
+   * it stops there. The agents and the hosts join when they arrive; it answers
+   * once the transcript is held, with the hosts' read, which neither the
+   * transcript nor the session's opening waits for.
    */
   async function readOpening(
     conversation: Conversation,
@@ -1632,8 +1619,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads the hosts of an open conversation again, after a summary raised
-   * their revision (`web-api-conversations.md` § Sidebar mutations and read state); an
-   * answer that a later read overtook is dropped.
+   * their revision; an answer that a later read overtook is dropped.
    */
   async function readHosts(conversation: Conversation): Promise<void> {
     const revision = conversation.attachedHosts.requested()
@@ -1672,8 +1658,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     const runtime = cache.get(conversation.id)?.runtime
     if (!runtime) {
-      // A model list that failed is why no model could be picked
-      // (`web-application.md` § Model discovery).
+      // A model list that failed is why no model could be picked.
       const failure = product.catalogFailure
       throw conversation.lastError
         ? new Error(conversation.lastError.message)
@@ -1773,12 +1758,10 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Changes the conversations' `changes`: a draft's at once, and those with
    * a record by a write, after the earlier writes of each of them. With
-   * `shown`, the change shows at once and the write lands it
-   * (`web-application.md` § Responding to the user); without, it shows once
-   * answered, as a move to another Host does. A refused item is reported
-   * with why, in a toast that says it could not `action` it, and only its
-   * own change leaves. Answers whether every one changed, and
-   * the ones that did.
+   * `shown`, the change shows at once and the write lands it; without, it shows
+   * once answered, as a move to another Host does. A refused item is reported
+   * with why, in a toast that says it could not `action` it, and only its own
+   * change leaves. Answers whether every one changed, and the ones that did.
    */
   async function applyBatch(
     ids: string[],
@@ -1898,10 +1881,9 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Archives the conversations, which leave the list at once, and says so in
-   * a toast whose Undo restores them (`conversations.md` § Conversations and
-   * projects). Once the backend answered, the toast counts, and its Undo
-   * restores, only those it archived; the refusal's own toast says why of
-   * the others. Answers whether every one was archived.
+   * a toast whose Undo restores them. Once the backend answered, the toast
+   * counts, and its Undo restores, only those it archived; the refusal's own
+   * toast says why of the others. Answers whether every one was archived.
    */
   async function archive(ids: string[]): Promise<boolean> {
     const shown = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
@@ -1921,12 +1903,11 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Deletes the conversations for good, once the user confirmed it
-   * (`conversations.md` § Conversations and projects): they leave the list at
-   * once; one the backend has no record of leaves this page, and each other
-   * one leaves the backend and every page. What this browser keeps of their
-   * drafts goes too. A refusal brings the conversation back with a toast.
-   * Answers whether every one was deleted.
+   * Deletes the conversations for good, once the user confirmed it: they leave
+   * the list at once; one the backend has no record of leaves this page, and
+   * each other one leaves the backend and every page. What this browser keeps
+   * of their drafts goes too. A refusal brings the conversation back with a
+   * toast. Answers whether every one was deleted.
    */
   async function remove(ids: string[]): Promise<boolean> {
     const userId = session.user?.id ?? product.snapshot?.user.id
@@ -1999,8 +1980,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Opens a new conversation in the project `projectId`, or outside
-   * projects, with the choices last made there (`web-api-settings.md` § User
-   * preferences); an empty one already open there takes them again.
+   * projects, with the choices last made there; an empty one already open there
+   * takes them again.
    */
   function create(projectId: string | null = null): string {
     const starting = startingChoices(
@@ -2071,9 +2052,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Creates the conversation's record with one request that carries its
-   * target and its settings (`web-api-conversations.md` § Conversation creation and Fork):
-   * for a part its model no longer offers, the model's first effort and the
-   * vendor's default tier. The page shows what the answer says; a record
+   * target and its settings: for a part its model no longer offers, the model's first
+   * effort and the vendor's default tier. The page shows what the answer says; a record
    * this request made is opened without reading it back.
    */
   async function persistConversation(
@@ -2252,9 +2232,8 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Opens the conversation's tree again with the plugins the user has on
-   * (`web-api-sync.md` § A user's plugins); its socket is closed and reconnects,
-   * and the summary stops offering the reload.
+   * Opens the conversation's tree again with the plugins the user has on; its
+   * socket is closed and reconnects, and the summary stops offering the reload.
    */
   async function reloadPlugins(conversation: Conversation): Promise<void> {
     try {
@@ -2273,7 +2252,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Detaches a device the conversation's agents attached; a draft has none.
    * It ends the device's access, so the host menu shows it in progress until
-   * the backend answers (`web-application.md` § Responding to the user).
+   * the backend answers.
    */
   async function detachHost(
     conversation: Conversation,
@@ -2304,11 +2283,10 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Makes one change of the conversation's model settings, which names only
-   * the parts the user changed (`web-api-conversations.md` § Sidebar mutations and read
-   * state): a conversation with a record changes its record and shows the
-   * answer, and every other page shows it from the summary its channel
-   * brings; a conversation without one keeps the change in its draft. The
-   * result is the user's last choice for new conversations.
+   * the parts the user changed: a conversation with a record changes its record and
+   * shows the answer, and every other page shows it from the summary its channel
+   * brings; a conversation without one keeps the change in its draft. The result is the
+   * user's last choice for new conversations.
    */
   async function changeModel(
     conversation: Conversation,
@@ -2357,9 +2335,9 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The user makes `workflow` the conversation's Workflow menu choice
-   * (`conversations.md` § A conversation's workflow), which its project's next
-   * conversation starts with; settles once it is written or refused.
+   * The user makes `workflow` the conversation's Workflow menu choice, which
+   * its project's next conversation starts with; settles once it is written or
+   * refused.
    */
   async function changeWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
@@ -2371,8 +2349,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * A new conversation that started with a workflow its directory no longer
-   * has goes on with No Subagents once the directory's workflows are read
-   * (`web-api-settings.md` § User preferences); nothing is remembered.
+   * has goes on with No Subagents once the directory's workflows are read;
+   * nothing is remembered.
    */
   function settleStartingWorkflow(id: string, list: WorkflowList): void {
     const conversation = items.value.find((item) => item.id === id)
@@ -2430,10 +2408,9 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Saves an explicit choice made in `conversation` where it belongs
-   * (`web-api-settings.md` § User preferences): on its project's workspace, which its
-   * project's next conversation starts with, or in the preferences for one
-   * outside projects.
+   * Saves an explicit choice made in `conversation` where it belongs: on its
+   * project's workspace, which its project's next conversation starts with, or in the
+   * preferences for one outside projects.
    */
   function remember(conversation: Conversation, choice: RememberedChoices): void {
     if (conversation.projectId === null) {
@@ -2444,11 +2421,10 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Sends the draft the way the composer chose (`turns.md` § Steer or
-   * queue): as the next message, as a steer of the running turn, or into the
-   * queue, which is a message sent while a turn runs. The message shows as
-   * what it will be from the send, and goes after the messages still on
-   * their way, never ahead of them.
+   * Sends the draft the way the composer chose: as the next message, as a steer
+   * of the running turn, or into the queue, which is a message sent while a
+   * turn runs. The message shows as what it will be from the send, and goes
+   * after the messages still on their way, never ahead of them.
    */
   async function send(conversation: Conversation, way: SendWay = 'send'): Promise<void> {
     if (
@@ -2477,10 +2453,10 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Send Now on a new comment (`comments-and-ask.md` § Comments): a message
-   * holding this comment alone goes at once, as the composer's Return would
-   * send one, steering or waiting in the queue while the agent works; the
-   * comments waiting in the draft and its text and files stay as they are.
+   * Send Now on a new comment: a message holding this comment alone goes at
+   * once, as the composer's Return would send one, steering or waiting in the
+   * queue while the agent works; the comments waiting in the draft and its text
+   * and files stay as they are.
    */
   async function sendComment(conversation: Conversation, comment: MessageComment): Promise<void> {
     // Refused, it waits with the others rather than being lost.
@@ -2499,10 +2475,10 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Save for Later (`conversations.md` § Saved for later): the composer's message,
-   * its files included, stands at the top of the list and leaves the
-   * composer at once, under the id the page gives it, once its files are
-   * uploaded; the backend keeps it and empties the draft with it.
+   * Save for Later: the composer's message, its files included, stands at the top
+   * of the list and leaves the composer at once, under the id the page gives it,
+   * once its files are uploaded; the backend keeps it and empties the draft with
+   * it.
    */
   async function saveForLater(conversation: Conversation): Promise<void> {
     if (
@@ -2648,13 +2624,12 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The dock's Retry (`turns.md` § Following the agent's work): each message
-   * whose delivery failed goes again with its id, in the order they were
-   * sent, as a new message at the end, after the messages on their way: the
-   * first is answered next, or queued while a turn runs or a message on its
-   * way starts one, and the rest are queued after it. A steer the session
-   * already holds is not sent again. One a resend cannot deliver stays where
-   * it is, for its Edit.
+   * The dock's Retry: each message whose delivery failed goes again with its
+   * id, in the order they were sent, as a new message at the end, after the
+   * messages on their way: the first is answered next, or queued while a turn
+   * runs or a message on its way starts one, and the rest are queued after it.
+   * A steer the session already holds is not sent again. One a resend cannot
+   * deliver stays where it is, for its Edit.
    */
   async function retrySends(conversation: Conversation): Promise<void> {
     if (conversation.archived) {
@@ -2703,8 +2678,8 @@ export const useConversations = defineStore('conversations', () => {
    * upload of its files, trying again one that failed, makes the
    * conversation's record when it has none, then gives the message to the
    * session with its id, which takes it once, as a message or as a steer. A
-   * message never goes without a file of it (`composer.md` § Writing a
-   * message): one that cannot be uploaded leaves it undelivered.
+   * message never goes without a file of it: one that cannot be uploaded leaves
+   * it undelivered.
    */
   async function deliver(
     conversation: Conversation,
@@ -2719,9 +2694,8 @@ export const useConversations = defineStore('conversations', () => {
     saveDrafts()
     // A backend out of reach fails nothing: the record's request waits in the
     // HTTP client, and the message waits in the runtime for the conversation
-    // to open, and goes with its id once the backend answers again
-    // (`web-application.md` § A page of another build). Only a refusal is a
-    // failed delivery.
+    // to open, and goes with its id once the backend answers again. Only a
+    // refusal is a failed delivery.
     const current = () => conversation.pendingSends.some((each) => each.id === pending.id)
     try {
       if (pending.saved) {
@@ -2830,8 +2804,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * How a message pasted into the conversation's composer brings its files
    * back: a stored file at once, attaching beside its capsule without its
-   * bytes, and a device file by its device and path (`composer.md` § Writing
-   * a message).
+   * bytes, and a device file by its device and path.
    */
   function pasteHost(conversation: Conversation): PasteHost {
     return {
@@ -2869,8 +2842,8 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Whether sending the message again could deliver it: a file of it gone,
    * or files that do not match the places its text holds for them, fail
-   * every time, and only Edit mends the message (`turns.md` § Following the agent's work).
-   * A message from the list goes again from there.
+   * every time, and only Edit mends the message. A message from the list goes again from
+   * there.
    */
   function resendable(conversation: Conversation, pending: PendingSend): boolean {
     if (pending.saved) {
@@ -3041,8 +3014,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Recall on a steer or a queued message, or on a message on its way
-   * that will be one (`turns.md` § Steer or queue): its row goes at once,
-   * and the rest follows once the session holds the message.
+   * that will be one: its row goes at once, and the rest follows once the
+   * session holds the message.
    */
   function recall(conversation: Conversation, id: string): void {
     if (conversation.removing.includes(id)) {
@@ -3059,8 +3032,7 @@ export const useConversations = defineStore('conversations', () => {
    * the user at once (`takeBack`), and its removal follows. A removal that
    * fails takes back what `takeBack` did. One the agent beat, as when it read
    * the steer meanwhile, is no failure: the message shows where the agent
-   * took it, with no toast (`turns.md` § Steer or queue); any other failure
-   * brings the row back with a toast.
+   * took it, with no toast; any other failure brings the row back with a toast.
    */
   function carryOutRecall(conversation: Conversation, id: string): void {
     const steer = conversation.pendingSteers.find((each) => each.id === id)
@@ -3088,13 +3060,11 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Gives a message Recall took back to the user (`turns.md` § Steer or
-   * queue): into the composer when it is empty, its files coming back as a
-   * paste brings them, without their bytes, and its comments waiting again
-   * (`comments-and-ask.md` § Sending them); otherwise, comments waiting
-   * there included, the draft stays as it is, and a toast's Undo sends the
-   * message again the way it was sent, its comments with it, once its
-   * removal is done.
+   * Gives a message Recall took back to the user: into the composer when it is
+   * empty, its files coming back as a paste brings them, without their bytes,
+   * and its comments waiting again; otherwise, comments waiting there included,
+   * the draft stays as it is, and a toast's Undo sends the message again the
+   * way it was sent, its comments with it, once its removal is done.
    */
   function takeBack(
     conversation: Conversation,
@@ -3145,13 +3115,12 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Send to Conversation's end (`web-application.md` § Context menus): the
-   * words go to the end of the conversation's draft as pasting them there
-   * would add them, and nothing is sent. A conversation just opened takes
-   * them once its draft is the one to change: restored from this web
-   * browser and, for one the backend has, read from it, so they never land
-   * on a draft that the read then replaces; one that fails to open, or a
-   * sign-out, drops them.
+   * Send to Conversation's end: the words go to the end of the conversation's
+   * draft as pasting them there would add them, and nothing is sent. A
+   * conversation just opened takes them once its draft is the one to change:
+   * restored from this web browser and, for one the backend has, read from it,
+   * so they never land on a draft that the read then replaces; one that fails
+   * to open, or a sign-out, drops them.
    */
   function appendToDraft(conversation: Conversation, words: CopiedMessage): void {
     const known = () =>
@@ -3248,8 +3217,7 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       if (error instanceof ConversationSocketError) {
         // The socket dropped before the session answered: the page cannot
-        // tell whether it got the request, and never sends it again
-        // (`web-application.md` § A request the drop interrupts). The drop
+        // tell whether it got the request, and never sends it again. The drop
         // itself is reported where the socket was replaced.
         report(t('failures.connectionLost'), error, {
           expected: true,
@@ -3335,14 +3303,14 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Moves the conversation to run on `target` (`hosts.md` § Where a
-   * conversation runs); with `notifyAgent`, the backend tells its agent.
+   * Moves the conversation to run on `target`; with `notifyAgent`, the backend
+   * tells its agent.
    */
   function switchTarget(id: string, target: ConversationSummary['target'], notifyAgent = false): Promise<boolean> {
     const conversation = items.value.find((item) => item.id === id)
     // A move into a project on the Host it runs on shows at once, as a
-    // change of the conversation's record; the write follows (`web-application.md`
-    // § Responding to the user). Any other move waits for its Host.
+    // change of the conversation's record; the write follows. Any other move waits
+    // for its Host.
     if (conversation?.persistence === 'synced' && target.kind === 'workspace'
       && executionFor({ target, cwd: '' }).deviceId === executionFor(conversation).deviceId) {
       void applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, true, 'move')

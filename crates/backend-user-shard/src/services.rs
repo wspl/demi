@@ -96,8 +96,7 @@ pub struct Services {
     /// The page error reports each session sent within the last minute, at
     /// most thirty (`backend.md` § Request IDs and the server log).
     pub page_errors: RateWindow<SessionId>,
-    /// The calls the automations' URLs took this minute
-    /// (`automations.md` § Triggers).
+    /// The calls the automations' URLs took this minute.
     pub hook_limits: crate::automations::HookLimits,
     pub runners: RunnerTuning,
     pub conversation_tuning: ConversationTuning,
@@ -128,8 +127,7 @@ pub struct Services {
     /// (`direct-channel.md` § Making the channel).
     pub stun: Vec<StunUrl>,
     /// This run of the backend, chosen when the services start: the
-    /// revisions counted in memory compare only within one run
-    /// (`web-api-sync.md` § Revisions counted in memory).
+    /// revisions counted in memory compare only within one run.
     pub run: String,
     /// When a conversation's Host resources are reclaimed.
     pub lifecycle: LifecycleTuning,
@@ -400,8 +398,8 @@ impl Services {
         let media = MediaCatalog::new(http.clone(), providers.media_catalog_url, providers.media_catalog);
         media.start(&edge);
         // A new catalog describes every user's media models anew: their
-        // pages read them again (`web-api-settings.md` § Models). The task
-        // ends with the catalog, whose last owner drops the sender.
+        // pages read them again. The task ends with the catalog, whose last
+        // owner drops the sender.
         let mut catalogs = media.subscribe();
         let announced = sync.clone();
         edge.spawn(async move {

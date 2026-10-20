@@ -20,8 +20,7 @@ import type { SmallModelChoice } from './types'
 import type { InlineDetailText } from '../ui/inline-detail'
 
 /**
- * How the agent works for the user (`crates/backend-providers/src/llm/small_model.rs`,
- * `turns.md`): the small model that writes conversation titles, Automatic
+ * How the agent works for the user (`crates/backend-providers/src/llm/small_model.rs`): the small model that writes conversation titles, Automatic
  * or one the user picks with the composer's model menu, and whether small
  * requests stay on the conversation's provider; then what Enter does with a
  * message while the agent works, and whether a stopped turn goes on by

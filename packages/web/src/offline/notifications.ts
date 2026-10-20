@@ -5,11 +5,11 @@ import { requestTitleIn } from '@demicodes/web-ui/permissions/title-words'
 import { pushMessageSchema, type PushMessage } from '../api/generated/web-api'
 
 /**
- * A push notification as the page's service worker shows it (`turns.md`
- * § Notifications): the backend sends values, and the worker words them in
- * the page's language from the words the page last left it, since no page
- * may run when a push comes. Shared by the page, which leaves the words,
- * and the worker, which reads them; it imports nothing that needs a page.
+ * A push notification as the page's service worker shows it: the backend sends
+ * values, and the worker words them in the page's language from the words the
+ * page last left it, since no page may run when a push comes. Shared by the
+ * page, which leaves the words, and the worker, which reads them; it imports
+ * nothing that needs a page.
  */
 
 /** Where the page leaves the words for its worker. */

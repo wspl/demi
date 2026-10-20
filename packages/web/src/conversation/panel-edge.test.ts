@@ -2,14 +2,13 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
 // A back swipe from the screen's left edge over the full-screen work panel
-// (`web-application.md` § The phone layout, "Whole-screen panels") belongs
-// to the swipe from its first touch: when a live browser tab fills the panel,
-// the remote page sees no press, no move and no lift of it, and the view's
-// keyboard field takes no focus. The panel is the product's frame
+// belongs to the swipe from its first touch: when a live browser tab fills the
+// panel, the remote page sees no press, no move and no lift of it, and the
+// view's keyboard field takes no focus. The panel is the product's frame
 // (SidebarLayout) holding the browser plugin's live view over a live session
 // whose stream the test plays, on a page of happy-dom 390 px wide; the finger
-// sends what Chrome sends for a touch, a pointer event before each touch
-// event. A few ms, besides the start of the page every happy-dom test pays.
+// sends what Chrome sends for a touch, a pointer event before each touch event.
+// A few ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 390, height: 844 })
 await import('@demicodes/web-ui/__tests__/vue-components')

@@ -152,8 +152,8 @@ input, which the multi-worker control service also relies on
   address-change challenge per user, including code hash, password hash at
   issue, expiry, send time, and failed-attempt count. Confirming the challenge
   updates the email and consumes the challenge in one transaction. Account
-  behavior belongs to [Product](../product/users.md#user-system), its HTTP
-  contract to [Web API](../product/web-api-settings.md#account-api), and sessions and
+  behavior belongs to `crates/backend-accounts/src/lib.rs`, its HTTP
+  contract to `crates/backend-http/src/auth.rs`, and sessions and
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
   overrides, whether a message sent while the agent works steers or queues,
@@ -179,7 +179,7 @@ input, which the multi-worker control service also relies on
 - **Devices and workspaces:** `port_forwards` stores each forward of a user: its name, its Listen On device and port, its Connect To device and address, and whether it is on ([Port forwarding](../execution/port-forwarding.md)). `devices` stores ownership, kind, name, the
   home its runner last reported,
   platform, the operating system (with a Linux distribution's os-release `ID`) and architecture and the runner release its runner last reported, the device's
-  [mark](../product/conversations.md#conversations-and-projects) number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
+  `crates/backend-database/src/selection.rs` number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
   holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)),
   the instance its runner last said hello with, so a restarted backend tells
@@ -197,7 +197,7 @@ input, which the multi-worker control service also relies on
   workspace never deletes its files. Online status comes from live
   connections, not the last-seen time.
 - **Conversation index:** `conversations` stores ownership, title and its
-  [origin](../product/conversations.md#conversation-titles), archive and pin state,
+  `crates/agent-server/src/title.rs`, archive and pin state,
   ordering, read revision, target selection, target context revision, last
   switch, Cloud reset marker, the conversation's model selection as JSON
   (`crates/shared-types/src/catalog.rs`).
@@ -219,13 +219,13 @@ input, which the multi-worker control service also relies on
   start in, and
   whether an agent's `demi host detach` waits for the tree to be idle.
   `conversation_panels` stores each conversation's
-  [work panel tabs](../product/web-api-conversations.md#work-panel-state): the revision,
+  `crates/backend-http/src/panel.rs`: the revision,
   the tabs as one JSON document, and the ids the panel ever had. Each change
   reads the row and writes it in one transaction, so the changes of one
   conversation apply one at a time, and the row is deleted with its
   conversation.
   `conversation_drafts` stores each conversation's
-  [draft](../product/web-api-conversations.md#conversation-drafts): its revision, its text
+  `crates/backend-http/src/drafts.rs`: its revision, its text
   and files as one JSON document with the revision they were written at, and
   the replaced version as another, or null. A save reads the row and writes it
   in one transaction, so two saves never build on the same revision. The row
@@ -233,7 +233,7 @@ input, which the multi-worker control service also relies on
   is deleted with its conversation; the conversation index reads the revision
   into each conversation's summary.
   `saved_messages` stores each conversation's
-  [messages saved for later](../product/web-api-conversations.md#messages-saved-for-later):
+  `crates/backend-http/src/saved.rs`:
   id, conversation, when saved, and the text and files as one JSON document,
   as a draft holds them; `conversation_drafts` gains the revision of the
   list, which every save, edit, send and removal raises in the transaction
@@ -327,11 +327,11 @@ project and pin partition. New projects append and new conversations enter at
 the front. Rename, archive/restore, and target changes retain sort positions,
 with ID as the stable tie-breaker. Reorder writes one partition atomically and
 rejects archived rows or cross-partition targets.
-[Web API](../product/web-api-conversations.md#sidebar-mutations-and-read-state)
+`crates/backend-http/src/conversations.rs`
 owns the request contract.
 - **Shares:** `shares` holds each share's token, user, conversation,
   kind, the answer's block, the title it shows and when it was taken; its list and copies are in
-  the conversation's database ([Sharing](../product/sharing.md#storage-and-routes)).
+  the conversation's database (`crates/backend-database/src/shares.rs`).
 - **Turns a shutdown interrupted:** `interrupted_turns` holds one row per
   root whose running turn a graceful shutdown began to interrupt, by its
   conversation. The start that resumes
@@ -352,12 +352,12 @@ Subagents (`crates/agent-store/src/lib.rs`).
 |---|---|
 | `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added (`crates/agent-store/src/lib.rs`), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs, simulators `demi mobile` opens and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
-| `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api-conversations.md#conversation-history)) |
-| `block_attachments` | Each attachment a block's text delivers as an attachment block ([Attachment blocks](../product/file-previews.md#attachment-blocks)), by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
+| `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command (`crates/backend-http/src/history.rs`) |
+| `block_attachments` | Each attachment a block's text delivers as an attachment block (`packages/web-ui/src/markdown/attachment-block.ts`), by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
 | `block_blobs` | Each blob a block names, by node and block index and by blob, written with the block in the same checkpoint, so what names a blob is found without reading a block: a share's check of a blob and the collection of the user's namespace read it |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
 | `attachments` | Each attachment of the conversation, by its number: the file's name, its media type, its size, its blob, and the agent that uploaded it, by its node, a side question's included, null for a file the user sent or uploaded themselves ([Attachment commands](../execution/commands.md#attachment-commands)); a Fork's seed copies the rows, uploader included, and the blobs stay shared. A row from before the uploader was kept, that is an agent's upload and not a file a user message holds, takes the first agent whose text delivers it as a block, or the root when none does, so a reply that showed it still does; a file a user message holds stays the user's, from whichever release the conversation comes |
-| `share_entries`, `share_blocks`, `share_blobs`, `share_attachments` | Each share's list, by share and position: a message or text it shows, the root's transcript row it reads or a copy, or a count of steps not shared; the copies of texts still being written when it was made, and in `share_blobs` the blobs they name; a blob is the share's when a block on its list names it in `block_blobs` or in its copies; and each attachment its text names that existed then, by number ([Sharing](../product/sharing.md#storage-and-routes)) |
+| `share_entries`, `share_blocks`, `share_blobs`, `share_attachments` | Each share's list, by share and position: a message or text it shows, the root's transcript row it reads or a copy, or a count of steps not shared; the copies of texts still being written when it was made, and in `share_blobs` the blobs they name; a blob is the share's when a block on its list names it in `block_blobs` or in its copies; and each attachment its text names that existed then, by number (`crates/backend-database/src/shares.rs`) |
 
 For example, saving a streamed assistant block updates that block's row and
 the node checkpoint together. It does not serialize the whole transcript into
@@ -610,7 +610,7 @@ one starts another after it.
 ### Account deletion
 
 There is no account deletion
-([Account API](../product/web-api-settings.md#account-api)). When it comes, it must
+(`crates/backend-http/src/auth.rs`). When it comes, it must
 remove, besides the account's records and conversation databases, the objects
 nothing else removes: the account's blob namespace, `blobs/<userId>/`. Its
 Cloud's disks belong to the machine manager
@@ -619,7 +619,7 @@ Cloud's disks belong to the machine manager
 ## Search index
 
 Each user has a search index, `search/<userId>.sqlite`, that
-[Search](../product/web-api-conversations.md#search) reads: an SQLite FTS5 table with one
+`crates/backend-http/src/search.rs` reads: an SQLite FTS5 table with one
 row per searchable text, a conversation's title, or the text of a `user` or
 `steer` block, an agent's text or a command's description, of any agent of
 it, each with its conversation's id, its agent, its block's index, id and

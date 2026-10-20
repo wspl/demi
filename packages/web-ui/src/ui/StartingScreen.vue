@@ -5,10 +5,9 @@ import { t } from './locales/text'
 
 /**
  * What the page shows where the app will be until it knows who is signed
- * in (`web-application.md` § Page synchronization): that it loads, or, while
- * it cannot reach the backend, as when the page is loaded during a restart,
- * that it connects; or the failure the backend answered the check with,
- * with Retry. The caller gives it its height.
+ * in: that it loads, or, while it cannot reach the backend, as when the page is
+ * loaded during a restart, that it connects; or the failure the backend
+ * answered the check with, with Retry. The caller gives it its height.
  */
 withDefaults(
   defineProps<{

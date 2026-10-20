@@ -4,10 +4,10 @@ import { foldedMedia, toolMedia } from '../tool-media'
 import type { WorkStep } from '../work-groups'
 import { createdAt, model } from './agent-harness'
 
-// What a call shows of its result's media (`file-previews.md` § Media a
-// tool returned), read off its result as the transcript stores it: a shell
-// result's status and note stay the call's own, the media show in the order
-// of the result, and a medium that is gone shows a line that says why.
+// What a call shows of its result's media, read off its result as the
+// transcript stores it: a shell result's status and note stay the call's own,
+// the media show in the order of the result, and a medium that is gone shows a
+// line that says why.
 
 const shot: ToolMediaSource = { type: 'ref', ref: 'a'.repeat(64), mediaType: 'image/png' }
 const clip: ToolMediaSource = { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/mp4' }

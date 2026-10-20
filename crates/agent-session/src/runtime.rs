@@ -106,13 +106,13 @@ pub trait SessionRuntime {
     /// its requests carry to the usage ledger
     /// (`crates/backend-database/src/usage.rs`); none for a side question,
     /// which is no agent and counts
-    /// under its conversation alone (`comments-and-ask.md` § Side questions).
+    /// under its conversation alone.
     fn agent(&self) -> Option<u64>;
 
     /// The session the node's requests name to their provider for its
     /// prompt cache and its routing, when it is not the node's own: a side
     /// question's is its conversation's root, whose cache its first request
-    /// reads (`comments-and-ask.md` § Side questions). None by default.
+    /// reads. None by default.
     fn affinity(&self) -> Option<String> {
         None
     }

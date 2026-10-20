@@ -60,10 +60,10 @@ test('a message the transcript holds shows there alone, not again in the tail', 
   expect(tail).toEqual({ turn: [], waiting: [] })
 })
 
-// A message on its way shows as what it will be from the send
-// (`turns.md` § Steer or queue): the next message in the turn's flow, a
-// steer after the steers, or a queued message counted under the queue's
-// divider; once the session holds it, its confirmed row alone shows.
+// A message on its way shows as what it will be from the send: the next message
+// in the turn's flow, a steer after the steers, or a queued message counted
+// under the queue's divider; once the session holds it, its confirmed row alone
+// shows.
 test('a message on its way stands where what it will be stands, and leaves once the session holds it', () => {
   const queued = { id: 'q-1', content: [{ type: 'text' as const, text: 'later' }] }
   const tail = (way: 'send' | 'steer' | 'queue', held: { steers?: typeof steer[]; queue?: typeof queued[] } = {}) => listTailBlocks({

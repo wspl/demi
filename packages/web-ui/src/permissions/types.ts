@@ -84,12 +84,11 @@ export interface CredentialAnswer {
 }
 
 /**
- * The page's words for the category `id` (`localization.md` § Text from the
- * backend): Demi's own categories' from this catalogue, a plugin's from the
- * plugin's, under its id, which the category's id starts with, as
- * `skills.manage` is the `skills` plugin's. A catalogue key holds no dot, so
- * the id's dots are underscores there. Null for a category no catalogue
- * words, which shows the command set's English.
+ * The page's words for the category `id`: Demi's own categories' from this
+ * catalogue, a plugin's from the plugin's, under its id, which the category's
+ * id starts with, as `skills.manage` is the `skills` plugin's. A catalogue key
+ * holds no dot, so the id's dots are underscores there. Null for a category no
+ * catalogue words, which shows the command set's English.
  */
 function categoryText(id: string, field: 'action' | 'description'): string | null {
   const key = categoryKey(id)

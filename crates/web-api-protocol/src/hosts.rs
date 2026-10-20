@@ -1,6 +1,5 @@
-//! A conversation's attached hosts as the web app lists them
-//! (`web-api-hosts.md` § Workspaces, devices, and attached hosts); the user
-//! detaches one, and the conversation's agents attach them.
+//! A conversation's attached hosts as the web app lists them; the user detaches
+//! one, and the conversation's agents attach them.
 
 use demi_shared_types::{Nullable, Timestamp};
 use schemars::JsonSchema;

@@ -5,12 +5,11 @@
 export const REVEAL_MARGIN_PX = 16
 
 /**
- * How far below the top of the view a block brought into view starts
- * (`conversations.md` § Finding a conversation): a block that fits the view stands
- * in its middle; one taller than the view starts near its top, so the reader
- * reads it from its first line, as a browser brings a long section's heading
- * into view. Every reveal places its block by this rule: a search result, a
- * notice's call, a receipt's block, a link to a line.
+ * How far below the top of the view a block brought into view starts: a block that
+ * fits the view stands in its middle; one taller than the view starts near its
+ * top, so the reader reads it from its first line, as a browser brings a long
+ * section's heading into view. Every reveal places its block by this rule: a
+ * search result, a notice's call, a receipt's block, a link to a line.
  */
 export function revealOffset(blockHeight: number, viewHeight: number): number {
   return Math.max(REVEAL_MARGIN_PX, (viewHeight - blockHeight) / 2)

@@ -40,14 +40,12 @@ function shown(side: SideRecord & { record: SideQuestion }): ShownSideQuestion {
 }
 
 /**
- * The conversations' side questions (`comments-and-ask.md` § Side
- * questions, `web-api-conversations.md` § Side questions): a page reads
- * them for a conversation it shows, and again whenever the summary's
- * `sideQuestionsRevision` is newer than the revision it holds
- * (`web-api-sync.md` § Revisions counted in memory); an answer older than
- * the one it holds is dropped. Their answers are their transcripts, which
- * the socket keeps live and the history routes read by their nodes. A
- * question, a follow-up and a fold show at once; a refused one goes back.
+ * The conversations' side questions: a page reads them for a conversation it
+ * shows, and again whenever the summary's `sideQuestionsRevision` is newer than
+ * the revision it holds; an answer older than the one it holds is dropped.
+ * Their answers are their transcripts, which the socket keeps live and the
+ * history routes read by their nodes. A question, a follow-up and a fold show
+ * at once; a refused one goes back.
  */
 export const useSideQuestions = defineStore('sideQuestions', () => {
   const product = useProduct()

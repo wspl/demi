@@ -1,10 +1,8 @@
-//! Conversations as the web app lists them (`web-api.md` § Sidebar
-//! mutations, read state and page synchronization): each record with the
-//! directory its work runs in, its status from the live tree or else from its
-//! last checkpoint, its root's latest ended turn from that same checkpoint,
-//! and its output revision. The persisted facts come from a read-only
-//! connection, so listing hundreds of conversations takes no writer from a
-//! running one.
+//! Conversations as the web app lists them: each record with the directory its
+//! work runs in, its status from the live tree or else from its last
+//! checkpoint, its root's latest ended turn from that same checkpoint, and its
+//! output revision. The persisted facts come from a read-only connection, so
+//! listing hundreds of conversations takes no writer from a running one.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::columns::decode;

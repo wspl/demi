@@ -1,6 +1,5 @@
 // `bun run web:dev`: generates the contracts, then runs the product's Vite dev
-// server under Node with the arguments given (web-application.md § Development
-// and checks). The dev server forwards the page's WebSockets to the backend,
+// server under Node with the arguments given. The dev server forwards the page's WebSockets to the backend,
 // which Vite cannot do under Bun: Bun's `node:http` client never reports the
 // backend's 101 as an upgrade (Bun 1.3.11). Every `node` a `bun run` script
 // starts is Bun itself here (bunfig.toml's `[run] bun = true` puts a `node` of
@@ -26,7 +25,7 @@ const node = (process.env['PATH'] ?? '')
   .map((directory) => join(directory, 'node'))
   .find(isNode)
 if (!node) {
-  console.error('web:dev runs Vite under Node, and no Node is on PATH (web-application.md § Development and checks).')
+  console.error('web:dev runs Vite under Node, and no Node is on PATH.')
   process.exit(1)
 }
 

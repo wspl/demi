@@ -1,8 +1,8 @@
-//! Passkeys at the edge (`web-api-settings.md` § Account API, `backend.md`
-//! § Authentication and ownership), against a software authenticator and
-//! WebAuthn client of the kind a password manager is: adding one takes the
-//! password, a sign-in names no email, a synced passkey signs in, a removed
-//! one is named back as unknown, and a challenge lasts five minutes.
+//! Passkeys at the edge (`backend.md` § Authentication and ownership), against
+//! a software authenticator and WebAuthn client of the kind a password manager
+//! is: adding one takes the password, a sign-in names no email, a synced
+//! passkey signs in, a removed one is named back as unknown, and a challenge
+//! lasts five minutes.
 
 use demi_shared_types::Clock as _;
 use demi_web_api_protocol::auth::{Identity, Role};
@@ -409,9 +409,9 @@ async fn a_development_page_on_another_port_adds_a_passkey() {
     assert_eq!(elsewhere.refusal(), (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
 }
 
-/// Verifying a session for a handoff code (`web-api-settings.md` § Account API)
-/// takes a passkey of the session's own account: another account's is
-/// refused without its id, which the page would tell the browser to forget.
+/// Verifying a session for a handoff code takes a passkey of the session's own
+/// account: another account's is refused without its id, which the page would
+/// tell the browser to forget.
 #[tokio::test]
 async fn a_session_verifies_only_with_a_passkey_of_its_own_account() {
     let harness = harness();
@@ -501,12 +501,12 @@ async fn phone_spends_code(backend: &TestBackend, laptop: &Session, held: Option
     }
 }
 
-/// A code's sign-in is the phone's confirmation (`users.md` § User
-/// system): the phone adds a passkey at once, whether the code made its
-/// session or the phone kept the one it had, and a session that has not
-/// signed in for five minutes is asked to confirm first. The passkey then
-/// signs in by itself and, since the account's passkeys are excluded from
-/// the next addition, a phone whose manager holds it is refused a second.
+/// A code's sign-in is the phone's confirmation: the phone adds a passkey at
+/// once, whether the code made its session or the phone kept the one it had,
+/// and a session that has not signed in for five minutes is asked to confirm
+/// first. The passkey then signs in by itself and, since the account's passkeys
+/// are excluded from the next addition, a phone whose manager holds it is
+/// refused a second.
 #[tokio::test]
 async fn a_phone_signed_in_by_a_code_adds_a_passkey_without_the_password() {
     let harness = harness();

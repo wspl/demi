@@ -168,9 +168,9 @@ function mountPage(providers: { value: SettingsProviderEntry[] }, hooks: {
 
 // On a phone a list row hides no Remove at its end, where a tap meant to open
 // it lands; an API key's own page removes it from its bottom, asking first as
-// the desktop's row does, and the page then goes back to the list
-// (`web-application.md` § The phone layout). The desktop keeps the row's
-// Remove and no Remove Provider on the page. Tens of milliseconds.
+// the desktop's row does, and the page then goes back to the list. The desktop
+// keeps the row's Remove and no Remove Provider on the page. Tens of
+// milliseconds.
 test('on a phone an API key is removed from the bottom of its page, asked first, and the page goes back to the list', async () => {
   const providers = shallowRef([proxy, { ...proxy, id: 'other', name: 'Other' }])
   const removed: string[] = []
@@ -614,9 +614,8 @@ test('Option and an arrow key move an entry within its group, and the host is to
 
 // Test Connection sends a chat message, so it tests a text model: an entry
 // with image models alone offers no test and says why, and one with a text
-// model offers it again (`web-api-settings.md` § Providers). Planted
-// defect: the first enabled model of any kind tested, an image model
-// included. Tens of milliseconds.
+// model offers it again. Planted defect: the first enabled model of any kind
+// tested, an image model included. Tens of milliseconds.
 test('an entry with image models alone offers no Test Connection and says it has no text model', async () => {
   const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
   const picture = { ...model('picture'), kind: 'image' as const, name: 'Picture', contextWindow: null }

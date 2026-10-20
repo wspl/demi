@@ -1,6 +1,6 @@
 // The `attachment` kind of the file-browser plugin's page: an attachment of
 // the conversation previewed from its stored copy, as its block's card opens
-// it through the `attachment` intent (`file-previews.md` § Attachment blocks).
+// it through the `attachment` intent.
 import { defineComponent, h, type PropType } from 'vue'
 import { z } from 'zod'
 import { FileIcon, ICON_PX, type IntentPayloads, type PanelKind } from '@demicodes/plugin-sdk'

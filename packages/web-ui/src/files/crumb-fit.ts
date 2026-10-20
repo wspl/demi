@@ -12,8 +12,7 @@ export interface Crumb {
 
 /**
  * A path bar's crumbs: the whole path, from the Host's root down to the path
- * itself, the root and the home wearing their glyphs (`file-previews.md`
- * § The File view's bars).
+ * itself, the root and the home wearing their glyphs.
  */
 export function pathCrumbs(path: string, source: Pick<FileBrowserSource, 'platform' | 'home'>): Crumb[] {
   return pathSegments(path).map((segment) => ({ ...segment, icon: landmarkIcon(segment.path, source) }))

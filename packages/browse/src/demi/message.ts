@@ -42,7 +42,7 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
   const before = known === null ? null : (await summary(slot, page, known))?.lastTurn?.id ?? null
   // The composer's field, by the hook `MessageEditor` gives it, in any language.
   const composer = page.getByRole('textbox').and(page.locator('[data-composer]'))
-  // A file is a capsule in the message's text (`composer.md` § Attachments).
+  // A file is a capsule in the message's text.
   const capsules = composer.locator('.message-capsule')
   const held = await capsules.allInnerTexts()
   if (held.length > 0) {

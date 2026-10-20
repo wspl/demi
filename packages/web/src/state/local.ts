@@ -14,7 +14,7 @@ const localStateSchema = z.object({
   dockWindowShare: z.number().min(0).max(1).optional(),
   /**
    * Whether this browser was offered a passkey and answered, by either
-   * button: it is not offered again here (`users.md` § User system).
+   * button: it is not offered again here.
    */
   passkeyOfferAnswered: z.boolean().optional(),
   /** Whether the work panel is open, keyed by conversation id. */
@@ -24,7 +24,7 @@ const localStateSchema = z.object({
   /**
    * Each tab's count of the times its kind asked that the user see it, as
    * this page's work panel last applied it, by tab id, keyed by conversation
-   * id (`web-application.md` § Work panel).
+   * id.
    */
   workPanelShown: z.record(z.string(), z.record(z.string(), z.number().int().min(1))).optional(),
 })

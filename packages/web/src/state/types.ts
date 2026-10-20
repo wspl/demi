@@ -47,18 +47,18 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   archived: boolean
   /**
    * The automation's run it is filed under, out of the sidebar until the
-   * user answers it or moves it (`automations.md` § Runs); null otherwise.
+   * user answers it or moves it; null otherwise.
    */
   filed: FiledRun | null
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
   pluginsChanged: boolean
   /** The backend says the agent only waits for the conversation's offline device: a move stops nothing. */
   onlyWaitsForHost: boolean
-  /** The conversation's shares, its own and its answers' (`web-api-conversations.md` § Sharing). */
+  /** The conversation's shares, its own and its answers'. */
   shares: ConversationShare[]
   createdAt: string
   cwd: string
-  /** The parts of the root's transcript the page holds (`web-application.md` § Transcript windows). */
+  /** The parts of the root's transcript the page holds. */
   history: ConversationState['history']
   /** The block whose window the transcript shows; null for the latest. */
   shownAt: string | null
@@ -87,16 +87,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   draftShown: number
   /**
    * The comments waiting to be sent with the next message, in the order
-   * they were saved, which belong to the draft as its text does
-   * (`comments-and-ask.md` § Waiting comments).
+   * they were saved, which belong to the draft as its text does.
    */
   comments: MessageComment[]
   /**
-   * The conversation's draft and its messages saved for later, newest first
-   * (`web-api-conversations.md` § Messages saved for later): one slot, which the backend
-   * changes in one transaction, of what the page last read of each, with
-   * their revisions, and the page's own typing, saves, edits, sends and
-   * deletions not landed yet (`record.ts`). The composer shows its draft.
+   * The conversation's draft and its messages saved for later, newest first: one slot,
+   * which the backend changes in one transaction, of what the page last read of each,
+   * with their revisions, and the page's own typing, saves, edits, sends and deletions
+   * not landed yet (`record.ts`). The composer shows its draft.
    */
   record: Raw<RecordSlot>
   /** The messages the backend did not save, newest first, which the list shows as Not Saved; only this page has them. */
@@ -108,14 +106,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /**
    * The messages sent and not yet confirmed, in the order they were sent,
    * each with the way it was sent, which says what it will be while it is
-   * delivered (`turns.md` § Steer or queue); a page that restores them
-   * after it closed holds them as messages whose delivery was interrupted.
+   * delivered; a page that restores them after it closed holds them as messages
+   * whose delivery was interrupted.
    */
   pendingSends: PendingSend[]
   /**
    * The waiting messages whose Recall is on its way, by id: a steer, a
    * queued message, or a message on its way that will be one. The list
-   * shows none of them from the press (`turns.md` § Steer or queue).
+   * shows none of them from the press.
    */
   removing: string[]
   messageEdit: MessageEditState | null
@@ -131,8 +129,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   shownSubagents: string[]
   /**
    * Its side questions as this page last read them, each with the
-   * transcript the page holds of it (`comments-and-ask.md` § Side
-   * questions), in the order they were asked.
+   * transcript the page holds of it, in the order they were asked.
    */
   sides: SideRecord[]
   /** The revision of the side questions' list the page holds; null before the first read. */

@@ -5,9 +5,9 @@ import { effectScope, nextTick, ref } from 'vue'
 // A dialog opened on a phone focuses no text field, so the on-screen keyboard
 // does not cover what just opened; the panel takes the focus, so the keys and
 // a screen reader still start inside it. On the desktop it opens on its first
-// field (`web-application.md` § The phone layout, § Keyboard). The dialog is
-// wired as Dialog.vue wires it (`useDialogFocus`) on a happy-dom page, whose
-// width switch is given here. A few milliseconds, besides the start of the page.
+// field. The dialog is wired as Dialog.vue wires it (`useDialogFocus`) on a
+// happy-dom page, whose width switch is given here. A few milliseconds, besides
+// the start of the page.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 const { useDialogFocus } = await import('../dialogFocus')

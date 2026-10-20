@@ -134,8 +134,8 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
 }
 
 /// A picture by its address goes as an image only to a model that reads
-/// images, as one by its blob does (`comments-and-ask.md` § Images): a model
-/// without image input reads the note naming it, its comment after it.
+/// images, as one by its blob does: a model without image input reads the note
+/// naming it, its comment after it.
 #[test]
 fn a_picture_by_its_address_reaches_only_a_model_that_reads_images() {
     let url = "https://example.com/chart.png";

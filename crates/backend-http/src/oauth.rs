@@ -93,9 +93,8 @@ pub(super) async fn callback(
 }
 
 /// The language of a page the backend renders: the first of the
-/// languages the request's `Accept-Language` prefers that Demi speaks
-/// (`localization.md` § Text from the backend). A language the header
-/// rules out with `q=0` is not one it prefers.
+/// languages the request's `Accept-Language` prefers that Demi speaks. A
+/// language the header rules out with `q=0` is not one it prefers.
 fn page_language(headers: &HeaderMap) -> Language {
     let accepted = headers
         .get_all(ACCEPT_LANGUAGE)
@@ -123,8 +122,8 @@ fn page_language(headers: &HeaderMap) -> Language {
 /// The language Demi speaks for the BCP 47 tag `tag`, if any: Traditional
 /// Chinese for `zh-Hant` and the Chinese of Taiwan, Hong Kong and Macao,
 /// Simplified for any other `zh`, a script the tag names winning over its
-/// region (`localization.md` § Choosing the language). The page resolves
-/// its own language; this reads only a request's `Accept-Language`.
+/// region. The page resolves its own language; this reads only a request's
+/// `Accept-Language`.
 fn spoken_for(tag: &str) -> Option<Language> {
     let mut subtags = tag.split(['-', '_']);
     match subtags.next()?.to_ascii_lowercase().as_str() {

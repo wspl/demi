@@ -5,15 +5,14 @@ import { compile } from '@tailwindcss/node'
 import { chromium, type Browser, type Page } from 'playwright'
 import { vueSingleFileComponents } from '../../__tests__/vue-components'
 
-// The work panel's tab strip keeps every tab's width and reach when crowded
-// (`web-application.md` § Work panel, The strip): the pinned tabs show their
-// kinds' own titles, whatever they show; selecting a tab changes no
-// tab's width, a long title, a selected one or the open file's name, never
-// widens its tab past its share, and with more tabs than fit a list of every
-// tab selects the one picked. Widths are layout, so this runs the product's
-// WorkPanel in a real Chromium with the stylesheet Tailwind builds from it;
-// happy-dom lays nothing out. About 5 s: the page's and the stylesheet's
-// builds and the browser's start, shared, and a page per test.
+// The work panel's tab strip keeps every tab's width and reach when crowded:
+// the pinned tabs show their kinds' own titles, whatever they show; selecting a
+// tab changes no tab's width, a long title, a selected one or the open file's
+// name, never widens its tab past its share, and with more tabs than fit a list
+// of every tab selects the one picked. Widths are layout, so this runs the
+// product's WorkPanel in a real Chromium with the stylesheet Tailwind builds
+// from it; happy-dom lays nothing out. About 5 s: the page's and the
+// stylesheet's builds and the browser's start, shared, and a page per test.
 
 /** One tab of the strip as the page measures it. */
 interface Box {

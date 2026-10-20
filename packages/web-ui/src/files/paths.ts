@@ -30,8 +30,7 @@ export function expandHome(path: string, home: string): string {
 /**
  * The absolute path a person typed into a path field: `~` and `~/…` name
  * the home, an absolute path is itself, and a relative one starts from
- * `root`, or from the filesystem root without one (`file-previews.md` § The
- * File view's bars).
+ * `root`, or from the filesystem root without one.
  */
 export function typedPath(text: string, places: { home: string; root?: string }): string {
   const expanded = expandHome(text, places.home)

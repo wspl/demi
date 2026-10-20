@@ -2,9 +2,9 @@ import { dragCloses, dragVelocity } from './drag-close'
 
 /**
  * A finger dragging a side pane sideways on a phone, the one owner of how
- * such a drag goes (`web-application.md` § The phone layout): the sidebar's
- * drawer swiped closed, drawn in from the screen's left edge, and the work
- * panel swiped back from that edge (SidebarLayout).
+ * such a drag goes: the sidebar's drawer swiped closed, drawn in from the
+ * screen's left edge, and the work panel swiped back from that edge
+ * (SidebarLayout).
  *
  * The finger's first clear move decides what the touch is: one mostly the
  * drag's way takes the pane, which then follows the finger from where it

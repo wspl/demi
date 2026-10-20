@@ -1,9 +1,8 @@
 //! The user's credentials in their shard (`credentials.md`): what Settings ›
-//! Credentials reads and changes (`web-api-conversations.md` § Credentials), the sealing
-//! of their values by the product's one owner of sealing, and the expiry of
-//! the ones kept for a while: one timer for the user's nearest expiry, which
-//! each change of the credentials rearms; a removal past due, such as one
-//! that came while the backend was down, happens as the timer starts.
+//! Credentials reads and changes, the sealing of their values by the product's one owner
+//! of sealing, and the expiry of the ones kept for a while: one timer for the user's
+//! nearest expiry, which each change of the credentials rearms; a removal past due, such
+//! as one that came while the backend was down, happens as the timer starts.
 
 use std::rc::Rc;
 use std::sync::Arc;

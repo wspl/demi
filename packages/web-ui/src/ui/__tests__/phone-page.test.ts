@@ -2,13 +2,13 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 import { installPhonePage } from '../phone-page'
 
-// The phone's page under the on-screen keyboard (`web-application.md` § The
-// phone layout): Safari on iOS keeps the page its full height under the
-// keyboard and scrolls it to show the focused field, so the app follows the
-// visual viewport itself. happy-dom lays nothing out: the page's height, its
-// width's switch and the visual viewport are given here as Safari reports
-// them on an iPhone 17, 714 px tall, 377 px of it visible with the keyboard
-// open. A few ms, besides the start of the page every happy-dom test pays.
+// The phone's page under the on-screen keyboard: Safari on iOS keeps the page
+// its full height under the keyboard and scrolls it to show the focused field,
+// so the app follows the visual viewport itself. happy-dom lays nothing out:
+// the page's height, its width's switch and the visual viewport are given here
+// as Safari reports them on an iPhone 17, 714 px tall, 377 px of it visible
+// with the keyboard open. A few ms, besides the start of the page every
+// happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 
@@ -151,9 +151,8 @@ function finger(target: Element, type: string, x: number, y = 400): TouchEvent {
 }
 
 // Safari on iOS and the installed app go back or forward when a swipe starts
-// at a screen edge (`web-application.md` § The phone layout, "The edges are
-// the app's"): the page prevents such a touch's start, here at 1024 px, the
-// width happy-dom gives the page.
+// at a screen edge: the page prevents such a touch's start, here at 1024 px,
+// the width happy-dom gives the page.
 test('a touch that starts at either screen edge is kept from the browser, one anywhere else and on a desktop is not', () => {
   stop = installPhonePage()
   const page = document.createElement('div')

@@ -9,9 +9,8 @@ import { galleryAttachment } from '../fixtures/attachments'
 import { SHARED_TITLE, sharedAnswerItems, sharedItems } from '../fixtures/shared'
 
 /**
- * A share's page (`sharing.md`), over a share the gallery holds whole: what
- * was said, and each run of the agent's work between as a line that counts
- * its steps.
+ * A share's page, over a share the gallery holds whole: what was said, and each
+ * run of the agent's work between as a line that counts its steps.
  */
 function whole(items: SharedItem[]): HeldTranscript<SharedItem> {
   return { length: items.length, windows: [{ start: 0, blocks: items }] }

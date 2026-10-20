@@ -1,4 +1,4 @@
-//! Setup, sign-in and the caller's own account (`web-api-settings.md` § Account API).
+//! Setup, sign-in and the caller's own account.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -12,8 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::ids::UserId;
 use crate::text::{EmailAddress, Trimmed};
 
-/// An account's role (`users.md` § User system). A role administers only
-/// the roles below it.
+/// An account's role. A role administers only the roles below it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {

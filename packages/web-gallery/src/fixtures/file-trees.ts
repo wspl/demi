@@ -158,11 +158,10 @@ export const LINKS = {
 } as const
 
 /**
- * A workspace with a symbolic link of each kind (`file-previews.md`
- * § Symbolic links): `vendor` to a folder beside it, which holds `project`,
- * a link back to the workspace; `config.json` to a file in the home's
- * `.config`; `old.log` to a file that is gone; and `current`, a link to
- * itself, whose target cannot be read for the loop.
+ * A workspace with a symbolic link of each kind: `vendor` to a folder beside
+ * it, which holds `project`, a link back to the workspace; `config.json` to a
+ * file in the home's `.config`; `old.log` to a file that is gone; and
+ * `current`, a link to itself, whose target cannot be read for the loop.
  */
 export function linksSource(): MemoryFileSource {
   return createMemoryFileSource({

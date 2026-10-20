@@ -13,9 +13,8 @@ import { ApiError, apiError, apiRequest, jsonBody } from './client'
 
 // Every request of the page waits in its one HTTP client while the backend
 // cannot be reached, and goes once the page reaches it again; only the
-// backend's own answer fails (`web-application.md` § A page of another
-// build, § Page synchronization). No timer: the page's return ends each
-// wait, as it does in the product. Cost: a few milliseconds each.
+// backend's own answer fails. No timer: the page's return ends each wait, as it
+// does in the product. Cost: a few milliseconds each.
 
 const realFetch = globalThis.fetch
 const user = {
@@ -196,8 +195,7 @@ test('an unchanged answer is read to its end, so the browser counts it answered,
 
 // A refusal shows the catalogue's text for its code, filled with its
 // params, in the page's language; a code the catalogue has no text for, as
-// a newer backend may send, shows the backend's own message
-// (`localization.md` § Text from the backend). No I/O.
+// a newer backend may send, shows the backend's own message. No I/O.
 test('a refusal is worded from its code and params, and from its message for a code the page does not know', () => {
   const full = JSON.stringify({ code: 'saved_full', message: 'The conversation keeps 200 messages saved for later', params: { limit: 200 }, requestId: 'req_full000000000001' })
   const unknown = JSON.stringify({ code: 'from_a_newer_backend', message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })

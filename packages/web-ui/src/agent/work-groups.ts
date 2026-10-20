@@ -79,7 +79,7 @@ export function stepKey(step: WorkStep): string {
 
 /**
  * A thinking without text. One a page holds light comes without its text
- * and tells how long it is (`web-api-conversations.md` § Light form).
+ * and tells how long it is.
  */
 function isEmptyThinking(block: MessageListBlock): boolean {
   if (block.type !== 'thinking') {

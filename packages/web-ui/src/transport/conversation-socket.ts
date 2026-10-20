@@ -19,8 +19,7 @@ export class ConversationSocketError extends Error {
  * socket opens, this owns it and a failure is an `ConversationSocketError`; once it
  * opens, the client's transport owns it, and its close or failure disconnects
  * the client with an `ConversationSocketError` too. So does a socket that brings
- * nothing, heartbeats included, for as long as the liveness rule allows
- * (`web-application.md` § Liveness and reconnection).
+ * nothing, heartbeats included, for as long as the liveness rule allows.
  */
 export function connectConversationClient(url: string, signal?: AbortSignal): Promise<ConversationClient> {
   return new Promise((resolve, reject) => {

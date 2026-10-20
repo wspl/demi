@@ -3,10 +3,9 @@ import { apiRequest, jsonBody, readResponse } from './client'
 import { existingFilesSchema } from './generated/web-api'
 
 /**
- * The Host's answers about the paths replies' inline code names
- * (`file-previews.md` § Files named in messages), by conversation and the
- * paths of one reply, for the page's lifetime: a reply's answer is kept
- * with it, so it is asked once.
+ * The Host's answers about the paths replies' inline code names, by
+ * conversation and the paths of one reply, for the page's lifetime: a reply's
+ * answer is kept with it, so it is asked once.
  */
 const answers = shallowReactive(new Map<string, ReadonlySet<string>>())
 

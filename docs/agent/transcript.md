@@ -19,7 +19,7 @@ Words used for session data:
 
 | Block | Written by | The model receives | The user sees it |
 | --- | --- | --- | --- |
-| `user` | A send or an edit: the submitted content, the comments sent with it (`comments`, each the quoted text and the comment, [Comments and side questions](../product/comments-and-ask.md)) and, for a subagent, its identity (`preamble`, Child context (`crates/agent-server/src/node/mod.rs`)) | A user message: the preamble, then each comment as its quoted text in a `>` quote followed by the comment, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
+| `user` | A send or an edit: the submitted content, the comments sent with it (`comments`, each the quoted text and the comment, `packages/web-ui/src/agent/comments/anchors.ts`) and, for a subagent, its identity (`preamble`, Child context (`crates/agent-server/src/node/mod.rs`)) | A user message: the preamble, then each comment as its quoted text in a `>` quote followed by the comment, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
 | `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a notice row for each end it reports, none for progress (`crates/agent-session/src/reports.rs`) |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
@@ -82,7 +82,7 @@ the product supplies, in the product's order:
   the side questions, then each plugin that is a context source. The side
   questions source answers only at the first request of a new input turn of
   the conversation's root, and only with side questions asked since its last
-  block ([What the agent learns](../product/comments-and-ask.md#what-the-agent-learns)).
+  block (`crates/agent-server/src/server/tree/told.rs`).
 - Each answer becomes one `context` block that names its source: `execution`
   for the conversation's execution context
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
@@ -105,7 +105,7 @@ and redacted data are replayed whole, because the vendor verifies them as they
 were sent. Each medium is replayed with the bytes the session holds for it,
 and a tool's medium that is gone as its text ([Media](#media)). A message's
 reference is replayed as its text, and an attachment record
-([Attachments](../product/composer.md#attachments)) as a tag that names the
+(`packages/web-ui/src/agent/message-editor/capsules.ts`) as a tag that names the
 file's number, name, media type and size, never its content or a path:
 `<attachment id="a7" name="screenshot.png" type="image/png" size="160725" />`. A tool
 call's input is replayed as the JSON value the provider supplied, or as text
@@ -194,7 +194,7 @@ says none. With Claude Code, a run that ends in a batch of tool calls
 turn
 (`crates/provider-claude-code/src/run.rs`),
 so its latest answered request is the last request that ended a turn. A title request says instead that it is no session's
-([Conversation titles](../product/conversations.md#conversation-titles)).
+(`crates/agent-server/src/title.rs`).
 
 ### Media
 
@@ -248,7 +248,7 @@ a block cannot hold bytes and a provider cannot receive a reference:
   renders in one place: `[<kind> not stored: <reason>]`. Nothing that was
   stored is ever removed ([Retention](../backend/storage.md#retention)). The
   page shows the part where the medium was
-  ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
+  (`packages/web-ui/src/files/MediaPreview.vue`).
   A message's media are never gone: an upload is stored before a message can
   name it.
 - **References.** The transcript, the queued messages, the pending steers,
@@ -302,7 +302,7 @@ a block cannot hold bytes and a provider cannot receive a reference:
 An image enters the transcript once: when a tool result attaches it
 (`crates/command-package-file/src/files.rs`), or when a message's upload
 becomes its native medium
-([Attachments](../product/composer.md#attachments)). It is fitted then to what
+(`packages/web-ui/src/agent/message-editor/capsules.ts`). It is fitted then to what
 every provider accepts of one image, at most 2,000 px on each side and
 5,000,000 bytes as base64, which is 3,750,000 bytes of image, and kept light,
 since every request replays it. It never changes afterwards, so every request
@@ -374,7 +374,7 @@ one batch; the rows it leaves stay stored on their branch:
 a `truncate` at the first block it changes, then an `add` for each block
 from there. It never sends the blocks before the cut, which may be most of
 a long transcript, and which a page may not hold
-([Transcript windows](../product/web-application.md#transcript-windows)).
+(`packages/web/src/conversation/history-reads.ts`).
 Each batch of patches advances the transcript's revision by one.
 
 A transcript version is `{ epoch, revision }`. The epoch is new each time the

@@ -80,7 +80,7 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
         : conversationWatch(conversationId).channel(deviceId, files),
       // A read after the page's watch went live asks for an answer read at
       // or after it, which the backend's kept search then searches again
-      // for (`web-api-conversations.md` § Workflows of a directory).
+      // for.
       async read(_held, after) {
         const query = new URLSearchParams(conversationId === null ? { directory } : {})
         if (after !== null)

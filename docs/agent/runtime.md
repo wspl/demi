@@ -197,7 +197,7 @@ nothing is left to continue
 send stopped while it still waits for the tree's admission
 ([Actions](#actions)) has not written its message; it leaves like a stopped
 queued message, and the page still holds it as an unconfirmed submission
-([Persistence and adapters](../product/web-application.md#persistence-and-adapters)).
+(`packages/web/src/state/indexed-db.ts`).
 If the action was saving a history rewrite, it records the stop after the
 rewrite is published, so a rewrite never loses a stop. `abort_result` is sent
 only once the record is in the transcript. A provider run that is cancelled
@@ -254,7 +254,7 @@ restart holds them again. It hands back its queued messages and
 whether a turn was interrupted; the node's lifecycle policy decides what
 happens next (`crates/agent-server/src/server/tree/supervisor.rs`). A root leaves its interrupted turn to
 its client, which the product offers as Resume
-([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+(`packages/web-ui/src/agent/dock-cards.ts`).
 When the transcript does not yet end with an interruption record, because the
 process died instead of shutting down, the root appends one and saves it at
 once.
@@ -264,7 +264,7 @@ once.
 A switch changes the root's model selection. The backend switches the root
 when the conversation's model settings change, and opens a tree with the
 selection the conversation's record holds
-([the conversation's model settings](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
+(`crates/backend-http/src/conversations.rs`).
 No client frame names a model.
 
 - A switch lands at the root's next provider request: at the start of the
@@ -323,7 +323,7 @@ A human steer is written only at the first of these, just before the request
 that carries it, never after a stream or a tool step: until the model is
 about to read it, it stays pending, so the page keeps showing it above the
 composer with *Will be sent to the agent at its next step*, Send Now and
-Recall ([Steer or queue](../product/turns.md#steer-or-queue)). For example,
+Recall (`packages/web-ui/src/agent/send-way.ts`). For example,
 a steer sent the moment the model asked for a five-minute build used to be
 written at once, below the build's call, as a plain message with nothing
 running after it, and the model read it only when the build's window ended;
@@ -342,7 +342,7 @@ more, even when the model had finished or a tool had asked to end the turn.
   already the running turn, a queued message or the turn of a `user` block is
   acknowledged without a second turn, so a client can repeat a send whose
   delivery it could not confirm
-  ([Persistence and adapters](../product/web-application.md#persistence-and-adapters)).
+  (`packages/web/src/state/indexed-db.ts`).
 - Only messages appear in the queue, never continuations or other actions. A
   `queue` frame carries the whole queue, each entry `{ id, content }`; the page
   derives the text it shows from the content.

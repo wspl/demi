@@ -3,8 +3,7 @@
  * hands pictures to a decoder, acknowledges what the viewer saw, and sends
  * the viewer's input while the stream is alive. A view whose stream goes
  * silent for as long as a page socket may is broken, and a view that ends
- * opens again after the page's reconnect waits (`web-application.md`
- * § Liveness and reconnection).
+ * opens again after the page's reconnect waits.
  */
 import { liveViewerMessageSchema, panelReasonSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage, type PanelReason } from '../generated/plugin'
 import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES } from '../generated/plugin'

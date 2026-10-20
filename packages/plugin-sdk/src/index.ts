@@ -36,15 +36,14 @@ export type {
 } from '@demicodes/web-ui/plugins/streams'
 export type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
-// What the page says of a failure, in the page's language (`localization.md` § Text from the backend).
+// What the page says of a failure, in the page's language.
 export { errorMessage } from '@demicodes/web-ui/infra/errors'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).
 export type { HeadlineText, PlaceholderText, SentenceText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 
-// The plugin's own text in every language Demi speaks (`localization.md` §
-// Where the text lives): `definePluginText(PLUGIN, { en, ... })` in its
-// `src/locales/text.ts`.
+// The plugin's own text in every language Demi speaks:
+// `definePluginText(PLUGIN, { en, ... })` in its `src/locales/text.ts`.
 export { definePluginText, type Catalogue, type Text } from '@demicodes/web-ui/i18n/text'
 export type { Language } from '@demicodes/web-ui/i18n/languages'
 
@@ -126,7 +125,7 @@ export {
 export { default as LiveDrawnFrame } from '@demicodes/web-ui/live/LiveDrawnFrame.vue'
 export { default as LiveActivityOverlay } from '@demicodes/web-ui/live/LiveActivityOverlay.vue'
 // Composables.
-// A field that takes the focus as its surface opens, as a phone allows (`web-application.md` § The phone layout).
+// A field that takes the focus as its surface opens, as a phone allows.
 export { useAutofocus } from '@demicodes/web-ui/ui/autofocus'
 export {
   vContextMenu,
@@ -198,5 +197,5 @@ export { default as Toolbar } from '@demicodes/web-ui/ui/Toolbar.vue'
 export type { ToolbarAction } from '@demicodes/web-ui/ui/Toolbar.vue'
 export { default as Tooltip } from '@demicodes/web-ui/ui/Tooltip.vue'
 export { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-// A system's logo, as a device's mark draws it (`hosts.md` § A device's mark).
+// A system's logo, as a device's mark draws it.
 export { default as SystemLogo } from '@demicodes/web-ui/devices/DeviceLogo.vue'

@@ -1,8 +1,8 @@
 //! The product state a channel sends first, and each part of it a channel
-//! sends when it changed (`web-api-sync.md` § Page synchronization). The user's
-//! shard reads each part from the stores and its own state when the channel
-//! sends it; the state is not one atomic read across databases, and need not
-//! be, since a change made while it is read is marked and sent after it.
+//! sends when it changed. The user's shard reads each part from the stores and
+//! its own state when the channel sends it; the state is not one atomic read
+//! across databases, and need not be, since a change made while it is read is
+//! marked and sent after it.
 
 use demi_backend_accounts::passkeys::{passkey_list, relying_party_id};
 use demi_backend_database::StorageError;
@@ -38,8 +38,7 @@ impl Shard {
         let services = self.services();
         // The logins before the providers: a login that completed after
         // this read is learned from the logins part, and its account is
-        // then read below or with that part (`web-api.md` § Subscription
-        // logins).
+        // then read below or with that part.
         let logins = services.logins.listed(self.user());
         let preferences = services.control.preferences(self.user().clone()).await?;
         let providers = self.provider_states(&user).await?;

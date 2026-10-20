@@ -13,11 +13,10 @@ import { playChannels } from '../__tests__/sync-channel'
 import { readAccountCopy, readConversationCopy, startAccountCache } from './offline'
 import { useProduct } from './product'
 
-// The account's cache for opening offline (`web-application.md` § Installing
-// and opening offline), through the page's stores as the page starts them:
-// one page reads conversations while the backend answers, and a later page
-// of the same web browser starts without the backend, or with it. The
-// backend is the test's fetch, the database fake-indexeddb's. Each test
+// The account's cache for opening offline, through the page's stores as the
+// page starts them: one page reads conversations while the backend answers, and
+// a later page of the same web browser starts without the backend, or with it.
+// The backend is the test's fetch, the database fake-indexeddb's. Each test
 // takes a few tens of milliseconds.
 
 const FIRST = '00000000-0000-4000-8000-000000000001'

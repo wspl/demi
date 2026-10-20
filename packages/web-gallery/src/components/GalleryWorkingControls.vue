@@ -17,11 +17,10 @@ import { productWould } from '../product-would'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
- * Controls whose action waits for the backend (`web-application.md` §
- * Responding to the user, "No click goes unanswered"): each is bound to an
- * operation, an action on one target, and shows that it works while the
- * operation runs, wherever it is drawn again. The wait is a simulated
- * 0.9 s, 3 s where the specimen asks to close and open again meanwhile.
+ * Controls whose action waits for the backend: each is bound to an operation,
+ * an action on one target, and shows that it works while the operation runs,
+ * wherever it is drawn again. The wait is a simulated 0.9 s, 3 s where the
+ * specimen asks to close and open again meanwhile.
  */
 
 /** How many times the one button's action ran, which a second press meanwhile does not raise. */

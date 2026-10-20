@@ -1,13 +1,17 @@
-//! Push notifications (`turns.md` § Notifications, `web-api-settings.md`
-//! § Push notifications): each session's subscription, kept once its
-//! endpoint's host resolves to public addresses, and the delivery of a
-//! message to the subscriptions it goes to. Each message is encrypted for
-//! its browser and signed with the backend's VAPID key (RFC 8291, RFC 8292)
-//! by `web-push-native`; a subscription its push service answers 404 or 410
-//! for is gone and removed. The messages leave through a [`PushTransport`]:
-//! the internet's push services, reached only at public addresses, checked
-//! as each connection is made, or a test's stand-in. The key is given to it;
-//! it derives none.
+//! Push notifications: each session's subscription, kept once its endpoint's
+//! host resolves to public addresses, and the delivery of a message to the
+//! subscriptions it goes to. Each message is encrypted for its browser and
+//! signed with the backend's VAPID key (RFC 8291, RFC 8292) by
+//! `web-push-native`; a subscription its push service answers 404 or 410 for is
+//! gone and removed. The messages leave through a [`PushTransport`]: the
+//! internet's push services, reached only at public addresses, checked as each
+//! connection is made, or a test's stand-in. The key is given to it; it derives
+//! none.
+//!
+//! A subscription serves one session, so a push queued for an account before it
+//! signed out is never shown after another signs in: the browser drops what comes
+//! for an ended subscription. A send follows no redirect, so a subscription cannot
+//! make the backend call into its own network.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;

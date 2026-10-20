@@ -1,9 +1,8 @@
-//! `/api/providers` (`web-api-settings.md` § Model configuration and provider
-//! inspection): the entries of the caller's scope, the vendors an entry can
-//! be added from, and each entry's status, quota and test. Every user of a
-//! scope reads it; configuring, testing and refreshing usage are the
-//! master's on a shared instance and each owner's on an isolated one. No
-//! answer carries key material.
+//! `/api/providers`: the entries of the caller's scope, the vendors an entry
+//! can be added from, and each entry's status, quota and test. Every user of a
+//! scope reads it; configuring, testing and refreshing usage are the master's
+//! on a shared instance and each owner's on an isolated one. No answer carries
+//! key material.
 
 use std::sync::Arc;
 

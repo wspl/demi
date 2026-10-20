@@ -156,8 +156,7 @@ pub enum ForkEnd<'a> {
     /// which `demi agent fork` takes (`crates/agent-server/src/server/tree/supervisor.rs`).
     Newest,
     /// The completed text a side question asks about, with the response
-    /// that ended it (`comments-and-ask.md` § Side questions); see
-    /// [`fork_prefix`].
+    /// that ended it; see [`fork_prefix`].
     Side(&'a BlockId),
 }
 

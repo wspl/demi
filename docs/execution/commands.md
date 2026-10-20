@@ -829,7 +829,7 @@ a4  demo.mp4       video/mp4  8598311 bytes
 
 Its reply then delivers both as attachment blocks, each on a line of its
 own, the image showing as an image and the video playing in place
-([Attachment blocks](../product/file-previews.md#attachment-blocks)):
+(`packages/web-ui/src/markdown/attachment-block.ts`):
 
 ```markdown
 The sign-in page works again:
@@ -843,7 +843,7 @@ The sign-in page works again:
   command ran, stored as a blob in the conversation owner's namespace, with a
   record in the conversation: its number, the file's name, its media type,
   which the backend reads from the bytes as it does for the user's uploads
-  ([Uploads and media](../product/web-api-hosts.md#uploads-and-media)), its size and
+  (`crates/backend-http/src/attachments.rs`), its size and
   its blob. Nothing changes or removes it afterward
   ([Retention](../backend/storage.md#retention)), so a message shows it
   whatever becomes of the file, the Host or the conversation: a file
@@ -855,7 +855,7 @@ The sign-in page works again:
   A number and its record are stored in one transaction, and the backend
   then sends the conversation's summary, which carries the number as its
   `lastAttachment`, to the user's pages
-  ([Sidebar mutations and read state](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
+  (`crates/backend-http/src/conversations.rs`).
   A Fork's destination keeps its source's attachments, since its history
   names them.
 - **Files.** A path resolves against the invocation's cwd. A path that is not
@@ -892,7 +892,7 @@ a7  screenshot.png
 ```
 
 - **Fetched when needed.** A send writes nothing to a Host
-  ([Attachments](../product/composer.md#attachments)); the model reads an
+  (`packages/web-ui/src/agent/message-editor/capsules.ts`); the model reads an
   image, a video or a PDF from the message itself, and fetches a file only
   for a command that works on it.
 - **Never replaces.** The file takes the first free name, `screenshot-2.png`

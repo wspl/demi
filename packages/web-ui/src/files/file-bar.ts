@@ -34,7 +34,7 @@ export type ShownFile =
  */
 export type LanguageName = (path: string) => string | null
 
-/** What the File view's bar says and offers for a file (`file-previews.md` § The File view's bars). */
+/** What the File view's bar says and offers for a file. */
 export interface FileBar {
   /** On its left: the kind's full name and its facts, *TypeScript · 19 lines · 476 B*. */
   label: string

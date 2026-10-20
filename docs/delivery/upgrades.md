@@ -19,11 +19,11 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
 
 - Open pages show the banner "Demi is restarting" over what they show while the backend is away, then load
   the new web app by themselves
-  ([A page of another build](../product/web-application.md#a-page-of-another-build)).
+  (`packages/web-ui/src/infra/build-reload.ts`).
 - A turn that was running ends with the shutdown's error record and goes
   on by itself once the new backend runs, unless the user turned that off,
   when its conversation offers **Resume**
-  ([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
+  (`packages/web-ui/src/agent/dock-cards.ts`).
 - Commands running on Hosts end: a paired device's runner replaces itself
   and a Cloud restarts, and the shell work of a command runs in its runner.
   Each node that ran one is told by its report that it was lost to the
@@ -125,11 +125,11 @@ which the configuration names.
 
 | Part | How it reaches the new release | When |
 | --- | --- | --- |
-| Backend and web app | The backend restarts from `current`; an open page shows the connection banner meanwhile and then loads the new build ([A page of another build](../product/web-application.md#a-page-of-another-build)) | During the upgrade |
+| Backend and web app | The backend restarts from `current`; an open page shows the connection banner meanwhile and then loads the new build (`packages/web-ui/src/infra/build-reload.ts`) | During the upgrade |
 | Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)) | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
-| A Cloud's system | Stays on the image it is pinned to; Cloud settings says when a newer one is available, and a reset moves to it ([Cloud settings](../product/hosts.md#cloud-settings)) | When the user resets |
+| A Cloud's system | Stays on the image it is pinned to; Cloud settings says when a newer one is available, and a reset moves to it (`packages/web-ui/src/cloud/CloudSettings.vue`) | When the user resets |
 | A paired device's runner | The runner updates itself when the backend names another runner release (`crates/runner/src/update.rs`) | Its next connection |
 | A paired device's command programs | The backend's catalog names the new packages; the runner downloads each the first time it needs it ([Install artifacts](../execution/native-runtime.md#install-artifacts)) | Each program's next use |
 | Control database | Migrated as the backend starts ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)) | During the upgrade |
@@ -176,7 +176,7 @@ part of another release, and each is a contract that a release never breaks:
   so an upgrade never asks the user to sign in again. The handover stays
   until the history starts again with the first formal release.
 - **A conversation outside a project in a directory other than its home.**
-  Releases before [projects by directory](../product/conversations.md#conversations-and-projects)
+  Releases before `crates/backend-database/src/selection.rs`
   let a conversation run in any directory outside a project, and a project
   in a home or under two spellings of one directory. The control migration
   moves each such Cloud conversation into the workspace of its directory,

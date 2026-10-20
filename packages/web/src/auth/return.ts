@@ -1,9 +1,9 @@
 import type { LocationQuery } from 'vue-router'
 
 /**
- * The page a visitor opened signed out, kept through signing in
- * (`web-application.md` § Authentication), as GitHub and Slack keep theirs:
- * the sign-in address carries it as `next`, and signing in goes on to it.
+ * The page a visitor opened signed out, kept through signing in, as GitHub and
+ * Slack keep theirs: the sign-in address carries it as `next`, and signing in
+ * goes on to it.
  */
 
 /** The address that opens when nothing else was asked for. */

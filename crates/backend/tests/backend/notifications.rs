@@ -1,15 +1,14 @@
-//! Push notifications (`turns.md` § Notifications, `web-api-settings.md`
-//! § Push notifications): each session subscribes its browser with the
-//! events it chose; the backend sends what the agent's `demi notify send`
-//! says, a turn's end and a permission request to every subscription that
-//! chose them, encrypted for that browser and signed with the backend's
-//! VAPID key, but to none of a session a page of which shows the
-//! conversation; a subscription its push service says is gone, or whose
-//! session signed out, is removed, and no session reaches another's.
-//! The push services are a stand-in on the loopback address that decrypts
-//! what it is sent, reached through a transport the test gives the
-//! backend; the model is the scripted family of the subagent scenarios, the
-//! device a real runner. No test reaches a real push service or model.
+//! Push notifications: each session subscribes its browser with the events it
+//! chose; the backend sends what the agent's `demi notify send` says, a turn's
+//! end and a permission request to every subscription that chose them,
+//! encrypted for that browser and signed with the backend's VAPID key, but to
+//! none of a session a page of which shows the conversation; a subscription its
+//! push service says is gone, or whose session signed out, is removed, and no
+//! session reaches another's. The push services are a stand-in on the loopback
+//! address that decrypts what it is sent, reached through a transport the test
+//! gives the backend; the model is the scripted family of the subagent
+//! scenarios, the device a real runner. No test reaches a real push service or
+//! model.
 
 use std::sync::Arc;
 

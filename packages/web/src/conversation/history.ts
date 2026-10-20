@@ -5,9 +5,8 @@ import type { Conversation } from '../state/types'
 import { createHistoryReads } from './history-reads'
 
 /**
- * The reads of conversations' history (`web-api-conversations.md` § Conversation
- * history): a conversation's root is live while its stream is open, as
- * `live` says, and a subagent while it runs.
+ * The reads of conversations' history: a conversation's root is live while its
+ * stream is open, as `live` says, and a subagent while it runs.
  */
 export function createConversationHistoryReads(signal: () => AbortSignal, live: (conversation: Conversation) => boolean) {
   const reads = createHistoryReads<Conversation>(
@@ -20,7 +19,7 @@ export function createConversationHistoryReads(signal: () => AbortSignal, live: 
   )
   return {
     ...reads,
-    /** Where the call that started the command `commandId` lies (`web-api-conversations.md` § Subagents and commands). */
+    /** Where the call that started the command `commandId` lies. */
     async findCommand(conversation: Conversation, commandId: string): Promise<TranscriptReveal> {
       const response = await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/commands/${encodeURIComponent(commandId)}`,

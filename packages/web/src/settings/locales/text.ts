@@ -5,5 +5,5 @@ import ko from './ko.json'
 import zhHans from './zh-Hans.json'
 import zhHant from './zh-Hant.json'
 
-/** The text of `web/src/settings` (`localization.md` § Where the text lives). */
+/** The text of `web/src/settings`. */
 export const { t } = defineText('web.settings', { en, 'zh-Hans': zhHans, 'zh-Hant': zhHant, ja, ko })

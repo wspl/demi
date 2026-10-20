@@ -5,12 +5,12 @@ import type { Highlighter } from './highlighter'
 import { escapeHtml } from './html'
 import { renderAgain } from './render-version'
 
-// Code outside the editor (`file-previews.md` § Code), as the page shows it
-// before and after the highlighter arrives. The highlighter is a chunk of its
-// own, which the first code shown starts loading: until it is there, code
-// shows as plain text in the theme's text color, laid out as it will be, and
-// a block's language label keeps its row, empty; on its arrival every code
-// renders again with its colors and its label.
+// Code outside the editor, as the page shows it before and after the
+// highlighter arrives. The highlighter is a chunk of its own, which the first
+// code shown starts loading: until it is there, code shows as plain text in the
+// theme's text color, laid out as it will be, and a block's language label
+// keeps its row, empty; on its arrival every code renders again with its colors
+// and its label.
 
 let highlighter: Highlighter | null = null
 let loading: Promise<void> | null = null

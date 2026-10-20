@@ -6,13 +6,13 @@ import { chromium, type Browser, type Page } from 'playwright'
 import type { renderMarkdownDocument as Render } from '../document'
 
 // A Markdown file shown as a document lays out as GitHub lays out the same
-// file (`file-previews.md` § Markdown): a README's centered logo at the
-// height its tag gives, its badges on one line, GitHub's alerts, a table
-// that fits the page, and the images a theme picks. In a real Chromium, with
-// the document renderer's sanitizer and the product's stylesheet as Tailwind
-// builds it, whose preflight is what made every image a block. Images come
-// from a route that draws an SVG of the size its name says. About 4 s: the
-// stylesheet's build and the browser's start, shared, and a page per test.
+// file: a README's centered logo at the height its tag gives, its badges on one
+// line, GitHub's alerts, a table that fits the page, and the images a theme
+// picks. In a real Chromium, with the document renderer's sanitizer and the
+// product's stylesheet as Tailwind builds it, whose preflight is what made
+// every image a block. Images come from a route that draws an SVG of the size
+// its name says. About 4 s: the stylesheet's build and the browser's start,
+// shared, and a page per test.
 
 declare global {
   interface Window {

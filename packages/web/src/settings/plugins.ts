@@ -7,10 +7,9 @@ import type { PluginSwitch } from '../api/generated/web-api'
 import { useProduct, withPart } from '../state/product'
 
 /**
- * The user's plugin switches (`web-api-sync.md` § A user's plugins). A switch
- * shows at once, and a plugin turned off leaves the pages with its state;
- * its write follows the earlier ones of the same plugin
- * (`web-application.md` § Responding to the user), and a refusal turns the switch back with a toast.
+ * The user's plugin switches. A switch shows at once, and a plugin turned off leaves the pages with
+ * its state; its write follows the earlier ones of the same plugin, and a refusal turns the switch
+ * back with a toast.
  */
 export const usePluginSettings = defineStore('plugin-settings', () => {
   const product = useProduct()

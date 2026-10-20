@@ -3,11 +3,10 @@ import { demoModel } from './blocks'
 import { ago } from './time'
 
 /**
- * A conversation's share (`sharing.md`): the question, the run of work it
- * took as a line of the steps not shared, the answer, which names a
- * subagent, shows an attachment, and names a file and a commit of the Host,
- * which a shared page shows as text; then a follow-up answered after a
- * longer run.
+ * A conversation's share: the question, the run of work it took as a line of
+ * the steps not shared, the answer, which names a subagent, shows an
+ * attachment, and names a file and a commit of the Host, which a shared page
+ * shows as text; then a follow-up answered after a longer run.
  */
 export const SHARED_TITLE = 'Why the deploy failed'
 

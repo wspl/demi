@@ -1,11 +1,9 @@
-//! A conversation's files (`web-api-hosts.md` § Device files and remote
-//! references, § File text and working tree changes): listings, directories,
-//! deletes and file text, a file's bytes in both directions, and the working
-//! tree's changes. Each reaches the conversation's Host through its host
-//! access (`sessions-and-targets.md` § Host operations), in the user's
-//! shard, which also checks that the conversation is the caller's; the bytes
-//! of a download or an upload move here while the shard holds their
-//! admission.
+//! A conversation's files: listings, directories, deletes and file text, a
+//! file's bytes in both directions, and the working tree's changes. Each
+//! reaches the conversation's Host through its host access
+//! (`sessions-and-targets.md` § Host operations), in the user's shard, which
+//! also checks that the conversation is the caller's; the bytes of a download
+//! or an upload move here while the shard holds their admission.
 
 use axum::Json;
 use axum::body::Body;
@@ -88,8 +86,7 @@ async fn list_on(
 }
 
 /// `answer` with the Host's number before it was read, as every answer of
-/// what a subscription covers carries it (`web-api-hosts.md` § File text and
-/// working tree changes).
+/// what a subscription covers carries it.
 pub(super) fn read_answer(read_at: &ReadAt, answer: impl IntoResponse) -> Response {
     let mut response = answer.into_response();
     if let Some(value) = read_at_value(read_at) {
@@ -164,10 +161,9 @@ pub(super) async fn remove(
 }
 
 /// Which of the paths a message's inline code names are regular files on
-/// the conversation's primary Host (`file-previews.md` § Files named in
-/// messages): one look for them all, admitted as a user stream is, which
-/// never wakes a stopped Cloud. A path that is not there, that is not a
-/// file, or whose stat fails is left out: the page shows it as text.
+/// the conversation's primary Host: one look for them all, admitted as a user
+/// stream is, which never wakes a stopped Cloud. A path that is not there, that
+/// is not a file, or whose stat fails is left out: the page shows it as text.
 pub(super) async fn exists(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -408,7 +404,7 @@ pub(super) async fn upload(
 }
 
 /// The working tree's root a request names, or the conversation's execution
-/// directory (`web-api-hosts.md` § File text and working tree changes).
+/// directory.
 fn tree_root(host: &ConversationHost, directory: Option<AbsolutePath>) -> String {
     directory.map_or_else(|| host.root.clone(), |directory| directory.as_str().to_owned())
 }
@@ -437,7 +433,7 @@ pub(super) async fn changes(
 }
 
 /// The local branches of the working tree's repository and the one checked
-/// out (`web-api-hosts.md` § File text and working tree changes).
+/// out.
 pub(super) async fn branches(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -616,7 +612,7 @@ async fn read_working_side(
 
 /// `value` as JSON with an ETag of its content, or 304 when the request's
 /// `If-None-Match` names that ETag: the page then keeps what it holds and
-/// receives nothing (`web-api-hosts.md` § File text and working tree changes).
+/// receives nothing.
 fn unless_held(headers: &HeaderMap, value: &impl serde::Serialize) -> Response {
     use sha2::{Digest as _, Sha256};
     let body = serde_json::to_vec(value).expect("an answer of the API serializes");

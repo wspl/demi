@@ -1,18 +1,16 @@
-//! Changes of a conversation (`web-api.md` § Sidebar mutations, read state
-//! and page synchronization; `sessions-and-targets.md` § Switch the primary
-//! target, § Lifecycle access). Every change goes through one entry,
-//! `Shard::transition`. A rename, a pin or a change of the model settings
-//! waits while a transition holds the conversation, and is then applied as if
-//! it arrived afterwards; the model settings change one at a time
-//! (`settings.rs`). An archive, a restore, a target switch and a detach are
-//! transitions: each holds the conversation, with its idle tree reserved, its
-//! file transfers, user streams and the one-shot calls admitted like them
-//! ended, and its file gate reserved; sends the conversation release to the
-//! devices it leaves; and commits, advancing the execution-context revision
-//! when the context changed, whether the devices took the release or not
+//! Changes of a conversation (`sessions-and-targets.md` § Switch the primary target, §
+//! Lifecycle access). Every change goes through one entry, `Shard::transition`. A
+//! rename, a pin or a change of the model settings waits while a transition holds the
+//! conversation, and is then applied as if it arrived afterwards; the model settings
+//! change one at a time (`settings.rs`). An archive, a restore, a target switch and a
+//! detach are transitions: each holds the conversation, with its idle tree reserved,
+//! its file transfers, user streams and the one-shot calls admitted like them ended,
+//! and its file gate reserved; sends the conversation release to the devices it leaves;
+//! and commits, advancing the execution-context revision when the context changed,
+//! whether the devices took the release or not
 //! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). A transition waits for
-//! no other work: a conversation that is busy refuses it. The shard reserves
-//! the idle tree; host access holds the rest and runs the transition's steps
+//! no other work: a conversation that is busy refuses it. The shard reserves the idle
+//! tree; host access holds the rest and runs the transition's steps
 //! (`demi_backend_host_access::transition`).
 
 use demi_backend_database::workspaces::WorkspaceDeletion;
@@ -214,13 +212,11 @@ impl Shard {
         });
     }
 
-    /// Deletes the user's project `id` as one transition (`conversations.md`
-    /// § Conversations and projects, `web-api-hosts.md` § Workspaces, devices,
-    /// and attached hosts): every conversation in it is held as its archive
-    /// holds it, released on its Hosts, and archived in the transaction
-    /// that deletes the workspace. A conversation of it whose work runs
-    /// refuses the deletion, as it refuses its archive, and nothing
-    /// changes; so does one that moved in or was created meanwhile.
+    /// Deletes the user's project `id` as one transition: every conversation in
+    /// it is held as its archive holds it, released on its Hosts, and archived
+    /// in the transaction that deletes the workspace. A conversation of it
+    /// whose work runs refuses the deletion, as it refuses its archive, and
+    /// nothing changes; so does one that moved in or was created meanwhile.
     pub async fn delete_project(&self, id: &WorkspaceId) -> Result<(), ChangeRefusal> {
         let control = &self.services().control;
         let host = self.host_shard();

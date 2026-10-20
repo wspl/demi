@@ -4,8 +4,8 @@ import { errorReportText, failureHeadline, failureSource, prettyUpstream, record
 import { notExposedOffer, signedOutOffer } from '../session-status'
 
 // A failed turn's headline is the page's, worded from the failure's code
-// and the moment the provider says it works again (`localization.md` § Text
-// from the backend); the vendor's own text stays under Provider Response.
+// and the moment the provider says it works again; the vendor's own text stays
+// under Provider Response.
 test('a failed turn’s headline is worded from its code and when it works again, in the page’s language', () => {
   const now = new Date(2026, 9, 11, 8, 15)
   const reset = new Date(2026, 9, 11, 19, 3, 55).toISOString()

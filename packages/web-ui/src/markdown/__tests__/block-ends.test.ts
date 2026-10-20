@@ -1,10 +1,9 @@
 import { expect, test } from 'bun:test'
 import { messageBlockEnds } from '../render'
 
-// Which blocks of a streaming reply settle (`file-previews.md`, a reply that
-// streams renders a block at a time): a settled block renders once, so one
-// that later text would change shows wrong until the reply ends.
-// Cost: pure, about 200 ms for the streamed replies.
+// Which blocks of a streaming reply settle: a settled block renders once, so
+// one that later text would change shows wrong until the reply ends. Cost:
+// pure, about 200 ms for the streamed replies.
 
 /** The settled blocks of `text`, each with the blank lines after it. */
 function settled(text: string): string[] {

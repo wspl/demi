@@ -12,9 +12,9 @@ import { t } from './locales/text'
 
 /**
  * The bar over the file the File view shows, as GitHub's over a file's
- * contents (`file-previews.md` § The File view's bars): on its left what the
- * file is, on its right what can be done with it, Preview and Source, Copy
- * of its whole text, which turns to a check for a moment, and Download.
+ * contents: on its left what the file is, on its right what can be done with
+ * it, Preview and Source, Copy of its whole text, which turns to a check for a
+ * moment, and Download.
  */
 const props = defineProps<{
   bar: FileBar

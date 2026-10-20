@@ -12,8 +12,7 @@ export const iconTabsKey: InjectionKey<true> = Symbol('icon-tabs')
 
 /**
  * The least width a strip's tab keeps, its mark, a few characters of its
- * title and its close slot (`web-application.md` § Work panel, The strip):
- * the strip scrolls before a tab narrows further.
+ * title and its close slot: the strip scrolls before a tab narrows further.
  */
 export const TAB_MIN_PX = 88
 

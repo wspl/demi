@@ -3,10 +3,9 @@ import { formatVerbAt } from '../ui/dates'
 
 /**
  * The user's preference to resume a turn by itself at the time its failure
- * names, such as a usage limit that resets at 9:00 AM (`turns.md`
- * § Recovering an unfinished turn): what it is now, and how a control
- * changes it. One preference, shown in Settings › General and on each such
- * failure's record.
+ * names, such as a usage limit that resets at 9:00 AM: what it is now, and how
+ * a control changes it. One preference, shown in Settings › General and on each
+ * such failure's record.
  */
 export interface ResumeAtRetry {
   on: boolean

@@ -11,18 +11,16 @@ import type { SentenceText } from '../ui/ui-text'
 import { addressUrl } from './address'
 
 /**
- * The address bar both kinds of web page tab share
- * (`web-application.md` § Package responsibilities): a `browser` tab of the
- * conversation browser has its own history, a `page` tab keeps a framed
- * page's history to itself. It shows the page's address and follows it,
- * except while the user has the field: then it keeps what the user types,
- * and leaving without Enter, or Escape, shows the page's address again. It
- * reads what the user typed as a browser's address bar does (`addressUrl`).
- * While the page
- * loads, Reload is Stop, in the same place, as in a web browser; Stop is
- * never unavailable while the page loads. It stands right under a tab
- * strip, so the tips of its buttons, and of those its caller adds, open
- * below them, never over the strip.
+ * The address bar both kinds of web page tab share: a `browser` tab of the
+ * conversation browser has its own history, a `page` tab keeps a framed page's
+ * history to itself. It shows the page's address and follows it, except while
+ * the user has the field: then it keeps what the user types, and leaving
+ * without Enter, or Escape, shows the page's address again. It reads what the
+ * user typed as a browser's address bar does (`addressUrl`). While the page
+ * loads, Reload is Stop, in the same place, as in a web browser; Stop is never
+ * unavailable while the page loads. It stands right under a tab strip, so the
+ * tips of its buttons, and of those its caller adds, open below them, never
+ * over the strip.
  */
 const props = withDefaults(
   defineProps<{

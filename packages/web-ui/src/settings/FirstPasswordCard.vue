@@ -6,10 +6,10 @@ import { t } from './locales/text'
 import SettingsRow from './SettingsRow.vue'
 
 /**
- * The first password the server made for an account (`users.md` § User
- * system), shown once at the end of Add User… and Reset Password…: in a
- * field to read it out, with Copy beside it, and New Password, which makes
- * another and stops the one shown. `make` answers whether it made one.
+ * The first password the server made for an account, shown once at the end of
+ * Add User… and Reset Password…: in a field to read it out, with Copy beside
+ * it, and New Password, which makes another and stops the one shown. `make`
+ * answers whether it made one.
  */
 defineProps<{
   password: string

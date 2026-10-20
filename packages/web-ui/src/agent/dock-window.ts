@@ -2,10 +2,10 @@ import type { InjectionKey, Ref } from 'vue'
 import { clampSize, type ResizeBounds } from '../ui/resize-handle'
 
 /**
- * The height of the windows the dock opens, such as Agents and Running
- * (`turns.md`, the dock's chips): kept as a share of the session area's
- * height, so a window made tall in a large browser window stays tall in a
- * small one and never exceeds the room. The two windows keep one share.
+ * The height of the windows the dock opens, such as Agents and Running: kept as
+ * a share of the session area's height, so a window made tall in a large
+ * browser window stays tall in a small one and never exceeds the room. The two
+ * windows keep one share.
  */
 export const DOCK_WINDOW_SHARE = { default: 0.5 } as const
 

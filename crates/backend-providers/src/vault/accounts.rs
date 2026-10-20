@@ -1,6 +1,5 @@
 //! The product's rules over a subscription entry's accounts
-//! (`crates/backend-providers/src/vault/logins.rs`, `web-api-settings.md` § Subscription
-//! accounts): every account comes from a sign-in, selecting an account is
+//! (`crates/backend-providers/src/vault/logins.rs`): every account comes from a sign-in, selecting an account is
 //! explicit, and removing the active account selects the entry's next one,
 //! or leaves it with none. A change of accounts invalidates the entry's
 //! provider and catalog, so the next request builds its runtime anew, while

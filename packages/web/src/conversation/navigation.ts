@@ -8,8 +8,8 @@ import { useConversations } from './store'
  * What a history entry that showed a new conversation keeps, the project
  * the conversation was started in: a new conversation has no record before
  * its first send, so a reload of the entry, which finds nothing at its
- * address, opens a new conversation again (`web-application.md` § What the
- * reload opens). The web browser keeps it with the entry across a reload.
+ * address, opens a new conversation again. The web browser keeps it with the
+ * entry across a reload.
  */
 const newConversationEntrySchema = z.object({
   newConversation: z.object({ projectId: z.string().nullable() }),
@@ -111,7 +111,7 @@ export function useConversationNavigation() {
 
   /**
    * Creates the project and opens a new conversation in it, as the project's
-   * own New Conversation does (`conversations.md` § Conversations and projects).
+   * own New Conversation does.
    */
   async function createProject(draft: CreateWorkspace): Promise<void> {
     create(await resources.createProject(draft))

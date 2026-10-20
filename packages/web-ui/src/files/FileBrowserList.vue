@@ -98,11 +98,10 @@ function pickable(entry: FileBrowserEntry) {
 
 /**
  * Whether a double click opens the row: one that can be picked, or a link,
- * which may lead elsewhere than its row said (`file-previews.md` § Symbolic
- * links), and is read again by the browser to act on what it is now. A
- * link shows, and is selected, as what it was listed as: in folder mode, one
- * listed as a file is dimmed, and a double click finds whether it leads to a
- * folder now.
+ * which may lead elsewhere than its row said, and is read again by the browser
+ * to act on what it is now. A link shows, and is selected, as what it was
+ * listed as: in folder mode, one listed as a file is dimmed, and a double click
+ * finds whether it leads to a folder now.
  */
 function reachable(entry: FileBrowserEntry) {
   return pickable(entry) || entry.link !== undefined

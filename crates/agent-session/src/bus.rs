@@ -2,8 +2,7 @@
 //! its change is complete, reaches every listener in the order the changes
 //! happened. A listener may call back into the session; what that causes is
 //! delivered after the current event has reached every listener. Events
-//! may be held and then delivered together, as a turn's end is
-//! (`turns.md` § Following the agent's work).
+//! may be held and then delivered together, such as a turn's end.
 
 use std::{
     cell::{Cell, RefCell},

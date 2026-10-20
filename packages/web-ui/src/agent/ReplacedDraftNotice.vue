@@ -8,9 +8,9 @@ import Tooltip from '../ui/Tooltip.vue'
 
 /**
  * The version of the draft that a later save replaced, offered above the
- * composer (`web-application.md` § Drafts): its first line, Restore, which
- * exchanges it with the draft, and a control that dismisses it. The row owns
- * the dismiss control's inset from its edges.
+ * composer: its first line, Restore, which exchanges it with the draft, and a
+ * control that dismisses it. The row owns the dismiss control's inset from its
+ * edges.
  */
 defineProps<{
   /** The replaced version as one line. */

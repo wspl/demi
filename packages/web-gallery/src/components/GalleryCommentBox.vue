@@ -4,10 +4,10 @@ import CommentField from '@demicodes/web-ui/agent/comments/CommentField.vue'
 import { productWould } from '../product-would'
 
 /**
- * The box a new comment is written in, pinned with a comment typed
- * (`comments-and-ask.md` § Comments): Comment, the default, which Return
- * presses, and Send Now, which ⌘Return presses; each says what the product
- * would do, and the box comes back so it can be tried again.
+ * The box a new comment is written in, pinned with a comment typed: Comment,
+ * the default, which Return presses, and Send Now, which ⌘Return presses; each
+ * says what the product would do, and the box comes back so it can be tried
+ * again.
  */
 const text = ref('4 MB feels large on 2G. Can we start smaller?')
 const shown = ref(0)

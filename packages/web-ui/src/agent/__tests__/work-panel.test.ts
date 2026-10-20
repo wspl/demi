@@ -4,8 +4,7 @@ import { afterEach, expect, test } from 'bun:test'
 // The work panel beside another conversation shows that conversation's tabs
 // in place of the ones it showed, at once: nothing opened or closed, so no
 // tab of the old conversation stays on its way out and none of the new one
-// grows in (`web-application.md` § Work panel). One Vue app on a happy-dom
-// page; a few ms besides the page's start.
+// grows in. One Vue app on a happy-dom page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')

@@ -162,8 +162,7 @@ const TERMINAL_TOKENS = ['--surface', '--fg-body', '--fg-emphasis', '--on-accent
  * the accent is purple; ground, cursor and selection follow the tokens
  * (tone, accent, surface). The prompt line's colors (`promptLine`): the
  * prompt in the muted text color, the script in `codeText`, code's text
- * color (`file-previews.md` § Code). A token that does not resolve keeps the
- * palette's color.
+ * color. A token that does not resolve keeps the palette's color.
  */
 export function terminalColors(
   el: HTMLElement,

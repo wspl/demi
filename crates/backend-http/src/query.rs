@@ -1,5 +1,5 @@
-//! Query parameters decoded into their types (`web-api.md` § Query
-//! parameters): a value outside its type answers 400 `invalid_query`.
+//! Query parameters decoded into their types: a value outside its type answers
+//! 400 `invalid_query`.
 
 use axum::extract::{FromRequestParts, Query};
 use axum::http::StatusCode;

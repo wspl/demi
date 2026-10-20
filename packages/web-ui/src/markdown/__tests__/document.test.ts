@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import { DOCUMENT_RENDER_BYTES, frontMatterAsCode, imageTarget, linkTarget, mediaForTheme, renderable, type DocumentPlace } from '../document'
 
-// Where a Markdown file's links and images lead (`file-previews.md`
-// § Markdown). The rendering itself runs in a web browser and is checked there.
+// Where a Markdown file's links and images lead. The rendering itself runs in a
+// web browser and is checked there.
 
 const place: DocumentPlace = {
   path: '/work/docs/guide/README.md',

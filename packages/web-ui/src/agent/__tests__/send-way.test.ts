@@ -7,8 +7,8 @@ import type { SessionPhase } from '@demicodes/protocol'
 import { chooseSendWay, turnStartingMessage, useSendOnceLoaded, type SendWay, type SendWhileRunning } from '../send-way'
 
 // The composer's keys reach its real keymap, and what they ask goes through
-// the composer's choice of way (`turns.md` § Steer or queue); an input
-// method's keys ask nothing. About 30 ms.
+// the composer's choice of way; an input method's keys ask nothing. About 30
+// ms.
 
 const PARAGRAPH: JSONContent = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'skip the e2e tests' }] }] }
 const CODE: JSONContent = { type: 'doc', content: [{ type: 'codeBlock', content: [{ type: 'text', text: 'bun test' }] }] }
@@ -112,11 +112,10 @@ function onItsWay(id: string, way: SendWay, error: string | null = null) {
 
 const FAILED = 'Connection closed before confirmation'
 
-// The one rule the composer's Stop and the transcript's Requesting read
-// (`turns.md` § Recovering an unfinished turn, § Steer or queue). Before
-// it, the composer counted any message on its way while idle and the list
-// only one sent as the next message, read at its send: the cases marked
-// split each answered differently. About 1 ms.
+// The one rule the composer's Stop and the transcript's Requesting read. Before
+// it, the composer counted any message on its way while idle and the list only
+// one sent as the next message, read at its send: the cases marked split each
+// answered differently. About 1 ms.
 test.each<{ name: string; phase: SessionPhase; sent: ReturnType<typeof onItsWay>[]; starts: string | null }>([
   { name: 'nothing on its way', phase: 'idle', sent: [], starts: null },
   { name: 'a send while idle', phase: 'idle', sent: [onItsWay('a', 'send')], starts: 'a' },
@@ -142,7 +141,7 @@ test.each<{ name: string; phase: SessionPhase; sent: ReturnType<typeof onItsWay>
 
 // Seen at 400 ms latency: Enter on a new conversation's first message right
 // after the page loaded did nothing, since the model list was still loading
-// and the send button had no reason to say (`composer.md` § Writing a message).
+// and the send button had no reason to say.
 test('Enter while the models load waits, and the message goes the way Enter asked once they have loaded and it can', async () => {
   const scope = effectScope()
   const blocked = ref(true)

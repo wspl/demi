@@ -1,6 +1,5 @@
-//! Per-user preferences (`web-api-settings.md` § User preferences): the check a
-//! reported locale passes before it is saved, and how a patch merges into
-//! what is saved.
+//! Per-user preferences: the check a reported locale passes before it is saved,
+//! and how a patch merges into what is saved.
 
 
 use demi_web_api_protocol::settings::{

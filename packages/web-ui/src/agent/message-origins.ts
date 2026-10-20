@@ -3,9 +3,8 @@ import type { AutomationMark } from '@demicodes/protocol'
 import { shortMoment } from '../automations/words'
 
 /**
- * What sent a user message that the user did not write
- * (`automations.md` § What a run sends): an automation, named in the
- * transcript above the message as a receipt names the agent that sent it,
+ * What sent a user message that the user did not write: an automation, named in
+ * the transcript above the message as a receipt names the agent that sent it,
  * with when it fired, and the name leading to the automation.
  */
 export interface MessageOrigin {

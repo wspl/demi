@@ -2,14 +2,14 @@ import { expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { build } from 'vite'
 
-// What a cold start downloads (`file-previews.md` § Code, § Markdown): the
-// files the page's `index.html` loads hold no part of the code editor, its
-// highlighter or its languages, nor KaTeX, its stylesheet and fonts, nor the
-// terminal's xterm.js, each loaded on first use. A static import from anywhere
-// the first screen reaches would put them back silently, so the test builds
-// the page as production does, without writing it, and reads the result.
-// Cost: one bundle of the app, about 5 s, which no cheaper test can stand in
-// for: only the bundler knows what a static import pulls in.
+// What a cold start downloads: the files the page's `index.html` loads hold no
+// part of the code editor, its highlighter or its languages, nor KaTeX, its
+// stylesheet and fonts, nor the terminal's xterm.js, each loaded on first use.
+// A static import from anywhere the first screen reaches would put them back
+// silently, so the test builds the page as production does, without writing it,
+// and reads the result. Cost: one bundle of the app, about 5 s, which no
+// cheaper test can stand in for: only the bundler knows what a static import
+// pulls in.
 
 const root = resolve(import.meta.dir, '..')
 

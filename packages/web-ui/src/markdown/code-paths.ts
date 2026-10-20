@@ -1,7 +1,6 @@
 // Inline code that names a file of the Host, as `docs/execution/runner.md`
-// or `src/app.ts:42` (`file-previews.md` § Files named in messages): the
-// page asks the conversation's Host which of a reply's are files, and those
-// open as links.
+// or `src/app.ts:42`: the page asks the conversation's Host which of a reply's
+// are files, and those open as links.
 import { resolveHostPath } from '../files/paths'
 import type { MessageFileTarget } from './types'
 

@@ -121,7 +121,7 @@ export function useSidebarDrag(
     cancel()
   }
 
-  /** A mouse or a pen presses a row; a finger never reorders, its long press opens the row's menu (`web-application.md` § phone). */
+  /** A mouse or a pen presses a row; a finger never reorders, its long press opens the row's menu. */
   function start(event: PointerEvent, entry: Entry) {
     if (
       event.pointerType === 'touch' ||

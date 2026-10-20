@@ -15,8 +15,7 @@ export function activeRow<K>(rows: readonly K[], ...preferred: readonly (K | nul
 
 /**
  * Whether a list took focus from the keyboard (Tab), which is when it shows
- * its active row's ring; a click focuses it too and leaves none
- * (`docs/product/web-application.md` § Keyboard).
+ * its active row's ring; a click focuses it too and leaves none.
  */
 export function focusedByKeyboard(event: FocusEvent): boolean {
   return event.currentTarget instanceof Element && event.currentTarget.matches(':focus-visible')

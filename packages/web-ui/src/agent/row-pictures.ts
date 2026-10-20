@@ -3,12 +3,10 @@ import { declaredSize, ROW_PICTURE, thumbnailBox, type PixelSize } from '../file
 import type { ToolPicture } from './tool-media'
 
 /**
- * How a row's pictures share its one line with its face
- * (`file-previews.md` § Media a tool returned): they stand at the row's
- * end, right-aligned and at least 8 pixels after the face's last part, the
- * chevron or a tag, 4 pixels apart, and never wrap. The face gives way first: its title truncates, but only down to
- * half the row; then the pictures that no longer fit are counted after the
- * last one shown, `+5`.
+ * How a row's pictures share its one line with its face: they stand at the row's end, right-aligned and at least 8
+ * pixels after the face's last part, the chevron or a tag, 4 pixels apart, and never wrap. The face gives way
+ * first: its title truncates, but only down to half the row; then the pictures that no longer fit are counted after
+ * the last one shown, `+5`.
  */
 
 /**

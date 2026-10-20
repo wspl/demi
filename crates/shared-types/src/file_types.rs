@@ -1,8 +1,14 @@
-//! The file types the product previews, by extension (`file-previews.md`
-//! § Choosing a view). The backend serves a file under the media type this
-//! table gives it and shows in place only the types marked so; the page picks
-//! its viewer from the same table, generated into `@demicodes/protocol`, so
-//! the two always agree.
+//! The file types the product previews, by extension. The backend serves a file
+//! under the media type this table gives it and shows in place only the types
+//! marked so; the page picks its viewer from the same table, generated into
+//! `@demicodes/protocol`, so the two always agree.
+//!
+//! A file is told by its extension, not its content, for three reasons: the page
+//! must choose an element before any byte arrives, since a `<video>` fetches its
+//! own URL; the type served must match the viewer chosen; and the user's browser
+//! must not guess a type on its own (`nosniff`). Every type a model reads natively
+//! is in the table and shown in place: one that was not would download, and a
+//! player would play it only where the browser guessed its format.
 
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -77,8 +83,7 @@ pub fn preview_media_type(path: &str) -> Option<&'static str> {
         .map(|entry| entry.media_type)
 }
 
-/// The content policy an image served in place carries
-/// (`file-previews.md` § Keeping file content inert): it runs no script and
+/// The content policy an image served in place carries: it runs no script and
 /// fetches nothing, in an opaque origin.
 pub const IMAGE_CONTENT_POLICY: &str = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 

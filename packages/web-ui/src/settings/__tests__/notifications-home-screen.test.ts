@@ -1,12 +1,11 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// Safari on an iPhone pushes only to Demi added to the Home Screen
-// (`turns.md` § Notifications): there turning notifications on in Settings
-// shows how to add Demi instead of the browser's question, and the row then
-// says so with How to Add, which shows the steps again. Settings ›
-// Notifications on a page of happy-dom at a phone's width; a few ms besides
-// the start of the page.
+// Safari on an iPhone pushes only to Demi added to the Home Screen: there
+// turning notifications on in Settings shows how to add Demi instead of the
+// browser's question, and the row then says so with How to Add, which shows the
+// steps again. Settings › Notifications on a page of happy-dom at a phone's
+// width; a few ms besides the start of the page.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 390, height: 844 })
 

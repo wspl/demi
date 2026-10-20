@@ -28,8 +28,8 @@ export interface PendingCallRenderBlock {
 
 /**
  * The transcript's tail row, Requesting or Connecting, right after the
- * transcript and above the messages that wait (`turns.md` § Following the
- * agent's work). Each wait it shows is a row of its own, which enters once.
+ * transcript and above the messages that wait. Each wait it shows is a row of
+ * its own, which enters once.
  */
 export interface ActivitySlotRow {
   type: 'activity_slot'
@@ -40,7 +40,7 @@ export interface ActivitySlotRow {
 /**
  * A message whose delivery failed, told under it with Retry: for a message
  * sent to start a turn, in the place of the Requesting row it replaces, which
- * Retry rolls it back into (`turns.md` § Recovering an unfinished turn).
+ * Retry rolls it back into.
  */
 export interface DeliveryFailureRow {
   type: 'delivery_failure'
@@ -57,8 +57,8 @@ export interface SessionFailureRow {
 
 /**
  * A run of the agent's steps a share does not hold, in its place after the
- * row of the block `after`, or before the first row for null (`sharing.md`
- * § Steps not shared): one muted line that does not open.
+ * row of the block `after`, or before the first row for null: one muted line
+ * that does not open.
  */
 export interface StepsNotSharedRow {
   type: 'steps_not_shared'
@@ -89,11 +89,10 @@ export function pendingSteersToRenderBlocks(
 
 /**
  * What a message row says waits for the agent, with its line and its Send
- * Now and Recall (`turns.md` § Steer or queue): a steer or a queued
- * message, and a message on its way that will be one of them, from its
- * send, unless its delivery failed or it is a steer that starts the turn,
- * which is the user's next message (`turns.md` § Following the agent's
- * work); undefined for any other row.
+ * Now and Recall: a steer or a queued message, and a message on its way that
+ * will be one of them, from its send, unless its delivery failed or it is a
+ * steer that starts the turn, which is the user's next message; undefined for
+ * any other row.
  */
 export function waitingAs(row: MessageListBlock): 'steer' | 'queued' | undefined {
   switch (row.type) {

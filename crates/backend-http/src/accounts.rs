@@ -1,8 +1,7 @@
-//! A subscription entry's accounts and logins (`web-api-settings.md` § Subscription
-//! accounts): the account list and its active account, removal, and logins
-//! into a new or an existing entry, with the code a sign-in takes. Changing
-//! accounts is the configuring user's, like every other change of an entry;
-//! tokens and codes are never returned.
+//! A subscription entry's accounts and logins: the account list and its active
+//! account, removal, and logins into a new or an existing entry, with the code a
+//! sign-in takes. Changing accounts is the configuring user's, like every other
+//! change of an entry; tokens and codes are never returned.
 
 use std::sync::Arc;
 

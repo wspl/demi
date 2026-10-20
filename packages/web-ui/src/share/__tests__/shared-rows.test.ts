@@ -4,10 +4,9 @@ import { useMessageRows, type MessageRowsSource } from '../../agent/message-rows
 import { createdAt, model, userBlock } from '../../agent/__tests__/agent-harness'
 import { sharedRows, type SharedItem } from '../shared-items'
 
-// A share's page as its list shows it (`sharing.md` § Steps not shared):
-// each run of steps the share does not hold is one line in its place,
-// after the row it follows, and a window that starts with one shows it
-// first. Pure: a few milliseconds.
+// A share's page as its list shows it: each run of steps the share does not
+// hold is one line in its place, after the row it follows, and a window that
+// starts with one shows it first. Pure: a few milliseconds.
 
 const text = (id: string, body: string): SharedItem => ({ type: 'text', id, createdAt, model, text: body })
 const steps = (id: string, count: number): SharedItem => ({ type: 'steps_not_shared', id, count })

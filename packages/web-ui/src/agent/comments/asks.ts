@@ -7,11 +7,10 @@ import type { HeldBlock } from '../history'
 import { t } from '../locales/text'
 
 /**
- * Side questions on a reply's words (`comments-and-ask.md` § Side
- * questions): each a side conversation from the conversation's history
- * through the asked reply, whose card shows each question and its final
- * answer under the block holding the words, and folds into a mark in the
- * margin.
+ * Side questions on a reply's words: each a side conversation from the
+ * conversation's history through the asked reply, whose card shows each
+ * question and its final answer under the block holding the words, and folds
+ * into a mark in the margin.
  */
 
 /** A side question as the transcript shows it. */
@@ -24,8 +23,7 @@ export interface ShownSideQuestion {
   quote: string
   /**
    * The picture a side question about a picture asks of, whose place among
-   * the block's pictures `start` and `end` are (`comments-and-ask.md`
-   * § Images); absent for words.
+   * the block's pictures `start` and `end` are; absent for words.
    */
   picture?: MediaSource | null
   /** The first question; a follow-up is a `user` block of its transcript. */

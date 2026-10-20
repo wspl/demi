@@ -71,7 +71,7 @@ const props = withDefaults(defineProps<{
   fork?: MessageForkHandler
   /** Shares the answer the text block `blockId` ends; absent, no footer offers Share. */
   share?: (blockId: string) => void
-  /** No answer offers Fork, as on a share's page, which acts on no conversation (`sharing.md` § Safety). */
+  /** No answer offers Fork, as on a share's page, which acts on no conversation. */
   hideFork?: boolean
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
@@ -92,30 +92,29 @@ const props = withDefaults(defineProps<{
   /** A block to bring into view and mark for a moment, as a search result opened at it asks; once shown, `revealed` says so. */
   revealBlockId?: string | null
   /**
-   * Where `blocks`, the window the list shows, stands in its transcript
-   * (`web-application.md` § Transcript windows): whether it reaches the
-   * start and the end, and whether it is the latest, the only one that
-   * shows the turn's tail rows and offers to edit. A whole transcript, as
-   * the gallery gives, reaches both and is the latest.
+   * Where `blocks`, the window the list shows, stands in its transcript:
+   * whether it reaches the start and the end, and whether it is the latest, the
+   * only one that shows the turn's tail rows and offers to edit. A whole
+   * transcript, as the gallery gives, reaches both and is the latest.
    */
   atStart?: boolean
   atEnd?: boolean
   latest?: boolean
   /** Each compaction marker's boundary's summary size, by the marker's id, for a boundary the window does not hold. */
   summaries?: Record<string, number>
-  /** A share's runs of steps it does not hold, each a line after the row it follows (`sharing.md` § Steps not shared). */
+  /** A share's runs of steps it does not hold, each a line after the row it follows. */
   stepsNotShared?: readonly StepsNotSharedRow[]
   /**
    * The comments waiting in the conversation's draft and what to do with
    * them: the replies take comments and show the marks of these and of the
-   * ones its messages sent (`comments-and-ask.md`). Absent, as on a share's
-   * page or in a subagent's window, the replies take none and show no mark.
+   * ones its messages sent. Absent, as on a share's page or in a subagent's
+   * window, the replies take none and show no mark.
    */
   commenting?: ReplyCommenting
   /**
    * The transcript's side questions and what to do with them: the replies
-   * take questions and show each one's words, card and fold
-   * (`comments-and-ask.md` § Side questions). Absent, they take none.
+   * take questions and show each one's words, card and fold. Absent, they take
+   * none.
    */
   asking?: ReplyAsking
 }>(), {
@@ -394,8 +393,7 @@ const { height: viewportHeight } = useElementSize(scrollContainer)
 useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
 // Within a screen of an edge that is not the transcript's, the next page is
-// read there (`web-application.md` § Transcript windows); the host reads
-// each page once.
+// read there; the host reads each page once.
 watch(
   [scrollOffset, () => props.blocks, viewportHeight, () => props.atStart, () => props.atEnd, () => props.revealBlockId],
   () => {

@@ -22,12 +22,11 @@ function requestedBefore(): boolean {
 }
 
 /**
- * The offer to add a passkey (`users.md` § User system): any flow that has
- * just proved the user calls `request`, a handoff landing now and the
- * password chosen at a first sign-in later; the offer then shows once the
- * account is loaded and passkeys are offered, unless this browser answered
- * it before, and the answer is remembered for the account on this browser
- * (`resources.passkeyOfferAnswered`).
+ * The offer to add a passkey: any flow that has just proved the user calls
+ * `request`, a handoff landing now and the password chosen at a first sign-in
+ * later; the offer then shows once the account is loaded and passkeys are
+ * offered, unless this browser answered it before, and the answer is remembered
+ * for the account on this browser (`resources.passkeyOfferAnswered`).
  */
 export const usePasskeyOffer = defineStore('passkey-offer', () => {
   const product = useProduct()

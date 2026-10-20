@@ -13,10 +13,8 @@ import {
 
 /**
  * What a control's press runs: it may return a promise, which is the work of
- * the control's operation until it settles (`web-application.md` §
- * Responding to the user, "No click goes unanswered"). A template's inline
- * handler such as `open = true` returns its value, so the type admits any
- * return.
+ * the control's operation until it settles. A template's inline handler such as
+ * `open = true` returns its value, so the type admits any return.
  */
 export type Action<A extends unknown[] = []> = (...args: A) => unknown
 
@@ -227,10 +225,9 @@ export function useOperationControl(operation: () => Operation | undefined, rowA
 }
 
 /**
- * The openings of a dialog, for work started in it to answer only there
- * (`web-application.md` § Responding to the user): `shownNow()`, taken as
- * the work starts, answers later whether that same opening is still shown,
- * not closed and not opened again since.
+ * The openings of a dialog, for work started in it to answer only there:
+ * `shownNow()`, taken as the work starts, answers later whether that same
+ * opening is still shown, not closed and not opened again since.
  */
 export function useOpening(isOpen: () => boolean): { shownNow: () => () => boolean } {
   let opening = 0

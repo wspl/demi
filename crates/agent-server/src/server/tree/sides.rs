@@ -1,14 +1,13 @@
-//! A conversation's side questions (`comments-and-ask.md` § Side questions):
-//! each a node of the tree beside the root's children, never in the agent
-//! directory. It starts from the root's history through the asked reply, a
-//! Fork's seed, with the root's instructions, commands and model, so its
-//! first request begins with what the root's next one would send and reads
-//! it from the provider's cache; its first message holds the asked words, the
-//! instruction that makes it a side question, and the question. It runs
-//! beside the root's turn and never waits for it, closes once it is
-//! quiescent, which delivers nothing to anyone, and opens again for a
-//! follow-up or a Retry. The pages follow its transcript as a subagent's,
-//! by its node.
+//! A conversation's side questions: each a node of the tree beside the root's
+//! children, never in the agent directory. It starts from the root's history
+//! through the asked reply, a Fork's seed, with the root's instructions,
+//! commands and model, so its first request begins with what the root's next
+//! one would send and reads it from the provider's cache; its first message
+//! holds the asked words, the instruction that makes it a side question, and
+//! the question. It runs beside the root's turn and never waits for it, closes
+//! once it is quiescent, which delivers nothing to anyone, and opens again for
+//! a follow-up or a Retry. The pages follow its transcript as a subagent's, by
+//! its node.
 
 use std::{
     cell::{Cell, RefCell},
@@ -39,9 +38,9 @@ use crate::{
 };
 
 /// What makes a question a side question, between what it asks about and
-/// the question in its first message (`comments-and-ask.md` § Side
-/// questions): about the words quoted above it, or about the picture its
-/// first message carries before it (§ Images), which is all that differs.
+/// the question in its first message: about the words quoted above it, or about
+/// the picture its first message carries before it, which is all
+/// that differs.
 pub fn side_instruction(about_picture: bool) -> String {
     let subject = if about_picture { "the picture above" } else { "the words quoted above" };
     format!(
@@ -557,12 +556,11 @@ impl<H: HostResolver> Tree<H> {
     /// receives after the children's.
     /// The block of the side questions source for the request `node` is
     /// about to make, given the source's blocks `seen` since the last
-    /// compaction (`comments-and-ask.md` § What the agent learns): only
-    /// the root's, only when the request follows the user's new message or
-    /// steer, and only the questions asked since the agent last heard of
-    /// them, about replies still in its history, in the order asked.
-    /// The root's path holds a reply before its window too, which its
-    /// store finds.
+    /// compaction: only the root's, only when the request follows the user's
+    /// new message or steer, and only the questions asked since the agent last
+    /// heard of them, about replies still in its history, in the order asked.
+    /// The root's path holds a reply before its window too, which its store
+    /// finds.
     pub async fn side_questions_context(&self, node: &NodeId, seen: &[&str]) -> Result<Option<String>, demi_agent_store::StoreError> {
         if node != self.root.id() {
             return Ok(None);

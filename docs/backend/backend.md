@@ -46,10 +46,10 @@ over the manager's Unix socket.
 
 | Module | Crate | Responsibility | Design contract |
 |---|---|---|---|
-| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes and user streams | [Web API](../product/web-api.md) |
+| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes and user streams | `crates/web-api-protocol/src/lib.rs` |
 | `shard` | `backend-user-shard` | Shard threads, each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
-| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), [Product](../product/users.md#user-system), [Web API](../product/web-api-settings.md#user-preferences) |
+| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), `crates/backend-accounts/src/lib.rs`, `crates/web-api-protocol/src/settings.rs` |
 | `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
 | `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the Claude Code machine, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` and `demi attachment` groups | [Host operations](../execution/sessions-and-targets.md#host-operations) |
@@ -199,7 +199,7 @@ page                                    backend
 
 A handoff code opens the account that made it on a phone, in the phone's
 own session of that account when it has one, else in a new one
-([User system](../product/users.md#user-system)):
+(`crates/backend-accounts/src/lib.rs`):
 
 ```
 laptop page                        backend                         phone
@@ -236,7 +236,7 @@ session cookie itself, since the gate would renew the session and the channel
 never does ([Page synchronization](#page-synchronization)). All other
 `/api` resources, unknown paths included, pass through the session
 gate, so an unauthenticated request for a path that does not exist answers
-401, not 404. [Authentication](../product/web-api.md#authentication) lists
+401, not 404. `crates/backend-http/src/gate.rs` lists
 the routes of each kind. Inaccessible user-owned objects return 404,
 insufficient role returns 403, and missing authentication returns 401.
 
@@ -270,7 +270,7 @@ without asking.
   every request the check covers (the Fetch standard requires it), so only a
   program that is not a web browser leaves it out, such as `curl` calling the
   setup API
-  ([Development and checks](../product/web-application.md#development-and-checks)).
+  (`scripts/web-dev.ts`).
   Such a program holds any cookie it sends and could send any origin it
   liked, so refusing it would protect nothing.
 - **WebSockets follow the same rule.** An upgrade is a GET, but the page that
@@ -337,7 +337,7 @@ requests carry the device token as a bearer token.
 `crates/runner-protocol/src/wire/mod.rs` defines the
 connection itself.
 
-[Instance mode](../product/users.md#instance-mode-shared-vs-isolated)
+`crates/backend-providers/src/vault/entries.rs`
 controls provider ownership. Every provider lookup, catalog, configuration
 route, and inference resolution uses the same scope.
 
@@ -347,7 +347,7 @@ Ordinary product state uses REST with stable error codes and
 `{ code, message }` errors. Every request and response type, and every error
 code, is defined once in the contract crates and generated for the web app
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript));
-[Web API](../product/web-api.md) lists the routes.
+`crates/web-api-protocol/src/lib.rs` lists the routes.
 
 Each page that has a conversation open uses one WebSocket at
 `/api/conversations/:id/stream`, carrying the agent protocol's client and
@@ -362,7 +362,7 @@ Each page also holds one synchronization channel, `WS /api/sync`. It sends the
 page the product state when it connects, then every part of it that changes:
 the account, preferences, providers, workspaces, devices, the Cloud, each
 plugin's state, and each conversation's summary
-([Page synchronization](../product/web-api-sync.md#page-synchronization)). No page
+(`crates/backend-http/src/sync.rs`). No page
 polls. The socket moves into the user's shard, as a conversation socket does.
 For example, a rename commits in the user's shard; the shard then marks the
 conversation's summary as changed on each of the user's open channels, and the
@@ -399,14 +399,14 @@ of command output would hold back the sidebar's changes behind it.
 
 Both kinds of socket send a heartbeat once they have sent nothing else for 30
 seconds, so that a page can tell a quiet socket from one that died without a
-close ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+close (`packages/web-ui/src/transport/liveness.ts`).
 The shard serves both through one page socket, which owns that interval and
 the bound on the close
 ([Startup and shutdown](#startup-and-shutdown)).
 
 How the web app consumes both, with its adapters, its synchronization and
 its session handling, is defined in
-[Web application](../product/web-application.md).
+`packages/web/src/App.vue`.
 Model discovery has its own account-wide cache and loading state, so it does
 not block readable history (`crates/backend-providers/src/llm/catalog_cache.rs`).
 
@@ -420,7 +420,7 @@ that names it, so the page can fetch every reference a frame carries, when
 the frame arrives, through the cookie-authenticated blob route in its user's
 namespace.
 
-Only the media types [file previews](../product/file-previews.md#keeping-file-content-inert)
+Only the media types `crates/backend-http/src/content.rs`
 show in place are served inline, under the same content policy; the page and
 the backend read one file-type table
 ([Logic the web app and backend share](../architecture/contracts.md#logic-the-web-app-and-backend-share)).
@@ -431,7 +431,7 @@ Other content downloads as `application/octet-stream`; responses include
 An upload stores the file's bytes in the caller's blob namespace with an
 attachment record. The backend reads the file's media type from its bytes,
 and for a text file a short opening snippet; the upload response carries both
-([Web API](../product/web-api-hosts.md#uploads-and-media)), so the composer shows
+(`crates/backend-http/src/attachments.rs`), so the composer shows
 them without reading the file itself.
 
 Send, steer and edit content refers to uploads and remote files with typed
@@ -463,7 +463,7 @@ A remote-file reference retains its device and absolute path instead of
 copying bytes. The backend checks ownership and connectivity before adding
 attached-host grants; the model reads the file later through the host command.
 Its contents can change before that read.
-[Web API](../product/web-api-hosts.md#device-files-and-remote-references) defines
+`crates/backend-http/src/devices.rs` defines
 the wire shape.
 
 Resolving uploads keeps the socket's frame order
@@ -485,7 +485,7 @@ result as `failures`, keyed by block id, beside the blocks:
   `transcript_reset` and `transcript_patch` frames, for the blocks each frame
   carries.
 - The history routes attach it to the blocks of a page and to a block read
-  whole ([Conversation history](../product/web-api-conversations.md#conversation-history)).
+  whole (`crates/backend-http/src/history.rs`).
 
 One backend function reads the failures of a list of blocks, and both paths
 call it. The facts are never stored, and an error block is sent whole, as it
@@ -508,9 +508,9 @@ a WebSocket's upgrade included: `req_` and 16 random lowercase base-32
 characters. It never takes an ID from the client; Cloudflare's `cf-ray`, when
 a proxy passes it, is logged beside it. Every response carries the ID in
 `X-Request-Id`, and every JSON error carries it as `requestId` beside `code`
-and `message` ([Web API](../product/web-api.md#resource-index)). A socket
+and `message` (`crates/web-api-protocol/src/error.rs`). A socket
 keeps the ID of its upgrade for its whole life: its open and end lines carry
-it ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)),
+it (`packages/web-ui/src/transport/liveness.ts`),
 and so does every `error` frame it sends.
 
 **One request, every line.** Every request logs one line when it is
@@ -544,7 +544,7 @@ Only a defect is reported: a value the page refused, a handler that threw,
 and the page's diagnostics. A failure of the network, of the browser's
 storage, such as a full quota, or of loading a part of the page is the
 environment's, and an action that lost a race
-([Only a failure interrupts](../product/web-application.md#responding-to-the-user))
+(`packages/web-ui/src/infra/slot.ts`)
 is nobody's: neither is reported.
 A page sends at most 30 reports a minute; more are answered 429 and shown
 without an ID.
@@ -686,7 +686,7 @@ stopped reading in the middle of a long transcript, and the socket's buffers
 are full: without the bound, the backend would wait for the phone to read
 before the shard could close. After the second, the page loses the connection
 without the close frame, and connects again as it does after any close
-([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+(`packages/web-ui/src/transport/liveness.ts`).
 A Host cannot hold up shutdown either: a runner connection's end waits at
 most 5 seconds for the work it carries
 (`crates/runner-protocol/src/wire/mod.rs`).
@@ -719,7 +719,7 @@ the same flag.
 | `DEMI_MACHINE_MANAGER_SOCKET` | The machine manager's Unix socket, which the manager listens on and the backend connects to. Default `/run/demi-cloud/machines.sock`. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_BACKEND_MANAGE_SOCKET` | The Unix socket, mode 0600, on which an upgrade's `demi-server` names the runner release that comes next, so the connected paired devices download it ahead. Default `/run/demi-backend-manage/manage.sock`, in a directory no Cloud mounts. | [Prepare](../delivery/upgrades.md#prepare) |
 | `DEMI_BACKEND_RUNNER_SOCKET` | The Unix socket the backend serves its Clouds' runners on, and whose directory the machine manager mounts into each Cloud. Default `/run/demi-backend/runners.sock`. | [Backend socket](../cloud/managed-hosts.md#backend-socket) |
-| `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | [Product](../product/users.md#instance-mode-shared-vs-isolated) |
+| `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | `crates/backend-providers/src/vault/entries.rs` |
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | Claude Code (`crates/backend-providers/src/llm/claude_releases.rs`) |
@@ -742,7 +742,7 @@ domain name, and something in front of the backend holds the certificate.
 The backend never answers 502 or 504 itself, whatever failed behind it: a
 CDN such as Cloudflare replaces those with its own page, and the page would
 take the backend's own answer for an unreachable backend and wait for it
-([A page of another build](../product/web-application.md#a-page-of-another-build));
+(`packages/web-ui/src/infra/build-reload.ts`);
 an error the backend builds for a failure behind it is 503 with its
 `{ code, message }`.
 
@@ -824,7 +824,7 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    ```
 
 4. Run the web application
-   ([Development and checks](../product/web-application.md#development-and-checks))
+   (`scripts/web-dev.ts`)
    and create the first account. Pair the machine with the installer, which
    installs the runner from the runner release and prints a pairing code to
    claim in the page:

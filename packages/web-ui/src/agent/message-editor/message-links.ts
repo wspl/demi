@@ -2,8 +2,7 @@ import { messageFileTarget } from '../../markdown/filePath'
 import type { MessageFiles } from '../../markdown/types'
 
 /**
- * A click on a user message's link, as `file-previews.md` § Files named in
- * messages says: in the conversation a web link opens as a link does and a
+ * A click on a user message's link: in the conversation a web link opens as a link does and a
  * Host file opens in the File view; in the composer, `editable`, a click
  * places the cursor and ⌘/Ctrl+click opens either.
  */

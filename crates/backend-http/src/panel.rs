@@ -1,7 +1,6 @@
-//! The work panel's routes (`web-api-conversations.md` § Work panel state): the read of a
-//! conversation's tabs, and a request of changes, which the user's shard
-//! applies whole or not at all and answers with the panel's revision. An archived
-//! conversation reads its tabs and refuses every change.
+//! The work panel's routes: the read of a conversation's tabs, and a request of changes,
+//! which the user's shard applies whole or not at all and answers with the panel's
+//! revision. An archived conversation reads its tabs and refuses every change.
 
 use std::sync::Arc;
 

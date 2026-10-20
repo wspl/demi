@@ -7,9 +7,8 @@ import type { MessageFiles } from '../../markdown/types'
 import { createdAt, model } from './agent-harness'
 
 // The pictures of a transcript in the order they stand, which the media
-// viewer steps through (`file-previews.md` § The media viewer): the images the
-// messages show, a Host image by its file, the user's attached files and the
-// media tools returned.
+// viewer steps through: the images the messages show, a Host image by its file,
+// the user's attached files and the media tools returned.
 
 /** The Host's kept files, which a message's Host images show; never read here. */
 const contents: FileContents = {

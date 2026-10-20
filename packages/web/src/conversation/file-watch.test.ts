@@ -3,10 +3,10 @@ import { HostFiles, SUMMARY_REREAD_MS, type KeptSpec } from '@demicodes/web-ui/f
 import type { FileWatchMessage, FileWatchRequest } from '../api/generated/web-api'
 import { ConversationWatch, deviceWatch } from './file-watch'
 
-// The page's file watches as the backend plays them (`web-api-hosts.md` § File
-// watch): the socket each opens, the subscriptions it sends for what the
-// page keeps, and how it connects again, moves and lets go.
-// Cost: no I/O, a fake WebSocket and fake timers; a few milliseconds each.
+// The page's file watches as the backend plays them: the socket each opens, the
+// subscriptions it sends for what the page keeps, and how it connects again,
+// moves and lets go. Cost: no I/O, a fake WebSocket and fake timers; a few
+// milliseconds each.
 
 /** The page's watch socket, which the test plays as the backend would. */
 class WatchSocket extends EventTarget {

@@ -7,13 +7,12 @@ import { t } from './locales/text'
 import type { CredentialKind } from './credential-kinds'
 
 /**
- * The headline of a failed turn (`localization.md` § Text from the
- * backend): the catalogue's words for its failure code, such as
- * `usage_limit`, and, when the provider names the moment it works again,
- * that moment counted from `now`: “You’ve reached your usage limit. Resets
- * at 9:00 PM.” A code the catalogue has no words for, as a vendor's own,
- * and a failure without a code read “The turn failed.”; what the vendor
- * said shows below it, untranslated.
+ * The headline of a failed turn: the catalogue's words for its failure code,
+ * such as `usage_limit`, and, when the provider names the moment it works
+ * again, that moment counted from `now`: “You’ve reached your usage limit.
+ * Resets at 9:00 PM.” A code the catalogue has no words for, as a vendor's own,
+ * and a failure without a code read “The turn failed.”; what the vendor said
+ * shows below it, untranslated.
  */
 export function failureHeadline(
   code: string | null | undefined,

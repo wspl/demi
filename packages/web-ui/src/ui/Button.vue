@@ -109,7 +109,7 @@ const sizeClass = computed(() => {
   <!-- The tip sits on a wrapper so a disabled face can still be hovered. The face itself
        ignores pointer events, so a parent's click does not fire. It is a Tab stop and takes
        the focus when clicked, as a native button does, and shows the focus ring only for the
-       keyboard (`web-application.md` § Keyboard); a disabled or loading one is skipped. A
+       keyboard; a disabled or loading one is skipped. A
        primary button is a dialog's default button: Return presses it, and a dialog without
        a field opens on it (Dialog). -->
   <Tooltip

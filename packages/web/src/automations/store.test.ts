@@ -7,10 +7,10 @@ import { useSession } from '../auth/session'
 import { useProduct } from '../state/product'
 import { useAutomations } from './store'
 
-// The sidebar's count and a run's bar (`automations.md` § Where the user
-// sees them): the count is the backend's, whatever runs the list holds, and
-// a conversation filed under a run shows its bar however old the run, from
-// its own record. Played over the sync channel; milliseconds.
+// The sidebar's count and a run's bar: the count is the backend's, whatever
+// runs the list holds, and a conversation filed under a run shows its bar
+// however old the run, from its own record. Played over the sync channel;
+// milliseconds.
 
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>

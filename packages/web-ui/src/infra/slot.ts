@@ -4,8 +4,7 @@ import { computed, shallowRef, triggerRef, type ComputedRef, type ShallowRef } f
 export type Revisions = Readonly<Record<string, number>>
 
 /**
- * What a write's answer says of the slot (`web-application.md` § Responding
- * to the user).
+ * What a write's answer says of the slot.
  */
 export interface SlotAnswer<V> {
   /**
@@ -75,11 +74,10 @@ export class SlotChange<V, M = undefined> {
 }
 
 /**
- * A piece of state the page reads from the backend (`web-application.md`
- * § Responding to the user): the value it last read, the revision of each of
- * its parts, and the changes the page made and has not seen land. The page
- * shows `shown`, the value read with those changes applied in the order they
- * were made. One mechanism serves every slot:
+ * A piece of state the page reads from the backend: the value it last read, the
+ * revision of each of its parts, and the changes the page made and has not seen
+ * land. The page shows `shown`, the value read with those changes applied in
+ * the order they were made. One mechanism serves every slot:
  *
  * - A change leaves when the page holds a read at or after the revisions its
  *   answer named; an answer without revisions that tells its parts whole is

@@ -1,8 +1,7 @@
-//! The caller's automations (`automations.md`), which only their owner reads
-//! and changes, each route acting in the caller's shard; and an automation's
-//! URL, `/hooks/<id>`, which no session authenticates: its id and its
-//! secret are its only keys. A change reaches the caller's pages as the
-//! `automations` part.
+//! The caller's automations, which only their owner reads and changes, each
+//! route acting in the caller's shard; and an automation's URL, `/hooks/<id>`,
+//! which no session authenticates: its id and its secret are its only keys. A
+//! change reaches the caller's pages as the `automations` part.
 
 use std::time::Instant;
 

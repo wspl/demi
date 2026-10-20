@@ -406,7 +406,7 @@ wake, keeping its home, and the reset's notice says why
 
 Cloud settings tells the user when the Cloud's base is not the configured one:
 the backend compares the Cloud's `image_state` with `current_base_version`
-([Cloud settings](../product/hosts.md#cloud-settings)). A reset moves the
+(`packages/web-ui/src/cloud/CloudSettings.vue`). A reset moves the
 system to the configured base.
 
 ### Container initialization
@@ -597,7 +597,7 @@ across users; everything else about a user's Cloud lives in that user's shard.
 | Machine manager | [Resource limits](#resource-limits) | On |
 | Machine manager | CPU budget / memory limit per sandbox, with the limits on | 2 CPUs / 2 GiB |
 | Machine manager | CPU budget / memory limit of the Claude Code machine, with the limits on | 2 CPUs / 4 GiB |
-| Backend policy | Writable system / home capacity, each account's as an administrator sets it ([Users](../product/users.md#user-system)); the Claude Code machine's always the default | 16 GiB / 16 GiB |
+| Backend policy | Writable system / home capacity, each account's as an administrator sets it (`crates/backend-accounts/src/lib.rs`); the Claude Code machine's always the default | 16 GiB / 16 GiB |
 | Machine manager | `/dev/shm` / `/tmp` / `/run` size limits | 256 MiB / 256 MiB / 256 MiB |
 | Backend lifecycle | Idle window / unattended-job cap | 1 hour / 24 hours |
 | Backend lifecycle | Checkpoint interval | 15 minutes |
@@ -721,7 +721,7 @@ processes share it.
 
 ## System reset
 
-The owner can reset through the backend ([Web API](../product/web-api-hosts.md#cloud))
+The owner can reset through the backend (`crates/backend-http/src/cloud.rs`)
 even when the runner, shell, or system files are broken. The backend persists an
 operation id, selected base, phase, and error. A retry resumes that operation,
 rather than selecting a newer base.

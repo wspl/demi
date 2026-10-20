@@ -8,9 +8,9 @@ import SendToConversationMenu from './SendToConversationMenu.vue'
 import { t } from './locales/text'
 
 /**
- * Send to Conversation (`web-application.md` § Context menus): words of
- * one conversation go to the end of another's draft, as pasting them there
- * would add them, and nothing is sent. The page says where they can go.
+ * Send to Conversation: words of one conversation go to the end of another's
+ * draft, as pasting them there would add them, and nothing is sent. The page
+ * says where they can go.
  */
 export interface SendTargets {
   /** The conversations the user was last active in, most recent first; the search window's recent list. */

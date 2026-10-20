@@ -503,8 +503,8 @@ impl Shard {
 
     /// Ends the connection of every device of the user, the Cloud included:
     /// the account was disabled, and its runners are refused until it is
-    /// enabled again (`users.md` § User system). Their runners connect
-    /// again by themselves and are turned away without a word.
+    /// enabled again. Their runners connect again by themselves and are turned
+    /// away without a word.
     pub async fn disconnect_runners(&self, reason: &str) -> Result<(), StorageError> {
         let control = &self.services().control;
         let mut devices = control.paired_devices(self.user().clone()).await?;

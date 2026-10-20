@@ -2,9 +2,8 @@ import { expect, test } from 'bun:test'
 import type { ToolMediaSource } from '@demicodes/protocol'
 import { declaredSize, ROW_PICTURE, thumbnailBox, tileBox } from '../thumbnail'
 
-// The tile a picture of a message takes, lone or in a run
-// (`file-previews.md` § Files named in messages): it fits a third of the
-// message's width less the two 8-pixel gaps, and 240 pixels tall, with its
+// The tile a picture of a message takes, lone or in a run: it fits a third of
+// the message's width less the two 8-pixel gaps, and 240 pixels tall, with its
 // proportions kept and never enlarged. Pure arithmetic; it costs nothing.
 
 const tiles: { name: string; natural: { width: number; height: number } | null; kind?: 'image' | 'video'; width: number; box: { width: number; height: number } | null }[] = [
@@ -27,10 +26,9 @@ test('three tiles fill a line with the two gaps between them', () => {
   expect(3 * box.width + 2 * 8).toBe(760)
 })
 
-// A picture in a row's own line (`file-previews.md` § Media a tool returned):
-// 20 pixels tall, 16 to 48 wide by its proportions, cropped beyond them,
-// never enlarged, and while its size is unknown the narrowest box for an
-// image and 16:9 for a video.
+// A picture in a row's own line: 20 pixels tall, 16 to 48 wide by its
+// proportions, cropped beyond them, never enlarged, and while its size is
+// unknown the narrowest box for an image and 16:9 for a video.
 
 const rows: { name: string; natural: { width: number; height: number } | null; kind?: 'image' | 'video'; box: { width: number; height: number } }[] = [
   { name: 'a row picture keeps its proportions within its range', natural: { width: 1280, height: 720 }, box: { width: 36, height: 20 } },

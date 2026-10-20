@@ -63,7 +63,7 @@ usePasskeySignals()
 providePageHost(productPageHost())
 // A page of another build than the backend serves, or whose storage a
 // newer build upgraded, loads itself again, once per build; one that still
-// gets another says so (`web-application.md` § A page of another build).
+// gets another says so.
 const updateFailed = ref(false)
 watch(
   () => product.newBuild ?? newerStorage.value,
@@ -117,9 +117,9 @@ const pageRoute = computed(() =>
   settingsAddress.section.value === undefined ? route : router.resolve(pageUnderSettings(router)),
 )
 const { open, openFound, create } = useConversationNavigation()
-/** The search window (`conversations.md` § Finding a conversation). */
+/** The search window. */
 const searchOpen = ref(false)
-/** Hand Off to Your Phone (`users.md` § User system): its code opens the page the window shows. */
+/** Hand Off to Your Phone: its code opens the page the window shows. */
 const handoffOpen = ref(false)
 const sessions = useSessions()
 const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))
@@ -245,8 +245,7 @@ watch(
 )
 /** The page shows the signed-in product, with its sidebar; a sign-in page and a handoff code's do not. */
 const productShown = computed(() => session.signedIn && route.path !== '/handoff')
-// The tab says what the sidebar's dots say, and a sign-in page only its name
-// (`conversations.md` § Conversations and projects).
+// The tab says what the sidebar's dots say, and a sign-in page only its name.
 onScopeDispose(followTabAttention({
   conversations: () => (productShown.value ? sidebarConversations.value : []),
   openId: () => activeId.value,

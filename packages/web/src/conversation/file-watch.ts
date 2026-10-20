@@ -1,11 +1,11 @@
 /**
- * The file watches of the page (`web-api-hosts.md` § File watch): a
- * conversation's, `WS /conversations/:id/fs/watch` or its direct channel's
- * `watch`, which also carries an attached host's subscriptions under their
- * `host`, and a device's folder dialog's, `WS /devices/:deviceId/fs/watch`.
- * Each carries the subscriptions of what the page keeps of one Host's files
- * (`WatchChannel`); this module opens their connections and reads what they
- * bring against its schema.
+ * The file watches of the page: a conversation's, `WS
+ * /conversations/:id/fs/watch` or its direct channel's `watch`, which also
+ * carries an attached host's subscriptions under their `host`, and a device's
+ * folder dialog's, `WS /devices/:deviceId/fs/watch`. Each carries the
+ * subscriptions of what the page keeps of one Host's files (`WatchChannel`);
+ * this module opens their connections and reads what they bring against its
+ * schema.
  */
 import { schemaRefusal } from '@demicodes/protocol'
 import type { HostFiles } from '@demicodes/web-ui/files/file-cache'

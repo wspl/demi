@@ -62,13 +62,11 @@ pub struct ConversationSlot {
     pub transfers: Rc<TransferSet>,
     /// Orders the changes of the conversation's model settings, one at a
     /// time; an open of its tree takes the same turn, so it opens with the
-    /// selection the record holds (`web-api.md` § Sidebar mutations, read
-    /// state and page synchronization).
+    /// selection the record holds.
     pub settings: SerialGate,
     /// Orders the sends of the conversation's messages saved for later: one
     /// is read, handed to the session and taken off the list before the
-    /// next is read, so two pages never send it twice (`web-api-conversations.md`
-    /// § Messages saved for later).
+    /// next is read, so two pages never send it twice.
     pub saved: SerialGate,
     /// The admissions its running shell jobs hold, each with its job's
     /// device.

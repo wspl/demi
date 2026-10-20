@@ -18,11 +18,10 @@ export function attachmentPath(file: Pick<AttachmentFile, 'name'>): string {
 
 /**
  * The source an attachment's preview reads, so the previews of the File view
- * show the attachment's stored copy (`file-previews.md` § Attachment blocks):
- * one file at the root, which never changes, so nothing watches it; text
- * read whole up to the text route's limit and refused as binary by its rule,
- * a larger file's start read with a byte range, and its bytes and Download
- * from the copy's address. Nothing else is there.
+ * show the attachment's stored copy: one file at the root, which never changes,
+ * so nothing watches it; text read whole up to the text route's limit and
+ * refused as binary by its rule, a larger file's start read with a byte range,
+ * and its bytes and Download from the copy's address. Nothing else is there.
  */
 export function attachmentSource(file: AttachmentFile): FileBrowserSource {
   const path = attachmentPath(file)

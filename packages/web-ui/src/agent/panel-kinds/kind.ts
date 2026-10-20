@@ -13,9 +13,9 @@ export interface TabCommand {
 }
 
 /**
- * What the work panel needs to show the tabs of one kind
- * (`web-application.md` § Work panel). The panel knows nothing else about a
- * kind: the protocol, stream or routes its tabs use stay behind `content`.
+ * What the work panel needs to show the tabs of one kind. The panel knows
+ * nothing else about a kind: the protocol, stream or routes its tabs use stay
+ * behind `content`.
  */
 export interface PanelTabKind<Data = unknown> {
   kind: string

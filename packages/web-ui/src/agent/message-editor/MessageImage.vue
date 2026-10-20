@@ -12,13 +12,13 @@ import { imageCapsule } from './capsules'
 
 /**
  * An image a message names, shown in the user's message as an attachment
- * capsule, never as a picture in its text (`file-previews.md` § Files named in
- * messages): the capsule of a file the user attached, in the composer and in
- * the sent message. The Markdown keeps the image. A Host image follows its
- * file, at the version of it the page keeps, so the capsule's thumbnail
- * changes when the file does. An image that loads from nowhere, and one whose
- * file is still being read, shows its alt text. A click does what an attached
- * image's capsule does; inside a link it follows the link.
+ * capsule, never as a picture in its text: the capsule of a file the user
+ * attached, in the composer and in the sent message. The Markdown keeps the
+ * image. A Host image follows its file, at the version of it the page keeps, so
+ * the capsule's thumbnail changes when the file does. An image that loads from
+ * nowhere, and one whose file is still being read, shows its alt text. A click
+ * does what an attached image's capsule does; inside a link it follows the
+ * link.
  */
 const props = defineProps<{
   /** The image's target, as the Markdown names it. */

@@ -7,7 +7,7 @@ import type { HandoffHost, HandoffVerifyOutcome } from './handoff'
 /** What confirming it is the user needs of a host: the password, and a passkey where the account has one. */
 export type VerificationHost = Pick<HandoffHost, 'verifyPassword' | 'verifyPasskey'>
 
-/** The state of a confirmation step (`users.md` § User system): the password typed, what is wrong with it, and which way is under way. */
+/** The state of a confirmation step: the password typed, what is wrong with it, and which way is under way. */
 export interface Verification {
   password: Ref<string>
   /** What is wrong with the password, said under it; null when nothing is. */

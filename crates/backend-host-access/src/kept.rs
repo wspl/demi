@@ -103,10 +103,9 @@ pub enum Wait {
     Current,
     /// As [`Wait::Current`], and a search read at this number or later: a
     /// page whose watch went live there takes nothing read before it as
-    /// current, however current the backend's own watch keeps it
-    /// (`web-api-conversations.md` § Workflows of a directory). What is held
-    /// from before it is searched again, once, by a search every such
-    /// caller shares, as long as a first search may hold.
+    /// current, however current the backend's own watch keeps it. What is held
+    /// from before it is searched again, once, by a search every such caller
+    /// shares, as long as a first search may hold.
     After(ReadAt),
 }
 

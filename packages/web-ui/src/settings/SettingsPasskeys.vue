@@ -14,13 +14,12 @@ import SettingsRow from './SettingsRow.vue'
 import type { SettingsPasskey, SettingsPasskeyHost } from './types'
 
 /**
- * The account's passkeys (`users.md` § User system), oldest first: each
- * with its password manager's name, whether it syncs (Synced) or stays on
- * one device (This Device Only), when it was added and, once it has signed
- * in, when it was last used, and
- * Rename… and Remove…, which asks first. Add Passkey… asks for the password,
- * then the browser. The host adds, renames and removes; a rename or a
- * removal it could not make it says itself.
+ * The account's passkeys, oldest first: each with its password manager's name,
+ * whether it syncs (Synced) or stays on one device (This Device Only), when it
+ * was added and, once it has signed in, when it was last used, and Rename… and
+ * Remove…, which asks first. Add Passkey… asks for the password, then the
+ * browser. The host adds, renames and removes; a rename or a removal it could
+ * not make it says itself.
  */
 const props = defineProps<{
   host: SettingsPasskeyHost
@@ -29,7 +28,7 @@ const props = defineProps<{
   email: string
 }>()
 
-/** The most characters a passkey's name has once trimmed (`web-api-settings.md` § Account API). */
+/** The most characters a passkey's name has once trimmed. */
 const NAME_MAX_LENGTH = 80
 
 const adding = ref(false)

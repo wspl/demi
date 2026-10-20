@@ -3,8 +3,7 @@
 //! web app build. Handlers are thin: they parse, authenticate, and call a
 //! shared service or a shard.
 
-// The text of the pages the backend renders, one catalogue per language
-// (`localization.md` § Text from the backend).
+// The text of the pages the backend renders, one catalogue per language.
 rust_i18n::i18n!("locales", fallback = "en");
 
 mod accounts;
@@ -549,9 +548,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
     edge(app, closing, state)
 }
 
-/// The public routes of the shares (`web-api-conversations.md` § Sharing): no session
-/// gate, the token their only key, each answer with the headers that keep
-/// the token and the snapshot out of indexes, referrers and caches.
+/// The public routes of the shares: no session gate, the token their only key, each
+/// answer with the headers that keep the token and the snapshot out of indexes,
+/// referrers and caches.
 fn public_shares() -> Router<AppState> {
     Router::new()
         .route("/api/shares/{token}", get(shares::read))
@@ -568,9 +567,9 @@ fn public_shares() -> Router<AppState> {
         .layer(middleware::map_response(shares::public_headers))
 }
 
-/// The automations' URLs (`automations.md` § An automation): no session
-/// gate and no check of the page they come from, since another system calls
-/// them; the id and the secret are their only keys.
+/// The automations' URLs: no session gate and no check of the page they come
+/// from, since another system calls them; the id and the secret are their only
+/// keys.
 fn hooks() -> Router<AppState> {
     Router::new().route("/hooks/{id}", axum::routing::any(automations::hook))
 }

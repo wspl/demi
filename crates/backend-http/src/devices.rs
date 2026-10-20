@@ -1,9 +1,7 @@
-//! `/api/devices` (`web-api-hosts.md` § Workspaces, devices, and attached hosts,
-//! § Device files and remote references, § Device log): the caller's
-//! devices, pairing, renaming and routes, revocation, browsing a paired
-//! device's directories to choose a target, and a Host's log. Browsing and the log
-//! reach the device through device access, which wakes nothing: a device
-//! whose runner is not connected answers 409 `device_offline`.
+//! `/api/devices`: the caller's devices, pairing, renaming and routes, revocation,
+//! browsing a paired device's directories to choose a target, and a Host's log.
+//! Browsing and the log reach the device through device access, which wakes
+//! nothing: a device whose runner is not connected answers 409 `device_offline`.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -125,7 +123,7 @@ pub(super) async fn revoke(
 
 /// A directory of a paired device, its home when the query names none,
 /// with the Host's number before it listed, as the folder dialog's watch
-/// compares it (`web-api-hosts.md` § File watch).
+/// compares it.
 pub(super) async fn browse(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -176,7 +174,7 @@ pub(super) async fn workflows(
     // access, which wakes no stopped Cloud.
     let device = owned_device(&state, &user.id, &id, None).await?;
     // A directory that is not an absolute path is the request's fault, as a
-    // body's would be (`web-api-conversations.md` § Workflows of a directory).
+    // body's would be.
     let QueryParams(query) = query.map_err(|error| ApiError::invalid_body(error.message().to_owned()))?;
     let (workflows, read_at) = state
         .shards

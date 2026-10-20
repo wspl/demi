@@ -131,9 +131,9 @@ let workspaces: WorkspaceDto[]
 let serverDrafts: Map<string, ConversationDraft>
 
 /**
- * The backend's draft routes (`web-api-conversations.md` § Conversation drafts): a save
- * always takes effect and keeps the version it replaced when it was built on
- * another revision; a restore exchanges the replaced version with the draft.
+ * The backend's draft routes: a save always takes effect and keeps the version it
+ * replaced when it was built on another revision; a restore exchanges the replaced
+ * version with the draft.
  */
 function draftRoute(id: string, method: string, action: boolean, body: Record<string, unknown>): Response {
   const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], comments: [], replaced: null }
@@ -178,10 +178,9 @@ function revisionsOf(id: string) {
 }
 
 /**
- * The backend's routes of messages saved for later (`web-api-conversations.md` § Messages
- * saved for later): the list, with the revision the conversation's summary
- * carries; a save of the composer's message, which empties the draft, and a
- * plain one, each under the page's id; an edit, kept by its operation id;
+ * The backend's routes of messages saved for later: the list, with the revision the
+ * conversation's summary carries; a save of the composer's message, which empties the
+ * draft, and a plain one, each under the page's id; an edit, kept by its operation id;
  * and a deletion, which a message gone already answers the same.
  */
 function savedRoute(id: string, method: string, path: string, body: Record<string, unknown>): Response {
@@ -568,7 +567,7 @@ test('a page saves only the drafts it changed, so another tab\'s saved draft sta
 
 // A waiting comment on a picture reaches the web browser's storage as
 // IndexedDB takes it: a copy whose picture is no Vue proxy, which IndexedDB
-// cannot clone (`comments-and-ask.md` § Images).
+// cannot clone.
 test('a draft holding a comment on a picture is written as IndexedDB can store it', async () => {
   const stored: unknown[] = []
   const written = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, _id, draft) => {
@@ -1038,7 +1037,7 @@ test('a first send whose conversation opens while the model list loads again goe
 })
 
 // A model list that fails while a message waits for it is why the message
-// did not go, and the message says so (`web-application.md` § Model discovery).
+// did not go, and the message says so.
 test('a first send waiting for the model list ends undelivered with the list’s failure when it fails', async () => {
   const store = useConversations()
   const product = useProduct()
@@ -1122,8 +1121,7 @@ async function chooseStubModel(conversation: ReturnType<typeof useConversations>
 }
 
 // A message sent while Demi restarts shows as waiting, never as failed, and
-// goes with its id once the page reaches the backend again
-// (`web-application.md` § A page of another build).
+// goes with its id once the page reaches the backend again.
 test('a first send while the backend is away waits without failing and goes once with its id when it is back', async () => {
   const store = useConversations()
   const id = store.create()
@@ -1224,10 +1222,9 @@ function shownRows(conversation: ReturnType<typeof useConversations>['items'][nu
 
 // Recall or Send Now pressed on a steer still on its way is the user's
 // latest wish, carried out once the session holds the steer, on what it
-// became: the steer, or the queued message a refused steer went as
-// (`web-application.md` § Responding to the user, `turns.md` § Steer or queue).
-// Recall takes the row away at once all the same, and puts the message
-// back into the empty composer once it is carried out.
+// became: the steer, or the queued message it went as when the session refused it. Recall
+// takes the row away at once all the same, and puts the message back into the
+// empty composer once it is carried out.
 test.each([
   { held: 'steer', press: 'Recall', request: 'removeWaiting' },
   { held: 'steer', press: 'Send Now', request: 'interruptPendingSteer' },
@@ -1336,9 +1333,9 @@ async function withRemovals(check: (
 }
 
 // Recall takes a waiting message back into the empty composer, as
-// iMessage's does (`turns.md` § Steer or queue): its text, and its files
-// as capsules, which attach as a pasted message's do, without their bytes.
-// Before, the message was only removed.
+// iMessage's does: its text, and its files as capsules, which attach as a
+// pasted message's do, without their bytes. Before, the message was only
+// removed.
 test('Recall puts a steer back into the empty composer, its file a capsule attached without uploading it', async () => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
@@ -1364,10 +1361,9 @@ test('Recall puts a steer back into the empty composer, its file a capsule attac
 
 // With a draft in the composer, Recall keeps the draft as it is and the
 // message is not put back; a toast's Undo sends it again the way it was
-// sent (`turns.md` § Steer or queue).
-// Its comments go with it (`comments-and-ask.md` § Sending them): the draft's
-// own waiting comments stay as they are, and Undo sends the recalled ones
-// again. Before, they joined the draft's and Undo sent the message without them.
+// sent. Its comments go with it: the draft's own waiting comments stay as they
+// are, and Undo sends the recalled ones again. Before, they joined the draft's
+// and Undo sent the message without them.
 const recalledComment = { id: 'c-recalled', blockId: 'text-1', start: 0, end: 7, at: 0, quote: 'Uploads', text: 'Which ones?' }
 const ownComment = { id: 'c-own', blockId: 'text-1', start: 8, end: 12, at: 8, quote: 'fail', text: 'Since when?' }
 test.each<{ holds: string; draft: string; comments: MessageComment[] }>([
@@ -1412,8 +1408,8 @@ test.each<{ holds: string; draft: string; comments: MessageComment[] }>([
 // A Recall the agent beat, as when it read the steer meanwhile, is no
 // failure: the message shows where the agent took it, with no toast and no
 // report of a defect, and what Recall put in the composer goes back out
-// unless the user changed it since (`turns.md` § Steer or queue). Before, it
-// toasted "Could Not Recall the Message" and posted it to /api/page-errors.
+// unless the user changed it since. Before, it toasted "Could Not Recall the
+// Message" and posted it to /api/page-errors.
 test.each([
   { since: 'left as it was', draft: '' },
   { since: 'edited', draft: `Compare ${ATTACHMENT_MARK} with the old one, please` },
@@ -1469,9 +1465,9 @@ test('a Recall that fails brings the row back where it was with a toast', async 
   })
 })
 
-// A message can be sent while the one before it is on its way
-// (`turns.md` § Steer or queue): before, Enter did nothing until the first
-// was confirmed. Both show at once, as what they will be, and go in order.
+// A message can be sent while the one before it is on its way: before, Enter
+// did nothing until the first was confirmed. Both show at once, as what they
+// will be, and go in order.
 test('two messages sent in a row while the first is unconfirmed both show at once, go in order, and each becomes its row in place', async () => {
   const store = useConversations()
   const id = store.create()
@@ -1527,10 +1523,9 @@ test('two messages sent in a row while the first is unconfirmed both show at onc
   }
 })
 
-// Send Now in a comment's box (`comments-and-ask.md` § Comments): a message
-// holding that comment alone goes at once, as the composer's send would, a
-// steer while the agent works; the other waiting comments and the typed
-// draft stay as they are.
+// Send Now in a comment's box: a message holding that comment alone goes at
+// once, as the composer's send would, a steer while the agent works; the other
+// waiting comments and the typed draft stay as they are.
 test.each([
   { phase: 'idle', way: 'submit' },
   { phase: 'running', way: 'steer' },
@@ -1570,7 +1565,7 @@ test.each([
 
 // A comment's Send Now the session refuses leaves no failed message: the
 // comment waits with the others again, after them, and the typed draft is
-// as it was (`comments-and-ask.md` § Comments).
+// as it was.
 test('Send Now on a comment the session refuses puts the comment back with the waiting ones and leaves no failed message', async () => {
   const store = useConversations()
   const id = store.create()
@@ -1716,7 +1711,7 @@ test('a draft moves without telling anyone and is created where it moved; a conv
   }
 })
 
-// `hosts.md` § Where a conversation runs: moving a conversation whose agent
+// Moving a conversation whose agent
 // works stops its work first, and the move goes out once the session says it
 // is idle, since the backend refuses a move while its tree is busy.
 test('moving a conversation whose agent works stops its work and sends the move only once the session is idle', async () => {
@@ -1820,9 +1815,8 @@ test('a draft keeps its files; the conversation itself is created on first send'
   expect(conversation.pendingSends[0]?.fileIds).toEqual([conversation.files[0]!.id])
 })
 
-// A failed upload is told on its capsule, with Retry, where it happened
-// (`web-application.md` § Responding to the user): a toast, which stays until
-// closed, would outlive the conversation it was about.
+// A failed upload is told on its capsule, with Retry, where it happened: a
+// toast, which stays until closed, would outlive the conversation it was about.
 test('a file whose upload fails says so on its capsule, whose Retry uploads it, and raises no toast', async () => {
   const store = useConversations()
   store.create()
@@ -1946,7 +1940,7 @@ function pastePicture(current: ReturnType<typeof useConversations>['items'][numb
 }
 
 // A message whose file still uploads is sent like any other, and goes once
-// the upload is done (`composer.md` § Writing a message).
+// the upload is done.
 test('a message sent while its file uploads leaves the composer at once and is delivered with the file once the upload finishes', async () => {
   await withSession(async (current, sent) => {
     const gate = deferred()
@@ -1971,7 +1965,7 @@ test('a message sent while its file uploads leaves the composer at once and is d
 })
 
 // Two screenshots pasted one after the other are both `image.png`; a name
-// says nothing about a file's contents (`composer.md` § Attachments).
+// says nothing about a file's contents.
 test('two files of one name both join the message, upload, and go as two files', async () => {
   await withSession(async (current, sent) => {
     const taken = useConversations().addFiles(current, [
@@ -2034,11 +2028,10 @@ test('a message whose upload fails says so in the page’s language', async () =
   }
 })
 
-// A reload shows a message not delivered as the page showed it before
-// (`composer.md` § Writing a message): its file whose upload failed is a
-// failed capsule, and nothing uploads it until the dock's Retry. Before, the
-// page uploaded it again on its own, and its capsule showed a plain file
-// under a failure that said it did not upload.
+// A reload shows a message not delivered as the page showed it before: its file
+// whose upload failed is a failed capsule, and nothing uploads it until the
+// dock's Retry. Before, the page uploaded it again on its own, and its capsule
+// showed a plain file under a failure that said it did not upload.
 test('a message whose upload failed keeps its file failed after a reload, and nothing uploads it until Retry', async () => {
   let signOut = signIn()
   let kept: draftStorage.SavedDraft | null = null
@@ -2083,11 +2076,10 @@ test('a message whose upload failed keeps its file failed after a reload, and no
 })
 
 // The backend decides that a delivery failed and says why; the bubble says
-// it as the page words the refusal's code (`turns.md` § Requesting,
-// `localization.md` § Text from the backend), and a failure inside the
-// backend, which has no cause of its own, with the request to quote. Before,
-// a slow send read as a failure the page made up after 30 seconds, with no
-// cause and no request.
+// it as the page words the refusal's code, and a failure inside the backend,
+// which has no cause of its own, with the request to quote. Before, a slow send
+// read as a failure the page made up after 30 seconds, with no cause and no
+// request.
 test('a message the backend refused for a cause of its own is not delivered, and says why', async () => {
   await withSession(async (current) => {
     const refusal = new RefusedError({
@@ -2130,9 +2122,9 @@ test('a message the backend failed to send says so with the request ID, which Re
   })
 })
 
-// A message not delivered stays where it was sent (`turns.md` § Following
-// the agent's work): it keeps the messages sent after it, in order, before
-// the first of which that shows it stands, and one deleted leaves the list.
+// A message not delivered stays where it was sent: it keeps the messages sent
+// after it, in order, before the first of which that shows it stands, and one
+// deleted leaves the list.
 test('a message not delivered keeps the messages sent after it in order, without one deleted', async () => {
   await withSession(async (current) => {
     const store = useConversations()
@@ -2261,8 +2253,7 @@ test('Retry while a message is on its way sends the one not delivered after it, 
 
 // The dock's Retry sends every message not delivered again, in the order
 // they were sent, each as a new message at the end, and skips one a resend
-// cannot deliver, which leaves no Retry (`turns.md` § Following the
-// agent's work).
+// cannot deliver, which leaves no Retry.
 test('Retry sends the messages not delivered again in order, each at the end, and skips one whose file is gone', async () => {
   await withSession(async (current) => {
     const store = useConversations()
@@ -2386,9 +2377,9 @@ test('a message restored from any draft its send saved goes again with each of i
 // backend may already hold it, as a queued message the page's history does
 // not show yet. The message stays on its way, with no Edit or Delete, which
 // would drop the id the backend knows it by, and goes again with that id
-// once the session is open, which takes it once (`turns.md` § Following the
-// agent's work). Before, it came back as not delivered, and Edit left a copy
-// to send again while Delete let the original run.
+// once the session is open, which takes it once. Before, it came back as not
+// delivered, and Edit left a copy to send again while Delete let the original
+// run.
 test('a message whose answer a reload cut off stays on its way, offers no Edit or Delete, and goes again with its id', async () => {
   let signOut = signIn()
   let kept: draftStorage.SavedDraft | null = null
@@ -2441,9 +2432,8 @@ test('a message whose answer a reload cut off stays on its way, offers no Edit o
 // the IndexedDB write of the send, which carries the files, is cut off with
 // the page, and the record still holds the composer as it was before. The
 // page's last words name the message on its way, which the next page sends
-// with its files, its composer empty (`turns.md` § Following the agent's
-// work). Before, the last words held only the empty composer, which emptied
-// the restored one, and the message was gone.
+// with its files, its composer empty. Before, the last words held only the
+// empty composer, which emptied the restored one, and the message was gone.
 test('a message sent just before a reload that cut off its stored draft goes after the page opens again', async () => {
   let signOut = signIn()
   const snapshots: draftStorage.SavedDraft[] = []
@@ -2500,9 +2490,9 @@ test('a message sent just before a reload that cut off its stored draft goes aft
 // The same reload where the backend's draft still holds the message's text,
 // saved while it was typed: the next page's composer stays empty, as it was
 // after Send, and once the message is taken the backend's draft is emptied
-// too; a sent message's text never comes back (`turns.md` § Following the
-// agent's work). Before, the draft read put the text back in the composer,
-// since an empty composer counted as no change, and it was saved again.
+// too; a sent message's text never comes back. Before, the draft read put the
+// text back in the composer, since an empty composer counted as no change, and
+// it was saved again.
 test('after a reload that cut off a send, the composer stays empty and the backend draft is emptied once the message is taken', async () => {
   const typed = 'Compare these'
   serverDrafts.set(FIRST, { revision: 1, text: typed, files: [], comments: [], replaced: null })
@@ -2556,7 +2546,7 @@ test('after a reload that cut off a send, the composer stays empty and the backe
 // A message whose text and files are out of step, whichever way, fails every
 // resend: its row offers no Retry, and Edit puts it back in the composer,
 // each place its text holds a capsule, a file gone a capsule to delete or
-// attach again, so nothing of it is lost (`turns.md` § Following the agent's work).
+// attach again, so nothing of it is lost.
 test('a message whose files are out of step offers no Retry, and Edit puts it back in the composer with each file gone a capsule that says so', async () => {
   const cases: {
     name: string
@@ -2657,8 +2647,7 @@ function answerClaims(gate: Promise<void>): () => void {
 }
 
 // A pasted message's stored file is a capsule at once, attaching beside it
-// as an upload does; a message sent meanwhile waits for it
-// (`composer.md` § Writing a message).
+// as an upload does; a message sent meanwhile waits for it.
 test('a pasted message\'s stored file is the message\'s at once, and a send waits for its attaching, which sends no bytes', async () => {
   await withSession(async (current, sent) => {
     const gate = deferred()
@@ -3176,8 +3165,7 @@ function shownStep(conversation: ReturnType<typeof useConversations>['items'][nu
   }
 }
 
-// `web-application.md` § Opening a conversation shows in two steps:
-// production showed the dock's "1 Agent" over the loading pane, the REST
+// Opening a conversation shows in two steps: production showed the dock's "1 Agent" over the loading pane, the REST
 // list applied before the transcript showed, and a running conversation's
 // sidebar dot went out while it opened, computed from a phase the page had
 // not heard. Cost: one opening, no wait.
@@ -3214,10 +3202,10 @@ test('a conversation opens in two steps: its transcript with its agents, then it
 
 // A large tree's subagent list took a minute to answer after a restart, and
 // the page showed the conversation loading all that time, since its first
-// step waited for the list and its `open` for the first step
-// (`web-application.md` § round trips). The transcript and the session wait
-// for nothing else; the session's own list names the children. Cost: one
-// opening, no wait; the list's read never ends, which holds no timer.
+// step waited for the list and its `open` for the first step. The transcript
+// and the session wait for nothing else; the session's own list names the
+// children. Cost: one opening, no wait; the list's read never ends, which holds
+// no timer.
 test('a conversation whose subagent list does not answer shows its transcript and opens its session', async () => {
   const never = new Promise<unknown[]>(() => {})
   const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: never })
@@ -3236,8 +3224,7 @@ test('a conversation whose subagent list does not answer shows its transcript an
 })
 
 // Marking read needs only the transcript, so it comes with the first step,
-// not with a session that may take long to open (`web-application.md`
-// § Opening a conversation shows in two steps). Cost: one opening, no wait.
+// not with a session that may take long to open. Cost: one opening, no wait.
 test('a conversation is marked read at the first step of its opening, before its session opens', async () => {
   const original = globalThis.document
   Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
@@ -3277,10 +3264,9 @@ test('Retry after a refused opening shows nothing of the earlier attempt while i
   expect(conversation.lastError).toBeNull()
 })
 
-// Every first session is an opening (`web-application.md` § Opening a
-// conversation shows in two steps): a new conversation's first send whose
-// socket cannot be made says it connects, never that it reconnects to a
-// session it never had. Cost: one socket, no wait.
+// Every first session is an opening: a new conversation's first send whose
+// socket cannot be made says it connects, never that it reconnects to a session
+// it never had. Cost: one socket, no wait.
 test('a new conversation whose first session cannot connect is opening, not reconnecting', async () => {
   const store = useConversations()
   const id = store.create()
@@ -3445,7 +3431,7 @@ test('a conversation whose record holds no model opens to its transcript, not as
 
 const transcriptReads = () => requests.filter((request) => request.path.endsWith('/transcript')).length
 
-// `web-application.md` § What a reopened socket brings back: production
+// What a reopened socket brings back: production
 // showed a subagent Running with its transcript stopped where the page's
 // socket dropped, though it had finished while the page was away, until a
 // reload. Each open's snapshot lists every child, every running command
@@ -3525,9 +3511,8 @@ test('a conversation that opens again after its socket dropped shows what ended 
 // through it, and on return the dead socket's silence rejected the Resume's
 // wait with a toast "The conversation did not accept the request.", though
 // the session had taken it. A connection lost while the session ran an
-// action is the Connecting state, then the reopened snapshot
-// (`web-application.md` § What a reopened socket brings back), never a
-// refusal. Cost: two openings, no wait.
+// action is the Connecting state, then the reopened snapshot, never a refusal.
+// Cost: two openings, no wait.
 test('a page that returns from sleep after a Resume started shows no refusal and opens the conversation again', async () => {
   const { conversation, sockets } = await openWithSession(FIRST)
   const store = useConversations()
@@ -3552,7 +3537,7 @@ test('a page that returns from sleep after a Resume started shows no refusal and
   expect(toasts.slice(before).map((toast) => toast.title)).toEqual([])
 })
 
-// `web-application.md` § A request the drop interrupts: a Stop the session
+// A request the drop interrupts: a Stop the session
 // had not answered when the socket dropped is neither refused nor sent
 // again; the toast says the connection was lost. Cost: one opening.
 test('a Stop whose socket drops before the session answers it shows Connection Lost and is not sent again', async () => {
@@ -3677,8 +3662,7 @@ test('an archive the backend refuses keeps the open conversation\'s transcript a
 // command's tab takes its title and script from its frames, which carry
 // them from the command's record (`rendering.md` § Rendering boundary): a
 // page that holds no call of it titles it before the call returns and after
-// it opens again, and reads nothing for it
-// (`web-api-conversations.md` § Light form). Cost: two openings, no wait.
+// it opens again, and reads nothing for it. Cost: two openings, no wait.
 test('a subagent\'s running command is titled from its frames, whether or not the page holds its call', async () => {
   const view = {
     commandId: '70460', toolUseId: 'call-clone', title: 'Clone the repository',
@@ -3745,9 +3729,8 @@ test('deleted rows leave at once, and a deletion that fails brings its row back 
   expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Delete “second”', message: 'Something went wrong on the server.' })
 })
 
-// An outcome already reached is no failure (`web-application.md`
-// § Responding to the user): a conversation another page deleted meanwhile
-// is deleted, with no toast. Before, it toasted "Could Not Delete".
+// An outcome already reached is no failure: a conversation another page deleted
+// meanwhile is deleted, with no toast. Before, it toasted "Could Not Delete".
 test('deleting a conversation another page deleted already is done, with no toast', async () => {
   const store = useConversations()
   const fetch = globalThis.fetch
@@ -3946,8 +3929,7 @@ test('opening a conversation sends its reads at once and shows the transcript be
 
 // A conversation opened while Demi restarts shows it loading under the
 // connection banner, never a failure about the connection, and loads once
-// the page reaches the backend again (`web-application.md` § A page of
-// another build). Cost: one opening, no timer.
+// the page reaches the backend again. Cost: one opening, no timer.
 test('a conversation opened while the backend is away, kept for opening offline nowhere, loads once it is back, without failing', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
@@ -3968,8 +3950,8 @@ test('a conversation opened while the backend is away, kept for opening offline 
     expect(useProduct().connection).toBe('restarting')
     const opened = store.activate(FIRST)
     await waitFor(() => refused === 1, () => 'no transcript request')
-    // This web browser keeps no copy of it (`web-application.md` § Installing
-    // and opening offline): it says so meanwhile, and fails nothing.
+    // This web browser keeps no copy of it: it says so meanwhile, and fails
+    // nothing.
     await waitFor(() => first.load === 'offline', () => `the conversation is ${first.load}`)
     expect(first.lastError).toBeNull()
     away = false
@@ -4452,10 +4434,9 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
   }
 })
 
-// Send to Conversation (`web-application.md` § Context menus): the words go
-// to the end of the chosen conversation's draft as a paste there adds them,
-// sent before it opened, so they wait for the draft the backend has, and
-// nothing goes to the agent.
+// Send to Conversation: the words go to the end of the chosen conversation's
+// draft as a paste there adds them, sent before it opened, so they wait for the
+// draft the backend has, and nothing goes to the agent.
 test.each([
   { source: 'the user’s whole message, its file with it', words: () => contentCopy(withPicture('m').content), text: `Fix the login\n\nCompare ${ATTACHMENT_MARK} with the old one`, files: 1 },
   { source: 'text selected in it', words: () => textWords('the cookie rename'), text: 'Fix the login\n\nthe cookie rename', files: 0 },
@@ -4543,10 +4524,10 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   }
 })
 
-// Comments wait in the draft as its text does (`comments-and-ask.md`
-// § Waiting comments): another page's show here, one saved here is saved at
-// once, and Send carries them, in the order the conversation reads them,
-// with the typed text, emptying the draft once the backend accepts it.
+// Comments wait in the draft as its text does: another page's show here, one
+// saved here is saved at once, and Send carries them, in the order the
+// conversation reads them, with the typed text, emptying the draft once the
+// backend accepts it.
 test('waiting comments sync with the draft, and a send or a steer carries them in reading order and empties them everywhere', async () => {
   const signOut = signIn()
   const store = useConversations()
@@ -4609,7 +4590,7 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
 
 // A pasted file whose attaching the page did not see end is saved with the
 // draft as its stored file, and attaches again when the draft is restored,
-// or falls back as a paste does (`composer.md` § Writing a message).
+// or falls back as a paste does.
 test('a draft saved while its pasted files attach restores them attaching, and their claims finish or fall back', async () => {
   let signOut = signIn()
   const saved = new Map<string, draftStorage.SavedDraft>()
@@ -5331,8 +5312,7 @@ test('a message sent from the list while its save is on its way goes once the sa
 
 // The reviewer's second finding: a reload during a saved send. The page
 // did not hear the backend's answer, so the message is still on its way and
-// goes again by itself, from the list, as the same turn (`turns.md`
-// § Following the agent's work).
+// goes again by itself, from the list, as the same turn.
 test('a saved send interrupted by a reload goes again from the list as the same turn by itself, never as a new message', async () => {
   let signOut = signIn()
   const kept = new Map<string, draftStorage.SavedDraft>()

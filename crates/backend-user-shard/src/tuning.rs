@@ -33,10 +33,9 @@ pub struct ConversationTuning {
     pub outbox_frames: usize,
     /// The provider requests a user's conversations may start in any minute.
     pub requests_per_minute: usize,
-    /// Whether the backend asks the conversation's model for a title
-    /// (`conversations.md` § Conversation titles); off, a title stays the one the
-    /// first message gives. A test whose scripted vendor answers only the
-    /// turns turns it off.
+    /// Whether the backend asks the conversation's model for a title; off, a
+    /// title stays the one the first message gives. A test whose scripted vendor
+    /// answers only the turns turns it off.
     pub titles: bool,
     /// The least time between two indexings of one conversation for search
     /// (`storage.md` § Search index); a change within it is indexed once it

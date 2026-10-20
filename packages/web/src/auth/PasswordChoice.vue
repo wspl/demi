@@ -12,11 +12,11 @@ import { setupStatus, useSession } from './session'
 import { browserHasPasskeys } from './webauthn'
 
 /**
- * Choose Your Password and the passkey offer after it (`users.md` § User
- * system): the wizard an account signed in with a first password sees
- * before the product, over a blank page. Choosing it signs the account's
- * other pages up for the same, and the offer, where this server and browser
- * have passkeys, follows in the same dialog; once it ends, the product opens.
+ * Choose Your Password and the passkey offer after it: the wizard an account
+ * signed in with a first password sees before the product, over a blank page.
+ * Choosing it signs the account's other pages up for the same, and the offer,
+ * where this server and browser have passkeys, follows in the same dialog; once
+ * it ends, the product opens.
  */
 const session = useSession()
 const offered = usePasskeyOffer()

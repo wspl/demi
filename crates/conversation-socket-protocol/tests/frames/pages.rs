@@ -1,6 +1,5 @@
-//! Which blocks a page of a transcript holds (`web-api-conversations.md` § Pages): whole
-//! requests within the page budget, from where the page is taken, in their
-//! light form.
+//! Which blocks a page of a transcript holds: whole requests within the page budget,
+//! from where the page is taken, in their light form.
 
 use demi_conversation_socket_protocol::{PAGE_BYTES, PageAt, light, page, requests};
 use demi_shared_types::{Block, ToolView};

@@ -12,8 +12,7 @@ import type { MessageCommitTarget, MessageFiles } from './types'
 const messageFilesKey: InjectionKey<() => MessageFiles | undefined> = Symbol('message-files')
 
 /**
- * Where the messages below find the files they name
- * (`file-previews.md` § Files named in messages); read at each render, so it
+ * Where the messages below find the files they name; read at each render, so it
  * follows the conversation.
  */
 export function provideMessageFiles(files: () => MessageFiles | undefined): void {
@@ -119,11 +118,10 @@ function commitTarget(link: Element): MessageCommitTarget {
 const FULL_HASH = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
- * The menu of the object a message's link names (`web-application.md`
- * § Context menus), the one its row or tab has, Open first, which clicks the
- * link: a file's, a commit's or an agent's, from the conversation's `files`
- * and `agents` as they are when it opens. Null for any other link, such as
- * an attachment's, whose click is its Open.
+ * The menu of the object a message's link names, the one its row or tab has,
+ * Open first, which clicks the link: a file's, a commit's or an agent's, from
+ * the conversation's `files` and `agents` as they are when it opens. Null for
+ * any other link, such as an attachment's, whose click is its Open.
  */
 export function messageLinkMenu(
   link: Element,

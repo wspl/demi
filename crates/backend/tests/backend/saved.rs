@@ -1,15 +1,11 @@
-//! Messages saved for later (`web-api-conversations.md` § Messages saved for later,
-//! `rendering.md` § Client frames): a save of the composer's message empties
-//! the conversation's draft, keeping one its page never showed to restore,
-//! an edit exchanges a saved message with the draft in one go, Undo's save
-//! leaves the draft alone, a removal and a send take one off the list, and the conversation's summary counts
-//! them with the list's revision. Every write answers the revisions after it,
-//! and a write sent again answers as it first did: a save by its id, an edit
-//! by its operation id, a removal of a message gone already. A saved message
-//! leaves the list once the session takes it as the turn the page named, and
-//! stays when the session fails its send; a send of it with that turn again
-//! answers as the first did, and one with another turn is rejected. No test
-//! calls a real model.
+//! Messages saved for later (`rendering.md` § Client frames): a save of the composer's message empties the
+//! conversation's draft, keeping one its page never showed to restore, an edit exchanges a saved message
+//! with the draft in one go, Undo's save leaves the draft alone, a removal and a send take one off the list,
+//! and the conversation's summary counts them with the list's revision. Every write answers the revisions
+//! after it, and a write sent again answers as it first did: a save by its id, an edit by its operation id,
+//! a removal of a message gone already. A saved message leaves the list once the session takes it as the
+//! turn the page named, and stays when the session fails its send; a send of it with that turn again answers
+//! as the first did, and one with another turn is rejected. No test calls a real model.
 
 use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, Refusal, SavedDelivery, ServerFrame, SteerOutcome,

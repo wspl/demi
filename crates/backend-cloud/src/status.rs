@@ -1,7 +1,7 @@
-//! The Cloud's status as the page reads it (`web-api-hosts.md` § Cloud): the
-//! device, its lifecycle state, its latest reset, why it last failed, its
-//! filesystems' capacities, and whether its system is on
-//! another image than the configured one. Reading it never wakes the Cloud.
+//! The Cloud's status as the page reads it: the device, its lifecycle state,
+//! its latest reset, why it last failed, its filesystems' capacities, and
+//! whether its system is on another image than the configured one. Reading it
+//! never wakes the Cloud.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::managed::ManagedOperation;

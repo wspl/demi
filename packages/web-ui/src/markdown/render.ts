@@ -58,9 +58,8 @@ function fileIcon(name: string): string {
 
 /**
  * A message's link that wears an icon, every link of a message but one whose
- * text is an image (`file-previews.md` § Files named in messages): the link
- * `open` starts, with the classes that space it from the words around it
- * (`icon-link`), then its icon and text (`iconLead`).
+ * text is an image: the link `open` starts, with the classes that space it from
+ * the words around it (`icon-link`), then its icon and text (`iconLead`).
  */
 function iconLink(open: (attributes: string) => string, icon: string, body: string, tight: boolean): string {
   return `${open(` class="${iconLinkClass(tight)}"`)}${iconLead(icon, body)}</a>`
@@ -209,9 +208,8 @@ export const ATTACHMENT_AUDIO_ATTRIBUTE = 'data-attachment-audio'
 
 /**
  * An audio attachment as the place of its inline player, which plays it
- * where it is, as a voice message plays in Messages (`file-previews.md`
- * § Files named in messages); `AudioPlayer` fills it once the render is in
- * the page.
+ * where it is, as a voice message plays in Messages; `AudioPlayer` fills it
+ * once the render is in the page.
  */
 function attachmentAudio(attachment: MessageAttachment): string {
   return `<span class="message-audio" ${ATTACHMENT_AUDIO_ATTRIBUTE}="${escapeHtml(attachment.url)}" data-audio-name="${escapeHtml(attachment.name)}"></span>`
@@ -222,8 +220,7 @@ export const ATTACHMENT_CARD_ATTRIBUTE = 'data-attachment-card'
 
 /**
  * The attachment `id` a message names, as `files` show it to the agent that
- * wrote the message (`file-previews.md` § Attachment blocks); none while the
- * page cannot ask.
+ * wrote the message; none while the page cannot ask.
  */
 export function messageAttachment(files: MessageFiles | undefined, id: string): AttachmentLookup | undefined {
   return files?.attachment?.(id, files.node ?? null)
@@ -244,11 +241,10 @@ function attachmentTile(attachment: MessageAttachment): string {
 }
 
 /**
- * An attachment block, `raw` the line that names attachment `id`
- * (`file-previews.md` § Attachment blocks): an image or a video as a lone
- * tile, audio as its inline player, any other file, and one the page still
- * asks for, as the place of its card; a number the conversation does not
- * have says so in the block's place. While the page cannot ask, or asking
+ * An attachment block, `raw` the line that names attachment `id`: an image or a
+ * video as a lone tile, audio as its inline player, any other file, and one the
+ * page still asks for, as the place of its card; a number the conversation does
+ * not have says so in the block's place. While the page cannot ask, or asking
  * failed, the line shows as its text.
  */
 function attachmentBlock(id: string, raw: string): string {
@@ -290,8 +286,7 @@ function imageSource(target: string): { src: string; path: string | null } | 'lo
 
 /**
  * An agent's message: read-only task boxes, HTML shown as text, highlighted
- * code, and links and images that reach the web or the conversation's Host
- * (`file-previews.md` § Files named in messages).
+ * code, and links and images that reach the web or the conversation's Host.
  */
 const messageRenderer: RendererObject = {
   checkbox({ checked }) {
@@ -303,8 +298,8 @@ const messageRenderer: RendererObject = {
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')
   },
-  // Inline code that names a file the Host has opens it, as a link of words with the file's icon
-  // (`file-previews.md` § Files named in messages).
+  // Inline code that names a file the Host has opens it, as a link of words with the file's
+  // icon.
   codespan(token) {
     const { text } = token
     const code = `<code>${escapeHtml(text)}</code>`
@@ -391,8 +386,7 @@ function isMedium(token: Token): boolean {
 
 /**
  * The block a message's media stand in, on a line of their own: one medium
- * alone, or a run of two or more side by side
- * (`file-previews.md` § Files named in messages).
+ * alone, or a run of two or more side by side.
  */
 const MEDIA = 'messageMedia'
 
@@ -489,7 +483,7 @@ function joinMediaRuns(blocks: Token[]): void {
  * own line, and images that follow each other stand side by side, whatever
  * words come before the first of them in its paragraph, an attachment
  * block's image or video among them; any other text, a list or a heading
- * ends a run (`file-previews.md` § Files named in messages).
+ * ends a run.
  */
 function separateMedia(blocks: Token[]): void {
   for (let index = 0; index < blocks.length; index += 1) {
@@ -627,16 +621,14 @@ const MATH_OPENER = /^\${1,2}\n/
 
 /**
  * Where the blocks of `src`, the text of a streaming reply, end that no text
- * arriving after it can change (`file-previews.md`, a reply that streams
- * renders a block at a time), as offsets into it in order. The blocks are
- * the top-level blocks the message's own reader finds, so a blank line
- * inside a fence, a list item or an indented code block never ends one,
- * and a fence still open runs to the end. They are read from the lines
- * that have ended, since the rest of a line can change what the lines
- * before it are: `1. a`, a blank line and `2` are a list and a paragraph
- * until `. b` makes them one list, and `x | y` above `- | -` reads as a
- * table's head until the line goes on as text. Every block before the last
- * is settled, except:
+ * arriving after it can change, as offsets into it in order. The blocks are the
+ * top-level blocks the message's own reader finds, so a blank line inside a
+ * fence, a list item or an indented code block never ends one, and a fence
+ * still open runs to the end. They are read from the lines that have ended,
+ * since the rest of a line can change what the lines before it are: `1. a`, a
+ * blank line and `2` are a list and a paragraph until `. b` makes them one
+ * list, and `x | y` above `- | -` reads as a table's head until the line goes
+ * on as text. Every block before the last is settled, except:
  * - a block that opens display math before its closing line (`MATH_OPENER`),
  *   and every block after it;
  * - a raw HTML block, and every block after it: only the whole text nests

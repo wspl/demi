@@ -25,8 +25,7 @@ use tokio_util::sync::CancellationToken;
 use crate::native::{self, Caches, Executable, Spec, Versioning};
 use crate::notices::WEB_NOTICES;
 
-/// The file a built web app holds, which the backend reads its build from
-/// (`web-api.md` § Serving the web app build).
+/// The file a built web app holds, which the backend reads its build from.
 const WEB_BUILD: &str = "build.json";
 
 /// The project's licenses, the Apache License and the Demi License that

@@ -110,8 +110,7 @@ impl ProjectWorkflows {
         }
     }
 
-    /// The Workflow menu's list, by id (`web-api-conversations.md` § Workflows of a
-    /// directory).
+    /// The Workflow menu's list, by id.
     fn menu(&self) -> (ConversationWorkflows, ReadAt) {
         let workflows = self
             .files
@@ -380,8 +379,7 @@ impl Shard {
     /// gives it a record: read
     /// through device access, which wakes nothing; none while the device's
     /// runner is not connected. With `after`, the answer is read at that
-    /// number or later (`web-api-conversations.md` § Workflows of a
-    /// directory).
+    /// number or later.
     pub async fn device_workflows(
         &self,
         device: &DeviceId,
@@ -410,8 +408,7 @@ impl Shard {
     /// it holds, one read at that number or later is. While no search is
     /// held, it answers no workflows, read at no number, and the working
     /// directory to watch: the page's watch going live there, as the Host
-    /// runs, makes that answer out of date (`web-api-conversations.md`
-    /// § Workflows of a directory).
+    /// runs, makes that answer out of date.
     pub async fn menu_workflows(
         &self,
         id: &ConversationId,

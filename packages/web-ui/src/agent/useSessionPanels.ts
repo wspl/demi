@@ -7,8 +7,7 @@ import { firstRunningTerminalId, type TerminalRecord } from './terminals'
  * none, or the Running panel on one terminal. `shown` names what the session
  * shows: the conversation's id, or null while it loads and shows nothing of it.
  * A window closes when that changes, as when another conversation is shown or a
- * Retry loads this one again (`web-application.md` § Opening a conversation
- * shows in two steps).
+ * Retry loads this one again.
  */
 export function useSessionPanels(
   agents: () => readonly SubagentRecord[],

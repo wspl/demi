@@ -1,10 +1,10 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A sent message drawn without an editor (`composer.md` § Writing a
-// message): it shows what the composer's editor showed, and a copy of all
-// or a part of it carries its Markdown with its files, as the editor's copy
-// did. One Vue app on a happy-dom page; a few ms besides the page's start.
+// A sent message drawn without an editor: it shows what the composer's editor
+// showed, and a copy of all or a part of it carries its Markdown with its
+// files, as the editor's copy did. One Vue app on a happy-dom page; a few ms
+// besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')

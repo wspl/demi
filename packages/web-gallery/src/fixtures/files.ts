@@ -101,7 +101,7 @@ export function laptopTree(): MemoryDirectory {
                 }, { modifiedAt: day(3) }),
               }, { modifiedAt: day(3) }),
               'a project with a very long directory name that will not fit in the address bar': project({ 'index.ts': 12 }, old(9, 9)),
-              // A link of each kind (`file-previews.md` § Symbolic links).
+              // A link of each kind.
               current: link('demi', day(7, 9)),
               'notes.txt': link('../Desktop/notes.txt', day(6)),
               'build.log': link('/tmp/build.log', old(9, 9)),

@@ -16,9 +16,9 @@ import type { SharedConversation as Share } from '../api/generated/web-api'
 import { EMPTY_SHARE, createShareReads, readShare, shareBlobUrl, sharePath } from './reads'
 
 /**
- * A share's page at `/s/<token>` (`sharing.md`): what the share shows above
- * what it holds, and what it holds, read from its latest page back as the
- * reader scrolls, through the share's routes alone.
+ * A share's page at `/s/<token>`: what the share shows above what it holds, and
+ * what it holds, read from its latest page back as the reader scrolls, through
+ * the share's routes alone.
  */
 const props = defineProps<{ token: string }>()
 
@@ -91,7 +91,7 @@ function readBeside(side: 'before' | 'after'): void {
 const attachments = { path: sharePath(props.token), blobUrl }
 const title = computed(() => share.value.state === 'found' ? share.value.share.title : null)
 // The tab names the shared conversation and the product, and counts nothing:
-// its reader has no sidebar (`conversations.md` § Conversations and projects).
+// its reader has no sidebar.
 watchEffect(() => {
   document.title = pageTitle(share.value.state === 'missing'
     ? t('share.missing')

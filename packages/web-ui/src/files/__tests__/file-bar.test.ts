@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { languageName } from '../../editor/language'
 import { fileBar, type ShownFile } from '../file-bar'
 
-// What the File view's bar says and offers for each kind of file (`file-previews.md` § The File view's bars).
+// What the File view's bar says and offers for each kind of file.
 
 /** The bar as the File view draws it, once the editor's language data is there. */
 function bar(path: string, shown: ShownFile) {

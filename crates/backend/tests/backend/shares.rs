@@ -1,11 +1,9 @@
-//! Sharing (`sharing.md`, `web-api-conversations.md` § Sharing): an answer's share holds
-//! the message and the texts of the reply to it; a conversation's holds the
-//! root's messages and texts, with the media they show, as they were when it
-//! was taken until the owner takes it again, and in place of the agent's
-//! work between them the number of its steps, never a step itself;
-//! the public routes answer the token alone, ignore a session and answer
-//! every miss alike; and a share goes with its conversation or its Stop
-//! Sharing, at once.
+//! Sharing: an answer's share holds the message and the texts of the reply to it; a
+//! conversation's holds the root's messages and texts, with the media they show, as they
+//! were when it was taken until the owner takes it again, and in place of the agent's
+//! work between them the number of its steps, never a step itself; the public routes
+//! answer the token alone, ignore a session and answer every miss alike; and a share
+//! goes with its conversation or its Stop Sharing, at once.
 
 use std::sync::Arc;
 
@@ -289,8 +287,7 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     assert_eq!(viewed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&viewed.body));
     let viewed = viewed.json::<demi_web_api_protocol::attachments::ConversationAttachment>().blob;
     // An agent's reply shows only what that agent uploaded: the root's a2,
-    // not the user's a1 or the child's a3, and the child's own a3 alone
-    // (`file-previews.md` § Attachment blocks).
+    // not the user's a1 or the child's a3, and the child's own a3 alone.
     let child_node = own.subagents[0].child.subagent_id.as_str().to_owned();
     for (agent, number, shown) in [
         (FIRST, "a2", true),
@@ -504,9 +501,9 @@ async fn shares_asked_at_once_answer_one_link() {
     backend.close().await;
 }
 
-// A message sent with comments on the first answer (`comments-and-ask.md`):
-// the share of its answer holds the message with its comments, which the
-// shared page shows as quotes. A second of a mock vendor.
+// A message sent with comments on the first answer: the share of its answer
+// holds the message with its comments, which the shared page shows as quotes. A
+// second of a mock vendor.
 #[tokio::test]
 async fn a_shared_message_keeps_the_comments_it_was_sent_with() {
     let vendor = MockVendor::start().await;

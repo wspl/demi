@@ -2,12 +2,11 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { effectScope, type EffectScope } from 'vue'
 
-// The share dialog's flow (`sharing.md` § Making, updating and removing a
-// share): Share opens the dialog at once and makes the link in it, copying
-// it from inside the click; a share that exists opens with its link; and
-// what the dialog's buttons do. A page of happy-dom with a clipboard
-// stand-in that, like Safari, takes a write only while the click runs; a
-// few milliseconds.
+// The share dialog's flow: Share opens the dialog at once and makes the link in
+// it, copying it from inside the click; a share that exists opens with its
+// link; and what the dialog's buttons do. A page of happy-dom with a clipboard
+// stand-in that, like Safari, takes a write only while the click runs; a few
+// milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 // After the page, since the clipboard library looks for a browser as it loads.

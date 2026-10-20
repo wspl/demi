@@ -24,8 +24,8 @@ export interface CodeThemePalette {
 
 /**
  * The colors all code shows in, One Dark Pro and One Light by the page's
- * mode (`file-previews.md` § Code): the editor's, and through its highlight
- * style (`codeHighlightStyle`) every code block's and script's.
+ * mode: the editor's, and through its highlight style (`codeHighlightStyle`)
+ * every code block's and script's.
  */
 export const codeTheme: Record<'dark' | 'light', { palette: CodeThemePalette }> = {
   dark: {

@@ -104,9 +104,8 @@ export function applyConversationEvent(
     }
   } else if (event.type === 'opened') {
     // The open's snapshot brings every running command, and the page's
-    // running commands are those (`web-application.md` § What a reopened
-    // socket brings back): one that ended or went while the page was away
-    // shows so, and one that still runs comes back with its next frame.
+    // running commands are those: one that ended or went while the page was
+    // away shows so, and one that still runs comes back with its next frame.
     conversation.terminals = conversation.terminals.filter((terminal) => !isTerminalRunning(terminal.phase))
   } else if (event.type === 'subagents') {
     // Every child as the open's snapshot lists it, which the page takes

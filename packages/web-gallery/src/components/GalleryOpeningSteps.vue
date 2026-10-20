@@ -14,11 +14,9 @@ import GalleryComposer from './GalleryComposer.vue'
 
 /**
  * A conversation the page opens, step by step, as the product's store sets
- * its state (`web-application.md` § Opening a conversation shows in two
- * steps): the reads, then the transcript, which waits for nothing else,
- * then the session with its turn and its running command; the agents join
- * whenever their list arrives. The buttons stand in for the backend's
- * answers.
+ * its state: the reads, then the transcript, which waits for nothing else, then
+ * the session with its turn and its running command; the agents join whenever
+ * their list arrives. The buttons stand in for the backend's answers.
  */
 const session = reactive<ChatSessionState>({
   id: 'opening-steps',

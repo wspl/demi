@@ -12,18 +12,17 @@ import { useTurnFlow, type SentMessage } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
- * Comments on a reply's words (`comments-and-ask.md`), live: select text in
- * the reply and choose Comment, write one and press Return; it marks the
- * text and waits in the composer's pill, which lists the waiting comments
- * and whose × removes them. Send sends them with what is typed, the bubble
- * showing each quoted text and its comment, and the reply keeps their marks,
- * dimmer. Send Now in the box sends a message holding that comment alone,
- * leaving the pill and the typed text as they are, steering while a turn
- * runs. A picture of the reply takes a comment from its menu (right-click),
- * outlined yellow with its mark at the picture's top, and its bubble shows
- * a small copy of it as the quote (`comments-and-ask.md` § Images). `seed`
- * pins a state: two waiting comments, two sent with a message, or a comment
- * on the picture, waiting or sent. Comments stay in the specimen, where the
+ * Comments on a reply's words, live: select text in the reply and choose
+ * Comment, write one and press Return; it marks the text and waits in the
+ * composer's pill, which lists the waiting comments and whose × removes them.
+ * Send sends them with what is typed, the bubble showing each quoted text and
+ * its comment, and the reply keeps their marks, dimmer. Send Now in the box
+ * sends a message holding that comment alone, leaving the pill and the typed
+ * text as they are, steering while a turn runs. A picture of the reply takes a
+ * comment from its menu (right-click), outlined yellow with its mark at the
+ * picture's top, and its bubble shows a small copy of it as the quote. `seed`
+ * pins a state: two waiting comments, two sent with a message, or a comment on
+ * the picture, waiting or sent. Comments stay in the specimen, where the
  * product keeps them in the conversation's draft.
  */
 const props = defineProps<{

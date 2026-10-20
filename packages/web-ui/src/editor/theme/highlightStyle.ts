@@ -38,10 +38,9 @@ function buildHighlightStyle(p: CodeThemePalette): HighlightStyle {
 const styles: Partial<Record<'dark' | 'light', HighlightStyle>> = {}
 
 /**
- * The syntax colors of all code in a mode (`file-previews.md` § Code): the
- * editor's, and the static highlighter's (`markdown/highlight.ts`). One
- * style per mode for the page's lifetime, so a token carries the same class
- * wherever it shows.
+ * The syntax colors of all code in a mode: the editor's, and the static
+ * highlighter's (`markdown/highlight.ts`). One style per mode for the page's
+ * lifetime, so a token carries the same class wherever it shows.
  */
 export function codeHighlightStyle(mode: 'dark' | 'light'): HighlightStyle {
   return (styles[mode] ??= buildHighlightStyle(codeTheme[mode].palette))

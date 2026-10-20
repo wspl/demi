@@ -1,13 +1,11 @@
 // `demi.turn({ timeout })`: waits until the open conversation no longer
 // runs, as the page and the backend both tell it. The page counts a turn
-// from the send of the message that starts it (`turns.md` § Following
-// the agent's work): its composer offers Stop and its transcript ends in
-// Requesting while the message is on its way, before the backend has it.
-// The backend counts a conversation running while its tree works without
-// the user (`web-api-conversations.md` § Sidebar mutations and read state), so this also
-// waits for the subagents and background jobs the turn started.
-// `demi.message` waits only for the turn its message starts, which the
-// root's latest ended turn names once it ends.
+// from the send of the message that starts it: its composer offers Stop and its
+// transcript ends in Requesting while the message is on its way, before the backend has
+// it. The backend counts a conversation running while its tree works without the user,
+// so this also waits for the subagents and background jobs the turn started.
+// `demi.message` waits only for the turn its message starts, which the root's latest
+// ended turn names once it ends.
 import type { Page } from 'playwright'
 import { conversationsSchema, type TurnOutcome } from '@demicodes/web/src/api/generated/web-api'
 import type { Slot } from '../slot'

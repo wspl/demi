@@ -6,7 +6,7 @@ The composer's context card lists what the block holds, and each entry leads
 to where it is written. This document owns which files are read, what the
 model receives, and what the card lists. The context blocks themselves are the
 [agent runtime](transcript.md#context)'s; the Instructions settings section is
-[the product's](../product/web-application.md#web-app-scope).
+`packages/web/src/App.vue`.
 
 ## What the model receives
 
@@ -127,7 +127,7 @@ whether the list of rows is open or closed. Each entry is one row in the block's
 | Entry | Shows | A click |
 | --- | --- | --- |
 | Personal instructions | `Personal instructions` | Opens Settings › Instructions |
-| A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent ([Files named in messages](../product/file-previews.md#files-named-in-messages)) |
+| A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent (`packages/web-ui/src/markdown/message-files.ts`) |
 | The conversation's workflow | `Workflow: Review Team`; the workflow file's path as a tip | Shows the workflow file in the work panel, as a project file does |
 
 The card shows no token count for an entry: the Instructions row of the
@@ -142,7 +142,7 @@ carries, beside its text, the list of its entries (`instructions`, each
 `{ kind: "personal" }` or `{ kind: "file", path }`), so the page never parses the model's text and
 never asks the backend for anything more. The page holds the newest block
 when its latest window does; otherwise a page of the transcript names the
-newest block's entries ([Pages](../product/web-api-conversations.md#pages)). The block itself stays hidden from
+newest block's entries (`crates/backend-database/src/tree.rs`). The block itself stays hidden from
 the transcript, as every context block is.
 
 ## Rationale

@@ -1,7 +1,6 @@
-//! User streams at the edge (`web-api-hosts.md` § User streams): the upgrade of a
-//! declared stream, and the relay of its bytes between the page's socket
-//! and the Host's pipes, taken from the Host only as fast as the page takes
-//! them.
+//! User streams at the edge: the upgrade of a declared stream, and the relay of
+//! its bytes between the page's socket and the Host's pipes, taken from the Host
+//! only as fast as the page takes them.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};

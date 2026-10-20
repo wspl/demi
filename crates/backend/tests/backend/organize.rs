@@ -7,15 +7,14 @@
 //! conversation may not reach, checks its directory and waits, as `demi
 //! host detach` does, until the conversation's work ends, when they are
 //! made in one transition, and the directory decides the project it lands
-//! in (`conversations.md` § Conversations and projects); a move that fails then
-//! leaves the conversation where it was and wakes the root with Demi's
-//! notice of the reason. Deleting a project archives its conversations,
-//! unless one works; a device's first home report after the upgrade puts
-//! the conversations the earlier release left in its directories where
-//! those directories say. The model is the scripted family of the subagent
-//! scenarios, the devices real runners, and the conversation holds Organize
-//! Conversations and the hosts it reaches, as storage keeps them, unless a
-//! test asks. No test calls a real model.
+//! in; a move that fails then leaves the conversation where it was and wakes
+//! the root with Demi's notice of the reason. Deleting a project archives its
+//! conversations, unless one works; a device's first home report after the
+//! upgrade puts the conversations the earlier release left in its directories
+//! where those directories say. The model is the scripted family of the
+//! subagent scenarios, the devices real runners, and the conversation holds
+//! Organize Conversations and the hosts it reaches, as storage keeps them,
+//! unless a test asks. No test calls a real model.
 
 use std::sync::Arc;
 
@@ -423,15 +422,13 @@ fn project_of(harness: &Harness, id: &str) -> Option<(String, String)> {
         .unwrap()
 }
 
-/// Where a conversation runs decides its project (`conversations.md`
-/// § Conversations and projects): `demi host move` to a directory puts the
-/// conversation in a new project named after it, which a second
-/// conversation moved there joins; a project's subdirectory is a project of
-/// its own; a second directory of the same name takes *(2)*; the Host's
-/// home puts it among Conversations.
-/// Planted defect this catches: a move that keeps the conversation outside
-/// projects in a directory that is none's home, or that makes a second
-/// project of a directory that has one.
+/// Where a conversation runs decides its project: `demi host move` to a
+/// directory puts the conversation in a new project named after it, which a
+/// second conversation moved there joins; a project's subdirectory is a project
+/// of its own; a second directory of the same name takes *(2)*; the Host's home
+/// puts it among Conversations. Planted defect this catches: a move that keeps
+/// the conversation outside projects in a directory that is none's home, or
+/// that makes a second project of a directory that has one.
 // Several seconds: a real device runs the shell jobs of six turns of two
 // conversations.
 #[tokio::test]

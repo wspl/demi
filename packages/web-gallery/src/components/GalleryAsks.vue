@@ -14,19 +14,17 @@ import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
- * Side questions on a reply's words (`comments-and-ask.md` § Side
- * questions), live: select words of the reply and choose Ask, write a
- * question and press Return; the words turn purple and a card opens under
- * their block, titled Ask until the small model's title arrives, with one
- * status line while the answer is made and then the answer. Reply asks a
- * follow-up, × folds the card into the margin's mark, the mark or the words
- * open it again, ↗ opens the whole side conversation in the subagent
- * window, and a failure's Retry runs the turn again. The answers are
- * scripted and arrive step by step; nothing reaches a backend. A picture of
- * the reply takes a side question from its menu (right-click), outlined in
- * purple, and the side conversation's first message carries the picture
- * (`comments-and-ask.md` § Images). `seed` pins a state, and every control
- * still acts from it.
+ * Side questions on a reply's words, live: select words of the reply and choose
+ * Ask, write a question and press Return; the words turn purple and a card
+ * opens under their block, titled Ask until the small model's title arrives,
+ * with one status line while the answer is made and then the answer. Reply asks
+ * a follow-up, × folds the card into the margin's mark, the mark or the words
+ * open it again, ↗ opens the whole side conversation in the subagent window,
+ * and a failure's Retry runs the turn again. The answers are scripted and
+ * arrive step by step; nothing reaches a backend. A picture of the reply takes
+ * a side question from its menu (right-click), outlined in purple, and the side
+ * conversation's first message carries the picture. `seed` pins a state, and
+ * every control still acts from it.
  */
 const props = defineProps<{
   seed: 'asking' | 'working' | 'answered' | 'follow-up' | 'folded' | 'failed' | 'picture' | 'live'

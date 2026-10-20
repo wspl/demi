@@ -599,7 +599,7 @@ export interface SettingsCredentialDraft {
   fields: SettingsCredentialDraftField[]
 }
 
-/** A passkey of the account, as Settings › Account lists it (`users.md` § User system). */
+/** A passkey of the account, as Settings › Account lists it. */
 export interface SettingsPasskey {
   id: string
   /** The password manager's name, the browser and system that added it, or the user's own. */
@@ -644,7 +644,7 @@ export interface SettingsPasskeyHost {
   remove: (id: string) => Promise<void>
 }
 
-/** A browser signed in to the account, as Settings › Account lists it (`users.md` § User system). */
+/** A browser signed in to the account, as Settings › Account lists it. */
 export interface SettingsSession {
   id: string
   /** The browser and system it signed in from, such as Safari on iPhone. */
@@ -664,10 +664,10 @@ export interface SettingsSessionHost {
   signOut: (id: string) => Promise<void>
 }
 
-/** An account's role (`users.md` § User system). */
+/** An account's role. */
 export type UserRole = 'master' | 'admin' | 'user'
 
-/** An account as Settings › Users lists it (`web-api-settings.md` § Account API), its password left out. */
+/** An account as Settings › Users lists it, its password left out. */
 export interface SettingsUser {
   id: string
   nickname: string
@@ -731,7 +731,7 @@ export interface SettingsUsersHost extends VerificationHost {
   setDisabled: (id: string, disabled: boolean) => Promise<void>
   /** Sets the size of the account's Cloud disks, the viewer's own included. */
   setCloudStorage: (id: string, storage: SettingsCloudStorage) => Promise<void>
-  /** The sign-in codes of the account `id` (`users.md` § User system): good for ten minutes and once; the dialog asks the confirmation itself. */
+  /** The sign-in codes of the account `id`: good for ten minutes and once; the dialog asks the confirmation itself. */
   signInCode: (id: string) => HandoffHost
 }
 

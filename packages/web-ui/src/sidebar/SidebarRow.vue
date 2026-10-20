@@ -52,8 +52,7 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 // first mark when the row is not pinned, and Unpin left of Archive. The title clears the
 // actions by a margin that leaves 12px before the first button's glyph. A phone row shows no
 // actions, since a tap meant to open the row could land on one; its long press opens its menu,
-// which holds them (`web-application.md` § The phone layout), so its title and pin stay put,
-// and its marks keep their 32px boxes.
+// which holds them, so its title and pin stay put, and its marks keep their 32px boxes.
 const MARK_GAP_PX = 6
 const END_INSET_PX = 6
 /** A small icon button (`IconButton` `sm`) is 24px with its glyph centered. */
@@ -162,8 +161,7 @@ const rowClass = computed(() => [
       :class="menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100'"
       :style="{ right: `${actionsRight}px` }"
     >
-      <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
-           (`conversations.md` § Conversations and projects). -->
+      <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu. -->
       <Tooltip v-if="conversation.pinned" :content="t('row.unpin')" class="flex items-center">
         <IconButton
           :icon="PinOff"

@@ -1,5 +1,5 @@
 //! The instance's settings, each user's preferences and each user's
-//! subagent settings (`web-api-settings.md` § User preferences, § Subagents).
+//! subagent settings.
 
 use std::num::NonZeroU32;
 

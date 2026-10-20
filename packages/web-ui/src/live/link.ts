@@ -5,9 +5,8 @@
  * pictures' chunks and acknowledges each with when it arrived, hands the frames of the generation the view shows to a
  * decoder in sequence, asks for a key frame after one it could not decode,
  * and opens a view that ended
- * again after the page's reconnect waits (`web-application.md` § Liveness
- * and reconnection). What a source's view says over it is its own: the
- * session that uses a link reads its messages and sends its own.
+ * again after the page's reconnect waits. What a source's view says over it is its own: the session that uses a link
+ * reads its messages and sends its own.
  */
 import type { OpenUserStream, StreamBytes, UserStream } from '../plugins/streams'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'

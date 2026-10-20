@@ -1,9 +1,8 @@
-//! The product's `demi automation` group (`automations.md` § The agent's
-//! commands): the agent lists and shows the user's automations, creates,
-//! changes and deletes them with the user's Manage Automations, and runs
-//! one now. A run's own agent may list automations and show its own, never
-//! create, change or delete one: what started it, such as another system's
-//! call, must not make more.
+//! The product's `demi automation` group: the agent lists and shows the user's
+//! automations, creates, changes and deletes them with the user's Manage
+//! Automations, and runs one now. A run's own agent may list automations and
+//! show its own, never create, change or delete one: what started it, such as
+//! another system's call, must not make more.
 
 use std::rc::{Rc, Weak};
 
@@ -183,8 +182,7 @@ pub(crate) fn automation_group(shard: Weak<Shard>) -> GroupBuilder {
 }
 
 /// Refuses a change by a run's own agent: one whose conversation works for
-/// an automation's message, until the user next writes to it
-/// (`automations.md` § What a run sends).
+/// an automation's message, until the user next writes to it.
 async fn not_a_run(shard: &Shard, call_conversation: &ConversationId, verb: &str) -> Result<(), RpcError> {
     if shard.automation_input(call_conversation).is_none() {
         Ok(())

@@ -230,7 +230,7 @@ or not, and is collected once nothing does. A Fork copies no bytes: its blocks
 reference the same blobs of the same namespace.
 
 The web app reads one segment's two sides from the blob route
-([Uploads and media](../product/web-api-hosts.md#uploads-and-media)) by the hashes in
+(`crates/backend-http/src/attachments.rs`) by the hashes in
 the view, without involving the Host; an added segment's original is empty.
 
 ## Delivery to the conversation
@@ -416,7 +416,7 @@ together. For example, Alex opens it on `~/shop`, checked out on
   tree's changes (`crates/runner-host/src/git.rs`). When the branch
   shown is deleted, the list returns to the checked-out one.
 - **A commit link**, `commit:3f2a9c1` in a message
-  ([Links](../product/file-previews.md)), opens the Change view in Commits
+  (`packages/web-ui/src/files/FileView.vue`), opens the Change view in Commits
   mode on that commit, in the repository of the agent that wrote it, in its
   working directory when it wrote it. A commit of another repository names
   that repository's folder before its id, `commit:src/v8@86229da`, as
@@ -487,4 +487,4 @@ and the stored segment to the Change view, so the view tells a picture or
 an archive the conversation wrote from a text file over the size limit
 whatever the file's name; a file over the limit is judged by its first
 bytes. The work panel shows a binary file only as it exists on the Host
-([File previews](../product/file-previews.md)).
+(`packages/web-ui/src/files/FileView.vue`).

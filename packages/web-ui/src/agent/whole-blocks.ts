@@ -4,9 +4,8 @@ import { useTranscript } from './edit-selection'
 
 /**
  * Reads a block whole, for a row whose block the page holds in its light
- * form (`web-api-conversations.md` § Light form): the agent's (`node`, null for the
- * conversation's own) and the block's id. The host keeps the block whole
- * once it arrives.
+ * form: the agent's (`node`, null for the conversation's own) and the block's id.
+ * The host keeps the block whole once it arrives.
  */
 export type BlockReader = (node: string | null, id: string) => Promise<void>
 
@@ -38,13 +37,12 @@ export function useTextArrivals(): () => readonly TextArrival[] | undefined {
 
 /**
  * The block of the row this is in, light or whole, read whole while the row
- * is `open` (`web-application.md` § Transcript windows): `light` while the
- * page holds it light, which makes its row open even before its body is
- * there; while the row is open, each of its parts the page holds light is
- * read whole once, a part that joins the open row as well, such as the next
- * thinking block a page of history brings, with `loading` while any is on
- * its way. A row outside a transcript, or with no host to read through, is
- * never light.
+ * is `open`: `light` while the page holds it light, which makes its row open
+ * even before its body is there; while the row is open, each of its parts the
+ * page holds light is read whole once, a part that joins the open row as well,
+ * such as the next thinking block a page of history brings, with `loading`
+ * while any is on its way. A row outside a transcript, or with no host to read
+ * through, is never light.
  */
 export function useWholeBlock(open: () => boolean): { light: Readonly<Ref<boolean>>; loading: Readonly<Ref<boolean>> } {
   const scope = inject(scopeKey, () => undefined)

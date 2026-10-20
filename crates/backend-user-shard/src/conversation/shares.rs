@@ -1,9 +1,8 @@
-//! Shares on the owner's shard (`sharing.md`, `web-api-conversations.md` § Sharing): the
-//! owner makes a share, makes a conversation's share's list again and
-//! removes a share, each announced on the owner's pages through the conversation's
-//! summary, which lists its shares; and a share's reader reads what its
-//! list holds, by the share's record, which the edge found by the token. A
-//! read reaches the list alone: no Host, no live session.
+//! Shares on the owner's shard: the owner makes a share, makes a conversation's share's
+//! list again and removes a share, each announced on the owner's pages through the
+//! conversation's summary, which lists its shares; and a share's reader reads what its
+//! list holds, by the share's record, which the edge found by the token. A read reaches
+//! the list alone: no Host, no live session.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -38,7 +37,7 @@ pub enum ShareRefusal {
 }
 
 /// A new share's token: 128 random bits from the operating system's
-/// generator, in URL-safe base64 (`sharing.md` § Safety).
+/// generator, in URL-safe base64.
 fn new_token() -> ShareToken {
     let mut bits = [0_u8; 16];
     OsRng

@@ -8,7 +8,7 @@ import {
   type ReplacedDraftAction,
 } from './generated/web-api'
 
-/** A conversation's draft (`web-api-conversations.md` § Conversation drafts). */
+/** A conversation's draft. */
 function draftPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/draft`
 }

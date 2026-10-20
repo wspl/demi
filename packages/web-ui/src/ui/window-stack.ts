@@ -2,17 +2,16 @@ import { onBeforeUnmount, shallowRef, watch, type ShallowRef } from 'vue'
 
 /**
  * The session's floating windows, such as the Agents and Running windows
- * and the media viewer, stand in the order they opened, the newest in front
- * (`turns.md` § Recovering an unfinished turn, the dock's chips): a press
- * in the sidebar or the conversation's column outside every window closes
+ * and the media viewer, stand in the order they opened, the newest in front: a
+ * press in the sidebar or the conversation's column outside every window closes
  * the newest alone, as Escape does, and the press still does what it does
- * there; a second press closes the next. A press in a window closes
- * nothing, nor does one on a place marked with `KEEPS_WINDOWS`: the work
- * panel and its divider (`SidebarLayout`), and the controls that open or
- * change a window, such as the dock's Agents and Running chips and a
- * thumbnail that shows its picture in the viewer in place of the one it
- * shows. The composer and the dock's empty space are outside:
- * a press there closes the newest window and puts the caret in the message.
+ * there; a second press closes the next. A press in a window closes nothing,
+ * nor does one on a place marked with `KEEPS_WINDOWS`: the work panel and its
+ * divider (`SidebarLayout`), and the controls that open or change a window,
+ * such as the dock's Agents and Running chips and a thumbnail that shows its
+ * picture in the viewer in place of the one it shows. The composer and the
+ * dock's empty space are outside: a press there closes the newest window and
+ * puts the caret in the message.
  */
 
 /** The attribute of a place where a press keeps the session's windows open. */

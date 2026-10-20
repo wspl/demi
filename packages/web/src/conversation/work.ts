@@ -30,8 +30,7 @@ export interface WorkState {
   /**
    * Whether the panel is open beside the conversation: on the desktop the
    * account's saved choice; on a phone, where it covers the conversation,
-   * only while the user opened it there and stays on it (`web-application.md`
-   * § The phone layout).
+   * only while the user opened it there and stays on it.
    */
   open: boolean
   /** The tabs' and pinned kinds' ids this page selected, the newest last. */
@@ -48,12 +47,11 @@ export interface WorkState {
 }
 
 /**
- * The work panel's state per conversation, for the page's lifetime
- * (`web-application.md` § Work panel): whether the reader has it open beside
- * that conversation and what it selects, kept in the account's local
- * preferences; its pinned tabs' data, in memory; the backend's tabs, read
- * when their revision rises, with this page's changes shown at once over
- * them.
+ * The work panel's state per conversation, for the page's lifetime: whether the
+ * reader has it open beside that conversation and what it selects, kept in the
+ * account's local preferences; its pinned tabs' data, in memory; the backend's
+ * tabs, read when their revision rises, with this page's changes shown at once
+ * over them.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
@@ -87,7 +85,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
         reportError(t('failures.changeWorkPanel'), error, { userVisible: true })
       })
       panels.set(conversationId, created)
-      // A tab whose kind asks that the user see it opens the panel, open or closed (`web-application.md` § Work panel).
+      // A tab whose kind asks that the user see it opens the panel, open or closed.
       watch(() => created.tabs.value, (current) => applyShows(conversationId, created.revision, current))
       tabs = created
     }
@@ -100,8 +98,8 @@ export const useWorkPanel = defineStore('work-panel', () => {
    * On a phone only a show read while the user looks at the conversation
    * opens it; one that came while the user was elsewhere, read before the
    * conversation came on screen or by the first read after, is selected in
-   * the strip with the panel left closed (`web-application.md` § The phone
-   * layout). `revision` is the panel's that `tabs` came with.
+   * the strip with the panel left closed. `revision` is the panel's that `tabs`
+   * came with.
    */
   function applyShows(conversationId: string, revision: number, tabs: readonly PanelTab[]): void {
     const looking = conversationId === shownId
@@ -195,8 +193,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   /**
    * Whether the conversation has its backend record, which its first send
-   * creates. Before it, the panel binds no page and reads or sends nothing
-   * (`web-application.md` § Work panel).
+   * creates. Before it, the panel binds no page and reads or sends nothing.
    */
   function recorded(conversationId: string): boolean {
     return conversations.items.find((item) => item.id === conversationId)?.persistence === 'synced'

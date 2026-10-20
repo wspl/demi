@@ -8,8 +8,8 @@ import { t } from './locales/text'
 export type ListLoad = 'ready' | 'loading' | 'failed'
 
 /**
- * How far the conversation's opening has come (`web-application.md` § Opening
- * a conversation shows in two steps), and the state of its connection since:
+ * How far the conversation's opening has come, and the state of its connection
+ * since:
  * - `loading`: its history or its agents are not read yet; the pane says it
  *   loads.
  * - `opening`: the first step. The transcript and everything that names its
@@ -23,8 +23,7 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  *   stays while it is tried again.
  * - `failed`: the opening failed, or the session refused to open.
  * - `offline`: the opening cannot reach the backend and the page keeps no
- *   copy of the conversation for opening offline (`web-application.md`
- *   § Installing and opening offline); it opens once the backend answers.
+ *   copy of the conversation for opening offline; it opens once the backend answers.
  */
 export type SessionLoad = ListLoad | 'opening' | 'connecting' | 'reconnecting' | 'offline'
 
@@ -40,8 +39,7 @@ export function sessionShown(load: SessionLoad): boolean {
 /**
  * Whether the conversation shows its transcript: from the first step of its
  * opening on, with its agents, the composer, its marking read and a reveal
- * of a message in it (`web-application.md` § Opening a conversation shows in
- * two steps), unless its opening failed.
+ * of a message in it, unless its opening failed.
  */
 export function transcriptShown(load: SessionLoad): boolean {
   return load !== 'loading' && load !== 'failed' && load !== 'offline'
@@ -168,15 +166,14 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
 }
 
 /**
- * The recovery the dock offers for a turn that did not finish (`turns.md`
- * § Recovering an unfinished turn), from the record that ended the last
- * turn among the visible `blocks`: an error resumes, the user's own Stop
- * continues, and anything else is finished or still running. An error that
- * ended no turn, such as a Compact whose summary request failed, a
- * compaction's boundary and marker, and the agent messages and command
- * reports a failed turn took after it ended leave the turn before them as it
- * was (`failures-and-recovery.md` § The unfinished turn). Both are the
- * session's `resume`; the word tells the cause.
+ * The recovery the dock offers for a turn that did not finish, from the record
+ * that ended the last turn among the visible `blocks`: an error resumes, the
+ * user's own Stop continues, and anything else is finished or still running. An
+ * error that ended no turn, such as a Compact whose summary request failed, a
+ * compaction's boundary and marker, and the agent messages and command reports
+ * a failed turn took after it ended leave the turn before them as it was
+ * (`failures-and-recovery.md` § The unfinished turn). Both are the session's
+ * `resume`; the word tells the cause.
  */
 export function turnRecovery(
   phase: 'idle' | string,

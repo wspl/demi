@@ -323,10 +323,9 @@ pub struct InferenceRequest {
     pub session_id: String,
     /// The session a provider keys its prompt cache and its routing by,
     /// when it is not `session_id`: a side question sends its
-    /// conversation's, so its request reads the conversation's cache
-    /// (`comments-and-ask.md` § Side questions). None for every other
-    /// request. A provider whose session is state of its own, such as a CLI's
-    /// resumed session, keeps `session_id` for that state.
+    /// conversation's, so its request reads the conversation's cache. None for
+    /// every other request. A provider whose session is state of its own, such
+    /// as a CLI's resumed session, keeps `session_id` for that state.
     pub affinity: Option<String>,
     /// The turn the request belongs to; continuations inside a turn share it.
     pub turn_id: String,

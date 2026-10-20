@@ -1,25 +1,23 @@
 /**
  * The liveness of a page's WebSockets to the backend: the synchronization
  * channel, each conversation socket and each live view of the conversation
- * browser (`web-application.md` § Liveness and reconnection). The far end of
- * each sends a heartbeat on a socket that has sent nothing else for a while,
- * 30 seconds at most, so a socket that brings nothing for much longer died
- * without a close, as when a laptop slept and its network dropped. A socket
- * whose opening handshake does not complete within 10 seconds cannot be made.
- * A socket that closes, breaks or cannot be made is tried again after waits
- * that double. Timers stop while a laptop sleeps, and a phone's system cuts
- * a hidden page's connections without a close, so when the page returns
- * (it becomes visible again, the browser shows it from its back-forward
+ * browser. The far end of each sends a heartbeat on a socket that has sent
+ * nothing else for a while, 30 seconds at most, so a socket that brings nothing
+ * for much longer died without a close, as when a laptop slept and its network
+ * dropped. A socket whose opening handshake does not complete within 10 seconds
+ * cannot be made. A socket that closes, breaks or cannot be made is tried again
+ * after waits that double. Timers stop while a laptop sleeps, and a phone's
+ * system cuts a hidden page's connections without a close, so when the page
+ * returns (it becomes visible again, the browser shows it from its back-forward
  * cache, a frozen page resumes, or it comes back online), this module checks
- * every socket once the page has read what its sockets hold: what it read
- * may have waited there for minutes, so it asks each open socket whose far
- * end can answer for a `pong` within 5 seconds, and opens again at once each
- * socket still opening from before the page went away. The browser's word
- * that it went offline counts once it has held for a second: then the page
- * says it is offline, and closes no socket, since one that kept its
- * connection, as through a VPN's tunnel, goes on working; coming back online
- * is a return.
- * The page reports why it replaced a socket through its error reports.
+ * every socket once the page has read what its sockets hold: what it read may
+ * have waited there for minutes, so it asks each open socket whose far end can
+ * answer for a `pong` within 5 seconds, and opens again at once each socket
+ * still opening from before the page went away. The browser's word that it went
+ * offline counts once it has held for a second: then the page says it is
+ * offline, and closes no socket, since one that kept its connection, as through
+ * a VPN's tunnel, goes on working; coming back online is a return. The page
+ * reports why it replaced a socket through its error reports.
  */
 import { readonly, ref } from 'vue'
 import { defaultDocument, defaultNavigator, defaultWindow, useDocumentVisibility, useEventListener } from '@vueuse/core'
@@ -174,7 +172,7 @@ export function openSocket(url: string | URL, name: string): WebSocket {
 /**
  * What sends the return's ping on `socket`, for the watch of a socket whose
  * far end is the backend, which answers every page socket's ping with
- * `pong` (`web-application.md` § Liveness and reconnection).
+ * `pong`.
  */
 export function pingOn(socket: WebSocket): (id: number) => void {
   return (id) => {
@@ -364,7 +362,7 @@ function wait(ms: number, connect: () => void): ReconnectWait {
  * Calls `connect` once while the backend restarts, which it said as it
  * closed the socket: after one to two seconds, at a random point, so that the
  * pages of all users do not return at once; or at the page's return if that
- * comes first (`web-application.md` § A page of another build).
+ * comes first.
  */
 export function waitWhileRestarting(connect: () => void): ReconnectWait {
   return wait(RESTART_WAIT_MS * (1 + Math.random()), connect)
@@ -441,8 +439,7 @@ export function pageReturned(): Promise<void> {
 /**
  * The page's return check while it is pending, else null. A request made as
  * the page returns waits for it, so that it goes on a socket the check found
- * alive or on the new one, never on one the check is about to replace
- * (`web-application.md` § A request the drop interrupts).
+ * alive or on the new one, never on one the check is about to replace.
  */
 export function pendingReturnCheck(): Promise<void> | null {
   return returnCheck?.done ?? null
@@ -454,7 +451,7 @@ export function pendingReturnCheck(): Promise<void> | null {
  * (`direct-channel.md` § Choosing the path), and a view its owner just
  * ended for the move connects on the new path; or the page reaches the
  * backend again after it was away, which the synchronization channel
- * learns first (`web-application.md` § Liveness and reconnection).
+ * learns first.
  */
 export function reconnectNow(): void {
   connectWaiting()
@@ -474,9 +471,8 @@ let offlineHold: ReturnType<typeof setTimeout> | null = null
 /**
  * Whether the browser reports a network, as the page counts it: its word
  * that it is offline counts once it has held for `OFFLINE_HOLD_MS`. The
- * connection banner says so while it does not (`web-application.md` § A
- * page of another build), and the direct channel tries again when it
- * returns (`direct-channel.md` § Choosing the path).
+ * connection banner says so while it does not, and the direct channel tries
+ * again when it returns (`direct-channel.md` § Choosing the path).
  */
 export const browserOnline = readonly(online)
 

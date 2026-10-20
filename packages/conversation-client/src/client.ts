@@ -31,9 +31,9 @@ export interface HeldEdge {
 
 /**
  * A frame the backend or the session refused: the code the page words it
- * by and the values that text needs (`localization.md` § Text from the
- * backend), with the refusal in English as the message, and the request ID
- * of the socket that refused it, which a `rejected` frame carries.
+ * by and the values that text needs, with the refusal in English as the
+ * message, and the request ID of the socket that refused it, which a `rejected`
+ * frame carries.
  */
 export class RefusedError extends Error {
   override name = 'RefusedError'
@@ -71,8 +71,8 @@ export class SavedGoneError extends Error {
 /**
  * The connection ended while the session was running the action: it had
  * taken it, so the action was accepted, and only the wait for its end is
- * lost. What became of it is in the snapshot of the next connection
- * (`web-application.md` § What a reopened socket brings back), not a refusal.
+ * lost. What became of it is in the snapshot of the next connection, not a
+ * refusal.
  */
 export class ActionOutlivedError extends Error {
   constructor(cause: Error) {
@@ -218,8 +218,7 @@ export class ConversationClient {
   /**
    * Sends a message, with the comments it carries; resolves once it is in
    * the transcript or the queue. The wait has no deadline of its own: the
-   * backend decides that a delivery failed, and says why
-   * (`turns.md` § Requesting).
+   * backend decides that a delivery failed, and says why.
    */
   submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     return this.request(
@@ -237,15 +236,12 @@ export class ConversationClient {
   }
 
   /**
-   * Sends the message saved for later `id` the way the composer chose
-   * (`web-api-conversations.md` § Messages saved for later), as the message `turnId`, the
-   * page's id for this send; resolves once the session holds it: in the
-   * transcript or the queue, or accepted as a steer, at once when it does
-   * already. A steer the session refuses rejects with `SteerRejectedError`,
-   * a message the list no longer holds, which no send took as `turnId`,
-   * with `SavedGoneError`, and any other refusal of the backend's with
-   * `RefusedError`; the wait has no deadline of its own
-   * (`turns.md` § Requesting).
+   * Sends the message saved for later `id` the way the composer chose, as the message
+   * `turnId`, the page's id for this send; resolves once the session holds it: in the
+   * transcript or the queue, or accepted as a steer, at once when it does already. A
+   * steer the session refuses rejects with `SteerRejectedError`, a message the list no
+   * longer holds, which no send took as `turnId`, with `SavedGoneError`, and any other
+   * refusal of the backend's with `RefusedError`; the wait has no deadline of its own.
    */
   sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<void> {
     if (this.writtenTurns.has(turnId) || this.queue.some((message) => message.id === turnId)) {
@@ -841,7 +837,7 @@ export class ConversationClient {
       case 'heartbeat':
         return
       // The answer to the page's ping as it returns, for the socket's
-      // liveness watch (`web-application.md` § Liveness and reconnection).
+      // liveness watch.
       case 'pong':
         this.emit(frame)
         return

@@ -1,7 +1,6 @@
-//! A conversation's draft (`web-api-conversations.md` § Conversation drafts): the message
-//! its composer holds before it is sent, which the backend keeps so that
-//! every page of the conversation shows it. A save names the revision its
-//! text was built on and always takes effect; one built on an older revision
+//! A conversation's draft: the message its composer holds before it is sent, which the
+//! backend keeps so that every page of the conversation shows it. A save names the
+//! revision its text was built on and always takes effect; one built on an older revision
 //! keeps the version it replaced, which a page restores or dismisses.
 
 use demi_conversation_socket_protocol::ClientContent;
@@ -13,7 +12,7 @@ use serde_with::rust::unwrap_or_skip;
 use crate::ids::AttachmentId;
 
 /// The mark a draft's text holds where each file's capsule stands, the one
-/// the composer's editor writes (`composer.md` § Attachments).
+/// the composer's editor writes.
 pub const ATTACHMENT_MARK: char = '\u{FFFC}';
 
 /// The most bytes a draft's text and files take as stored.
@@ -67,8 +66,7 @@ pub struct DraftAnswer {
 
 /// The revisions of a conversation's draft and of its messages saved for
 /// later after a write, which every answer of a write of either carries:
-/// the page holds the two as one piece of state (`web-api-conversations.md` § Messages
-/// saved for later).
+/// the page holds the two as one piece of state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Revisions {
     #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -99,8 +97,7 @@ pub struct ConversationDraft {
     pub text: String,
     /// The files in the order of their marks.
     pub files: Vec<DraftFile>,
-    /// The comments waiting to be sent, in the order they were saved
-    /// (`comments-and-ask.md` § Waiting comments).
+    /// The comments waiting to be sent, in the order they were saved.
     pub comments: Vec<MessageComment>,
     /// The version a save replaced without having been built on it.
     #[serde(deserialize_with = "Option::deserialize")]

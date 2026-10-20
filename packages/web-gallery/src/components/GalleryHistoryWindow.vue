@@ -9,11 +9,10 @@ import GallerySpecimen from './GallerySpecimen.vue'
 import { commandLookBlocks, thoughtAnswerBlocks } from '../fixtures/blocks'
 
 /**
- * How a long conversation reads (`web-application.md` § Transcript
- * windows): a window that does not reach the start shows a loading row at
- * its top, and earlier requests arrive above it without moving the rows in
- * view; a row whose block came in its light form reads it whole when it is
- * opened. The stand-in backend answers each read after a moment.
+ * How a long conversation reads: a window that does not reach the start shows a
+ * loading row at its top, and earlier requests arrive above it without moving
+ * the rows in view; a row whose block came in its light form reads it whole
+ * when it is opened. The stand-in backend answers each read after a moment.
  */
 const READ_MS = 700
 const timers = new Set<ReturnType<typeof setTimeout>>()

@@ -1,12 +1,11 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// The Agents window over a child whose transcript the page does not hold
-// (`web-application.md` § round trips): it says it loads while the read
-// runs, and a failed read says so with Retry, never an empty transcript.
-// Production showed a blank panel while a child's read took a minute, and
-// nothing at all when it failed. A Vue app on a happy-dom page; a few ms
-// besides the page's start.
+// The Agents window over a child whose transcript the page does not hold: it
+// says it loads while the read runs, and a failed read says so with Retry,
+// never an empty transcript. Production showed a blank panel while a child's
+// read took a minute, and nothing at all when it failed. A Vue app on a
+// happy-dom page; a few ms besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')

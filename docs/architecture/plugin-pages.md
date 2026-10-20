@@ -153,7 +153,7 @@ calls.
 A call the page cannot send because the backend cannot be reached, as while
 the server restarts, waits until the page reaches the backend again and is
 sent then, as every control does under the
-[connection banner](../product/web-application.md#a-page-of-another-build):
+`packages/web-ui/src/infra/build-reload.ts`:
 a page never shows a failure about the connection, and a call fails only for
 the backend's own answer. A read of a plugin's state waits the same way. The
 backend's `503 backend_closing`, which it answers while it shuts down without
@@ -177,7 +177,7 @@ its tabs.
 | `kind` | Its id, unique across plugins; the panel refuses a duplicate |
 | `schema` | The schema of a tab's `data`, checked where the backend's panel enters the page |
 | `title(data, tab)`, `mark` | The tab's title, from its data and its conversation and panel session, and its strip mark (props: `data`) |
-| `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`, whether it is the tab the panel shows: a content stays mounted while another tab is selected ([Work panel](../product/web-application.md#work-panel)); emits `update` with the next `data`, and `close`) |
+| `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`, whether it is the tab the panel shows: a content stays mounted while another tab is selected (`packages/web-ui/src/agent/panel-tabs.ts`); emits `update` with the next `data`, and `close`) |
 | `pinned` | The kind has one tab in every conversation's panel, ahead of the other tabs, never created, closed or kept by the backend; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
 | `icon(data)` | The strip's icon for a tab, such as a page's favicon; the kind's own icon otherwise |
 | `commands(data)` | The kind's own entries in a tab's menu, ahead of the strip's Close entries, such as a browser tab's Reload |
@@ -213,9 +213,9 @@ by who shows it. The SDK defines each intent and its payload:
 
 | Intent | Payload | Opened by the shell from |
 | --- | --- | --- |
-| `file` | `{ path, tree? }`, an absolute path on the conversation's Host, whose row the File view's tree selects and shows ([The File view's bars](../product/file-previews.md#the-file-views-bars)); `tree: true` also shows the tree if it was hidden | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image; *Show in Files* on a file link |
-| `web` | `{ url }`, an `http` or `https` address | *Open in Work Panel* on a link in a reply ([Context menus](../product/web-application.md#context-menus)) |
-| `attachment` | `{ id, name, size, url }`: the attachment's number, its file name, its size in bytes and the address of its stored copy | An attachment's card ([Attachment blocks](../product/file-previews.md#attachment-blocks)) |
+| `file` | `{ path, tree? }`, an absolute path on the conversation's Host, whose row the File view's tree selects and shows (`packages/web-ui/src/files/FileBar.vue`); `tree: true` also shows the tree if it was hidden | A file a message names (`packages/web-ui/src/markdown/message-files.ts`), an attachment's capsule, a Host image; *Show in Files* on a file link |
+| `web` | `{ url }`, an `http` or `https` address | *Open in Work Panel* on a link in a reply (`packages/web-ui/src/ui/context-menu.ts`) |
+| `attachment` | `{ id, name, size, url }`: the attachment's number, its file name, its size in bytes and the address of its stored copy | An attachment's card (`packages/web-ui/src/markdown/attachment-block.ts`) |
 | `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes ([A request](../execution/edit-tracking.md#a-request)) | A tool call's file pill, a request's changed-files line |
 
 To open an intent, the panel takes the first kind, in registration order, of
@@ -239,7 +239,7 @@ it changed; no page polls, and no page guesses when to read again.
 
 - **User state.** A plugin's state for its user reaches every page on the
   sync channel, as part of the product state, whenever the plugin marks it
-  changed ([Page synchronization](../product/web-api-sync.md#page-synchronization)).
+  changed (`crates/backend-http/src/sync.rs`).
   The Skills settings show it.
 - **Conversation state.** A plugin's state for one conversation, such as the
   conversation browser's tab list, can be large, and only the pages that show
@@ -247,7 +247,7 @@ it changed; no page polls, and no page guesses when to read again.
   the conversation's summary carries the revision of each plugin's
   conversation state, and a page that shows the conversation reads that state
   when the revision is higher than the one it holds
-  ([Conversation state of plugins](../product/web-api-sync.md#conversation-state-of-plugins)).
+  (`crates/backend-http/src/plugins.rs`).
 - **When a plugin's state changes.** A plugin marks a scope of its state
   changed through its port, after a call of its own changed it, or when its
   command package tells it the state on a Host changed: the browser's tabs,
@@ -290,7 +290,7 @@ developer: the page writes it to the browser console, never into the toast.
   the control shows the state the plugin sends; on failure the page reports
   the call's error, as `errors.report` reports any failed call, in a toast,
   and the control shows the plugin's last state again. A call is an
-  operation of the page ([Responding to the user](../product/web-application.md#responding-to-the-user)),
+  operation of the page (`packages/web-ui/src/infra/slot.ts`),
   by the plugin's action and the key of what it acts on, such as the Skills
   page's switch of a source: when the component that showed the control
   goes, the call goes on, and the control drawn again shows it working. The
@@ -340,7 +340,7 @@ nothing and read nothing.
   Conversations on one Host share them. They live in the page's memory for
   the signed-in page's lifetime and are gone after a reload, as the
   conversation cache is
-  ([Backend communication](../product/web-application.md#backend-communication)).
+  (`packages/web/src/api/client.ts`).
   At most 64 MiB and 4,096 entries of them stay, counted by their text; past
   that the ones shown longest ago go first. An entry holds what was read,
   never a way to read it: each view reads through its own route, a
@@ -391,7 +391,7 @@ nothing and read nothing.
   its answer has the Host's present epoch, and each of its subscriptions is
   live, started at or before the answer's number, changed last at or before
   it, and within its lease as the page counts it
-  ([File watch](../product/web-api-hosts.md#file-watch)). For example, an answer read
+  (`crates/backend-http/src/file_watch.rs`). For example, an answer read
   at 40 and a change at 41 make the entry out of date, whichever reached the
   page first; an answer read at 41 already holds a change at 41, and nothing
   is read again. Showing a current entry asks nothing.
@@ -443,7 +443,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | --- | --- |
 | Settings | `SettingsPage`, `SettingsGroup`, `SettingsRow` |
 | Controls | `Button`, `IconButton`, `Switch`, `TextInput`, `Dropdown`, `Menu`, `MenuItem`, `MenuGroup`, `MenuDivider`, `Popover`, `Tooltip`, `Dialog`, `Fold`, `FoldChevron`, `ExternalLink` |
-| Context menus | `vContextMenu`, which declares an element's entries for the page's context menu ([Context menus](../product/web-application.md#context-menus)); a view that handles its own pointer, such as a remote page, stops the event itself |
+| Context menus | `vContextMenu`, which declares an element's entries for the page's context menu (`packages/web-ui/src/ui/context-menu.ts`); a view that handles its own pointer, such as a remote page, stops the event itself |
 | Progress | `IndeterminateSpinner`, `ProgressLine` |
 | Status | `RegionStatus`, what a region shows in place of content it cannot show (the gallery's Errors page) |
 | Layout | `ScrollArea` |
@@ -462,7 +462,7 @@ A page's types are generated from its manifest into its package's
 state, of its methods' parameters and results, and of its streams' messages,
 such as the live view's frames; the closed set of reasons its calls and
 streams can fail with, which the page words in full
-([Plugin calls](../product/web-api-sync.md#plugin-calls)); and the constants a
+(`crates/backend-http/src/plugins.rs`); and the constants a
 stream's two ends share.
 `xtask contracts` reads them from the manifest and keeps no list of its own. A
 page never declares a schema by hand for a shape its manifest declares

@@ -67,7 +67,7 @@ test('a receipt opens the block it names in its sender’s transcript, the root�
 
 // A decision and a failed move carry ids and a code, which the page words in
 // its language; the English they recorded is for an older record and the
-// agent (`localization.md` § Text from the backend).
+// agent.
 test('a decision and a failed move are worded from their ids and code in the page’s language', () => {
   const plain = (event: AgentMessage['event']): AgentMessage =>
     ({ id: 'p1', recipientId: 'conversation-1', timestamp: '2026-10-11T12:00:00.000Z', content: 'Body.', event })

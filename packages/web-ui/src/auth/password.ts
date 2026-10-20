@@ -1,8 +1,8 @@
 import { t } from './locales/text'
 
 /**
- * The rule a password being set follows (`web-api-settings.md` § Account API), shared
- * by every form that sets one, and what each form says when it is broken.
+ * The rule a password being set follows, shared by every form that sets one, and what
+ * each form says when it is broken.
  */
 export const PASSWORD_MIN_LENGTH = 8
 

@@ -5,12 +5,11 @@ import { t as ui } from '../ui/locales/text'
 import { t } from './locales/text'
 
 /**
- * The menus of a Host file and of a commit (`web-application.md` § Context
- * menus), each declared once: a link that names the object offers all of
- * it, Open first, and the row the object has elsewhere offers the same less
- * what the row already is, a file row in the tree no Open and no Show in
- * Files, a commit row in Commits mode no Open. An action the place cannot
- * take is left out.
+ * The menus of a Host file and of a commit, each declared once: a link that
+ * names the object offers all of it, Open first, and the row the object has
+ * elsewhere offers the same less what the row already is, a file row in the
+ * tree no Open and no Show in Files, a commit row in Commits mode no Open. An
+ * action the place cannot take is left out.
  */
 
 /** What a place can do with a file it names. */

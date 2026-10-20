@@ -16,9 +16,8 @@ import type { SettingsArchivedConversation } from './types'
 
 /**
  * What was put away: a searchable list. A row opens its conversation to read,
- * with the bar that offers Restore (`conversations.md` § Conversations and
- * projects); its Restore button brings it back and opens it, and its
- * Delete… button asks before the conversation goes for good.
+ * with the bar that offers Restore; its Restore button brings it back and opens
+ * it, and its Delete… button asks before the conversation goes for good.
  */
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'

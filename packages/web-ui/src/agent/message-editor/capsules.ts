@@ -11,10 +11,9 @@ import type { FileReference } from '../message-input/copied-message'
 import { splitMessageContent } from '../message-input/message-content'
 
 /**
- * A file as its capsule in a message shows it, and as the message carries it
- * (`composer.md` § Attachments). The capsule's node keeps these, so the
- * document alone says which files a message has, in what order, and what each
- * one is.
+ * A file as its capsule in a message shows it, and as the message carries it.
+ * The capsule's node keeps these, so the document alone says which files a
+ * message has, in what order, and what each one is.
  */
 export interface MessageCapsule {
   id: string
@@ -203,11 +202,10 @@ export function contentMessage(content: readonly MessageEditContent[]): { markdo
 }
 
 /**
- * An image a message names, as the capsule the user's message shows it by
- * (`file-previews.md` § Files named in messages): named as the user alt-texted
- * it, else by its file or address, its picture the one loaded from `src`, and
- * a Host image at its path, which a click opens. The message's Markdown is not
- * touched; only how it shows changes.
+ * An image a message names, as the capsule the user's message shows it by:
+ * named as the user alt-texted it, else by its file or address, its picture the
+ * one loaded from `src`, and a Host image at its path, which a click opens. The
+ * message's Markdown is not touched; only how it shows changes.
  */
 export function imageCapsule(image: { url: string } | { path: string }, src: string, alt: string): MessageCapsule {
   if ('path' in image) {

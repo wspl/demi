@@ -10,7 +10,7 @@ import type { FileContents } from '../../files/types'
 import type { MessageAgents } from '../../agent/agent-links'
 import { createPageI18n } from '../../i18n/text'
 
-// The files a message names (`file-previews.md` § Files named in messages).
+// The files a message names.
 
 /** The Host's kept files, which a message's Host images show; never read here. */
 const contents: FileContents = {
@@ -136,7 +136,7 @@ test('without a Host, paths stay text and Host images show their alt text', () =
 })
 
 test('emphasis beside CJK text formats as a CJK writer means it', () => {
-  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as text (`composer.md` § Writing a message).
+  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as text.
   expect(renderMarkdown('**建议：**一组')).toBe('<p><strong>建议：</strong>一组</p>\n')
   expect(renderMarkdown('这是**“扫光”**效果')).toBe('<p>这是<strong>“扫光”</strong>效果</p>\n')
   expect(renderMarkdown('**注意：**これは')).toBe('<p><strong>注意：</strong>これは</p>\n')
@@ -199,9 +199,8 @@ test('task boxes are read-only, and HTML shows as text', () => {
   expect(html).toContain('&lt;b&gt;bold&lt;/b&gt;')
 })
 
-// The attachments the agent delivers (`file-previews.md` § Attachment
-// blocks): `<attachment id="a3" />` alone on its line is a block that shows
-// the attachment by what it is.
+// The attachments the agent delivers: `<attachment id="a3" />` alone on its
+// line is a block that shows the attachment by what it is.
 
 const attachments: Record<string, AttachmentLookup> = {
   a1: { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', sha256: '1'.repeat(64), url: '/blobs/1?type=image%2Fpng', size: 15822, width: 480, height: 300 } },
@@ -272,8 +271,8 @@ test('the tag in a sentence, and a link or an image to an attachment, are text',
 })
 
 // What is a block is one rule the backend follows too, to know which files a
-// share serves (`file-previews.md` § Attachment blocks): both read the same
-// cases, so they cannot drift. Each attachment is a file, so a block is a card.
+// share serves: both read the same cases, so they cannot drift. Each attachment
+// is a file, so a block is a card.
 const blockCases = z.array(z.strictObject({ case: z.string(), text: z.string(), blocks: z.array(z.string()) }))
   .parse(await Bun.file(resolve(import.meta.dir, '../../../../../crates/shared-types/tests/shared-types/fixtures/attachment-blocks.json')).json())
 const everyFile: MessageFiles = {
@@ -303,8 +302,8 @@ test('a block of a number the conversation does not have says so in the page\'s 
   }
 })
 
-// Images that follow each other stand side by side (`file-previews.md`
-// § Files named in messages): a run is one row, each image an item of it.
+// Images that follow each other stand side by side: a run is one row, each
+// image an item of it.
 
 const shot = (n: number) => `![shot ${n}](https://example.com/${n}.png)`
 const item = (n: number) => `<img src="https://example.com/${n}.png" alt="shot ${n}" />`
@@ -361,8 +360,8 @@ test('an image inside a link counts as an image of a run, and follows its link',
     .toBe(`<p class="media-run"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer nofollow"><img src="https://example.com/badge.svg" alt="build" /></a>${item(1)}</p>\n`)
 })
 
-// Dollar signs follow Pandoc's rule (`file-previews.md` § Markdown); a file
-// renders math through the same syntax.
+// Dollar signs follow Pandoc's rule; a file renders math through the same
+// syntax.
 
 test('prices stay text', () => {
   // A closing `$` needs no space before it and no digit after it.

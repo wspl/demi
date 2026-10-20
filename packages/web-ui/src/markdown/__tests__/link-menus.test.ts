@@ -1,14 +1,13 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// A link to an object has that object's own menu (`web-application.md`
-// § Context menus): a file's, a commit's or an agent's, Open first, then the
-// message's own group below, while a web link has the entries a browser's
-// menu gives it and Open in Work Panel. A reply renders on a page of
-// happy-dom through the product's StreamedMarkdown, inside a message that
-// declares its menu, and the page's root handler builds what a right-click
-// opens; what a row copies is read off a stubbed clipboard. Tens of ms,
-// besides the start of the page every happy-dom test pays.
+// A link to an object has that object's own menu: a file's, a commit's or an
+// agent's, Open first, then the message's own group below, while a web link has
+// the entries a browser's menu gives it and Open in Work Panel. A reply renders
+// on a page of happy-dom through the product's StreamedMarkdown, inside a
+// message that declares its menu, and the page's root handler builds what a
+// right-click opens; what a row copies is read off a stubbed clipboard. Tens of
+// ms, besides the start of the page every happy-dom test pays.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 await import('../../__tests__/vue-components')

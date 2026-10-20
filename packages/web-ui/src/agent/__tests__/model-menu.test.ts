@@ -4,8 +4,8 @@ import { modelMenuRows } from '../model-menu'
 import { profileContextChoice, profileContextOptions } from '../context-limit'
 
 // A profile's model is chosen with the composer's own menu, the same items
-// plus Parent's Model at its top (`web-application.md` § Web app scope): nothing the
-// composer offers for a model is cut from the profile's menu.
+// plus Parent's Model at its top: nothing the composer offers for a model is cut
+// from the profile's menu.
 
 const providers: ProviderInfo[] = [
   { id: 'anthropic', label: 'Anthropic', isAvailable: true },

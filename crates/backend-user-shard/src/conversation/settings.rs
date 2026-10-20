@@ -1,6 +1,4 @@
-//! A conversation's model settings (`crates/shared-types/src/catalog.rs`;
-//! `web-api.md` § Sidebar mutations, read state and page
-//! synchronization). A patch names the parts it changes, and the
+//! A conversation's model settings (`crates/shared-types/src/catalog.rs`). A patch names the parts it changes, and the
 //! conversation's settings order applies one change at a time to the
 //! selection the record holds: the change is checked against the entry's
 //! catalog, a live tree gets the runtime a new provider entry needs, the

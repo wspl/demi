@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { resolveLanguage } from '../languages'
 
 // System speaks the first of the browser's languages Demi speaks, else
-// English (`localization.md` § Choosing the language). A table; no I/O.
+// English. A table; no I/O.
 test.each([
   { browser: ['zh-TW'], spoken: 'zh-Hant' },
   { browser: ['zh-HK'], spoken: 'zh-Hant' },

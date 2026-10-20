@@ -291,8 +291,8 @@ every other mark, the running one included, until the user reads the
 conversation, as every mark of something new does: the sidebar then shows the
 settled ring while the request still waits in the conversation and in the
 Running window, and a new request lights the dot again
-([Conversations and projects](../product/conversations.md#conversations-and-projects)). It is distinct from the red mark of a
-conversation that failed ([Conversations and projects](../product/conversations.md#conversations-and-projects)).
+(`crates/backend-database/src/selection.rs`). It is distinct from the red mark of a
+conversation that failed (`crates/backend-database/src/selection.rs`).
 
 **The decision in the transcript.** The message an agent receives shows as a
 receipt row, as an agent message does (`packages/web-ui/src/agent/blocks/AgentReceiptBlock.vue`): "You allowed this conversation to
@@ -302,7 +302,7 @@ all there is.
 `web-ui` owns the card, the mark and the receipt row as components over a
 request's and a message's data; the gallery shows each state. `web` supplies
 the requests and the decisions over the
-[Web API](../product/web-api-conversations.md#conversation-permissions).
+`crates/backend-http/src/permissions.rs`.
 
 ## Responsibilities
 

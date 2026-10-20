@@ -5,7 +5,7 @@ import GalleryPhoneFrame from '../components/GalleryPhoneFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import { useGalleryView } from '../gallery-views'
 
-/** Automations (`automations.md`), live on fixtures. */
+/** Automations, live on fixtures. */
 const { view } = useGalleryView()
 
 const PHONES = [

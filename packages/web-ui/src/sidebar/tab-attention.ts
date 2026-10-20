@@ -5,11 +5,10 @@ import { t } from './locales/text'
 import type { SidebarConversation } from './types'
 
 /**
- * The browser tab's news (`conversations.md` § Conversations and projects):
- * the page's title counts the conversations whose sidebar dot is red, yellow
- * or green, the tab's icon wears a dot of the most urgent of those colors,
- * and an installed app's icon carries their number. All of it follows the
- * sidebar's dots, read from the same rows by the same rule.
+ * The browser tab's news: the page's title counts the conversations whose
+ * sidebar dot is red, yellow or green, the tab's icon wears a dot of the most
+ * urgent of those colors, and an installed app's icon carries their number. All
+ * of it follows the sidebar's dots, read from the same rows by the same rule.
  */
 
 /** The product's name, as the tab says it. */

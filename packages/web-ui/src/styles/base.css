@@ -18,9 +18,9 @@
 
 /*
  * Each language's own system font draws its Han characters, which look
- * different in Chinese, Japanese and Korean (`localization.md` § Choosing
- * the language): the document's `lang`, which follows the page's language,
- * picks the stack, the Latin letters staying the system's.
+ * different in Chinese, Japanese and Korean: the document's `lang`, which
+ * follows the page's language, picks the stack, the Latin letters staying the
+ * system's.
  */
 :root:lang(zh-Hans) {
   --font-sans: ui-sans-serif, system-ui, "PingFang SC", "Noto Sans CJK SC", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -161,7 +161,7 @@
   --text-setting-small: 12px;
 }
 
-/* The phone's metrics (`web-application.md` § One phone scale): every control
+/* The phone's metrics: every control
    is drawn at a finger's size, read from these, as iOS's own apps draw
    theirs; the gallery's Phone section lists them. A toolbar or action
    button is 40 with a 20 px icon (`ICON_PX` in `ui/icon-metrics.ts` holds the
@@ -1172,11 +1172,11 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * Comments on a reply's words (`comments-and-ask.md`), painted through the
- * CSS Custom Highlight API so the reply's DOM stays as it rendered: a yellow
- * tint with a solid yellow underline, deeper while its card is open, and
- * dimmer once the comment is sent. The comment mark in the margin and the
- * composer's pill take the same yellow.
+ * Comments on a reply's words, painted through the CSS Custom Highlight API so
+ * the reply's DOM stays as it rendered: a yellow tint with a solid yellow
+ * underline, deeper while its card is open, and dimmer once the comment is
+ * sent. The comment mark in the margin and the composer's pill take the same
+ * yellow.
  */
 :root,
 [data-theme="dark"] {
@@ -1238,12 +1238,11 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * Side questions on a reply's words (`comments-and-ask.md` § Side
- * questions): the asked words in a purple tint with a purple underline,
- * deeper under the pointer; the folded card's question mark in the margin
- * takes the same purple, as does the card's header icon. The card itself
- * has no purple: it stands on the page's background with the line color's
- * border.
+ * Side questions on a reply's words: the asked words in a purple tint with a
+ * purple underline, deeper under the pointer; the folded card's question mark
+ * in the margin takes the same purple, as does the card's header icon. The card
+ * itself has no purple: it stands on the page's background with the line
+ * color's border.
  */
 :root,
 [data-theme="dark"] {
@@ -1283,10 +1282,10 @@ html[data-theme="light"] .file-pill {
 }
 
 /*
- * A picture a comment or a side question stands on (`comments-and-ask.md`
- * § Images) is outlined in its color, around the picture, as its words would
- * be tinted: yellow, dimmer once sent and deeper while its card is open, or
- * purple, deeper under the pointer; the box's in the selection's blue.
+ * A picture a comment or a side question stands on is outlined in its color,
+ * around the picture, as its words would be tinted: yellow, dimmer once sent
+ * and deeper while its card is open, or purple, deeper under the pointer; the
+ * box's in the selection's blue.
  */
 .picture-outline {
   border-radius: 4px;
@@ -1536,7 +1535,7 @@ html[data-theme="light"] .file-pill {
 }
 
 /* What a find or a link opened, a settings row, a block of the transcript or a line of a file, marked
-   once (`ui/found-highlight.ts`, `product.md` § Finding a conversation): the accent's faint fill over
+   once (`ui/found-highlight.ts`): the accent's faint fill over
    it as a hovered row's fill covers a row, with a row's rounded corners, fading out. An element wider
    than the column its content stands in, as a transcript row is, says how far in the column starts
    with --found-inset-x. The fill is translucent and drawn over the element rather than behind it, so a
@@ -1679,8 +1678,7 @@ html[data-theme="light"] .file-pill {
    to the web: they read as part of the sentence, as an agent's link does, in
    the prose's color over a faint underline, and their icons tell them apart.
    Only a web page's link keeps the accent, so the kinds stay apart whatever
-   accent the user picks (`docs/product/file-previews.md` § Files named in
-   messages). */
+   accent the user picks. */
 .markdown-body a:is([data-file-link], [data-commit-link]) {
   color: var(--fg-body);
   text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
@@ -1708,7 +1706,7 @@ html[data-theme="light"] .file-pill {
 /* A link in running text draws no ring: a ring would box a word in a sentence.
    Focused from the keyboard, it takes its pointed-at look instead (the rules
    above and below), as a link does in a browser's reading view
-   (`docs/product/web-application.md` § Keyboard). A link around a picture or a
+  . A link around a picture or a
    video is a tile, not text, and keeps the ring. `demi.focusRings` reads a
    text link's look as its indicator. */
 :is(.markdown-body a:not(:has(> :is(img, video))), .agent-link):focus-visible {
@@ -1758,8 +1756,7 @@ html[data-theme="light"] .file-pill {
 }
 
 /* The focus ring: what the keyboard's focus shows on any control, and only
-   that (`:focus-visible`): a click leaves none (`docs/product/web-application.md`
-   § Keyboard). It is the rule for every element, so a control a primitive makes
+   that (`:focus-visible`): a click leaves none. It is the rule for every element, so a control a primitive makes
    focusable and one built by hand look alike; a control that draws its own
    state instead says `outline-none`. `.focus-ring-shown` draws the same ring on
    the active row of a list that holds the focus by `aria-activedescendant`,

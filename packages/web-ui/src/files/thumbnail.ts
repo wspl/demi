@@ -18,21 +18,18 @@ export interface ThumbnailBounds {
 }
 
 /**
- * A picture in a row's own line, a tool's or a notice's
- * (`file-previews.md` § Media a tool returned): 20 pixels tall, 16 to 48
- * wide.
+ * A picture in a row's own line, a tool's or a notice's: 20 pixels tall, 16 to
+ * 48 wide.
  */
 export const ROW_PICTURE: ThumbnailBounds = { height: 20, minWidth: 16, maxWidth: 48 }
 
 /**
- * The box a thumbnail of a medium of `natural` size takes within `bounds`
- * (`file-previews.md` § Media a tool returned): as tall as the bounds, as
- * wide as its proportions make it within their widths. A medium whose
- * proportions fall outside that range fills the box and is cropped
- * (`object-fit: cover`), a tall one to its top and a wide one to its
- * middle. While its size is unknown, an image's box is the narrowest one
- * and a video's is 16:9, as most recordings are, until its first frame
- * arrives.
+ * The box a thumbnail of a medium of `natural` size takes within `bounds`: as
+ * tall as the bounds, as wide as its proportions make it within their widths. A
+ * medium whose proportions fall outside that range fills the box and is cropped
+ * (`object-fit: cover`), a tall one to its top and a wide one to its middle.
+ * While its size is unknown, an image's box is the narrowest one and a video's
+ * is 16:9, as most recordings are, until its first frame arrives.
  *
  * Never enlarged: the box is never taller or wider than the medium itself,
  * so one smaller than the box keeps its own size where it is narrower or
@@ -58,11 +55,10 @@ export const TILE_GAP = 8
 export const TILE_HEIGHT = 240
 
 /**
- * The box a picture of a message fits in, lone or in a run
- * (`file-previews.md` § Files named in messages): a third of `width`, the
- * width its pictures stand in, less the two gaps between three tiles, and
- * 240 pixels tall, so three tiles fill a line. A 760-pixel message's is
- * 248 × 240.
+ * The box a picture of a message fits in, lone or in a run: a third of `width`,
+ * the width its pictures stand in, less the two gaps between three tiles, and
+ * 240 pixels tall, so three tiles fill a line. A 760-pixel message's is 248 ×
+ * 240.
  */
 export function tileFrame(width: number): PixelSize {
   return { width: Math.max(0, Math.floor((width - 2 * TILE_GAP) / 3)), height: TILE_HEIGHT }

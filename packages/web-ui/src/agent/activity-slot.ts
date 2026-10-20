@@ -7,7 +7,7 @@ import type { SessionLoad } from './session-status'
  * `requesting` is the wait for the provider's answer: from the send of a
  * message that starts a turn, its delivery included, and a recovery the server
  * has not acknowledged yet and the agent's own retries, which are the same
- * wait and keep the same word (`turns.md` § Recovering an unfinished turn).
+ * wait and keep the same word.
  */
 export type ActivityKind = 'connecting' | 'requesting'
 
@@ -30,8 +30,8 @@ export interface ActivitySlotInput {
   load: SessionLoad
   /**
    * The page cannot reach the backend, and the host's connection banner says
-   * so (`web-application.md` § A page of another build). A conversation whose
-   * socket waits for the same backend leaves that to the banner.
+   * so. A conversation whose socket waits for the same backend leaves that to
+   * the banner.
    */
   backendAway: boolean
   phase: SessionPhase
@@ -53,7 +53,7 @@ export interface ActivitySlotInput {
    * The transcript's rows as the list draws them, the runs of steps grouped,
    * with the calls the model is writing; never the messages that wait or
    * the message being sent, since what the turn is doing is read from the
-   * transcript alone (`turns.md` § Following the agent's work).
+   * transcript alone.
    */
   turnRows?: readonly MessageListBlock[]
 }
@@ -61,13 +61,13 @@ export interface ActivitySlotInput {
 /**
  * The tail row's kind, or null when the tail is content (streaming thinking or
  * text, a call being written or executing) or nothing is happening. Text the
- * model finished, with nothing after it yet, is followed by Requesting
- * (`turns.md` § Recovering an unfinished turn). A lost socket wins over
- * everything, since a recovery or a turn cannot progress without it: the row
- * says Connecting while the page still reaches the backend, and nothing while
- * the connection banner says the backend is away. A conversation that failed
- * to open waits for nothing: the failure told at the tail says so. A first
- * opening whose socket is not made yet says Connecting as a lost one does.
+ * model finished, with nothing after it yet, is followed by Requesting. A lost
+ * socket wins over everything, since a recovery or a turn cannot progress
+ * without it: the row says Connecting while the page still reaches the backend,
+ * and nothing while the connection banner says the backend is away. A
+ * conversation that failed to open waits for nothing: the failure told at the
+ * tail says so. A first opening whose socket is not made yet says Connecting as
+ * a lost one does.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
   if (input.load === 'reconnecting' || input.load === 'connecting') {

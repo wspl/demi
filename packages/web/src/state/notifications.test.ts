@@ -9,7 +9,7 @@ import { needsHomeScreen, subscribeFor, useNotifications, type BrowserSubscripti
 import { useProduct } from './product'
 
 // Which browser shows how to add Demi to the Home Screen instead of asking
-// for notifications (`turns.md` § Notifications). Pure; under a millisecond.
+// for notifications. Pure; under a millisecond.
 
 test('Safari on an iPhone or iPad outside the Home Screen needs Demi added there; the Home Screen app and other browsers do not', () => {
   expect(needsHomeScreen({ standalone: false })).toBe(true)
@@ -17,8 +17,8 @@ test('Safari on an iPhone or iPad outside the Home Screen needs Demi added there
   expect(needsHomeScreen({})).toBe(false)
 })
 
-// A browser's subscription serves one session (`web-api-settings.md` § Push
-// notifications). A stand-in browser and backend; under a millisecond.
+// A browser's subscription serves one session. A stand-in browser and backend;
+// under a millisecond.
 
 /** A browser whose subscriptions are named in order, with what happened to them. */
 function browser(maker: string | null, subscribedAs: string | null, refuse: string[] = []) {

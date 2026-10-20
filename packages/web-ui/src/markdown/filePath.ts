@@ -1,5 +1,4 @@
-// Paths a message writes as link and image targets (`file-previews.md`
-// § Files named in messages).
+// Paths a message writes as link and image targets.
 import { expandHome, resolveHostPath } from '../files/paths'
 import type { MessageFileTarget, MessageFiles } from './types'
 
@@ -99,8 +98,7 @@ const LINE_SUFFIX_RE = /:([1-9]\d*)(?:-\d+)?$/
 
 /**
  * The line a message's link target points at, its first when it names a
- * range (`file-previews.md` § Files named in messages); null when it points
- * at none.
+ * range; null when it points at none.
  */
 export function targetLine(target: string): number | null {
   const trimmed = target.trim()
@@ -118,7 +116,7 @@ export function messageFileTarget(target: string, places: MessagePlaces): Messag
 /**
  * How a link to the web opens in a new tab: with no hold on the page, no
  * referrer, which on a shared page would carry its link, and no
- * endorsement a crawler would follow (`sharing.md` § Safety).
+ * endorsement a crawler would follow.
  */
 export const WEB_LINK_REL = 'noopener noreferrer nofollow'
 

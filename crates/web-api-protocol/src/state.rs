@@ -1,5 +1,4 @@
-//! The product state and the messages of the page's synchronization channel
-//! (`web-api-sync.md` § Page synchronization).
+//! The product state and the messages of the page's synchronization channel.
 
 use std::collections::BTreeMap;
 
@@ -95,25 +94,22 @@ pub struct ProductState {
     pub plugin_states: BTreeMap<String, Value>,
     /// The build of the web app the backend serves, from its `build.json`,
     /// or none when it serves none, as in development: a page of another
-    /// build is out of date (`web-application.md` § A page of another
-    /// build).
+    /// build is out of date.
     pub web_build: Option<String>,
     /// Whether the backend can send account mail, which an email change
-    /// needs for its code (`web-api-settings.md` § Account API); without it the page
-    /// offers no email change.
+    /// needs for its code; without it the page offers no email change.
     pub mail: bool,
     /// This run of the backend, an id it chooses when it starts. The
     /// revisions it counts in memory, such as a summary's
     /// `permissionsRevision`, compare only within one run: a page holding
-    /// one of another run reads again (`web-api-sync.md` § Revisions counted in
-    /// memory).
+    /// one of another run reads again.
     pub run: String,
 }
 
 /// The one message a page sends on its synchronization channel: the
 /// conversation it shows while it is focused and visible, or null, each time
 /// that changes; no push notification of it reaches the session's browser
-/// while it does (`web-api-sync.md` § Page synchronization).
+/// while it does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PageShowing {

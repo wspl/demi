@@ -170,7 +170,7 @@ impl<H: HostResolver> Connection<H> {
     /// it. A failure is answered as a frame, never returned. Answers whether
     /// the session took the message the frame carries: a `send` it admitted
     /// or a `steer` it accepted, which the backend needs to know of a
-    /// message saved for later (`web-api-conversations.md` § Messages saved for later).
+    /// message saved for later.
     pub async fn handle(&self, frame: ClientFrame) -> bool {
         let command = frame.kind();
         self.handle_as(frame, command).await
