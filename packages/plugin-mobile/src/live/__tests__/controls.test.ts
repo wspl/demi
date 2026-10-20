@@ -261,9 +261,48 @@ test('the view asks for the frame of its laid-out size and pixel ratio once, aga
   const round = { kind: 'round' as const, radius: 55 }
   const drawnFrame = { kind: 'drawn' as const, corners: { topLeft: round, topRight: round, bottomRight: round, bottomLeft: round }, buttons: [] }
   streams[0]!.data(framed({ type: 'frame', device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawnFrame }))
-  expect(session.state.frame).toBeNull()
+  expect(session.state.frames).toEqual({})
   streams[0]!.data(framed({ type: 'frame', device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame }))
-  expect(session.state.frame).toEqual({ device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame })
+  expect(session.state.frames).toEqual({ m2: { device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame } })
+  session.close()
+})
+
+test('each device keeps its last frame across a switch of tabs until a newer one comes, and loses it when it closes', async () => {
+  // Over a far Host the frame asked for again on a return comes a round
+  // trip later: meanwhile the device shows the frame it had.
+  const streams: UserStreamHandlers[] = []
+  const sent: LiveViewerMessage[] = []
+  const session = viewing(sent, streams)
+  const round = (radius: number) => ({ kind: 'round' as const, radius })
+  const drawn = (radius: number) => ({
+    kind: 'drawn' as const,
+    corners: { topLeft: round(radius), topRight: round(radius), bottomRight: round(radius), bottomLeft: round(radius) },
+    buttons: [],
+  })
+  const frameOf = (device: string, radius: number) => framed({ type: 'frame', device, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawn(radius) })
+  const devices = [
+    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', recording: false },
+    { id: 'm2', name: 'Pixel 10', platform: 'android' as const, os: 'Android 16', recording: false },
+  ]
+  session.showing('m1')
+  session.frame(800, 1200, 2)
+  streams[0]!.data(framed({ type: 'state', devices, watched: 'm1' }))
+  streams[0]!.data(frameOf('m1', 55))
+  // Another tab, then m1's again.
+  session.hiding('m1')
+  await Promise.resolve()
+  expect(session.state.watched).toBeNull()
+  expect(session.state.frames.m1?.frame).toEqual(drawn(55))
+  const asked = sent.filter((message) => message.type === 'frame').length
+  session.showing('m1')
+  expect(session.state.frames.m1?.frame).toEqual(drawn(55))
+  // The frame is asked for again, and the newer one replaces the kept one.
+  expect(sent.filter((message) => message.type === 'frame')).toHaveLength(asked + 1)
+  streams[0]!.data(frameOf('m1', 60))
+  expect(session.state.frames.m1?.frame).toEqual(drawn(60))
+  // m1 closes: its frame goes with it.
+  streams[0]!.data(framed({ type: 'state', devices: [devices[1]!], watched: null }))
+  expect(session.state.frames).toEqual({})
   session.close()
 })
 

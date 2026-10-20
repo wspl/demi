@@ -30,7 +30,7 @@ import { t } from '../locales/text'
  * - A screen that is off keeps its last picture, dimmed under Screen Off with Wake;
  *   a tap or a key wakes it too.
  * - The view stays mounted while its tab is hidden, so its last picture shows at
- *   once when the tab is shown again. The session watches the device only while its
+ *   once, in its last frame, when the tab is shown again. The session watches the device only while its
  *   tab is shown.
  */
 const props = defineProps<{
@@ -49,11 +49,8 @@ const settledSize = ref<Size>({ width: 0, height: 0 })
 const picture = shallowRef<DeviceStream | null>(null)
 const painted = ref(false)
 const watching = computed(() => props.shown && props.session.state.watched === props.device)
-/** The device's frame as the module drew it, while the view watches the device. */
-const framed = computed(() => {
-  const framed = props.session.state.frame
-  return watching.value && framed && framed.device === props.device ? framed : null
-})
+/** The device's last frame as the module drew it, kept with its last picture until a newer one comes. */
+const framed = computed(() => props.session.state.frames[props.device] ?? null)
 /** The screen in points: the picture's, or before the first picture the frame's, so the view says its size at once. */
 const screen = computed<Size | null>(() => {
   if (picture.value) {
