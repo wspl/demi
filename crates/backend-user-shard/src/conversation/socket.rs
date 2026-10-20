@@ -27,8 +27,10 @@
 //! - An `open` takes the conversation's settings order, so the tree opens with
 //!   the model selection the record holds.
 //! - A `send_saved` becomes the `send` or `steer` of the message saved for later
-//!   it names, which leaves the list as the session takes it. One the list no
-//!   longer holds is answered with a `rejected` frame (`saved_not_found`).
+//!   it names, as the list holds it or as an edit changed it, and the message
+//!   leaves the list as the session takes it. One the list no longer holds is
+//!   answered with a `rejected` frame (`saved_not_found`), unless an edit
+//!   changed it: the edit holds the whole message, which goes as it is.
 
 use std::rc::{Rc, Weak};
 use std::time::Duration;
@@ -360,32 +362,39 @@ impl Shard {
         // session takes it, and stays when the session refuses it.
         //
         // One a send already took as that turn answers as that send did: the
-        // session holds it, so nothing is sent again.
-        let (frame, saved, _sending) = match frame {
-            ClientFrame::SendSaved { id, turn_id, delivery } => {
+        // session holds it, so nothing is sent again. An edited one another
+        // page deleted or sent meanwhile goes as the user changed it, with
+        // nothing to take off the list.
+        let (frame, saved, from_list, _sending) = match frame {
+            ClientFrame::SendSaved { id, turn_id, delivery, content } => {
                 let sending = self.conversations().slot(conversation).saved.acquire().await;
                 let control = &self.services().control;
                 match control.saved_message(conversation.clone(), id.clone()).await {
-                    Ok(Some(message)) => (
-                        sent_saved(message, turn_id.clone(), delivery),
-                        Some((id, turn_id)),
-                        Some(sending),
-                    ),
-                    Ok(None) => {
-                        return match control.sent_as(conversation.clone(), id).await {
-                            Ok(Some(turn)) if turn == turn_id => {
-                                Handled::Replies(sent_again(turn_id, delivery))
-                            }
-                            Ok(_) => Handled::Replies(vec![saved_gone()]),
-                            Err(error) => Handled::Replies(vec![send_failed(error.to_string())]),
-                        };
+                    Ok(Some(message)) => {
+                        let content = content.unwrap_or_else(|| saved_content(message));
+                        (
+                            saved_frame(content, turn_id.clone(), delivery),
+                            Some((id, turn_id)),
+                            true,
+                            Some(sending),
+                        )
                     }
+                    Ok(None) => match control.sent_as(conversation.clone(), id).await {
+                        Ok(Some(turn)) if turn == turn_id => {
+                            return Handled::Replies(sent_again(turn_id, delivery));
+                        }
+                        Ok(_) => match content {
+                            Some(content) => (saved_frame(content, turn_id, delivery), None, true, Some(sending)),
+                            None => return Handled::Replies(vec![saved_gone()]),
+                        },
+                        Err(error) => return Handled::Replies(vec![send_failed(error.to_string())]),
+                    },
                     Err(error) => {
                         return Handled::Replies(vec![send_failed(error.to_string())]);
                     }
                 }
             }
-            frame => (frame, None, None),
+            frame => (frame, None, false, None),
         };
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never refuse
@@ -412,7 +421,7 @@ impl Shard {
         };
         // A refusal names the command the page sent: a saved message's is
         // its `send_saved`'s, whatever frame it became.
-        let command = if saved.is_some() { ClientFrameKind::SendSaved } else { frame.kind() };
+        let command = if from_list { ClientFrameKind::SendSaved } else { frame.kind() };
         let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
                 let taken = connection.handle_as(frame, command).await;
@@ -770,13 +779,10 @@ fn sent_again(turn: TurnId, delivery: SavedDelivery) -> Vec<ServerFrame> {
     }
 }
 
-/// The frame the composer would send for a saved message: a message, which waits
-/// in the queue while a turn runs, or a steer.
-///
-/// The frame carries `turn`, the page's id for the send, as the turn's or the
-/// steer's. Its text is split at the marks where its files stand, as the page
-/// joins a message's content, without the blank space at its ends.
-fn sent_saved(message: SavedMessage, turn: TurnId, delivery: SavedDelivery) -> ClientFrame {
+/// The content a saved message sends: its text split at the marks where its
+/// files stand, as the page joins a message's content, without the blank space
+/// at its ends.
+fn saved_content(message: SavedMessage) -> Vec<ClientContent> {
     let mut files = message.files.into_iter().map(|file| match file {
         DraftFile::Upload {
             r#ref, file_name, ..
@@ -803,6 +809,13 @@ fn sent_saved(message: SavedMessage, turn: TurnId, delivery: SavedDelivery) -> C
     }
     // Files without a mark follow the text.
     content.extend(files);
+    content
+}
+
+/// The frame the composer would send for a saved message's `content`: a
+/// message, which waits in the queue while a turn runs, or a steer. The frame
+/// carries `turn`, the page's id for the send, as the turn's or the steer's.
+fn saved_frame(content: Vec<ClientContent>, turn: TurnId, delivery: SavedDelivery) -> ClientFrame {
     match delivery {
         SavedDelivery::Message | SavedDelivery::Queue => ClientFrame::Send {
             message_id: turn,

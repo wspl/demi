@@ -243,7 +243,8 @@ export class ConversationClient {
 
   /**
    * Sends the message saved for later `id` the way the composer chose, as the
-   * message `turnId`, the page's id for this send. Resolves once the session holds
+   * message `turnId`, the page's id for this send: as the list holds it, or as
+   * an edit changed it, `content`. Resolves once the session holds
    * it: in the transcript or the queue, or accepted as a steer, at once when it
    * does already. The wait has no deadline of its own.
    *
@@ -251,15 +252,15 @@ export class ConversationClient {
    *
    * - `SteerRejectedError` for a steer the session refuses.
    * - `SavedGoneError` for a message the list no longer holds, which no send took
-   *   as `turnId`.
+   *   as `turnId`; never for an edited one, which goes as edited.
    * - `RefusedError` for any other refusal of the backend's.
    */
-  sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<void> {
+  sendSaved(id: string, turnId: string, delivery: SavedDelivery, content?: ClientContent[]): Promise<void> {
     if (this.writtenTurns.has(turnId) || this.queue.some((message) => message.id === turnId)) {
       return Promise.resolve()
     }
     return this.request(
-      { type: 'send_saved', id, turnId, delivery },
+      { type: 'send_saved', id, turnId, delivery, ...(content ? { content } : {}) },
       (event) => {
         if (event.type === 'steer_result' && event.steerId === turnId) {
           return event.outcome.status === 'accepted'

@@ -111,6 +111,8 @@ impl ReadBlob for NoBlobs {
 ///   Generation switch and a device why it will not start its runner by itself.
 /// - 0.1.27's, before the users' port forwards.
 /// - 0.1.32's, before a ledger row kept its price and its prompt's hashes.
+/// - 0.1.36's, which 0.1.33 to 0.1.35 shipped too, before a saved message was
+///   edited in place.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -266,11 +268,25 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.32.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_32),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.36.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_36),
+        },
     ],
 };
 
-/// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to the
+/// From 0.1.36's control schema, which 0.1.33 to 0.1.35 shipped too, to the
 /// current one.
+///
+/// - A saved message is edited in the composer and written back in its place,
+///   so the moves of one into the draft, whose answers `saved_edits` kept, go
+///   with their answers.
+const CONTROL_FROM_0_1_36: &str = "
+DROP TABLE saved_edits;
+";
+
+/// From 0.1.32's control schema, which 0.1.28 to 0.1.31 shipped too, to
+/// 0.1.36's.
 ///
 /// - A usage ledger row keeps what each kind of its tokens would cost on the
 ///   vendor's API and the hashes of the system prompt and the tools its request
@@ -3998,18 +4014,6 @@ CREATE TABLE saved_messages (
   document        TEXT NOT NULL
 ) STRICT;
 CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
-
--- An edit of a message saved for later, by the page's id for it, with its
--- answer, kept a day so the same edit sent again answers as it first did.
--- answer: the edit's answer, `{ draft, revisions }` as `web-api.md`
--- § Messages saved for later names it, as JSON.
-CREATE TABLE saved_edits (
-  op              TEXT PRIMARY KEY,
-  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  answer          TEXT NOT NULL,
-  made_at         INTEGER NOT NULL
-) STRICT;
-CREATE INDEX saved_edits_by_age ON saved_edits (made_at);
 
 -- A message saved for later that a send took, with the turn the send became,
 -- kept a day so the same send, or a save of it, sent again is known.

@@ -447,9 +447,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/saved/from-draft", post(saved::from_draft))
         .route(
             "/conversations/{id}/saved/{message}",
-            delete(saved::remove),
+            put(saved::write).delete(saved::remove),
         )
-        .route("/conversations/{id}/saved/{message}/edit", post(saved::edit))
         .route(
             "/conversations/{id}/permissions",
             get(permissions::read),

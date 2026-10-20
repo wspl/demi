@@ -73,13 +73,6 @@ impl Version {
         self.text.trim().is_empty() && self.files.is_empty() && self.comments.is_empty()
     }
 
-    /// The version's text and files, as a message saved for later keeps
-    /// them, and its comments apart.
-    pub(super) fn into_message(self) -> (Self, Vec<MessageComment>) {
-        let Self { text, files, comments } = self;
-        (Self { text, files, comments: Vec::new() }, comments)
-    }
-
     /// Whether the version as stored is over a draft's limit.
     pub(super) fn too_large(&self) -> bool {
         to_json(self).len() > DRAFT_BYTES_MAX

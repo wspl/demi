@@ -2,16 +2,16 @@
 //! revision, which the conversation's draft row keeps.
 //!
 //! Every change of the list raises the revision in the transaction that makes it.
-//! A save and an edit change the draft in the same transaction, so a message is
-//! never both saved and in the draft.
+//! A save of the composer's message empties the draft in the same transaction,
+//! so a message is never both saved and in the draft. An edit writes a message
+//! in its place and never touches the draft.
 
 use demi_shared_types::{Timestamp, TurnId};
 use demi_web_api_protocol::drafts::{DraftWritten, Revisions};
-use demi_web_api_protocol::ids::{AttachmentId, ConversationId, SavedEditId, SavedMessageId, UserId};
+use demi_web_api_protocol::ids::{AttachmentId, ConversationId, SavedMessageId, UserId};
 use demi_web_api_protocol::saved::{FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedList, SavedMessage};
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, params};
-use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
@@ -20,8 +20,7 @@ use super::drafts::{StagedFile, Stored, Version, archived, staged_version, store
 
 const TABLE: &str = "saved_messages";
 
-/// How long an edit's answer and a send of a saved message are kept, for a
-/// request sent again.
+/// How long a send of a saved message is kept, for a request sent again.
 const KEPT: SignedDuration = SignedDuration::from_hours(24);
 
 /// Why the list was left as it was.
@@ -158,67 +157,48 @@ impl ControlService {
         .await
     }
 
-    /// The edit `op`: moves the saved message `id` into the conversation's draft,
-    /// and the draft's text and files, when it holds any, into a message saved for
-    /// later as `becomes`, in one transaction.
-    ///
-    /// The answer is kept by `op` for a day, so the same edit sent again answers as
-    /// it first did, whatever happened since; a refusal is not kept.
-    pub async fn edit_saved(
+    /// Writes `text` and `files` as the saved message `id`'s content, in its
+    /// place in the list, leaving the draft as it is. Each upload is presented
+    /// with what its record holds, as a save's is. The same content written
+    /// again changes nothing.
+    pub async fn write_saved(
         &self,
         conversation: ConversationId,
-        op: SavedEditId,
+        owner: UserId,
         id: String,
-        becomes: SavedMessageId,
-    ) -> Result<Result<DraftWritten, SavedRefusal>, StorageError> {
+        text: String,
+        files: Vec<StagedFile>,
+    ) -> Result<Result<SavedAnswer, SavedRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            forget_old(&transaction, now)?;
-            let kept: Option<String> = transaction
-                .query_row(
-                    "SELECT answer FROM saved_edits WHERE op = ?1 AND conversation_id = ?2",
-                    [op.as_str(), conversation.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if let Some(answer) = kept {
-                let kept: KeptEdit = json("saved_edits", "answer", &answer)?;
-                return Ok(Ok(kept.present()));
-            }
             if archived(&transaction, &conversation)? {
                 return Ok(Err(SavedRefusal::Archived));
             }
-            if held(&transaction, becomes.as_str())? {
-                return Ok(Err(SavedRefusal::IdTaken));
+            let version = match staged_version(&transaction, &owner, text, files)? {
+                Ok(version) => version,
+                Err(missing) => return Ok(Err(SavedRefusal::UploadNotFound(missing))),
+            };
+            if version.too_large() {
+                return Ok(Err(SavedRefusal::TooLarge));
             }
-            let Some(document) = remove(&transaction, &conversation, &id)? else {
+            let Some(kept) = saved(&transaction, &conversation, &id)? else {
                 return Ok(Err(SavedRefusal::NotFound));
             };
-            // The draft's text and files go into the list and the saved
-            // message's come in; the draft's comments stay waiting.
-            let current = stored(&transaction, &conversation)?;
-            let (moved, comments) = current
-                .as_ref()
-                .map_or_else(|| Version::empty().into_message(), |draft| draft.version.clone().into_message());
-            if !moved.is_empty() {
-                insert(&transaction, &conversation, &becomes, moved, now)?;
+            if kept.text == version.text && kept.files == version.files {
+                let revisions = revisions(&transaction, &conversation)?;
+                return Ok(Ok(SavedAnswer { message: kept, revisions }));
             }
-            let mut draft = Stored::written(current, Version { comments, ..document });
-            draft.saved_revision += 1;
-            write(&transaction, &conversation, &draft, now.as_millisecond())?;
-            let kept = KeptEdit {
-                revision: draft.revision,
-                written: draft.written,
-                version: draft.version.clone(),
-                replaced: draft.replaced.clone(),
-                saved_revision: draft.saved_revision,
-            };
             transaction.execute(
-                "INSERT INTO saved_edits (op, conversation_id, answer, made_at) VALUES (?1, ?2, ?3, ?4)",
-                params![op.as_str(), conversation.as_str(), to_json(&kept), now.as_millisecond()],
+                "UPDATE saved_messages SET document = ?3 WHERE conversation_id = ?1 AND id = ?2",
+                params![conversation.as_str(), id, to_json(&version)],
             )?;
+            raise(&transaction, &conversation, now)?;
+            let revisions = revisions(&transaction, &conversation)?;
             transaction.commit()?;
-            Ok(Ok(draft.written_answer()))
+            Ok(Ok(SavedAnswer {
+                message: SavedMessage { text: version.text, files: version.files, ..kept },
+                revisions,
+            }))
         })
         .await
     }
@@ -303,55 +283,12 @@ impl ControlService {
     }
 }
 
-/// An edit's answer as `saved_edits` keeps it: the draft's row as the edit
-/// left it.
-#[derive(Debug, Clone, Serialize, Deserialize, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct KeptEdit {
-    #[garde(skip)]
-    revision: u64,
-    #[garde(skip)]
-    written: u64,
-    #[garde(dive)]
-    version: Version,
-    #[garde(skip)]
-    replaced: Option<(u64, Version)>,
-    #[garde(skip)]
-    saved_revision: u64,
-}
-
-impl KeptEdit {
-    fn present(self) -> DraftWritten {
-        Stored {
-            revision: self.revision,
-            written: self.written,
-            version: self.version,
-            replaced: self.replaced,
-            saved_revision: self.saved_revision,
-        }
-        .written_answer()
-    }
-}
-
-/// Forgets the edits and the sends older than a day: their answers are kept
-/// only for a request sent again soon after.
+/// Forgets the sends older than a day: they are kept only for a request sent
+/// again soon after.
 fn forget_old(connection: &Connection, now: Timestamp) -> Result<(), StorageError> {
     let day_ago = now.as_millisecond() - KEPT.as_secs() * 1000;
-    connection.execute("DELETE FROM saved_edits WHERE made_at < ?1", [day_ago])?;
     connection.execute("DELETE FROM saved_sends WHERE sent_at < ?1", [day_ago])?;
     Ok(())
-}
-
-/// Whether any conversation's saved message, or a send of one, holds the id.
-fn held(connection: &Connection, id: &str) -> Result<bool, StorageError> {
-    Ok(connection
-        .query_row(
-            "SELECT 1 FROM saved_messages WHERE id = ?1 UNION ALL SELECT 1 FROM saved_sends WHERE id = ?1",
-            [id],
-            |_| Ok(()),
-        )
-        .optional()?
-        .is_some())
 }
 
 /// The conversation's revisions as they stand: those of a conversation

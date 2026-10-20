@@ -5,7 +5,7 @@ import { previewMediaType, type ContextUsage, type UserContentBlock } from '@dem
 import { GLOBAL_PROFILES, OFFERED_PROFILES, useCardCost } from '../fixtures/cost'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { type WorkflowChoice, type WorkflowList, workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
-import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { isEmptyMessage, joinMessageContent, splitMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import {
   missingFilesToast,
@@ -16,7 +16,7 @@ import {
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { createId } from '@demicodes/utils'
 import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
-import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import { beginSavedEdit, type MessageEditContent, type MessageEditState, type SavedMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
@@ -32,6 +32,7 @@ import {
   composerAttachment,
   composerAttachmentFromFile,
   composerRemoteAttachment,
+  decodeRemoteReference,
   encodeRemoteReference,
   filePreviewUrl,
   isComposerFile,
@@ -111,6 +112,8 @@ const props = withDefaults(
     saved?: SeedSaved[]
     /** Their list starts open. */
     savedOpen?: boolean
+    /** The saved message at this place in the list starts open in the composer's edit mode. */
+    editingSaved?: number
     /**
      * The Workflow menu: the project's workflows and the choice the
      * specimen starts with, Default without one; choosing changes the
@@ -166,6 +169,10 @@ const savedMessages = ref<SavedMessage[]>(
   })),
 )
 const savedOpen = ref(props.savedOpen === true)
+/** The edit of a saved message the specimen has open, as the product's page holds it. */
+const savedEdit = ref<SavedMessageEdit | null>(null)
+/** The edit the composer shows: the page's of a sent message, else the specimen's of a saved one. */
+const messageEdit = computed(() => props.messageEdit ?? savedEdit.value)
 const savedRows = computed<SavedRow[]>(() => savedMessages.value.map((saved) => ({
   id: saved.id,
   preview: savedPreview(saved.markdown),
@@ -274,6 +281,8 @@ const composerProps = computed(() => {
     working: _working,
     saved: _saved,
     savedOpen: _savedOpen,
+    messageEdit: _messageEdit,
+    editingSaved: _editingSaved,
     workflows: _workflows,
     workflowChoice: _workflowChoice,
     ...rest
@@ -394,32 +403,124 @@ function saveForLater() {
   composer.value?.focusDraft()
 }
 
-/** Takes a saved message off the list. */
+/** Takes a saved message off the list; an edit of it ends. */
 function takeSaved(id: string): { saved: SavedMessage } | undefined {
   const saved = savedMessages.value.find((each) => each.id === id)
   if (!saved) {
     return undefined
   }
   savedMessages.value = savedMessages.value.filter((each) => each.id !== id)
+  if (savedEdit.value?.savedId === id) {
+    savedEdit.value = null
+  }
   return { saved }
 }
 
+/** A saved message's file as an edit holds it: its record, after its picture when it has one, or its reference. */
+function savedFileContent(item: ComposerAttachment): MessageEditContent[] {
+  if (item.kind === 'reference') {
+    return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path, item.host) }]
+  }
+  const answer = answers.get(item.id)
+  const record: MessageEditContent = {
+    type: 'attachment',
+    id: item.id,
+    name: item.name,
+    mediaType: answer?.mediaType ?? 'application/octet-stream',
+    sizeBytes: 0,
+    sha256: answer?.sha256 ?? '0'.repeat(64),
+    ...(item.snippet ? { snippet: item.snippet } : {}),
+  }
+  return item.src ? [{ type: 'image', source: { type: 'url', url: item.src } }, record] : [record]
+}
+
 /**
- * Puts a saved message in the composer and takes it off the list; a
- * composer holding a message saves that one for later first, so nothing is
- * lost.
+ * The message an edit of the saved message `saved` holds: its text, its
+ * files kept as they were, and each file the edit added as a ready one.
+ */
+function editedMessage(saved: SavedMessage, content: readonly MessageEditContent[]): { markdown: string; files: ComposerAttachment[] } {
+  const { markdown, files } = splitMessageContent(content)
+  return {
+    markdown,
+    files: files.flatMap((group) => group.flatMap((block): ComposerAttachment[] => {
+      if (block.type === 'attachment') {
+        return saved.files.filter((item) => item.id === block.id)
+      }
+      if (block.type === 'reference') {
+        const { host, path } = decodeRemoteReference(block.reference)
+        return [composerRemoteAttachment({ host: host ?? '', path })]
+      }
+      if (block.type === 'remote_file') {
+        return [composerRemoteAttachment({ host: block.host, path: block.path })]
+      }
+      if (block.type === 'upload') {
+        const item = composerAttachment({
+          name: block.fileName,
+          src: host.picture(block.sha256, block.mediaType),
+          snippet: block.snippet,
+        })
+        answers.set(item.id, { id: block.ref, mediaType: block.mediaType, sha256: block.sha256, snippet: block.snippet })
+        return [item]
+      }
+      return []
+    })),
+  }
+}
+
+/**
+ * Opens a saved message in the composer's edit mode, as the product's page
+ * does: the message stays in the list, in its place, and the draft waits
+ * unchanged for the edit to end.
  */
 function editSaved(id: string) {
-  const taken = takeSaved(id)
+  const saved = savedMessages.value.find((each) => each.id === id)
+  if (!saved) {
+    return
+  }
+  savedEdit.value = beginSavedEdit(id, joinMessageContent<MessageEditContent>(saved.markdown, saved.files.map(savedFileContent)))
+}
+
+/** The composer changed the edit it shows: the specimen's own of a saved message, or the page's. */
+function updateEdit(state: MessageEditState | null) {
+  if (state?.kind === 'saved' || (!state && savedEdit.value)) {
+    savedEdit.value = state
+    return
+  }
+  emit('update:messageEdit', state)
+}
+
+/** Save on a saved message's edit: the message takes its new content in its place, and the edit ends. */
+function saveSavedEdit() {
+  const open = savedEdit.value
+  const saved = open && savedMessages.value.find((each) => each.id === open.savedId)
+  if (!open || !saved) {
+    return
+  }
+  const edited = editedMessage(saved, open.content)
+  savedMessages.value = savedMessages.value.map((each) => each.id === open.savedId ? { ...each, ...edited, notSaved: false } : each)
+  savedEdit.value = null
+}
+
+/**
+ * Send on the edit shown: a saved message's goes with its new content as
+ * the composer sends a message, and leaves the list; the page sends a sent
+ * message's.
+ */
+function submitEdit(way: SendWay) {
+  const open = savedEdit.value
+  if (!open) {
+    emit('submitEdit')
+    return
+  }
+  const taken = takeSaved(open.savedId)
   if (!taken) {
     return
   }
-  saveForLater()
-  attached.value = [...taken.saved.files]
-  carried.value = taken.saved.files.map((file) => file.id)
-  draft.value = taken.saved.markdown
-  shown.value += 1
-  composer.value?.focusDraft()
+  const edited = editedMessage(taken.saved, open.content)
+  handOn(edited.markdown, edited.files, way)
+  if (way === 'send') {
+    productWould('Send the Message')
+  }
 }
 
 /** Sends a saved message the way the composer chose, steering or queueing while the agent works, and takes it off the list. */
@@ -542,6 +643,10 @@ let detach: (() => void) | undefined
 onMounted(() => {
   detach = props.flow?.attachComposer(recall)
 })
+const editingFirst = props.editingSaved === undefined ? undefined : savedMessages.value[props.editingSaved]
+if (editingFirst) {
+  editSaved(editingFirst.id)
+}
 
 /**
  * Uploads a file, or attaches the stored file a pasted message names through
@@ -704,8 +809,10 @@ onBeforeUnmount(() => {
     v-bind="composerProps"
     v-model:draft="draft"
     :send-while-running="props.sendWhileRunning ?? galleryMessages.sendWhileRunning"
-    @update:message-edit="emit('update:messageEdit', $event)"
-    @submit-edit="emit('submitEdit')"
+    :message-edit="messageEdit"
+    @update:message-edit="updateEdit"
+    @submit-edit="submitEdit"
+    @save-edit="saveSavedEdit"
     :attachments="attached"
     :upload="upload"
     :claim="host.claim"

@@ -11,6 +11,7 @@ const SHA256 = 'a'.repeat(64)
 test('a saved edit keeps its operation, its files and the separate composer draft through a reload', () => {
   const value: SavedDraft = {
     messageEdit: {
+      kind: 'message',
       phase: 'sending',
       request: {
         operationId: crypto.randomUUID(),
@@ -31,7 +32,7 @@ test('a saved edit keeps its operation, its files and the separate composer draf
     model: { providerId: 'provider', modelId: 'model', thinkingEffort: null, serviceTierId: null },
     files: [],
     scroll: null,
-    notSaved: [],
+    notSaved: [], savedWrites: [],
   }
   expect(draftSchema.parse(structuredClone(value))).toEqual(value)
   expect(() => draftSchema.parse({ ...value, messageEdit: { phase: 'sending', request: {} } })).toThrow()
@@ -102,7 +103,7 @@ test('a draft of release 0.1.21 reads with its message on its way as a list of o
 test('a draft of version 3 drops an edit that names a file by its path and keeps the rest', async () => {
   const comment = { id: 'c1', blockId: 'b1', start: 0, end: 4, at: 0, quote: 'Look', text: 'Why?' }
   const record = {
-    pendingSends: [], notSaved: [], base: 3, local: null, text: 'typed', comments: [comment], model: null, files: [], scroll: null,
+    pendingSends: [], notSaved: [], savedWrites: [], base: 3, local: null, text: 'typed', comments: [comment], model: null, files: [], scroll: null,
   }
   const edit = {
     phase: 'editing',
@@ -113,6 +114,24 @@ test('a draft of version 3 drops an edit that names a file by its path and keeps
   }
   await storeAtVersion(3, [[['user', 'edited'], { ...record, messageEdit: edit }]])
   expect(await readDraft('user', 'edited')).toMatchObject({ messageEdit: null, text: 'typed', comments: [comment] })
+})
+
+// An edit in progress stored before a saved message could be edited was a
+// sent message's, and named no kind: it reads as one, and the edit stays open.
+// Before, the whole record was set aside, its text with it.
+test('a draft of version 4 keeps its edit in progress as a sent message\'s', async () => {
+  const record = {
+    pendingSends: [], notSaved: [], savedWrites: [], base: 3, local: null, text: 'typed', comments: [], model: null, files: [], scroll: null,
+  }
+  const edit = {
+    phase: 'editing',
+    request: {
+      operationId: 'op', targetBlockId: 'u1', version: { epoch: 'e', revision: 1 },
+      content: [{ type: 'text', text: 'Check the DNS' }],
+    },
+  }
+  await storeAtVersion(4, [[['user', 'edited'], { ...record, messageEdit: edit }]])
+  expect(await readDraft('user', 'edited')).toMatchObject({ messageEdit: { kind: 'message', ...edit }, text: 'typed' })
 })
 
 test('a record that does not read is set aside, and every other draft is restored', async () => {
@@ -136,7 +155,7 @@ test('a record that does not read is set aside, and every other draft is restore
 // failing until a reload. An IndexedDB in memory; milliseconds.
 
 const draft = (text: string): SavedDraft => ({
-  pendingSends: [], notSaved: [], base: null, local: null, text, comments: [], model: null, files: [], scroll: null,
+  pendingSends: [], notSaved: [], savedWrites: [], base: null, local: null, text, comments: [], model: null, files: [], scroll: null,
 })
 
 /** The connections the page opens to the draft database, in order. */

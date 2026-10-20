@@ -112,16 +112,6 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
-    /// An edit of a message saved for later, which the page names: a UUID.
-    /// The backend keeps each edit's answer by it for a day, so the same edit
-    /// sent again answers as it first did.
-    SavedEditId,
-    check = uuid,
-    error = NotUuid,
-    schema = { "type": "string", "pattern": UUID_PATTERN }
-);
-
-demi_shared_types::id!(
     /// A Cloud reset's id, which the page chooses: a UUID. A retry with the
     /// same id is the same reset (`crates/backend-cloud/src/reset.rs`).
     OperationId,

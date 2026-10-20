@@ -1216,6 +1216,12 @@ html[data-theme="light"] .file-pill {
   padding: var(--composer-editor-pad-top) var(--composer-editor-pad-x) 0;
 }
 
+/* A caption row, such as what an edit edits, stands right over the message's
+   first line, as a line of the same text would. */
+.composer-shell-expanded.composer-shell-captioned .composer-editor {
+  padding-top: 4px;
+}
+
 /*
  * Comments on a reply's words, painted through the CSS Custom Highlight API so the
  * reply's DOM stays as it rendered.

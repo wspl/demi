@@ -250,7 +250,8 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :upload="uploadAttachment"
       :claim="claimStoredFile"
       :paste="paste"
-      @submit-edit="store.submitEdit(conversation)"
+      @submit-edit="store.submitEdit(conversation, $event)"
+      @save-edit="store.saveSavedEdit(conversation)"
       focus-on-show
       :running="conversation.phase === 'running' || startingTurn"
       :compacting="conversation.phase === 'compacting'"

@@ -922,7 +922,7 @@ watch(
             :read-only="!canEdit"
             :fork="fork"
             :share="share ? (blockId) => sharing.start({ kind: 'answer', blockId }) : undefined"
-            :edit-target-id="messageEdit?.request.targetBlockId"
+            :edit-target-id="messageEdit?.kind === 'message' ? messageEdit.request.targetBlockId : undefined"
             :commenting="commenting"
             :asking="shownAsking"
             @edit-submission="(id) => emit('editSubmission', id)"

@@ -4,7 +4,7 @@ import { t as shared } from '../locales/text'
 import { computed, inject, ref, useSlots, watch } from 'vue'
 import { isFocusedElementEditable, useElementSize } from '@vueuse/core'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
-import { ArrowUp, File as FileIcon, HardDrive, NotebookPen, Paperclip, RotateCcw, Square, X } from '@lucide/vue'
+import { ArrowUp, File as FileIcon, HardDrive, NotebookPen, Paperclip, Pencil, RotateCcw, Save, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
 import {
@@ -17,7 +17,7 @@ import {
 import { missingFilesToast, pasteMessage, type CopiedMessage, type PasteHost } from './message-input/copied-message'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { draftPreview } from './message-input/draft-preview'
-import { editHasContent, useEditLastMessage, type MessageEditState } from './message-editing'
+import { editHasContent, editKey, useEditLastMessage, type MessageEditState } from './message-editing'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
 import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markdown'
 import MessageEditor from './message-editor/MessageEditor.vue'
@@ -43,6 +43,7 @@ import { dockCardsKey } from './dock-cards'
 import type { HostChoice } from '../hosts/types'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
@@ -174,7 +175,10 @@ const props = withDefaults(
      * so Stop shows its own conversation's work only.
      */
     conversationId?: string
-    /** Puts a saved message in the composer, removing it from the list. */
+    /**
+     * Opens a saved message in the composer's edit mode, as a `messageEdit`
+     * of a saved message; the message stays in the list, in its place.
+     */
     onEditSaved?: Action<[id: string]>
     /** Sends a saved message as the composer would, the way it chooses now. */
     onSendSaved?: Action<[id: string, way: SendWay]>
@@ -257,7 +261,16 @@ const emit = defineEmits<{
   configure: []
   restore: []
   'update:messageEdit': [state: MessageEditState | null]
-  submitEdit: []
+  /**
+   * Sends the edit shown: a sent message's as its edit, a saved message's the
+   * way the composer sends a message now.
+   */
+  submitEdit: [way: SendWay]
+  /**
+   * Writes the saved message's edit back to the message, in its place, and
+   * ends the edit.
+   */
+  saveEdit: []
   /** Bring back the replaced version, in exchange for the draft. */
   restoreReplaced: []
   dismissReplaced: []
@@ -275,6 +288,8 @@ const emit = defineEmits<{
  */
 const regenerating = computed(() => props.messageEdit?.phase === 'regenerating')
 const shownEdit = computed(() => regenerating.value ? null : props.messageEdit ?? null)
+/** The edit shown is of a message saved for later. */
+const savedEdit = computed(() => shownEdit.value?.kind === 'saved')
 const edit = useMessageEditComposer({
   state: () => shownEdit.value,
   update: (state) => emit('update:messageEdit', state),
@@ -299,7 +314,7 @@ const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
 // An editor taken away while it has the focus tells no blur; the one in its
 // place starts unfocused.
-watch(() => shownEdit.value?.request.operationId, () => {
+watch(() => shownEdit.value && editKey(shownEdit.value), () => {
   focused.value = false
 })
 /**
@@ -388,6 +403,13 @@ const hasDraft = computed(
  */
 const canSaveForLater = computed(() => hasDraft.value && !shownEdit.value && !props.disabled)
 /**
+ * Save writes a saved message's edit back once it holds something and its
+ * files are all in.
+ */
+const canSaveEdit = computed(
+  () => savedEdit.value && edit.editable.value && hasDraft.value && !edit.sendBlockReason.value,
+)
+/**
  * The composer's width under which the entry keeps its mark and count. The
  * model's chip and the context ring need the rest of the row.
  */
@@ -396,8 +418,8 @@ const composerRoot = ref<HTMLElement | null>(null)
 const { width: composerWidth } = useElementSize(composerRoot)
 const compactEntry = computed(() => composerWidth.value > 0 && composerWidth.value < COMPACT_ENTRY_BELOW_PX)
 /**
- * Edit puts the message in the composer, so the list gives its room back; Send
- * and Delete keep it open for the next.
+ * Edit opens the message in the composer, so the list gives its room back;
+ * Send and Delete keep it open for the next.
  */
 function editSaved(id: string): unknown {
   savedOpen.value = false
@@ -419,15 +441,17 @@ watch(() => props.saved.length, (count) => {
 })
 
 /**
- * ⌘S (Ctrl+S) saves the message for later, wherever the focus is in the
- * composer, never the page.
+ * ⌘S (Ctrl+S) saves the message for later, or a saved message's edit as Save
+ * does, wherever the focus is in the composer, never the page.
  */
 function saveKey(event: KeyboardEvent) {
   if (!asksSaveForLater(event)) {
     return
   }
   event.preventDefault()
-  if (canSaveForLater.value) {
+  if (savedEdit.value) {
+    saveEdit()
+  } else if (canSaveForLater.value) {
     emit('saveForLater')
   }
 }
@@ -512,7 +536,7 @@ const compactUnavailable = computed(() => {
  * The agent works. A message steers it or waits in the queue, one or the other.
  */
 const working = computed(() => props.running || props.compacting)
-const submitLabel = computed(() => shownEdit.value
+const submitLabel = computed(() => shownEdit.value && !savedEdit.value
   ? shownEdit.value.phase === 'uncertain' ? shared('common.retry') : t('composer.saveAndResend')
   : working.value ? sendWayLabel(props.sendWhileRunning) : t('composer.send'),
 )
@@ -520,7 +544,7 @@ const submitLabel = computed(() => shownEdit.value
  * The send button's tip: while the agent works, also the key that sends the
  * other way.
  */
-const submitTip = computed(() => !shownEdit.value && working.value
+const submitTip = computed(() => (!shownEdit.value || savedEdit.value) && working.value
   ? t('composer.sendOtherWay', {
       way: submitLabel.value,
       keys: otherWayKeys(),
@@ -560,14 +584,21 @@ function submit(asksOtherWay: boolean) {
   if (!hasDraft.value && !sendsContext) {
     return
   }
+  const way = chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay)
   if (shownEdit.value) {
     editSent = true
-    emit('submitEdit')
+    emit('submitEdit', way)
     return
   }
-  emit('submit', chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay))
+  emit('submit', way)
   // The next message is typed at once, wherever the focus was when it was sent.
   editor.value?.focus()
+}
+
+function saveEdit() {
+  if (canSaveEdit.value) {
+    emit('saveEdit')
+  }
 }
 
 function pickFiles(close: () => void) {
@@ -736,17 +767,26 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       </Teleport>
       <ComposerShell
         :focused="focused || props.focused"
-        :expanded="multiline || (!shownEdit && carriesContext())"
+        :expanded="multiline || !!shownEdit || carriesContext()"
+        :captioned="!!shownEdit"
         :dropping="dropping"
         @drop-files="dropFiles"
       >
-        <template v-if="!shownEdit && carriesContext()" #context>
-          <slot name="context" />
+        <!--
+          An edit says what it edits where the draft shows what it carries,
+          marked as what opened it: the Saved entry's mark, or Edit's pencil.
+        -->
+        <template v-if="shownEdit || carriesContext()" #context>
+          <span v-if="shownEdit" class="inline-flex items-center text-fg-subtle">
+            <component :is="savedEdit ? NotebookPen : Pencil" :size="ICON_PX.in28" class="mr-1 shrink-0" />
+            {{ savedEdit ? t('composer.editingSaved') : t('composer.editingMessage') }}
+          </span>
+          <slot v-else name="context" />
         </template>
         <template #editor="{ line }">
           <MessageEditor
             v-if="shownEdit"
-            :key="shownEdit.request.operationId"
+            :key="editKey(shownEdit)"
             ref="editor"
             v-model:multiline="multiline"
             cancelable
@@ -832,7 +872,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             </template>
           </Dropdown>
         </template>
-        <template v-if="(workflow || saved.length) && !shownEdit" #below-start>
+        <template v-if="(workflow || saved.length) && (!shownEdit || savedEdit)" #below-start>
           <div class="flex items-center gap-1">
             <WorkflowMenu
               v-if="workflow"
@@ -850,7 +890,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             />
           </div>
         </template>
-        <template v-if="savedOpen && saved.length && !shownEdit" #list>
+        <template v-if="savedOpen && saved.length && (!shownEdit || savedEdit)" #list>
           <SavedList
             :rows="saved"
             @edit="editSaved"
@@ -898,6 +938,17 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               :tabindex="edit.editable.value ? 0 : -1"
               @click="edit.cancel"
               @keydown.enter.space.prevent="edit.cancel"
+            />
+          </Tooltip>
+          <Tooltip v-if="savedEdit" :content="t('composer.saveEditKeys', { keys: saveForLaterKeys() })">
+            <IconButton
+              :icon="Save"
+              variant="ghost"
+              circle
+              :aria-label="t('composer.saveEdit')"
+              :disabled="!canSaveEdit"
+              @mousedown.prevent
+              @click="saveEdit"
             />
           </Tooltip>
           <Tooltip v-if="canSaveForLater" :content="t('composer.saveForLaterKeys', { keys: saveForLaterKeys() })">

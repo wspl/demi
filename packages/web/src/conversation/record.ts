@@ -6,9 +6,11 @@ import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
 import { isComposerFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
+import type { MessageEditContent } from '@demicodes/web-ui/agent/message-editing'
+import { splitMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { ApiError } from '../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../api/drafts'
-import { deleteSaved, editSaved, loadSaved, postSaved, saveFromDraft } from '../api/saved'
+import { deleteSaved, loadSaved, postSaved, putSaved, saveFromDraft } from '../api/saved'
 import type { ConversationDraft, DraftFile, ReplacedAction, Revisions, SavedMessage } from '../api/generated/web-api'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { t } from './locales/text'
@@ -60,7 +62,7 @@ type Basis = number | RecordChange
 
 /** What the page keeps with a change of the record. */
 export interface RecordMeta {
-  kind: 'typing' | 'save' | 'edit' | 'delete' | 'resave' | 'send'
+  kind: 'typing' | 'save' | 'write' | 'delete' | 'resave' | 'send'
   /** For a change that sets the draft, what the text below it was built on. */
   base: Basis | null
   /** The revision of the draft its answer produced. */
@@ -80,6 +82,35 @@ export function newRecord(): Raw<RecordSlot> {
   const slot = new Slot<ConversationRecord, RecordMeta>()
   slot.replace({ draft: { revision: 0, text: '', files: [], comments: [], replaced: null }, saved: [] })
   return markRaw(slot)
+}
+
+/**
+ * The message an edit of a saved message holds: its Markdown, and each file
+ * where its mark stands. A saved message's edit holds its files as uploads
+ * and device files alone, as the message and the edit's own files are.
+ */
+export function editedMessage(content: readonly MessageEditContent[]): Message {
+  const { markdown, files } = splitMessageContent(content)
+  return {
+    text: markdown,
+    files: files.flat().map((block): DraftFile => {
+      switch (block.type) {
+        case 'upload':
+          return {
+            type: 'upload',
+            ref: block.ref,
+            fileName: block.fileName,
+            mediaType: block.mediaType,
+            sha256: block.sha256,
+            ...(block.snippet ? { snippet: block.snippet } : {}),
+          }
+        case 'remote_file':
+          return { type: 'remote_file', deviceId: block.deviceId, path: block.path }
+        default:
+          throw new Error(`A saved message holds no ${block.type} file`)
+      }
+    }),
+  }
 }
 
 /** A draft's file, or a saved message's, as a save names it. */
@@ -137,7 +168,7 @@ export function composerWriting(
 }
 
 /** A composer's file as a draft holds it; none while its upload is not done. */
-function draftFile(file: ProductAttachment): DraftFile | null {
+export function draftFile(file: ProductAttachment): DraftFile | null {
   if (!isComposerFile(file)) {
     return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
   }
@@ -348,19 +379,16 @@ export function createRecordSync(options: {
   /**
    * Sends the change its user typed, from inside the conversation's order.
    * A send not yet accepted holds it back: the page saves the emptied draft
-   * once the backend has the message. `detached`, a change an edit sends
-   * first, goes whatever waits, since the edit moves what it holds.
+   * once the backend has the message.
    */
-  async function sendTyping(conversation: Conversation, keepalive = false, detached?: RecordChange): Promise<void> {
-    const change = detached ?? typing.get(conversation.id)
+  async function sendTyping(conversation: Conversation, keepalive = false): Promise<void> {
+    const change = typing.get(conversation.id)
     if (!change || !conversation.record.pending().includes(change) || conversation.persistence !== 'synced' ||
-      conversation.archived || (!detached && conversation.pendingSends.length > 0)) {
+      conversation.archived || conversation.pendingSends.length > 0) {
       return
     }
-    if (typing.get(conversation.id) === change) {
-      typing.delete(conversation.id)
-      clearTimer(conversation.id)
-    }
+    typing.delete(conversation.id)
+    clearTimer(conversation.id)
     const signal = lifetime.signal
     const writing = change.meta.carries!
     const revision = revisionOf(change.meta.base)
@@ -434,10 +462,11 @@ export function createRecordSync(options: {
         }
       } else if (!listed) {
         keepNotSaved(conversation, carried, error)
-        if (sameMessage(shown.draft, carried)) {
-          // It stands in the list now: the composer, which would show it
-          // again, is emptied, a change of the draft as any; its comments
-          // stay waiting.
+        if (change.meta.kind === 'save' && sameMessage(shown.draft, carried)) {
+          // A Save for Later's message stands in the list now: the composer,
+          // which would show it again, is emptied, a change of the draft as
+          // any; its comments stay waiting. Any other write of the list
+          // never took the message from the draft, which it leaves alone.
           const comments = shown.draft.comments
           const empty = record.change(
             (value) => ({ ...value, draft: { ...value.draft, text: '', files: [] } }),
@@ -563,52 +592,26 @@ export function createRecordSync(options: {
   }
 
   /**
-   * Edit on the saved message `message`: it goes into the composer and leaves
-   * the list at once, and what the composer holds stands in the list in its
-   * place, as the backend moves it, under an id the page names. What the
-   * composer holds is saved first, so the backend moves that; until the edit
-   * goes out it is whatever the draft below it is.
+   * Save of an edit of the saved message `id`: it holds `message` in its place
+   * at once, and the draft is left as it is. A refusal, as for a message
+   * another page deleted meanwhile, keeps the edited message in the list as
+   * Not Saved under an id of its own, so nothing is lost.
    */
-  function edit(conversation: Conversation, message: SavedMessage): Promise<'landed' | 'waiting' | 'refused'> {
-    const record = conversation.record
-    // The change its user typed goes first, and is typed on no more.
-    const unsent = typing.get(conversation.id)
-    if (unsent) {
-      typing.delete(conversation.id)
-      clearTimer(conversation.id)
-      void queue.run(conversation.id, () => sendTyping(conversation, false, unsent))
-    }
-    const becomes = crypto.randomUUID()
-    const op = crypto.randomUUID()
-    // The draft's text and files go into the list; its comments stay waiting.
-    const keptOf = (draft: ConversationDraft) =>
-      isBlankMessage(draft) ? null : { id: becomes, text: draft.text, files: draft.files, comments: [], into: 'list' as const }
-    let kept: RecordMeta['carries'] | undefined
-    const change = record.change(
-      (value) => {
-        const moved = kept === undefined ? keptOf(value.draft) : kept
-        const rest = value.saved.filter((each) => each.id !== message.id)
-        return {
-          draft: { ...value.draft, text: message.text, files: message.files },
-          saved: moved ? withSaved(rest, { id: moved.id, text: moved.text, files: moved.files, savedAt: new Date().toISOString() }) : rest,
-        }
-      },
-      { parts: ['draft', 'saved'], meta: { kind: 'edit', base: basis(conversation), answered: null, carries: null } },
-    )
-    follow(conversation)
-    return write(
-      conversation,
-      change,
-      t('failures.editMessage'),
-      (signal) => editSaved(conversation.id, message.id, { op, id: becomes }, signal),
-      () => {
-        // The writes before it are answered: what the backend moves is the
-        // draft below it now, which the change shows from here on.
-        kept = keptOf(record.below(change)!.draft)
-        change.meta.carries = kept
-        record.touched()
+  function rewrite(conversation: Conversation, id: string, message: Message): Promise<'landed' | 'waiting' | 'refused'> {
+    const change = conversation.record.change(
+      (value) => ({
+        ...value,
+        saved: value.saved.map((each) => each.id === id ? { ...each, text: message.text, files: message.files } : each),
+      }),
+      {
+        parts: ['saved'],
+        meta: { kind: 'write', base: null, answered: null, carries: { id: crypto.randomUUID(), ...message, comments: [], into: 'list' } },
       },
     )
+    return write(conversation, change, t('failures.saveMessage'), async (signal) => {
+      const answer = await putSaved(conversation.id, id, { text: message.text, files: message.files.map(namedFile) }, signal)
+      return { revisions: answer.revisions }
+    })
   }
 
   /** Delete on the saved message `id`: it leaves the list at once. */
@@ -790,7 +793,7 @@ export function createRecordSync(options: {
     readSaved,
     act,
     saveForLater,
-    edit,
+    rewrite,
     remove,
     resave,
     hideSent,

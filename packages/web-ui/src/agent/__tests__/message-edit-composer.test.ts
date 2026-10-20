@@ -4,7 +4,7 @@ import { deferred } from '@demicodes/utils'
 import { ATTACHMENT_MARK as MARK } from '../../markdown/user-markdown'
 import { useMessageEditComposer } from '../message-input/useMessageEditComposer'
 import type { UploadedFile, UploadFile } from '../message-input/attachments'
-import type { MessageEditState } from '../message-editing'
+import { beginSavedEdit, editContent, type MessageEditState } from '../message-editing'
 
 const SHA = (digit: string) => digit.repeat(64)
 
@@ -29,6 +29,7 @@ function uploads() {
 
 function fixture(upload: UploadFile = uploads().upload) {
   const state = ref<MessageEditState | null>({
+    kind: 'message',
     phase: 'editing',
     request: {
       operationId: 'edit', targetBlockId: 'B', version: { epoch: 'epoch', revision: 1 },
@@ -57,7 +58,7 @@ test('an edit opens as its text with a capsule where each file is, and a change 
     expect(f.editor.capsules.value.map((capsule) => capsule.name)).toEqual(['same.pdf', 'same.pdf'])
     // The first capsule is deleted, and the text around it joined and changed.
     f.editor.change(`first\nparagraph, then the second${MARK}`, [f.editor.capsules.value[1]!])
-    expect(f.state.value!.request.content).toEqual([
+    expect(editContent(f.state.value!)).toEqual([
       { type: 'text', text: 'first\nparagraph, then the second' },
       pdf('2'),
     ])
@@ -75,8 +76,8 @@ test('sending and uncertain requests cannot be modified or discarded from the co
       f.state.value!.phase = phase
       f.editor.change('must not change', [])
       f.editor.cancel()
-      expect(f.state.value!.request.content).toHaveLength(4)
-      expect(f.state.value!.request.content[0]).toEqual({ type: 'text', text: 'first\nparagraph' })
+      expect(editContent(f.state.value!)).toHaveLength(4)
+      expect(editContent(f.state.value!)[0]).toEqual({ type: 'text', text: 'first\nparagraph' })
     }
   } finally {
     f.close()
@@ -95,13 +96,13 @@ test('a file added to an edit is uploaded and joins the content once the backend
     expect(f.editor.sendBlockReason.value).toBe('Wait for attachments to finish uploading')
     // Until the upload is done the file is not part of what the edit would
     // send.
-    expect(f.state.value!.request.content.map((part) => part.type)).toEqual(['text', 'document', 'document'])
+    expect(editContent(f.state.value!).map((part) => part.type)).toEqual(['text', 'document', 'document'])
     server.calls[0]!.answer.resolve({ id: 'upload-1', mediaType: 'text/plain', sha256: SHA('3'), snippet: 'notes' })
     await Bun.sleep(0)
-    expect(f.state.value!.request.content.at(-1)).toEqual({
+    expect(editContent(f.state.value!).at(-1)).toEqual({
       type: 'upload', ref: 'upload-1', fileName: 'notes.txt', mediaType: 'text/plain', sha256: SHA('3'), snippet: 'notes',
     })
-    expect(f.state.value!.request.content[0]).toEqual({ type: 'text', text: 'typed during upload' })
+    expect(editContent(f.state.value!)[0]).toEqual({ type: 'text', text: 'typed during upload' })
     expect(f.editor.sendBlockReason.value).toBeUndefined()
   } finally {
     f.close()
@@ -137,7 +138,7 @@ test('a failed upload keeps its capsule and blocks the edit until Retry uploads 
     server.calls[1]!.answer.resolve({ id: 'upload-2', mediaType: 'application/pdf', sha256: SHA('4') })
     await Bun.sleep(0)
     expect(f.editor.sendBlockReason.value).toBeUndefined()
-    expect(f.state.value!.request.content.at(-1)).toMatchObject({ type: 'upload', ref: 'upload-2' })
+    expect(editContent(f.state.value!).at(-1)).toMatchObject({ type: 'upload', ref: 'upload-2' })
   } finally {
     f.close()
   }
@@ -157,7 +158,27 @@ test('leaving the edit stops its uploads, and a late answer adds nothing', async
     expect(server.calls[0]!.signal.aborted).toBe(true)
     server.calls[0]!.answer.resolve({ id: 'late', mediaType: 'application/pdf', sha256: SHA('5') })
     await Bun.sleep(0)
-    expect(f.state.value?.request.content.some((part) => part.type === 'upload') ?? false).toBe(false)
+    expect((f.state.value ? editContent(f.state.value) : []).some((part) => part.type === 'upload')).toBe(false)
     f.close()
+  }
+})
+
+// A saved message's edit keeps what is typed as it is, blank space included;
+// only a send applies the send's rules. Before, every change trimmed it.
+test('a saved message\'s edit keeps its text as typed, blank space at its ends included', () => {
+  const state = ref<MessageEditState | null>(beginSavedEdit('a', [{ type: 'text', text: '    code example\n' }]))
+  const scope = effectScope()
+  const editor = scope.run(() => useMessageEditComposer({
+    state: () => state.value,
+    update: (value) => { state.value = value },
+    upload: uploads().upload,
+    claim: async () => null,
+  }))!
+  try {
+    expect(editor.markdown.value).toBe('    code example\n')
+    editor.change('    code example\n\n', [])
+    expect(editContent(state.value!)).toEqual([{ type: 'text', text: '    code example\n\n' }])
+  } finally {
+    scope.stop()
   }
 })

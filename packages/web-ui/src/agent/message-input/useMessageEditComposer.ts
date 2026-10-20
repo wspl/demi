@@ -2,6 +2,8 @@ import { errorMessage } from '../../infra/errors'
 import { computed, onScopeDispose, ref, shallowRef, toRaw, watch } from 'vue'
 import {
   changeMessageEditContent,
+  editContent,
+  editKey,
   type MessageEditContent,
   type MessageEditState,
 } from '../message-editing'
@@ -23,7 +25,7 @@ import {
   type UploadFile,
 } from './attachments'
 import type { CopiedStoredFile, PasteHost } from './copied-message'
-import { joinMessageContent, splitMessageContent } from './message-content'
+import { joinMessageContent, splitMessageContent, storedMessageContent } from './message-content'
 
 /**
  * A file the edit added: its bytes, or the stored file a pasted message
@@ -65,6 +67,11 @@ export function useMessageEditComposer(options: {
   /** The capsule ids in the order of their marks. */
   const order = ref<string[]>([])
   const editable = computed(() => options.state()?.phase === 'editing')
+  /** The editor's opening the edit shown is, which a new edit changes. */
+  function opened(): string | undefined {
+    const state = options.state()
+    return state ? editKey(state) : undefined
+  }
   const capsules = computed(() => order.value.map((id) => capsuleOf(id)))
   /**
    * Why the edit cannot go yet: an upload of its own still running, or one that
@@ -104,10 +111,11 @@ export function useMessageEditComposer(options: {
 
   // A new edit opens its message; the content is copied, since the edit is
   // persisted apart from the transcript.
-  watch(() => options.state()?.request.operationId, () => {
+  watch(() => opened(), () => {
     release()
     attachmentError.value = null
-    const content = structuredClone(toRaw(options.state()?.request.content ?? []))
+    const state = options.state()
+    const content = structuredClone(toRaw(state ? editContent(state) : []))
     const split = splitMessageContent(content)
     const ids = split.files.map(() => crypto.randomUUID())
     files.value = new Map(ids.map((id, index) => [id, split.files[index] ?? []]))
@@ -125,7 +133,10 @@ export function useMessageEditComposer(options: {
     if (!state) {
       return
     }
-    const content = joinMessageContent(markdown.value, order.value.map((id) => files.value.get(id) ?? []))
+    // A sent message's edit is sent, by the send's rules; a saved message's
+    // is stored as typed.
+    const join = state.kind === 'saved' ? storedMessageContent : joinMessageContent
+    const content = join(markdown.value, order.value.map((id) => files.value.get(id) ?? []))
     options.update(changeMessageEditContent(state, (current) => {
       current.splice(0, current.length, ...content)
     }))
@@ -172,7 +183,7 @@ export function useMessageEditComposer(options: {
    */
   async function uploadFile(id: string): Promise<boolean> {
     const entry = added.value.get(id)
-    const operationId = options.state()?.request.operationId
+    const opening = opened()
     if (!entry || (!entry.file && !entry.claim)) {
       return true
     }
@@ -201,7 +212,7 @@ export function useMessageEditComposer(options: {
               : shown.phase === 'attaching' ? { phase: 'attaching' } : { phase: 'failed' })
         },
       )
-      if (ready && options.state()?.request.operationId === operationId) {
+      if (ready && opened() === opening) {
         publish()
       }
       return true

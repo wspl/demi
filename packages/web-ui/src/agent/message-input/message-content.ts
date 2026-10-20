@@ -78,6 +78,30 @@ export function joinMessageContent<Block>(
 }
 
 /**
+ * A message's content as it is stored, such as a saved message's: its text
+ * around each file exactly as written, none of the send's trimming applied,
+ * so `splitMessageContent` reads the same Markdown back.
+ */
+export function storedMessageContent<Block>(
+  markdown: string,
+  files: readonly (readonly Block[])[],
+): (Block | TextBlock)[] {
+  const parts = markdown.split(ATTACHMENT_MARK)
+  const content: (Block | TextBlock)[] = []
+  parts.forEach((part, index) => {
+    if (part !== '') {
+      content.push({ type: 'text', text: part })
+    }
+    if (index < parts.length - 1) {
+      content.push(...(files[index] ?? []))
+    }
+  })
+  // Files without a mark follow the text.
+  content.push(...files.slice(parts.length - 1).flat())
+  return content
+}
+
+/**
  * The Markdown, with a mark where each of its `fileCount` files stands, that a
  * message written as `markdown` shows once the server holds it. It is what the
  * message sends (`joinMessageContent`), read back as `splitMessageContent`
