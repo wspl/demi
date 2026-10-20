@@ -1,29 +1,24 @@
+import { createPinia } from 'pinia'
 import { expect, spyOn, test } from 'bun:test'
-import { defineComponent, effectScope, ref, shallowRef, watch } from 'vue'
+import { defineComponent, effectScope, nextTick, ref, shallowRef } from 'vue'
 import { z } from 'zod'
 import type { SettingsNavGroup } from '../../settings/types'
 import { createOverlayStore } from '../../overlay/overlayStore'
 import { dismissToast, toasts } from '../../infra/toast'
 import {
   PluginCallError,
-  bindPages,
   definePage,
   pageContext,
   settingsPage,
+  useBoundKinds,
   withPluginSections,
+  type KindTab,
   type PageHost,
-  type PanelKind,
 } from '../page'
 
 // Cost: plain objects and one effect scope; milliseconds.
 
 const nothing = defineComponent({ render: () => null })
-
-/** A panel session of the test's page. */
-interface Notes {
-  name: string
-  dispose(): void
-}
 
 /** A host whose every part a test may replace; the rest refuses to be used. */
 function host(parts: Partial<PageHost> = {}): PageHost {
@@ -43,6 +38,7 @@ function host(parts: Partial<PageHost> = {}): PageHost {
     openSettings: unused,
     openLink: unused,
     overlays: createOverlayStore(),
+    pinia: createPinia(),
     ...parts,
   }
 }
@@ -70,33 +66,41 @@ test("a plugin's section joins the end of its group while the user has the plugi
   expect(settingsPage(pages, 'models')).toBeNull()
 })
 
-test('a panel session runs for its conversation until the panel lets it go, and the kinds see it', () => {
-  const ended: string[] = []
-  const shown = ref(0)
-  const seen: number[] = []
-  const note: PanelKind<string, Notes> = {
-    kind: 'note',
-    schema: z.string(),
-    title: (data, tab) => `${data} in ${tab.session.name}`,
-    mark: nothing,
-    content: nothing,
-  }
-  const page = definePage({
-    plugin: 'notes',
-    kinds: [note],
-    panel: (conversation): Notes => {
-      // A watch the session starts stops with it.
-      watch(shown, (value) => void seen.push(value), { flush: 'sync' })
-      return { name: conversation, dispose: () => void ended.push(conversation) }
-    },
-  })
-  const bound = bindPages([page], host(), 'c1')
-  expect(bound.kinds[0]!.title('draft')).toBe('draft in c1')
-  shown.value = 1
-  bound.dispose()
-  shown.value = 2
-  expect(ended).toEqual(['c1'])
-  expect(seen).toEqual([1])
+/**
+ * Planted defect this catches: the panel binding every page anew on any
+ * switch, as it did, which remounts the other plugins' tabs.
+ */
+test('turning one plugin off and on binds its kinds alone, and another conversation binds every page anew', async () => {
+  const page = (plugin: string) =>
+    definePage({
+      plugin,
+      kinds: [{ kind: plugin, schema: z.string(), title: (data: string, tab: KindTab) => `${data} in ${tab.conversation}`, mark: nothing, content: nothing }],
+    })
+  const pages = [page('notes'), page('browser')]
+  const on = ref(new Set(['notes', 'browser']))
+  const conversation = ref<string | null>('c1')
+  const scope = effectScope()
+  const kinds = scope.run(() => useBoundKinds(() => pages.filter((entry) => on.value.has(entry.plugin)), host(), () => conversation.value))!
+  const [notes, browser] = kinds.value
+  expect(kinds.value.map((kind) => kind.title('draft'))).toEqual(['draft in c1', 'draft in c1'])
+
+  on.value = new Set(['notes'])
+  await nextTick()
+  expect(kinds.value.map((kind) => kind.kind)).toEqual(['notes'])
+  on.value = new Set(['notes', 'browser'])
+  await nextTick()
+  // The notes' kind is the one bound before, so its tabs never remounted; the browser's is bound anew.
+  expect(kinds.value[0]).toBe(notes)
+  expect(kinds.value[1]).not.toBe(browser)
+
+  conversation.value = 'c2'
+  await nextTick()
+  expect(kinds.value[0]).not.toBe(notes)
+  expect(kinds.value.map((kind) => kind.title('draft'))).toEqual(['draft in c2', 'draft in c2'])
+  conversation.value = null
+  await nextTick()
+  expect(kinds.value).toEqual([])
+  scope.stop()
 })
 
 test('a page selects tabs only of its own kinds', () => {

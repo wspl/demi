@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { DRAWN_FRAME_ROOM, SQUARE_CORNERS, drawnFrame, drawnFrameBezel, screenPath, type ScreenCorner, type ScreenCorners } from '../drawn-frame'
 
 // The frame a view draws when the device's own is not installed
-// (`packages/plugin-mobile/src/index.ts`):
+// (`crates/plugin-mobile/page/src/index.ts`):
 //
 // - A body whose bezel is even all round, 4% of the screen's shorter side,
 //   concentric with the screen's corners whatever their shape.

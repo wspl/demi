@@ -1,6 +1,6 @@
 /**
  * The live view's frames on the page's side
- * (`packages/plugin-mobile/src/index.ts`): the stream carries bytes, so each message
+ * (`crates/plugin-mobile/page/src/index.ts`): the stream carries bytes, so each message
  * is a length, a kind and a payload.
  *
  * - Control messages are JSON in the source's protocol, which decodes them.

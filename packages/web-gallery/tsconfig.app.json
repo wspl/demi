@@ -8,13 +8,13 @@
     "paths": {
       "@/*": ["./src/*"],
       "@demicodes/web-ui/*": ["../web-ui/src/*"],
-      "@demicodes/plugin-browser/*": ["../plugin-browser/src/*"],
-      "@demicodes/plugin-mobile/*": ["../plugin-mobile/src/*"],
-      "@demicodes/plugin-changes/*": ["../plugin-changes/src/*"],
-      "@demicodes/plugin-file-browser/*": ["../plugin-file-browser/src/*"],
-      "@demicodes/plugin-skills/*": ["../plugin-skills/src/*"],
-      "@demicodes/plugin-web/*": ["../plugin-web/src/*"],
-      "@demicodes/*": ["../*/src/index.ts"]
+      "@demicodes/plugin-browser/*": ["../../crates/plugin-browser/page/src/*"],
+      "@demicodes/plugin-mobile/*": ["../../crates/plugin-mobile/page/src/*"],
+      "@demicodes/plugin-changes/*": ["../../crates/plugin-changes/page/src/*"],
+      "@demicodes/plugin-file-browser/*": ["../../crates/plugin-file-browser/page/src/*"],
+      "@demicodes/plugin-skills/*": ["../../crates/plugin-skills/page/src/*"],
+      "@demicodes/plugin-web/*": ["../../crates/plugin-web/page/src/*"],
+      "@demicodes/*": ["../*/src/index.ts", "../../crates/*/page/src/index.ts"]
     }
   },
   "include": ["src"],

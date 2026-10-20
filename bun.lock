@@ -17,6 +17,96 @@
         "zod": "^4.0.0",
       },
     },
+    "crates/plugin-browser/page": {
+      "name": "@demicodes/plugin-browser",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "@vueuse/core": "^14.3.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "pinia": "^3.0.3",
+        "typescript": "^6.0.3",
+      },
+    },
+    "crates/plugin-changes/page": {
+      "name": "@demicodes/plugin-changes",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "@vueuse/core": "^14.3.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
+    "crates/plugin-file-browser/page": {
+      "name": "@demicodes/plugin-file-browser",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
+    "crates/plugin-mobile/page": {
+      "name": "@demicodes/plugin-mobile",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "pinia": "^3.0.3",
+        "typescript": "^6.0.3",
+      },
+    },
+    "crates/plugin-skills/page": {
+      "name": "@demicodes/plugin-skills",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
+    "crates/plugin-web/page": {
+      "name": "@demicodes/plugin-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/browse": {
       "name": "@demicodes/browse",
       "version": "0.0.0",
@@ -34,100 +124,12 @@
         "@demicodes/utils": "workspace:^",
       },
     },
-    "packages/plugin-browser": {
-      "name": "@demicodes/plugin-browser",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@demicodes/utils": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "@vueuse/core": "^14.3.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-changes": {
-      "name": "@demicodes/plugin-changes",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "@vueuse/core": "^14.3.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-file-browser": {
-      "name": "@demicodes/plugin-file-browser",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-mobile": {
-      "name": "@demicodes/plugin-mobile",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@demicodes/utils": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
     "packages/plugin-sdk": {
       "name": "@demicodes/plugin-sdk",
-      "version": "3.0.0",
+      "version": "4.0.0",
       "dependencies": {
         "@demicodes/web-ui": "workspace:^",
         "vue": "^3.5.38",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-skills": {
-      "name": "@demicodes/plugin-skills",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
-    "packages/plugin-web": {
-      "name": "@demicodes/plugin-web",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
       },
       "devDependencies": {
         "@vue/tsconfig": "^0.9.1",
@@ -198,6 +200,7 @@
         "@fontsource-variable/geist-mono": "^5.3.0",
         "@fontsource-variable/inter": "^5.3.0",
         "@lucide/vue": "^1.40.0",
+        "pinia": "^3.0.3",
         "vue": "^3.5.21",
         "vue-router": "^5.3.1",
         "zod": "^4.0.0",
@@ -265,6 +268,7 @@
         "overlayscrollbars": "^2.16.0",
         "overlayscrollbars-vue": "^0.5.10",
         "partial-json": "^0.1.7",
+        "pinia": "^3.0.3",
         "qrcode": "^1.5.4",
         "simple-icons": "^16.34.0",
         "style-mod": "4.1.3",
@@ -277,6 +281,7 @@
         "@tailwindcss/node": "^4.3.1",
         "@types/qrcode": "^1.5.6",
         "@vue/tsconfig": "^0.9.1",
+        "fake-indexeddb": "^6.2.5",
         "playwright": "1.63.0",
         "tailwindcss": "^4.3.1",
         "typescript": "^6.0.3",
@@ -417,19 +422,19 @@
 
     "@demicodes/conversation-client": ["@demicodes/conversation-client@workspace:packages/conversation-client"],
 
-    "@demicodes/plugin-browser": ["@demicodes/plugin-browser@workspace:packages/plugin-browser"],
+    "@demicodes/plugin-browser": ["@demicodes/plugin-browser@workspace:crates/plugin-browser/page"],
 
-    "@demicodes/plugin-changes": ["@demicodes/plugin-changes@workspace:packages/plugin-changes"],
+    "@demicodes/plugin-changes": ["@demicodes/plugin-changes@workspace:crates/plugin-changes/page"],
 
-    "@demicodes/plugin-file-browser": ["@demicodes/plugin-file-browser@workspace:packages/plugin-file-browser"],
+    "@demicodes/plugin-file-browser": ["@demicodes/plugin-file-browser@workspace:crates/plugin-file-browser/page"],
 
-    "@demicodes/plugin-mobile": ["@demicodes/plugin-mobile@workspace:packages/plugin-mobile"],
+    "@demicodes/plugin-mobile": ["@demicodes/plugin-mobile@workspace:crates/plugin-mobile/page"],
 
     "@demicodes/plugin-sdk": ["@demicodes/plugin-sdk@workspace:packages/plugin-sdk"],
 
-    "@demicodes/plugin-skills": ["@demicodes/plugin-skills@workspace:packages/plugin-skills"],
+    "@demicodes/plugin-skills": ["@demicodes/plugin-skills@workspace:crates/plugin-skills/page"],
 
-    "@demicodes/plugin-web": ["@demicodes/plugin-web@workspace:packages/plugin-web"],
+    "@demicodes/plugin-web": ["@demicodes/plugin-web@workspace:crates/plugin-web/page"],
 
     "@demicodes/protocol": ["@demicodes/protocol@workspace:packages/protocol"],
 

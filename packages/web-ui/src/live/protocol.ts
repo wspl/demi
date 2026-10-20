@@ -1,5 +1,5 @@
 /**
- * The live view's own messages (`packages/plugin-mobile/src/index.ts`), which every
+ * The live view's own messages (`crates/plugin-mobile/page/src/index.ts`), which every
  * source's protocol carries: a plugin's generated contract refers to them,
  * and imports them through the SDK; a source's view reads the constants.
  */

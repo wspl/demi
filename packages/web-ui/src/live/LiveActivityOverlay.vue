@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The agent's activity over a live view (`packages/plugin-mobile/src/index.ts`).
+ * The agent's activity over a live view (`crates/plugin-mobile/page/src/index.ts`).
  *
  * - While the agent's input is being delivered, a note at the top says so.
  * - A ring marks where it last acted.

@@ -100,7 +100,7 @@ fn a_failed_write_below_a_file_is_not_an_edit() {
 }
 
 /// Binary is what git calls binary
-/// (`crates/command-package-file/src/files.rs`).
+/// (`crates/plugin-file/command/src/files.rs`).
 ///
 /// A NUL in the first 8 KiB leaves an edit without contents, marked binary for
 /// the Change view to say why. So does a file over the limit whose first bytes

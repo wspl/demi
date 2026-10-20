@@ -287,7 +287,7 @@ fn at(path: &Path, error: std::io::Error) -> std::io::Error {
 enum Format {
     Zip,
     /// A tar archive compressed with zstd, as the Chrome runtime's
-    /// (`crates/command-package-browser-chrome/src/driver/installation.rs`).
+    /// (`crates/plugin-browser/command-chrome/src/driver/installation.rs`).
     TarZstd,
 }
 

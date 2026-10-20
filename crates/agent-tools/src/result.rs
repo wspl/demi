@@ -707,7 +707,7 @@ async fn viewed_medium(
     let entry = model_media_type_for(media_type);
     let kind = entry.map_or("medium", |entry| entry.kind.name());
     // A line says the medium was shown to the model, never attached, which
-    // the model reads as given to the user (`crates/command-package-file/src/files.rs`).
+    // the model reads as given to the user (`crates/plugin-file/command/src/files.rs`).
     let not_attached = |reason: &str| Some(format!("[{kind} {number}: not shown: {reason}]"));
     let bytes = match &medium.bytes {
         Ok(bytes) => bytes,

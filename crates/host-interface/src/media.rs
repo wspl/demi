@@ -1,4 +1,4 @@
-//! A command's media (`crates/command-package-file/src/files.rs`): the images,
+//! A command's media (`crates/plugin-file/command/src/files.rs`): the images,
 //! videos and PDF documents its job viewed, as the backend holds them once
 //! the command ended.
 

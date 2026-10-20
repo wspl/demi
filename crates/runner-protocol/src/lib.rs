@@ -4,8 +4,10 @@
 //! once.
 //!
 //! - A job's and a service stream's messages carry the command context.
-//! - `conversation_release` is the one generic release message, and
-//!   `numbers_reserve` the one generic request for a conversation's numbers.
+//! - `conversation_release` is the one generic release of a conversation,
+//!   `package_release` the one of a package's services for every
+//!   conversation, and `numbers_reserve` the one generic request for a
+//!   conversation's numbers.
 //! - `package_message` and `package_lost` carry a package's word to its plugin
 //!   without reading it, so the wire holds no conversation browser policy.
 //! - The bytes of the wire are pinned at both ends by a golden corpus with one

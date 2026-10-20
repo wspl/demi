@@ -4,6 +4,8 @@
 //!   never interprets them.
 //! - A revision the summary carries counts the changes.
 //! - Each tab's id is used once.
+//! - Turning a plugin off closes its kinds' tabs in every panel, an archived
+//!   conversation's included.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -335,5 +337,46 @@ async fn a_media_tab_is_kept_with_its_place_until_the_user_closes_it() {
     assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab] }));
     assert_eq!(revision(&panel.remove("t1").await), 2);
     assert_eq!(panel.ids().await, Vec::<String>::new());
+    backend.close().await;
+}
+
+// Planted defect this catches: the switch leaving the tabs of a plugin turned
+// off, which the panel shows as "This tab cannot be shown", or leaving them in
+// an archived conversation, which shows them so once it is unarchived. One
+// backend, a few requests.
+#[tokio::test]
+async fn turning_a_plugin_off_closes_its_tabs_and_leaves_the_others() {
+    let harness = Harness::new().with_panel_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let panel = Panel {
+        backend: &backend,
+        master: &master,
+        id: conversation(&backend, &master).await,
+    };
+    let attachment = json!({
+        "id": "t2",
+        "kind": "attachment",
+        "data": { "id": "a3", "name": "report.pdf", "size": 2516582, "url": "/api/blobs/3?type=application%2Fpdf" },
+    });
+    revision(&panel.create(page("t1", "https://a.example.test/")).await);
+    revision(&panel.create(attachment).await);
+    let archived = Panel {
+        backend: &backend,
+        master: &master,
+        id: conversation(&backend, &master).await,
+    };
+    revision(&archived.create(page("t1", "https://b.example.test/")).await);
+    let path = format!("/api/conversations/{}", archived.id);
+    let archive = |value: bool| backend.patch(&path, &master, json!({ "archived": value }));
+    assert_eq!(archive(true).await.status, StatusCode::OK);
+
+    let switched = backend
+        .put("/api/plugins/fixture-panel", &master, json!({ "enabled": false }))
+        .await;
+    assert_eq!(switched.status, StatusCode::NO_CONTENT);
+    assert_eq!(panel.ids().await, vec!["t2".to_owned()]);
+    assert_eq!(panel.summary_revision().await, 3);
+    assert_eq!(archive(false).await.status, StatusCode::OK);
+    assert_eq!(archived.ids().await, Vec::<String>::new());
     backend.close().await;
 }

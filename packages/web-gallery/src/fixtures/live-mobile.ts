@@ -1,6 +1,6 @@
 /**
  * The conversation's simulators without a Host
- * (`packages/plugin-mobile/src/index.ts`).
+ * (`crates/plugin-mobile/page/src/index.ts`).
  *
  * It has two parts:
  *
@@ -364,6 +364,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
     views.add(view)
     return {
       send: (bytes) => view.receive(bytes),
+      watched: () => {},
       close: () => {
         views.delete(view)
         view.stop()
@@ -434,7 +435,7 @@ class MobileView {
   /** The finger on the watched screen. */
   private finger: { x: number; y: number } | null = null
   /** The size the view lays the frame into; the gallery's frame is the one the view draws, whatever the size. */
-  private area: { width: number; height: number } | null = null
+  private area: { width: number; height: number; scale: number } | null = null
 
   constructor(
     private readonly handlers: UserStreamHandlers,
@@ -466,6 +467,7 @@ class MobileView {
         os: each.simulator.os,
         model: each.simulator.model,
         recording: each.recording,
+        orientation: each.orientation,
       })),
       watched: this.watching,
     })
@@ -511,7 +513,7 @@ class MobileView {
       }
       case 'frame':
         if (value.device === this.watching) {
-          this.area = { width: value.width, height: value.height }
+          this.area = { width: value.width, height: value.height, scale: value.scale }
           this.frame()
         }
         break
@@ -535,7 +537,7 @@ class MobileView {
       buttons: device.simulator.buttons.map((mark) => turned(mark, device.orientation)),
     }
     const points = upright(device)
-    this.send({ type: 'frame', device: device.id, orientation: device.orientation, pointsWidth: points.width, pointsHeight: points.height, frame })
+    this.send({ type: 'frame', device: device.id, ...this.area, orientation: device.orientation, pointsWidth: points.width, pointsHeight: points.height, frame })
   }
 
   /** A tap opens Settings from the home screen; a finger draws its ring where it touches. */

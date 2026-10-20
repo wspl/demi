@@ -36,6 +36,14 @@ pub enum Inbound {
         #[garde(custom(conversation_name))]
         conversation_id: String,
     },
+    /// Stops the services of `packages`, by their ids, which ends what they
+    /// hold for every conversation: their plugin was turned off
+    /// (`crates/backend-plugins/src/lib.rs`).
+    PackageRelease {
+        id: String,
+        #[garde(inner(length(min = 1)))]
+        packages: Vec<String>,
+    },
     /// The device the hello's token names, by its id and the name the
     /// user sees, and the user's conversations that still exist, archived
     /// ones included, whose scratch directories the runner keeps
@@ -923,6 +931,10 @@ pub enum Outbound {
         )]
         error: Option<String>,
     },
+    /// The services of a `package_release` ended.
+    PackageReleased {
+        id: String,
+    },
     /// Reserves `count` numbers of the conversation's `sequence` for a
     /// native service (`crates/command-protocol/src/numbers.rs`).
     NumbersReserve {
@@ -1301,6 +1313,13 @@ pub enum Outbound {
         #[garde(custom(conversation_name))]
         conversation: String,
         open: bool,
+    },
+    /// Whether anyone watches the open direct stream `stream` now, as its
+    /// page said (`crates/runner-protocol/src/direct.rs`): only a watched one
+    /// is the conversation's activity.
+    DirectStreamWatched {
+        stream: String,
+        watched: bool,
     },
     /// Asks the backend to introduce this runner to the runner of `device`,
     /// the other end of a forward, as peer `peer`, with this runner's offer;

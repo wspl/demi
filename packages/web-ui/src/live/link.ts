@@ -1,6 +1,6 @@
 /**
  * A live view's stream on the page, whatever its source
- * (`packages/plugin-mobile/src/index.ts`).
+ * (`crates/plugin-mobile/page/src/index.ts`).
  *
  * The link:
  *
@@ -8,8 +8,11 @@
  * - watches its silence and its stalls,
  * - joins the pictures' chunks and acknowledges each with when it arrived,
  * - hands the frames of the generation the view shows to a decoder in sequence,
- * - asks for a key frame after one it could not decode, and
- * - opens a view that ended again after the page's reconnect waits.
+ * - asks for a key frame after one it could not decode,
+ * - tells the stream whether anyone watches the view, and
+ * - opens a view that ended again after the page's reconnect waits, or, for
+ *   one nobody watches, once someone does: an unwatched view keeps no
+ *   conversation, Host or Cloud awake, so the backend may end its stream.
  *
  * What a source's view says over it is its own: the session that uses a link
  * reads its messages and sends its own.
@@ -93,6 +96,10 @@ export class LiveLink<F, S extends LivePictureStream> {
   /** Views that ended in a row since one last worked. */
   private failures = 0
   private reopening: ReconnectWait | null = null
+  /** Whether anyone watches the view; a stream starts watched. */
+  private watchedNow = true
+  /** The view ended while nobody watched it, and opens again once someone does. */
+  private endedUnwatched = false
 
   constructor(
     private readonly state: LiveLinkState,
@@ -121,6 +128,7 @@ export class LiveLink<F, S extends LivePictureStream> {
   }
 
   start(): void {
+    this.endedUnwatched = false
     this.received = this.time()
     const frames = this.handlers.frames()
     // A view ends once: the module's end and the socket's close both say so, and a
@@ -138,6 +146,9 @@ export class LiveLink<F, S extends LivePictureStream> {
       },
     }, { live: true })
     this.stream = stream
+    if (!this.watchedNow) {
+      stream.watched(false)
+    }
     // The module speaks at least every quarter second, so the page's rule
     // for a silent socket holds for the view as for its other sockets.
     this.silence = watchSilence('live view', () => this.end(SILENT_STREAM))
@@ -152,6 +163,41 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.reopening.cancel()
     this.reopening = null
     this.failures = 0
+    this.reopen()
+  }
+
+  /**
+   * Whether anyone watches the view now. The stream is told; a view waiting
+   * to open again waits for someone to watch it instead, and a view that
+   * ended while nobody watched it opens again at once.
+   */
+  watched(watched: boolean): void {
+    if (watched === this.watchedNow) {
+      return
+    }
+    this.watchedNow = watched
+    this.stream?.watched(watched)
+    if (!watched && this.reopening !== null) {
+      this.reopening.cancel()
+      this.reopening = null
+      this.endedUnwatched = true
+    }
+    if (watched && this.endedUnwatched) {
+      this.failures = 0
+      this.start()
+    }
+  }
+
+  /**
+   * Opens the ended view again while someone watches it; otherwise it waits
+   * for someone to: opening it would wake what it ended for, such as a
+   * stopped Cloud.
+   */
+  private reopen(): void {
+    if (!this.watchedNow) {
+      this.endedUnwatched = true
+      return
+    }
     this.start()
   }
 
@@ -159,6 +205,7 @@ export class LiveLink<F, S extends LivePictureStream> {
   close(): void {
     this.reopening?.cancel()
     this.reopening = null
+    this.endedUnwatched = false
     this.drop()
     this.state.connection = 'ended'
   }
@@ -170,9 +217,13 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.handlers.ended(reason)
     this.failures += 1
     this.state.connection = 'opening'
+    if (!this.watchedNow) {
+      this.endedUnwatched = true
+      return
+    }
     this.reopening = waitToReconnect(this.failures, () => {
       this.reopening = null
-      this.start()
+      this.reopen()
     })
   }
 

@@ -67,12 +67,12 @@ const METADATA: &str = "https://googlechromelabs.github.io/chrome-for-testing";
 const ARCHIVES: &str = "https://storage.googleapis.com/";
 /// Where the Chrome runtime's releases are, each in a directory named by its
 /// number
-/// (`crates/command-package-browser-chrome/src/driver/installation.rs`).
+/// (`crates/plugin-browser/command-chrome/src/driver/installation.rs`).
 const RUNTIME: &str = "https://github.com/wspl/demi-chrome-runtime/releases/download";
 /// The runtime's fonts' archive, which every Linux target shares.
 const RUNTIME_FONTS: &str = "fonts.tar.zst";
 /// The pinned record, which `BrowserRelease::pinned` reads.
-const RECORD: &str = "crates/command-package-browser-protocol/src/release/chrome.json";
+const RECORD: &str = "crates/plugin-browser/protocol/src/release/chrome.json";
 /// The most bytes a version's metadata may have.
 const METADATA_BYTES: u64 = 1024 * 1024;
 /// The most bytes an archive may have.

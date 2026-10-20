@@ -30,7 +30,7 @@ serde_json.workspace = true
 sha2 = "0.10"
 tempfile = "3"
 # The Chrome runtime's archives are tar archives compressed with zstd
-# (`crates/command-package-browser-chrome/src/driver/installation.rs`).
+# (`crates/plugin-browser/command-chrome/src/driver/installation.rs`).
 tar = { version = "0.4", default-features = false }
 thiserror.workspace = true
 tokio.workspace = true

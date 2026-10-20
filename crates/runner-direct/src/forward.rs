@@ -102,7 +102,7 @@ impl ForwardChannel {
                         let _ = writer.shutdown().await;
                         return true;
                     }
-                    Input::Watch(_) | Input::Text(_) => {}
+                    Input::Watch(_) | Input::Text(_) | Input::Watched(_) => {}
                 }
             }
             // The channel went before the other side ended its writing.

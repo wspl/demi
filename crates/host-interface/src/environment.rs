@@ -20,7 +20,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use crate::{CommandMedium, CommandRecord, Ending, HostError, PageView, Seen, WholeOutput};
+use crate::{CommandMedium, CommandRecord, CommandSet, Ending, HostError, PageView, Seen, WholeOutput};
 
 /// The default budget of one status view's new output, per stream.
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
@@ -132,6 +132,13 @@ pub trait ShellEnvironment {
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()>;
 
     fn owns_command(&self, command: &CommandId) -> bool;
+
+    /// The node's commands are `commands` from now on, as a plugin turned
+    /// on or off makes them (`crates/backend-plugins/src/lib.rs`): each job
+    /// that starts afterwards offers them, and a call of a job already
+    /// running runs in them. Fails only for a set the Host's catalog cannot
+    /// serve, which leaves the commands as they were.
+    fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), HostError>;
 }
 
 /// Where an environment's command numbers come from: the
@@ -173,7 +180,7 @@ pub struct ExecRequest {
     /// none, which its record keeps from its start (`crates/agent-session/src/reports.rs`).
     pub interval_ms: Option<u32>,
     /// The media types the call's model reads in a tool result, which the
-    /// job may show it (`crates/command-package-file/src/files.rs`).
+    /// job may show it (`crates/plugin-file/command/src/files.rs`).
     pub viewable: Viewable,
 }
 

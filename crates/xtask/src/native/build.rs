@@ -210,7 +210,7 @@ pub fn run(options: Options) -> Result<(), Error> {
                 None => build.here(target, &built),
             };
             // demi-mobile's build carries the iOS helper on Apple silicon,
-            // and a release never ships without it (`crates/command-package-mobile/build.rs`).
+            // and a release never ships without it (`crates/plugin-mobile/command/build.rs`).
             if target == IOS_HELPER_TARGET && built.contains(&Executable::Mobile) {
                 if options.container.is_some() || Platform::HOST != Platform::Mac {
                     return Err(Error::IosHelperNeedsMac);
@@ -440,7 +440,7 @@ impl Build<'_> {
             ("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM),
         ];
         // demi-mobile carries the Android helper on every target, and a
-        // release never ships without it (`crates/command-package-mobile/build.rs`): a fetch
+        // release never ships without it (`crates/plugin-mobile/command/build.rs`): a fetch
         // that fails fails the build.
         if executables.contains(&Executable::Mobile) {
             pins.push(("DEMI_MOBILE_ANDROID_HELPER", "required"));

@@ -52,7 +52,7 @@ pub fn sniff_media_type(bytes: &[u8]) -> Option<&'static str> {
 /// git reads them.
 const BINARY_NUL_BYTES: usize = 8 * 1024;
 
-/// Whether `bytes` are binary (`crates/command-package-file/src/files.rs`).
+/// Whether `bytes` are binary (`crates/plugin-file/command/src/files.rs`).
 ///
 /// Bytes are binary when their first 8 KiB hold a NUL byte, as git and GNU diff
 /// decide, or they begin as a media type [`sniff_media_type`] recognizes. Any

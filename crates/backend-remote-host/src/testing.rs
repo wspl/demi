@@ -165,6 +165,10 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async { Err("direct streams are not available".into()) })
     }
 
+    fn watch_stream(&self, _: String) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
+        Box::pin(async { Err("direct streams are not available".into()) })
+    }
+
     /// Keeps every event, for the test to read.
     fn package_event(&self, event: crate::PackageEvent) -> LocalBoxFuture<'static, ()> {
         self.package_events.send_modify(|events| events.push(event));

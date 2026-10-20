@@ -3,6 +3,9 @@
 //! - The upgrade of a declared stream.
 //! - The relay of its bytes between the page's socket and the Host's pipes,
 //!   taken from the Host only as fast as the page takes them.
+//! - The page's word on whether it watches the stream, a text message of the
+//!   user stream's own layer (`crates/runner-protocol/src/direct.rs`,
+//!   `StreamWatched`), which decides whether the stream is activity.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -24,6 +27,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::page_client::PageClient;
 use demi_backend_host_access::stream::UserStream;
+use demi_runner_protocol::direct::StreamWatched;
 
 /// `WS /conversations/:id/streams/:name`: everything that can refuse the
 /// stream answers before the upgrade, the Host's opening of it included.
@@ -86,7 +90,8 @@ pub(super) async fn open(
 enum End {
     /// The invocation completed.
     Completed,
-    /// The page sent a text message.
+    /// The page sent a text message that says nothing of the user stream's
+    /// layer: the stream's own bytes are binary.
     BinaryOnly,
     /// The Host became unreachable, or a pipe to it failed.
     HostUnreachable,
@@ -126,6 +131,7 @@ impl End {
 /// - The Host's bytes go to the page, each after the page's socket took the one
 ///   before.
 /// - Message boundaries mean nothing.
+/// - The page's text message says whether it watches the stream.
 /// - Whichever side ends first ends the stream, and so does `plugin_off`, once
 ///   the user turns its plugin off; dropping the lease then ends it in the
 ///   shard.
@@ -139,6 +145,7 @@ async fn relay(
     let UserStream {
         mut to_host,
         mut from_host,
+        watched,
         lease,
     } = stream;
     let (mut to_page, mut from_page) = open_page_socket(socket, tuning, origin);
@@ -164,7 +171,14 @@ async fn relay(
                             return End::HostUnreachable;
                         }
                     }
-                    Some(Ok(Message::Text(_))) => return End::BinaryOnly,
+                    Some(Ok(Message::Text(text))) => {
+                        match serde_json::from_str::<StreamWatched>(text.as_str()) {
+                            Ok(said) => {
+                                watched.send_replace(said.watched);
+                            }
+                            Err(_) => return End::BinaryOnly,
+                        }
+                    }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                     Some(Ok(Message::Close(_)) | Err(_)) | None => return End::PageClosed,
                 }

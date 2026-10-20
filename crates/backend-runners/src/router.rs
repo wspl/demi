@@ -1,10 +1,12 @@
 //! Each agent node's commands, for the rpc calls its jobs make
 //! (`crates/host-interface/src/rpc.rs`).
 //!
-//! A node registers its command set while one of its shell environments lives.
-//! A job's call names its node, and the relay dispatches the call to that
-//! node's commands, provided the node belongs to the job's conversation. The
-//! registration is removed with the last environment that holds it.
+//! A node registers its command set while one of its shell environments lives,
+//! and replaces it when its commands change, as a plugin turned on or off
+//! changes them. A job's call names its node, and the relay dispatches the call
+//! to that node's commands now, provided the node belongs to the job's
+//! conversation. The registration is removed with the last environment that
+//! holds it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -24,16 +26,28 @@ pub struct CommandRouter {
 struct Node {
     id: String,
     conversation: ConversationId,
-    commands: Rc<CommandSet>,
-    /// The manifest of `commands`, which a job the node starts elsewhere
-    /// runs with.
-    selection: CommandSelection,
+    commands: RefCell<Commands>,
     nodes: Weak<RefCell<HashMap<String, Weak<Node>>>>,
+}
+
+/// A node's commands, and their manifest, which a job the node starts
+/// elsewhere runs with.
+struct Commands {
+    set: Rc<CommandSet>,
+    selection: CommandSelection,
 }
 
 /// A node's hold on its registration; the last one dropped removes it.
 #[derive(Clone)]
-pub struct CommandRegistration(#[expect(dead_code, reason = "held for its drop")] Rc<Node>);
+pub struct CommandRegistration(Rc<Node>);
+
+impl CommandRegistration {
+    /// The node's commands are `commands`, whose manifest is `selection`,
+    /// from now on.
+    pub fn replace(&self, commands: Rc<CommandSet>, selection: CommandSelection) {
+        self.0.commands.replace(Commands { set: commands, selection });
+    }
+}
 
 impl Drop for Node {
     fn drop(&mut self) {
@@ -70,8 +84,7 @@ impl CommandRouter {
         let registered = Rc::new(Node {
             id: node.to_owned(),
             conversation: conversation.clone(),
-            commands,
-            selection,
+            commands: RefCell::new(Commands { set: commands, selection }),
             nodes: Rc::downgrade(&self.nodes),
         });
         nodes.insert(node.to_owned(), Rc::downgrade(&registered));
@@ -106,13 +119,13 @@ impl CommandRouter {
         conversation: &ConversationId,
     ) -> Option<CommandSelection> {
         let registered = self.nodes.borrow().get(node).and_then(Weak::upgrade)?;
-        (registered.conversation == *conversation).then(|| registered.selection.clone())
+        (registered.conversation == *conversation).then(|| registered.commands.borrow().selection.clone())
     }
 
     /// The commands of the agent node that started `job`, in which its
     /// calls run; the backend's dispatch checks a call's permission between
     /// the command set's check and the handler.
     pub fn commands_of(&self, job: &JobOrigin) -> Result<Rc<CommandSet>, String> {
-        Ok(self.node_of(job)?.commands.clone())
+        Ok(self.node_of(job)?.commands.borrow().set.clone())
     }
 }

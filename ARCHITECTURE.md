@@ -73,9 +73,10 @@ runner's narrow port. The browser shows how this works:
 
 To add a capability:
 
-1.  Add a `plugin-<name>` crate.
-2.  When the capability keeps Host state, add a command package, with its
-    operation types in a contract crate.
+1.  Add a `plugin-<name>` crate, in `crates/plugin-<name>/plugin/`.
+2.  When the capability keeps Host state, add a command package in
+    `command/`, with its operation types in a contract crate in `protocol/`.
+3.  When it shows something on the page, add its page package in `page/`.
 
 Adding a capability changes none of the following:
 
@@ -145,7 +146,16 @@ it, how to organize a crate and how many test binaries a crate has.
 Code lives in these directories:
 
 -   Rust crates live in `crates/`.
--   TypeScript packages live in `packages/`.
+-   A plugin keeps all of its parts in its own directory,
+    `crates/plugin-<name>/`, and has only the parts it needs: `plugin/`, the
+    backend plugin; `command/`, its command package on Hosts; `protocol/`, the
+    command package's protocol; and `page/`, its page package. The browser's
+    also holds its Chrome driver, `command-chrome/`.
+-   What no single plugin owns stays a directory of its own: the plugin
+    framework (`plugin-interface`, `backend-plugins`, `runner-command-packages`,
+    `plugin-sdk`), the provider's `command-package-claude-code`, and the media
+    library the image, video and audio plugins share (`plugin-media`).
+-   The other TypeScript packages live in `packages/`.
 -   Vendored crates live in `vendor/<upstream>/<crate>/`.
 
 ### Names
@@ -161,7 +171,11 @@ of the following:
 -   `shared-` names code with no single owner.
 
 A program is named by its owner alone. A library's package is
-`demi-<directory>`, and a program's package is its executable's name.
+`demi-<directory>`, and a program's package is its executable's name. A
+plugin's part keeps the name its kind gives it, as though it were a directory
+of `crates/` itself: `crates/plugin-browser/protocol/` holds
+`demi-command-package-browser-protocol`, and `crates/plugin-browser/page/`
+the page package `@demicodes/plugin-browser`.
 
 A suffix tells what a crate holds:
 

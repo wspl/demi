@@ -2,9 +2,11 @@
 //!
 //! The module holds:
 //!
-//! - An instance of every plugin, made when the shard starts.
-//! - Which of them the user has on, which decides the toolset a conversation's
-//!   tree opens with and which page states, page calls and user streams exist.
+//! - Which plugins the user has on, which decides the toolset of the user's
+//!   conversations and which page states, page calls and user streams exist.
+//! - An instance of each plugin on, made at its first request after the shard
+//!   started or the plugin was turned on, and dropped, with every task it
+//!   started, when it is turned off.
 //! - The context sources among them.
 //! - The Host directories of the plugins on.
 //! - The answers to their port operations.
@@ -255,6 +257,15 @@ pub enum SwitchError {
     Storage(#[from] StorageError),
 }
 
+/// What follows from a plugin turned on or off that the product does.
+#[derive(Debug)]
+pub struct Switched {
+    /// The packages whose services every connected Host stops, which ends
+    /// what they hold for every conversation: those of a plugin turned off
+    /// that no plugin still on binds.
+    pub released: Vec<String>,
+}
+
 /// The commands and revision of the plugins a user has on, which a
 /// conversation's tree opens with.
 pub struct PluginToolset {
@@ -264,11 +275,22 @@ pub struct PluginToolset {
     pub revision: String,
 }
 
+/// A plugin's instance while the user has it on.
+#[derive(Clone)]
+struct Live {
+    instance: Rc<dyn Plugin>,
+    /// Cancelled when the user turns the plugin off, which ends its requests
+    /// under way and its open user streams.
+    ended: CancellationToken,
+}
+
 /// What every request of the user's plugins shares.
 pub(crate) struct Shared {
     pub(crate) registry: Arc<Registry>,
     pub(crate) user: UserId,
-    instances: Vec<Rc<dyn Plugin>>,
+    /// The instance of each plugin the user has on, by its index, once a
+    /// request made it.
+    lives: RefCell<Vec<Option<Live>>>,
     pub(crate) product: Rc<dyn ProductPort>,
     pub(crate) control: ControlService,
     /// The user's OAuth sign-ins under way, and the turns of their renewals.
@@ -277,9 +299,6 @@ pub(crate) struct Shared {
     /// Whether the user has each plugin on, by its index, once read: every
     /// switch goes through this shard, so the copy stays current.
     enabled: RefCell<Option<Vec<bool>>>,
-    /// Cancelled when the user turns the plugin of its index off, which
-    /// ends the plugin's open user streams.
-    stream_ends: RefCell<Vec<CancellationToken>>,
     /// Cancelled when the user next turns a plugin on or off, which makes
     /// what a direct channel's introduction told of the user's streams out
     /// of date (`crates/runner-direct/src/lib.rs`).
@@ -342,8 +361,56 @@ impl Shared {
             caller,
             video: RefCell::new(None),
         };
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        let Some(live) = self.live(plugin, &enabled) else {
+            return Err(PluginError::Ended {
+                message: format!("The plugin \"{}\" is off", self.plugin_id(plugin)),
+            });
+        };
         let port = PluginPort::new(Rc::new(transport), cancel);
-        self.instances[plugin].call(request, port).await
+        // A request the switch cut off ends here, which drops what it was
+        // doing; the instance goes once the last request holding it ended.
+        tokio::select! {
+            reply = live.instance.call(request, port) => reply,
+            () = live.ended.cancelled() => Err(PluginError::Ended {
+                message: format!("The plugin \"{}\" was turned off", self.plugin_id(plugin)),
+            }),
+        }
+    }
+
+    /// The instance of plugin `plugin`, made now when it has none; none
+    /// while `enabled`, the user's switches, has it off.
+    fn live(&self, plugin: usize, enabled: &[bool]) -> Option<Live> {
+        if !enabled[plugin] {
+            return None;
+        }
+        let mut lives = self.lives.borrow_mut();
+        let live = lives[plugin].get_or_insert_with(|| Live {
+            instance: self.registry.plugins[plugin].factory.instance(),
+            ended: CancellationToken::new(),
+        });
+        Some(live.clone())
+    }
+
+    /// Whether the user has each plugin on, by its index.
+    async fn enabled(&self) -> Result<Vec<bool>, StorageError> {
+        if let Some(enabled) = &*self.enabled.borrow() {
+            return Ok(enabled.clone());
+        }
+        let choices = self.control.user_plugins(self.user.clone()).await?;
+        let enabled: Vec<bool> = self
+            .registry
+            .plugins
+            .iter()
+            .map(|registered| {
+                choices
+                    .get(registered.id().as_str())
+                    .copied()
+                    .unwrap_or(true)
+            })
+            .collect();
+        self.enabled.replace(Some(enabled.clone()));
+        Ok(enabled)
     }
 
     pub(crate) fn plugin_id(&self, plugin: usize) -> String {
@@ -527,27 +594,17 @@ impl UserPlugins {
         control: ControlService,
         marks: UserMarks,
     ) -> Self {
-        let instances = registry
-            .plugins
-            .iter()
-            .map(|registered| registered.factory.instance())
-            .collect();
-        let stream_ends = registry
-            .plugins
-            .iter()
-            .map(|_| CancellationToken::new())
-            .collect();
+        let lives = registry.plugins.iter().map(|_| None).collect();
         let sign_ins = SignIns::new(registry.plugins.len());
         Self(Rc::new(Shared {
             registry,
             user,
-            instances,
+            lives: RefCell::new(lives),
             product,
             control,
             sign_ins,
             marks,
             enabled: RefCell::new(None),
-            stream_ends: RefCell::new(stream_ends),
             switched: RefCell::default(),
             directories: RefCell::new(None),
             revisions: RefCell::new(HashMap::new()),
@@ -556,24 +613,7 @@ impl UserPlugins {
 
     /// Whether the user has each plugin on, by its index.
     async fn enabled(&self) -> Result<Vec<bool>, StorageError> {
-        if let Some(enabled) = &*self.0.enabled.borrow() {
-            return Ok(enabled.clone());
-        }
-        let choices = self.0.control.user_plugins(self.0.user.clone()).await?;
-        let enabled: Vec<bool> = self
-            .0
-            .registry
-            .plugins
-            .iter()
-            .map(|registered| {
-                choices
-                    .get(registered.id().as_str())
-                    .copied()
-                    .unwrap_or(true)
-            })
-            .collect();
-        self.0.enabled.replace(Some(enabled.clone()));
-        Ok(enabled)
+        self.0.enabled().await
     }
 
     /// The backend's plugins with whether the user has each on, for the
@@ -600,26 +640,45 @@ impl UserPlugins {
     }
 
     /// Turns `plugin` on or off for the user, and marks the plugin list and
-    /// the plugin's state as changed. A plugin turned off ends its open user
-    /// streams, and any change ends what [`Self::next_switch`] gave. Answers
-    /// whether the choice changed.
-    pub async fn switch(&self, plugin: &str, enabled: bool) -> Result<bool, SwitchError> {
+    /// the plugin's state as changed; any change ends what
+    /// [`Self::next_switch`] gave. Answers what the product does next, or none
+    /// when the choice did not change.
+    ///
+    /// A plugin turned off loses its instance, which ends its requests under
+    /// way, the tasks it started and its open user streams, and the tabs of
+    /// its kinds in every conversation's panel, an archived one's included.
+    /// Its durable data stays.
+    pub async fn switch(&self, plugin: &str, enabled: bool) -> Result<Option<Switched>, SwitchError> {
         let Some((index, registered)) = self.0.registry.plugin(plugin) else {
             return Err(SwitchError::UnknownPlugin(plugin.to_owned()));
         };
         let mut current = self.enabled().await?;
         if current[index] == enabled {
-            return Ok(false);
+            return Ok(None);
         }
         self.0
             .control
             .set_user_plugin(self.0.user.clone(), plugin.to_owned(), enabled)
             .await?;
         current[index] = enabled;
-        self.0.enabled.replace(Some(current));
+        self.0.enabled.replace(Some(current.clone()));
+        let mut released = Vec::new();
         if !enabled {
-            let ended = std::mem::take(&mut self.0.stream_ends.borrow_mut()[index]);
-            ended.cancel();
+            if let Some(live) = self.0.lives.borrow_mut()[index].take() {
+                live.ended.cancel();
+            }
+            self.close_tabs(index).await?;
+            // A package another plugin on binds stays; none does today.
+            released = registered
+                .packages
+                .iter()
+                .filter(|package| {
+                    !self.0.registry.plugins.iter().enumerate().any(|(other, registered)| {
+                        current[other] && registered.packages.contains(*package)
+                    })
+                })
+                .cloned()
+                .collect();
         }
         let switched = std::mem::take(&mut *self.0.switched.borrow_mut());
         switched.cancel();
@@ -627,7 +686,25 @@ impl UserPlugins {
         self.0
             .marks
             .mark(Part::Plugin(registered.id().as_str().to_owned()));
-        Ok(true)
+        Ok(Some(Switched { released }))
+    }
+
+    /// Removes the tabs of plugin `plugin`'s kinds from every panel of the
+    /// user's conversations, archived ones included, and marks the summary
+    /// of each that changed.
+    async fn close_tabs(&self, plugin: usize) -> Result<(), StorageError> {
+        let Some(page) = &self.0.registry.plugins[plugin].page else {
+            return Ok(());
+        };
+        let closed = self
+            .0
+            .control
+            .close_panel_kinds(self.0.user.clone(), page.panel_kinds.clone())
+            .await?;
+        for conversation in closed {
+            self.0.marks.mark(Part::Conversation(conversation));
+        }
+        Ok(())
     }
 
     /// The toolset of the plugins the user has on: their commands, with the
@@ -779,10 +856,8 @@ impl UserPlugins {
         let Some(index) = self.0.registry.stream_owner(name) else {
             return Ok(None);
         };
-        if !self.enabled().await?[index] {
-            return Ok(None);
-        }
-        Ok(Some(self.0.stream_ends.borrow()[index].clone()))
+        let enabled = self.enabled().await?;
+        Ok(self.0.live(index, &enabled).map(|live| live.ended))
     }
 
     /// The user state of each plugin the user has on that declares one, by

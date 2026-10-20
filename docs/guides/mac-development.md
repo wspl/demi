@@ -213,4 +213,4 @@ A Lima Cloud has these limits:
   the workaround applies.
 - Lima's `vz` VMs do not pass SME through, so the live view captures on Apple
   M4 and later. A VM that passes SME without SVE through cannot capture
-  (`crates/command-package-browser-chrome/src/live.rs`).
+  (`crates/plugin-browser/command-chrome/src/live.rs`).

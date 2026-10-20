@@ -47,6 +47,9 @@ pub struct Fake {
     /// What the runner told the backend of its streams, in order: each
     /// one's conversation, and whether it opened or closed.
     pub activity: tokio::sync::watch::Sender<Vec<(String, bool)>>,
+    /// What the runner told the backend of whether its streams' pages watch
+    /// them, in order.
+    pub watched: tokio::sync::watch::Sender<Vec<bool>>,
     /// Ends the forwarded connections the runner carries as Connect To, as
     /// a forward turned off does.
     pub forward_ended: tokio_util::sync::CancellationToken,
@@ -63,6 +66,7 @@ impl Default for Fake {
             cut_writes: tokio::sync::watch::Sender::new(0),
             watch_says: Arc::default(),
             activity: tokio::sync::watch::Sender::new(Vec::new()),
+            watched: tokio::sync::watch::Sender::new(Vec::new()),
             forward_ended: tokio_util::sync::CancellationToken::new(),
             hung_up: tokio::sync::watch::Sender::new(0),
         }
@@ -269,6 +273,10 @@ impl Operations for Fake {
         let activity = StreamActivity {
             stream,
             held: Box::new(scopeguard(told(false))),
+            watched: {
+                let watched = self.watched.clone();
+                Box::new(move |now| watched.send_modify(|said| said.push(now)))
+            },
         };
         Box::pin(std::future::ready(activity))
     }

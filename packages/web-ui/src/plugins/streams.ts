@@ -12,6 +12,12 @@ export type StreamBytes = Uint8Array<ArrayBuffer>
 /** One open stream. */
 export interface UserStream {
   send(bytes: StreamBytes): void
+  /**
+   * Whether anyone watches the stream now, as the user stream's own layer says
+   * it beside the plugin's bytes (`StreamWatched`): a stream starts watched,
+   * and one kept open unwatched keeps no conversation, Host or Cloud active.
+   */
+  watched(watched: boolean): void
   close(): void
 }
 

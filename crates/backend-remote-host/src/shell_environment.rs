@@ -41,7 +41,7 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandContext, EditKind as JobEditKind};
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
-    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
+    DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     JobCaller, Missing, Numbers, OutputRecord, PageFeed, PageView, ProcessEnd, Seen,
     ShellEnvironment, ShellError, SpawnErrorKind, Streams, TakenUp, Unreachable, UnsentStart, WholeOutput,
     binary_line,
@@ -230,7 +230,11 @@ impl RemoteShellEnvironmentFactory {
 pub struct RemoteShellEnvironment(Rc<Environment>);
 
 struct Environment {
+    /// What its jobs start with; `commands` replaces its commands.
     options: EnvironmentOptions,
+    /// The manifest of its commands now, which each job pins as it starts:
+    /// `options.commands` until a replacement.
+    commands: RefCell<Option<CommandSelection>>,
     state: RefCell<State>,
     /// The jobs' tasks.
     tasks: TaskTracker,
@@ -319,12 +323,18 @@ impl Running {
 impl RemoteShellEnvironment {
     pub fn new(options: EnvironmentOptions) -> Self {
         Self(Rc::new(Environment {
+            commands: RefCell::new(options.commands.clone()),
             options,
             state: RefCell::default(),
             tasks: TaskTracker::new(),
             detached: CancellationToken::new(),
             ends: watch::Sender::new(()),
         }))
+    }
+
+    /// The manifest of the commands a job that starts now offers.
+    pub fn selection(&self) -> Option<CommandSelection> {
+        self.0.commands.borrow().clone()
     }
 
     /// Starts the command, numbered with the conversation's next command
@@ -485,7 +495,7 @@ impl RemoteShellEnvironment {
                         job,
                         self.context().await,
                         Some(caller),
-                        self.0.options.commands.clone(),
+                        self.selection(),
                         running.stop.clone(),
                     );
                     // The runner's following of the job is unknown.
@@ -621,7 +631,7 @@ impl RemoteShellEnvironment {
                 context,
                 viewable: Some(request.viewable),
                 caller: Some(request.caller),
-                commands: self.0.options.commands.clone(),
+                commands: self.selection(),
                 stdin: None,
                 stdout: None,
                 stop: running.stop.clone(),
@@ -1226,6 +1236,19 @@ impl ShellEnvironment for RemoteShellEnvironment {
 
     fn owns_command(&self, command: &CommandId) -> bool {
         self.0.state.borrow().records.contains_key(command)
+    }
+
+    /// An environment for jobs without declared commands stays so.
+    fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), HostError> {
+        let mut held = self.0.commands.borrow_mut();
+        let Some(selection) = held.as_ref() else {
+            return Ok(());
+        };
+        let replaced = selection
+            .of(commands)
+            .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
+        *held = Some(replaced);
+        Ok(())
     }
 }
 

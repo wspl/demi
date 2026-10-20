@@ -74,6 +74,9 @@ pub fn protocol() -> Vec<Root> {
         sends::<frames::ClientFrame>(),
         // Every page socket takes it.
         sends::<frames::PagePing>(),
+        // Every user stream takes it, over the relay and the direct channel
+        // alike (`packages/web-ui/src/plugins/streams.ts`).
+        sends::<direct::StreamWatched>(),
         // An agent's price in a cost read, which web-ui's cost view holds
         // and no frame carries (`packages/web-ui/src/agent/context-cost.ts`).
         receives::<frames::AgentCost>(),
@@ -89,7 +92,7 @@ pub fn protocol() -> Vec<Root> {
         receives::<core::PreviewType>(),
         receives::<core::ContextLimitStep>(),
         // The live view's own messages, which every source's protocol
-        // carries (`packages/plugin-mobile/src/index.ts`).
+        // carries (`crates/plugin-mobile/page/src/index.ts`).
         sends::<live::LiveHello>(),
         sends::<live::ViewerInput>(),
         sends::<live::LiveKeyframe>(),

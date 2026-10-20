@@ -1272,6 +1272,12 @@ impl ShellEnvironment for ScriptedShell {
     fn owns_command(&self, command: &CommandId) -> bool {
         self.record(command).is_ok()
     }
+
+    /// Its calls run in the node's commands, which the tests read from the
+    /// node itself.
+    fn replace_commands(&self, _: &Rc<CommandSet>) -> Result<(), HostError> {
+        Ok(())
+    }
 }
 
 /// A server whose nodes' shells run on the scripted Host, each in a

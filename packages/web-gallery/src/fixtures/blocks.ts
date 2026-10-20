@@ -464,14 +464,14 @@ export const editingShellTool = toolCall({
   }),
 })
 
-/** The line a command's output shows for its binary stdout (`crates/command-package-file/src/files.rs`). */
+/** The line a command's output shows for its binary stdout (`crates/plugin-file/command/src/files.rs`). */
 function binaryLine(bytes: number): string {
   return `<binary stdout: ${bytes} bytes>\n`
 }
 
 /**
  * A shell call that viewed one image or video with `demi file view`
- * (`crates/command-package-file/src/files.rs`): its output holds the medium's line,
+ * (`crates/plugin-file/command/src/files.rs`): its output holds the medium's line,
  * which the runner wrote, and the result attaches the medium, or the part
  * that took its place, after it.
  */
@@ -528,7 +528,7 @@ function captureText(capture: Capture): string {
 
 /**
  * A shell call whose screenshots it viewed
- * (`crates/command-package-file/src/files.rs`). The output holds each
+ * (`crates/plugin-file/command/src/files.rs`). The output holds each
  * screenshot's description, from its stderr, and the line `[image n: …]` the
  * runner wrote, then the lines of the media it viewed after them, `after`. The
  * result attaches the media after the output, in order, then the lines for

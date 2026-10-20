@@ -26,7 +26,7 @@ use crate::subagents::{Scripts, say, shell, tree_among};
 use crate::videos::reading_within;
 
 /// A one-second clip, the plugin's fixture.
-const CLIP: &[u8] = include_bytes!("../../../plugin-video/tests/plugin-video/fixtures/clip.mp4");
+const CLIP: &[u8] = include_bytes!("../../../plugin-video/plugin/tests/plugin-video/fixtures/clip.mp4");
 
 fn json_answer(status: u16, body: serde_json::Value) -> MockResponse {
     MockResponse::status(status).header("content-type", "application/json").chunk(body.to_string())

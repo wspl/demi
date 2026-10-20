@@ -610,7 +610,7 @@ impl demi_runner_direct::Operations for NoOperations {
     }
     fn stream_activity(&self, _: &str, name: &str) -> futures_util::future::BoxFuture<'static, demi_runner_direct::StreamActivity> {
         let stream = name.to_owned();
-        Box::pin(async move { demi_runner_direct::StreamActivity { stream, held: Box::new(()) } })
+        Box::pin(async move { demi_runner_direct::StreamActivity { stream, held: Box::new(()), watched: Box::new(|_| {}) } })
     }
     fn forward(&self, _: String, _: String) -> demi_runner_direct::Answer<demi_runner_direct::Forwarded> {
         Box::pin(async { Err(refused()) })

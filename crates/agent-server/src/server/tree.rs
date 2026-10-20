@@ -41,7 +41,7 @@ use demi_agent_store::{Placement, AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::{AgentCode, ServerFrame, TranscriptPatch, index_u32};
-use demi_host_interface::{PageState, PageView, RegisterError, ShellEnvironment};
+use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{Block, Clock, CommandId, ModelSelection, NodeId};
 use futures_util::future::join_all;
@@ -310,9 +310,36 @@ pub(crate) enum CommandPlace<H: HostResolver> {
 
 impl<H: HostResolver> Tree<H> {
     /// The revision of the toolset the tree opened with, which the product
-    /// compares with its current one.
+    /// compares with its current one: its nodes' system prompts list those
+    /// commands, whichever commands they have now.
     pub fn toolset(&self) -> &str {
         &self.toolset
+    }
+
+    /// Gives every live node of the tree, the root, each child and each side
+    /// question, the product's commands `inherited` with its own runtime
+    /// groups, as the user's switch of a plugin asks.
+    pub(crate) fn adopt_commands(
+        &self,
+        server: &Rc<AgentServer<H>>,
+        inherited: &Rc<CommandSet>,
+    ) -> Result<(), RegisterError> {
+        let children = self.children.borrow().values().map(|child| child.node().clone()).collect::<Vec<_>>();
+        let sides = self.sides.borrow().values().map(|side| side.node().clone()).collect::<Vec<_>>();
+        let nodes = std::iter::once((self.root.clone(), true)).chain(
+            children
+                .into_iter()
+                .chain(sides)
+                .map(|node| {
+                    let can_spawn = node.record().can_spawn_subagents;
+                    (node, can_spawn)
+                }),
+        );
+        for (node, can_spawn) in nodes {
+            let commands = server.runtime_commands(inherited, can_spawn)?;
+            node.replace_commands(inherited.clone(), commands);
+        }
+        Ok(())
     }
 
     /// Opens the conversation's tree from its store, or creates it, with the

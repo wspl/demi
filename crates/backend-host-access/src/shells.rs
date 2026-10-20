@@ -33,6 +33,7 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
+    CommandSet,
     CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, UnsentStart, WholeOutput,
 };
@@ -214,7 +215,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             );
             Ok(Rc::new(Registered {
                 environment,
-                _registration: registration,
+                registration,
             }) as Rc<dyn ShellEnvironment>)
         })
     }
@@ -534,7 +535,7 @@ impl CommandKeeper for Keeper {
 /// calls with the node's commands while it lives.
 struct Registered {
     environment: RemoteShellEnvironment,
-    _registration: CommandRegistration,
+    registration: CommandRegistration,
 }
 
 impl ShellEnvironment for Registered {
@@ -625,6 +626,16 @@ impl ShellEnvironment for Registered {
 
     fn owns_command(&self, command: &CommandId) -> bool {
         self.environment.owns_command(command)
+    }
+
+    /// The jobs' manifest, then the node's registration, which every
+    /// environment of the node shares and each replaces alike.
+    fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), HostError> {
+        self.environment.replace_commands(commands)?;
+        if let Some(selection) = self.environment.selection() {
+            self.registration.replace(commands.clone(), selection);
+        }
+        Ok(())
     }
 }
 

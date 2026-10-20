@@ -15,8 +15,8 @@ use super::roots::{self, Direction};
 use super::zod::{push_doc, quote};
 use super::{Directory, Error, module, read_definitions, received, register, source};
 
-/// The workspace's packages share one scope; a package of it lives in
-/// `packages/<name>`.
+/// The workspace's packages share one scope; a plugin's page package
+/// `plugin-<name>` lives in its plugin's directory, `crates/plugin-<name>/page`.
 pub const SCOPE: &str = "@demicodes/";
 
 /// Each plugin the backend registers whose manifest names a page package,
@@ -39,7 +39,7 @@ pub fn package_directory(package: &str) -> Result<String, Error> {
             "the page package {package} is not a workspace package of {SCOPE}"
         ))
     })?;
-    Ok(format!("packages/{name}"))
+    Ok(format!("crates/{name}/page"))
 }
 
 /// Each page package's generated directory and its one module, `plugin.ts`.

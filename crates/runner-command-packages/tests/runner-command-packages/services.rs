@@ -3,6 +3,8 @@
 //! - A service stays while a lease or a conversation holds it, or while it
 //!   cannot say what it holds.
 //! - A failed release retires it.
+//! - The services of a package whose plugin was turned off stop, whatever
+//!   holds them, and the package's next caller starts it again.
 //! - A service that fails reports its exit status and the end of its standard
 //!   error.
 //! - A service starts from the Host image's copy of its executable when that
@@ -183,6 +185,38 @@ async fn a_service_without_leases_stays_while_it_holds_a_conversation() {
         stopped(&resident).await;
         // Releasing again starts nothing and is harmless.
         services.release_conversation("two").await.unwrap();
+        registry.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+// Planted defect this catches: a stop that picks every service, or none.
+#[tokio::test]
+async fn stopping_a_package_ends_its_service_and_leaves_another_packages_alone() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let registry = registry(root.path()).await;
+        let services = registry.handle();
+        let (one, one_path) = fixture(root.path(), 0).await;
+        let (two, two_path) = fixture(root.path(), 1).await;
+        let (_one_lease, _two_lease) = (
+            services.lease(digest(&one)).await,
+            services.lease(digest(&two)).await,
+        );
+        let one_resolver = local(one_path);
+        let first = acquire(&services, &one, one_resolver.clone()).await;
+        let other = acquire(&services, &two, local(two_path)).await;
+        for resident in [&first, &other] {
+            assert_eq!(call(resident, "retain", "kept").await, 0);
+        }
+
+        services.stop_packages(vec![one.id.clone()]).await;
+        assert!(first.client().info().await.is_err(), "the package's service ended");
+        assert!(other.client().info().await.is_ok(), "another package's service stays");
+        // Its next caller starts it again.
+        let again = acquire(&services, &one, one_resolver).await;
+        assert!(again.client().info().await.is_ok());
         registry.close().await;
     })
     .await

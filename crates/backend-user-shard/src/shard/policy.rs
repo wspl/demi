@@ -50,7 +50,7 @@ use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
 use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
-use demi_shared_gates::Purpose;
+use demi_shared_gates::{GateLease, Purpose};
 use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -78,6 +78,20 @@ impl ShardPolicy {
             .upgrade()
             .ok_or_else(|| "backend shutting down".to_owned())
     }
+}
+
+/// A demand lease of the conversation's stream gate, which holds it active
+/// as a watched stream does, with its idle watch started, as a Host
+/// admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`).
+async fn watches(shard: &Shard, conversation: &ConversationId) -> GateLease {
+    let lease = shard
+        .conversations()
+        .slot(conversation)
+        .streams
+        .enter(Purpose::Demand)
+        .await;
+    shard.track_idle(conversation);
+    lease
 }
 
 impl LinkPolicy for ShardPolicy {
@@ -264,13 +278,7 @@ impl LinkPolicy for ShardPolicy {
         Box::pin(async move {
             let shard = shard?;
             let conversation = reaching(&shard, &conversation, &device).await?;
-            let lease = shard
-                .conversations()
-                .slot(&conversation)
-                .streams
-                .enter(Purpose::Demand)
-                .await;
-            shard.track_idle(&conversation);
+            let lease = watches(&shard, &conversation).await;
             let services = shard.services();
             let package = services
                 .user_streams
@@ -281,6 +289,18 @@ impl LinkPolicy for ShardPolicy {
                 package,
                 resolver: services.native.resolver(&services.public_url),
             })
+        })
+    }
+
+    /// Holds the conversation active again, as [`Self::direct_stream`]'s
+    /// admission does.
+    fn watch_stream(&self, conversation: String) -> LocalBoxFuture<'static, Result<GateLease, String>> {
+        let shard = self.shard();
+        let device = self.device.clone();
+        Box::pin(async move {
+            let shard = shard?;
+            let conversation = reaching(&shard, &conversation, &device).await?;
+            Ok(watches(&shard, &conversation).await)
         })
     }
 

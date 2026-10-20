@@ -9,8 +9,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_runner_protocol::direct::{
     ChannelError, ChannelErrorCode, ChannelHeader, ChannelRefusal, Introduction, Listed,
-    MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, TextOpened, WATCH_HEARTBEAT,
-    WriteEnd,
+    MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, StreamWatched, TextOpened,
+    WATCH_HEARTBEAT, WriteEnd,
 };
 use demi_live_view_protocol::{FrameSplitter, VIDEO_FRAME, raw_kind};
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchRequest};
@@ -27,10 +27,12 @@ pub type Answer<T> = Pin<Box<dyn Future<Output = Result<T, ChannelError>> + Send
 pub type WatchStream = Pin<Box<dyn Stream<Item = FileWatchMessage> + Send>>;
 /// An open `stream` channel as the backend knows it: the id the runner gave
 /// the stream, which its artifact requests name, and its conversation's
-/// activity, which ends when `held` is dropped.
+/// activity, which ends when `held` is dropped and which `watched` tells the
+/// backend the page's word on (`StreamWatched`).
 pub struct StreamActivity {
     pub stream: String,
     pub held: Box<dyn Send>,
+    pub watched: Box<dyn Fn(bool) + Send + Sync>,
 }
 
 /// The conversation an operation acts for, and the directory its work
@@ -128,6 +130,8 @@ pub(crate) enum Input {
     End,
     /// A `watch`'s message.
     Watch(FileWatchRequest),
+    /// A `stream`'s word on whether anyone watches it.
+    Watched(bool),
     /// A text message as it came, to a test's page.
     Text(String),
 }
@@ -145,7 +149,10 @@ pub(crate) fn text_input(kind: crate::channel::Kind, data: &[u8]) -> Option<Inpu
             .ok()
             .filter(|request| garde::Validate::validate(request).is_ok())
             .map(Input::Watch),
-        Kind::Stream | Kind::Request | Kind::Raw => None,
+        Kind::Stream => serde_json::from_slice::<StreamWatched>(data)
+            .ok()
+            .map(|watched| Input::Watched(watched.watched)),
+        Kind::Request | Kind::Raw => None,
     }
 }
 
@@ -414,10 +421,11 @@ async fn carry_out(
                 return;
             };
             // Held until the channel's operation ends, or is dropped.
-            let activity = operations.stream_activity(&scope.conversation, &stream).await;
+            let mut activity = operations.stream_activity(&scope.conversation, &stream).await;
+            let watched = std::mem::replace(&mut activity.watched, Box::new(|_| {}));
             let (chunks, input) = match video {
-                Some(VideoEnds { chunks, acks }) => (Some(chunks), live_input(input, acks)),
-                None => (None, stream_input(input)),
+                Some(VideoEnds { chunks, acks }) => (Some(chunks), live_input(input, acks, watched)),
+                None => (None, stream_input(input, watched)),
             };
             let request = StreamRequest {
                 stream: activity.stream.clone(),
@@ -451,7 +459,7 @@ fn write_body(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
         match input.recv().await {
             Some(Input::Bytes(bytes)) => Some((Ok(bytes), Some(input))),
             Some(Input::End) => None,
-            Some(Input::Watch(_) | Input::Text(_)) | None => {
+            Some(Input::Watch(_) | Input::Text(_) | Input::Watched(_)) | None => {
                 let cut = io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "the page ended the write before its last byte",
@@ -465,22 +473,26 @@ fn write_body(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
 /// A live view's input: the frames of its `stream` channel and the
 /// acknowledgements of its `video` channel, each whole, so the two never
 /// cut into one another's frames. It ends with the `stream` channel; one
-/// that breaks the framing fails it.
+/// that breaks the framing fails it. The page's word on whether anyone
+/// watches goes to `watched`.
 fn live_input(
     stream: mpsc::UnboundedReceiver<Input>,
     acks: mpsc::UnboundedReceiver<Input>,
+    watched: Box<dyn Fn(bool) + Send + Sync>,
 ) -> ByteStream {
     struct Inputs {
         stream: Option<mpsc::UnboundedReceiver<Input>>,
         acks: Option<mpsc::UnboundedReceiver<Input>>,
         from_stream: FrameSplitter,
         from_acks: FrameSplitter,
+        watched: Box<dyn Fn(bool) + Send + Sync>,
     }
     let inputs = Inputs {
         stream: Some(stream),
         acks: Some(acks),
         from_stream: FrameSplitter::default(),
         from_acks: FrameSplitter::default(),
+        watched,
     };
     Box::pin(futures_util::stream::unfold(inputs, |mut inputs| async move {
         loop {
@@ -504,12 +516,13 @@ fn live_input(
             tokio::select! {
                 message = stream.recv() => match message {
                     Some(Input::Bytes(bytes)) => inputs.from_stream.push(&bytes),
+                    Some(Input::Watched(watched)) => (inputs.watched)(watched),
                     Some(Input::End | Input::Watch(_) | Input::Text(_)) => {}
                     None => return None,
                 },
                 message = async { inputs.acks.as_mut()?.recv().await }, if inputs.acks.is_some() => match message {
                     Some(Input::Bytes(bytes)) => inputs.from_acks.push(&bytes),
-                    Some(Input::End | Input::Watch(_) | Input::Text(_)) => {}
+                    Some(Input::End | Input::Watch(_) | Input::Text(_) | Input::Watched(_)) => {}
                     // The page closed its `video` channel; the view's
                     // pictures stop, which ends it.
                     None => inputs.acks = None,
@@ -519,12 +532,14 @@ fn live_input(
     }))
 }
 
-/// A stream's input bytes, which end with the channel.
-fn stream_input(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
-    Box::pin(futures_util::stream::unfold(input, |mut input| async move {
+/// A stream's input bytes, which end with the channel; the page's word on
+/// whether anyone watches goes to `watched`.
+fn stream_input(input: mpsc::UnboundedReceiver<Input>, watched: Box<dyn Fn(bool) + Send + Sync>) -> ByteStream {
+    Box::pin(futures_util::stream::unfold((input, watched), |(mut input, watched)| async move {
         loop {
             match input.recv().await? {
-                Input::Bytes(bytes) => return Some((Ok(bytes), input)),
+                Input::Bytes(bytes) => return Some((Ok(bytes), (input, watched))),
+                Input::Watched(now) => watched(now),
                 Input::End | Input::Watch(_) | Input::Text(_) => {}
             }
         }
@@ -556,7 +571,7 @@ async fn watch_messages(
                         // The watch ended first; its end follows.
                         let _ = requests.send(request);
                     }
-                    Some(Input::Bytes(_) | Input::End | Input::Text(_)) => {}
+                    Some(Input::Bytes(_) | Input::End | Input::Text(_) | Input::Watched(_)) => {}
                 }
                 continue;
             }

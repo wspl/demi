@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { drawnFrame, type FrameBox, type FrameButton, type ScreenCorners } from './drawn-frame'
 
 /**
- * A device's frame drawn by the view (`packages/plugin-mobile/src/index.ts`), in
+ * A device's frame drawn by the view (`crates/plugin-mobile/page/src/index.ts`), in
  * the colors of the frames Xcode installs, which are the same in the light and
  * the dark appearance.
  *

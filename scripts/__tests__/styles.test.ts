@@ -4,7 +4,7 @@
 // field did with its caret showing over the picture. The check compiles each sheet with the
 // Tailwind its Vite plugin runs, as a build does.
 import { expect, test } from 'bun:test'
-import { readFileSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 const root = resolve(import.meta.dir, '../..')
@@ -13,11 +13,14 @@ const plugin = dirname(realpathSync(Bun.resolveSync('@tailwindcss/vite', join(ro
 const { compile } = await import(Bun.resolveSync('@tailwindcss/node', plugin))
 const { Scanner } = await import(Bun.resolveSync('@tailwindcss/oxide', plugin))
 
-/** Every component of every plugin package. */
+/** Every component of every plugin's page package, each in its plugin's directory. */
 function pluginComponents(): string[] {
-  const packages = readdirSync(join(root, 'packages')).filter((name) => name.startsWith('plugin-'))
-  return packages.flatMap((name) => {
-    const source = join(root, 'packages', name, 'src')
+  const plugins = readdirSync(join(root, 'crates')).filter((name) => name.startsWith('plugin-'))
+  return plugins.flatMap((name) => {
+    const source = join(root, 'crates', name, 'page', 'src')
+    if (!existsSync(source)) {
+      return []
+    }
     return readdirSync(source, { recursive: true, encoding: 'utf8' })
       .filter((file) => file.endsWith('.vue'))
       .map((file) => join(source, file))

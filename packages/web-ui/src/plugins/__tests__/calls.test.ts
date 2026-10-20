@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import { afterEach, expect, test } from 'bun:test'
 import { createRenderer, defineComponent, h, nextTick, ref, type App } from 'vue'
 import { z } from 'zod'
@@ -62,6 +63,7 @@ function host(received: Received[]): PageHost {
     openSettings: unused,
     openLink: unused,
     overlays: createOverlayStore(),
+    pinia: createPinia(),
   }
 }
 

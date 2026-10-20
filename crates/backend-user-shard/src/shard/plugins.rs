@@ -312,15 +312,27 @@ pub enum ReloadRefusal {
 }
 
 impl Shard {
-    /// Turns `plugin` on or off for the user (`crates/backend-plugins/src/lib.rs`); every live
-    /// tree's summary is marked, since whether a reload would change it may have changed.
+    /// Turns `plugin` on or off for the user (`crates/backend-plugins/src/lib.rs`).
+    ///
+    /// Every live tree takes the commands of the plugins now on, and its
+    /// summary is marked, since whether a reload would change its system
+    /// prompt may have changed. A plugin turned off has the services of its
+    /// packages stopped on every connected Host.
     pub async fn switch_plugin(
         &self,
         plugin: &str,
         enabled: bool,
     ) -> Result<(), demi_backend_plugins::SwitchError> {
-        if !self.plugins().switch(plugin, enabled).await? {
+        let Some(switched) = self.plugins().switch(plugin, enabled).await? else {
             return Ok(());
+        };
+        if let Err(error) = self.agent().adopt_toolset().await {
+            // The trees keep the commands they had, which the next open
+            // corrects; a call of one the plugin no longer serves fails.
+            tracing::error!(plugin, %error, "the open conversations could not take the plugins' commands");
+        }
+        if !switched.released.is_empty() {
+            self.host_shard().release_packages(&switched.released).await;
         }
         // Off, it keeps nothing; on, its next context request asks again.
         self.project_files().plugins.forget(|(kept, _)| kept.as_str() == plugin);

@@ -1,7 +1,7 @@
 import { activeTab, closeTabs } from './tab-close'
 import { dataChanges } from './panel-changes'
 import type { PanelTabKind } from './panel-kinds/kind'
-import { intentKind, type AnyPluginPage, type PanelKind, type PanelSession } from '../plugins/page'
+import { intentKind, type AnyPluginPage, type PanelKind } from '../plugins/page'
 import type { IntentRequest } from '../plugins/intents'
 
 /**
@@ -122,7 +122,7 @@ export function openIntent(
  * The tab of `kind` among `tabs` whose data has the key of `data`, when the
  * kind keys its tabs.
  */
-function keyedTab(kind: PanelKind<unknown, PanelSession | undefined>, tabs: readonly PanelTab[], data: unknown): PanelTab | null {
+function keyedTab(kind: PanelKind<unknown>, tabs: readonly PanelTab[], data: unknown): PanelTab | null {
   const { key } = kind
   if (!key) {
     return null
@@ -145,7 +145,7 @@ function sameData(current: unknown, next: unknown): boolean {
 }
 
 /** The data `kind`'s tab shows for `request`, from what it shows now. */
-function opened(kind: PanelKind<unknown, PanelSession | undefined>, request: IntentRequest, current: unknown): unknown {
+function opened(kind: PanelKind<unknown>, request: IntentRequest, current: unknown): unknown {
   switch (request.intent) {
     case 'file':
       return kind.intents?.file?.(request.payload, current)

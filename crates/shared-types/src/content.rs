@@ -336,7 +336,7 @@ pub enum ToolResultContentBlock {
         source: ToolMediaSource,
     },
     /// A PDF document the model viewed
-    /// (`crates/command-package-file/src/files.rs`), named as its line names
+    /// (`crates/plugin-file/command/src/files.rs`), named as its line names
     /// it.
     Document {
         #[garde(dive)]

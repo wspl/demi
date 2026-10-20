@@ -18,7 +18,7 @@ use std::{
 };
 
 use demi_agent_session::ToolOutcome;
-use demi_host_interface::{HostError, HostKey, PageState, PageView, Seen, ShellEnvironment};
+use demi_host_interface::{CommandSet, HostError, HostKey, PageState, PageView, Seen, ShellEnvironment};
 use demi_provider_common::ResultPart;
 use demi_shared_types::{CommandId, ToolView};
 use futures_util::future::join_all;
@@ -200,6 +200,21 @@ impl Environments {
             .filter_map(|slot| slot.environment.get())
             .flat_map(|environment| environment.page_views())
             .collect()
+    }
+
+    /// Gives every environment made so far the node's commands `commands`
+    /// (`ShellEnvironment::replace_commands`); one that refuses them keeps
+    /// its own, and the last refusal is the answer.
+    pub fn replace_commands(&self, commands: &Rc<CommandSet>) -> Result<(), HostError> {
+        let mut refused = Ok(());
+        for slot in self.slots.borrow().iter() {
+            if let Some(environment) = slot.environment.get()
+                && let Err(error) = environment.replace_commands(commands)
+            {
+                refused = Err(error);
+            }
+        }
+        refused
     }
 
     /// The environment that owns `command`, among those made.
@@ -488,6 +503,10 @@ mod tests {
 
         fn owns_command(&self, command: &CommandId) -> bool {
             self.commands.contains(command)
+        }
+
+        fn replace_commands(&self, _: &Rc<CommandSet>) -> Result<(), HostError> {
+            unreachable!("the environments never change their commands")
         }
     }
 

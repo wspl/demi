@@ -973,6 +973,11 @@ impl LinkPolicy for AdmitsDirectStreams {
         })
     }
 
+    fn watch_stream(&self, _: String) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
+        let gate = self.gate.clone();
+        Box::pin(async move { Ok(gate.enter(Purpose::Demand).await) })
+    }
+
     fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
         Box::pin(async {})
     }
@@ -2098,6 +2103,10 @@ impl LinkPolicy for Refusing {
         _: String,
         _: String,
     ) -> LocalBoxFuture<'static, Result<demi_backend_remote_host::DirectAdmission, String>> {
+        Box::pin(async { Err("no".into()) })
+    }
+
+    fn watch_stream(&self, _: String) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
         Box::pin(async { Err("no".into()) })
     }
 

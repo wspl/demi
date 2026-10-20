@@ -262,6 +262,20 @@ impl<H: HostResolver> AgentServer<H> {
             .map_err(|error| error.to_string())
     }
 
+    /// Gives every live tree the product's toolset now, as the user's switch
+    /// of a plugin asks (`crates/backend-plugins/src/lib.rs`): each node's
+    /// commands change, and its system prompt keeps the commands it opened
+    /// with.
+    pub async fn adopt_toolset(self: &Rc<Self>) -> Result<(), String> {
+        let toolset = self.toolset().await?;
+        let trees: Vec<_> = self.trees.borrow().values().cloned().collect();
+        for tree in trees {
+            tree.adopt_commands(self, &toolset.commands)
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
     /// The product's toolset now: the one a node holds of the product's
     /// current revision, else the product's, composed once and kept while
     /// a node holds it. Trees that opened with another keep theirs.

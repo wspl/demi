@@ -450,7 +450,7 @@ impl<H: HostResolver> Tree<H> {
         let deps = &server.deps;
         let activity = self.admission.enter(Purpose::Demand).await;
         let id = origin.record().id.clone();
-        let inherited = self.root.inherited_commands().clone();
+        let inherited = self.root.inherited_commands();
         let commands = server
             .runtime_commands(&inherited, origin.record().can_spawn_subagents)
             .map_err(|error| error.to_string())?;

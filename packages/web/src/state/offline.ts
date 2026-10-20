@@ -11,7 +11,7 @@ import {
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { onSessionExpired } from '../api/client'
 import { productStateSchema, userDtoSchema, type ProductState, type UserDto } from '../api/generated/web-api'
-import { IndexedDatabase } from './indexed-db'
+import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { t } from './locales/text'
 
 /**

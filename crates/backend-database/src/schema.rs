@@ -1763,7 +1763,7 @@ impl AttachmentNumbers {
 /// From 0.1.27's conversation schema to 0.1.28's.
 ///
 /// - The sequences gain `device`, which numbers the conversation's simulators
-///   (`crates/command-package-mobile/src/operations.rs`). Every sequence keeps its
+///   (`crates/plugin-mobile/command/src/operations.rs`). Every sequence keeps its
 ///   next number.
 /// - A node may have no number, a side question's, whose row the new
 ///   `side_questions` holds. Every node of 0.1.27 is an agent and keeps its

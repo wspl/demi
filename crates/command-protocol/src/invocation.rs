@@ -175,7 +175,7 @@ pub struct Invocation {
 }
 
 /// The media types a job may show the model
-/// (`crates/command-package-file/src/files.rs`): those the node's model reads
+/// (`crates/plugin-file/command/src/files.rs`): those the node's model reads
 /// in a tool result, as the backend gave them when the job started, or null
 /// when which types the model reads is unknown; with the model's id, which a
 /// refusal names.
