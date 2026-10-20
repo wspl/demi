@@ -55,5 +55,3 @@ Thumbs.db
 .claude/
 .codex/
 
-# A local reference clone, not part of the repository
-packages/just-bash/
