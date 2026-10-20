@@ -91,7 +91,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     Earlier, ForkEnd, IdSource, TranscriptLog, last_answer, last_failure,
 };
-use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, TranscriptPatch, TranscriptVersion};
+use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, RequestOutput, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
@@ -401,6 +401,14 @@ pub enum SessionEvent {
     /// waited, or its wait ended.
     WaitingChanged {
         waited_ms: Option<u64>,
+    },
+    /// The output of the turn's latest request changed: it started, it
+    /// streamed more, it ended, or the turn ended, which leaves none.
+    ///
+    /// A hold of the turn's end never holds it (`bus`): the response's own
+    /// count goes out when the response ends.
+    OutputChanged {
+        output: Option<RequestOutput>,
     },
     /// A transient provider failure is retried after `delay_ms`.
     RetryScheduled {
@@ -813,6 +821,11 @@ impl AgentSession {
     /// waits.
     pub fn waited_ms(&self) -> Option<u64> {
         self.shared.read(SessionCore::waited_ms)
+    }
+
+    /// The output of the turn's latest request, while a turn runs.
+    pub fn request_output(&self) -> Option<RequestOutput> {
+        self.shared.read(SessionCore::request_output)
     }
 
     /// Whether no action runs or waits.

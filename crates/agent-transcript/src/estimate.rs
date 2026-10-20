@@ -31,6 +31,66 @@ pub fn text_tokens(text: &str) -> u64 {
     byte_count(text.len()).div_ceil(4)
 }
 
+/// What a provider charges for a tool call beyond its arguments: its
+/// framing, the call's name and id, which it counts and never streams.
+pub const TOOL_CALL_FRAMING_TOKENS: u64 = 50;
+
+/// The estimate of the output a model streamed: its text, its thinking and
+/// its tool calls' arguments, added as they stream.
+///
+/// A CJK character is a token, and other characters are about 4 a token, as
+/// Claude Code counts; each tool call adds its framing. Characters, not
+/// UTF-8 bytes, count here, unlike [`text_tokens`], so a delta's split never
+/// changes the sum.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct OutputEstimate {
+    characters: u64,
+    cjk: u64,
+    calls: u64,
+}
+
+impl OutputEstimate {
+    /// Adds streamed text, thinking or tool-call arguments.
+    pub fn add_text(&mut self, text: &str) {
+        for character in text.chars() {
+            if is_cjk(character) {
+                self.cjk += 1;
+            } else {
+                self.characters += 1;
+            }
+        }
+    }
+
+    /// Adds a tool call's framing.
+    pub fn add_call(&mut self) {
+        self.calls += 1;
+    }
+
+    pub fn tokens(&self) -> u64 {
+        self.cjk + self.characters.div_ceil(4) + self.calls * TOOL_CALL_FRAMING_TOKENS
+    }
+}
+
+/// Whether `character` is written in Chinese, Japanese or Korean, a script
+/// whose tokenizers spend about a token a character.
+fn is_cjk(character: char) -> bool {
+    matches!(
+        character,
+        '\u{1100}'..='\u{11FF}'
+            | '\u{2E80}'..='\u{2FDF}'
+            | '\u{3000}'..='\u{303F}'
+            | '\u{3040}'..='\u{30FF}'
+            | '\u{3130}'..='\u{318F}'
+            | '\u{31F0}'..='\u{31FF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{4E00}'..='\u{9FFF}'
+            | '\u{AC00}'..='\u{D7AF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{FF00}'..='\u{FFEF}'
+            | '\u{20000}'..='\u{3134F}'
+    )
+}
+
 /// A block's estimate in `request`: the estimate of its text plus the
 /// weight of its media, each as the request carries it: with its bytes,
 /// weighed by them, or as the text that names it, which counts as text.

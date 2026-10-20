@@ -1869,6 +1869,56 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
     backend.close().await;
 }
 
+/// The chips row's reading of a turn of two requests, a call and its
+/// answer (`docs/decisions/0012-live-output-tokens.md`): each request starts
+/// from zero at once, its end brings the response's own output tokens, and
+/// the turn's end leaves no reading. One backend and two requests against
+/// the mock vendor, about half a second.
+#[tokio::test]
+async fn a_turn_of_two_requests_reads_each_from_zero_to_its_own_count_then_nothing() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(tool_use("toolu_1", "no_such_tool", &json!({ "path": "notes.md" })));
+    vendor.respond(answer(&["There is ", "no such tool."], 1, 3));
+    let turn = socket.chat("m1", "Look first").await;
+
+    // The handshake's reading, none before the turn, then each request's
+    // start and end, and the turn's end, which go at once; what streamed in
+    // between may go too, which is left out.
+    let mut requests: Vec<String> = Vec::new();
+    let mut shown: Vec<Option<(usize, bool, u64)>> = Vec::new();
+    for frame in &turn {
+        let ServerFrame::RequestOutput { output } = frame else {
+            continue;
+        };
+        let reading = output.as_ref().map(|output| {
+            if !requests.contains(&output.request_id) {
+                requests.push(output.request_id.clone());
+            }
+            let request = requests.iter().position(|id| *id == output.request_id).unwrap();
+            (request, output.ended, output.tokens)
+        });
+        let same = |last: &Option<(usize, bool, u64)>| {
+            last.map(|(request, ended, _)| (request, ended)) == reading.map(|(request, ended, _)| (request, ended))
+        };
+        if !shown.last().is_some_and(same) {
+            shown.push(reading);
+        }
+    }
+    assert_eq!(
+        shown,
+        [None, Some((0, false, 0)), Some((0, true, 1)), Some((1, false, 0)), Some((1, true, 3)), None],
+        "{turn:?}"
+    );
+    backend.close().await;
+}
+
 /// The summary's latest ended turn and status after each way a turn ends,
 /// each named by the block that ended it, so a turn that ends again is a
 /// new end. One backend and four turns against the mock vendor, about a second.

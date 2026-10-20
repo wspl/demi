@@ -6,7 +6,7 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     RequestView,
-    estimate::{block_tokens, context_tokens, text_tokens, tool_tokens},
+    estimate::{OutputEstimate, block_tokens, context_tokens, text_tokens, tool_tokens},
 };
 use demi_provider_common::{RequestLimits, ToolDefinition};
 use demi_shared_types::{
@@ -318,4 +318,32 @@ fn a_long_text_weighs_what_the_replay_bound_keeps() {
         "b".repeat(8_000)
     );
     assert_eq!(block_tokens(&block, &request), text_tokens(&replayed));
+}
+
+/// A streamed output's estimate: about 4 characters a token, a token for
+/// each Chinese, Japanese or Korean character, and 50 for each tool call's
+/// framing, however the stream splits the text.
+#[test]
+fn a_streamed_output_is_estimated_by_its_characters_and_its_calls() {
+    let cases: [(&[&str], u64, u64); 9] = [
+        (&[], 0, 0),
+        (&["abcd"], 0, 1),
+        (&["abcde"], 0, 2),
+        (&["ab", "cd", "e"], 0, 2),
+        (&["你好"], 0, 2),
+        (&["こんにちは"], 0, 5),
+        (&["안녕하세요"], 0, 5),
+        (&["Hello ", "你好", " world"], 0, 5),
+        (&[r#"{"script":"ls"}"#], 2, 104),
+    ];
+    for (pieces, calls, tokens) in cases {
+        let mut estimate = OutputEstimate::default();
+        for piece in pieces {
+            estimate.add_text(piece);
+        }
+        for _ in 0..calls {
+            estimate.add_call();
+        }
+        assert_eq!(estimate.tokens(), tokens, "{pieces:?} with {calls} calls");
+    }
 }

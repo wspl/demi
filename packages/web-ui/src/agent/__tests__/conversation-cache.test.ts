@@ -7,7 +7,7 @@ import { clientHarness } from './agent-harness'
 
 function fixture(id: string) {
   const state: RuntimeState = {
-    id, history: EMPTY_TRANSCRIPT, phase: 'idle', queue: [], pendingSteers: [], pendingCalls: [], waitingSince: null,
+    id, history: EMPTY_TRANSCRIPT, phase: 'idle', queue: [], pendingSteers: [], pendingCalls: [], waitingSince: null, requestOutput: null,
     lastError: null, load: 'loading', pendingAction: null,
     failures: {}, contextUsage: null,
   }

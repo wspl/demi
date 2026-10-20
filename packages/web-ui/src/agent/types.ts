@@ -1,6 +1,6 @@
 import type { ContextUsage, InstructionEntry, MessageComment, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { ShownError } from '../infra/errors'
-import type { HeldTranscript } from '@demicodes/conversation-client'
+import type { HeldTranscript, RequestOutputReading } from '@demicodes/conversation-client'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'
@@ -87,6 +87,8 @@ export interface ConversationState {
    * the server tells it; null when it waits for none.
    */
   waitingSince: number | null
+  /** The output of the request the root agent runs, as the server tells it; null when its turn has none. */
+  requestOutput: RequestOutputReading | null
   /** The conversation's model settings, which its composer shows. */
   model: ModelSettings
   lastError: ShownError | null
@@ -126,6 +128,7 @@ export interface ChatSessionState
     | 'pendingSteers'
     | 'pendingCalls'
     | 'waitingSince'
+    | 'requestOutput'
     | 'phase'
     | 'load'
     | 'lastError'

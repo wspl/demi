@@ -241,7 +241,9 @@
     "continue": "Continue",
     "continueWith": "Continue with {label}",
     "openProviders": "Open Providers",
-    "exposePort": "Expose Port"
+    "exposePort": "Expose Port",
+    "outputTokens": "{tokens} token | {tokens} tokens",
+    "tokenRate": "{rate} tok/s"
   },
   "notices": {
     "hostOffline": "{name} is offline.",

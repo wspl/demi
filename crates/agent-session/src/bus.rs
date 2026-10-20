@@ -4,6 +4,10 @@
 //! the changes happened. A listener may call back into the session; what that
 //! causes is delivered after the current event has reached every listener.
 //! Events may be held and then delivered together, such as a turn's end.
+//!
+//! A hold keeps the transcript and the phase together; the live reading of
+//! a request's output (`SessionEvent::OutputChanged`) is not part of either
+//! and passes it, delivered in its order among the events not held.
 
 use std::{
     cell::{Cell, RefCell},
@@ -25,6 +29,8 @@ struct Slot {
 pub(crate) struct EventBus {
     slots: RefCell<Vec<Slot>>,
     queue: RefCell<VecDeque<SessionEvent>>,
+    /// The events a hold lets pass, delivered before the queue's.
+    passing: RefCell<VecDeque<SessionEvent>>,
     delivering: Cell<bool>,
     /// What `deliver` is given waits in the queue until `release`.
     held: Cell<bool>,
@@ -56,15 +62,20 @@ impl EventBus {
 
     /// Delivers `events` after those already waiting. A call made while a
     /// delivery runs only queues its events: the running delivery delivers
-    /// them in order. While the bus holds, they wait.
+    /// them in order. While the bus holds, they wait, except those a hold
+    /// lets pass.
     pub(crate) fn deliver(&self, events: Vec<SessionEvent>) {
         if events.is_empty() {
             return;
         }
-        self.queue.borrow_mut().extend(events);
-        if !self.held.get() {
-            self.drain();
+        for event in events {
+            if self.held.get() && matches!(event, SessionEvent::OutputChanged { .. }) {
+                self.passing.borrow_mut().push_back(event);
+            } else {
+                self.queue.borrow_mut().push_back(event);
+            }
         }
+        self.drain();
     }
 
     /// Keeps what `deliver` is given from now on until `release`. Called
@@ -86,7 +97,15 @@ impl EventBus {
             return;
         }
         loop {
-            let Some(event) = self.queue.borrow_mut().pop_front() else {
+            let passing = self.passing.borrow_mut().pop_front();
+            let next = passing.or_else(|| {
+                if self.held.get() {
+                    None
+                } else {
+                    self.queue.borrow_mut().pop_front()
+                }
+            });
+            let Some(event) = next else {
                 break;
             };
             let mut index = 0;

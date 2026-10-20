@@ -745,6 +745,22 @@ export class ConversationClient {
           this.emit({ type: 'pending_calls', subagentId: frame.subagentId, pendingCalls: structuredClone(frame.pendingCalls) })
         }
         return
+      case 'request_output': {
+        const arrived = Date.now()
+        const output = frame.output
+        this.emit({
+          type: 'request_output',
+          output: output === null
+            ? null
+            : {
+                requestId: output.requestId,
+                tokens: output.tokens,
+                firstTokenAt: output.streamedMs === null ? null : arrived - output.streamedMs,
+                endedAt: output.ended ? arrived : null,
+              },
+        })
+        return
+      }
       case 'waiting': {
         const since = frame.waitedMs === null ? null : Date.now() - frame.waitedMs
         if (frame.subagentId === undefined) {

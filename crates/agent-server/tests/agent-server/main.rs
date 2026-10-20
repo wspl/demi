@@ -7,6 +7,7 @@ mod connections;
 mod editing;
 mod fork;
 mod live;
+mod output;
 mod profiles;
 mod sides;
 mod subagents;

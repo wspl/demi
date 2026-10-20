@@ -8,7 +8,7 @@
 // Rust.
 
 export { ActionOutlivedError, ConversationClient, EditRejectedError, RefusedError, SavedGoneError, SessionError, SteerRejectedError, type HeldEdge } from './client'
-export type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
+export type { ConversationClientListener, ClientSessionEvent, Failures, RequestOutputReading, ServerFrameOf } from './events'
 export {
   EMPTY_TRANSCRIPT,
   heldTranscript,

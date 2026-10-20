@@ -10,6 +10,23 @@ import type {
 
 export type ServerFrameOf<Type extends ServerFrame['type']> = Extract<ServerFrame, { type: Type }>
 
+/**
+ * The output of the request the root agent runs, as the page holds it
+ * (`docs/decisions/0012-live-output-tokens.md`). Its times are the page's
+ * clock, `Date.now()`: the frame's arrival less how long the request had
+ * streamed, so no time of the server's is compared with the page's.
+ */
+export interface RequestOutputReading {
+  /** Another id is another request, whose count starts from zero. */
+  requestId: string
+  /** An estimate while it streams, then the response's own count. */
+  tokens: number
+  /** When the request's first token came; null before it. */
+  firstTokenAt: number | null
+  /** When its response ended; null while it streams. */
+  endedAt: number | null
+}
+
 /** The facts the backend read out of error blocks, by block id. */
 export type Failures = Record<string, ProviderFailureFacts>
 
@@ -69,6 +86,11 @@ export type ClientSessionEvent =
       subagentId?: string
       /** The calls the model is writing. */
       pendingCalls: PendingCall[]
+    }
+  | {
+      type: 'request_output'
+      /** The output of the request the root agent runs; null when its turn has none. */
+      output: RequestOutputReading | null
     }
   | {
       type: 'waiting'

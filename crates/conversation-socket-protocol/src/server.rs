@@ -211,6 +211,16 @@ pub enum ServerFrame {
         #[garde(range(max = MAX_SAFE_INTEGER))]
         waited_ms: Option<u64>,
     },
+    /// The output of the request the root agent runs, or null when its turn
+    /// has none: sent at once when a request starts or ends and when the
+    /// turn ends, at most every 500 ms while it streams, and with each
+    /// open's handshake.
+    RequestOutput {
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<RequestOutput>")]
+        #[garde(dive)]
+        output: Option<RequestOutput>,
+    },
     /// Answers `steer`.
     SteerResult {
         #[garde(skip)]
@@ -749,6 +759,32 @@ impl ShellStatus {
             | Self::Lost { command, .. } => command,
         }
     }
+}
+
+/// The output of one provider request so far, estimated while it streams by
+/// `OutputEstimate` (`crates/agent-transcript/src/estimate.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestOutput {
+    /// The request's id: another id is another request, whose count starts
+    /// from zero.
+    #[garde(skip)]
+    pub request_id: String,
+    /// The output tokens: an estimate of what streamed, then, once the
+    /// response ended, the response's own count when it reported one.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub tokens: u64,
+    /// How long the request had streamed since its first token when the
+    /// frame left, up to its response's end once it ended; null before the
+    /// first token. A page counts on from its own clock while the request
+    /// streams, as it does for `waiting`.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub streamed_ms: Option<u64>,
+    /// The response ended: the count and the time no longer change.
+    #[garde(skip)]
+    pub ended: bool,
 }
 
 /// A command as the pages see it, whatever its status

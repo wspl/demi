@@ -22,10 +22,10 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
     TranscriptLog, kept, labelled_output,
-    estimate::{anchor_tokens, blocks_tokens, context_anchor},
+    estimate::{OutputEstimate, anchor_tokens, blocks_tokens, context_anchor},
     replay,
 };
-use demi_conversation_socket_protocol::AbortTarget;
+use demi_conversation_socket_protocol::{AbortTarget, RequestOutput};
 use demi_provider_common::{
     Ahead, EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
@@ -127,6 +127,9 @@ pub(crate) struct SessionCore {
     /// vendor withholds included, so a model that thinks never reads as one
     /// that has not answered. A compaction pauses it.
     waiting_since: Option<Timestamp>,
+    /// The output of the turn's latest request, from its start until the
+    /// turn ends; live only, like the wait.
+    output: Option<StreamedOutput>,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
     /// The node's runtime, which knows which commands' ends a look showed it.
@@ -337,6 +340,21 @@ struct Published {
     intervals: Vec<CommandInterval>,
     edits: usize,
     waiting_since: Option<Timestamp>,
+    output: Option<StreamedOutput>,
+}
+
+/// The output of one request: estimated as it streams, then the response's
+/// own count once it ends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StreamedOutput {
+    request_id: String,
+    estimate: OutputEstimate,
+    /// The response's own output tokens, once it reported them.
+    reported: Option<u64>,
+    /// When the model's first output of the request came.
+    first_at: Option<Timestamp>,
+    /// When the response ended.
+    ended_at: Option<Timestamp>,
 }
 
 /// What a complete change leaves to do after the core is released.
@@ -444,6 +462,7 @@ impl SessionCore {
             persist: PersistMarks::default(),
             outbox: Vec::new(),
             waiting_since: None,
+            output: None,
             ids: parts.ids,
             clock: parts.clock,
             requests: Requests::default(),
@@ -458,6 +477,7 @@ impl SessionCore {
                 intervals: Vec::new(),
                 edits: 0,
                 waiting_since: None,
+                output: None,
             },
         };
         // What the checkpoint holds counts as published: only later changes
@@ -896,6 +916,7 @@ impl SessionCore {
             self.mark_state_changed();
         }
         self.stop_waiting();
+        self.output = None;
         self.editing = None;
         self.inputs.discard_steers();
         self.release_media();
@@ -1626,6 +1647,7 @@ impl SessionCore {
                 event,
                 ProviderEvent::ToolCallStart { .. } | ProviderEvent::ToolCallInput { .. }
             );
+        self.count_output(&event);
         let before = self.transcript.len();
         self.apply_event_to_transcript(event);
         if shows || self.writing.iter().any(|writing| writing.call.description.is_some()) {
@@ -1660,6 +1682,91 @@ impl SessionCore {
         };
         self.transcript.add_entries(&block, entries);
         self.commit();
+    }
+
+    /// A new request starts: its output counts from zero, whatever the
+    /// request before it in the turn, a failed attempt included, wrote.
+    pub(super) fn start_output(&mut self, request_id: String) {
+        self.output = Some(StreamedOutput {
+            request_id,
+            estimate: OutputEstimate::default(),
+            reported: None,
+            first_at: None,
+            ended_at: None,
+        });
+    }
+
+    /// The running request ended without a response, failed, stopped or
+    /// cut short: its output stays as it streamed.
+    pub(super) fn end_output(&mut self) {
+        let now = self.clock.now();
+        if let Some(output) = self.output.as_mut().filter(|output| output.ended_at.is_none()) {
+            output.ended_at = Some(now);
+        }
+    }
+
+    /// Adds what `event` streamed to the running request's output.
+    ///
+    /// Each response ends its request: output after it in the same run, as
+    /// when Claude Code answers several model calls in one run, is the next
+    /// request's, counted from zero.
+    fn count_output(&mut self, event: &ProviderEvent) {
+        let now = self.clock.now();
+        if event.is_output() && self.output.as_ref().is_some_and(|output| output.ended_at.is_some()) {
+            let request_id = self.ids.next_id();
+            self.start_output(request_id);
+        }
+        let writing = &self.writing;
+        let Some(output) = self.output.as_mut().filter(|output| output.ended_at.is_none()) else {
+            return;
+        };
+        let before = output.estimate;
+        match event {
+            ProviderEvent::ThinkingDelta(text) | ProviderEvent::TextDelta(text) => output.estimate.add_text(text),
+            ProviderEvent::ToolCallStart { tool_use_id, .. } => {
+                if !writing.iter().any(|writing| &writing.call.tool_use_id == tool_use_id) {
+                    output.estimate.add_call();
+                }
+            }
+            ProviderEvent::ToolCallInput { partial_json, .. } => output.estimate.add_text(partial_json),
+            // The arguments count when they come whole, unless they
+            // streamed in pieces; a call that never opened counts its
+            // framing too.
+            ProviderEvent::ToolCall(call) => {
+                match writing.iter().find(|writing| writing.call.tool_use_id == call.tool_use_id) {
+                    Some(opened) if !opened.input.is_empty() => {}
+                    Some(_) => output.estimate.add_text(&call.input.to_string()),
+                    None => {
+                        output.estimate.add_call();
+                        output.estimate.add_text(&call.input.to_string());
+                    }
+                }
+            }
+            ProviderEvent::Response(usage) => {
+                output.reported = usage.map(|usage| usage.output_tokens);
+                output.ended_at = Some(now);
+            }
+            _ => {}
+        }
+        // The speed's clock starts at the first output that adds to the
+        // count, not at a reasoning block that opens empty.
+        if output.first_at.is_none() && output.estimate != before {
+            output.first_at = Some(now);
+        }
+    }
+
+    /// The output of the turn's latest request as the pages see it now.
+    pub(super) fn request_output(&self) -> Option<RequestOutput> {
+        let output = self.output.as_ref()?;
+        let until = output.ended_at.unwrap_or_else(|| self.clock.now());
+        Some(RequestOutput {
+            request_id: output.request_id.clone(),
+            tokens: output.reported.unwrap_or_else(|| output.estimate.tokens()),
+            streamed_ms: output
+                .first_at
+                .map(|first| u64::try_from(until.as_millisecond() - first.as_millisecond()).unwrap_or(0)),
+            ended: output.ended_at.is_some(),
+        })
     }
 
     fn apply_event_to_transcript(&mut self, event: ProviderEvent) {
@@ -2373,6 +2480,12 @@ impl SessionCore {
             self.published.waiting_since = self.waiting_since;
             events.push(SessionEvent::WaitingChanged {
                 waited_ms: self.waited_ms(),
+            });
+        }
+        if self.output != self.published.output {
+            self.published.output = self.output.clone();
+            events.push(SessionEvent::OutputChanged {
+                output: self.request_output(),
             });
         }
         let requests = mem::take(&mut self.requests);
