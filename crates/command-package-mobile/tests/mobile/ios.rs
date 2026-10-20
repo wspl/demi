@@ -16,7 +16,7 @@ use tokio::{
     sync::watch,
 };
 
-use demi_command_package_mobile_protocol::live::{LiveCorner, LiveCornerPoint, LiveCorners, LiveFrame, LiveModuleMessage};
+use demi_command_package_mobile_protocol::live::{LiveCorners, LiveFrame, LiveModuleMessage};
 use demi_mobile::{
     driver::Result,
     ios::{BLOB, CONTROL, Connection, Launch, VIDEO},
@@ -203,14 +203,14 @@ async fn serve(
                 // UDID-A's model has a frame installed, UDID-B's has none.
                 "frame" if udid == "UDID-A" => {
                     let mut blob = u32::try_from(id.as_u64().unwrap()).unwrap().to_be_bytes().to_vec();
-                    blob.extend_from_slice(b"PNG");
+                    blob.extend_from_slice(b"PNGSIL");
                     if output.write_all(&frame(BLOB, &blob)).await.is_err() {
                         break 'reading;
                     }
                     json!({
                         "width": 400, "height": 800,
                         "screen": { "x": 20.0, "y": 30.0, "width": 360.0, "height": 740.0 },
-                        "corner": [{ "x": 0.0, "y": 40.0 }, { "x": 12.0, "y": 12.0 }, { "x": 40.0, "y": 0.0 }],
+                        "pngBytes": 3,
                     })
                 }
                 "frame" => json!({ "corner": [] }),
@@ -382,14 +382,11 @@ async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
     // The helper draws at the page's pixel ratio.
     assert_eq!(helper.requests("frame")[0], json!({ "udid": "UDID-A", "width": 800, "height": 1200, "scale": 2.0 }));
     match &frames[0] {
-        LiveFrame::Image { png, width, height, screen, corners } => {
+        LiveFrame::Image { png, width, height, screen, silhouette } => {
             assert_eq!((png.as_str(), *width, *height), ("UE5H", 400, 800));
             assert_eq!((screen.x, screen.y, screen.width, screen.height), (20.0, 30.0, 360.0, 740.0));
-            // The corner the helper traced on the mask, in each of the four.
-            let traced = LiveCorner::Curve {
-                points: [(0.0, 40.0), (12.0, 12.0), (40.0, 0.0)].map(|(x, y)| LiveCornerPoint { x, y }).to_vec(),
-            };
-            assert_eq!([&corners.top_left, &corners.top_right, &corners.bottom_right, &corners.bottom_left], [&traced; 4]);
+            // The blob's rest after the frame's PNG: the device's silhouette.
+            assert_eq!(silhouette.as_deref(), Some("U0lM"));
         }
         other => panic!("the installed frame came as {other:?}"),
     }

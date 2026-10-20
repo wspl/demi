@@ -21,9 +21,10 @@ pub fn live(frame: Frame, platform: MobilePlatform, model: &str, orientation: Or
             width,
             height,
             screen,
-            corners,
+            silhouette,
         } => LiveFrame::Image {
             png: base64::engine::general_purpose::STANDARD.encode(&png),
+            silhouette: silhouette.map(|silhouette| base64::engine::general_purpose::STANDARD.encode(&silhouette)),
             width,
             height,
             screen: LiveRect {
@@ -32,7 +33,6 @@ pub fn live(frame: Frame, platform: MobilePlatform, model: &str, orientation: Or
                 width: screen.width.max(1.0),
                 height: screen.height.max(1.0),
             },
-            corners,
         },
         Frame::Drawn { corners } => drawn(corners, platform, model, orientation),
     }

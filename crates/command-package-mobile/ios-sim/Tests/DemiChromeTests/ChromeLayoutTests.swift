@@ -166,3 +166,25 @@ private func expect(_ rect: CGRect, _ x: Double, _ y: Double, _ width: Double, _
     #expect(abs(off) < 0.34, "\(point) lies \(off) pixels off the mask's edge")
   }
 }
+
+@Test func theSilhouetteIsWhatTheOpaqueFrameEncloses() {
+  // A 12 by 12 frame: a soft outer ring (alpha 128) around an opaque ring
+  // two pixels wide, around a hole whose own edge is soft too. The picture
+  // may lie in the hole and under the opaque ring, never under the soft
+  // outer pixels, through which it would show. Microseconds.
+  let side = 12
+  var alpha = [UInt8](repeating: 0, count: side * side)
+  for y in 0..<side {
+    for x in 0..<side {
+      let ring = min(x, y, side - 1 - x, side - 1 - y)
+      alpha[y * side + x] = ring == 0 ? 0 : ring == 1 ? 128 : ring <= 3 ? 255 : ring == 4 ? 100 : 0
+    }
+  }
+  let shape = silhouette(alpha: alpha, width: side, height: side)
+  for y in 0..<side {
+    for x in 0..<side {
+      let ring = min(x, y, side - 1 - x, side - 1 - y)
+      #expect(shape[y * side + x] == (ring >= 2 ? 255 : 0), "pixel \(x), \(y) of ring \(ring)")
+    }
+  }
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type CSSProperties } from 'vue'
 import {
   Button,
   CanvasPictures,
@@ -10,7 +10,7 @@ import {
   keyInput,
   observeSettledSize,
   scaledCorners,
-  screenClip,
+  drawnFramePictureClip,
   type ScreenCorners,
   touchInput,
   wheelInput,
@@ -63,7 +63,9 @@ const frame = computed(() => {
   const drawn = framed.value
   return drawn && drawn.orientation === (picture.value?.orientation ?? drawn.orientation) ? drawn.frame : null
 })
-type Layout = { screen: Placement; corners: ScreenCorners; image: { src: string; box: Placement } | null }
+/** A drawn frame's image, its box in the area, and the device's silhouette that bounds the picture under it, if any. */
+type FrameImage = { src: string; box: Placement; silhouette: string | null }
+type Layout = { screen: Placement; corners: ScreenCorners; image: FrameImage | null }
 
 /** Where the picture sits in an area of `area`, with its corners, and the drawn frame around it, if any. */
 function layoutIn(area: Size): Layout | null {
@@ -75,8 +77,12 @@ function layoutIn(area: Size): Layout | null {
     const placed = placeInFrame(drawn, screen.value, area)
     return {
       screen: placed.screen,
-      corners: placed.corners,
-      image: { src: `data:image/png;base64,${drawn.png}`, box: placed.frame },
+      corners: SQUARE_CORNERS,
+      image: {
+        src: `data:image/png;base64,${drawn.png}`,
+        box: placed.frame,
+        silhouette: drawn.silhouette ? `data:image/png;base64,${drawn.silhouette}` : null,
+      },
     }
   }
   const placed = placeScreen(screen.value, area)
@@ -96,31 +102,33 @@ const drawnFrame = computed(() => {
   return { corners: layout.value?.corners ?? SQUARE_CORNERS, buttons: drawn.buttons }
 })
 /**
- * How far the picture reaches past the screen's edge under a drawn frame's
- * image, in device pixels: past the hole's antialiased edge, and well within
- * the bezel's opaque rim.
+ * What bounds the picture, and the screen-off dimming over it, under the
+ * frame, whose screen is a hole the picture shows through, so the hole's
+ * edge is the screen's only one: under a drawn frame's image, the device's
+ * silhouette, as the screen's rectangle reaches past the device's outline
+ * at its corners; under the frame the view draws, halfway into its bezel.
+ * Android Studio's art covers the picture's corners itself, and a device
+ * whose frame has not come shows its picture whole.
  */
-const UNDER_BEZEL = 2
-
-/** The screen's shape, which the screen-off overlay over the frame takes. */
-const screenShape = computed(() => {
+const bounds = computed<CSSProperties | undefined>(() => {
   const placed = placement.value
-  return placed && layout.value ? screenClip(placed.width, placed.height, layout.value.corners) : undefined
-})
-/**
- * The picture cut to the screen's corners, which the device draws black.
- * Under a drawn frame's image, whose hole is cut in the same shape, it
- * reaches a little past that shape, so the hole's own edge is the only one
- * that shows: two antialiased edges on one line let the area's background
- * through between them, a light seam around the corners.
- */
-const clip = computed(() => {
-  const placed = placement.value
-  if (!placed || !layout.value) {
+  const shown = layout.value
+  if (!placed || !shown) {
     return undefined
   }
-  const offset = layout.value.image ? UNDER_BEZEL / window.devicePixelRatio : 0
-  return screenClip(placed.width, placed.height, layout.value.corners, offset)
+  const silhouette = shown.image?.silhouette
+  if (shown.image && silhouette) {
+    const box = shown.image.box
+    return {
+      maskImage: `url(${silhouette})`,
+      maskMode: 'luminance',
+      maskRepeat: 'no-repeat',
+      maskSize: `${box.width}px ${box.height}px`,
+      maskPosition: `${box.left - placed.left}px ${box.top - placed.top}px`,
+    }
+  }
+  const drawn = drawnFrame.value
+  return drawn ? { clipPath: drawnFramePictureClip(placed.width, placed.height, drawn.corners) } : undefined
 })
 const activity = computed(() => watching.value ? props.session.state.activity : { active: false })
 const mark = computed(() => {
@@ -351,12 +359,6 @@ function composed(event: CompositionEvent): void {
 
 <template>
   <div ref="area" class="relative min-h-0 flex-1 overflow-hidden bg-sunken">
-    <LiveDrawnFrame
-      v-if="drawnFrame && placement && painted"
-      :screen="placement"
-      :corners="drawnFrame.corners"
-      :buttons="drawnFrame.buttons"
-    />
     <canvas
       ref="canvas"
       class="absolute touch-none select-none"
@@ -366,7 +368,7 @@ function composed(event: CompositionEvent): void {
         top: `${placement.top}px`,
         width: `${placement.width}px`,
         height: `${placement.height}px`,
-        clipPath: clip,
+        ...bounds,
       } : undefined"
       @pointerdown="down"
       @pointermove="move"
@@ -374,6 +376,28 @@ function composed(event: CompositionEvent): void {
       @pointercancel="cancel"
       @wheel="wheel"
       @contextmenu.prevent
+    />
+    <div
+      v-if="screenOff && placement"
+      class="absolute flex flex-col items-center justify-center gap-3 bg-black/60"
+      :style="{
+        left: `${placement.left}px`,
+        top: `${placement.top}px`,
+        width: `${placement.width}px`,
+        height: `${placement.height}px`,
+        ...bounds,
+      }"
+      @pointerdown="down"
+    >
+      <span class="text-[13px] font-medium text-white">{{ t('screenOff.title') }}</span>
+      <Button size="sm" @pointerdown.stop @click="session.wake()">{{ t('screenOff.wake') }}</Button>
+    </div>
+    <!-- The frame lies over the picture, which shows through its screen. -->
+    <LiveDrawnFrame
+      v-if="drawnFrame && placement && painted"
+      :screen="placement"
+      :corners="drawnFrame.corners"
+      :buttons="drawnFrame.buttons"
     />
     <img
       v-if="layout?.image && painted"
@@ -387,21 +411,6 @@ function composed(event: CompositionEvent): void {
         height: `${layout.image.box.height}px`,
       }"
     >
-    <div
-      v-if="screenOff && placement"
-      class="absolute flex flex-col items-center justify-center gap-3 bg-black/60"
-      :style="{
-        left: `${placement.left}px`,
-        top: `${placement.top}px`,
-        width: `${placement.width}px`,
-        height: `${placement.height}px`,
-        clipPath: screenShape,
-      }"
-      @pointerdown="down"
-    >
-      <span class="text-[13px] font-medium text-white">{{ t('screenOff.title') }}</span>
-      <Button size="sm" @pointerdown.stop @click="session.wake()">{{ t('screenOff.wake') }}</Button>
-    </div>
     <RegionStatus
       v-if="session.state.pictureless"
       class="absolute inset-0 bg-surface"

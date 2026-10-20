@@ -468,9 +468,9 @@ impl IosDevice {
     }
 }
 
-/// The screen's corners from the corner the helper traces on the
-/// framebuffer mask, the shape the frame's hole is cut with: the mask's four
-/// corners are alike, and a mask that leaves its corner square has none.
+/// The screen's corners, for the frame the view draws, from the corner the
+/// helper traces on the framebuffer mask: the mask's four corners are
+/// alike, and a mask that leaves its corner square has none.
 fn mask_corners(corner: Vec<LiveCornerPoint>) -> LiveCorners {
     if corner.len() < 2 {
         return LiveCorners::round(0.0);
@@ -670,7 +670,7 @@ impl Device for IosDevice {
             #[derive(Deserialize)]
             #[serde(rename_all_fields = "camelCase", untagged)]
             enum Answered {
-                Drawn { width: u32, height: u32, screen: Placed, corner: Vec<LiveCornerPoint> },
+                Drawn { width: u32, height: u32, screen: Placed, png_bytes: usize },
                 Undrawn { corner: Vec<LiveCornerPoint> },
             }
             #[derive(Deserialize)]
@@ -684,20 +684,28 @@ impl Device for IosDevice {
             let answered: Answered = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the device's frame does not read: {error}")))?;
             Ok(Some(match answered {
-                Answered::Drawn { width, height, screen, corner } => Frame::Image {
-                    png: answer
+                Answered::Drawn { width, height, screen, png_bytes } => {
+                    // The blob is the frame's PNG, then the silhouette's.
+                    let mut png = answer
                         .blob
-                        .ok_or_else(|| DriverError::Failed("the iOS helper sent no frame".into()))?,
-                    width,
-                    height,
-                    screen: PixelRect {
-                        x: screen.x,
-                        y: screen.y,
-                        width: screen.width,
-                        height: screen.height,
-                    },
-                    corners: mask_corners(corner),
-                },
+                        .ok_or_else(|| DriverError::Failed("the iOS helper sent no frame".into()))?;
+                    if png_bytes == 0 || png_bytes >= png.len() {
+                        return Err(DriverError::Failed("the iOS helper's frame lacks its silhouette".into()));
+                    }
+                    let silhouette = png.split_off(png_bytes);
+                    Frame::Image {
+                        png,
+                        width,
+                        height,
+                        screen: PixelRect {
+                            x: screen.x,
+                            y: screen.y,
+                            width: screen.width,
+                            height: screen.height,
+                        },
+                        silhouette: Some(silhouette),
+                    }
+                }
                 Answered::Undrawn { corner } => Frame::Drawn {
                     corners: mask_corners(corner),
                 },

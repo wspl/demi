@@ -13,7 +13,9 @@ import { drawnFrame, type FrameBox, type FrameButton, type ScreenCorners } from 
  *   body's outline visible on a dark background.
  * - Its buttons as short bars of the band's grey, a shade lighter at their ends.
  *
- * It lies under the screen's picture, and the screen's input passes through it.
+ * It lies over the screen's picture, the screen a hole in its body, which
+ * the picture shows through (`drawnFramePictureClip`), and the screen's input
+ * passes through it.
  */
 const props = defineProps<{
   /** The screen's box in the area, in CSS pixels. */
@@ -54,7 +56,7 @@ function shading(side: FrameButton['side']): string {
       }"
     />
     <svg class="absolute inset-0 h-full w-full overflow-visible">
-      <path :d="shape.body" :fill="BODY" />
+      <path :d="`${shape.body} ${shape.screen}`" fill-rule="evenodd" :fill="BODY" />
       <path :d="shape.band" fill="none" :stroke="METAL" :stroke-width="shape.bandWidth" />
       <path :d="shape.edge" fill="none" :stroke="LIT" :stroke-width="shape.edgeWidth" />
     </svg>

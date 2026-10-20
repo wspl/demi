@@ -206,10 +206,14 @@ pub enum LiveFrame {
         height: u32,
         #[garde(dive)]
         screen: LiveRect,
-        /// The screen's corners, in the frame's pixels, which the picture
-        /// is clipped to.
-        #[garde(dive)]
-        corners: LiveCorners,
+        /// The device's silhouette, a grey PNG of the frame's size, white
+        /// where the picture may lie: the picture lies under the frame,
+        /// bounded by it, and shows only through the frame's screen. None
+        /// where the frame covers the picture's corners itself.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<String>")]
+        #[garde(skip)]
+        silhouette: Option<String>,
     },
     /// No frame is installed: the view draws the device itself around the
     /// screen, concentric with its corners, in the screen's points, with

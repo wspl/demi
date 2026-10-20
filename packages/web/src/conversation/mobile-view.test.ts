@@ -9,9 +9,10 @@ import { afterEach, expect, test } from 'bun:test'
 // DeviceView over a live session whose stream the test plays, on a page of
 // happy-dom; happy-dom lays nothing out, so the area's size is what the
 // test's ResizeObserver reports, as a browser's layout would. A drag waits
-// for the settle the view itself waits for, about 150 ms. Under a drawn
-// frame's image, the picture reaches past the screen's shape, the shape its
-// hole is cut in, under the bezel, so only the hole's edge shows.
+// for the settle the view itself waits for, about 150 ms. The picture lies
+// under the device's frame, whose screen is a hole it shows through:
+// bounded by the device's silhouette under a drawn frame's image, and
+// halfway into the bezel under the frame the view draws.
 
 GlobalRegistrator.register({ url: 'https://demi.test/', width: 1280, height: 800 })
 
@@ -46,7 +47,8 @@ window.ResizeObserver = class {
 
 await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, nextTick } = await import('vue')
-const { LIVE_CONTROL_FRAME, SQUARE_CORNERS, scaledCorners, screenPath } = await import('@demicodes/plugin-sdk')
+const { LIVE_CONTROL_FRAME, SQUARE_CORNERS } = await import('@demicodes/plugin-sdk')
+const { drawnFrameBezel } = await import('@demicodes/web-ui/live/drawn-frame')
 const { default: DeviceView } = await import('@demicodes/plugin-mobile/live/DeviceView.vue')
 const { MobileSession } = await import('@demicodes/plugin-mobile/live/session')
 type LiveModuleMessage = import('@demicodes/plugin-mobile/generated/plugin').LiveModuleMessage
@@ -202,59 +204,42 @@ function pathPoints(path: string): { x: number; y: number }[] {
   return points
 }
 
-/** The smallest distance from `point` to the closed outline through `outline`. */
-function distance(point: { x: number; y: number }, outline: { x: number; y: number }[]): number {
-  let nearest = Infinity
-  for (let index = 0; index < outline.length; index += 1) {
-    const [from, to] = [outline[index]!, outline[(index + 1) % outline.length]!]
-    const length = (to.x - from.x) ** 2 + (to.y - from.y) ** 2
-    const along = length === 0 ? 0 : Math.max(0, Math.min(1, ((point.x - from.x) * (to.x - from.x) + (point.y - from.y) * (to.y - from.y)) / length))
-    nearest = Math.min(nearest, Math.hypot(from.x + along * (to.x - from.x) - point.x, from.y + along * (to.y - from.y) - point.y))
-  }
-  return nearest
-}
-
-/** Whether `point` lies inside the closed outline through `outline`. */
-function inside(point: { x: number; y: number }, outline: { x: number; y: number }[]): boolean {
-  let crossings = 0
-  for (let index = 0; index < outline.length; index += 1) {
-    const [from, to] = [outline[index]!, outline[(index + 1) % outline.length]!]
-    if ((from.y > point.y) !== (to.y > point.y) && point.x < from.x + ((point.y - from.y) / (to.y - from.y)) * (to.x - from.x)) {
-      crossings += 1
-    }
-  }
-  return crossings % 2 === 1
-}
-
-test('under a drawn frame’s image the picture reaches past the hole’s edge, under the bezel', async () => {
-  // A corner flatter than a circle, as a framebuffer mask's, reaching 60
-  // of the frame's pixels along each edge.
-  const curve = Array.from({ length: 25 }, (_, index) => {
-    const angle = (Math.PI / 2) * (index / 24)
-    return { x: 60 - 60 * Math.cos(angle) ** 0.5, y: 60 - 60 * Math.sin(angle) ** 0.5 }
-  })
-  const corner = { kind: 'curve' as const, points: curve }
-  const corners = { topLeft: corner, topRight: corner, bottomRight: corner, bottomLeft: corner }
+test('under a drawn frame’s image the picture is bounded by the device’s silhouette, not cut to the screen', async () => {
   const view = await viewing({
     kind: 'image',
     png: 'UE5H',
+    silhouette: 'U0lM',
     width: 440,
     height: 860,
     screen: { x: 20, y: 30, width: 400, height: 800 },
-    corners,
   })
+  const style = view.canvas.style
+  const scale = parseFloat(style.width) / 400
+  expect(style.clipPath).toBe('')
+  expect(style.getPropertyValue('mask-image')).toBe('url(data:image/png;base64,U0lM)')
+  // The silhouette lies over the whole frame, which starts 20 by 30 of its pixels before the screen.
+  const pixels = (value: string) => value.split(' ').map(parseFloat)
+  const [width, height] = pixels(style.getPropertyValue('mask-size'))
+  const [left, top] = pixels(style.getPropertyValue('mask-position'))
+  expect(width).toBeCloseTo(440 * scale, 3)
+  expect(height).toBeCloseTo(860 * scale, 3)
+  expect(left).toBeCloseTo(-20 * scale, 3)
+  expect(top).toBeCloseTo(-30 * scale, 3)
+})
+
+test('under the frame the view draws the picture reaches halfway into its bezel', async () => {
+  const round = { kind: 'round' as const, radius: 60 }
+  const corners = { topLeft: round, topRight: round, bottomRight: round, bottomLeft: round }
+  const view = await viewing({ kind: 'drawn', corners, buttons: [] })
   const width = parseFloat(view.canvas.style.width)
   const height = parseFloat(view.canvas.style.height)
-  // The hole, in the canvas's own pixels, as the frame's image cuts it.
-  const hole = pathPoints(screenPath({ left: 0, top: 0, width, height }, scaledCorners(corners, width / 400)))
-  const clip = pathPoints(view.canvas.style.clipPath.match(/path\('(.*)'\)/)![1]!)
-  const pixel = 1 / window.devicePixelRatio
-  // Past the hole's edge by more than its antialiasing, and not far into the bezel.
-  for (const point of hole) {
-    expect(distance(point, clip)).toBeGreaterThanOrEqual(pixel)
-  }
-  for (const point of clip) {
-    expect(inside(point, hole)).toBe(false)
-    expect(distance(point, hole)).toBeLessThanOrEqual(3 * pixel)
-  }
+  const clip = view.canvas.style.clipPath.match(/path\('(.*)'\)/)![1]!
+  const points = pathPoints(clip)
+  const half = drawnFrameBezel({ width, height }) / 2
+  // Half a bezel out from each of the screen's edges, its corners round.
+  expect(Math.min(...points.map((point) => point.x))).toBeCloseTo(-half, 1)
+  expect(Math.min(...points.map((point) => point.y))).toBeCloseTo(-half, 1)
+  expect(Math.max(...points.map((point) => point.x))).toBeCloseTo(width + half, 1)
+  expect(Math.max(...points.map((point) => point.y))).toBeCloseTo(height + half, 1)
+  expect(clip).toContain('A')
 })

@@ -6,7 +6,7 @@
  * its screen, or the frame the view draws around the picture. Neither shows the screen larger
  * than its points, as Simulator's Point Accurate size shows it.
  */
-import { DRAWN_FRAME_ROOM, scaledCorners, type ScreenCorners } from '@demicodes/plugin-sdk'
+import { DRAWN_FRAME_ROOM } from '@demicodes/plugin-sdk'
 import type { LiveRect } from '../generated/plugin'
 
 /** The margin around the device, in CSS pixels. */
@@ -51,12 +51,10 @@ export interface DrawnFrame {
   width: number
   height: number
   screen: LiveRect
-  /** The screen's corners, in the frame's pixels. */
-  corners: ScreenCorners
 }
 
-/** The drawn frame fitted into `area`, the picture in its screen, and the screen's corners, in CSS pixels. */
-export function placeInFrame(frame: DrawnFrame, points: Size, area: Size): { frame: Placement; screen: Placement; corners: ScreenCorners } {
+/** The drawn frame fitted into `area`, and the picture in its screen, in CSS pixels. */
+export function placeInFrame(frame: DrawnFrame, points: Size, area: Size): { frame: Placement; screen: Placement } {
   const room = frameRoom(area)
   const scale = Math.min(room.width / frame.width, room.height / frame.height, points.width / frame.screen.width)
   const width = frame.width * scale
@@ -71,7 +69,6 @@ export function placeInFrame(frame: DrawnFrame, points: Size, area: Size): { fra
       width: frame.screen.width * scale,
       height: frame.screen.height * scale,
     },
-    corners: scaledCorners(frame.corners, scale),
   }
 }
 

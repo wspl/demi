@@ -343,6 +343,43 @@ public struct ChromeLayout {
   }
 }
 
+/// Where the picture may lie under a frame drawn as `alpha`, one byte a
+/// pixel, rows from the top: 255 there, 0 elsewhere. It is all the frame's
+/// wholly opaque pixels enclose, its screen's hole and the bezel, and
+/// never a pixel the frame leaves partly transparent at its outer edge.
+///
+/// The screen's rectangle reaches past the device's outline at its corners,
+/// so a picture drawn whole under the frame would show its square corners
+/// there; bounded by this, it shows only through the hole, whose edge the
+/// frame draws.
+public func silhouette(alpha: [UInt8], width: Int, height: Int) -> [UInt8] {
+  // Outside is what a pixel short of opaque reaches from the image's edge.
+  var shape = [UInt8](repeating: 255, count: width * height)
+  var pending: [Int] = []
+  func reach(_ index: Int) {
+    if shape[index] == 255 && alpha[index] < 255 {
+      shape[index] = 0
+      pending.append(index)
+    }
+  }
+  for x in 0..<width {
+    reach(x)
+    reach((height - 1) * width + x)
+  }
+  for y in 0..<height {
+    reach(y * width)
+    reach(y * width + width - 1)
+  }
+  while let index = pending.popLast() {
+    let (x, y) = (index % width, index / width)
+    if x > 0 { reach(index - 1) }
+    if x < width - 1 { reach(index + 1) }
+    if y > 0 { reach(index - width) }
+    if y < height - 1 { reach(index + width) }
+  }
+  return shape
+}
+
 /// The most points a traced corner keeps.
 private let largestCorner = 96
 
@@ -381,9 +418,9 @@ public struct ScreenMask {
   /// leaves the upright edge to where it meets the level one, in pixels from
   /// the corner. Empty where the mask leaves the corner square.
   ///
-  /// The frame's hole is cut with this mask, so the picture's clip, drawn
-  /// from these points, follows the hole exactly; a circle of any radius
-  /// strays from the mask's smooth corner by pixels along the diagonal.
+  /// The view draws its own frame around a screen of this corner when Xcode
+  /// installed none for the device type; a circle of any radius strays from
+  /// the mask's smooth corner by pixels along the diagonal.
   public func corner(pixels: CGSize, screenPoints: CGSize) -> [CGPoint] {
     let side = Int(min(pixels.width, pixels.height) / 2)
     guard side > 1,

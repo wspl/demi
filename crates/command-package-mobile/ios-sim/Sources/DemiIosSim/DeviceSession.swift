@@ -227,9 +227,10 @@ final class DeviceSession: @unchecked Sendable {
   // MARK: The frame
 
   /// The device's frame for a view of `area` pixels at `backing` pixels
-  /// per point, turned as the picture is, with the screen's corner in its
-  /// pixels; that corner alone, in the screen's points, when Xcode installed
-  /// no frame for the device type.
+  /// per point, turned as the picture is, with the device's silhouette that
+  /// bounds the picture under it; the screen's corner alone, in the screen's
+  /// points, for the frame the view draws, when Xcode installed no frame for
+  /// the device type.
   func frame(area: CGSize, backing: Double) throws -> ([String: Any], Data?) {
     let (turn, surface) = lock.withLock { (self.turn, self.surface) }
     let looks = DeviceLooks(simulator: simulator)
@@ -241,8 +242,9 @@ final class DeviceSession: @unchecked Sendable {
             "x": drawn.screen.minX, "y": drawn.screen.minY, "width": drawn.screen.width,
             "height": drawn.screen.height,
           ],
-          "corner": cornerPoints(drawn.corner, scale: 1),
-        ], drawn.png
+          // The blob is the frame's PNG, then the silhouette's.
+          "pngBytes": drawn.png.count,
+        ], drawn.png + drawn.silhouette
       )
     }
     let pixels = surface.map { CGSize(width: IOSurfaceGetWidth($0), height: IOSurfaceGetHeight($0)) } ?? .zero

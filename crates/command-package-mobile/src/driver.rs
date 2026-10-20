@@ -195,8 +195,10 @@ pub enum Frame {
         width: u32,
         height: u32,
         screen: PixelRect,
-        /// The screen's corners, in the frame's pixels.
-        corners: LiveCorners,
+        /// The device's silhouette, a grey PNG of the frame's size, white
+        /// where the picture may lie under it; none where the frame covers
+        /// the picture's corners itself.
+        silhouette: Option<Bytes>,
     },
     /// The platform installs none: the view draws the frame itself,
     /// around a screen with these corners, in the screen's points.
