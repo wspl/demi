@@ -1,34 +1,55 @@
-//! `xtask browser-release <version> --runtime <release>` : pins a Chrome for
-//! Testing version and the Chrome runtime release Linux Hosts start it with. It
-//! reads the version's official download metadata, downloads the archive of
-//! each platform Demi supports through `artifact`, measures it, checks that it
-//! holds the executable the record names, does the same for the runtime
-//! release's archives, and writes the release record with
-//! command-package-browser-protocol's type, which `demi-browser` installs from.
+//! `xtask browser-release <version> --runtime <release>` pins a Chrome for
+//! Testing version and the Chrome runtime release Linux Hosts start it with.
+//!
+//! The command:
+//!
+//! 1. Reads the version's official download metadata.
+//! 2. Downloads the archive of each platform Demi supports through `artifact`,
+//!    measures it, and checks that it holds the executable the record names.
+//! 3. Does the same for the runtime release's archives.
+//! 4. Writes the release record with command-package-browser-protocol's type,
+//!    which `demi-browser` installs from.
+//!
 //! The downloads are not kept: nothing in a Demi release carries Chrome or the
-//! runtime, and Chrome for Testing publishes no Windows arm64 build, so the
-//! record carries five of the six targets.
+//! runtime. Chrome for Testing publishes no Windows arm64 build, so the record
+//! carries five of the six targets.
+//!
+//! # The Chrome runtime
 //!
 //! The Chrome runtime is the shared libraries and fonts that run Chrome for
 //! Testing on any Linux with glibc 2.28 or newer. Its own repository builds it,
 //! so that the licenses and sources its libraries' terms require travel with it
-//! and nowhere else; a release, numbered `1`, `2`, …, holds `libs-<arch>.tar.zst`
-//! (each shared object under its soname, the NSS modules and an empty
-//! `gio/modules`), `fonts.tar.zst`, `licenses.tar.zst`, `sources.tar` (the
-//! AlmaLinux source packages of every library and the fonts' upstream sources,
-//! in one file so the release lists only what is used) and a `SHA256SUMS` of the
-//! rest. Its workflow runs on GitHub's hosted runners, one per architecture, in
-//! an AlmaLinux 8 container at a pinned point release: it installs the packages
-//! Chrome needs, copies the closure of Chrome's executable and of the NSS
-//! modules under `ldd` without glibc, the loader, glibc's own `libnss_*` modules
-//! and `libgcc_s`, and fails if any object needs a newer glibc than 2.28. It then
-//! starts the Chrome version it was given, with the runtime and `--no-sandbox`,
-//! in fresh containers of the oldest and newest distributions it supports
-//! (AlmaLinux 8, Debian 10, Ubuntu 20.04, and the latest Ubuntu and Fedora) and
-//! checks that a page draws Latin, CJK, emoji and the other bundled scripts,
-//! prints to PDF, loads an extension and encodes H.264 with WebCodecs; a failure
-//! blocks the release. Adopting a new Chrome version runs that check against the
-//! current runtime first and makes a new runtime release only when it fails.
+//! and nowhere else.
+//!
+//! A release, numbered `1`, `2`, …, holds:
+//!
+//! - `libs-<arch>.tar.zst`: each shared object under its soname, the NSS
+//!   modules and an empty `gio/modules`.
+//! - `fonts.tar.zst`.
+//! - `licenses.tar.zst`.
+//! - `sources.tar`: the AlmaLinux source packages of every library and the
+//!   fonts' upstream sources, in one file so the release lists only what is
+//!   used.
+//! - A `SHA256SUMS` of the rest.
+//!
+//! Its workflow runs on GitHub's hosted runners, one per architecture, in an
+//! AlmaLinux 8 container at a pinned point release:
+//!
+//! 1. It installs the packages Chrome needs.
+//! 2. It copies the closure of Chrome's executable and of the NSS modules under
+//!    `ldd` without glibc, the loader, glibc's own `libnss_*` modules and
+//!    `libgcc_s`.
+//! 3. It fails if any object needs a newer glibc than 2.28.
+//! 4. It starts the Chrome version it was given, with the runtime and
+//!    `--no-sandbox`, in fresh containers of the oldest and newest
+//!    distributions it supports (AlmaLinux 8, Debian 10, Ubuntu 20.04, and the
+//!    latest Ubuntu and Fedora).
+//! 5. It checks that a page draws Latin, CJK, emoji and the other bundled
+//!    scripts, prints to PDF, loads an extension and encodes H.264 with
+//!    WebCodecs. A failure blocks the release.
+//!
+//! Adopting a new Chrome version runs that check against the current runtime
+//! first and makes a new runtime release only when it fails.
 
 use std::collections::BTreeMap;
 

@@ -1,15 +1,21 @@
 //! The file watch (`crates/backend-host-access/src/lib.rs`): a page's
 //! subscriptions to what it keeps of a Host's files, and the Host's word that
-//! one of them changed. A conversation's watch carries its primary Host's
-//! subscriptions and, under a subscription's `host`, an attached host's; each
-//! host is admitted as a user stream is when a subscription first names it,
-//! never wakes a stopped Cloud (whose files cannot change; the page opens its
-//! watch again when it wakes), and is no activity, so a page that shows files
-//! keeps no Cloud awake. A device's folder dialog
-//! watches its one device through device access. The shard holds each page's
-//! subscriptions on each Host, which pages that hold the same subject share
-//! (`RemoteHost::subscriber`), and renews them while the page renews them. The
-//! edge carries the messages, and holds the lease.
+//! one of them changed.
+//!
+//! A conversation's watch carries its primary Host's subscriptions and, under a
+//! subscription's `host`, an attached host's. Each host:
+//!
+//! - Is admitted as a user stream is when a subscription first names it.
+//! - Never wakes a stopped Cloud, whose files cannot change. The page opens its
+//!   watch again when it wakes.
+//! - Is no activity, so a page that shows files keeps no Cloud awake.
+//!
+//! A device's folder dialog watches its one device through device access.
+//!
+//! The shard holds each page's subscriptions on each Host, which pages that
+//! hold the same subject share (`RemoteHost::subscriber`), and renews them
+//! while the page renews them. The edge carries the messages, and holds the
+//! lease.
 //!
 //! What a page's subscriptions ask of a Host's, and the messages the page
 //! hears, are `PageSubscriptions`', which a direct channel's watch on the
@@ -60,10 +66,11 @@ pub enum OpenedWatch {
 }
 
 impl dyn HostShard + '_ {
-    /// Opens a page's file watch of the conversation `id`, registered with
-    /// its transfers so that a transition ends it, and open until the edge
-    /// drops its lease, a Host's connection ends, or a transition ends it.
-    /// Nothing is admitted yet: each Host is, without waking a stopped
+    /// Opens a page's file watch of the conversation `id`, registered with its
+    /// transfers so that a transition ends it. The watch stays open until the
+    /// edge drops its lease, a Host's connection ends, or a transition ends it.
+    ///
+    /// Nothing is admitted yet: each Host is admitted, without waking a stopped
     /// Cloud and without activity, when a subscription first names it, so a
     /// watch of an attached host does not hang on the primary Host.
     pub async fn open_file_watch(

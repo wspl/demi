@@ -1,8 +1,9 @@
-//! Machine access (`crates/backend-host-access/src/lib.rs`): the
-//! user's Cloud itself, for work that needs it rather than a conversation's
-//! files on it, such as making a Cloud project's directory. It takes the
-//! Cloud's admission, which wakes a stopped Cloud or waits for a running
-//! reset, and no conversation's file gate.
+//! Machine access (`crates/backend-host-access/src/lib.rs`): the user's Cloud
+//! itself, for work that needs it rather than a conversation's files on it,
+//! such as making a Cloud project's directory.
+//!
+//! It takes the Cloud's admission, which wakes a stopped Cloud or waits for a
+//! running reset, and no conversation's file gate.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceRecord, ManagedMachine};

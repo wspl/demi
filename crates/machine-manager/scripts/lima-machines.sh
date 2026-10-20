@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # Installs the Cloud manager in the local Lima VM
-# (`docs/guides/mac-development.md`): starts or creates the VM, copies the
-# manager and demi-server built for its Linux target into the bin/ of the
-# manager's server release root in the VM, whose image/ the image build
-# wrote, has demi-server fetch the pinned gVisor version, writes the VM's
-# configuration file, and runs the host install script there. --public-url
-# is the backend's URL at the Mac's address on its network, which the Cloud
-# guests reach through Lima and the Mac's own runner reaches too; Lima's
-# gateway address (host.lima.internal) exists only inside the VM. --dns
-# names the resolvers the Clouds use in place of the VM's own, for a Mac
+# (`docs/guides/mac-development.md`).
+#
+# The script:
+#
+# - Starts or creates the VM.
+# - Copies the manager and demi-server built for its Linux target into the bin/
+#   of the manager's server release root in the VM, whose image/ the image build
+#   wrote.
+# - Has demi-server fetch the pinned gVisor version.
+# - Writes the VM's configuration file.
+# - Runs the host install script there.
+#
+# --public-url is the backend's URL at the Mac's address on its network, which
+# the Cloud guests reach through Lima and the Mac's own runner reaches too.
+# Lima's gateway address (host.lima.internal) exists only inside the VM.
+#
+# --dns names the resolvers the Clouds use in place of the VM's own, for a Mac
 # whose proxy answers name lookups with addresses the Clouds may not reach.
 #
 # With --root DIR the configuration file and the unit are written beneath DIR

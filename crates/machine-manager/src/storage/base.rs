@@ -9,14 +9,17 @@
 //! ```
 //!
 //! The import rejects unknown schemas, mismatched hashes or sizes, missing
-//! executable entries and an architecture other than its host's, strips no
+//! executable entries and an architecture other than its host's. It strips no
 //! unexpected input to make a corrupt release appear valid, and never executes
-//! image content on the host. The base directory is writable only while it is
-//! staged, then exposed read-only as OverlayFS's lower layer. An upgrade
-//! imports the next release's image early with `--import`, which takes none of
-//! the running manager's locks: a base is an immutable directory named by its
-//! version and published atomically, and a running manager reads no base it was
-//! not configured with.
+//! image content on the host.
+//!
+//! The base directory is writable only while it is staged, then exposed
+//! read-only as OverlayFS's lower layer.
+//!
+//! An upgrade imports the next release's image early with `--import`, which
+//! takes none of the running manager's locks: a base is an immutable directory
+//! named by its version and published atomically, and a running manager reads
+//! no base it was not configured with.
 //!
 //! After each import the manager keeps those two bases and every base a
 //! committed generation or a working pair names, and removes the rest.

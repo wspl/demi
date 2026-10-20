@@ -1,8 +1,9 @@
 //! Files the backend offers a device's runner for download
-//! (`crates/shared-artifacts/src/download.rs`): an attachment `demi attachment
-//! download` writes on a Host is one. Unlike a pipe's bytes, an offer's stay whole while its call lasts, so
-//! the runner's download resumes from any byte after a break or a stall; the
-//! offer goes when the call that made it ends.
+//! (`crates/shared-artifacts/src/download.rs`): an attachment `demi attachment download` writes on
+//! a Host is one.
+//!
+//! Unlike a pipe's bytes, an offer's stay whole while its call lasts, so the runner's download
+//! resumes from any byte after a break or a stall. The offer goes when the call that made it ends.
 
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 

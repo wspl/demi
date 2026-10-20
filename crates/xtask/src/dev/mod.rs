@@ -1,39 +1,63 @@
 //! `xtask dev`: a backend for the web app to talk to, on a temporary data
-//! directory, or on one `--data` names and keeps, with the backend scenarios'
-//! scripted machine manager, whose runners run on this machine as the Cloud, set up
-//! as the web app contract suite starts the backend, with a master account and the
-//! development models `.env` turns on (a real one, the echo model) seeded through
-//! the web API. For work on the web app alone it needs no machine manager, Cloud
-//! image or model account. For example, a developer runs it, starts the page with
-//! the command it prints, signs in with the account the sign-in page fills in,
-//! picks the model `.env` names, asks for `uname -a`, and the agent runs it on the
-//! Cloud.
+//! directory, or on one `--data` names and keeps.
 //!
-//! It runs, until Ctrl-C, a termination, a hang-up or the end of the program that
-//! started it, and however it ends it stops what it started and removes its data
-//! directory. The backend, the manager and the runners run in process groups of
-//! their own, so the terminal's interrupt reaches only `xtask`, which stops them in
-//! order on every exit, the failure of a start included: the backend first, since
-//! it closes its connection to the manager as it shuts down, then the manager,
-//! whose input it closes and which ends its runners with it, then it removes the
-//! data directory. A process that does not stop in time, 10 seconds for the
-//! backend and 5 for the manager, is killed. Only a kill of `xtask` itself leaves
-//! the backend running. The backend is `target/debug/demi-backend` in isolated mode
-//! with the public URL `http://127.0.0.1:<port>`, and the command passes on none of
-//! its own `DEMI_*` variables, which the backend and the runner would refuse. The
-//! server release beside the data directory is assembled anew on each run and
-//! holds only `commands/` and `release.json`, with a release of each command
-//! program the build made for this machine's target only, which make the
-//! operations of `demi.file`, `demi.browser` and the others available on the Cloud
-//! and on a paired device of this target (the conversation browser works once the
-//! agent has run `demi browser install`). The manager gives its Cloud's runners the
-//! artifact cache `.cache/dev-artifacts` in the repository, which outlives every
-//! run, so a Cloud installs each program and Chrome once rather than at every
-//! wake or run.
+//! The backend is set up as the web app contract suite starts it:
 //!
-//! It does not cover what needs the real services: this Cloud isolates nothing and
-//! has no image, so a Cloud reset or a guest's network rules do not behave as on a
-//! real machine, and a paired device of another target finds no program for it.
+//! - It runs with the backend scenarios' scripted machine manager, whose
+//!   runners run on this machine as the Cloud.
+//! - A master account and the development models `.env` turns on (a real one,
+//!   the echo model) are seeded through the web API.
+//!
+//! For work on the web app alone it needs no machine manager, Cloud image or
+//! model account. For example, a developer runs it, starts the page with the
+//! command it prints, signs in with the account the sign-in page fills in,
+//! picks the model `.env` names, asks for `uname -a`, and the agent runs it on
+//! the Cloud.
+//!
+//! # Lifetime
+//!
+//! It runs until Ctrl-C, a termination, a hang-up or the end of the program
+//! that started it. However it ends, it stops what it started and removes its
+//! data directory.
+//!
+//! The backend, the manager and the runners run in process groups of their own,
+//! so the terminal's interrupt reaches only `xtask`, which stops them in order
+//! on every exit, the failure of a start included:
+//!
+//! 1. The backend first, since it closes its connection to the manager as it
+//!    shuts down.
+//! 2. Then the manager, whose input it closes and which ends its runners with
+//!    it.
+//! 3. Then it removes the data directory.
+//!
+//! A process that does not stop in time, 10 seconds for the backend and 5 for
+//! the manager, is killed. Only a kill of `xtask` itself leaves the backend
+//! running.
+//!
+//! # What it starts
+//!
+//! The backend is `target/debug/demi-backend` in isolated mode with the public
+//! URL `http://127.0.0.1:<port>`. The command passes on none of its own
+//! `DEMI_*` variables, which the backend and the runner would refuse.
+//!
+//! The server release beside the data directory is assembled anew on each run
+//! and holds only `commands/` and `release.json`, with a release of each
+//! command program the build made for this machine's target only. They make the
+//! operations of `demi.file`, `demi.browser` and the others available on the
+//! Cloud and on a paired device of this target (the conversation browser works
+//! once the agent has run `demi browser install`).
+//!
+//! The manager gives its Cloud's runners the artifact cache
+//! `.cache/dev-artifacts` in the repository, which outlives every run, so a
+//! Cloud installs each program and Chrome once rather than at every wake or
+//! run.
+//!
+//! # What it does not cover
+//!
+//! It does not cover what needs the real services: this Cloud isolates nothing
+//! and has no image, so a Cloud reset or a guest's network rules do not behave
+//! as on a real machine, and a paired device of another target finds no program
+//! for it.
 //!
 //! # A development backend with a real Cloud
 //!

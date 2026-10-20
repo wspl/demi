@@ -32,10 +32,12 @@ pub fn generate_first_password() -> Password {
 }
 
 /// Hashes and verifies passwords with the argon2 crate's default parameters,
-/// OWASP's minimum for argon2id (19 MiB, two passes, one lane), which the
-/// PHC string records beside the salt so a stored hash stays verifiable if
-/// they change, on the blocking pool and no more at once than the machine has CPUs,
-/// because each hash holds its memory until it finishes.
+/// OWASP's minimum for argon2id (19 MiB, two passes, one lane).
+///
+/// The PHC string records the parameters beside the salt, so a stored hash
+/// stays verifiable if they change. Hashing runs on the blocking pool, and no
+/// more at once than the machine has CPUs, because each hash holds its memory
+/// until it finishes.
 #[derive(Clone)]
 pub struct PasswordHasher {
     permits: Arc<Semaphore>,

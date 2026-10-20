@@ -142,9 +142,11 @@ fn for_inference_only(details: ProviderDetails) -> ProviderDetails {
     }
 }
 
-/// Whether the entry's models can be used now: not while the entry lacks a
-/// part it needs, all of which it names; then from its health, a credential
-/// that is refused or a provider that cannot run makes them unavailable.
+/// Whether the entry's models can be used now.
+///
+/// They cannot while the entry lacks a part it needs, all of which it names.
+/// Otherwise the entry's health decides: a credential that is refused or a
+/// provider that cannot run makes them unavailable.
 pub fn availability(
     entry: &ProviderEntry,
     auth: &AuthState,

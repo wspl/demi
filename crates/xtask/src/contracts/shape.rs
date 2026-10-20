@@ -336,14 +336,19 @@ fn strings(values: &Value, at: &str) -> Result<Vec<String>, Unsupported> {
         .collect()
 }
 
-/// Refuses the constructs Rust's `regex` and ECMAScript read differently,
-/// so that a pattern matches the same strings at both ends: the class
-/// escapes `\d`, `\w`, `\s` and `\b` (Unicode in Rust, ASCII in the
-/// user's browser), `.` (which excludes different line breaks), groups
-/// other than `(?:`, Unicode properties, Rust's anchors `\A` and `\z`, and
-/// what Rust reads as class syntax: a `[` inside a class (a nested class or
-/// `[:alpha:]`), `&&`, `--` and `~~`, and a `]` that opens a class (a
-/// literal in Rust, an empty class in the user's browser).
+/// Refuses the constructs Rust's `regex` and ECMAScript read differently, so
+/// that a pattern matches the same strings at both ends:
+///
+/// - The class escapes `\d`, `\w`, `\s` and `\b` (Unicode in Rust, ASCII in the
+///   user's browser).
+/// - `.` (which excludes different line breaks).
+/// - Groups other than `(?:`.
+/// - Unicode properties.
+/// - Rust's anchors `\A` and `\z`.
+/// - What Rust reads as class syntax: a `[` inside a class (a nested class or
+///   `[:alpha:]`), `&&`, `--` and `~~`.
+/// - A `]` that opens a class (a literal in Rust, an empty class in the user's
+///   browser).
 fn check_pattern(pattern: &str) -> Result<(), String> {
     let refuse = |what: &str| {
         Err(format!(

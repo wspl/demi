@@ -1,24 +1,27 @@
-//! User streams and one-shot user calls (`crates/runner-jobs/src/commands/streams.rs`):
-//! an operation of a native
+//! User streams and one-shot user calls
+//! (`crates/runner-jobs/src/commands/streams.rs`): an operation of a native
 //! package that serves the conversation's user directly, in the resident
-//! service that holds the conversation's state. A stream's bytes go both
-//! ways for as long as the page keeps it open, and the edge relays them
-//! under the stream's lease, as it does a file transfer; a one-shot call
-//! sends no input and reads its JSON answer to its end. Neither wakes a
-//! stopped Cloud unless the call is work the user starts: a stopped Cloud
-//! holds none of the state a stream shows, so the page learns that the Host
-//! is stopped, while work the user starts from the view, such as opening a
-//! new conversation browser tab, is ordinary demand and wakes it. An open
-//! stream is the conversation's activity, and so is a call that operates the
-//! Host; a call that only looks is not
+//! service that holds the conversation's state.
+//!
+//! A stream's bytes go both ways for as long as the page keeps it open, and the
+//! edge relays them under the stream's lease, as it does a file transfer. A
+//! one-shot call sends no input and reads its JSON answer to its end.
+//!
+//! Neither wakes a stopped Cloud unless the call is work the user starts: a
+//! stopped Cloud holds none of the state a stream shows, so the page learns
+//! that the Host is stopped. Work the user starts from the view, such as
+//! opening a new conversation browser tab, is ordinary demand and wakes it.
+//!
+//! An open stream is the conversation's activity, and so is a call that
+//! operates the Host. A call that only looks is not
 //! (`crates/backend-user-shard/src/lifecycle/mod.rs`).
 //!
 //! Once admitted, a stream does not hold the conversation's file gate, so a
 //! transition ends it instead of waiting for it: an archive, a target or
-//! directory change and a detach end the conversation's streams and
-//! one-shot calls as they end its file transfers, and a Cloud stop or reset
-//! ends them with the device's other work. The page reopens its streams by
-//! itself afterwards.
+//! directory change and a detach end the conversation's streams and one-shot
+//! calls as they end its file transfers, and a Cloud stop or reset ends them
+//! with the device's other work. The page reopens its streams by itself
+//! afterwards.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -151,9 +154,9 @@ pub enum UserCallError {
 
 impl dyn HostShard + '_ {
     /// Opens the user stream `binding` names on the conversation's primary
-    /// Host: admitted without waking a stopped Cloud, and open until the
-    /// edge drops its lease, the invocation completes, or a transition ends
-    /// it. Nothing moves before the runner opened it.
+    /// Host. The stream is admitted without waking a stopped Cloud, and open
+    /// until the edge drops its lease, the invocation completes, or a
+    /// transition ends it. Nothing moves before the runner opened it.
     pub async fn open_user_stream(
         &self,
         id: &ConversationId,
@@ -202,8 +205,8 @@ impl dyn HostShard + '_ {
 
     /// Runs a one-shot user call on the conversation's primary Host and returns
     /// its JSON answer. Work the user starts is an ordinary operation of the
-    /// conversation's host access; any other call is admitted as a user
-    /// stream is, and a transition ends it instead of waiting for it.
+    /// conversation's host access. Any other call is admitted as a user stream
+    /// is, and a transition ends it instead of waiting for it.
     pub async fn user_call(
         &self,
         id: &ConversationId,
@@ -254,10 +257,12 @@ impl dyn HostShard + '_ {
     }
 
     /// Runs `operation`, a look of the user's at the conversation's primary
-    /// Host such as which paths a message names are files: admitted as a
-    /// user stream is, so a stopped Cloud is refused rather than woken and
-    /// the look is no activity, and a transition ends it instead of waiting
-    /// for it (`crates/backend-host-access/src/access.rs`).
+    /// Host, such as which paths a message names are files
+    /// (`crates/backend-host-access/src/access.rs`).
+    ///
+    /// The look is admitted as a user stream is: a stopped Cloud is refused
+    /// rather than woken, the look is no activity, and a transition ends it
+    /// instead of waiting for it.
     pub async fn look_at_host<T>(
         &self,
         id: &ConversationId,
@@ -269,11 +274,15 @@ impl dyn HostShard + '_ {
         waits.wait(operation(&access.host)).await
     }
 
-    /// What the runner invokes for the user: the operation in the package
-    /// the conversation's jobs use, with a `user` caller, in the
-    /// conversation's directory, with `args` for a one-shot call, which
-    /// answers in JSON. The runner fetches the service's executable from
-    /// where the published catalog says, while the work is open.
+    /// What the runner invokes for the user:
+    ///
+    /// - The operation in the package the conversation's jobs use, with a
+    ///   `user` caller.
+    /// - The conversation's directory as the working directory.
+    /// - `args` for a one-shot call, which answers in JSON.
+    ///
+    /// The runner fetches the service's executable from where the published
+    /// catalog says, while the work is open.
     async fn service_request(
         &self,
         conversation: &ConversationId,
@@ -300,12 +309,14 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// Hands the edge a lease on an open user stream. The shard's owner
-    /// task keeps the stream registered with the conversation's transfers,
-    /// and its lease of the stream gate, until the edge drops the lease or a
-    /// transition ends the stream; then both pipes fail, which cancels an
-    /// invocation still running, and the service stops serving the stream's
-    /// artifact requests. A pipe that completed stays complete.
+    /// Hands the edge a lease on an open user stream.
+    ///
+    /// The shard's owner task keeps the stream registered with the
+    /// conversation's transfers, and its lease of the stream gate, until the
+    /// edge drops the lease or a transition ends the stream. Then both pipes
+    /// fail, which cancels an invocation still running, and the service stops
+    /// serving the stream's artifact requests. A pipe that completed stays
+    /// complete.
     fn lease_stream(
         &self,
         open: OpenTransfer,

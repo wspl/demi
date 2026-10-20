@@ -1,9 +1,12 @@
 //! A Host's subscriptions as the backend shares them
 //! (`crates/runner-host/src/subscriptions.rs`): one runner subscription per
 //! subject on a connection, held by every page's watch that holds the same
-//! subject. The first holder subscribes with `fs_subscribe`, the last one to let
-//! go ends it with `fs_unsubscribe`, a holder's renewal renews it on the runner,
-//! and the connection's end ends every holder.
+//! subject.
+//!
+//! - The first holder subscribes with `fs_subscribe`.
+//! - The last one to let go ends it with `fs_unsubscribe`.
+//! - A holder's renewal renews it on the runner.
+//! - The connection's end ends every holder.
 
 use std::{
     cell::RefCell,

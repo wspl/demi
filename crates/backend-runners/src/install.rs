@@ -1,19 +1,30 @@
 //! The runner installers (`crates/xtask/src/native/package.rs`): a shell script
 //! for macOS and Linux and a PowerShell script for Windows, each naming the
-//! backend and one runner release. A script downloads its platform's runner from
-//! the backend, checks its SHA-256, installs it under an installation of its own
-//! per backend, drains an older runner of that installation before it upgrades,
-//! and starts the runner, which asks to be paired. It then shows the runner's
-//! pairing codes until the runner is paired, and the device's name and the removal
-//! command once it is. A script holds no credential: pairing grants device access.
+//! backend and one runner release.
+//!
+//! A script does these steps:
+//!
+//! 1. It downloads its platform's runner from the backend and checks its
+//!    SHA-256.
+//! 2. It installs the runner under an installation of its own per backend.
+//! 3. It drains an older runner of that installation before it upgrades.
+//! 4. It starts the runner, which asks to be paired.
+//! 5. It shows the runner's pairing codes until the runner is paired, and the
+//!    device's name and the removal command once it is.
+//!
+//! A script holds no credential: pairing grants device access.
 //!
 //! The scripts leave the runner's departure from its terminal to the runner
-//! (`crates/runner/src/console.rs`) and show only the lines it writes to its log,
-//! which `run start` reads the same way (`crates/runner/src/start.rs`), so they
-//! never compose them. They never turn on the shell's job control (`set -m`): with
-//! `curl … | sh` at a terminal, a shell turning it off again hands the terminal back
-//! to curl's ended process group, and dash fails with exit code 2 after the runner
-//! has started. The backend composes the install commands from its public URL, as it
+//! (`crates/runner/src/console.rs`) and show only the lines it writes to its
+//! log, which `run start` reads the same way (`crates/runner/src/start.rs`), so
+//! they never compose them.
+//!
+//! They never turn on the shell's job control (`set -m`): with `curl … | sh` at
+//! a terminal, a shell turning it off again hands the terminal back to curl's
+//! ended process group, and dash fails with exit code 2 after the runner has
+//! started.
+//!
+//! The backend composes the install commands from its public URL, as it
 //! composes a device's `startCommand`.
 
 use std::path::Path;
@@ -79,15 +90,16 @@ pub fn install_commands(backend: &Url) -> InstallCommands {
     }
 }
 
-/// The command that starts the runner of `backend`'s installation again on
-/// a device of `platform`, typed in a terminal there: the launcher of the
+/// The command that starts the runner of `backend`'s installation again on a
+/// device of `platform`, typed in a terminal there: the launcher of the
 /// installation, in `installation` as its runner reported it or where the
-/// installers put it by default, with `start`, which starts the runner in
-/// the background (`crates/runner/src/start.rs`). A
-/// directory in `home`, the device's home directory, is written from the
+/// installers put it by default, with `start`, which starts the runner in the
+/// background (`crates/runner/src/start.rs`).
+///
+/// A directory in `home`, the device's home directory, is written from the
 /// home: `~` in a POSIX shell, `$env:USERPROFILE` in PowerShell, where `-File`
-/// does not expand `~`. On Windows it runs through PowerShell with a policy
-/// that lets the launcher run.
+/// does not expand `~`. On Windows the command runs through PowerShell with a
+/// policy that lets the launcher run.
 pub fn start_command(
     backend: &Url,
     installation: Option<&str>,
@@ -142,11 +154,15 @@ fn powershell_expandable(value: &str) -> String {
 }
 
 /// A server release's `runners/`, where the runner releases are
-/// (`crates/backend-http/src/install.rs`): `manifest.json` names the
-/// current one, the release the installers install and every paired
-/// device's runner follows, and each release's directory holds its own,
-/// which names each target's executable. A backend without them, as in
-/// development, serves no installer and checks no runner's release.
+/// (`crates/backend-http/src/install.rs`):
+///
+/// - `manifest.json` names the current release, the one the installers install
+///   and every paired device's runner follows.
+/// - Each release's directory holds its own manifest, which names each target's
+///   executable.
+///
+/// A backend without them, as in development, serves no installer and checks no
+/// runner's release.
 #[derive(Debug, Clone, Default)]
 pub struct RunnerReleases(Option<std::path::PathBuf>);
 

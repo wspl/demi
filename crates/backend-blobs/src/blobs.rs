@@ -1,18 +1,25 @@
 //! Attachment and transcript media: each user's bytes under `blobs/<user>/`,
-//! named by their SHA-256 in lowercase hexadecimal. A name identifies bytes
-//! only within its user's namespace, so knowing another user's hash reaches
-//! nothing of theirs. A collection of the namespace lists it and deletes the
-//! blobs nothing names (`crates/backend-database/src/deletions.rs`); every
-//! put of a blob the namespace holds already is remembered for a day, since
-//! it writes nothing that would show its age.
+//! named by their SHA-256 in lowercase hexadecimal.
 //!
-//! A blob is published before any row or frame that names it: an upload
-//! before a message can name it, a fitted image before its message reaches
-//! the session, a tool's medium before its result enters the transcript, an
-//! edit copy before the block that lists it, and a command's output before
-//! its record. No transaction spans SQLite and the object store, so a
-//! database failure can leave an unreferenced blob, which the collection
-//! removes later, but never a committed row that names unpublished bytes.
+//! A name identifies bytes only within its user's namespace, so knowing another
+//! user's hash reaches nothing of theirs.
+//!
+//! A collection of the namespace lists it and deletes the blobs nothing names
+//! (`crates/backend-database/src/deletions.rs`). Every put of a blob the
+//! namespace holds already is remembered for a day, since it writes nothing
+//! that would show its age.
+//!
+//! A blob is published before any row or frame that names it:
+//!
+//! - An upload, before a message can name it.
+//! - A fitted image, before its message reaches the session.
+//! - A tool's medium, before its result enters the transcript.
+//! - An edit copy, before the block that lists it.
+//! - A command's output, before its record.
+//!
+//! No transaction spans SQLite and the object store, so a database failure can
+//! leave an unreferenced blob, which the collection removes later. It never
+//! leaves a committed row that names unpublished bytes.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -29,9 +36,10 @@ use object_store::{GetOptions, ObjectStore, ObjectStoreExt as _, PutMode, PutOpt
 
 use crate::ObjectError;
 
-/// The most bytes of a blob read for what its opening tells: the media type
-/// its bytes show and a text file's snippet both come from a file's first
-/// bytes.
+/// The most bytes of a blob read for what its opening tells.
+///
+/// The media type its bytes show and a text file's snippet both come from a
+/// file's first bytes.
 pub const OPENING_BYTES: u64 = 64 * 1024;
 
 /// A blob's first [`OPENING_BYTES`], or all of a smaller one, and its size.
@@ -98,14 +106,18 @@ struct PutAgain {
     users: Mutex<HashMap<UserId, Arc<UserPuts>>>,
 }
 
-/// When each of a user's blobs that existed already was last put again,
-/// within the grace. Its lock is held across a put's question whether the
-/// blob exists and the record of its answer, and across a collection's last
-/// check of a blob and its deletion, so a put again comes either before
-/// that check, which then keeps the blob, or after the deletion, and then
-/// finds no blob and writes its bytes again. The lock is held for those
-/// steps alone, never across a collection's listing or its reading of the
-/// records.
+/// When each of a user's blobs that existed already was last put again, within
+/// the grace.
+///
+/// Its lock is held across two pairs of steps:
+///
+/// - A put's question whether the blob exists, and the record of its answer.
+/// - A collection's last check of a blob, and its deletion.
+///
+/// So a put again comes either before that check, which then keeps the blob, or
+/// after the deletion, and then finds no blob and writes its bytes again. The
+/// lock is held for those steps alone, never across a collection's listing or
+/// its reading of the records.
 type UserPuts = tokio::sync::Mutex<HashMap<BlobRef, Timestamp>>;
 
 impl PutAgain {
@@ -138,14 +150,17 @@ pub struct UserBlobs {
 }
 
 impl UserBlobs {
-    /// Stores `bytes` and answers their name. A name always names the same
-    /// bytes, so a blob the namespace holds already is success: the put asks
-    /// first whether it exists, and sends its bytes only when it does not, so
-    /// repeated uploads of one file store it once and send it once. On S3 a
-    /// new blob costs a HEAD and a PUT, one round trip more than the PUT
-    /// alone, but a blob that exists costs the HEAD alone, where a
-    /// conditional PUT would send the whole body, up to the upload cap,
-    /// before S3 refused it.
+    /// Stores `bytes` and answers their name.
+    ///
+    /// A name always names the same bytes, so a blob the namespace holds
+    /// already is success. The put asks first whether the blob exists, and
+    /// sends its bytes only when it does not, so repeated uploads of one file
+    /// store it once and send it once.
+    ///
+    /// On S3 a new blob costs a HEAD and a PUT, one round trip more than the
+    /// PUT alone. A blob that exists costs the HEAD alone, where a conditional
+    /// PUT would send the whole body, up to the upload cap, before S3 refused
+    /// it.
     pub async fn put(&self, bytes: Bytes) -> Result<BlobRef, ObjectError> {
         let (bytes, blob) = with_name(bytes).await?;
         self.store(&blob, bytes).await?;
@@ -222,9 +237,10 @@ impl UserBlobs {
         }
     }
 
-    /// Every blob the namespace holds, with when its object was written: one
-    /// listing, which on S3 is one request per 1,000 objects. An object
-    /// whose name is no blob's is left out: no record can name it, and a
+    /// Every blob the namespace holds, with when its object was written.
+    ///
+    /// It is one listing, which on S3 is one request per 1,000 objects. An
+    /// object whose name is no blob's is left out: no record can name it, and a
     /// collection never deletes what it does not know.
     pub async fn list(&self) -> Result<Vec<StoredBlob>, ObjectError> {
         let mut listing = self.objects.list(Some(&self.namespace));
@@ -256,12 +272,14 @@ impl UserBlobs {
         puts.insert(blob.clone(), now);
     }
 
-    /// A collection's last step for `blob`, which the listing found older
-    /// than the grace and no record names: deletes it unless it was put
-    /// again within the grace, and answers whether it did. Its age needs no
-    /// second look: a put of a blob that exists writes nothing, and only a
-    /// collection, one at a time per user, deletes one. A blob the namespace
-    /// no longer holds is deleted already.
+    /// A collection's last step for `blob`, which the listing found older than
+    /// the grace and no record names.
+    ///
+    /// It deletes the blob unless it was put again within the grace, and
+    /// answers whether it did. The blob's age needs no second look: a put of a
+    /// blob that exists writes nothing, and only a collection, one at a time
+    /// per user, deletes one. A blob the namespace no longer holds is deleted
+    /// already.
     pub async fn delete_unless_put_again(&self, blob: &BlobRef) -> Result<bool, ObjectError> {
         let mut puts = self.puts.lock().await;
         forget_old(&mut puts, self.clock.now());

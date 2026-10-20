@@ -1,9 +1,14 @@
 //! The product's rules over a subscription entry's accounts
-//! (`crates/backend-providers/src/vault/logins.rs`): every account comes from a sign-in, selecting an account is
-//! explicit, and removing the active account selects the entry's next one,
-//! or leaves it with none. A change of accounts invalidates the entry's
-//! provider and catalog, so the next request builds its runtime anew, while
-//! a running one finishes with its own.
+//! (`crates/backend-providers/src/vault/logins.rs`):
+//!
+//! - Every account comes from a sign-in.
+//! - Selecting an account is explicit.
+//! - Removing the active account selects the entry's next one, or leaves it
+//!   with none.
+//!
+//! A change of accounts invalidates the entry's provider and catalog, so the
+//! next request builds its runtime anew, while a running one finishes with its
+//! own.
 
 use demi_backend_database::StorageError;
 use demi_provider_common::credentials::AccountsError;

@@ -1,16 +1,23 @@
-//! The registry of each user's open synchronization channels, a shared
-//! service. Whoever commits a change a page shows marks the changed part in
-//! it, after the commit and from any thread, because some changes come from
+//! The registry of each user's open synchronization channels, a shared service.
+//!
+//! Whoever commits a change that a page shows marks the changed part in the
+//! registry, after the commit and from any thread. Some changes come from
 //! outside the user's shard: a shared instance's provider entries serve every
-//! user, so a change of one marks the channels of every user. The mark adds
-//! the part to the set of each of the user's channels and wakes the
-//! channel's task, which reads the part in the shard when it can send it. A
-//! channel holds at most one mark per part however far its page falls
-//! behind, so it never queues. A part of the backend that follows a user's
-//! changes as a page does, the search index, watches them the same way.
+//! user, so a change of one marks the channels of every user.
+//!
+//! A mark does two things:
+//!
+//! - It adds the part to the set of each of the user's channels.
+//! - It wakes the channel's task, which reads the part in the shard when it can
+//!   send it.
+//!
+//! A channel holds at most one mark per part however far its page falls behind,
+//! so it never queues. A part of the backend that follows a user's changes as a
+//! page does, such as the search index, watches them the same way.
 //!
 //! A channel is registered under the hash of the session it opened with, a
 //! record of `backend-database`, so a sign-out ends that session's channels.
+//!
 //! The registry reads and builds no product state: `backend-user-shard` does.
 
 use std::cell::RefCell;
@@ -132,10 +139,12 @@ impl SyncRegistry {
         self.add(user, None, true)
     }
 
-    /// Registers a watch of the end of `user`'s session `session`, for a
-    /// page's socket other than its channel, such as a conversation socket,
-    /// which closes with its session: its `marked` returns once the session
-    /// is signed out, and for nothing else.
+    /// Registers a watch of the end of `user`'s session `session`, for a page's
+    /// socket other than its channel.
+    ///
+    /// A conversation socket is such a socket: it closes with its session. The
+    /// watch's `marked` returns once the session is signed out, and for nothing
+    /// else.
     pub fn watch_session(&self, user: &UserId, session: TokenHash) -> Registration {
         self.add(user, Some(session), false)
     }
@@ -251,10 +260,12 @@ impl Drop for Registration {
     }
 }
 
-/// How many times one part of each conversation changed since its shard
-/// started, which its summary carries, such as its permission requests or its
-/// side questions; a conversation without an entry has changed none. It lives
-/// on the user's shard, which nothing else reaches.
+/// Counts, for each conversation, how many times one of its parts changed since
+/// its shard started, such as its permission requests or its side questions.
+///
+/// The conversation's summary carries the count. A conversation without an
+/// entry has changed none. The counts live on the user's shard, which nothing
+/// else reaches.
 #[derive(Default)]
 pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);
 

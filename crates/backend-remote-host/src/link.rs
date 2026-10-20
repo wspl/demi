@@ -1122,13 +1122,15 @@ impl Link {
     }
 
     /// Sends a job's `start`, after the manifest of its `commands` when the
-    /// connection did not carry that one last. The runner keeps every
-    /// manifest the connection carried and the start names the one it pins,
-    /// so jobs starting at once need not take turns. A manifest counts as
-    /// carried only once it is in the connection's queue: a job that finds
-    /// it carried queues its start behind it, and one that starts while
-    /// another's manifest still waits for room sends it again, which the
-    /// runner takes as the same manifest.
+    /// connection did not carry that one last.
+    ///
+    /// The runner keeps every manifest the connection carried and the start
+    /// names the one it pins, so jobs starting at once need not take turns. A
+    /// manifest counts as carried only once it is in the connection's queue:
+    ///
+    /// - A job that finds it carried queues its start behind it.
+    /// - A job that starts while another's manifest still waits for room sends
+    ///   it again, which the runner takes as the same manifest.
     pub(crate) async fn send_job_start(
         &self,
         commands: Option<&CommandSelection>,
@@ -1792,10 +1794,12 @@ impl Link {
     }
 
     /// Keeps the direct streams the runner reports open, by their ids, as
-    /// streams the backend opened (`crates/runner-protocol/src/direct.rs`): each opening asks the policy to admit the stream, and once
-    /// admitted the stream holds its conversation active and its artifact
-    /// requests are answered; its closing, or the connection's end, ends both
-    /// and cancels the requests in flight.
+    /// streams the backend opened (`crates/runner-protocol/src/direct.rs`).
+    ///
+    /// Each opening asks the policy to admit the stream. Once admitted, the
+    /// stream holds its conversation active and its artifact requests are
+    /// answered. Its closing, or the connection's end, ends both and cancels
+    /// the requests in flight.
     fn direct_stream(&self, stream: String, name: String, conversation: String, open: bool) {
         if !open {
             let closed = self.0.state.borrow_mut().direct_streams.remove(&stream);
@@ -1934,11 +1938,17 @@ impl Link {
         }
     }
 
-    /// Ends everything in flight on the connection: replies fail as offline,
-    /// processes end as lost, service and direct streams close (a direct
-    /// stream's token is a child of `closed`), calls stop, and the device's
-    /// pipes fail; its jobs wait for the device's next connection
-    /// (`crates/runner/src/connection/kept.rs`). Idempotent.
+    /// Ends everything in flight on the connection. The method is idempotent.
+    ///
+    /// - Replies fail as offline.
+    /// - Processes end as lost.
+    /// - Service and direct streams close (a direct stream's token is a child
+    ///   of `closed`).
+    /// - Calls stop.
+    /// - The device's pipes fail.
+    ///
+    /// The device's jobs wait for its next connection
+    /// (`crates/runner/src/connection/kept.rs`).
     pub(crate) fn teardown(&self, reason: &str) {
         if self.0.end.borrow().is_some() {
             return;

@@ -1,23 +1,33 @@
 //! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a Host
-//! reached through its runner (`crates/runner-shell/src/lib.rs`). Every exec is one
-//! job; the record holds the model's view of its output, the head while it runs
-//! and the whole output once it ended, and the pages' view, which also holds
-//! the newest output the runner sends while a page watches and the job is
-//! therefore followed (`crates/agent-server/src/server/tree/live.rs`). Every
-//! job starts in its node's working directory on the Host, and nothing of an
-//! earlier one carries over. A command outlives the environment: its keeper
-//! records it running before its job starts, a disposed environment lets its
-//! jobs run on, and the next environment of its node takes them up again
+//! reached through its runner (`crates/runner-shell/src/lib.rs`).
+//!
+//! Every exec is one job. The record holds two views of its output:
+//!
+//! - The model's view: the head while the job runs and the whole output once it
+//!   ended.
+//! - The pages' view, which also holds the newest output the runner sends while
+//!   a page watches and the job is therefore followed
+//!   (`crates/agent-server/src/server/tree/live.rs`).
+//!
+//! Every job starts in its node's working directory on the Host, and nothing of
+//! an earlier one carries over.
+//!
+//! A command outlives the environment: its keeper records it running before its
+//! job starts, a disposed environment lets its jobs run on, and the next
+//! environment of its node takes them up again
 //! (`crates/backend-remote-host/src/device_jobs.rs`).
 //!
 //! When a command ends, the keeper stores its whole output before any result
-//! reports the end, so the result and the pages show the same lines. The
-//! backend stores what it received when that is the whole output (each stream
-//! within its first 8 KiB and every byte received); otherwise it reads the
-//! Host's kept output once. A command lost with its connection keeps what the
-//! backend received up to the first byte it missed, followed by a line that
-//! counts the bytes lost. The stored output is never part of a request, so
-//! storing or removing it changes no request.
+//! reports the end, so the result and the pages show the same lines.
+//!
+//! - The backend stores what it received when that is the whole output: each
+//!   stream within its first 8 KiB and every byte received. Otherwise it reads
+//!   the Host's kept output once.
+//! - A command lost with its connection keeps what the backend received up to
+//!   the first byte it missed, followed by a line that counts the bytes lost.
+//!
+//! The stored output is never part of a request, so storing or removing it
+//! changes no request.
 
 use std::{
     cell::{Cell, RefCell},
@@ -81,13 +91,14 @@ pub struct JobWaiting<'a> {
 /// its whole output (`crates/agent-server/src/server/shell_output.rs`). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
-    /// Records that `command` runs as the job `job` on the environment's
-    /// Host, before the job starts, so that a backend that starts again
-    /// takes it up, its reports name it by its title, and an interrupted
-    /// call's command keeps its interval
-    /// (`crates/backend-database/src/command_outputs.rs`); a record of it
-    /// as not yet sent becomes one of it as sent. A failure to record it
-    /// is the keeper's to log: the command runs all the same.
+    /// Records that `command` runs as the job `job` on the environment's Host,
+    /// before the job starts, so that a backend that starts again takes it up,
+    /// its reports name it by its title, and an interrupted call's command
+    /// keeps its interval (`crates/backend-database/src/command_outputs.rs`). A
+    /// record of it as not yet sent becomes one of it as sent.
+    ///
+    /// A failure to record it is the keeper's to log: the command runs all the
+    /// same.
     fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()>;
 
     /// Records that `command` waits to start as the job `job` until its
@@ -345,14 +356,16 @@ impl RemoteShellEnvironment {
     }
 
     /// Takes up `taken`, which its call started on this environment's Host
-    /// before the backend restarted or the environment that ran it let go
-    /// of it (`crates/backend-remote-host/src/device_jobs.rs`): it is
-    /// followed to its end as if nothing had happened, counting its time
-    /// from its start and showing the model only output it has not seen,
-    /// and its runner's next hello says whether it went on, ended or was
-    /// lost. One whose start was never sent waits for its Host again and
-    /// is sent once its runner connects (`crates/backend-host-access/src/access.rs`). A command the environment holds already stays as it
-    /// is.
+    /// before the backend restarted or the environment that ran it let go of it
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    ///
+    /// The command is followed to its end as if nothing had happened, counting
+    /// its time from its start and showing the model only output it has not
+    /// seen. Its runner's next hello says whether it went on, ended or was
+    /// lost. One whose start was never sent waits for its Host again and is
+    /// sent once its runner connects
+    /// (`crates/backend-host-access/src/access.rs`). A command the environment
+    /// holds already stays as it is.
     pub fn adopt(&self, taken: TakenUp) {
         let TakenUp {
             command,
@@ -427,11 +440,11 @@ impl RemoteShellEnvironment {
         self.0.options.feed.changed(record);
     }
 
-    /// Runs one command to its end, inside the product's host access when
-    /// there is one; a command taken up again runs outside it, since it
-    /// holds its Host already and its runner may still be away. A command
-    /// the environment lets go of runs on, unsettled, and so does one whose
-    /// start still waits for its Host, which its record keeps waiting.
+    /// Runs one command to its end, inside the product's host access when there
+    /// is one. A command taken up again runs outside it, since it holds its
+    /// Host already and its runner may still be away. A command the environment
+    /// lets go of runs on, unsettled, and so does one whose start still waits
+    /// for its Host, which its record keeps waiting.
     async fn run(
         &self,
         command: CommandId,

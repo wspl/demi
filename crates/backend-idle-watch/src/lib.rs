@@ -1,17 +1,22 @@
 //! The idle rule's mechanism: one idle window, and one watch per resource.
-//! The rule itself, what counts as activity and what a retirement does, is
-//! `crates/backend-user-shard/src/lifecycle/mod.rs`'s.
 //!
-//! A watch reads its resource's gates: the resource is idle once its last
-//! demand ended, and new demand, however brief, restarts a full window. At
-//! the deadline the watch reserves the resource, reads it again under the
-//! reservation and only then retires it, so work that won admission first
-//! is never retired. Maintenance holds a gate without demand: it postpones
-//! a retirement without restarting the window, and the retirement follows
-//! its release. The watch does not know what its resource is: its callers
-//! read, reserve and retire it through an [`IdlePolicy`]. A watch never
-//! asks a Host or a service whether it is busy: activity is what the
-//! resource's gates admitted.
+//! The rule itself, what counts as activity and what a retirement does, belongs
+//! to `crates/backend-user-shard/src/lifecycle/mod.rs`.
+//!
+//! A watch reads its resource's gates:
+//!
+//! - The resource is idle once its last demand ended.
+//! - New demand, however brief, restarts a full window.
+//! - Maintenance holds a gate without demand. It postpones a retirement without
+//!   restarting the window, and the retirement follows its release.
+//!
+//! At the deadline the watch reserves the resource, reads it again under the
+//! reservation and only then retires it, so work that won admission first is
+//! never retired.
+//!
+//! The watch does not know what its resource is: its callers read, reserve and
+//! retire it through an [`IdlePolicy`]. A watch never asks a Host or a service
+//! whether it is busy: activity is what the resource's gates admitted.
 
 use std::future::Future;
 use std::time::Duration;
@@ -65,12 +70,15 @@ pub trait IdlePolicy {
     fn changed(&self) -> impl Future<Output = ()>;
 }
 
-/// Watches `policy`'s resource until it retired it: idle for `window`, it
-/// is reserved, read again and retired. Activity is read every `poll`; a
-/// retirement that failed, or a reading that did, is tried again a `poll`
-/// later, never in a tight loop. The retirement is a task of `tasks`, so a
-/// watch that is stopped lets a retirement already running finish, and the
-/// owner's close waits for it.
+/// Watches `policy`'s resource until the watch retires it.
+///
+/// Once the resource has been idle for `window`, the watch reserves it, reads
+/// it again and retires it. Activity is read every `poll`. A retirement that
+/// failed, or a reading that did, is tried again a `poll` later, never in a
+/// tight loop.
+///
+/// The retirement is a task of `tasks`, so a watch that is stopped lets a
+/// retirement already running finish, and the owner's close waits for it.
 pub async fn watch(policy: impl IdlePolicy, window: Duration, poll: Duration, tasks: TaskTracker) {
     let mut idle_since: Option<Instant> = None;
     loop {

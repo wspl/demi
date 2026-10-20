@@ -12,12 +12,15 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use crate::DeviceSource;
 
 /// Takes the upgrade of `source`'s stream pipe: its binary messages are the
-/// bytes, forwarded as the sink takes them; the runner's normal close frame
-/// ends the pipe, and any other close, or a connection lost without one,
-/// fails it. The backend's close frame is the pipe's outcome, which comes
-/// early when the sink stops taking bytes or the pipe fails while the runner
-/// still sends: normal once the sink drained it, an error with why it failed.
-/// An upgrade that never completes drops the source, which fails the pipe.
+/// bytes, forwarded as the sink takes them.
+///
+/// - The runner's normal close frame ends the pipe.
+/// - Any other close, or a connection lost without one, fails the pipe.
+///
+/// The backend's close frame is the pipe's outcome, which comes early when the
+/// sink stops taking bytes or the pipe fails while the runner still sends:
+/// normal once the sink drained it, an error with why it failed. An upgrade
+/// that never completes drops the source, which fails the pipe.
 pub fn accept_stream_pipe(upgrade: WebSocketUpgrade, source: DeviceSource) -> Response {
     upgrade
         .max_message_size(STREAM_PIPE_MESSAGE_BYTES)

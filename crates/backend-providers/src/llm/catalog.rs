@@ -1,13 +1,19 @@
-//! Where an entry's catalog comes from (`crates/shared-types/src/catalog.rs`): its
-//! configured model list, read from the entry and never cached; its vendor's
-//! list in models.dev; or its provider's directory, both through the catalog
-//! cache. A compatible entry has no source but its configured list: empty
-//! until the user adds a model. An unavailable source is not replaced by the
-//! next one: a vendor entry whose vendor models.dev does not list has an empty
-//! catalog, and a configured list is user configuration that no fetched
-//! catalog changes and no refresh clears. And the account-wide catalog
-//! `GET /api/models` answers, each model with the selection the backend builds
-//! from it.
+//! Where an entry's catalog comes from (`crates/shared-types/src/catalog.rs`).
+//!
+//! An entry's catalog has one of three sources:
+//!
+//! - Its configured model list, read from the entry and never cached.
+//! - Its vendor's list in models.dev, through the catalog cache.
+//! - Its provider's directory, through the catalog cache.
+//!
+//! A compatible entry has no source but its configured list: empty until the
+//! user adds a model. An unavailable source is not replaced by the next one. A
+//! vendor entry whose vendor models.dev does not list has an empty catalog, and
+//! a configured list is user configuration that no fetched catalog changes and
+//! no refresh clears.
+//!
+//! The module also builds the account-wide catalog `GET /api/models` answers,
+//! each model with the selection the backend builds from it.
 
 use std::sync::Arc;
 
@@ -57,12 +63,12 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
     }
 }
 
-/// `selection` with the facts of the entry's configured model applied again,
-/// as every inference boundary applies them
-/// (`crates/shared-types/src/model.rs`): an edit of a model's limits reaches
-/// the next request, and
-/// the thinking and tier stay as the user chose them. An entry without a
-/// configured list keeps the selection as it is.
+/// `selection` with the facts of the entry's configured model applied again, as
+/// every inference boundary applies them (`crates/shared-types/src/model.rs`).
+///
+/// An edit of a model's limits reaches the next request, and the thinking and
+/// tier stay as the user chose them. An entry without a configured list keeps
+/// the selection as it is.
 pub fn configured_selection(
     entry: &ProviderEntry,
     selection: ModelSelection,
@@ -164,11 +170,15 @@ impl ProviderAssembly {
     }
 
     /// The prices `model` of the entry is priced at as its calls' rows are
-    /// written (`crates/backend-database/src/usage.rs`): its
-    /// catalog's, and for a subscription, whose catalog has none, the same
-    /// model's on the vendor's API, from the backend's models.dev copy,
-    /// which asks models.dev at most once a day. None for a model the API
-    /// does not sell. `provider` is the entry's, as for its catalog.
+    /// written (`crates/backend-database/src/usage.rs`).
+    ///
+    /// - The entry's catalog gives them.
+    /// - For a subscription, whose catalog has none, they are the same model's
+    ///   prices on the vendor's API, from the backend's models.dev copy, which
+    ///   asks models.dev at most once a day.
+    ///
+    /// The result is none for a model the API does not sell. `provider` is the
+    /// entry's, as for its catalog.
     pub async fn model_price(
         &self,
         entry: &ProviderEntry,
@@ -369,13 +379,17 @@ mod tests {
         assert_eq!(configured_selection(&entry(None), chosen()), Ok(chosen()));
     }
 
-    /// A subscription's model is priced as the same model on the vendor's
-    /// API, from the backend's models.dev copy, Codex's at OpenAI's; a model
-    /// the API does not sell, and an API entry whose own catalog has no
-    /// price, stay unpriced (`crates/backend-database/src/usage.rs`). Planted
-    /// defects: a subscription priced from its own catalog
-    /// alone, or every entry priced from the vendor's listing.
-    /// One served document on an empty ledger: milliseconds.
+    /// A subscription's model is priced as the same model on the vendor's API,
+    /// from the backend's models.dev copy, Codex's at OpenAI's. A model the API
+    /// does not sell, and an API entry whose own catalog has no price, stay
+    /// unpriced (`crates/backend-database/src/usage.rs`).
+    ///
+    /// Planted defects:
+    ///
+    /// - A subscription priced from its own catalog alone.
+    /// - Every entry priced from the vendor's listing.
+    ///
+    /// Cost: one served document on an empty ledger, milliseconds.
     #[tokio::test]
     async fn a_subscription_is_priced_as_its_model_on_the_vendors_api() {
         let vendor = MockVendor::start().await;

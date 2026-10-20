@@ -1,21 +1,28 @@
 //! The conversation's host access: the one way to a conversation's primary or
-//! attached Host. An
-//! operation takes the conversation's file gate, so it excludes an archive
-//! or a target switch; the target is resolved, and an archived conversation
-//! or a device that is not bound is refused; in the grace after the
-//! backend starts, a device its last shutdown disconnected is waited for
-//! (a restart is not a device going away: its runners connect again by
-//! themselves within seconds), and after it an agent's job on the primary
-//! Host waits for its device's runner however long it takes, while an
-//! attached device without a live runner is refused with its offline error;
-//! a Cloud's admission is taken; the file gate is let go while any of them
-//! waits; then the operation runs once. Each
-//! conversation has one slot in its user's shard, with its file gate, its
+//! attached Host.
+//!
+//! Each conversation has one slot in its user's shard, with its file gate, its
 //! open transfers and the gate its open user streams hold.
 //!
-//! Admission is a loop, because the two things it waits for, the
-//! conversation's file gate and a Cloud's admission, are also what a
-//! transition takes:
+//! An operation passes through these checks:
+//!
+//! - It takes the conversation's file gate, so it excludes an archive or a
+//!   target switch.
+//! - The target is resolved, and an archived conversation or a device that is
+//!   not bound is refused.
+//! - In the grace after the backend starts, a device its last shutdown
+//!   disconnected is waited for. A restart is not a device going away: its
+//!   runners connect again by themselves within seconds.
+//! - After the grace, an agent's job on the primary Host waits for its device's
+//!   runner however long it takes. An attached device without a live runner is
+//!   refused with its offline error.
+//! - A Cloud's admission is taken.
+//!
+//! The file gate is let go while any of these waits. Then the operation runs
+//! once.
+//!
+//! Admission is a loop, because the two things it waits for, the conversation's
+//! file gate and a Cloud's admission, are also what a transition takes:
 //!
 //! ```text
 //! 1. Take the conversation's file gate.        Waits while a transition
@@ -30,25 +37,26 @@
 //! 5. Release the file gate and the Cloud's admission.
 //! ```
 //!
-//! The file gate is released before waiting for a Cloud because a reset
-//! takes the file gates of the conversations it holds: a caller that kept its
-//! own while it waited would wait for the reset forever. For the same reason
-//! nothing enters a conversation's file gate while it holds a lease of it:
-//! the gate is first-in, first-out, so a reservation queued between the two
-//! entries would wait for the first lease while the second waits behind the
-//! reservation. A conversation socket's frame is therefore handled under one
-//! lease, and a frame with uploads is admitted once on the primary Host
-//! through this entry, its uploads written through that admission.
+//! The file gate is released before waiting for a Cloud because a reset takes
+//! the file gates of the conversations it holds: a caller that kept its own
+//! while it waited would wait for the reset forever.
 //!
-//! Going back to step 1 repeats every check, since while the attempt waited
-//! the conversation may have been archived, switched or had its device
-//! detached. Only an attempt that has not dispatched its operation waits and
-//! starts over; a dispatched operation runs once and is never retried: if a
-//! reset or the loss of its device cuts it off, it fails with that cause.
+//! For the same reason nothing enters a conversation's file gate while it holds
+//! a lease of it. The gate is first-in, first-out, so a reservation queued
+//! between the two entries would wait for the first lease while the second
+//! waits behind the reservation. A conversation socket's frame is therefore
+//! handled under one lease, and a frame with uploads is admitted once on the
+//! primary Host through this entry, its uploads written through that admission.
 //!
-//! An agent's command on a primary device without a live runner waits for it
-//! as for a held conversation, so the agent sees a command that is slow, never
-//! one that failed for the device's absence; the user's Stop ends every waiting
+//! Going back to step 1 repeats every check, since while the attempt waited the
+//! conversation may have been archived, switched or had its device detached.
+//! Only an attempt that has not dispatched its operation waits and starts over.
+//! A dispatched operation runs once and is never retried: if a reset or the
+//! loss of its device cuts it off, it fails with that cause.
+//!
+//! An agent's command on a primary device without a live runner waits for it as
+//! for a held conversation, so the agent sees a command that is slow, never one
+//! that failed for the device's absence. The user's Stop ends every waiting
 //! command, which never runs, since a user who stops expects nothing to start
 //! later.
 
@@ -88,15 +96,15 @@ pub struct Conversations {
 
 /// One conversation's part of its user's shard.
 pub struct ConversationSlot {
-    /// Every operation on the conversation's Hosts holds a lease of it; a
-    /// transition reserves it. Only host access takes its leases, the ones
-    /// a conversation's Host is made against (`Devices::conversation_host`);
-    /// other work holds the conversation through `file_gate`.
+    /// Every operation on the conversation's Hosts holds a lease of it, and a
+    /// transition reserves it. Only host access takes its leases, the ones a
+    /// conversation's Host is made against (`Devices::conversation_host`).
+    /// Other work holds the conversation through `file_gate`.
     files: FileGate,
-    /// Every open user stream holds a demand lease of it: someone watches
-    /// the conversation's Host, which is activity (`backend-user-shard`'s
-    /// `crates/backend-user-shard/src/lifecycle/mod.rs`). Nothing reserves it, since a transition ends the streams
-    /// instead of waiting for them.
+    /// Every open user stream holds a demand lease of it: someone watches the
+    /// conversation's Host, which is activity
+    /// (`crates/backend-user-shard/src/lifecycle/mod.rs`). Nothing reserves it,
+    /// since a transition ends the streams instead of waiting for them.
     pub streams: ActivityGate,
     /// The open file transfers and user streams.
     pub transfers: Rc<TransferSet>,
@@ -480,10 +488,10 @@ struct Selected {
     /// Whether the directory is made before the operation, as a Cloud
     /// session directory is.
     prepare: bool,
-    /// Whether it is the conversation's primary Host. An agent's job waits
-    /// for it while its runner is away, and its other operations are
-    /// admitted, as a command taken up again is, and the Host answers them
-    /// offline; an attached Host is refused.
+    /// Whether it is the conversation's primary Host. An agent's job waits for
+    /// it while its runner is away. Its other operations are admitted, as a
+    /// command taken up again is, and the Host answers them offline. An
+    /// attached Host is refused.
     primary: bool,
 }
 
@@ -569,11 +577,10 @@ impl dyn HostShard + '_ {
                 continue;
             }
             // An agent's job waits for its primary device however long it
-            // takes, holding no file lease, so a move can fail it; an
-            // attached device without a live runner is refused with its
-            // offline error; any other operation on the primary Host is
-            // admitted, and its Host answers it offline at once (§ Host
-            // operations).
+            // takes, holding no file lease, so a move can fail it. An attached
+            // device without a live runner is refused with its offline error.
+            // Any other operation on the primary Host is admitted, and its Host
+            // answers it offline at once (§ Host operations).
             if away && selected.primary && let Some(wait) = waits.device {
                 drop(files);
                 let held = waiting.get_or_insert_with(|| slot.wait_for_device(selected.device.id.clone()));
@@ -625,14 +632,19 @@ impl dyn HostShard + '_ {
 
     /// Admits a user stream, or a one-shot user call that must not wake the
     /// Host (§ Host operations), on the conversation's primary Host or the
-    /// bound device `device` names: like any operation, except that a stopped
-    /// Cloud is refused instead of woken, and that the admitted stream lets
-    /// go of the file gate. It stays registered with the conversation's
-    /// transfers, so a transition ends it. `attention` says what it is to
-    /// the conversation's activity: a look holds the file gate without
-    /// demand while it is admitted, and a stream takes its lease of the
-    /// stream gate before it lets go of the file gate, so an idle watch that
-    /// reserved the file gate sees every stream admitted before it.
+    /// bound device `device` names.
+    ///
+    /// It works like any operation, with these differences:
+    ///
+    /// - A stopped Cloud is refused instead of woken.
+    /// - The admitted stream lets go of the file gate.
+    /// - It stays registered with the conversation's transfers, so a transition
+    ///   ends it.
+    ///
+    /// `attention` says what it is to the conversation's activity. A look holds
+    /// the file gate without demand while it is admitted. A stream takes its
+    /// lease of the stream gate before it lets go of the file gate, so an idle
+    /// watch that reserved the file gate sees every stream admitted before it.
     pub(crate) async fn admit_stream(
         &self,
         id: &ConversationId,
@@ -705,12 +717,13 @@ impl dyn HostShard + '_ {
         ))
     }
 
-    /// How long an operation on `device` waits for its runner first: the
-    /// rest of the grace after the backend started, when the last shutdown
+    /// How long an operation on `device` waits for its runner first: the rest
+    /// of the grace after the backend started, when the last shutdown
     /// disconnected the device and its runner is not back yet
-    /// (`crates/backend-remote-host/src/device_jobs.rs`). The wait
-    /// comes once per admission, before anything answers that the device is
-    /// offline or the Cloud stopped, and holds no file lease, so a
+    /// (`crates/backend-remote-host/src/device_jobs.rs`).
+    ///
+    /// The wait comes once per admission, before anything answers that the
+    /// device is offline or the Cloud stopped. It holds no file lease, so a
     /// transition does not wait for it.
     fn returning(&self, device: &DeviceId) -> Option<std::time::Duration> {
         self.devices().returning(device, self.clock().now().to_jiff())
@@ -807,12 +820,14 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// The Hosts the user's conversation `id` reaches, which the web app's
-    /// host routes and `demi host shell --host` accept
-    /// (`crates/backend-database/src/conversation_index.rs`): its primary Host, then
-    /// its attached ones. A command on the primary Host starts in the
-    /// conversation's directory there; one on an attached Host in the
-    /// directory fixed when it was attached, or in its home when none was.
+    /// The Hosts the user's conversation `id` reaches, which the web app's host
+    /// routes and `demi host shell --host` accept
+    /// (`crates/backend-database/src/conversation_index.rs`): its primary Host,
+    /// then its attached ones.
+    ///
+    /// A command on the primary Host starts in the conversation's directory
+    /// there. A command on an attached Host starts in the directory fixed when
+    /// it was attached, or in its home when none was.
     pub async fn conversation_hosts(
         &self,
         id: &ConversationId,
@@ -860,14 +875,16 @@ impl dyn HostShard + '_ {
         Ok(hosts)
     }
 
-    /// Lifecycle access (§ Lifecycle access): the release of `conversation`,
-    /// by the name the runner knows it by, sent to `device` while its runner
-    /// is connected, a paired device's or a running Cloud's. It takes no file
-    /// gate and wakes nothing: a device whose runner is not connected, a
-    /// stopped Cloud among them, lost the conversation's services with its
-    /// connection, and holds no files of it. A release that fails is logged
-    /// with the Host and the reason, and fails nothing that sent it, since
-    /// nothing is left for it (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+    /// Lifecycle access (§ Lifecycle access): sends the release of
+    /// `conversation`, by the name the runner knows it by, to `device` while
+    /// its runner is connected, a paired device's or a running Cloud's.
+    ///
+    /// It takes no file gate and wakes nothing: a device whose runner is not
+    /// connected, a stopped Cloud among them, lost the conversation's services
+    /// with its connection, and holds no files of it. A release that fails is
+    /// logged with the Host and the reason, and fails nothing that sent it,
+    /// since nothing is left for it
+    /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
     pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId) {
         let Some(link) = self.devices().link(device) else {
             return;

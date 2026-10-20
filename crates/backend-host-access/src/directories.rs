@@ -1,7 +1,10 @@
-//! A directory as its Host names it (`crates/backend-database/src/selection.rs`): every move asks the destination's Host, which follows links,
-//! drops a trailing separator and spells the directory as its file system
-//! keeps it, so two spellings of one directory select the one project, and
-//! a home reached through a link is the home.
+//! A directory as its Host names it
+//! (`crates/backend-database/src/selection.rs`).
+//!
+//! Every move asks the destination's Host, which follows links, drops a
+//! trailing separator and spells the directory as its file system keeps it. So
+//! two spellings of one directory select the one project, and a home reached
+//! through a link is the home.
 
 use demi_backend_database::devices::DeviceRecord;
 use demi_host_interface::{FileKind, HostError, HostErrorKind, HostFs};
@@ -73,11 +76,12 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// `to` with its directory as the Host names it: a directory of a
-    /// paired device, which the device's runner resolves; the Cloud's
-    /// directory of a conversation, a Fork's source's or a Cloud project's
-    /// is one the backend made and names as it is, and `demi host move`
-    /// resolves a Cloud directory it is given itself.
+    /// `to` with its directory as the Host names it:
+    ///
+    /// - A directory of a paired device is resolved by the device's runner.
+    /// - The Cloud's directory of a conversation, a Fork's source's or a Cloud
+    ///   project's is one the backend made and names as it is.
+    /// - `demi host move` resolves a Cloud directory it is given itself.
     pub async fn resolved_destination(
         &self,
         to: ConversationTarget,

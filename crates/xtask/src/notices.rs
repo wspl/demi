@@ -1,18 +1,23 @@
-//! `xtask notices`: writes the third-party notices of what a release
-//! ships into the built web app, which shows them at Settings › About ›
-//! Acknowledgements and which a server release carries, its notices
-//! copied to the root as `THIRD-PARTY-NOTICES`.
+//! `xtask notices`: writes the third-party notices of what a release ships into
+//! the built web app, which shows them at Settings › About › Acknowledgements
+//! and which a server release carries, its notices copied to the root as
+//! `THIRD-PARTY-NOTICES`.
 //!
-//! The Rust crates are those each shipped program links on its own
-//! targets, the vendored ones included, read with cargo-about, which finds
-//! each crate's license files in its sources and checks its license against
-//! [`ACCEPTED`]. The npm packages are those the web app's bundle holds, as
-//! Vite's `build.license` lists them from the bundle's module graph, each
-//! with the text of its license file. A dependency whose license is not one
-//! of [`ACCEPTED`], or whose license cannot be read, stops the command, so a
-//! new dependency never ships without its notice. The libraries a program
-//! carries that are neither, [`LIBRARIES`], have their notice in the
-//! repository.
+//! The notices cover three groups:
+//!
+//! - The Rust crates are those each shipped program links on its own targets,
+//!   the vendored ones included, read with cargo-about, which finds each
+//!   crate's license files in its sources and checks its license against
+//!   [`ACCEPTED`].
+//! - The npm packages are those the web app's bundle holds, as Vite's
+//!   `build.license` lists them from the bundle's module graph, each with the
+//!   text of its license file.
+//! - The libraries a program carries that are neither, [`LIBRARIES`], have
+//!   their notice in the repository.
+//!
+//! A dependency whose license is not one of [`ACCEPTED`], or whose license
+//! cannot be read, stops the command, so a new dependency never ships without
+//! its notice.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -69,15 +74,20 @@ struct Library {
     notice: &'static str,
 }
 
-/// idb's libraries and guest bridge, in demi-mobile's iOS helper
-/// (`crates/command-package-mobile/build.rs`); openatx's UI automation server, demi-mobile's
-/// Android helper, and Cisco's OpenH264 binary, which demi-mobile downloads
-/// for the Android view and whose binary license asks the product to credit
-/// it (`crates/command-package-mobile/build.rs`); the vendors' marks the web app shows,
-/// models.dev's and Simple Icons' (`crates/backend-providers/src/llm/vendors.rs`);
-/// and the Android robot, an Android emulator's logo
-/// (`packages/plugin-mobile/src/index.ts`), whose license asks for its
-/// attribution.
+/// The libraries a program carries that are neither Rust crates nor npm
+/// packages:
+///
+/// - idb's libraries and guest bridge, in demi-mobile's iOS helper
+///   (`crates/command-package-mobile/build.rs`).
+/// - openatx's UI automation server, demi-mobile's Android helper.
+/// - Cisco's OpenH264 binary, which demi-mobile downloads for the Android view
+///   and whose binary license asks the product to credit it
+///   (`crates/command-package-mobile/build.rs`).
+/// - The vendors' marks the web app shows, models.dev's and Simple Icons'
+///   (`crates/backend-providers/src/llm/vendors.rs`).
+/// - The Android robot, an Android emulator's logo
+///   (`packages/plugin-mobile/src/index.ts`), whose license asks for its
+///   attribution.
 const LIBRARIES: [Library; 6] = [
     Library {
         name: "idb",

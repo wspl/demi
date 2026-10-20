@@ -1,17 +1,21 @@
 //! The firewall: one fixed nftables table whose rules are the same for every
-//! sandbox. Its only per-sandbox fact is an element of the `slots` set, the
-//! pair of a sandbox's host interface and source address, so a packet from a
-//! Cloud interface with any other pair is dropped and a workload can neither
-//! replace the rules nor send as another sandbox. The table is installed
-//! whole whenever the manager reconciles, with the pair of every sandbox that
-//! runs, in the same transaction, since a reconcile keeps those sandboxes
-//! running. For example, a backend that restarts sends `reconcile` while the
-//! Claude Code machine runs a request: without its pair the new table would
-//! drop every packet the Cloud sends, and the request would wait on DNS that
-//! never answers while the Cloud looks healthy. The table is built as typed
-//! data with the `nftables` crate and applied with `nft` in one transaction:
-//! the netlink libraries for nftables are thinly maintained, and a text
-//! script would be assembled from strings.
+//! sandbox.
+//!
+//! Its only per-sandbox fact is an element of the `slots` set, the pair of a
+//! sandbox's host interface and source address, so a packet from a Cloud
+//! interface with any other pair is dropped and a workload can neither replace
+//! the rules nor send as another sandbox.
+//!
+//! The table is installed whole whenever the manager reconciles, with the pair
+//! of every sandbox that runs, in the same transaction, since a reconcile keeps
+//! those sandboxes running. For example, a backend that restarts sends
+//! `reconcile` while the Claude Code machine runs a request: without its pair
+//! the new table would drop every packet the Cloud sends, and the request would
+//! wait on DNS that never answers while the Cloud looks healthy.
+//!
+//! The table is built as typed data with the `nftables` crate and applied with
+//! `nft` in one transaction: the netlink libraries for nftables are thinly
+//! maintained, and a text script would be assembled from strings.
 //!
 //! ```text
 //! table inet demi_cloud {

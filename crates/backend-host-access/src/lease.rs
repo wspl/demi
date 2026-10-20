@@ -1,10 +1,11 @@
 //! Leases (`crates/backend-user-shard/src/lib.rs`): a host operation the shard
-//! admitted that outlives the call, such as a file transfer or a user
-//! stream, whose bytes the edge moves. The edge holds the lease while bytes
-//! move; dropping it tells the shard the operation is over, which releases
-//! its admission. The shard can end the operation first, for example when
-//! the conversation is archived: the lease's `ended` then resolves, and the
-//! edge stops.
+//! admitted that outlives the call, such as a file transfer or a user stream,
+//! whose bytes the edge moves.
+//!
+//! The edge holds the lease while bytes move. Dropping it tells the shard the
+//! operation is over, which releases its admission. The shard can end the
+//! operation first, for example when the conversation is archived: the lease's
+//! `ended` then resolves, and the edge stops.
 
 use std::future::Future;
 use std::pin::Pin;

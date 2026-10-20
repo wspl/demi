@@ -1,8 +1,10 @@
 //! `xtask server-release`: assembles a server release from the executables
-//! `xtask native build` wrote. A server release is one directory per version
-//! and Linux target, its root, in which the backend and the machine manager
-//! find everything they serve, publish or run, with the release's files beside
-//! it. For example, 0.1.3 for x86_64:
+//! `xtask native build` wrote.
+//!
+//! A server release is one directory per version and Linux target, its root, in
+//! which the backend and the machine manager find everything they serve,
+//! publish or run, with the release's files beside it. For example, 0.1.3 for
+//! x86_64:
 //!
 //! ```text
 //! /opt/demi/releases/0.1.3/
@@ -29,25 +31,36 @@
 //! GitHub release that offers them; for a developer's, the directory they lie
 //! in. The backend takes each program from there the first time a Host needs
 //! it, so a server downloads the Windows programs only when a Windows laptop
-//! pairs. The backend serves `web/`, installs runners from `runners/` and
-//! publishes every package under `commands/`; the machine manager imports
-//! `image/`, built from the same release with its Linux target's programs taken
-//! from the release's files, so the command artifacts it embeds are the ones
-//! the backend's catalog selects and a Cloud starts them from the image instead
-//! of downloading them. A root without `--server` has no `bin/` or `systemd/`
-//! (a developer's backend runs from the Cargo target directory), one without
-//! `--web` has no web app (Vite serves it in development), and one without
-//! `image/` serves a backend whose machine manager runs elsewhere. No root
-//! carries gVisor.
+//! pairs.
+//!
+//! What reads the root:
+//!
+//! - The backend serves `web/`, installs runners from `runners/` and publishes
+//!   every package under `commands/`.
+//! - The machine manager imports `image/`, built from the same release with its
+//!   Linux target's programs taken from the release's files, so the command
+//!   artifacts it embeds are the ones the backend's catalog selects and a Cloud
+//!   starts them from the image instead of downloading them.
+//!
+//! Parts of the root are optional:
+//!
+//! - A root without `--server` has no `bin/` or `systemd/` (a developer's
+//!   backend runs from the Cargo target directory).
+//! - One without `--web` has no web app (Vite serves it in development).
+//! - One without `image/` serves a backend whose machine manager runs
+//!   elsewhere.
+//!
+//! No root carries gVisor.
 //!
 //! Its `LICENSE`, `LICENSE-DEMI` and `NOTICE` are the repository's, and with a
 //! web app its `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into
 //! it. Packaging makes each release whole first, so its records and its files
-//! are the ones packaging checked. The root is assembled in a stage beside it
-//! and renamed into place, so it exists whole or not at all, and is never
-//! changed in place; the files directory may already hold this build's files,
-//! as when the build's other Linux root was assembled into it, and a file in
-//! place must then be the same.
+//! are the ones packaging checked.
+//!
+//! The root is assembled in a stage beside it and renamed into place, so it
+//! exists whole or not at all, and is never changed in place. The files
+//! directory may already hold this build's files, as when the build's other
+//! Linux root was assembled into it, and a file in place must then be the same.
 
 use std::path::{Path, PathBuf};
 

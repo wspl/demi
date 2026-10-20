@@ -38,24 +38,27 @@ pub fn native_fixture_binary() -> PathBuf {
 /// commands it was given, one line each.
 pub const SERVICE_MANAGER_CALLS: &str = "service-manager-calls";
 
-/// Writes in `directory` the program that stands in for the service
-/// manager's commands of the runners a test starts
-/// ([`demi_runner_protocol::SERVICE_MANAGER_STAND_IN`]) and returns its
-/// path. On Unix it records each command line in [`SERVICE_MANAGER_CALLS`]
-/// beside it and keeps whether a LaunchAgent is loaded as launchd would;
-/// asked to start the runner, by `launchctl kickstart` of a loaded agent or
-/// `systemctl --user restart`, it starts the
-/// launcher of the installation `DEMI_HOME` names, when there is one, in
-/// the background, as the manager's runner; loading an agent starts none,
-/// where launchd's would find the lock held and end, so that no runner of
-/// the stand-in's outlives the test's. With `DEMI_TEST_MANAGER_REFUSES`
-/// set, it refuses every command that would start the runner (a kickstart,
-/// loading an agent, `systemctl --user start` or `restart`) and does every
-/// other command, as a
-/// manager that registered the installation but cannot start it: refusing
-/// every command would fail the registration on Linux, where the runner
-/// then never asks for a start. On Windows it answers every command with
-/// success.
+/// Writes in `directory` the program that stands in for the service manager's
+/// commands of the runners a test starts
+/// ([`demi_runner_protocol::SERVICE_MANAGER_STAND_IN`]) and returns its path.
+///
+/// On Unix the program behaves as follows:
+///
+/// - It records each command line in [`SERVICE_MANAGER_CALLS`] beside it, and
+///   keeps whether a LaunchAgent is loaded as launchd would.
+/// - Asked to start the runner, by `launchctl kickstart` of a loaded agent or
+///   `systemctl --user restart`, it starts the launcher of the installation
+///   `DEMI_HOME` names, when there is one, in the background, as the manager's
+///   runner.
+/// - Loading an agent starts none, where launchd's would find the lock held and
+///   end, so that no runner of the stand-in's outlives the test's.
+/// - With `DEMI_TEST_MANAGER_REFUSES` set, it refuses every command that would
+///   start the runner (a kickstart, loading an agent, `systemctl --user start`
+///   or `restart`) and does every other command, as a manager that registered
+///   the installation but cannot start it. Refusing every command would fail
+///   the registration on Linux, where the runner then never asks for a start.
+///
+/// On Windows it answers every command with success.
 pub fn service_manager_stand_in(directory: &Path) -> PathBuf {
     #[cfg(unix)]
     {

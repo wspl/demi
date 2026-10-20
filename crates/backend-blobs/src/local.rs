@@ -1,9 +1,12 @@
-//! The local object store: the data directory through `object_store`'s
-//! local file system, which syncs every write and its directory before the
-//! write returns, so a local object is durable once written, as an S3
-//! object is. A file has no place for an object's attributes, so they lie
-//! in a file of their own under `.attributes/`, which no object's listing
-//! reaches: written before the object, so an object never lacks the
+//! The local object store: the data directory through `object_store`'s local
+//! file system.
+//!
+//! The file system syncs every write and its directory before the write
+//! returns, so a local object is durable once written, as an S3 object is.
+//!
+//! A file has no place for an object's attributes, so they lie in a file of
+//! their own under `.attributes/`, which no object's listing reaches. The
+//! attributes are written before the object, so an object never lacks the
 //! attributes it was written with.
 
 use std::fmt;

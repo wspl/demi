@@ -1,14 +1,20 @@
-//! One user's plugins on the user's shard: an instance of every plugin, made when the
-//! shard starts; which of them the user has on, which decides the toolset a
-//! conversation's tree opens with and which page states, page calls and
-//! user streams exist; the context sources among them; the Host directories
-//! of the plugins on; and the answers to their port operations. The plugin
-//! host answers values, directories, changes, secrets, outbound requests
-//! and sign-ins itself; what reaches the user's blobs, a conversation's
-//! Hosts or the user's provider entries goes to the product, which owns
-//! the blob namespace, the conversation's host access and the providers,
-//! and so do the sealing of a secret, the client an outbound request is
-//! sent with, the public URL and the time.
+//! One user's plugins on the user's shard.
+//!
+//! The module holds:
+//!
+//! - An instance of every plugin, made when the shard starts.
+//! - Which of them the user has on, which decides the toolset a conversation's
+//!   tree opens with and which page states, page calls and user streams exist.
+//! - The context sources among them.
+//! - The Host directories of the plugins on.
+//! - The answers to their port operations.
+//!
+//! The plugin host answers values, directories, changes, secrets, outbound
+//! requests and sign-ins itself. What reaches the user's blobs, a
+//! conversation's Hosts or the user's provider entries goes to the product,
+//! which owns the blob namespace, the conversation's host access and the
+//! providers. The product also owns the sealing of a secret, the client an
+//! outbound request is sent with, the public URL and the time.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -388,11 +394,13 @@ impl Shared {
         }
     }
 
-    /// Tells the plugin that owns the kind of the tab the user removed, if
-    /// the user has it on, after the change is answered: the page never
-    /// waits for the plugin's work, which may wake a Host. A tab the user
-    /// created is none of the plugin's business: the user creates tabs of
-    /// the kinds no plugin owns, such as a file's, and the plugin its own.
+    /// Tells the plugin that owns the kind of the tab the user removed, if the
+    /// user has it on, after the change is answered: the page never waits for
+    /// the plugin's work, which may wake a Host.
+    ///
+    /// A tab the user created is none of the plugin's business: the user
+    /// creates tabs of the kinds no plugin owns, such as a file's, and the
+    /// plugin its own.
     fn tell_owner(
         self: &Rc<Self>,
         conversation: ConversationId,
@@ -868,10 +876,12 @@ impl UserPlugins {
     }
 
     /// What `lost` names was kept on a Host of each of `conversations` and
-    /// ended without its package saying so: each plugin that binds such a
-    /// package, that the user has on and that has panel tabs in one of the
-    /// conversations, receives `package_lost` for it (`crates/command-protocol/src/messages.rs`). A plugin that shows nothing of a
-    /// conversation has nothing to correct.
+    /// ended without its package saying so.
+    ///
+    /// Each plugin that binds such a package, that the user has on and that has
+    /// panel tabs in one of the conversations, receives `package_lost` for it
+    /// (`crates/command-protocol/src/messages.rs`). A plugin that shows nothing
+    /// of a conversation has nothing to correct.
     pub async fn package_lost(&self, lost: Lost<'_>, conversations: &[ConversationId]) {
         let plugins = match lost {
             Lost::Package(package) => self.receivers(package).await,
@@ -933,11 +943,12 @@ impl UserPlugins {
         self.0.control.panel(conversation).await
     }
 
-    /// A page's changes of the conversation's work panel, all or none: each
-    /// tab they create is of a kind a plugin the user has on declares.
-    /// Answers the panel's revision once the changes are in it and whether
-    /// they changed it, and tells the kind's plugin of each tab the user
-    /// created or removed.
+    /// A page's changes of the conversation's work panel, all or none: each tab
+    /// they create is of a kind a plugin the user has on declares.
+    ///
+    /// Answers the panel's revision once the changes are in it and whether they
+    /// changed it, and tells the kind's plugin of each tab the user created or
+    /// removed.
     pub async fn change_panel(
         &self,
         conversation: ConversationId,

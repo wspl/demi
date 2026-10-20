@@ -1,9 +1,11 @@
 //! `demi-server setup` (`installation.md`): sets a Linux machine up as a Demi
 //! server with the release of this program, from the choices its parameters
-//! give. A person at a terminal is asked for what is missing; without a
-//! terminal, as an agent runs it, a missing choice prints the guide. Every
-//! step can be taken again, so the same command continues a run that stopped,
-//! such as for a proxy that was not ready yet.
+//! give.
+//!
+//! A person at a terminal is asked for what is missing. Without a terminal, as
+//! an agent runs it, a missing choice prints the guide. Every step can be taken
+//! again, so the same command continues a run that stopped, such as for a proxy
+//! that was not ready yet.
 
 use std::{
     io::{self, BufRead as _, IsTerminal as _, Write as _},

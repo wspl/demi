@@ -1,18 +1,24 @@
 //! One boot's OCI runtime configuration: the prepared root, UID 1000's process
 //! under init, the runtime mounts, the network namespace and, with the resource
-//! limits on, the cgroup and its limits. The profile is code, not configuration:
-//! only the paths, the slot and the limits vary, and a workload cannot supply
-//! annotations, host paths, runtime flags or network or cgroup identities.
+//! limits on, the cgroup and its limits.
+//!
+//! The profile is code, not configuration: only the paths, the slot and the
+//! limits vary, and a workload cannot supply annotations, host paths, runtime
+//! flags or network or cgroup identities.
 //!
 //! The isolation boundary is the gVisor sandbox, not a workspace, a Docker
-//! namespace or a hardware VM: each user gets a separate Sentry, filesystem view,
-//! network namespace and, with the limits on, resource group. What stays trusted
-//! is the Linux kernel, the manager, the `runsc` distribution and the image
-//! builder. Operations the product does not support return errors; they never
-//! widen isolation, and the profile changes only with a design and acceptance
-//! update, never as a per-user escape hatch. The product supports ordinary Linux
+//! namespace or a hardware VM: each user gets a separate Sentry, filesystem
+//! view, network namespace and, with the limits on, resource group. What stays
+//! trusted is the Linux kernel, the manager, the `runsc` distribution and the
+//! image builder.
+//!
+//! Operations the product does not support return errors. They never widen
+//! isolation, and the profile changes only with a design and acceptance update,
+//! never as a per-user escape hatch. The product supports ordinary Linux
 //! development and conversation browsers, not arbitrary kernel features or
 //! privileged nested Docker.
+//!
+//! The profile has these rules:
 //!
 //! - `noNewPrivileges` is off so that sudo works. The initial process has empty
 //!   effective, permitted, inheritable and ambient sets; setuid programs may

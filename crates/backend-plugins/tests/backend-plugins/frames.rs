@@ -1,9 +1,11 @@
-//! The live output of commands (`crates/agent-server/src/server/tree/live.rs`): every attached
-//! page receives each command's output as it comes and its end, with no frame
-//! of its own; a page that attaches finds the live commands in its
-//! handshake and then follows them too; a page writes to a command and stops
-//! it; a chatty command fills no page's outbox; and the model's place in the
-//! output stays its own.
+//! The live output of commands (`crates/agent-server/src/server/tree/live.rs`):
+//!
+//! - Every attached page receives each command's output as it comes and its end, with no frame of
+//!   its own.
+//! - A page that attaches finds the live commands in its handshake and then follows them too.
+//! - A page writes to a command and stops it.
+//! - A chatty command fills no page's outbox.
+//! - The model's place in the output stays its own.
 
 use std::time::{Duration, Instant};
 
@@ -349,14 +351,14 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
     .await;
 }
 
-/// A command that prints faster than a page reads sends each page at most
-/// one frame every 250 ms, so a page that reads nothing until the end keeps
-/// its connection; and while a page is attached the runner follows the
-/// command, so its view shows output beyond the first 32 KiB of a stream
-/// while it runs (`crates/agent-server/src/server/tree/live.rs`). About four seconds: a login
-/// shell, a loop of 1,000 writes, which a page's outbox of 64 frames would
-/// not hold one frame each, then 140 KB of numbers, and the two seconds of
-/// quiet that end its call.
+/// A command that prints faster than a page reads sends each page at most one frame every 250 ms,
+/// so a page that reads nothing until the end keeps its connection. While a page is attached the
+/// runner follows the command, so its view shows output beyond the first 32 KiB of a stream while
+/// it runs (`crates/agent-server/src/server/tree/live.rs`).
+///
+/// Cost: about four seconds: a login shell, a loop of 1,000 writes, which a page's outbox of 64
+/// frames would not hold one frame each, then 140 KB of numbers, and the two seconds of quiet that
+/// end its call.
 #[tokio::test(flavor = "local")]
 async fn a_chatty_command_fills_no_outbox_and_shows_output_beyond_its_first_32_kib() {
     within(async {

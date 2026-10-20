@@ -1,9 +1,15 @@
 //! Provider assembly and model catalogs (`crates/backend-providers/src/lib.rs`,
-//! `crates/shared-types/src/catalog.rs`): the
-//! contract of the families entries are built with, the provider of each
-//! entry and account, the catalog of each entry with its cache, the vendors
-//! from models.dev, what the product shows of a provider, the vendor's
-//! Claude Code releases, and the user's small model.
+//! `crates/shared-types/src/catalog.rs`).
+//!
+//! The module holds:
+//!
+//! - The contract of the families entries are built with.
+//! - The provider of each entry and account.
+//! - The catalog of each entry, with its cache.
+//! - The vendors from models.dev.
+//! - What the product shows of a provider.
+//! - The vendor's Claude Code releases.
+//! - The user's small model.
 
 pub mod assembly;
 pub mod catalog;

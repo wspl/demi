@@ -10,23 +10,29 @@ use demi_web_api_protocol as api;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
 /// What the web app does with a type, which decides whether its schema is a
-/// tolerant or a strict object. Each end judges what it receives. The
-/// backend refuses unknown fields of a type it receives, also of one both
-/// ends receive, because its check guards its state: model settings arrive
-/// in a preferences patch and leave in every conversation list, and a model
-/// selection travels in every block and is read back from the conversation
-/// database. The web app's schema of every type it receives is tolerant, so
-/// a page left open across a deploy that adds a field keeps working. A strict
-/// object is written only for a type the web app never receives, such as a
-/// client frame, and generation refuses one whose Rust type accepts unknown
-/// fields.
+/// tolerant or a strict object. Each end judges what it receives.
+///
+/// - The backend refuses unknown fields of a type it receives, also of one both
+///   ends receive, because its check guards its state: model settings arrive in
+///   a preferences patch and leave in every conversation list, and a model
+///   selection travels in every block and is read back from the conversation
+///   database.
+/// - The web app's schema of every type it receives is tolerant, so a page left
+///   open across a deploy that adds a field keeps working.
+/// - A strict object is written only for a type the web app never receives,
+///   such as a client frame, and generation refuses one whose Rust type accepts
+///   unknown fields.
 ///
 /// A tolerant schema may also accept more than the Rust type holds, since the
-/// backend never sends the difference (a failure map's keys may be empty
-/// where a block id cannot). Where the web app sends a value, its schema
-/// refuses whatever the backend refuses: a name the backend trims is trimmed
-/// before its length is checked, an endpoint must be an `http` or `https` URL,
-/// and an email address passes only in the form the backend checks.
+/// backend never sends the difference (a failure map's keys may be empty where
+/// a block id cannot).
+///
+/// Where the web app sends a value, its schema refuses whatever the backend
+/// refuses:
+///
+/// - A name the backend trims is trimmed before its length is checked.
+/// - An endpoint must be an `http` or `https` URL.
+/// - An email address passes only in the form the backend checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     /// The web app receives it, in a frame, a response or a table.

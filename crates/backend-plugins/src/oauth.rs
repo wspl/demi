@@ -1,13 +1,19 @@
-//! The plugins' OAuth sign-ins: for a plugin
-//! whose manifest names its vendor's authorization server, the host
-//! registers Demi as a public client once per instance and issuer (RFC
-//! 7591), starts a user's sign-in with PKCE (RFC 7636, S256) and a `state`
-//! kept with the user for 10 minutes, exchanges the code the callback
-//! brings, keeps the tokens sealed as the plugin's secret under a name no
-//! plugin can read, renews them by the provider credentials' protocol
-//! (`crates/provider-common/src/credentials/refresh.rs`) and revokes them (RFC 7009) at sign
-//! out. Every call to the vendor is an outbound request of the plugin; the endpoints are read from the
-//! server's metadata (RFC 8414). A plugin sees only the access token.
+//! The plugins' OAuth sign-ins: for a plugin whose manifest names its vendor's
+//! authorization server, the host:
+//!
+//! - Registers Demi as a public client once per instance and issuer (RFC 7591).
+//! - Starts a user's sign-in with PKCE (RFC 7636, S256) and a `state` kept with
+//!   the user for 10 minutes.
+//! - Exchanges the code the callback brings.
+//! - Keeps the tokens sealed as the plugin's secret under a name no plugin can
+//!   read.
+//! - Renews the tokens by the provider credentials' protocol
+//!   (`crates/provider-common/src/credentials/refresh.rs`).
+//! - Revokes the tokens (RFC 7009) at sign out.
+//!
+//! Every call to the vendor is an outbound request of the plugin. The endpoints
+//! are read from the server's metadata (RFC 8414). A plugin sees only the
+//! access token.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -437,11 +443,12 @@ impl Shared {
         Ok(name)
     }
 
-    /// A live access token of the user's sign-in to plugin `plugin`'s
-    /// vendor, renewed first when it expires within a minute, or when it is
-    /// the `refused` one the vendor's resource server refused. A `refused`
-    /// token already replaced, by another renewal or a new sign-in, answers
-    /// the current one: the renewals take turns, so one refusal seen by
+    /// A live access token of the user's sign-in to plugin `plugin`'s vendor,
+    /// renewed first when it expires within a minute, or when it is the
+    /// `refused` one the vendor's resource server refused.
+    ///
+    /// A `refused` token already replaced, by another renewal or a new sign-in,
+    /// answers the current one: the renewals take turns, so one refusal seen by
     /// several requests renews once.
     pub(crate) async fn oauth_token(
         self: &Rc<Self>,
@@ -496,10 +503,11 @@ impl Shared {
         }
     }
 
-    /// Renews `tokens`, stored at `revision`, at plugin `plugin`'s vendor
-    /// and stores what it answers. Only the vendor's `invalid_grant`
-    /// forgets the tokens and answers *signed out*; any other failure keeps
-    /// them, so the next call renews again.
+    /// Renews `tokens`, stored at `revision`, at plugin `plugin`'s vendor and
+    /// stores what it answers.
+    ///
+    /// Only the vendor's `invalid_grant` forgets the tokens and answers *signed
+    /// out*. Any other failure keeps them, so the next call renews again.
     async fn renew(
         &self,
         plugin: usize,

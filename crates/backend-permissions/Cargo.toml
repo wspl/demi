@@ -6,11 +6,10 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# The backend's permission scenarios cover the check, the decisions and
-# their messages at the boundaries the agent and the page observe
-# (`ARCHITECTURE.md`). The unit tests hold what no
-# scenario can order: a stop and an allow ready at the same moment. No doc
-# examples.
+# The backend's permission scenarios cover the check, the decisions and their
+# messages at the boundaries the agent and the page observe (`ARCHITECTURE.md`).
+# The unit tests hold what no scenario can order: a stop and an allow ready at
+# the same moment. The crate has no doc examples.
 doctest = false
 bench = false
 

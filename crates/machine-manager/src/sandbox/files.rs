@@ -1,21 +1,27 @@
 //! A boot's files: the runtime record in the working pair, the runtime
 //! directory's layout, and the credential files the sandbox reads.
 //!
-//! The backend mints a managed-device token per boot and stores its hash; the
-//! manager receives `{ backendUrl, deviceToken }` for that boot only, decodes it
-//! with the runner protocol's managed-boot type, which refuses unknown fields,
-//! requires the backend URL to equal its configured one, and supplies the record
-//! as a private read-only file on a temporary mount. The token never appears in
-//! process arguments, image layers, persistent working files, the OCI
-//! environment, logs or stored generations; only the non-secret path is an
-//! argument. Runtime metadata with sensitive paths stays in an
-//! owner-restricted temporary directory, and cleanup removes it on a failed
-//! start and on a stop entry by entry, so it never deletes the contents of a
-//! mount still attached beneath it. A managed runner with a missing or invalid
-//! record fails and never enters pairing; each token permits one live
-//! connection and is scoped to its device, and a rotation rejects the previous
-//! boot's. Sandbox root can inspect its own runner and credential: the boundary
-//! is against other users and the infrastructure, not against the owner of that
+//! The backend mints a managed-device token per boot and stores its hash. The
+//! manager receives `{ backendUrl, deviceToken }` for that boot only, decodes
+//! it with the runner protocol's managed-boot type, which refuses unknown
+//! fields, requires the backend URL to equal its configured one, and supplies
+//! the record as a private read-only file on a temporary mount.
+//!
+//! The token never appears in process arguments, image layers, persistent
+//! working files, the OCI environment, logs or stored generations. Only the
+//! non-secret path is an argument.
+//!
+//! Runtime metadata with sensitive paths stays in an owner-restricted temporary
+//! directory. Cleanup removes it on a failed start and on a stop entry by
+//! entry, so it never deletes the contents of a mount still attached beneath
+//! it.
+//!
+//! A managed runner with a missing or invalid record fails and never enters
+//! pairing. Each token permits one live connection and is scoped to its device,
+//! and a rotation rejects the previous boot's.
+//!
+//! Sandbox root can inspect its own runner and credential: the boundary is
+//! against other users and the infrastructure, not against the owner of that
 //! Cloud.
 //!
 //! ```text

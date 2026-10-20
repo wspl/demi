@@ -1,10 +1,13 @@
-//! A plugin's OAuth sign-in, against a fake
-//! authorization server: Demi registers once, a user's sign-in exchanges
-//! its code with its PKCE verifier, the tokens renew at their revision and
-//! spend each refresh token once, a renewal runs to its end when its
-//! caller goes away, an access token the vendor's resource server refused
-//! renews once however many requests name it, only a refused refresh token
-//! signs the user out, and signing out revokes them.
+//! A plugin's OAuth sign-in, against a fake authorization server:
+//!
+//! - Demi registers once.
+//! - A user's sign-in exchanges its code with its PKCE verifier.
+//! - The tokens renew at their revision and spend each refresh token once.
+//! - A renewal runs to its end when its caller goes away.
+//! - An access token the vendor's resource server refused renews once however
+//!   many requests name it.
+//! - Only a refused refresh token signs the user out.
+//! - Signing out revokes the tokens.
 
 use demi_backend_plugins::testing::{Authority, AuthorizationServer};
 use demi_backend_plugins::{Callback, CallbackError, Registry, UserPlugins};

@@ -1,18 +1,23 @@
 //! The backend's end of the machine manager's socket
-//! (`crates/machine-manager-protocol/src/lib.rs`): one connection, opened
-//! by the first call and opened again by the next call after it drops.
-//! Requests carry ids this client counts, and replies are matched to them
-//! in whatever order they come. When the connection drops, every call in
-//! flight fails with a manager-unavailable error: losing the socket does
-//! not establish that an operation failed, so the Cloud's lifecycle asks
-//! the manager before it retries. A death event goes to the one receiver
-//! the backend routes to the device's owner.
+//! (`crates/machine-manager-protocol/src/lib.rs`).
+//!
+//! The client keeps one connection, opened by the first call and opened again
+//! by the next call after it drops.
+//!
+//! - Requests carry ids this client counts, and replies are matched to them in
+//!   whatever order they come.
+//! - When the connection drops, every call in flight fails with a
+//!   manager-unavailable error. Losing the socket does not establish that an
+//!   operation failed, so the Cloud's lifecycle asks the manager before it
+//!   retries.
+//! - A death event goes to the one receiver the backend routes to the device's
+//!   owner.
 //!
 //! A supervisor task owns the connection, the calls in flight and the id
-//! counter; the client is its handle, and the task ends with the client.
-//! A connection serves calls once the manager's `hello` names this
-//! backend's wire version; a manager of another release fails the call that
-//! connected.
+//! counter. The client is its handle, and the task ends with the client.
+//!
+//! A connection serves calls once the manager's `hello` names this backend's
+//! wire version. A manager of another release fails the call that connected.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -63,9 +68,11 @@ pub enum MachinesError {
     },
 }
 
-/// A handle on the machine manager's socket. `Send + Sync`: it is a service
-/// every shard shares. The `testing` feature exports it for the Cloud suite,
-/// which asks a real manager for a checkpoint and a device's generation.
+/// A handle on the machine manager's socket.
+///
+/// It is `Send + Sync`: a service every shard shares. The `testing` feature
+/// exports it for the Cloud suite, which asks a real manager for a checkpoint
+/// and a device's generation.
 pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
     /// Ends the supervisor with the client.

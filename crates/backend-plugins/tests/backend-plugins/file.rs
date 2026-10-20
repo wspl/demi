@@ -381,13 +381,16 @@ async fn the_end_report_of_a_background_job_carries_the_media_it_viewed() {
     .await;
 }
 
-/// A stdout with a stray byte that is not UTF-8 is text, which shows that
-/// byte as U+FFFD, and only a NUL in its first 8 KiB or a media type makes
-/// it binary (`crates/command-package-file/src/files.rs`). The script is
-/// the one a model ran in a small repository: `cat` prints a Latin-1 line,
-/// and `grep -I` holds back the lines of a git object and a Latin-1 line
-/// while the rest prints. Before, the one byte hid the whole output as a
-/// binary stdout. A few seconds: one shell job on a real runner.
+/// A stdout with a stray byte that is not UTF-8 is text, which shows that byte
+/// as U+FFFD. Only a NUL in its first 8 KiB or a media type makes it binary
+/// (`crates/command-package-file/src/files.rs`).
+///
+/// The script is the one a model ran in a small repository: `cat` prints a
+/// Latin-1 line, and `grep -I` holds back the lines of a git object and a
+/// Latin-1 line while the rest prints. Before, the one byte hid the whole
+/// output as a binary stdout.
+///
+/// Cost: a few seconds, one shell job on a real runner.
 #[tokio::test(flavor = "local")]
 async fn a_stdout_with_a_stray_byte_shows_as_text() {
     within(async {

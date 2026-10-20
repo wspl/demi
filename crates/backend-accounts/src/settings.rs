@@ -34,8 +34,10 @@ pub fn check(mut patch: PreferencesPatch) -> Result<CheckedPatch, LocaleError> {
 
 /// The locale with its time zone checked against ICU4X's IANA names, which
 /// ignore case, and its tags canonicalized as a web browser's
-/// `Intl.getCanonicalLocales` does: `zh-cn` becomes `zh-CN` and `iw` becomes
-/// `he`, and a tag that repeats an earlier one goes.
+/// `Intl.getCanonicalLocales` does.
+///
+/// For example, `zh-cn` becomes `zh-CN`, `iw` becomes `he`, and a tag that
+/// repeats an earlier one goes.
 fn canonical(locale: BrowserLocale) -> Result<BrowserLocale, LocaleError> {
     let zone = IanaParserExtended::new().parse(&locale.time_zone);
     if zone.time_zone.is_unknown() {
@@ -61,11 +63,14 @@ fn canonical(locale: BrowserLocale) -> Result<BrowserLocale, LocaleError> {
     })
 }
 
-/// `preferences` with `patch` applied: a field the patch holds replaces the
-/// saved one, the lists of hidden entries and models whole, a `null`
-/// shortcut removes that override, a `null` small model goes back to
-/// Automatic, a context limit changes that one model's, and everything the
-/// patch leaves out stays.
+/// `preferences` with `patch` applied:
+///
+/// - A field the patch holds replaces the saved one. The lists of hidden
+///   entries and models replace it whole.
+/// - A `null` shortcut removes that override.
+/// - A `null` small model goes back to Automatic.
+/// - A context limit changes that one model's.
+/// - Everything the patch leaves out stays.
 pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) -> Preferences {
     if let Some(appearance) = patch.appearance {
         let saved = &mut preferences.appearance;

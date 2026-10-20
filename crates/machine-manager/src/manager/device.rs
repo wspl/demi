@@ -1,10 +1,12 @@
 //! A device's worker (`crates/machine-manager-protocol/src/lib.rs`): it owns
 //! the device's sandbox and runs the device's operations one at a time, in
-//! arrival order. The sandbox's exit is one more event between operations,
-//! never during one, and the worker waits only on its current sandbox, so the
-//! late exit of an earlier boot cannot stop a newer one. After the current
-//! boot exits the worker stops what remains, saves the working pair and sends
-//! the death event, even when stopping or saving fails.
+//! arrival order.
+//!
+//! The sandbox's exit is one more event between operations, never during one,
+//! and the worker waits only on its current sandbox, so the late exit of an
+//! earlier boot cannot stop a newer one. After the current boot exits the
+//! worker stops what remains, saves the working pair and sends the death event,
+//! even when stopping or saving fails.
 
 use std::{path::Path, rc::Rc};
 

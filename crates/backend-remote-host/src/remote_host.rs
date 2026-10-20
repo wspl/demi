@@ -254,12 +254,13 @@ impl RemoteHost {
         }
     }
 
-    /// A pipe the device's runner fills with `range` of the file, once the
-    /// file is open, with the file's metadata and version then, so no `stat`
-    /// precedes a read (`crates/runner-host/src/lib.rs`): a file that cannot
-    /// be opened, or is not a regular file, fails here, before any byte. A
-    /// range is read up to the end the file had when it was opened. Dropping
-    /// the reader stops the read.
+    /// A pipe the device's runner fills with `range` of the file, once the file
+    /// is open, with the file's metadata and version then, so no `stat`
+    /// precedes a read (`crates/runner-host/src/lib.rs`).
+    ///
+    /// A file that cannot be opened, or is not a regular file, fails here,
+    /// before any byte. A range is read up to the end the file had when it was
+    /// opened. Dropping the reader stops the read.
     pub async fn read_pipe(&self, path: &str, range: ByteRange) -> Result<OpenedRead, HostError> {
         opened(self.read_pipe_held(self.cwd(), path, range, None).await?)
     }
@@ -389,10 +390,11 @@ impl RemoteHost {
     }
 
     /// Writes the file from `input`, a pipe from [`RemoteHost::write_pipe`]:
-    /// the runner puts the file in place once it read the pipe to its end,
-    /// and then replies with the name it has. A pipe that fails leaves the
-    /// file as it was; a path taken that the write may not have refuses it
-    /// before the pipe is read.
+    /// the runner puts the file in place once it read the pipe to its end, and
+    /// then replies with the name it has.
+    ///
+    /// A pipe that fails leaves the file as it was. A path taken that the write
+    /// may not have refuses it before the pipe is read.
     pub async fn write_from(
         &self,
         path: &str,
@@ -421,10 +423,11 @@ impl RemoteHost {
 
     /// Writes the file `path` with `bytes`, whose SHA-256 is `sha256`, which
     /// the runner downloads from this backend as every file Demi downloads
-    /// (`crates/shared-artifacts/src/download.rs`): resumed after a break or a stall,
-    /// with no overall deadline, and checked before it is put in place as
-    /// `options` says. Answers the name the file has, or the cause of the
-    /// failure.
+    /// (`crates/shared-artifacts/src/download.rs`).
+    ///
+    /// The download resumes after a break or a stall, has no overall deadline,
+    /// and is checked before it is put in place as `options` says. Answers the
+    /// name the file has, or the cause of the failure.
     pub async fn download_file(
         &self,
         path: &str,
@@ -1189,14 +1192,16 @@ impl RemoteJob {
 
     /// Stops the job (`crates/runner-shell/src/job.rs` says what each signal
     /// does there): `TERM`, then `KILL` once [`wire::STOP_GRACE`] has passed
-    /// without its end. A command counts as stopped only when its runner says its
-    /// job ended, so a stop while the runner is away leaves it running, shown as
-    /// stopping, until the link is back. A
-    /// signal sent while no connection served the job reached nothing, and
-    /// one sent over a connection that ended may not have reached the
-    /// runner, so both go again each time the job goes on over a connection
-    /// other than the one they went over. Ends with the job's end, which
-    /// only its runner reports, or its loss.
+    /// without its end.
+    ///
+    /// A command counts as stopped only when its runner says its job ended, so
+    /// a stop while the runner is away leaves it running, shown as stopping,
+    /// until the link is back. A signal sent while no connection served the job
+    /// reached nothing, and one sent over a connection that ended may not have
+    /// reached the runner, so both go again each time the job goes on over a
+    /// connection other than the one they went over.
+    ///
+    /// Ends with the job's end, which only its runner reports, or its loss.
     pub async fn stop(&self) -> JobEnd {
         let mut attachments = self.clone();
         loop {
@@ -2021,12 +2026,13 @@ fn pipe_error(error: PipeError) -> HostError {
 /// (`crates/runner-host/src/files.rs`).
 const REPLY_AFTER_INPUT: Duration = Duration::from_secs(60);
 
-/// `reply`, the answer to a write whose bytes travel through `input`. Once
-/// the pipe drained, the runner has only what its connection still queues
-/// and its file left to finish; a reply not there within
-/// [`REPLY_AFTER_INPUT`] fails the write as interrupted and closes the
-/// connection that carried the pipe, which ends the runner's read, so the
-/// runner removes its temporary file.
+/// `reply`, the answer to a write whose bytes travel through `input`. Once the
+/// pipe drained, the runner has only what its connection still queues and its
+/// file left to finish.
+///
+/// A reply not there within [`REPLY_AFTER_INPUT`] fails the write as
+/// interrupted and closes the connection that carried the pipe, which ends the
+/// runner's read, so the runner removes its temporary file.
 async fn reply_after_input<T>(
     input: &Pipe,
     path: &str,

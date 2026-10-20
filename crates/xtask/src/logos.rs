@@ -1,18 +1,23 @@
 //! `xtask logos` (`crates/backend-providers/src/llm/vendors.rs`): refreshes the
-//! marks of the vendors the backend offers from models.dev into the web
-//! app's logos directory.
+//! marks of the vendors the backend offers from models.dev into the web app's
+//! logos directory.
 //!
 //! The vendors are the ones the backend's vendor catalog offers, read from
 //! models.dev's document as the backend reads it. Each vendor's mark is
-//! models.dev's `logos/<vendor>.svg`, which models.dev answers with a
-//! generic sparkle for a vendor it has no mark for; the sparkle is what it
-//! answers for a vendor that does not exist, and a vendor whose mark is the
-//! sparkle gets no file, so it shows its initial. The web app paints a mark
-//! as a mask in the text's color (`VendorMark`), which keeps only its shape:
-//! a mark the mask cannot draw gets no file either, and shows its initial,
-//! for the reason [`Unusable`] names. The marks kept by hand
-//! are listed in [`HAND_KEPT`] with their sources; the command never writes
-//! or removes them, and removes every other mark it did not write.
+//! models.dev's `logos/<vendor>.svg`.
+//!
+//! A vendor gets no file, and so shows its initial, in these cases:
+//!
+//! - models.dev answers with a generic sparkle for a vendor it has no mark for,
+//!   and for a vendor that does not exist. A vendor whose mark is the sparkle
+//!   gets no file.
+//! - The web app paints a mark as a mask in the text's color (`VendorMark`),
+//!   which keeps only its shape. A mark the mask cannot draw gets no file
+//!   either, for the reason [`Unusable`] names.
+//!
+//! The marks kept by hand are listed in [`HAND_KEPT`] with their sources. The
+//! command never writes or removes them, and removes every other mark it did
+//! not write.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

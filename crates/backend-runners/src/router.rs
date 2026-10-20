@@ -1,9 +1,10 @@
 //! Each agent node's commands, for the rpc calls its jobs make
-//! (`crates/host-interface/src/rpc.rs`). A node registers its command set
-//! while one of its shell environments lives; a job's call names its node,
-//! and the relay dispatches the call to that node's commands, provided the
-//! node belongs to the job's conversation. The registration is removed with
-//! the last environment that holds it.
+//! (`crates/host-interface/src/rpc.rs`).
+//!
+//! A node registers its command set while one of its shell environments lives.
+//! A job's call names its node, and the relay dispatches the call to that
+//! node's commands, provided the node belongs to the job's conversation. The
+//! registration is removed with the last environment that holds it.
 
 use std::cell::RefCell;
 use std::collections::HashMap;

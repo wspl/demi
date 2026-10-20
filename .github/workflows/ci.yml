@@ -1,10 +1,15 @@
 # Checks each pull request and each push to main or feat/demi-next, the
-# development trunk, on a stock Linux runner
-# (docs/delivery/testing.md): the workspace's one Cargo selection, checked
-# and tested; the web app's suites and type checks; the public registry
-# check; and gitleaks over the commits. The suites that need Chrome, a real
-# machine manager or a vendor's CLI are ignored tests that run only where
-# their resources are supplied, which no job here does.
+# development trunk, on a stock Linux runner (docs/delivery/testing.md). The
+# jobs check:
+#
+# - The workspace's one Cargo selection, checked and tested.
+# - The web app's suites and type checks.
+# - The public registry check.
+# - The commits, with gitleaks.
+#
+# The suites that need Chrome, a real machine manager or a vendor's CLI are
+# ignored tests that run only where their resources are supplied, which no job
+# here does.
 name: CI
 
 on:

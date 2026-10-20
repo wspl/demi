@@ -1,26 +1,29 @@
-//! The command packages the conversations' commands bind to: the descriptors
-//! of the published
-//! releases, and where a runner downloads each package's executable. The
-//! artifact module makes the catalog at startup from the server release's
-//! `commands/`; an executable enters the store when the backend stores ahead
-//! for the targets of its Hosts, or else the first time a runner asks for
-//! it, and a runner then downloads it from S3 through a URL signed for
-//! five minutes or, with a local store, from this backend, which serves the
-//! stored object at `/native-artifacts/<sha256>`. The runner executables
-//! are sourced the same way, as their compressed copies. Each shard thread builds its own
-//! `CommandCatalog` from the catalog, since a catalog's artifact resolver
-//! lives on one thread. A job that `demi host shell` starts on another Host
-//! receives the calling session's catalog.
+//! The command packages the conversations' commands bind to: the descriptors of
+//! the published releases, and where a runner downloads each package's
+//! executable.
+//!
+//! The artifact module makes the catalog at startup from the server release's
+//! `commands/`. An executable enters the store when the backend stores ahead
+//! for the targets of its Hosts, or else the first time a runner asks for it. A
+//! runner then downloads it from S3 through a URL signed for five minutes or,
+//! with a local store, from this backend, which serves the stored object at
+//! `/native-artifacts/<sha256>`. The runner executables are sourced the same
+//! way, as their compressed copies.
+//!
+//! Each shard thread builds its own `CommandCatalog` from the catalog, since a
+//! catalog's artifact resolver lives on one thread. A job that `demi host
+//! shell` starts on another Host receives the calling session's catalog.
 //!
 //! A local store's downloads need no credentials and expire never, like the
-//! runner installers': they reveal nothing a user owns and cannot change what
-//! runs, since the objects are the released programs, which the release
-//! publishes anyway, and each URL names a digest that the runner checks the
-//! download against, a digest that reached it over its authenticated
-//! connection. A runner's `artifact_location` request has no deadline of its
-//! own while its connection lives, since a fetch on a small server's slow disk
-//! or link is not a failure; the other questions a runner asks, such as a
-//! conversation's numbers, are answered from what the backend holds.
+//! runner installers'. They reveal nothing a user owns and cannot change what
+//! runs: the objects are the released programs, which the release publishes
+//! anyway, and each URL names a digest that the runner checks the download
+//! against, a digest that reached it over its authenticated connection.
+//!
+//! A runner's `artifact_location` request has no deadline of its own while its
+//! connection lives, since a fetch on a small server's slow disk or link is not
+//! a failure. The other questions a runner asks, such as a conversation's
+//! numbers, are answered from what the backend holds.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;

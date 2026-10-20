@@ -1,8 +1,8 @@
-//! The request rate limit: each user's
-//! conversations may start at most 120 provider requests in any 60 seconds.
-//! It is a ceiling that stops runaway loops, not a budget, and it is kept in
-//! memory with the user's other state on the user's shard, so a restart
-//! empties it.
+//! The request rate limit: each user's conversations may start at most 120
+//! provider requests in any 60 seconds.
+//!
+//! It is a ceiling that stops runaway loops, not a budget. It is kept in memory
+//! with the user's other state on the user's shard, so a restart empties it.
 
 use std::collections::VecDeque;
 use std::time::Duration;

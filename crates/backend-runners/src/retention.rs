@@ -1,13 +1,19 @@
-//! What the native store keeps (`crates/backend-runners/src/publication.rs`): as the backend starts, once its release's
-//! packages are published, it records its release under
-//! `native/releases/<version>.json`, naming each package's version and each
-//! runner executable's SHA-256. It keeps its own record and the newest other
-//! one, the release that ran before it, and removes every other record, then
-//! every mapping no kept record names, every descriptor no kept mapping
-//! names, and every blob that neither a kept descriptor nor a kept record
-//! names. Removal runs in that order, so an interrupted one never leaves a
-//! kept name without its object. Every mapping and descriptor a kept record
-//! names is read first; when one is missing, nothing is removed.
+//! What the native store keeps (`crates/backend-runners/src/publication.rs`).
+//!
+//! As the backend starts, once its release's packages are published, it records
+//! its release under `native/releases/<version>.json`, naming each package's
+//! version and each runner executable's SHA-256. It keeps its own record and
+//! the newest other one, the release that ran before it. It then removes, in
+//! this order:
+//!
+//! 1. Every other record.
+//! 2. Every mapping no kept record names.
+//! 3. Every descriptor no kept mapping names.
+//! 4. Every blob that neither a kept descriptor nor a kept record names.
+//!
+//! The order means an interrupted removal never leaves a kept name without its
+//! object. Every mapping and descriptor a kept record names is read first, and
+//! when one is missing, nothing is removed.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 

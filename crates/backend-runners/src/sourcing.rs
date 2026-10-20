@@ -1,12 +1,15 @@
-//! Artifacts sourced on demand (`crates/backend-runners/src/publication.rs`): the first time something needs an artifact
-//! of the server release, a runner asking where a package's executable
-//! downloads from, an installer asking for a runner executable, or the
-//! backend storing ahead for the targets of its Hosts, it is
-//! taken from the store when it is there, and otherwise from the release's
-//! files, a directory on this machine or an HTTPS location, checked against
-//! the size and SHA-256 the release's records give, and stored. Needs of one
-//! artifact wait for each other, so they share one fetch; a fetch that
-//! failed or was abandoned leaves nothing stored, and the next need tries
+//! Artifacts sourced on demand (`crates/backend-runners/src/publication.rs`):
+//! the first time something needs an artifact of the server release, it is made
+//! available. Three things need one: a runner asking where a package's
+//! executable downloads from, an installer asking for a runner executable, and
+//! the backend storing ahead for the targets of its Hosts.
+//!
+//! The artifact is taken from the store when it is there. Otherwise it is taken
+//! from the release's files, a directory on this machine or an HTTPS location,
+//! checked against the size and SHA-256 the release's records give, and stored.
+//!
+//! Needs of one artifact wait for each other, so they share one fetch. A fetch
+//! that failed or was abandoned leaves nothing stored, and the next need tries
 //! again.
 
 use std::collections::HashMap;

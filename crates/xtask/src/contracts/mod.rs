@@ -1,8 +1,13 @@
-//! `xtask contracts`: the TypeScript emitter. It asks schemars for the JSON
-//! Schema of every Rust type the web app receives or sends, in memory, and
-//! writes Zod v4 source with `z.infer` types into `@demicodes/protocol`,
-//! `packages/web/src/api/generated` and each plugin page package's
-//! `src/generated`, and the plugin page registry of `web` and `web-gallery`.
+//! `xtask contracts`: the TypeScript emitter.
+//!
+//! It asks schemars for the JSON Schema of every Rust type the web app receives
+//! or sends, in memory, and writes Zod v4 source with `z.infer` types into:
+//!
+//! - `@demicodes/protocol`.
+//! - `packages/web/src/api/generated`.
+//! - Each plugin page package's `src/generated`.
+//! - The plugin page registry of `web` and `web-gallery`.
+//!
 //! A page package's types come from its plugin's manifest, whose schemas
 //! schemars wrote too. A schema outside the emitter's subset fails generation
 //! and names the type.
@@ -13,6 +18,7 @@
 //! v xtask contracts: the emitter v Zod source and z.infer types, in
 //! packages/protocol, packages/web and each plugin package's src/generated
 //! ```
+//! The emitter follows these rules:
 //!
 //! - One constraint definition: a garde attribute drives both the Rust check
 //!   and the emitted schema, since schemars reads garde's attributes. A garde

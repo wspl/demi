@@ -1,13 +1,18 @@
-//! Native package publication: before
-//! the backend accepts requests, every command package release in its server
-//! release's `commands/` is read and checked, its descriptor and then its
-//! immutable package-and-version mapping are published into the
-//! deployment's one object store, local or S3 alike, and only then does the
-//! catalog serve. No executable is stored here: each enters the store the
-//! first time something needs it ([`crate::sourcing`]). Every object carries
-//! the SHA-256 and size of what it stands for, the executable's for an
-//! encoded one. A write never replaces an object: finding one in place is
-//! success when those are the ones published, and a refusal otherwise.
+//! Native package publication: before the backend accepts requests, every
+//! command package release in its server release's `commands/` is read and
+//! checked.
+//!
+//! 1. Its descriptor and then its immutable package-and-version mapping are
+//!    published into the deployment's one object store, local or S3 alike.
+//! 2. Only then does the catalog serve.
+//!
+//! No executable is stored here: each enters the store the first time something
+//! needs it ([`crate::sourcing`]).
+//!
+//! Every object carries the SHA-256 and size of what it stands for, the
+//! executable's for an encoded one. A write never replaces an object: finding
+//! one in place is success when those are the ones published, and a refusal
+//! otherwise.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path as FilePath, PathBuf};

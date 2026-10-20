@@ -1,21 +1,28 @@
-//! `xtask native build`: one release build per target. A target of the machine's
-//! own platform builds with that platform's toolchain, Apple's on a Mac and MSVC
-//! on Windows, checked against the pins; Linux keeps cargo-zigbuild for its static
-//! musl build; a target of another platform builds with the cross tools,
-//! cargo-zigbuild for the Apple and Linux targets and cargo-xwin for Windows, here
-//! or inside the build container's image. With these tools a developer's machine,
-//! Linux or macOS, builds every target a change needs. The release workflow builds
-//! each Linux target on a runner of its own architecture, so only
-//! `x86_64-apple-darwin`, which Apple's toolchain builds on an arm64 Mac as it does
-//! for every Mac application, is built for an architecture other than the one that
-//! compiles it. `--container` runs the same build inside the image of
-//! `scripts/native/Dockerfile` for a machine without the tools; a bind-mounted
+//! `xtask native build`: one release build per target.
+//!
+//! The tools depend on the target's platform:
+//!
+//! - A target of the machine's own platform builds with that platform's
+//!   toolchain, Apple's on a Mac and MSVC on Windows, checked against the pins.
+//!   Linux keeps cargo-zigbuild for its static musl build.
+//! - A target of another platform builds with the cross tools, cargo-zigbuild
+//!   for the Apple and Linux targets and cargo-xwin for Windows, here or inside
+//!   the build container's image.
+//!
+//! With these tools a developer's machine, Linux or macOS, builds every target
+//! a change needs. The release workflow builds each Linux target on a runner of
+//! its own architecture, so only `x86_64-apple-darwin`, which Apple's toolchain
+//! builds on an arm64 Mac as it does for every Mac application, is built for an
+//! architecture other than the one that compiles it.
+//!
+//! `--container` runs the same build inside the image of
+//! `scripts/native/Dockerfile` for a machine without the tools. A bind-mounted
 //! checkout is slow there and the container does not share the machine's Cargo
 //! target directory, so prefer the machine's own tools.
 //!
 //! The cross tools are pinned in `scripts/native/Dockerfile`, and the release
-//! workflow installs the same Zig and cargo-zigbuild; install the same
-//! versions on a build machine, on macOS with:
+//! workflow installs the same Zig and cargo-zigbuild. Install the same versions
+//! on a build machine, on macOS with:
 //!
 //! ```sh
 //! brew install zig@<zig version> llvm lld
@@ -25,51 +32,66 @@
 //! export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
 //! ```
 //!
-//! (Homebrew does not link these formulae, so `bun xtask` takes Zig from
-//! `CARGO_ZIGBUILD_ZIG_PATH` and the LLVM tools from `PATH`.)
+//! Homebrew does not link these formulae, so `bun xtask` takes Zig from
+//! `CARGO_ZIGBUILD_ZIG_PATH` and the LLVM tools from `PATH`.
 //!
 //! The workspace's `Cargo.toml` holds the two profiles, and nothing else sets
 //! compiler options: no `RUSTFLAGS`, no per-machine configuration.
 //!
-//! - The release profile makes the executables small, because every paired device
-//!   downloads each one and every Cloud image carries them, without making a release
-//!   wait on one processor core: thin link-time optimization with Cargo's default
-//!   code-generation units, optimization for size and stripped symbols. Fat
-//!   optimization with one unit made the runner about a fifth smaller (24.1 MB
-//!   against 30.9 MB for x86_64 Linux, 7.9 MB against 8.7 MB compressed), but its
-//!   final link runs on one core and took about five of a release's eleven minutes
-//!   with every dependency cached, where thin takes about a sixth of that, and the
-//!   two run the runner's work at about the same speed. `opt-level = "z"` would save
-//!   a quarter more but gives up the speed optimizations `"s"` keeps, and the
-//!   runner's utilities run searches and sorts in process.
-//! - The symbols are kept beside the release instead, one debug file per executable
-//!   and target, published with the release's assets and never shipped to a device,
-//!   so a crash's addresses from a stripped runner can be read afterwards. Cargo
-//!   splits them for the Apple and Windows targets (`.dSYM`, `.pdb`); for the Linux
-//!   targets, where stripping removes what a packed debug file depends on, this
-//!   command builds unstripped and splits each executable itself with the pinned
-//!   toolchain's `llvm-objcopy`, the same tool on every machine (`--only-keep-debug`,
-//!   then `--strip-all` and `--add-gnu-debuglink`), so the shipped executable keeps
-//!   neither debug information nor a symbol table.
-//! - Panics unwind in every profile: the runner contains a utility's panic to its
-//!   job, and a resident command service fails one invocation, not every
-//!   conversation it holds, where `panic = "abort"` would end the whole process.
-//!   `shared-cli`'s hook records a panic that ends a program anyway.
-//! - The pinned nightly (`rust-toolchain.toml`) is the toolchain for development
-//!   and releases alike. A compiler or Cargo option is adopted when a measurement
-//!   shows it faster or smaller, and the measurement goes beside it: on the pinned
-//!   nightly the toolchain alone rebuilt 10 to 25% faster after an edit than
-//!   1.98.1 (4 x86-64 cores, seven edit scenarios); the parallel front end
-//!   (`-Z threads=8`) was slower there, because Cargo already keeps every core busy,
-//!   and the Cranelift backend was no faster after an edit and does not catch
-//!   panics, so neither is enabled. A crate uses an unstable feature where it makes
-//!   the code clearly simpler or faster, when the code it simplifies changes, not
-//!   in a sweep, and the pin moves as a change of its own that passes the checks.
-//! - A release build of the Linux targets prints `warning: linker stderr: ignoring
-//!   deprecated linker optimization setting '1'` once per program. Nothing in the
-//!   repository sets it: rustc passes `-O1` to a GNU-style linker at optimization
-//!   levels 2 and 3, and Zig 0.12 to 0.16 ignores the flag and says so. It is
-//!   harmless, and cargo-zigbuild drops the flag in the first release after 0.23.4.
+//! **Release profile.** The profile makes the executables small, because every
+//! paired device downloads each one and every Cloud image carries them, without
+//! making a release wait on one processor core: thin link-time optimization
+//! with Cargo's default code-generation units, optimization for size and
+//! stripped symbols.
+//!
+//! The measurements behind it: fat optimization with one unit made the runner
+//! about a fifth smaller (24.1 MB against 30.9 MB for x86_64 Linux, 7.9 MB
+//! against 8.7 MB compressed), but its final link runs on one core and took
+//! about five of a release's eleven minutes with every dependency cached, where
+//! thin takes about a sixth of that, and the two run the runner's work at about
+//! the same speed. `opt-level = "z"` would save a quarter more but gives up the
+//! speed optimizations `"s"` keeps, and the runner's utilities run searches and
+//! sorts in process.
+//!
+//! **Debug symbols.** The symbols are kept beside the release instead, one
+//! debug file per executable and target, published with the release's assets
+//! and never shipped to a device, so a crash's addresses from a stripped runner
+//! can be read afterwards.
+//!
+//! Cargo splits them for the Apple and Windows targets (`.dSYM`, `.pdb`). For
+//! the Linux targets, where stripping removes what a packed debug file depends
+//! on, this command builds unstripped and splits each executable itself with
+//! the pinned toolchain's `llvm-objcopy`, the same tool on every machine
+//! (`--only-keep-debug`, then `--strip-all` and `--add-gnu-debuglink`), so the
+//! shipped executable keeps neither debug information nor a symbol table.
+//!
+//! **Panics.** Panics unwind in every profile: the runner contains a utility's
+//! panic to its job, and a resident command service fails one invocation, not
+//! every conversation it holds, where `panic = "abort"` would end the whole
+//! process. `shared-cli`'s hook records a panic that ends a program anyway.
+//!
+//! **Toolchain.** The pinned nightly (`rust-toolchain.toml`) is the toolchain
+//! for development and releases alike. A compiler or Cargo option is adopted
+//! when a measurement shows it faster or smaller, and the measurement goes
+//! beside it:
+//!
+//! - On the pinned nightly the toolchain alone rebuilt 10 to 25% faster after
+//!   an edit than 1.98.1 (4 x86-64 cores, seven edit scenarios).
+//! - The parallel front end (`-Z threads=8`) was slower there, because Cargo
+//!   already keeps every core busy, so it is not enabled.
+//! - The Cranelift backend was no faster after an edit and does not catch
+//!   panics, so it is not enabled.
+//!
+//! A crate uses an unstable feature where it makes the code clearly simpler or
+//! faster, when the code it simplifies changes, not in a sweep, and the pin
+//! moves as a change of its own that passes the checks.
+//!
+//! **Linker warning.** A release build of the Linux targets prints `warning:
+//! linker stderr: ignoring deprecated linker optimization setting '1'` once per
+//! program. Nothing in the repository sets it: rustc passes `-O1` to a
+//! GNU-style linker at optimization levels 2 and 3, and Zig 0.12 to 0.16
+//! ignores the flag and says so. It is harmless, and cargo-zigbuild drops the
+//! flag in the first release after 0.23.4.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -211,11 +233,12 @@ pub fn run(options: Options) -> Result<(), Error> {
 }
 
 /// Moves the line tables and symbols of the Linux executable at `executable`
-/// into `<executable>.debug` beside it, which the executable then names, so that
-/// a crash's addresses can be read without shipping them. Cargo copies the
-/// unstripped executable there again at each build, so the split starts
-/// from it every time; the stripped one replaces it by a rename, which
-/// leaves Cargo's own copy, the file it links there, unstripped.
+/// into `<executable>.debug` beside it, which the executable then names, so
+/// that a crash's addresses can be read without shipping them.
+///
+/// Cargo copies the unstripped executable there again at each build, so the
+/// split starts from it every time. The stripped one replaces it by a rename,
+/// which leaves Cargo's own copy, the file it links there, unstripped.
 fn split(executable: &Path) -> Result<(), Error> {
     let tool = objcopy()?;
     let suffixed = |suffix: &str| {

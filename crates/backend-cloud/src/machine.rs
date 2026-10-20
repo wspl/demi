@@ -1,9 +1,14 @@
-//! The user's Cloud machine in the user's shard: one phase, which carries
-//! what exists only in it (the capacity permit while the machine is not
-//! stopped, the idle watch and the maintenance loop while it runs, the
-//! reset while one holds it), and the transitions that change it, each a
-//! task of the shard, so a requester that goes away never cuts a boot or a
-//! save short.
+//! The user's Cloud machine in the user's shard: one phase, and the transitions
+//! that change it.
+//!
+//! The phase carries what exists only in it:
+//!
+//! - The capacity permit, while the machine is not stopped.
+//! - The idle watch and the maintenance loop, while the machine runs.
+//! - The reset, while one holds the machine.
+//!
+//! Each transition is a task of the shard, so a requester that goes away never
+//! cuts a boot or a save short.
 //!
 //! ```text
 //!        admission                 idle stop, lifetime cap, close
@@ -15,11 +20,10 @@
 //!    +------------ failed --------- Resetting -------- ready ----> Running
 //! ```
 //!
-//! The Cloud's admission is what keeps it running: taking it wakes a stopped
+//! The Cloud's admission is what keeps it running. Taking it wakes a stopped
 //! Cloud, joins a boot under way, or waits for a running reset to finish,
-//! holding nothing while it waits. Each operation of a Host handle an
-//! admission made takes a lease of its own, refused while the Cloud is not
-//! running.
+//! holding nothing while it waits. Each operation of a Host handle an admission
+//! made takes a lease of its own, refused while the Cloud is not running.
 
 use std::cell::{Cell, RefCell, RefMut};
 use std::collections::VecDeque;
@@ -458,11 +462,16 @@ impl dyn CloudShard {
         Ok(machine)
     }
 
-    /// Takes the Cloud's admission (`crates/backend-host-access/src/access.rs`): it wakes a stopped Cloud, joins a boot under way, or
-    /// waits for a running reset to finish, holding nothing while it waits,
-    /// since a reset reserves what it would hold. An operation that waited
-    /// for a reset that failed fails with it. Dropping the future at any
-    /// await is safe: every transition it waits for is a task of its own.
+    /// Takes the Cloud's admission
+    /// (`crates/backend-host-access/src/access.rs`).
+    ///
+    /// The admission wakes a stopped Cloud, joins a boot under way, or waits
+    /// for a running reset to finish, holding nothing while it waits, since a
+    /// reset reserves what it would hold. An operation that waited for a reset
+    /// that failed fails with it.
+    ///
+    /// Dropping the future at any await is safe: every transition it waits for
+    /// is a task of its own.
     pub async fn admit_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudError> {
         let machine = self.cloud_machine(device).await?;
         loop {
@@ -491,10 +500,14 @@ impl dyn CloudShard {
         }
     }
 
-    /// Makes the machine run, for an admission that holds a lease: joins the
-    /// transition under way; boots a stopped machine; and recovers a running
-    /// one whose runner is gone, which a manager restart leaves without a
-    /// death event.
+    /// Makes the machine run, for an admission that holds a lease.
+    ///
+    /// The method does one of three things:
+    ///
+    /// - Joins the transition under way.
+    /// - Boots a stopped machine.
+    /// - Recovers a running one whose runner is gone, which a manager restart
+    ///   leaves without a death event.
     async fn ensure_running(&self, machine: &Rc<Machine>) -> Result<Ready, CloudError> {
         loop {
             if self.cloud().is_closed() {
@@ -578,10 +591,11 @@ impl dyn CloudShard {
         joinable(self.tasks().spawn_local(work))
     }
 
-    /// Starts a sandbox for the machine: every boot mints a token, which
-    /// ends every earlier boot's, and the boot counts once the runner
-    /// connects with it. A boot that fails saves what the sandbox wrote, best
-    /// effort, and lets its runner go.
+    /// Starts a sandbox for the machine.
+    ///
+    /// Every boot mints a token, which ends every earlier boot's, and the boot
+    /// counts once the runner connects with it. A boot that fails saves what
+    /// the sandbox wrote, best effort, and lets its runner go.
     pub(crate) async fn boot(&self, machine: &Machine) -> Result<(), CloudError> {
         let booted = self.start_sandbox(machine).await;
         if let Err(error) = &booted {
@@ -684,10 +698,12 @@ impl dyn CloudShard {
         }
     }
 
-    /// A running machine whose runner is gone: a sandbox that still runs
-    /// gets the runner connection time to reconnect, with its token; one
-    /// that stopped, as a manager restart stops it without a death event,
-    /// boots again over its saved storage.
+    /// Recovers a running machine whose runner is gone.
+    ///
+    /// - A sandbox that still runs gets the runner connection time to
+    ///   reconnect, with its token.
+    /// - A sandbox that stopped, as a manager restart stops it without a death
+    ///   event, boots again over its saved storage.
     async fn recover(&self, machine: &Rc<Machine>) -> Result<(), CloudError> {
         let device = &machine.device.id;
         let state = self
@@ -725,10 +741,11 @@ impl dyn CloudShard {
     }
 
     /// The manager reported that the device's sandbox exited without being
-    /// asked to stop. A running machine is off: its runner goes, and the
-    /// death counts for the crash loop, as one during a boot does. One while
-    /// the backend saves or resets the machine is its own doing and is
-    /// ignored.
+    /// asked to stop.
+    ///
+    /// A running machine is off: its runner goes, and the death counts for the
+    /// crash loop, as one during a boot does. A death while the backend saves
+    /// or resets the machine is its own doing and is ignored.
     pub async fn cloud_died(&self, device: &DeviceId) {
         let Some(machine) = self
             .cloud()
@@ -759,9 +776,11 @@ impl dyn CloudShard {
     }
 
     /// Stops a running machine and saves it, under a reservation of its gate
-    /// that the caller holds: its runner flushes the filesystems, best
-    /// effort, the manager saves and stops it, and it is off, with the error
-    /// kept when the save failed.
+    /// that the caller holds.
+    ///
+    /// The runner flushes the filesystems, best effort, the manager saves and
+    /// stops the machine, and it is off, with the error kept when the save
+    /// failed.
     pub(crate) async fn hibernate_reserved(&self, machine: &Rc<Machine>) -> Result<(), CloudError> {
         if let Some(transition) = machine.transition() {
             // A boot that failed left the machine off; one that succeeded is
@@ -827,8 +846,9 @@ impl dyn CloudShard {
         }
     }
 
-    /// Closes the Cloud with its shard (`crates/backend/src/backend.rs`): no
-    /// admission after this, its schedules end, and a reset or a transition
+    /// Closes the Cloud with its shard (`crates/backend/src/backend.rs`).
+    ///
+    /// No admission follows, its schedules end, and a reset or a transition
     /// under way finishes. A running machine keeps running, and the next
     /// backend takes it over (`crates/machine-manager-protocol/src/lib.rs`).
     pub async fn close_cloud(&self) {
@@ -845,13 +865,11 @@ impl dyn CloudShard {
         }
     }
 
-    /// Takes over the user's Cloud `device`, whose sandbox the machine
-    /// manager reported running as the backend started: it runs, and its
-    /// runner connects again by itself, so a same-release restart stops no
-    /// Cloud and no command on one (`crates/backend-remote-host/src/device_jobs.rs`). One that finds no capacity is saved and stopped.
-    /// When a Cloud found running completed its boot, on Tokio's clock: its
-    /// record's time counted back from now. A Cloud without one, and one
-    /// whose boot the clock now puts in the future, count from now.
+    /// When a Cloud found running completed its boot, on Tokio's clock.
+    ///
+    /// The result counts the record's time back from now. A Cloud without a
+    /// record, and one whose boot the clock now puts in the future, count from
+    /// now.
     fn boot_instant(&self, device: &DeviceRecord) -> Instant {
         let now = Instant::now();
         device
@@ -863,6 +881,13 @@ impl dyn CloudShard {
             .unwrap_or(now)
     }
 
+    /// Takes over the user's Cloud `device`, whose sandbox the machine manager
+    /// reported running as the backend started.
+    ///
+    /// The Cloud runs, and its runner connects again by itself, so a
+    /// same-release restart stops no Cloud and no command on one
+    /// (`crates/backend-remote-host/src/device_jobs.rs`). A Cloud that finds no
+    /// capacity is saved and stopped.
     pub async fn take_over_cloud(&self, device: &DeviceRecord) -> Result<(), CloudError> {
         let machine = self.cloud_machine(device).await?;
         {

@@ -1,17 +1,21 @@
-//! Push notifications: each session's subscription, kept once its endpoint's
-//! host resolves to public addresses, and the delivery of a message to the
-//! subscriptions it goes to. Each message is encrypted for its browser and
-//! signed with the backend's VAPID key (RFC 8291, RFC 8292) by
-//! `web-push-native`; a subscription its push service answers 404 or 410 for is
-//! gone and removed. The messages leave through a [`PushTransport`]: the
-//! internet's push services, reached only at public addresses, checked as each
-//! connection is made, or a test's stand-in. The key is given to it; it derives
-//! none.
+//! Push notifications: each session's subscription, and the delivery of a
+//! message to the subscriptions it goes to.
+//!
+//! - A subscription is kept once its endpoint's host resolves to public
+//!   addresses.
+//! - Each message is encrypted for its browser and signed with the backend's
+//!   VAPID key (RFC 8291, RFC 8292) by `web-push-native`.
+//! - A subscription whose push service answers 404 or 410 is gone and removed.
+//!
+//! The messages leave through a [`PushTransport`]: the internet's push
+//! services, reached only at public addresses and checked as each connection is
+//! made, or a test's stand-in. The backend gives the module the key. The module
+//! derives none.
 //!
 //! A subscription serves one session, so a push queued for an account before it
-//! signed out is never shown after another signs in: the browser drops what comes
-//! for an ended subscription. A send follows no redirect, so a subscription cannot
-//! make the backend call into its own network.
+//! signed out is never shown after another signs in: the browser drops what
+//! comes for an ended subscription. A send follows no redirect, so a
+//! subscription cannot make the backend call into its own network.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
@@ -84,10 +88,11 @@ pub trait PushTransport: Send + Sync + 'static {
     fn post(&self, request: http::Request<Vec<u8>>) -> BoxFuture<'_, Result<StatusCode, String>>;
 }
 
-/// The internet's push services, reached only at public addresses: the
-/// client resolves each host with [`PublicResolver`], so a name that
-/// resolves elsewhere by the time a message is sent is refused then; it
-/// follows no redirect and uses no proxy.
+/// The internet's push services, reached only at public addresses.
+///
+/// The client resolves each host with [`PublicResolver`], so a name that
+/// resolves elsewhere by the time a message is sent is refused then. The
+/// transport follows no redirect and uses no proxy.
 pub struct PublicPushTransport {
     client: reqwest::Client,
 }
@@ -168,10 +173,20 @@ fn public_literal(address: IpAddr) -> Result<(), String> {
     }
 }
 
-/// Whether `address` is on the public internet: not the loopback, a
-/// private, shared (CGNAT), link-local (the cloud metadata service's
-/// included), unique local, multicast, documentation, benchmarking or
-/// reserved range, nor an IPv6 address that carries such an IPv4 one.
+/// Whether `address` is on the public internet.
+///
+/// It is not when it is in one of these ranges, or is an IPv6 address that
+/// carries an IPv4 address in one:
+///
+/// - Loopback.
+/// - Private.
+/// - Shared (CGNAT).
+/// - Link-local, the cloud metadata service's included.
+/// - Unique local.
+/// - Multicast.
+/// - Documentation.
+/// - Benchmarking.
+/// - Reserved.
 pub fn is_public(address: IpAddr) -> bool {
     match address {
         IpAddr::V4(address) => is_public_v4(address),
@@ -276,10 +291,12 @@ impl Pusher {
         self.control.push_subscriptions(user).await
     }
 
-    /// Delivers `message` to each of `subscriptions` at once, and removes
-    /// each one its push service says is gone. Each VAPID signature names
-    /// `contact`, who sends: the backend's public address. A failure is
-    /// logged: a notification is not worth more than one try.
+    /// Delivers `message` to each of `subscriptions` at once, and removes each
+    /// one its push service says is gone.
+    ///
+    /// Each VAPID signature names `contact`, who sends: the backend's public
+    /// address. A failure is logged: a notification is not worth more than one
+    /// try.
     pub async fn deliver(
         &self,
         user: &UserId,

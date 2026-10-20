@@ -1,10 +1,15 @@
-//! The user's small model: the model a small
-//! job such as a conversation's title runs on. A model the user chose in
-//! Settings › Agent while it is still offered, else Automatic: the first
-//! tier any offered model reaches, Haiku, then GPT Sol, then Flash, at the
-//! highest version of the first entry with a match, the conversation's own
-//! entry first; else the conversation's own model. Its thinking is off
-//! where the model can turn it off, else its lowest effort.
+//! The user's small model: the model a small job such as a conversation's title
+//! runs on.
+//!
+//! The model is the first of these that applies:
+//!
+//! 1. A model the user chose in Settings › Agent, while it is still offered.
+//! 2. Automatic: the first tier any offered model reaches, Haiku, then GPT Sol,
+//!    then Flash, at the highest version of the first entry with a match, the
+//!    conversation's own entry first.
+//! 3. The conversation's own model.
+//!
+//! Its thinking is off where the model can turn it off, else its lowest effort.
 
 use std::cmp::Reverse;
 

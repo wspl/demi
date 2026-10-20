@@ -1,19 +1,25 @@
-# Builds a release and publishes it as a GitHub release. A manual start on a
-# branch, `gh workflow run release.yml --ref <branch>`, publishes the workspace
-# version in Cargo.toml of the branch's newest commit, refuses a version that
-# has a release already, never changes the version, and creates the tag
-# v<version> on the commit it built (the npm packages' tags name their package,
-# so the two never collide). Nothing else starts it: an ordinary push builds no
-# release, and a release never starts by pushing its tag, because a run reads
-# only the caches of its own branch and the default branch, so a run started by
-# a tag could not read the previous release's. With `prerelease`, as
-# `bun xtask deploy` starts it after committing the next version, it publishes
-# a pre-release, which no installer takes as the newest and which a later
-# `gh release edit` publishes. Each platform's targets build natively on the
-# newest free standard runner of that platform, one target's group of programs
-# per job, so no runner compiles two targets or two groups one after the other,
-# and every step is a command of the repository: the workflow only orders them
-# and carries files between jobs. A job waits only for the files it uses.
+# Builds a release and publishes it as a GitHub release.
+#
+# Starting it:
+#
+# - A manual start on a branch, `gh workflow run release.yml --ref <branch>`,
+#   publishes the workspace version in Cargo.toml of the branch's newest commit.
+#   It refuses a version that has a release already, never changes the version,
+#   and creates the tag v<version> on the commit it built (the npm packages'
+#   tags name their package, so the two never collide).
+# - Nothing else starts it: an ordinary push builds no release, and a release
+#   never starts by pushing its tag, because a run reads only the caches of its
+#   own branch and the default branch, so a run started by a tag could not read
+#   the previous release's.
+# - With `prerelease`, as `bun xtask deploy` starts it after committing the next
+#   version, it publishes a pre-release, which no installer takes as the newest
+#   and which a later `gh release edit` publishes.
+#
+# Each platform's targets build natively on the newest free standard runner of
+# that platform, one target's group of programs per job, so no runner compiles
+# two targets or two groups one after the other, and every step is a command of
+# the repository: the workflow only orders them and carries files between jobs.
+# A job waits only for the files it uses.
 #
 #   programs (12 jobs) -+-> server release amd64: root, files, image -+-> publish
 #   server (2 jobs) ----+                                             |
@@ -21,9 +27,10 @@
 #
 # No job compiles or compresses what another already did: a command-program job
 # packages its programs, which compresses them, and a runner job compresses its
-# runner, and the server release jobs reuse those copies. The release runs no
-# check: developers run them, and release acceptance runs the shared Rust suite
-# on each platform that ships a feature.
+# runner, and the server release jobs reuse those copies.
+#
+# The release runs no check: developers run them, and release acceptance runs
+# the shared Rust suite on each platform that ships a feature.
 name: Release
 
 on:
@@ -49,9 +56,10 @@ env:
   CARGO_TERM_COLOR: always
   # Cargo judges a source file by its checksum rather than its mtime, which a
   # fresh checkout sets to the checkout's time: by mtime, every vendored crate
-  # restored from the previous release's cache compiled again. The unstable
-  # flag only lets Cargo accept the setting, so both are needed. These are in
-  # the workflow, not .cargo/config.toml, so a developer's builds keep mtimes.
+  # restored from the previous release's cache compiled again. The unstable flag
+  # only lets Cargo accept the setting, so both are needed. These are in the
+  # workflow, not .cargo/config.toml, so a developer's builds keep mtimes.
+  #
   # A build script's `rerun-if-changed` files are still compared by time, so a
   # vendored crate's build script watches no file of the repository: it names
   # its inputs as compiled sources (`include_str!`, `include!`), or watches

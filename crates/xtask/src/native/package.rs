@@ -1,40 +1,55 @@
 //! `xtask native package`: the built executables of the named targets become a
 //! release directory, published through `artifact`'s verified release
-//! publication. A command package's descriptor lists the operations its contract
-//! crate declares, the operation list the program routes by, so a release cannot
-//! advertise an operation the program does not serve; a runner release is a
-//! directory named by the SHA-256 of its versions and targets, and the top-level
-//! manifest, replaced atomically once the directory is in place, names the release
-//! packaged last while earlier ones stay for the runners installed from them; the
-//! backend's and the machine manager's `release.json` names the executable, its
-//! version and each target's SHA-256 and size, the same entry as a descriptor's
-//! `targets`, which no Demi program reads: it tells whoever copies the executable
-//! to a server what to check the copy against. A command package and a runner
-//! release carry each executable's zstd-compressed copy beside it, kept by the
-//! executable's SHA-256 so that packaging an unchanged program again compresses
-//! nothing. A release carries only the program: software it installs, such as
-//! `demi-browser`'s Chrome for Testing, is the program's own.
+//! publication.
+//!
+//! The releases differ by kind:
+//!
+//! - A command package's descriptor lists the operations its contract crate
+//!   declares, the operation list the program routes by, so a release cannot
+//!   advertise an operation the program does not serve.
+//! - A runner release is a directory named by the SHA-256 of its versions and
+//!   targets. The top-level manifest, replaced atomically once the directory is
+//!   in place, names the release packaged last, while earlier ones stay for the
+//!   runners installed from them.
+//! - The backend's and the machine manager's `release.json` names the
+//!   executable, its version and each target's SHA-256 and size, the same entry
+//!   as a descriptor's `targets`. No Demi program reads it: it tells whoever
+//!   copies the executable to a server what to check the copy against.
+//!
+//! A command package and a runner release carry each executable's
+//! zstd-compressed copy beside it, kept by the executable's SHA-256 so that
+//! packaging an unchanged program again compresses nothing. A release carries
+//! only the program: software it installs, such as `demi-browser`'s Chrome for
+//! Testing, is the program's own.
+//!
+//! # Versions
 //!
 //! A command package, the backend and the machine manager carry the workspace
 //! version, and a published version is immutable: packaging different artifacts
 //! needs a new workspace version, or, for a developer's release, removing its
-//! directory first. Only the release workflow names a package with the workspace
-//! version itself; any other packaging gives it a development version, the
-//! workspace version with build metadata naming its artifacts, `0.1.3+dev.<12 hex
-//! digits of the SHA-256 over the package's targets and their executables'
-//! SHA-256s>`. Packaging the same programs again gives the same version; a rebuilt
-//! program gives a new one, which a store that holds the earlier build publishes
-//! beside it, and the build of an unchanged version of the backend or the manager
-//! goes to a directory of its own.
+//! directory first.
+//!
+//! Only the release workflow names a package with the workspace version itself.
+//! Any other packaging gives it a development version, the workspace version
+//! with build metadata naming its artifacts, `0.1.3+dev.<12 hex digits of the
+//! SHA-256 over the package's targets and their executables' SHA-256s>`.
+//! Packaging the same programs again gives the same version. A rebuilt program
+//! gives a new one, which a store that holds the earlier build publishes beside
+//! it, and the build of an unchanged version of the backend or the manager goes
+//! to a directory of its own.
+//!
+//! # Publication
 //!
 //! Every release is published the same way: stage every artifact, verify each
 //! copy's size and SHA-256, publish once, and refuse conflicting metadata or
 //! corrupt bytes already in place. A release already in place with the same
-//! record and bytes is the one being published, so packaging the same build again
-//! succeeds; a failed publication removes its temporary files and leaves the
-//! top-level pointer as it was. A release carries the targets it was packaged
-//! with, all six from the release workflow and the Hosts' in development, and the
-//! backend loads either kind the same way.
+//! record and bytes is the one being published, so packaging the same build
+//! again succeeds. A failed publication removes its temporary files and leaves
+//! the top-level pointer as it was.
+//!
+//! A release carries the targets it was packaged with, all six from the release
+//! workflow and the Hosts' in development, and the backend loads either kind
+//! the same way.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

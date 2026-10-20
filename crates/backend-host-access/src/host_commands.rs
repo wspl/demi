@@ -1,24 +1,38 @@
-//! The product's `demi host` group: `list` names the Hosts the calling conversation reaches,
-//! `current` its primary Host, and `shell --host` runs a script on one of
-//! them as one job there; `install-command` prints the command that installs
-//! the runner on a computer; `devices` lists the user's devices, `pair`
-//! pairs the computer whose installer shows a code and attaches it, `attach`
-//! attaches one at once, `detach` marks one to detach once the
-//! conversation's work ends, and `move` makes a host and a directory where
-//! the conversation runs once its work ends. The dispatch asks the user
-//! before a call brings in a host the conversation may not reach, and before
-//! every pairing. A `shell` job carries its invoking job's command context,
-//! caller and commands, and its standard input and output are the calling
-//! command's (a script read from stdin leaves the job none): the relayed
-//! pipes' far ends become the job's device, so the bytes flow between the
-//! two devices through the backend's pipes, never through a runner socket.
-//! Like the agent's own jobs, its admission installs the user's Host
-//! directories there before it starts and tells the shard when it ended.
+//! The product's `demi host` group: commands on the Hosts a conversation
+//! reaches.
 //!
-//! An agent pairs a computer it reaches without the user typing the code: it runs
-//! the command `install-command` prints, the one Add Device shows, on the computer,
-//! reads the pairing code the installer shows and passes it to `pair`, which claims
-//! it for the conversation's user as Add Device does and attaches the new device:
+//! - `list` names the Hosts the calling conversation reaches.
+//! - `current` names its primary Host.
+//! - `shell --host` runs a script on one of them as one job there.
+//! - `install-command` prints the command that installs the runner on a
+//!   computer.
+//! - `devices` lists the user's devices.
+//! - `pair` pairs the computer whose installer shows a code and attaches it.
+//! - `attach` attaches a device at once.
+//! - `detach` marks a device to detach once the conversation's work ends.
+//! - `move` makes a host and a directory where the conversation runs once its
+//!   work ends.
+//!
+//! The dispatch asks the user before a call brings in a host the conversation
+//! may not reach, and before every pairing.
+//!
+//! A `shell` job carries its invoking job's command context, caller and
+//! commands. Its standard input and output are the calling command's. A script
+//! read from stdin leaves the job none. The relayed pipes' far ends become the
+//! job's device, so the bytes flow between the two devices through the
+//! backend's pipes, never through a runner socket. Like the agent's own jobs,
+//! its admission installs the user's Host directories there before it starts
+//! and tells the shard when it ended.
+//!
+//! An agent pairs a computer it reaches without the user typing the code:
+//!
+//! 1. It runs the command `install-command` prints, the one Add Device shows,
+//!    on the computer.
+//! 2. It reads the pairing code the installer shows.
+//! 3. It passes the code to `pair`, which claims it for the conversation's user
+//!    as Add Device does and attaches the new device.
+//!
+//! The exchange looks like this:
 //!
 //! ```text
 //! agent                          the computer                   backend
@@ -260,10 +274,14 @@ pub struct NamedDevice {
 }
 
 /// The host `wanted` names, as a `bringsHost` argument that names a host is
-/// resolved, once, by the dispatch: of the hosts it may stand for, the
-/// first in this order: a host of the conversation by the name it goes by
-/// there or its id, a device by its id, a paired device by its name, and
-/// the user's Cloud by `Cloud`, which makes its device on its first use.
+/// resolved, once, by the dispatch.
+///
+/// Of the hosts it may stand for, the first in this order wins:
+///
+/// 1. A host of the conversation, by the name it goes by there or its id.
+/// 2. A device, by its id.
+/// 3. A paired device, by its name.
+/// 4. The user's Cloud, by `Cloud`, which makes its device on its first use.
 pub async fn resolve_host(
     shard: &dyn HostShard,
     conversation: &ConversationId,
@@ -375,7 +393,6 @@ where
     }
 }
 
-/// The conversation the invoking job belongs to.
 /// The user's Hosts, each by the name `demi host devices` gives it.
 pub(crate) struct HostNames(Vec<demi_backend_database::devices::DeviceRecord>);
 
