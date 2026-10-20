@@ -1,6 +1,5 @@
 //! What the shard keeps of its conversations' project files
-//! (`instructions.md` § When it is sent, `skills.md` § Project skills,
-//! `crates/backend-user-shard/src/conversation/workflows.rs`): the instruction files of each
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`): the instruction files of each
 //! node's working directory, the workflows of each conversation's
 //! directory, and each plugin's project search of it, per Host and
 //! directory, kept current by the runner's file watch through host access
@@ -204,10 +203,10 @@ impl Shard {
 
     /// What `plugin`'s project search holds for the conversation of `root`;
     /// none outside a project, whatever its directory, which is then neither
-    /// searched nor watched (`skills.md` § Project skills): a conversation
-    /// working in the home folder would otherwise take another agent's own
-    /// skills for a project's. A move into or out of a project releases
-    /// what was kept, so the next request starts or skips the search.
+    /// searched nor watched: a conversation working in the home folder would
+    /// otherwise take another agent's own skills for a project's. A move
+    /// into or out of a project releases what was kept, so the next request
+    /// starts or skips the search.
     pub(crate) async fn kept_project_search(&self, plugin: &PluginId, root: &NodeId) -> Option<Value> {
         let id = conversation_of(root);
         let at = match self.kept_at(&id).await {

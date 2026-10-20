@@ -660,12 +660,11 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
   expect(entry().media.image.enabled).toBe(true)
 })
 
-// The order of Settings › Providers, which generated media follow
-// (`media.md` § Which entry makes a call): the list shows the dragged
-// order at once and sends every entry once; a refusal puts the list back
-// with a toast. Planted defects: the list waiting for the answer; a
-// partial order sent; the refused order kept. Cost: a stubbed backend, a
-// few milliseconds.
+// The order of Settings › Providers, which generated media follow: the
+// list shows the dragged order at once and sends every entry once; a
+// refusal puts the list back with a toast. Planted defects: the list
+// waiting for the answer; a partial order sent; the refused order kept.
+// Cost: a stubbed backend, a few milliseconds.
 test('a new order of the entries shows at once, is sent whole, and a refusal puts the list back', async () => {
   state.providers.push({ ...state.providers[0]!, id: 'second', label: 'Second' })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -1032,8 +1031,8 @@ test('a sign-in cancelled on another page closes the dialog here, with nothing s
 
 // An entry of media alone tests its key with no model named, before its
 // models could be read, and a compatible API's audio model names the kinds
-// the catalog's audio models give it (`packages/web/src/state/catalog.ts`,
-// `audio.md` § Vendors). Planted defects: Test Connection of an entry of
+// the catalog's audio models give it (`packages/web/src/state/catalog.ts`).
+// Planted defects: Test Connection of an entry of
 // media alone waiting for a listed model; a compatible audio model's row
 // without its kind. Cost: a stubbed backend, a few milliseconds.
 test('an entry of media alone tests its key with no model, and a compatible audio model names its kinds', async () => {

@@ -1,13 +1,12 @@
-//! A root's turn that failed with a known time to try again
-//! (`failures-and-recovery.md` § The unfinished turn): it is resumed at that
-//! time, as the user's Resume would, only when the user's `resumeAtRetry`
-//! preference says so at that moment, and once; the wait outlives the
-//! tree's eviction, which the moment opens again, and a restart, after which
-//! opening the conversation waits again for a moment still to come; a newer
-//! failure replaces it, and the shard's close stops a resume under way. The
-//! model is a scripted family whose failures name a retry time an hour after
-//! they arrive; the shard's timer runs on the paused clock. No test calls a
-//! real model.
+//! A root's turn that failed with a known time to try again: it is resumed
+//! at that time, as the user's Resume would, only when the user's
+//! `resumeAtRetry` preference says so at that moment, and once; the wait
+//! outlives the tree's eviction, which the moment opens again, and a
+//! restart, after which opening the conversation waits again for a moment
+//! still to come; a newer failure replaces it, and the shard's close stops a
+//! resume under way. The model is a scripted family whose failures name a
+//! retry time an hour after they arrive; the shard's timer runs on the
+//! paused clock. No test calls a real model.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

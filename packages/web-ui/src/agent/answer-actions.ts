@@ -16,7 +16,7 @@ export interface AnswerActionsSource {
   share?: AnswerShare
   /** Share waits until the message completes, as Fork does. */
   shareWait?: boolean
-  /** Offered on the last answer exactly when editing the message before it is (`message-editing.md`). */
+  /** Offered on the last answer exactly when editing the message before it is. */
   regenerate?: () => void
 }
 

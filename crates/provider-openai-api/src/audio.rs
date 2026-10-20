@@ -1,13 +1,12 @@
-//! The audio role of an OpenAI key and of a compatible entry whose audio
-//! shape is OpenAI Speech (`audio.md` § Vendors): `POST …/audio/speech`
-//! under the entry's base URL with the key as a bearer token, answered
-//! with the audio's bytes
-//! ([Create speech](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)).
-//! An OpenAI key lists the speech models OpenAI lists for it that the
-//! catalog knows, and its voices are the catalog's built-ins, as OpenAI's
-//! API lists none; a custom voice, `voice_…`, is sent as `{ "id": … }`. A
-//! compatible entry offers the speech models its user added, and its voices
-//! are what its `GET …/audio/voices` lists, as vLLM-Omni serves it, or none.
+//! The audio role of an OpenAI key and of a compatible entry whose audio shape
+//! is OpenAI Speech: `POST …/audio/speech` under the entry's base URL with the
+//! key as a bearer token, answered with the audio's bytes ([Create
+//! speech](https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create)).
+//! An OpenAI key lists the speech models OpenAI lists for it that the catalog
+//! knows, and its voices are the catalog's built-ins, as OpenAI's API lists
+//! none; a custom voice, `voice_…`, is sent as `{ "id": … }`. A compatible
+//! entry offers the speech models its user added, and its voices are what its
+//! `GET …/audio/voices` lists, as vLLM-Omni serves it, or none.
 
 use std::sync::Arc;
 

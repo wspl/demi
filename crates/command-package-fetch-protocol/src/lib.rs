@@ -1,8 +1,7 @@
 //! The `demi.fetch` package's contract (`crates-and-packages.md`
 //! § command-package-fetch-protocol): the arguments and the `--json` result
-//! of its one operation, `fetch.get`, with their limits (`web.md` § demi
-//! fetch). It holds types and their checks only; the fetch lives in
-//! `demi-fetch`.
+//! of its one operation, `fetch.get`, with their limits. It holds types and
+//! their checks only; the fetch lives in `demi-fetch`.
 
 use demi_shared_types::DecodeError;
 use schemars::JsonSchema;
@@ -20,7 +19,7 @@ pub const GET: &str = "fetch.get";
 pub const OPERATIONS: &[&str] = &[GET];
 
 /// How many characters a part holds when `--length` names none; it stays
-/// inside the replay bound (`compaction.md` § Text bounds).
+/// inside the replay bound.
 pub const DEFAULT_LENGTH: u32 = 15_000;
 /// The most characters one part holds.
 pub const MAX_LENGTH: u32 = 100_000;

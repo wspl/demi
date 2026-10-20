@@ -1,18 +1,53 @@
-//! Conversation permissions (`permissions.md`): the check every `rpc` call
-//! passes in the backend's dispatch before its handler; the requests a call
-//! without a grant raises, which the call waits on until the user decides;
-//! the user's decisions, which end those waits, the grants an allow
-//! records, each kept for the conversation's life, and the message each
-//! decision sends the agent that asked, delivered again at start when a
-//! restart cut it off. And the conversation's other requests, which share
-//! the list, the mark and the routes (`credentials.md` § Requests and
-//! routes): an agent's request for a credential, which its command waits
-//! for, and a read of a credential the conversation may not use yet, which
-//! fails and asks for an allowance.
+//! Conversation permissions: the check every `rpc` call passes in the
+//! backend's dispatch before its handler; the requests a call without a
+//! grant raises, which the call waits on until the user decides; the user's
+//! decisions, which end those waits, the grants an allow records, each kept
+//! for the conversation's life, and the message each decision sends the
+//! agent that asked, delivered again at start when a restart cut it off.
+//! And the conversation's other requests, which share the list, the mark
+//! and the routes: an agent's request for a credential, which its command
+//! waits for, and a read of a credential the conversation may not use yet,
+//! which fails and asks for an allowance.
 //!
 //! Every command source passes through the check, a plugin's, the product's
 //! and the agent runtime's alike, so it belongs to none of them. What it
 //! needs of its user's shard it reaches through [`PermissionShard`].
+//!
+//! Demi has no general permission system: an agent runs commands on its Host,
+//! edits files and opens pages without asking, because the user chose the Host
+//! and the directory. It asks only before acting on Demi itself, on what the
+//! user owns beyond the conversation. Each such power is one broad category,
+//! which the user judges once for a conversation; a host is allowed on its
+//! own, one host at a time.
+//!
+//! ```text
+//! demi skills add ... -> dispatch: the check -- grant? -- yes --> handler
+//!                                      | no
+//!                          request recorded, call held (a running command)
+//!                                      | the user: Allow / Deny
+//!             grant stored, message to the agent that asked, call goes on
+//! ```
+//!
+//! A request records one refused call. A newer request of the same
+//! categories from the same agent replaces an undecided one, since the
+//! agent ran the command again and its newest line is the one to show.
+//! Allow records the grant of each of the request's categories and decides
+//! as allowed every request of the conversation whose categories are now
+//! granted; Deny decides that one request and records nothing, so the next
+//! attempt raises a new request. Requests never expire: they survive a
+//! restart, and archiving withdraws them. A grant covers every agent of the
+//! conversation's tree, those spawned later included, lasts the
+//! conversation's life, and survives an archive; a Fork copies none, since
+//! the user decides for a new conversation again.
+//!
+//! The waiting command is an ordinary running command: its window, the turn,
+//! Stop and the Host's idle rules are those of any command. It sends no
+//! progress report, whatever its interval, since nothing about it changes
+//! until the user answers and each report would wake the agent for nothing;
+//! its interval counts again from the end of the wait. A call that ends
+//! before the decision, stopped or lost with a restart, leaves its request
+//! as it is: an Allow still grants the category for the commands that come
+//! later.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -130,8 +165,7 @@ pub enum Answer {
     Withdrawn,
 }
 
-/// How the wait of a call for its permission request ended
-/// (`permissions.md` § The check).
+/// How the wait of a call for its permission request ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Decided {
     Allowed,
@@ -186,7 +220,7 @@ impl Waits {
 /// [`Waits`] however the call ends. A credential request that ends without
 /// an answer, whether its command was stopped or its handler dropped, is
 /// withdrawn, since nobody waits for it; a permission request stays for the
-/// user to decide (`permissions.md` § The check).
+/// user to decide.
 struct Wait {
     shard: Rc<dyn PermissionShard>,
     conversation: ConversationId,
@@ -243,21 +277,20 @@ impl From<PermissionRefusal> for PermissionError {
 }
 
 /// What one `rpc` call needs of its conversation: its leaf's category, or
-/// the host it brings in; no command needs both (`permissions.md` § Hosts).
+/// the host it brings in; no command needs both.
 pub enum Need<'a> {
     Category(&'a Category),
     Host(AskedHost),
 }
 
-/// The check of one `rpc` call that needs `need` (`permissions.md` § The
-/// check, § Hosts): it passes when the call's conversation has the grant of
-/// the category or may reach the host, whichever agent of its tree runs it.
-/// Otherwise it records the request and holds the call until the user
-/// decides, with the waiting line on its job, while no handler runs: an
-/// allow passes it, and a deny or a newer request of the same agent and
-/// need fails it with the line the agent reads. A call stopped meanwhile
-/// fails, an allow ready at the same moment notwithstanding, and leaves its
-/// request to the user.
+/// The check of one `rpc` call that needs `need`: it passes when the call's
+/// conversation has the grant of the category or may reach the host,
+/// whichever agent of its tree runs it. Otherwise it records the request
+/// and holds the call until the user decides, with the waiting line on its
+/// job, while no handler runs: an allow passes it, and a deny or a newer
+/// request of the same agent and need fails it with the line the agent
+/// reads. A call stopped meanwhile fails, an allow ready at the same moment
+/// notwithstanding, and leaves its request to the user.
 pub async fn check(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
@@ -388,7 +421,7 @@ fn new_request_id() -> PermissionRequestId {
 }
 
 /// What reaching `host` lets the conversation do, as the card's title, the
-/// refusal and the decision's message say it (`permissions.md` § Hosts).
+/// refusal and the decision's message say it.
 async fn host_action(shard: &dyn PermissionShard, host: &AskedHost) -> String {
     match host {
         AskedHost::Device(device) => format!("reach {}", shard.host_name(device).await),
@@ -422,10 +455,10 @@ fn asking(shard: &dyn PermissionShard, invocation: &RpcInvocation) -> Result<Ask
     })
 }
 
-/// Asks the user for the credential `name` (`credentials.md` § Commands)
-/// and waits for the answer, until `cancelled` resolves, which withdraws
-/// the request. A credential of the name saved with other fields refuses
-/// the request before the user sees it.
+/// Asks the user for the credential `name` and waits for the answer,
+/// until `cancelled` resolves, which withdraws the request. A credential
+/// of the name saved with other fields refuses the request before the
+/// user sees it.
 pub async fn ask_credential(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
@@ -492,10 +525,9 @@ pub fn withdrawn(shard: &dyn PermissionShard, conversation: &ConversationId) {
     }
 }
 
-/// The field `field` of the credential `name`, for the call's agent
-/// (`credentials.md` § Using a credential): its value when the conversation
-/// may use the credential. Otherwise it records the allowance request and
-/// fails the call as a refused permission does.
+/// The field `field` of the credential `name`, for the call's agent: its
+/// value when the conversation may use the credential. Otherwise it records
+/// the allowance request and fails the call as a refused permission does.
 pub async fn read_credential(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
@@ -633,16 +665,16 @@ pub async fn read(
     })
 }
 
-/// Decides the undecided request `request` (`permissions.md` § Requests):
-/// an allow of a permission request grants its categories to the
-/// conversation and decides each request whose categories are then all
-/// granted, an allow of an allowance request allows its credential and
-/// decides each request to use it, a deny decides this one alone. The call
-/// held for each permission request decided goes on or fails, and each
-/// agent that asked is sent its message after the answer. A credential
-/// request is allowed with `credential`, its values, which saves the
-/// credential for the request's keep and allows it in the conversation;
-/// its command, which waits, returns with the answer instead of a message.
+/// Decides the undecided request `request`: an allow of a permission
+/// request grants its categories to the conversation and decides each
+/// request whose categories are then all granted, an allow of an allowance
+/// request allows its credential and decides each request to use it, a
+/// deny decides this one alone. The call held for each permission request
+/// decided goes on or fails, and each agent that asked is sent its message
+/// after the answer. A credential request is allowed with `credential`,
+/// its values, which saves the credential for the request's keep and
+/// allows it in the conversation; its command, which waits, returns with
+/// the answer instead of a message.
 pub async fn decide(
     shard: &dyn PermissionShard,
     conversation: &ConversationId,
@@ -789,11 +821,10 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     }
 }
 
-/// The message the agent reads (`permissions.md` § The decision's message):
-/// the decision alone for a permission request, whose call that waited says
-/// itself whether it ran, and with the command line for the use of a
-/// credential, whose read failed (`credentials.md` § Using a credential).
-/// One delivered to an ancestor of the closed subagent that asked names it.
+/// The message the agent reads: the decision alone for a permission
+/// request, whose call that waited says itself whether it ran, and with the
+/// command line for the use of a credential, whose read failed. One
+/// delivered to an ancestor of the closed subagent that asked names it.
 fn content(
     request: &StoredRequest,
     outcome: PermissionOutcome,
@@ -848,11 +879,11 @@ mod tests {
 
     use super::*;
 
-    // The user stops a held call and allows its request at the same moment
-    // (`permissions.md` § Acceptance): both are ready before the call looks
-    // again, and the call fails stopped, so the dispatch never runs its
-    // handler. A scenario cannot order the two; here both are settled
-    // before the hold is polled. Instant.
+    // The user stops a held call and allows its request at the same moment:
+    // both are ready before the call looks again, and the call fails
+    // stopped, so the dispatch never runs its handler. A scenario cannot
+    // order the two; here both are settled before the hold is polled.
+    // Instant.
     #[tokio::test]
     async fn a_call_stopped_as_its_request_is_allowed_is_not_passed_on() {
         let stop = CancellationToken::new();

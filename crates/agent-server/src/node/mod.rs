@@ -373,10 +373,8 @@ impl<H: HostResolver> Node<H> {
     /// process interrupted, while the root, whose restore recorded the
     /// interruption, leaves the turn to its client; the queued messages run again in
     /// order; waiting input wakes the root, or is written into its last turn
-    /// when that failed or was interrupted (`failures-and-recovery.md` § The
-    /// unfinished turn), and wakes a child only once its supervisor has
-    /// looked at it, which closes it instead when it is quiescent. What this
-    /// changed is saved at once.
+    /// when that failed or was interrupted, and wakes a child only once its supervisor has looked
+    /// at it, which closes it instead when it is quiescent. What this changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
         // The commands the node left running go on where their Host kept
         // them (`crates/backend-remote-host/src/device_jobs.rs`).
@@ -666,7 +664,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
 
     /// A root's turns and a side question's, whose card offers Retry: a
     /// child's result says what it could not do, and its parent's turn
-    /// decides (`failures-and-recovery.md` § The unfinished turn).
+    /// decides.
     fn user_recovers_turns(&self) -> bool {
         self.node == self.root || self.record.borrow().side.is_some()
     }
@@ -926,8 +924,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             if !media.is_empty() {
                 let parts = report_media(&media, &model.model, limits).await;
                 let session = self.store.session_store(&self.node);
-                // The held bytes are read again before a request needs them
-                // (`transcript.md` § Media).
+                // The held bytes are read again before a request needs
+                // them.
                 let (stored, _held) = store_result(parts, session.blobs()).await;
                 report.media = stored;
             }
@@ -969,7 +967,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     }
 
     /// Lets go of the node's shells on every Host; their running commands
-    /// run on (`runtime.md` § Dispose and restore).
+    /// run on.
     fn dispose(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(self.environments.dispose())
     }
@@ -1036,9 +1034,9 @@ impl Origin {
     }
 }
 
-/// The instructions of a node's system prompt (`system-prompt.md`
-/// § Identity): the product's, its identity, which every node has, and the
-/// text its subagent profile added after the model identity, if any.
+/// The instructions of a node's system prompt: the product's, its
+/// identity, which every node has, and the text its subagent profile added
+/// after the model identity, if any.
 #[derive(Debug, Clone)]
 pub(crate) struct Instructions {
     pub(crate) identity: Rc<str>,

@@ -18,7 +18,7 @@ export interface PendingSteerRenderBlock {
 
 /**
  * A call the model is writing whose description it has written, shown after
- * the transcript, titled by it (`rendering.md` § Calls being written).
+ * the transcript, titled by it.
  */
 export interface PendingCallRenderBlock {
   type: 'pending_call'

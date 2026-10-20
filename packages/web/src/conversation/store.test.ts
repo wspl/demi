@@ -679,9 +679,9 @@ test('a resumed child\'s record takes its new round\'s start, end and model', ()
   })
 })
 
-// A child's tail row reads its own phase (`rendering.md` § Frame protocol): a
-// child idle beside a command it left running shows no Requesting row, and
-// its phase never becomes the root's.
+// A child's tail row reads its own phase: a child idle beside a command it
+// left running shows no Requesting row, and its phase never becomes the
+// root's.
 test('a live child\'s phase frames set its own phase, not the root\'s', () => {
   const conversation = useConversations().items[0]!
   conversation.phase = 'idle'
@@ -709,10 +709,10 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
   }
 }
 
-// `crates/agent-server/src/server/tree/live.rs` and `rendering.md` § Rendering
-// boundary: every page keeps one record of a command from its live frames,
-// titled by its call's title and opening with its script as the frames carry
-// them, and adds only the characters beyond those it has shown.
+// `crates/agent-server/src/server/tree/live.rs`: every page keeps one record of
+// a command from its live frames, titled by its call's title and opening with
+// its script as the frames carry them, and adds only the characters beyond
+// those it has shown.
 test('a command\'s live frames build what the page shows of it, until its end', () => {
   const conversation = useConversations().items[0]!
   conversation.history = wholeHistory([execCall('call-1', 'npm test', 'executing', 'Run the unit tests')])
@@ -3584,9 +3584,8 @@ test('a Stop pressed as the page returns goes on the new socket, never on the on
 // page shows the conversation once, as the session has it, the transcript
 // with the steer and the Requesting clock counting on from the wait the
 // session tells, never a moment without the steer, with nothing running or
-// with a clock at 0s (`rendering.md` § Connections and the live tree,
-// § Waiting for the model). Before, the transcript showed as soon as it was
-// read, a round trip before the handshake. Cost: one opening.
+// with a clock at 0s. Before, the transcript showed as soon as it was read,
+// a round trip before the handshake. Cost: one opening.
 test('a conversation opened during a turn shows its transcript with its steer and its wait together', async () => {
   const store = useConversations()
   const conversation = () => store.items.find((item) => item.id === FIRST)!
@@ -3660,9 +3659,9 @@ test('an archive the backend refuses keeps the open conversation\'s transcript a
 // call still ran, the page held no transcript of the child, and the read of
 // the call by the command found none yet and was never tried again. A
 // command's tab takes its title and script from its frames, which carry
-// them from the command's record (`rendering.md` § Rendering boundary): a
-// page that holds no call of it titles it before the call returns and after
-// it opens again, and reads nothing for it. Cost: two openings, no wait.
+// them from the command's record: a page that holds no call of it titles it
+// before the call returns and after it opens again, and reads nothing for
+// it. Cost: two openings, no wait.
 test('a subagent\'s running command is titled from its frames, whether or not the page holds its call', async () => {
   const view = {
     commandId: '70460', toolUseId: 'call-clone', title: 'Clone the repository',

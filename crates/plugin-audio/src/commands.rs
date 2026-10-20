@@ -1,5 +1,5 @@
-//! The `demi audio` group (`audio.md` § Commands), whose leaves the plugin
-//! answers itself with the request's whole port.
+//! The `demi audio` group, whose leaves the plugin answers itself with the
+//! request's whole port.
 
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{AudioFileFormat, CommandPlugin, Placement, PortHandled, VoiceInfo};
@@ -9,8 +9,7 @@ use serde::Deserialize;
 
 const SUMMARY: &str = "Make speech, music and sound effects through the user's provider entries, one file per call, written to stdout, and list the voices and the audio models they offer.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Makes audio through the user's OpenAI, Google, ElevenLabs, MiniMax, BytePlus Speech or Doubao Speech API key or a compatible API, with the model `--model` names: `speech` reads a text aloud in one voice, `music` makes a piece from a prompt, `effect` a sound effect; `voices` lists a speech model's voices, `models` the models with their kinds, prices and the entry a call takes. The bytes go to stdout, MP3 unless `--format` asks otherwise: `> voice.mp3` saves it; stderr says its length, format and model. Use it when the user asks for a voice-over, narration, music or a sound effect.";
 
 const SPEECH_SUMMARY: &str = "Read the text aloud in one voice and write the audio's bytes to stdout; stderr says its length, format, model, entry and voice. An option the entry's API has no field for, a format the vendor does not make, or a result that differs from what was asked adds a warning and still succeeds.";

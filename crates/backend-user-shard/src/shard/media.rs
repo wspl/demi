@@ -1,25 +1,24 @@
 //! The Providers service of the plugins' port for generated media
-//! (`media.md`, `plugins.md` § The contract): the models of one kind the
+//! (`plugins.md` § The contract): the models of one kind the
 //! user's entries offer, each with every fact the catalog of media models
 //! states and the entries that offer it; one image made through an entry's
 //! account or key; one video's job, from its ask to its download; and one
 //! audio file, with the voices a speech model speaks in.
 //!
-//! Which entry makes a call (`media.md` § Which entry makes a call): the
-//! one `--provider` names, which fails the call when it cannot; otherwise
-//! the first that can make the model now, the subscriptions before the
-//! keys, each in the order of Settings › Providers. An entry can when the
-//! user has it on, its switch for the kind is on, it is signed in or has
-//! its key, it offers the model and an account of it is not used up. An
-//! entry whose last account is used up by the call's request hands it on
-//! to the next; a refusal of the request is never handed on, and neither is
-//! a video's job once the vendor took it, since it is paid for
-//! (`videos.md` § Accounts and failures). Within an entry the call takes
-//! the account under the entry's rotation, as a new agent takes one at its
-//! first request, and another at once when that one is used up. The
-//! provider sends the request, renewing its account's sign-in, and each
-//! call is a usage ledger row with the purpose of its kind. What the agent
-//! reads of it, the plugin words.
+//! Which entry makes a call: the one `--provider` names, which fails the
+//! call when it cannot; otherwise the first that can make the model now,
+//! the subscriptions before the keys, each in the order of Settings ›
+//! Providers. An entry can when the user has it on, its switch for the kind
+//! is on, it is signed in or has its key, it offers the model and an
+//! account of it is not used up. An entry whose last account is used up by
+//! the call's request hands it on to the next; a refusal of the request is
+//! never handed on, and neither is a video's job once the vendor took it,
+//! since it is paid for. Within an entry the call takes the account under
+//! the entry's rotation, as a new agent takes one at its first request, and
+//! another at once when that one is used up. The provider sends the
+//! request, renewing its account's sign-in, and each call is a usage ledger
+//! row with the purpose of its kind. What the agent reads of it, the plugin
+//! words.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -335,7 +334,7 @@ fn none_made(routes: &[Route]) -> MediaRefusal {
 /// The names of `id`'s model of `kind`, `id` first: the model an alias
 /// names and every alias of that model, as the catalog states them; `id`
 /// alone for a model the catalog does not know. An entry that lists any of
-/// them offers the model (`media.md` § What the agent is told).
+/// them offers the model.
 fn model_names(catalog: &Catalog, kind: MediaKind, id: &str) -> Vec<String> {
     let kind = media_catalog::MediaKind::from(kind);
     let Some(known) = catalog.models.iter().find(|model| model.kind == kind && model.id == id) else {
@@ -377,9 +376,8 @@ fn listed_name<'a>(listing: &[MediaModelInfo], names: &'a [String]) -> Option<&'
 
 /// The models of `kind` of the user's entries, newest first, each with
 /// what the catalog states of it and the entries that offer it in the
-/// order a call tries them, with why each would or would not make it now
-/// (`media.md` § What the agent is told); a model no entry that is on
-/// offers is not listed.
+/// order a call tries them, with why each would or would not make it
+/// now; a model no entry that is on offers is not listed.
 pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<MediaListing, PortFailure> {
     let services = shard.services();
     let routes = routes(services, shard.user(), kind).await.map_err(failed)?;
@@ -388,7 +386,7 @@ pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<Media
     let (offered, unlisted, _) = offerings(shard, &catalog, &routes, manages).await;
     // An alias is a name of a model, not a model: a model is one row, with
     // its aliases among its facts, and every entry that offers any of its
-    // names (`media.md` § What the agent is told).
+    // names.
     let mut ids: Vec<MediaModelInfo> = Vec::new();
     for listing in &offered {
         for model in listing {
@@ -437,8 +435,7 @@ pub(crate) async fn media_models(shard: &Shard, kind: MediaKind) -> Result<Media
         }
         // A model only entries turned off offer is not listed; beside one
         // that an entry makes, those that are off say so
-        // (`crates/backend-user-shard/src/provider_settings.rs`, `media.md` §
-        // What the agent is told).
+        // (`crates/backend-user-shard/src/provider_settings.rs`).
         let made = entries
             .iter()
             .any(|entry| !matches!(entry.status, EntryStatus::Off | EntryStatus::TurnedOff));
@@ -685,7 +682,7 @@ pub(crate) async fn make_image(
 /// makes an image, and answers the job the vendor took with its steps:
 /// each change of its state, then its video. The steps, dropped before the
 /// video, stop the waiting, cancel the job where the vendor can and write
-/// the call's cancelled row (`videos.md` § A call is a job).
+/// the call's cancelled row.
 pub(crate) async fn make_video(
     shard: &Shard,
     conversation: &ConversationId,
@@ -724,8 +721,7 @@ pub(crate) async fn make_video(
 }
 
 /// Makes the audio `ask` names for `conversation`, as [`make_image`] makes
-/// an image: one request, answered within the call (`audio.md`
-/// § Vendors).
+/// an image: one request, answered within the call.
 pub(crate) async fn make_audio(
     shard: &Shard,
     conversation: &ConversationId,
@@ -767,8 +763,8 @@ pub(crate) async fn make_audio(
 }
 
 /// The voices of speech model `model`, as the entry a call of it would
-/// take now lists them, read when asked (`audio.md` § Vendors); a listing
-/// is no call, and writes no ledger row.
+/// take now lists them, read when asked; a listing is no call, and writes
+/// no ledger row.
 pub(crate) async fn audio_voices(
     shard: &Shard,
     conversation: &ConversationId,
@@ -1165,8 +1161,8 @@ impl Asking for VideoCall {
         let (mut row, span) = making.open_row("video", account);
         let request = VideoRequest { model: making.name.clone(), ..self.request.clone() };
         let http = making.http();
-        // The job's bound counts from its ask, the ask's own wait included
-        // (`videos.md` § The job).
+        // The job's bound counts from its ask, the ask's own wait
+        // included.
         let asked_at = tokio::time::Instant::now();
         let answer = videos
             .ask(&http, making.catalog, request.clone())

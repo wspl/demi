@@ -1,7 +1,7 @@
-//! Reading a failure of the CLI's (`failures-and-recovery.md` § Reading a
-//! failure): a subscription's usage limit names its reset in the refused
-//! call's own `rate_limit_info`, which the CLI prints on the assistant line
-//! it makes up for the refusal; any other failure is read by the HTTP rules.
+//! Reading a failure of the CLI's: a subscription's usage limit names its
+//! reset in the refused call's own `rate_limit_info`, which the CLI prints
+//! on the assistant line it makes up for the refusal; any other failure is
+//! read by the HTTP rules.
 
 use demi_provider_common::quota::unix_seconds;
 use demi_provider_common::read_http_failure;

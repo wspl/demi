@@ -1,5 +1,4 @@
-//! How the Codex provider reads its failure records
-//! (`failures-and-recovery.md` § Reading a failure): a used-up account is
+//! How the Codex provider reads its failure records: a used-up account is
 //! told by Codex's own error type or code, as the Codex CLI tells it; a
 //! usage limit says when it lifts, in the failure's own fields, and anything
 //! else falls back to the standard reading.
@@ -14,11 +13,11 @@ use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, ProviderFailure
 const USAGE_LIMIT_REACHED: &str = "usage_limit_reached";
 
 /// `failure` with the code `usage_limit` when its record is Codex's sign of
-/// a used-up account (`failures-and-recovery.md`): a 429, over HTTP or in a
-/// WebSocket error frame, whose error type is `usage_limit_reached`, or any
-/// failure, with a status or none as in a `response.failed` frame, whose
-/// error type or code says the quota, the credits or a spend or usage cap is
-/// used up. Any other failure keeps its code.
+/// a used-up account: a 429, over HTTP or in a WebSocket error frame, whose
+/// error type is `usage_limit_reached`, or any failure, with a status or
+/// none as in a `response.failed` frame, whose error type or code says the
+/// quota, the credits or a spend or usage cap is used up. Any other failure
+/// keeps its code.
 pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
     if failure.diagnostics.as_deref().is_some_and(is_usage_limit) {
         failure.code = Some(ErrorCode::UsageLimit);

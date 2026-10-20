@@ -9,10 +9,10 @@ import { rowKey } from '../row-key'
 import { createdAt, model, userBlock } from './agent-harness'
 
 // The rows the transcript list renders, followed through a message sent while
-// the reader is at the end of a conversation (`rendering.md` § Work groups).
-// The list draws what this gives it, so a row lost between two steps is a frame
-// in which the list is shorter. Real heights and the frame they are drawn in
-// are checked in the product. Pure, with a fake clock: a few milliseconds.
+// the reader is at the end of a conversation. The list draws what this gives
+// it, so a row lost between two steps is a frame in which the list is shorter.
+// Real heights and the frame they are drawn in are checked in the product.
+// Pure, with a fake clock: a few milliseconds.
 
 const text = (id: string, body: string): Block => ({ type: 'text', id, createdAt, model, text: body })
 /** A step of the run `run`, the id of its first block, as the backend stores it. */
@@ -89,10 +89,10 @@ function follow(state: MessageRowsSource) {
   return { list, step, stop: () => scope.stop() }
 }
 
-// The run starts with thinking, or with a call the model is still writing
-// (`rendering.md` § Work groups): what runs takes the Requesting row's place,
-// in the same row; once it ended, it is the run's row, which keeps that row,
-// and the turn waits for the model in a Requesting row under it.
+// The run starts with thinking, or with a call the model is still writing:
+// what runs takes the Requesting row's place, in the same row; once it ended,
+// it is the run's row, which keeps that row, and the turn waits for the model
+// in a Requesting row under it.
 test.each(['thinking', 'call being written'] as const)('a sent message, its run from %s and its answer only add rows, keep the answer before them closed, and what runs takes the tail row\'s place', async (first) => {
   const state = answered()
   const { list, step: follows, stop } = follow(state)
@@ -380,10 +380,9 @@ test.each(transitions)('$name: no row goes while another takes its place, and th
 
 // Continue after a Stop and Resume after an error: the Stopped row or the
 // error record rolls into Requesting, and the turn's first step belongs to
-// the run above, as the backend stores it (`rendering.md` § Work groups): it
-// runs in the Requesting row's place, under the run, whose row keeps its
-// key, and once it ended it joins the run and its row goes, the answer
-// taking its place.
+// the run above, as the backend stores it: it runs in the Requesting row's
+// place, under the run, whose row keeps its key, and once it ended it joins
+// the run and its row goes, the answer taking its place.
 test.each([
   { name: 'Continue after a Stop', record: abort('x-1'), unwind: replace('x-1', abort('x-1', true)) },
   { name: 'Resume after an error', record: failure('e-1'), unwind: drop('e-1') },
@@ -431,10 +430,10 @@ function running(): MessageRowsSource {
   })
 }
 
-// A call being written shows from its title (`rendering.md` § Calls being
-// written): until the model has written its description, the tail row goes
-// on saying Requesting, counting from the wait's start, under the run if
-// there is one; then it rolls to the call's row, in the same row.
+// A call being written shows from its title: until the model has written
+// its description, the tail row goes on saying Requesting, counting from
+// the wait's start, under the run if there is one; then it rolls to the
+// call's row, in the same row.
 test('a call being written without its description leaves the face as it was, then rolls to its title', async () => {
   const opened = (description: string | null) => [{ toolUseId: 'c-2-use', toolName: 'shell', description }]
 
@@ -482,11 +481,11 @@ test('a call being written without its description leaves the face as it was, th
 const redacted = (id: string, run = id): Block => ({ type: 'redacted_thinking', id, run, createdAt, model, data: 'opaque' })
 
 // Reasoning ends the wait as soon as its block starts, whether its text
-// streams, never comes, or is redacted (`rendering.md` § Waiting for the
-// model): the server ends the wait, and the reasoning, shown as thinking
-// without text, takes the Requesting row's place in that row, so the page
-// never counts Requesting on its own clock while the model thinks. Once the
-// answer follows, the reasoning has nothing to show and goes.
+// streams, never comes, or is redacted: the server ends the wait, and the
+// reasoning, shown as thinking without text, takes the Requesting row's
+// place in that row, so the page never counts Requesting on its own clock
+// while the model thinks. Once the answer follows, the reasoning has
+// nothing to show and goes.
 test.each([
   { name: 'empty', reasoning: thinking('k-1') },
   { name: 'redacted', reasoning: redacted('k-1') },
@@ -623,8 +622,8 @@ test('while the model is waited for, the Requesting row stands right after the t
 })
 
 // A command's notice and an agent's receipt that arrive while the agent works
-// are steps of its run (`rendering.md` § Work groups): the run stays one row
-// under its name, and the turn waits for the model under it.
+// are steps of its run: the run stays one row under its name, and the turn
+// waits for the model under it.
 test('a notice and a receipt join the run, which stays one row under one name over the Requesting row', async () => {
   const state = running()
   state.pendingCalls = []
@@ -699,7 +698,7 @@ const thought = (id: string, body: string, run = id): Block => ({ type: 'thinkin
 test.each([
   ['thinking before the answer', [thought('k-1', 'The folder is the workspace.'), text('a-2', 'Three files.')], 'run:k-1 [k-1]'],
   ['thinking before a call', [thought('k-1', 'List the folder first.'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [k-1 c-1]'],
-  // Thinking blocks next to each other are one step (`rendering.md` § Work groups).
+  // Thinking blocks next to each other are one step.
   ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [k-1]'],
   ['textless thinking before a call', [thought('k-1', ''), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [c-1]'],
   ['white-space-only thinking before a call', [thought('k-1', ' \n'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [c-1]'],
@@ -710,13 +709,12 @@ test.each([
   expect(finishedRows(reopened(blocks))).toEqual(live)
 })
 
-// Review: parallel calls return in any order (`rendering.md` § Work groups).
-// A step the reader opened while it ran is still open as the run it starts,
-// and a run the reader opened stays the same open row when a call that
-// started before the one that joined it returns; while a call still runs,
-// the turn waits for it, so no Requesting row shows. Before, the run was
-// named after its first ended step: A returning after B made it another
-// row, closed.
+// Review: parallel calls return in any order. A step the reader opened while
+// it ran is still open as the run it starts, and a run the reader opened
+// stays the same open row when a call that started before the one that
+// joined it returns; while a call still runs, the turn waits for it, so no
+// Requesting row shows. Before, the run was named after its first ended
+// step: A returning after B made it another row, closed.
 test('a run stays the same open row as parallel calls return out of order, and Requesting waits for the last', async () => {
   const state = reactive<MessageRowsSource>({
     ...answered(),

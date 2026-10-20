@@ -1,4 +1,4 @@
-//! What the web app sends (`rendering.md` § Client frames).
+//! What the web app sends.
 
 use demi_shared_types::{BlobRef, BlockId, CommandId, MessageComment, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
@@ -18,9 +18,8 @@ use crate::TranscriptVersion;
 pub enum ClientFrame {
     /// Attach this connection to the conversation's tree, restoring it when
     /// it is not live with the model selection the conversation's record
-    /// holds; no frame names a model (`runtime.md` § Model switch). `from`
-    /// and `edge` name the root's blocks the page holds, so the reset sends
-    /// none before them (`rendering.md` § Where a reset starts).
+    /// holds; no frame names a model. `from` and `edge` name the root's
+    /// blocks the page holds, so the reset sends none before them.
     Open {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
@@ -41,8 +40,7 @@ pub enum ClientFrame {
         #[garde(dive)]
         comments: Vec<MessageComment>,
     },
-    /// Continue from a new version of a user message
-    /// (`message-editing.md` § Versions).
+    /// Continue from a new version of a user message.
     EditAndSend {
         #[garde(dive)]
         request: EditRequest,
@@ -92,7 +90,7 @@ pub enum ClientFrame {
         #[garde(skip)]
         steer_id: BlockId,
     },
-    /// Deliver a pending steer now (`runtime.md` § Send now).
+    /// Deliver a pending steer now.
     SteerNow {
         #[garde(skip)]
         steer_id: BlockId,
@@ -101,15 +99,15 @@ pub enum ClientFrame {
         #[garde(skip)]
         message_id: TurnId,
     },
-    /// Send a queued message now (`runtime.md` § Send now): while a turn
-    /// runs, the turn ends at once and the message runs next; otherwise it
-    /// moves to the front of the queue.
+    /// Send a queued message now: while a turn runs, the turn ends at once
+    /// and the message runs next; otherwise it moves to the front of the
+    /// queue.
     SendQueuedMessage {
         #[garde(skip)]
         message_id: TurnId,
     },
     ClearMessageQueue {},
-    /// Stop one thing (`runtime.md` § Stop).
+    /// Stop one thing.
     Abort {},
     AbortSubagents {},
     /// Stop one live subagent with its subtree.
@@ -271,7 +269,7 @@ pub enum SavedDelivery {
     Queue,
 }
 
-/// A replacement of a user message and everything after it (`message-editing.md`).
+/// A replacement of a user message and everything after it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditRequest {
@@ -289,8 +287,8 @@ pub struct EditRequest {
     pub content: Vec<ClientContent>,
 }
 
-/// Regenerate of the answer to a user message (`message-editing.md`
-/// § Regenerate and the Up Arrow key): the message stays as it is.
+/// Regenerate of the answer to a user message: the message stays as it
+/// is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RegenerateRequest {
@@ -353,7 +351,7 @@ pub enum ClientContent {
         media: MediaRef,
     },
     /// In an edit: an attachment record of the edited message, by its
-    /// number, such as `a7` (`message-editing.md` § Files the edit keeps).
+    /// number, such as `a7`.
     Attachment {
         #[garde(length(chars, min = 1, max = 32))]
         id: String,

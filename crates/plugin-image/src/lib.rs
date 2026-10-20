@@ -1,8 +1,13 @@
-//! The `image` plugin (`plugins.md` § Built-in plugins, `images.md`): the
+//! The `image` plugin (`plugins.md` § Built-in plugins): the
 //! `demi image` group, which makes and edits images through the port's
 //! Providers service, reads an edit's images with the port's file reads,
 //! writes the image's bytes to stdout, and says on stderr what came back
 //! and what the result did not honour.
+//!
+//! No vendor names the model that made an image, so the model is the one
+//! thing the result cannot show: ChatGPT's backend accepts any model name,
+//! an invented one included, and returns the same image, so a `--model`
+//! there is a request, not a guarantee, which the stderr line says.
 
 mod commands;
 mod image;

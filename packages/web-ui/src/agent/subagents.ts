@@ -35,14 +35,12 @@ export interface SubagentRecord extends AgentRun {
   name: string
   /**
    * Whether the call that started it is on its parent's current path: the
-   * Agents window and `agent:` links show only the children that are
-   * (`message-editing.md` § Versions).
+   * Agents window and `agent:` links show only the children that are.
    */
   onPath: boolean
   /**
    * What its session does while it is live, as its `phase` frames say: a
-   * child idle beside a command it left running shows no Requesting row
-   * (`rendering.md` § Frame protocol).
+   * child idle beside a command it left running shows no Requesting row.
    */
   sessionPhase: SessionPhase
   startedAt: string
@@ -55,19 +53,19 @@ export interface SubagentRecord extends AgentRun {
    * current (`crates/agent-server/src/server/tree.rs`); absent before a snapshot listed it.
    */
   revision?: number
-  /** The calls this agent's model is writing (`rendering.md` § Calls being written). */
+  /** The calls this agent's model is writing. */
   pendingCalls: PendingCall[]
   /**
    * When this agent began to wait for the model's answer, as `Date.now()`;
-   * null when it waits for none (`rendering.md` § Waiting for the model).
+   * null when it waits for none.
    */
   waitingSince: number | null
   /** The failure facts of this agent's error blocks, by block id. */
   failures: Record<string, ProviderFailureFacts>
   /**
-   * How full this agent's next request is, as its session last said
-   * (`compaction.md` § Context estimate); null until it says, and for a
-   * child that ended before the page opened.
+   * How full this agent's next request is, as its session last said;
+   * null until it says, and for a child that ended before the page
+   * opened.
    */
   contextUsage: ContextUsage | null
 }

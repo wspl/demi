@@ -289,13 +289,12 @@ impl Shard {
         Ok((paired && !self.devices().online(device)).then(|| device.clone()))
     }
 
-    /// Reserves the conversation's live tree while it does nothing by itself
-    /// (`runtime.md` § Actions): no action runs or waits, no child is live
-    /// and no command runs. A switch that `leaves` an offline device takes
-    /// the tree with commands running, which run on there, and also a tree
-    /// whose every running node only waits for that device: its waiting
-    /// jobs were never sent, the switch fails them, and the nodes go on on
-    /// the new Host, so nothing is reserved (`crates/backend-host-access/src/transition.rs`). A conversation without a live tree runs
+    /// Reserves the conversation's live tree while it does nothing by itself: no action runs or
+    /// waits, no child is live and no command runs. A switch that `leaves` an offline device takes
+    /// the tree with commands running, which run on there, and also a tree whose every running node
+    /// only waits for that device: its waiting jobs were never sent, the switch fails them, and the
+    /// nodes go on on the new Host, so nothing is reserved
+    /// (`crates/backend-host-access/src/transition.rs`). A conversation without a live tree runs
     /// nothing; one whose tree works otherwise refuses the transition.
     fn reserve_idle_tree(
         &self,

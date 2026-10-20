@@ -1,7 +1,7 @@
-//! A session's waiting input (`runtime.md` § Input, § Command reports): the
-//! human steers it accepted, the agent messages it admitted and the command
-//! reports that arrived, each waiting for a continuation boundary. Pure state:
-//! the session decides when a boundary takes them.
+//! A session's waiting input: the human steers it accepted, the agent messages
+//! it admitted and the command reports that arrived, each waiting for a
+//! continuation boundary. Pure state: the session decides when a boundary
+//! takes them.
 //!
 //! An agent message enters the same queue as a human steer: its delivery is
 //! steering (it enters an active turn at its next boundary, and no provider
@@ -13,6 +13,10 @@
 //! before the session commits idle or a child closes, so a race between
 //! finishing and admission cannot lose a message; a compaction keeps it outside
 //! the compacted prefix and takes it before inference resumes.
+//!
+//! The human steers are not part of the checkpoint: a steer that never reached
+//! the transcript is lost with a restart, and nothing else keeps a copy of it
+//! for a client that reconnects, which reads the list from the live session.
 
 use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer};
 
@@ -64,8 +68,7 @@ pub(super) enum Take {
     /// for the request that carries them.
     AgentMessages,
     /// The boundary after a step of tool calls writes all but the human
-    /// steers, which stay pending until the request that carries them
-    /// (`runtime.md` § Input).
+    /// steers, which stay pending until the request that carries them.
     AllButSteers,
 }
 

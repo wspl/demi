@@ -48,16 +48,15 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   )
 
   // The clock counts from when the wait began, which is the session's fact,
-  // not this view's (`rendering.md` § Waiting for the model): the server tells
-  // a start for as long as the row says Requesting, from the turn's start
-  // or a step's end until something of the answer shows, so a view shown
-  // during a wait counts from it, and runs on across the confirmation of a
-  // message and the agent's own retries alike. A wait this page started, by
-  // sending a message or a recovery, counts from that action, before the
-  // server has it; only that wait: a later start the server tells, as for a
-  // steer sent now, is a new wait and counts from the server's start. Until
-  // the server's start arrives, the row counts from when it began to say
-  // Requesting.
+  // not this view's: the server tells a start for as long as the row says
+  // Requesting, from the turn's start or a step's end until something of the
+  // answer shows, so a view shown during a wait counts from it, and runs on
+  // across the confirmation of a message and the agent's own retries alike. A
+  // wait this page started, by sending a message or a recovery, counts from
+  // that action, before the server has it; only that wait: a later start the
+  // server tells, as for a steer sent now, is a new wait and counts from the
+  // server's start. Until the server's start arrives, the row counts from when
+  // it began to say Requesting.
   const requesting = computed(() => kind.value === 'requesting')
   const shownSince = ref(Date.now())
   const startedHere = ref(false)

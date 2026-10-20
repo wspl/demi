@@ -60,8 +60,7 @@ pub struct Checked<'a> {
 pub struct RegisterError(String);
 
 /// The root Demi's own command groups sit under, as `demi browser`; each of
-/// its groups, like every other root that is a group, is a top-level group
-/// (`system-prompt.md` § Capability index).
+/// its groups, like every other root that is a group, is a top-level group.
 pub const DEMI_ROOT: &str = "demi";
 
 /// Root commands, in the order they were registered, and the handler of
@@ -209,8 +208,8 @@ impl CommandSet {
         self.roots.iter()
     }
 
-    /// The model's capability index of the set's top-level groups
-    /// (`system-prompt.md` § Capability index); nothing when it has none.
+    /// The model's capability index of the set's top-level groups;
+    /// nothing when it has none.
     pub fn render_index(&self) -> CapabilityIndex {
         let groups = self
             .roots
@@ -230,8 +229,8 @@ impl CommandSet {
     /// JSON and are validated as they are: no text is converted, so `"7"`
     /// for a number is a usage error. The leaf's permission is not checked
     /// here: the backend's dispatch checks it between [`CommandSet::check`]
-    /// and the handler (`permissions.md` § The check).
-    /// A usage error is told in clap's shape ([`CommandSet::tell`]).
+    /// and the handler. A usage error is told in clap's shape
+    /// ([`CommandSet::tell`]).
     pub async fn dispatch(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
         let path = invocation.path.clone();
         self.run(invocation, port).await.map_err(|error| self.tell(&path, error))

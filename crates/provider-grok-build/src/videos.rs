@@ -1,7 +1,6 @@
-//! Grok Build's video role (`videos.md` § Vendors): the chat proxy's video
-//! endpoints, which speak the xAI Videos shape, with the account's identity
-//! as inference sends it. A finished video's address is downloaded without
-//! a header.
+//! Grok Build's video role: the chat proxy's video endpoints, which speak
+//! the xAI Videos shape, with the account's identity as inference sends it.
+//! A finished video's address is downloaded without a header.
 
 use std::sync::Arc;
 

@@ -182,8 +182,8 @@ test('send now on a pending steer or a queued message stops nothing and never tu
 })
 
 // Remove on a steer or a queued message: the session answers whether it removed
-// the message or the message had gone on (`runtime.md` § Pending steers), and
-// the removal settles on that answer alone, whatever frames come before it.
+// the message or the message had gone on, and the removal settles on that
+// answer alone, whatever frames come before it.
 test.each([
   { kind: 'steer', outcome: 'removed' },
   { kind: 'steer', outcome: 'gone_on' },

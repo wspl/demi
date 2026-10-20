@@ -1,7 +1,6 @@
-//! The commands a node holds (`runtime.md` § What a session holds, §
-//! Acceptance): every node of the user with the same plugins and the same
-//! right to spawn holds one set, composed once per revision of the plugins
-//! and kept while a node holds it.
+//! The commands a node holds: every node of the user with the same plugins
+//! and the same right to spawn holds one set, composed once per revision
+//! of the plugins and kept while a node holds it.
 
 use std::{
     cell::{Cell, RefCell},

@@ -749,8 +749,8 @@ impl LiveCli {
 
     /// Hands `batch` on to the agent and keeps it for the next run, which
     /// delivers its results: the calls, the entries now placed, and the
-    /// response with the usage of the call that wrote them (`compaction.md`
-    /// § When compaction runs). The run ends with these events.
+    /// response with the usage of the call that wrote them. The run ends
+    /// with these events.
     pub(crate) fn hand_over(
         &mut self,
         batch: Vec<ToolCall>,

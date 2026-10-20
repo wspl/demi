@@ -326,7 +326,7 @@ fn block_entries(
     let (mut calls, mut results) = (kept, results);
     // What an item is covered by: the block's own entries, never one written
     // for an earlier item of the block, since a `compaction_boundary` gives
-    // several user messages (`transcript.md` § Replay).
+    // several user messages.
     let (own_calls, own_results) = (calls.len(), results.len());
     let mut users_before = 0;
     for item in block_items {
@@ -354,11 +354,10 @@ fn block_entries(
 
 /// Gives each `user` entry that recorded one of `items`' user messages the
 /// blocks the message gained after it, as a summary request's instruction
-/// joins the input that ends its history (`compaction.md` § The summary
-/// request): the recorded blocks stay as they were, and so does every other
-/// entry of the block, such as the metadata the CLI wrote before the
-/// message. An entry whose blocks are not the start of the message's stays
-/// as it is.
+/// joins the input that ends its history: the recorded blocks stay as they
+/// were, and so does every other entry of the block, such as the metadata
+/// the CLI wrote before the message. An entry whose blocks are not the
+/// start of the message's stays as it is.
 fn extend_recorded(entries: &mut [Value], items: &[InferenceItem]) {
     let messages = items.iter().filter_map(|item| match item {
         InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {

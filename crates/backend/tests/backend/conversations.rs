@@ -1,10 +1,10 @@
-//! Conversations (`rendering.md` § Frame protocol): creation under the web app's id, the
-//! list and the product state, a chat over the socket with an Anthropic endpoint the
-//! test scripts, a reload whose history is what the database holds, a client that falls
-//! behind, the frames the backend refuses, a user's context limit on a model, provider
-//! edits and deletion at the inference boundary, the rate limit, a shutdown in the
-//! middle of a turn and one that a page which stopped reading cannot hold up, and the
-//! patches and batches of the sidebar. No test calls a real model.
+//! Conversations: creation under the web app's id, the list and the product state, a
+//! chat over the socket with an Anthropic endpoint the test scripts, a reload whose
+//! history is what the database holds, a client that falls behind, the frames the
+//! backend refuses, a user's context limit on a model, provider edits and deletion at
+//! the inference boundary, the rate limit, a shutdown in the middle of a turn and one
+//! that a page which stopped reading cannot hold up, and the patches and batches of the
+//! sidebar. No test calls a real model.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -581,8 +581,8 @@ pub(crate) async fn summaries(
 }
 
 /// The conversation's summary, as the sidebar lists it. Once a socket has
-/// seen the idle phase, the save that ended the turn has committed
-/// (`runtime.md` § A turn), so the summary and the database hold the turn.
+/// seen the idle phase, the save that ended the turn has committed, so the
+/// summary and the database hold the turn.
 pub(crate) async fn summary(
     backend: &TestBackend,
     session: &Session,

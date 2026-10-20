@@ -121,7 +121,7 @@ pub(crate) struct Summary {
     pub(super) revision: u64,
     /// Whether the call that started it is on its parent's current path,
     /// as it was when the parent last was live; a live parent's session
-    /// tells it now (`message-editing.md` § Versions).
+    /// tells it now.
     pub(super) started_on_path: bool,
     /// Whether the pages last heard that it is on the current path; none
     /// before a change of a path told them.
@@ -272,8 +272,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// The live children of `owner` that are not closing, in spawn order,
     /// each by its agent number with its description: what a compaction of
-    /// `owner` names as still working (`compaction.md` § What the model
-    /// receives afterward).
+    /// `owner` names as still working.
     pub(crate) fn live_children_of(&self, owner: &NodeId) -> Vec<(u64, String)> {
         self.children_of(owner)
             .into_iter()
@@ -802,12 +801,11 @@ impl<H: HostResolver> Tree<H> {
         Ok(id)
     }
 
-    /// Whether `record`'s child belongs to the conversation's current path
-    /// (`message-editing.md` § Versions): the call that started it is on
-    /// its parent's current path, and so is each ancestor's. A live
-    /// parent's session tells whether it holds the call; a closed one's
-    /// path is the one it closed with. A child no call started is on every
-    /// path.
+    /// Whether `record`'s child belongs to the conversation's current
+    /// path: the call that started it is on its parent's current path, and
+    /// so is each ancestor's. A live parent's session tells whether it
+    /// holds the call; a closed one's path is the one it closed with. A
+    /// child no call started is on every path.
     fn on_path(&self, record: &NodeRecord) -> bool {
         let summaries = self.summaries.borrow();
         let mut at = Some(record.clone());
@@ -1149,8 +1147,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// Closes as failed the live child `record` of `owner` whose stored
     /// state does not rebuild, with what failed, `error`: its rows stay as
-    /// they are, and its own live children close as an abort closes them
-    /// (`message-editing.md` § Versions: a child is never deleted).
+    /// they are, and its own live children close as an abort closes them.
     async fn close_unrebuilt(&self, owner: &Node<H>, record: NodeRecord, error: String) {
         tracing::warn!(node = %record.id, %error, "a live subagent could not be rebuilt and closes as failed");
         let runs_on = self
@@ -1981,8 +1978,8 @@ fn child_frames<H: HostResolver>(
 }
 
 /// A child's transcript from its latest page: the page holds none of a
-/// child's blocks until it shows it (`rendering.md` § Where a reset starts).
-/// Only that page is copied, never the whole transcript.
+/// child's blocks until it shows it. Only that page is copied, never the
+/// whole transcript.
 fn child_reset<H: HostResolver>(child: &Child<H>) -> ServerFrame {
     child.node.session().with_window(|transcript| subagent_reset(child.id().clone(), transcript))
 }
@@ -2508,9 +2505,9 @@ impl ToolStatus {
 }
 
 /// A child's or a side question's transcript from the start of its latest
-/// page, which the page holds none of until it shows it (`rendering.md`
-/// § Where a reset starts): the window its session holds holds that page,
-/// as the root's does ([`demi_agent_session::latest_page`]).
+/// page, which the page holds none of until it shows it: the window its
+/// session holds holds that page, as the root's does
+/// ([`demi_agent_session::latest_page`]).
 pub(super) fn subagent_reset(subagent_id: NodeId, transcript: &demi_agent_transcript::TranscriptLog) -> ServerFrame {
     let start = demi_agent_session::latest_page(transcript);
     ServerFrame::SubagentTranscriptReset {

@@ -1,9 +1,9 @@
-//! An xAI key's videos and a compatible API's, by the shape its user chose
-//! (`videos.md` § Vendors), against a scripted vendor built from each
-//! shape's documented requests and answers: xAI's video generation guide
-//! and its video models listing; OpenAI's Videos API reference, as
-//! vLLM-Omni serves it, with its `DELETE`; OpenRouter's video generation
-//! guide, whose ask answers 202 `pending`. No test calls a vendor.
+//! An xAI key's videos and a compatible API's, by the shape its user
+//! chose, against a scripted vendor built from each shape's documented
+//! requests and answers: xAI's video generation guide and its video models
+//! listing; OpenAI's Videos API reference, as vLLM-Omni serves it, with
+//! its `DELETE`; OpenRouter's video generation guide, whose ask answers
+//! 202 `pending`. No test calls a vendor.
 
 use std::sync::Arc;
 
@@ -211,13 +211,12 @@ async fn openrouter_videos_asks_with_frames_answers_202_pending_and_downloads_wi
     assert_eq!((sent[4].uri.path(), sent[4].header("authorization")), ("/v1/videos/job-1/content", Some("Bearer sk-test")));
 }
 
-/// A compatible entry's key goes only to its own endpoint's origin
-/// (`videos.md` § The job): a content address on another host, and the
-/// host a same-origin address redirects to, get the download without it.
-/// Planted defect this catches: the key sent to whatever address the job
-/// answers. Google's test catches the key kept across a redirect, which
-/// reqwest's own redirects strip from `Authorization` but not from
-/// Google's header.
+/// A compatible entry's key goes only to its own endpoint's origin: a
+/// content address on another host, and the host a same-origin address
+/// redirects to, get the download without it. Planted defect this
+/// catches: the key sent to whatever address the job answers. Google's
+/// test catches the key kept across a redirect, which reqwest's own
+/// redirects strip from `Authorization` but not from Google's header.
 // Two scripted servers, four requests: milliseconds.
 #[tokio::test]
 async fn an_openrouter_download_sends_the_key_only_to_the_entrys_own_origin() {

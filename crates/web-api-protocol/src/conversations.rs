@@ -405,8 +405,7 @@ pub struct TranscriptPage {
     /// The summary size of each compaction marker's boundary, which its
     /// divider tells; the boundary may be on another page.
     pub summaries: Vec<CompactionSummary>,
-    /// The versions of its blocks that have others (`message-editing.md`
-    /// § Versions); none in a share.
+    /// The versions of its blocks that have others; none in a share.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<BlockVersions>,
 }

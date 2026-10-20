@@ -1,6 +1,5 @@
 //! Help rendering: the text `--help` prints for a group or a command, and
-//! the model's capability index (`system-prompt.md`
-//! § Capability index).
+//! the model's capability index.
 
 use serde_json::Value;
 
@@ -11,12 +10,11 @@ use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints its data on stdout, a list as a table under a header row and one object as Key: value lines, and --json, where usage offers it, prints the same as JSON; warnings and errors go to stderr, and a failure exits 1, a usage error 2. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. Read text with the standard tools; file view alone shows you an image, a video or a PDF, from a file or a pipe.";
 
 /// The paragraph after [`HELP_DEFAULTS`] that introduces the groups'
-/// entries (`system-prompt.md` § Capability index).
+/// entries.
 pub const INDEX_OPENER: &str = "Demi's own capabilities are `demi` commands you run in the shell. Each group below says what it is for; read its `--help` before you first use it, and an operation's `--help` for its arguments.";
 
-/// The model's capability index (`system-prompt.md` § Capability index):
-/// the defaults and the opener, then each group's section, sorted by the
-/// group's path.
+/// The model's capability index: the defaults and the opener, then each
+/// group's section, sorted by the group's path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapabilityIndex {
     /// The groups, sorted by their paths.

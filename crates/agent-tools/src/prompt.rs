@@ -1,7 +1,29 @@
-//! A node's system prompt (`system-prompt.md`): the identity, the harness
-//! guide, the rules of the `shell` tool, the capability index of the node's
-//! commands and the model identity, in that order, then the instructions a
-//! subagent profile added.
+//! A node's system prompt: the identity, the harness guide, the rules of
+//! the `shell` tool, the capability index of the node's commands and the
+//! model identity, in that order, then the instructions a subagent profile
+//! added.
+//!
+//! The prompt is rendered once, when the node is assembled, and holds no time,
+//! id, Host or state, so the prefix of every request changes only when the
+//! node's command set changes, with a Demi release, or on a model switch.
+//! What changes, or differs by Host, user or project, reaches the model as a
+//! `context` block appended to the transcript, never as a change to a layer;
+//! details reach it when it asks, as a command's `--help` result. The prompt
+//! never lists what the user can change, such as the subagent profiles, the
+//! skills or the models, which would go stale and cost every request its
+//! tokens: it names the command that answers at call time. Every request
+//! carries the whole prompt, so it is kept short.
+//!
+//! The identity says what Demi is, not one job it does, and guidance that
+//! holds only for software is written as a working habit that applies to any
+//! work. A profile's instructions never replace it, so a profile's node is
+//! Demi with the same harness, tools, capabilities and model, told what its
+//! kind of work is. A rule belongs in the harness guide only when its moment
+//! arises during ordinary work rather than while the model reads one
+//! command's help; otherwise it belongs in that command's help. The model
+//! identity line is generated from the node's selection and never written by
+//! hand: a name that does not follow the configuration makes the model claim
+//! to be another.
 
 use demi_agent_session::{PromptLayer, SystemPrompt};
 use demi_host_interface::CapabilityIndex;
@@ -28,7 +50,7 @@ const TOOL_RULES: &[&str] = &[
 ];
 
 /// What the model identity line names of the model that serves a node,
-/// from its model selection (`system-prompt.md` § Model identity).
+/// from its model selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModelIdentity<'a> {
     /// The model's display name in its catalog.

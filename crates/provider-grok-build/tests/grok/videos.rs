@@ -1,4 +1,4 @@
-//! Making videos (`videos.md` § Vendors, the Grok row): the chat proxy's
+//! Making videos (the Grok row of the video shapes): the chat proxy's
 //! video endpoints with the account's identity, every option of the
 //! xAI Videos shape sent as its field and the seed, which it has none for,
 //! left out; the job read through a 202 `pending` with its progress to

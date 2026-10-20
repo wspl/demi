@@ -19,16 +19,16 @@ import { SettingsRow } from '@demicodes/plugin-sdk'
 import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillSource } from './types'
 
 /**
- * Skill sources (`skills.md` § The page): one git repository is a pack,
- * pinned to a commit, whose state is a status label after its name. Packs
- * start folded unless `open` names them. Opening a pack of more than six
- * skills scrolls inside the pack. Each skill is a row you can turn on, with
- * its own status labels; the SKILL.md files that are not skills follow, with
- * why. The pack's switch is on when any skill is on; flipping it sets every
- * skill in the pack. Removing a source asks first, naming its skills, which
- * go with it. Each control's call is an operation of the page, named by
- * the plugin's method and what it acts on: the control shows it working
- * whenever it is drawn and takes no input meanwhile.
+ * Skill sources: one git repository is a pack, pinned to a commit, whose
+ * state is a status label after its name. Packs start folded unless `open`
+ * names them. Opening a pack of more than six skills scrolls inside the
+ * pack. Each skill is a row you can turn on, with its own status labels; the
+ * SKILL.md files that are not skills follow, with why. The pack's switch is
+ * on when any skill is on; flipping it sets every skill in the pack.
+ * Removing a source asks first, naming its skills, which go with it. Each
+ * control's call is an operation of the page, named by the plugin's method
+ * and what it acts on: the control shows it working whenever it is drawn and
+ * takes no input meanwhile.
  */
 const SKILL_LIST_CAP = 6
 

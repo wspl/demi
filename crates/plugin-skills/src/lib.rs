@@ -1,8 +1,23 @@
-//! The `skills` plugin (`skills.md`): the user's skill sources, fetched
-//! from git and pinned to a commit, whose skills the user turns on one by
-//! one and which every Host the user's jobs run on receives as a directory;
-//! the skills a repository carries; and the catalog of both, which reaches
-//! the model as a context block. Nothing else in Demi knows skills.
+//! The `skills` plugin: the user's skill sources, fetched from git and
+//! pinned to a commit, whose skills the user turns on one by one and which
+//! every Host the user's jobs run on receives as a directory; the skills a
+//! repository carries; and the catalog of both, which reaches the model as
+//! a context block. Nothing else in Demi knows skills.
+//!
+//! A source never changes by itself: its skills change only when the user
+//! adds, updates or removes it or turns its skills on or off. A new skill
+//! starts on, except one whose name another skill that is on has, and one
+//! that sets `disable-model-invocation`, which the agent is never offered,
+//! so on it would only install its files on every Host and take its name from
+//! another skill. Two skills that are on never share a name, which an update
+//! cannot break either, since a skill stays on only under the name it was on
+//! with.
+//!
+//! Every skill that is on is installed on each Host the user's jobs run on,
+//! so the bounds of a fetch bound what a Host keeps. A skill's path in the
+//! catalog is its directory on a Host, the same on every Host, so a target
+//! switch changes no path: the new Host receives the directory when its first
+//! job needs it.
 
 mod catalog;
 mod commands;
@@ -43,7 +58,10 @@ pub use crate::fetch::Skipped;
 pub use crate::sources::{Failure, SkillState, SkillsState, SourceState};
 
 /// How long a source's check of its default branch counts before the page's
-/// next opening checks it again (`skills.md` § Updates available).
+/// next opening checks it again: it keeps a user who opens and closes
+/// settings from sending a request to every repository each time, while a
+/// commit pushed during a session shows the next time the page opens after
+/// the interval.
 const CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// Maps a source's URL to the URL its fetch reads: the URL itself, or in a

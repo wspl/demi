@@ -1,6 +1,5 @@
-//! The Hailuo shape (`videos.md` § Vendors): MiniMax's videos through its
-//! key, on the entry's origin, each model by the request the catalog's
-//! `api` names for it.
+//! The Hailuo shape: MiniMax's videos through its key, on the entry's
+//! origin, each model by the request the catalog's `api` names for it.
 //!
 //! - `v2`, the H3 models: `POST /v2/video_generation` with `model` and
 //!   `content`, the prompt its `text` item and each image an `image_url`

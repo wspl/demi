@@ -196,12 +196,12 @@ export function formatSpan(ms: number): string {
  * A moment to come, `timestamp`, after `verb`: when a failed request can
  * succeed again, as a failure's record says it and as the control that
  * resumes the turn then names it, or when a credential kept for a while is
- * removed (`credentials.md`). "Resets at 9:00 AM" or "Removed today at 6:00 PM"
- * on `now`'s day, "Resume Sat at 9:00 AM" within a week either way, then
- * "Resets Oct 24 at 9:00 AM", with the year when it is not this one. The moment
- * is rounded up to the minute, so it never names a time before the moment:
- * 7:03:55 PM is 7:04 PM. `resetting` says it inside a sentence, as the line
- * that says an agent moved to another account does.
+ * removed. "Resets at 9:00 AM" or "Removed today at 6:00 PM" on `now`'s day,
+ * "Resume Sat at 9:00 AM" within a week either way, then "Resets Oct 24 at 9:00
+ * AM", with the year when it is not this one. The moment is rounded up to the
+ * minute, so it never names a time before the moment: 7:03:55 PM is 7:04 PM.
+ * `resetting` says it inside a sentence, as the line that says an agent moved
+ * to another account does.
  */
 export function formatVerbAt(verb: 'Resets' | 'Resume' | 'resetting' | 'Removed', timestamp: string, now: Date): string {
   const moment = toMinute(new Date(timestamp), true)

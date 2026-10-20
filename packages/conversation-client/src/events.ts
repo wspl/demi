@@ -41,12 +41,12 @@ export type ClientSessionEvent =
   | ServerFrameOf<'subagents'>
   | ServerFrameOf<'pong'>
   | {
-      /** The blocks from `start` on (`rendering.md` § Where a reset starts). */
+      /** The blocks from `start` on. */
       type: 'transcript_reset'
       start: number
       length: number
       blocks: Block[]
-      /** The versions of its blocks that have others (`message-editing.md` § Versions). */
+      /** The versions of its blocks that have others. */
       versions: BlockVersions[]
       /** The facts of the error blocks in `blocks`. */
       failures: Failures
@@ -68,7 +68,7 @@ export type ClientSessionEvent =
       type: 'pending_calls'
       /** The subagent whose calls they are; absent for the root's. */
       subagentId?: string
-      /** The calls the model is writing (`rendering.md` § Calls being written). */
+      /** The calls the model is writing. */
       pendingCalls: PendingCall[]
     }
   | {
@@ -79,7 +79,7 @@ export type ClientSessionEvent =
        * When the node began to wait for the model's answer, as `Date.now()`:
        * the frame's arrival less how long it had waited, so no time of the
        * server's is compared with the page's clock; null when it waits for
-       * none (`rendering.md` § Waiting for the model).
+       * none.
        */
       since: number | null
     }

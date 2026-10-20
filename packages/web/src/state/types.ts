@@ -69,9 +69,9 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
-  /** The calls the model is writing (`rendering.md` § Calls being written). */
+  /** The calls the model is writing. */
   pendingCalls: PendingCall[]
-  /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none (`rendering.md` § Waiting for the model). */
+  /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none. */
   waitingSince: number | null
   model: ModelSettings
   /**

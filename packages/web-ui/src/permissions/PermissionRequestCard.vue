@@ -15,11 +15,11 @@ import {
 } from './types'
 
 /**
- * The body of a permission request's card (`permissions.md` § What the user
- * sees, § Hosts): what the agent asks to do, its category's action or its
- * host's, the command it ran, which subagent ran it, what it allows, and
- * Deny or Allow for This Conversation; a request of a host reads Allow,
- * since a host is allowed for this conversation by nature.
+ * The body of a permission request's card: what the agent asks to do, its
+ * category's action or its host's, the command it ran, which subagent ran
+ * it, what it allows, and Deny or Allow for This Conversation; a request of
+ * a host reads Allow, since a host is allowed for this conversation by
+ * nature.
  */
 const props = defineProps<{
   request: PermissionRequestView

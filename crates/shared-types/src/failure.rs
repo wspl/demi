@@ -1,5 +1,4 @@
-//! What a provider failure keeps and what the product reads out of it
-//! (`failures-and-recovery.md` § The failure record, § Reading a failure).
+//! What a provider failure keeps and what the product reads out of it.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -27,7 +26,13 @@ serde_plain::derive_fromstr_from_deserialize!(FailureSource);
 /// The diagnostics of a provider failure, saved with its `error` block. The
 /// vendor's answer is in `upstream` exactly as it arrived: a stream's frame
 /// text, or the JSON `{ status, headers, body }` of an HTTP failure; only the
-/// provider that produced it reads it.
+/// provider that produced it reads it. The record holds only what the vendor
+/// sent back, never the request Demi sent, so a credential Demi used is never
+/// recorded, and a vendor's messages are shown as sent, not redacted:
+/// mainstream vendors do not echo a full key in an error, so a filter would
+/// aim at nothing. What a reader needs is read out of the record when it is
+/// shown, so a new fact is a new field of the reader and records written
+/// earlier gain it too.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderErrorDiagnostics {
@@ -169,10 +174,10 @@ pub struct ContinueWith {
     pub label: String,
 }
 
-/// What a vendor's failure names to trace it (`images.md` § Accounts and
-/// failures): its own error code and its request or trace ID, such as
-/// OpenAI's `x-request-id`, MiniMax's `trace_id` or Seed speech's
-/// `X-Tt-Logid`, which the vendor's support asks for first.
+/// What a vendor's failure names to trace it: its own error code and its
+/// request or trace ID, such as OpenAI's `x-request-id`, MiniMax's
+/// `trace_id` or Seed speech's `X-Tt-Logid`, which the vendor's support
+/// asks for first.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct VendorTrace {

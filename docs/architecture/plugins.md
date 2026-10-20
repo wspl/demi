@@ -7,7 +7,7 @@ of its own command package, and a part of the web app with the calls behind
 it. Every capability that is not the agent runtime itself or the product's
 core is a plugin: the file commands
 (`plugin-file`), the conversation browser with its live view
-(`plugin-browser`), [skills](../agent/skills.md) (`plugin-skills`), and the work panel's Change
+(`plugin-browser`), skills (`crates/plugin-skills/src/lib.rs`) (`plugin-skills`), and the work panel's Change
 view (`plugin-changes`) and File view (`plugin-file-browser`). The agent
 runtime, the runner, the backend's conversation lifecycle and the web app's
 shell know none of them; a plugin's part of the web app is written against
@@ -120,7 +120,7 @@ demi                     the plugin host's root
   `demi`.
 - `demi agent`, `demi shell` and `demi host` are taken: the agent runtime and
   the product own them.
-- A group may declare [permission categories](../agent/permissions.md#categories)
+- A group may declare permission categories (`crates/command-declarations/src/lib.rs`)
   for leaves that act on Demi itself, as any command group does; the backend's
   dispatch checks them before a call reaches the plugin, so a plugin never
   sees a permission.
@@ -156,16 +156,16 @@ the model identity
 
 A plugin adds nothing to it but the index entries of its command groups,
 fixed in its manifest; its commands' help is read on demand with `--help`
-([System prompt](../agent/system-prompt.md)). It changes only when the tree opens again with another set of
+(`crates/agent-tools/src/prompt.rs`). It changes only when the tree opens again with another set of
 plugins, or with a Demi release, which the prompt cache rule allows once per
 conversation. What a
 plugin needs the model to know beyond its index entries and help reaches the model as
 a `context` block, and so does anything that differs by user or
 conversation, or changes while a conversation lives
-([Transcript](../agent/transcript.md#block-types)). Before each provider request
+(`crates/shared-types/src/block.rs`). Before each provider request
 of a node, the session asks every context source at once and takes their
 answers in a fixed order: the product's execution context first, then the
-product's [instructions](../agent/instructions.md), then each
+product's `crates/backend-user-shard/src/conversation/instructions.rs`, then each
 plugin that declared itself a context source, in registration order; a source
 that reads a Host does not make the others wait. Each source is given the text of its
 own context blocks that the model receives, the ones from the last
@@ -245,7 +245,7 @@ talks never wakes its Cloud for a plugin's files.
 A plugin can read the files of a conversation on its primary Host while that
 Host is running, but never wakes it, writes to it or keeps it awake. For
 example, `plugin-skills` looks for the skills a repository holds in its
-`.agents/skills` directory ([Project skills](../agent/skills.md#project-skills)).
+`.agents/skills` directory (`crates/plugin-skills/src/project.rs`).
 
 One request of the port names several paths, and the reply answers each, and
 it reaches the Host as one request too
@@ -281,7 +281,7 @@ once, subscribes to what the answer names, asks again in the background
 when the runner says one changed or the Host comes online, and hands what
 it holds to the plugin's `Context` request as `project`, so the plugin's
 context never waits for the Host
-([When it is sent](../agent/instructions.md#when-it-is-sent)). Turning the
+(`crates/backend-user-shard/src/conversation/instructions.rs`). Turning the
 plugin off releases what the backend keeps for it, and turning it on asks
 again at the next request.
 
@@ -426,7 +426,7 @@ conversation's operations need a request about a conversation: a `command`, a
 | Secrets | Read, conditional write, removal | Every request | The plugin's own [secrets](#secrets) for the user, sealed at rest |
 | Web | Send a request | Every request | One outbound HTTPS request through the backend's shared client, with a deadline and a body limit the plugin names ([Outbound requests](#outbound-requests)) |
 | | OAuth: start, token, sign out | Every request | The user's sign-in to a vendor the manifest names ([OAuth sign-in](#oauth-sign-in)) |
-| Providers | Image models, make an image | Every request | The image models of the user's provider entries, and one image from a prompt and images through an entry's account, which the backend chooses, rotates and records in the usage ledger; no token reaches the plugin ([Image generation](../agent/images.md)) |
+| Providers | Image models, make an image | Every request | The image models of the user's provider entries, and one image from a prompt and images through an entry's account, which the backend chooses, rotates and records in the usage ledger; no token reaches the plugin (`crates/plugin-image/src/lib.rs`) |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
 A product service a plugin may use is one service of the port and its
@@ -688,9 +688,9 @@ not use.
 | --- | --- | --- | --- | --- | --- |
 | `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | File commands (`crates/command-package-file/src/files.rs`) |
 | `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `calls`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | Conversation browser (`crates/command-package-browser-protocol/src/browser/mod.rs`), Live view (`crates/command-package-browser-chrome/src/live.rs`) |
-| `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
-| `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
-| `image` | Image Generation | `plugin-image` | The `demi image` group, rpc leaves; Host file reads; the Providers service | None | [Image generation](../agent/images.md) |
+| `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | Skills (`crates/plugin-skills/src/lib.rs`) |
+| `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | Web search and fetch (`crates/plugin-web/src/web.rs`) |
+| `image` | Image Generation | `plugin-image` | The `demi image` group, rpc leaves; Host file reads; the Providers service | None | Image generation (`crates/plugin-image/src/lib.rs`) |
 | `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | `packages/web-ui/src/files/ChangeView.vue`, `crates/command-sdk/src/edits.rs` |
 | `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | `packages/web-ui/src/files/FileView.vue` |
 

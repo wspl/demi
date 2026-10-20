@@ -134,8 +134,7 @@ export function applyConversationEvent(
     // (`crates/agent-server/src/server/tree/live.rs`): what it adds to the
     // output shown, under its call while the call runs and in the dock after.
     // The frame names the command by its call's title and script, which its
-    // record keeps, so its tab needs no call the page holds (`rendering.md` §
-    // Rendering boundary).
+    // record keeps, so its tab needs no call the page holds.
     const { subagentId, status } = event
     const current = conversation.terminals.find(
       (terminal) => terminal.id === status.commandId,

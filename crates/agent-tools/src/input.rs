@@ -18,13 +18,11 @@ pub const INTERVAL_CAP_MS: u32 = 600_000;
 const INTERVAL: &str = "How often the command reports to you while it runs, required: a number of whole milliseconds from 15000 to 600000 (ten minutes) for a command that ends, such as a build or a test suite; if it still runs when the call returns, the result carries its commandId, and the command reports to you every interval until it ends, and when it ends. Short for a command that should end within minutes, long for one that takes long. A value outside the bounds is taken as the nearest bound. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its output has been quiet for 2 seconds, or after 30 seconds, and the command reports only its end.";
 
 /// What a call's `description` asks of the model: the title the user sees,
-/// which the model writes before the step runs (`rendering.md` § Tool
-/// descriptions).
+/// which the model writes before the step runs.
 pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a command in the imperative, such as \"Install Chrome for Testing\", \"Start the browser with a blank tab\" or \"Run the type checker\". It is written before the step runs, so never state a result or a state reached (not \"Chrome for Testing installed\"). Do not describe waiting, pausing or tool mechanics; no generic action or bare noun; no scripts, output, protocol state, step numbers, tool names, ids, internal labels or reasons.";
 
 // `description` comes first: a model writes a call's fields in the schema's
-// order, so the title the page shows arrives before a long script
-// (`rendering.md` § Calls being written).
+// order, so the title the page shows arrives before a long script.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ShellInput {

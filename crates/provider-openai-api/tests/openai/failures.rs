@@ -1,6 +1,6 @@
 //! A run's failures on either wire: a refusal with the vendor's record and
-//! wait, and a request that gets no answer (`failures-and-recovery.md`). The
-//! events of a stream are the shared mappers' (`demi_provider_common::wire`).
+//! wait, and a request that gets no answer. The events of a stream are the
+//! shared mappers' (`demi_provider_common::wire`).
 
 use std::{sync::Arc, time::Duration};
 

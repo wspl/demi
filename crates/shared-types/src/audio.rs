@@ -1,8 +1,8 @@
 //! What an audio file holds, read from its header: the one reader of a
 //! generated audio file's format and length, which `demi audio` checks the
-//! file with and the usage ledger takes its seconds from (`audio.md`
-//! § Commands, `crates/backend-database/src/usage.rs`). The file is probed and
-//! read packet by packet, never decoded, behind the `audio` feature; the
+//! file with and the usage ledger takes its seconds from
+//! (`crates/backend-database/src/usage.rs`). The file is probed and read
+//! packet by packet, never decoded, behind the `audio` feature; the
 //! shape of raw PCM, which a vendor may send instead of a file, is read by
 //! every crate that hands audio on.
 
@@ -134,7 +134,7 @@ fn stated(track: &Track, sample_rate: Option<u32>) -> Option<f64> {
 /// Raw PCM as a vendor sends it, without a header: signed little-endian
 /// samples, interleaved by channel. Every value is checked when it is
 /// made, so its rate, channels and sample size are ones a WAV header holds
-/// and a player plays (`audio.md` § Vendors).
+/// and a player plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pcm {
     sample_rate: u32,

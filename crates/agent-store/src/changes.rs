@@ -1,13 +1,12 @@
 //! What the conversation shows of a transcript's work, computed once as a
-//! block is stored and kept with it (`rendering.md` § Work groups): the run
-//! of steps each block belongs to, and for each shell call its own files, its
-//! run's and its request's. The session applies them to the blocks it writes
-//! and the conversation database's migration to the blocks it stored before,
-//! with this one code, so a page counts and derives nothing. The list is in
-//! the block because it is small and read each time the conversation is
-//! shown; the contents behind a diff are blobs the list names, which the page
-//! fetches when a file is opened, since a transcript is loaded whole and a
-//! file may be megabytes.
+//! block is stored and kept with it: the run of steps each block belongs to,
+//! and for each shell call its own files, its run's and its request's. The
+//! session applies them to the blocks it writes and the conversation
+//! database's migration to the blocks it stored before, with this one code,
+//! so a page counts and derives nothing. The list is in the block because it
+//! is small and read each time the conversation is shown; the contents behind
+//! a diff are blobs the list names, which the page fetches when a file is
+//! opened, since a transcript is loaded whole and a file may be megabytes.
 //!
 //! A request is what one message of the user asked for: it starts at a
 //! `user` block and holds every block of the same agent up to the next one.
@@ -97,10 +96,9 @@ fn place(block: &Block) -> Place {
     }
 }
 
-/// The run `block` joins after `before` (`rendering.md` § Work groups): the
-/// run of the step before it, past the blocks the reader never sees, or a
-/// run of its own after anything that ends one; none for a block that is
-/// not a step.
+/// The run `block` joins after `before`: the run of the step before it,
+/// past the blocks the reader never sees, or a run of its own after
+/// anything that ends one; none for a block that is not a step.
 pub fn run_of(before: &[Block], block: &Block) -> Option<BlockId> {
     if place(block) != Place::Step {
         return None;

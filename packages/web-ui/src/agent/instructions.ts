@@ -4,11 +4,10 @@ import { t } from './locales/text'
 
 /**
  * What the model holds of the user's and the project's instructions: the
- * entries of the newest instructions block of `blocks`, in its order
- * (`instructions.md` § What the card lists), and none once the newest says
- * nothing is left. Without one, `before`: the entries a page of the
- * transcript named for a block the page does not hold, none before the
- * first.
+ * entries of the newest instructions block of `blocks`, in its order, and
+ * none once the newest says nothing is left. Without one, `before`: the
+ * entries a page of the transcript named for a block the page does not
+ * hold, none before the first.
  */
 export function loadedInstructions(
   blocks: readonly Block[],

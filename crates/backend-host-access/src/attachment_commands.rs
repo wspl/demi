@@ -56,8 +56,7 @@ use crate::host_commands::{conversation_of, verb};
 
 const SUMMARY: &str = "Give the user files of this host as attachments of the conversation, which your messages show, and fetch the conversation's attachments as files.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Gives the user files from the Host as attachments of the conversation, which stay viewable whatever later becomes of the file. Use it to deliver a screenshot, a recording, a download or a file you made, and place it in your reply as `<attachment id=\"a3\" />` on a line of its own, and not also a link to its path.";
 
 const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Deliver one in your reply as <attachment id=\"a3\" /> on a line of its own, not also a link to its path: an image shows, a video and audio play, and any other file is a card the user opens. A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";

@@ -24,10 +24,9 @@ use super::edits::EditContext;
 pub const COMMAND_LOCALE_LANGUAGES: usize = 16;
 
 /// Who started the work: an agent, by its number in the conversation as the
-/// model knows it (`runtime.md` § Identifiers the model sees), or the
-/// conversation's user through a user stream. `User` is a struct variant so
-/// that unknown fields are refused: serde ignores them for a unit variant of
-/// an internally tagged enum.
+/// model knows it, or the conversation's user through a user stream. `User`
+/// is a struct variant so that unknown fields are refused: serde ignores
+/// them for a unit variant of an internally tagged enum.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CommandCaller {

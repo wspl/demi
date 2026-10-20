@@ -1,10 +1,9 @@
-//! The `demi.fetch` package (`crates-and-packages.md`
-//! § command-package-fetch, `web.md` § demi web fetch): `demi web fetch`
-//! reads a URL from the Host, as `curl` there would, and prints a page as
-//! Markdown one part at a time, or saves a file that is no text. It keeps the
-//! pages it read on disk for 15 minutes and holds no conversation state, so
-//! the SDK's empty conversation status, release and close stand, and the
-//! service ends with its last lease.
+//! The `demi.fetch` package (`crates-and-packages.md` § command-package-fetch):
+//! `demi web fetch` reads a URL from the Host, as `curl` there would, and
+//! prints a page as Markdown one part at a time, or saves a file that is no
+//! text. It keeps the pages it read on disk for 15 minutes and holds no
+//! conversation state, so the SDK's empty conversation status, release and
+//! close stand, and the service ends with its last lease.
 
 mod cache;
 mod download;

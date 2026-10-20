@@ -116,7 +116,7 @@ pub struct EnvironmentScope<'a> {
     pub root: &'a NodeId,
     pub node: &'a NodeId,
     /// The node's agent number, as the model and its commands' context know
-    /// it (`runtime.md` § Identifiers the model sees).
+    /// it.
     pub agent: u64,
     /// The commands the environment's jobs offer: the node's.
     pub commands: &'a Rc<CommandSet>,
@@ -314,8 +314,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// a command that still runs then reports
     /// to the node from now on.
     async fn shell(&self, call: ToolInvocation, input: ShellInput) -> Result<ToolOutcome, CallError> {
-        // A call after one that the user's send now returned never starts
-        // (`runtime.md` § Send now).
+        // A call after one that the user's send now returned never
+        // starts.
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
@@ -349,8 +349,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         // The command stops with the call while the call watches it: a Stop
         // of the action drops the call with its step, and the call's result
         // says what became of the command. Once the call returned, the
-        // command runs on, and a Stop of the action leaves it running
-        // (`runtime.md` § Stop).
+        // command runs on, and a Stop of the action leaves it running.
         let stop = CancellationToken::new();
         let stopping = CallStop {
             stop: Some(stop.clone()),

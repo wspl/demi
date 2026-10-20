@@ -1,5 +1,5 @@
-//! A Gemini API key's speech and Lyria music (`audio.md` § Vendors),
-//! against a scripted vendor built from Google's speech and music guides
+//! A Gemini API key's speech and Lyria music, against a scripted vendor
+//! built from Google's speech and music guides
 //! (ai.google.dev/gemini-api/docs/speech-generation, …/music-generation)
 //! and the Interactions API reference (ai.google.dev/api/interactions-api):
 //! the interaction with the instructions as the turn's `speech_metadata`

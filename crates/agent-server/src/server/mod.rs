@@ -1,9 +1,8 @@
-//! The agent server of one user shard (`rendering.md` § Frame protocol,
-//! § Connections and the live tree): it holds each open conversation's live
-//! tree and hands out the connections that attach conversation sockets to
-//! them. The backend owns the sockets, decodes each client frame, and passes
-//! it to its connection; the connection's outbox carries every server frame
-//! back.
+//! The agent server of one user shard: it holds each open conversation's
+//! live tree and hands out the connections that attach conversation sockets
+//! to them. The backend owns the sockets, decodes each client frame, and
+//! passes it to its connection; the connection's outbox carries every server
+//! frame back.
 
 mod commands;
 mod connection;
@@ -53,7 +52,7 @@ use crate::Node;
 /// the provider itself.
 pub trait ProviderResolver {
     /// The model selection the conversation `root`'s tree opens with: the
-    /// one its record holds (`rendering.md` § Connections and the live tree).
+    /// one its record holds.
     fn selection<'a>(
         &'a self,
         root: &'a NodeId,
@@ -80,8 +79,7 @@ pub trait ProviderResolver {
     ) -> LocalBoxFuture<'a, u32>;
 
     /// The provider family of the entry that serves `model`, such as
-    /// `anthropic`, which the system prompt's model identity names
-    /// (`system-prompt.md` § Model identity).
+    /// `anthropic`, which the system prompt's model identity names.
     fn family<'a>(
         &'a self,
         model: &'a ModelSelection,
@@ -125,9 +123,8 @@ fn fork_store(error: StoreError) -> ForkError {
 }
 
 /// A Fork's seed from the committed checkpoint of the stored node `source`,
-/// through the completed text `end` names (`conversation-fork.md` § The fork
-/// seed): a closed conversation's root, or an archived child
-/// (`crates/agent-server/src/server/tree/supervisor.rs`).
+/// through the completed text `end` names: a closed conversation's root, or
+/// an archived child (`crates/agent-server/src/server/tree/supervisor.rs`).
 pub(crate) async fn stored_fork_seed(
     store: &dyn AgentTreeStore,
     source: &NodeId,
@@ -173,9 +170,8 @@ impl Default for ServerConfig {
     }
 }
 
-/// What a product gives the agent server (`runtime.md` § Sessions and
-/// turns): what every node is assembled from, and the answers it asks for
-/// while a node runs.
+/// What a product gives the agent server: what every node is assembled
+/// from, and the answers it asks for while a node runs.
 pub struct ServerDeps<H: HostResolver> {
     /// What a tree opens with: the commands every node starts from, on
     /// which the server grafts its own groups per node.
@@ -187,8 +183,7 @@ pub struct ServerDeps<H: HostResolver> {
     /// profile's replace.
     pub instructions: Rc<str>,
     /// The harness guide every node's system prompt carries after its
-    /// identity, which no profile replaces (`system-prompt.md` § Harness
-    /// guide).
+    /// identity, which no profile replaces.
     pub guide: Rc<str>,
     /// Where a node's shell tools run.
     pub hosts: Rc<H>,
@@ -203,8 +198,7 @@ pub struct ServerDeps<H: HostResolver> {
     pub config: ServerConfig,
     /// Told the root of a live tree that started or stopped working, whose
     /// root's phase changed, or that was disposed: a product that shows each
-    /// conversation's status reads it again (`rendering.md` § Connections and
-    /// the live tree).
+    /// conversation's status reads it again.
     pub status_changed: Rc<dyn Fn(&NodeId)>,
 }
 
@@ -356,11 +350,11 @@ impl<H: HostResolver> AgentServer<H> {
         }
     }
 
-    /// Prepares a switch of the conversation `root`'s live tree to `model`
-    /// (`runtime.md` § Model switch): a model of another provider than the
-    /// root's latest selection gets its runtime now, so one that cannot run
-    /// fails before anything changes. None when no tree is live, since a tree
-    /// opens with the selection the conversation's record holds.
+    /// Prepares a switch of the conversation `root`'s live tree to `model`: a
+    /// model of another provider than the root's latest selection gets its
+    /// runtime now, so one that cannot run fails before anything changes.
+    /// None when no tree is live, since a tree opens with the selection the
+    /// conversation's record holds.
     pub async fn prepare_switch(
         &self,
         root: &NodeId,
@@ -405,11 +399,10 @@ impl<H: HostResolver> AgentServer<H> {
 
     /// Admits a message from the user into the agent `asking` of the
     /// conversation `root`'s open tree, or, when that agent is closed or
-    /// closing, into its nearest live ancestor, the root at last
-    /// (`permissions.md` § The decision's message). `message` builds the
-    /// message for the recipient it is given. Answers the recipient once its
-    /// session accepted the message durably; an error when no tree is open or
-    /// the recipient refused it.
+    /// closing, into its nearest live ancestor, the root at last. `message`
+    /// builds the message for the recipient it is given. Answers the
+    /// recipient once its session accepted the message durably; an error when
+    /// no tree is open or the recipient refused it.
     pub async fn admit_from_user(
         &self,
         root: &NodeId,
@@ -451,9 +444,9 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// A Fork's seed from the root `source` through its completed text
-    /// `target` (`conversation-fork.md` § The fork seed): captured from the
-    /// live session in one step when the conversation is open, else read
-    /// from its committed checkpoint. The source keeps running either way.
+    /// `target`: captured from the live session in one step when the
+    /// conversation is open, else read from its committed checkpoint. The
+    /// source keeps running either way.
     pub async fn prepare_fork(
         &self,
         source: &NodeId,

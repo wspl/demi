@@ -1,6 +1,6 @@
-//! Message editing and Fork at the agent's boundary (`message-editing.md`,
-//! `conversation-fork.md`): the frames an edit is answered with, the
-//! requests the replacement makes, and the checkpoints the store keeps.
+//! Message editing and Fork at the agent's boundary: the frames an edit is
+//! answered with, the requests the replacement makes, and the checkpoints
+//! the store keeps.
 
 use demi_agent_server::{
     ServerConfig,
@@ -299,9 +299,8 @@ async fn the_page_hears_of_an_edit_only_once_its_save_commits() {
 }
 
 /// A model switch while an edit is being prepared is not refused: it waits
-/// for the edit (`runtime.md` § Model switch). The replacement turn's first
-/// request carries the model it was prepared with, and its next request the
-/// new one.
+/// for the edit. The replacement turn's first request carries the model it
+/// was prepared with, and its next request the new one.
 #[tokio::test(flavor = "local")]
 async fn a_switch_while_an_edit_is_prepared_lands_after_the_replacements_first_request() {
     let script = ScriptedRuntime::new([
@@ -402,8 +401,7 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
 /// an image, a video or a document by its kind and blob. The session puts
 /// the edited message's own block in its place, so the model reads the
 /// bytes and the block keeps its media type and file name; a file the
-/// message does not hold is refused (`message-editing.md` § Files the edit
-/// keeps).
+/// message does not hold is refused.
 #[tokio::test(flavor = "local")]
 async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not() {
     let script = ScriptedRuntime::new([said("a chart"), said("the same chart")]);

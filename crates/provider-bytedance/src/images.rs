@@ -1,13 +1,11 @@
-//! Seedream through an Ark key (`images.md` § Vendors):
-//! `POST …/images/generations` makes an image from a prompt, and edits
-//! one, or combines several, given as data URIs in `image`
-//! ([Image generation API](https://docs.byteplus.com/en/docs/modelark/image-generation-api)).
-//! A shape asked is sent as the catalog's size of that shape, and none is
-//! sent without one, so the model's default stands. The answer is
-//! `data[0].b64_json`, or the `error` of an image Ark refused. Ark lists
-//! its models only to a request signed with an access key pair, so the
-//! models are the catalog's, and a key is checked by an image request
-//! with no prompt, which Ark refuses for its body before making anything.
+//! Seedream through an Ark key: `POST …/images/generations` makes an image from a prompt, and
+//! edits one, or combines several, given as data URIs in `image` ([Image generation
+//! API](https://docs.byteplus.com/en/docs/modelark/image-generation-api)). A shape asked is
+//! sent as the catalog's size of that shape, and none is sent without one, so the model's
+//! default stands. The answer is `data[0].b64_json`, or the `error` of an image Ark refused.
+//! Ark lists its models only to a request signed with an access key pair, so the models are
+//! the catalog's, and a key is checked by an image request with no prompt, which Ark refuses
+//! for its body before making anything.
 
 use std::sync::Arc;
 

@@ -229,9 +229,8 @@ input! {
 #[serde(deny_unknown_fields)]
 pub struct TabsResult {
     /// The list's number in the Host's sequence, for a `user` caller only.
-    /// The model has no use for it, so
-    /// the agent's command never prints it and its `--json` schema does not
-    /// name it (`runtime.md`, "Only what the model uses").
+    /// The model has no use for it, so the agent's command never prints it and
+    /// its `--json` schema does not name it.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

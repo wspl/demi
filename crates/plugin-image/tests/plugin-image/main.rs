@@ -295,9 +295,8 @@ fn a_refused_shape_names_the_shapes_the_vendor_takes() {
 }
 
 /// A call without `--model` fails before it asks for anything: the agent
-/// always names the model (`images.md` § Commands).
-/// Planted defect this catches: a call without a model sent on, so an
-/// entry's own choice makes the image.
+/// always names the model. Planted defect this catches: a call without a
+/// model sent on, so an entry's own choice makes the image.
 #[test]
 fn a_call_without_a_model_fails_and_asks_for_nothing() {
     local(async {

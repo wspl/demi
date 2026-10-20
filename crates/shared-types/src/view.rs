@@ -1,7 +1,6 @@
-//! Tool views (`transcript.md` § Views): the bounded data a `tool_call` block
-//! carries for the user, never replayed to the model, with a type fixed per
-//! tool by `kind`; and the output views of a command they and the live shell
-//! status are built from.
+//! Tool views: the bounded data a `tool_call` block carries for the user,
+//! never replayed to the model, with a type fixed per tool by `kind`; and the
+//! output views of a command they and the live shell status are built from.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -91,10 +90,10 @@ pub struct ShellToolView {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub path_changes: Vec<PathChange>,
-    /// The files of the call's run up to it (`rendering.md` § Work groups),
-    /// counted between before the run and after this call, which the
-    /// backend computes as it stores the block; a page's light form keeps
-    /// it only on the latest call of each run.
+    /// The files of the call's run up to it, counted between before the run
+    /// and after this call, which the backend computes as it stores the
+    /// block; a page's light form keeps it only on the latest call of each
+    /// run.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

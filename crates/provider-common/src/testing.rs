@@ -37,8 +37,7 @@ use crate::{
 
 /// A tool whose input lists its fields as `shell`'s does: `description`
 /// first, then the rest out of alphabetical order, so a request that sorts
-/// or otherwise reorders a schema's properties shows (`rendering.md` § Calls
-/// being written).
+/// or otherwise reorders a schema's properties shows.
 pub fn titled_tool() -> ToolDefinition {
     let schema = serde_json::json!({
         "type": "object",
@@ -125,7 +124,7 @@ pub mod event {
 }
 
 /// Whether every vendor accepts `id` as a tool call's: letters, digits,
-/// `_` and `-`, Anthropic's rule, the strictest (`transcript.md` § Replay).
+/// `_` and `-`, Anthropic's rule, the strictest.
 pub fn every_vendor_accepts(id: &str) -> bool {
     !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }

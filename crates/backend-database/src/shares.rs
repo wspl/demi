@@ -220,8 +220,8 @@ impl ControlService {
 }
 
 /// Makes the list of the conversation's share `token`, in place of one it had:
-/// what the root's current path says (`message-editing.md` § Versions), its
-/// messages and texts, with the steps between them.
+/// what the root's current path says, its messages and texts, with the steps
+/// between them.
 pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> Result<(), StorageError> {
     remove(transaction, token)?;
     let Some(root) = root(transaction)? else {
@@ -376,11 +376,10 @@ fn name_copied_blobs(transaction: &Transaction<'_>, token: &ShareToken) -> Resul
 }
 
 /// Keeps what every share shows of the row `index` of `node` before a
-/// write replaces it, as a later event marks it (`message-editing.md`
-/// § Versions): a listed row is copied into the share as it stands, with the
-/// blobs it names, and its entry points at the copy, in the write's
-/// transaction. The one guard of every write to `blocks` that changes a row; no
-/// write removes one.
+/// write replaces it, as a later event marks it: a listed row is copied into
+/// the share as it stands, with the blobs it names, and its entry points at the
+/// copy, in the write's transaction. The one guard of every write to `blocks`
+/// that changes a row; no write removes one.
 pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index: i64) -> Result<(), StorageError> {
     let rows = "entry.node_id = ?1 AND entry.idx = ?2";
     let parameters = params![node.as_str(), index];
@@ -804,7 +803,7 @@ mod tests {
         let before = blocks(&shared(&stores).await);
 
         // The edit adds a version beside the rows the share lists, which
-        // stay as they are (`message-editing.md` § Versions).
+        // stay as they are.
         let session = tree.session_store(&id("root"));
         session
             .save(demi_agent_store::CheckpointUpdate {

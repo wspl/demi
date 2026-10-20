@@ -1,17 +1,16 @@
-//! Conversation permissions (`permissions.md` § Acceptance): a `demi skills`
-//! command whose category the conversation has not been granted raises a
-//! request the pages list and waits for the user's answer, and the agent
-//! reads that it waits, in its result and its progress reports; the user's
-//! Allow grants the category for the whole tree and runs each waiting
-//! command once, whose end reports to the agent as any command's does, and
-//! the decision's message tells the agent, waking it even after the user
-//! stopped its turn; a Deny ends the command unrun and remembers nothing; a
-//! newer run replaces an undecided request and ends the older command; a
-//! stopped command leaves its request to the user; an archive waits for
-//! the answer and keeps the grants; a Fork copies none; and a decision a
-//! restart cut off reaches the agent at the next start. The model is the
-//! scripted family of the subagent scenarios; the device is a real runner.
-//! No test calls a real model.
+//! Conversation permissions: a `demi skills` command whose category the
+//! conversation has not been granted raises a request the pages list and
+//! waits for the user's answer, and the agent reads that it waits, in its
+//! result and its progress reports; the user's Allow grants the category for
+//! the whole tree and runs each waiting command once, whose end reports to
+//! the agent as any command's does, and the decision's message tells the
+//! agent, waking it even after the user stopped its turn; a Deny ends the
+//! command unrun and remembers nothing; a newer run replaces an undecided
+//! request and ends the older command; a stopped command leaves its request
+//! to the user; an archive waits for the answer and keeps the grants; a Fork
+//! copies none; and a decision a restart cut off reaches the agent at the
+//! next start. The model is the scripted family of the subagent scenarios;
+//! the device is a real runner. No test calls a real model.
 
 use std::sync::Arc;
 

@@ -1,6 +1,5 @@
 //! The directories a project's instruction files and workflows are searched in
-//! (`instructions.md` § Which files are read,
-//! `crates/backend-user-shard/src/conversation/workflows.rs`): the working
+//! (`crates/backend-user-shard/src/conversation/workflows.rs`): the working
 //! directory and each directory above it up to the root of its git repository,
 //! the nearest that holds `.git`; outside a repository, the working directory
 //! alone.

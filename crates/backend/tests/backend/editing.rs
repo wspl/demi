@@ -1,15 +1,13 @@
-//! Message editing through a conversation (`message-editing.md` § Commit and
-//! idempotency, § Durability and failure boundaries): an edit the page sends
-//! over the socket replaces its message and what followed it, gives the model
-//! only the history it kept, and leaves the files the removed turns wrote.
-//! Sent again
+//! Message editing through a conversation: an edit the page sends over the
+//! socket replaces its message and what followed it, gives the model only the
+//! history it kept, and leaves the files the removed turns wrote. Sent again
 //! over another socket of the conversation, or after a restart of the
 //! backend, the same edit answers its receipt without asking the model again,
 //! and an edit from the old snapshot is refused. While the edit's commit is
-//! held, the model is not asked and a reload reads the history before it;
-//! the page hears of the edit once it commits. The page sees a turn end only
-//! once the save that ends it has committed, so an edit it sends the moment
-//! it sees idle is admitted. No test calls a real model; the device is a real
+//! held, the model is not asked and a reload reads the history before it; the
+//! page hears of the edit once it commits. The page sees a turn end only once
+//! the save that ends it has committed, so an edit it sends the moment it
+//! sees idle is admitted. No test calls a real model; the device is a real
 //! runner.
 
 use std::time::Duration;

@@ -672,7 +672,7 @@ test('Stop ends the running turn with its pending steer written, and Continue go
     expect(kinds(transcriptOf(client))).toEqual(['user', 'context', 'steer', 'abort'])
     await held.cancelled
     // Continue is admitted once the session is idle, after the stopped
-    // turn's save (`runtime.md` § Actions); the answer to Stop comes before.
+    // turn's save; the answer to Stop comes before.
     await stopped
     await client.resume()
     const blocks = transcriptOf(client)

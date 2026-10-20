@@ -1,7 +1,6 @@
-//! The shard's side of conversation permissions (`permissions.md`
-//! § Responsibilities): what the check, the decisions and their messages
-//! need of the shard (`PermissionShard`), and the delivery at start of the
-//! decisions a restart cut off.
+//! The shard's side of conversation permissions: what the check, the
+//! decisions and their messages need of the shard (`PermissionShard`), and
+//! the delivery at start of the decisions a restart cut off.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -144,10 +143,9 @@ impl Shard {
     }
 }
 
-/// Delivers at start each decision whose message a restart cut off
-/// (`permissions.md` § The decision's message): each owner's shard sends it
-/// to the agent that asked, opening its conversation's tree. Answers once
-/// each shard has its tasks.
+/// Delivers at start each decision whose message a restart cut off: each
+/// owner's shard sends it to the agent that asked, opening its
+/// conversation's tree. Answers once each shard has its tasks.
 pub async fn deliver_decisions(control: &ControlService, shards: &Shards) -> Result<(), StorageError> {
     for Undelivered { owner, request } in control.undelivered_permissions().await? {
         let handed = shards

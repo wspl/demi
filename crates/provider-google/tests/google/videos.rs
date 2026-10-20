@@ -1,4 +1,4 @@
-//! A Gemini API key's videos (`videos.md` § Vendors, the Veo row) against a
+//! A Gemini API key's videos (the Veo shape) against a
 //! scripted vendor built from Google's Veo guide
 //! (ai.google.dev/gemini-api/docs/video): the models that list
 //! `predictLongRunning`, the ask with its `instances` and `parameters`, the

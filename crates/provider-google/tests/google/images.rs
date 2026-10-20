@@ -1,10 +1,9 @@
-//! A Gemini API key's images (`images.md` § Vendors) against a scripted
-//! vendor built from Google's documented shapes: the image generation
-//! guide (ai.google.dev/gemini-api/docs/image-generation), the
-//! `models.list` and `generateContent` references
-//! (ai.google.dev/api/models, ai.google.dev/api/generate-content) and the
-//! troubleshooting guide's errors (ai.google.dev/gemini-api/docs/troubleshooting).
-//! No test calls a vendor.
+//! A Gemini API key's images against a scripted vendor built from Google's
+//! documented shapes: the image generation guide
+//! (ai.google.dev/gemini-api/docs/image-generation), the `models.list` and
+//! `generateContent` references (ai.google.dev/api/models,
+//! ai.google.dev/api/generate-content) and the troubleshooting guide's errors
+//! (ai.google.dev/gemini-api/docs/troubleshooting). No test calls a vendor.
 
 use demi_provider_common::media_catalog::Catalog;
 use std::sync::Arc;

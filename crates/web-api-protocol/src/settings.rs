@@ -403,8 +403,8 @@ pub struct Preferences {
     #[garde(skip)]
     pub send_while_running: Option<SendWhileRunning>,
     /// Whether a turn that failed with a known time to try again, such as a
-    /// usage limit that resets at 09:00, resumes by itself at that time
-    /// (`failures-and-recovery.md` § The unfinished turn). Absent means no.
+    /// usage limit that resets at 09:00, resumes by itself at that time.
+    /// Absent means no.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -415,8 +415,7 @@ pub struct Preferences {
     pub resume_at_retry: Option<bool>,
     /// Whether a turn a graceful shutdown of the backend interrupted, for a
     /// deployment, an upgrade or a restart, goes on by itself once the
-    /// backend is back (`failures-and-recovery.md` § The unfinished turn).
-    /// Absent means yes.
+    /// backend is back. Absent means yes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -646,8 +645,8 @@ pub struct PreferencesPatch {
     #[garde(skip)]
     pub send_while_running: Option<SendWhileRunning>,
     /// Whether a turn that failed with a known time to try again, such as a
-    /// usage limit that resets at 09:00, resumes by itself at that time
-    /// (`failures-and-recovery.md` § The unfinished turn). Absent means no.
+    /// usage limit that resets at 09:00, resumes by itself at that time.
+    /// Absent means no.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -658,8 +657,7 @@ pub struct PreferencesPatch {
     pub resume_at_retry: Option<bool>,
     /// Whether a turn a graceful shutdown of the backend interrupted, for a
     /// deployment, an upgrade or a restart, goes on by itself once the
-    /// backend is back (`failures-and-recovery.md` § The unfinished turn).
-    /// Absent means yes.
+    /// backend is back. Absent means yes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

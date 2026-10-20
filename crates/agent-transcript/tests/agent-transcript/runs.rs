@@ -1,5 +1,5 @@
-//! The run of steps each block joins as the transcript stores it
-//! (`rendering.md` § Work groups): a page groups by it and judges nothing.
+//! The run of steps each block joins as the transcript stores it: a page
+//! groups by it and judges nothing.
 
 use std::{rc::Rc, sync::Arc};
 

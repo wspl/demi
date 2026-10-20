@@ -126,14 +126,14 @@ both ends the same limit. For example, `😀` is one scalar value and two UTF-16
 code units, so a file name of 255 of them fits a limit of 255
 (`crates/command-declarations/src/lib.rs`). Truncation and token estimates have
 their own units, defined with the rules that use them
-([Token estimates](../agent/compaction.md#token-estimates)).
+(`crates/agent-transcript/src/estimate.rs`).
 
 These are the points where values enter, and what a failure does:
 
 | Where a value enters | Decoded by | When it fails |
 |---|---|---|
 | A web app request body or query | The edge's body and query extractors, into `web-api-protocol` types | 400 `invalid_body` or `invalid_query`, naming the field and the reason (`crates/web-api-protocol/src/lib.rs`) |
-| A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/rendering.md#frame-protocol)) |
+| A frame on the conversation WebSocket | The conversation socket, into `ClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket (`crates/conversation-socket-protocol/src/lib.rs`) |
 | A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes (`crates/runner/src/main.rs`) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | Validation and flow control (`crates/command-protocol/src/lib.rs`) |

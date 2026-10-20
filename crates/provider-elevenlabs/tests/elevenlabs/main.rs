@@ -1,9 +1,8 @@
-//! An ElevenLabs key's speech, music and sound effects (`audio.md`
-//! § Vendors), against a scripted vendor built from ElevenLabs' API
-//! reference: Create speech (elevenlabs.io/docs/api-reference/text-to-speech/convert),
-//! Compose music (…/music/compose), Create sound effect
-//! (…/text-to-sound-effects/convert), List voices (…/voices/search) and
-//! List models (…/models/list). No test calls a vendor.
+//! An ElevenLabs key's speech, music and sound effects, against a scripted vendor
+//! built from ElevenLabs' API reference: Create speech
+//! (elevenlabs.io/docs/api-reference/text-to-speech/convert), Compose music
+//! (…/music/compose), Create sound effect (…/text-to-sound-effects/convert), List
+//! voices (…/voices/search) and List models (…/models/list). No test calls a vendor.
 
 use std::sync::Arc;
 

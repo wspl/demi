@@ -1,5 +1,4 @@
-//! Failure codes, the HTTP failure record and its standard reading
-//! (`failures-and-recovery.md` § The failure record, § Reading a failure).
+//! Failure codes, the HTTP failure record and its standard reading.
 
 use std::time::Duration;
 

@@ -1,6 +1,6 @@
-//! Transcript blocks (`transcript.md` § Block types): a session's history, one
-//! block per row of its checkpoint. Every block has an id, the time it was
-//! written and the model selection current then.
+//! Transcript blocks: a session's history, one block per row of its
+//! checkpoint. Every block has an id, the time it was written and the model
+//! selection current then.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -132,8 +132,8 @@ impl Block {
         }
     }
 
-    /// The run of steps the block belongs to (`rendering.md` § Work groups);
-    /// none for a block that is not a step.
+    /// The run of steps the block belongs to; none for a block that is not a
+    /// step.
     pub fn run(&self) -> Option<&BlockId> {
         match self {
             Block::Thinking(block) => block.run.as_ref(),
@@ -167,8 +167,7 @@ impl Block {
 /// (`crates/provider-claude-code/src/session.rs`), held as its JSON
 /// text: a session replays a block's entries as they came and reads a
 /// field of them seldom, so it holds the text, a third of the decoded
-/// value's size, and decodes an entry only where a field of it is read
-/// (`runtime.md` § What a session holds).
+/// value's size, and decodes an entry only where a field of it is read.
 #[derive(Debug, Clone)]
 pub struct Entry(Box<serde_json::value::RawValue>);
 
@@ -341,8 +340,8 @@ pub struct UserBlock {
 
 impl UserBlock {
     /// What the model reads before the message's content, in order: the
-    /// preamble, then the comments sent with it, a picture's as its image
-    /// (`transcript.md` § Block types).
+    /// preamble, then the comments sent with it, a picture's as its
+    /// image.
     pub fn lead_content(&self) -> Vec<UserContentBlock> {
         self.preamble
             .iter()
@@ -370,8 +369,8 @@ pub struct AutomationMark {
     pub at: Timestamp,
 }
 
-/// What one context source told the node before a request (`transcript.md`
-/// § Context), which the model receives as a user message.
+/// What one context source told the node before a request, which the model
+/// receives as a user message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContextBlock {
@@ -390,8 +389,7 @@ pub struct ContextBlock {
     #[garde(skip)]
     pub text: String,
     /// What an instructions block's text holds, in its order, which the
-    /// page lists (`instructions.md` § What the card lists); empty for
-    /// another source's block.
+    /// page lists; empty for another source's block.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub instructions: Vec<InstructionEntry>,
@@ -415,17 +413,15 @@ pub struct ContextBlock {
 }
 
 /// The context source of the user's personal instructions and the
-/// project's instruction files (`instructions.md`), whose block replay
-/// sends whole.
+/// project's instruction files, whose block replay sends whole.
 pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 
 /// The context source of what the user asked aside, in side questions.
 pub const SIDE_QUESTIONS_SOURCE: &str = "side_questions";
 
-/// The context source of the conversation's execution context
-/// (`transcript.md` § Context), which also names what still runs after a
-/// compaction (`compaction.md` § What the model receives afterward); no
-/// plugin may be named so.
+/// The context source of the conversation's execution context, which
+/// also names what still runs after a compaction; no plugin may be named
+/// so.
 pub const EXECUTION_SOURCE: &str = "execution";
 
 /// The context source of a subagent's working directory
@@ -436,12 +432,10 @@ pub const EXECUTION_SOURCE: &str = "execution";
 pub const WORKING_DIRECTORY_SOURCE: &str = "working_directory";
 
 /// The context source of the skills plugin, whose block is the skills
-/// catalog (`skills.md` § What the model sees), the context card's Skills
-/// row (`compaction.md` § What fills the context).
+/// catalog, the context card's Skills row.
 pub const SKILLS_SOURCE: &str = "skills";
 
-/// One part of an instructions block's text (`instructions.md` § What the
-/// card lists).
+/// One part of an instructions block's text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "kind",
@@ -469,8 +463,7 @@ pub enum InstructionEntry {
 }
 
 impl InstructionEntry {
-    /// The entry's section of an instructions block, holding `text`
-    /// (`instructions.md` § The block).
+    /// The entry's section of an instructions block, holding `text`.
     pub fn section(&self, text: &str) -> String {
         let (opening, closing) = self.tags();
         format!("{opening}\n{text}\n{closing}")
@@ -515,9 +508,9 @@ pub struct WakeupBlock {
     /// The reports, in the order they arrived.
     #[garde(dive)]
     pub reports: Vec<CommandReport>,
-    /// The run of steps the block belongs to (`rendering.md` § Work groups):
-    /// the id of the run's first block, which the backend sets as it stores
-    /// the block and never changes.
+    /// The run of steps the block belongs to: the id of the run's first
+    /// block, which the backend sets as it stores the block and never
+    /// changes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -705,9 +698,9 @@ pub struct AgentMessageBlock {
     pub model: ModelSelection,
     #[garde(dive)]
     pub message: AgentMessage,
-    /// The run of steps the block belongs to (`rendering.md` § Work groups):
-    /// the id of the run's first block, which the backend sets as it stores
-    /// the block and never changes.
+    /// The run of steps the block belongs to: the id of the run's first
+    /// block, which the backend sets as it stores the block and never
+    /// changes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -741,8 +734,7 @@ fn is_message_id(message_id: &BlockId) -> impl FnOnce(&BlockId, &()) -> garde::R
 }
 
 /// The turn continues after a cut; the model receives "Continue from where
-/// you left off.", or, when the system resumed it, why
-/// (`failures-and-recovery.md` § The unfinished turn).
+/// you left off.", or, when the system resumed it, why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResumeBlock {
@@ -836,9 +828,9 @@ pub struct ThinkingBlock {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub signature: Option<String>,
-    /// The run of steps the block belongs to (`rendering.md` § Work groups):
-    /// the id of the run's first block, which the backend sets as it stores
-    /// the block and never changes.
+    /// The run of steps the block belongs to: the id of the run's first
+    /// block, which the backend sets as it stores the block and never
+    /// changes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -884,9 +876,9 @@ pub struct RedactedThinkingBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub data: String,
-    /// The run of steps the block belongs to (`rendering.md` § Work groups):
-    /// the id of the run's first block, which the backend sets as it stores
-    /// the block and never changes.
+    /// The run of steps the block belongs to: the id of the run's first
+    /// block, which the backend sets as it stores the block and never
+    /// changes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -919,8 +911,13 @@ pub struct TextBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub text: String,
-    /// Set once the text is complete and a Fork may start after it
-    /// (`conversation-fork.md`); omitted until then.
+    /// Set once the text is complete and a Fork may start after it;
+    /// omitted until then. The transcript alone decides it: the text is
+    /// complete when the provider's answer moves on to anything but more of
+    /// it, or when the response ends. Text a failed request cut off stays
+    /// unmarked, and so does text that follows a tool call still executing.
+    /// The mark is part of the block, so it is saved and restored with it, and
+    /// the page offers Fork only on a marked block.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub forkable: bool,
@@ -950,8 +947,7 @@ impl ToolCallBlock {
     /// `shell` call that started a command or was suppressed as a repeat;
     /// none for any other call. The shell tool checked the input when the
     /// call was made (`crates/agent-tools/src/lib.rs`); this reads the two fields
-    /// a stored call is shown and searched by
-    /// (`compaction.md` § Reading the earlier history).
+    /// a stored call is shown and searched by.
     pub fn shell_command(&self) -> Option<ShellCommand> {
         self.view.as_ref()?;
         // A view is written only for a call whose input decoded; an input
@@ -991,14 +987,14 @@ pub struct ToolCallBlock {
     pub view: Option<ToolView>,
     /// When the call returned, set as its result is stored; null while it
     /// executes. A run's time adds up its calls' times from `created_at` to
-    /// this (`rendering.md` § Work groups).
+    /// this.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
     #[garde(skip)]
     pub ended_at: Option<Timestamp>,
-    /// The run of steps the block belongs to (`rendering.md` § Work groups):
-    /// the id of the run's first block, which the backend sets as it stores
-    /// the block and never changes.
+    /// The run of steps the block belongs to: the id of the run's first
+    /// block, which the backend sets as it stores the block and never
+    /// changes.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -1050,8 +1046,7 @@ pub struct ResponseBlock {
     pub usage: Option<TokenUsage>,
 }
 
-/// A failed request or an interrupted turn (`failures-and-recovery.md`
-/// § The failure record).
+/// A failed request or an interrupted turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ErrorBlock {
@@ -1080,8 +1075,7 @@ pub struct ErrorBlock {
     pub diagnostics: Option<ProviderErrorDiagnostics>,
     /// Set when the failure ended no turn, as a `compact` action whose
     /// summary request failed: no turn is left unfinished, and the product
-    /// offers no Resume for it (`failures-and-recovery.md` § Retries).
-    /// Omitted otherwise.
+    /// offers no Resume for it. Omitted otherwise.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub outside_turn: bool,
@@ -1099,8 +1093,7 @@ pub struct ErrorBlock {
     pub device: Option<ErrorDevice>,
     /// The account the failing request used, when the entry's rotation
     /// gave the agent one of its own, whose quota a usage limit that names
-    /// no moment reads (`failures-and-recovery.md` § The unfinished turn);
-    /// omitted otherwise.
+    /// no moment reads; omitted otherwise.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -1138,7 +1131,7 @@ pub struct CompactionBoundaryBlock {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub summary_tokens: u64,
     /// The user's own messages the pass kept, oldest first, each as the
-    /// content its user message replays (`compaction.md` § One pass).
+    /// content its user message replays.
     #[garde(dive)]
     pub kept: Vec<KeptMessage>,
     /// The entries of the vendor's own record of the session that belong to
@@ -1155,8 +1148,7 @@ pub struct CompactionBoundaryBlock {
 
 /// A message of the user's that a compaction kept beside its summary: a
 /// `user` block's preamble and content, or a `steer` block's content, the
-/// one that crossed the pass's budget cut to its text
-/// (`compaction.md` § One pass).
+/// one that crossed the pass's budget cut to its text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KeptMessage {
@@ -1164,7 +1156,10 @@ pub struct KeptMessage {
     pub content: Vec<UserContentBlock>,
 }
 
-/// Compaction's estimate of the size of what it summarized.
+/// Compaction's estimate of the size of what it summarized. It is appended at
+/// the end, while its boundary sits where the kept history begins, so that
+/// the page shows the divider where the compaction was triggered, not where
+/// the summary sits.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CompactionMarkerBlock {

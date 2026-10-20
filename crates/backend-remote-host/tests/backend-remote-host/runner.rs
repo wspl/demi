@@ -598,9 +598,9 @@ async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
 }
 
 /// A stop sends `TERM` first: a program that traps it ends cleanly, and
-/// what it prints then is the command's last output (`runtime.md`
-/// § Stopping a command). Before, the runner killed the job's programs at
-/// once, so no trap ran. About 0.5 s: the job is a login shell.
+/// what it prints then is the command's last output. Before, the runner
+/// killed the job's programs at once, so no trap ran. About 0.5 s: the
+/// job is a login shell.
 #[cfg(unix)]
 #[tokio::test(flavor = "local")]
 async fn a_stopped_command_lets_its_programs_end_cleanly() {

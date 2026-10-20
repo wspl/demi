@@ -16,11 +16,11 @@ import {
 import { t } from './locales/text'
 
 /**
- * The web plugin's settings section (`web.md` § Settings › Web Search) over
- * the plugin's state and methods. Every change comes back with the state the
- * plugin sends to each of the user's pages. Each button's call is an
- * operation of the page (`page.operation`): the button works until the call
- * is answered, and a press meanwhile starts nothing.
+ * The web plugin's settings section over the plugin's state and methods.
+ * Every change comes back with the state the plugin sends to each of the
+ * user's pages. Each button's call is an operation of the page
+ * (`page.operation`): the button works until the call is answered, and a
+ * press meanwhile starts nothing.
  */
 const page = usePage()
 const plugin = page.plugin

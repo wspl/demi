@@ -1,6 +1,5 @@
-//! A skill's `SKILL.md` (`skills.md` § A skill): the three fields of its
-//! front matter Demi reads, checked leniently, as the format's guide for
-//! clients asks.
+//! A skill's `SKILL.md`: the three fields of its front matter Demi
+//! reads, checked leniently, as the format's guide for clients asks.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

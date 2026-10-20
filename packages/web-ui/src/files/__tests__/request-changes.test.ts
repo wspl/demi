@@ -205,7 +205,7 @@ describe('the pills', () => {
 
   test('of a page read in light form are those of the whole transcript', () => {
     // A page's light form keeps the lists only on the latest call of each
-    // run and request (`rendering.md` § Rendering boundary).
+    // run and request.
     const light = transcript.map((block) => {
       if (block.type !== 'tool_call' || block.view?.kind !== 'shell' || block.id === 's4')
         return block

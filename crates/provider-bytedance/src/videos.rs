@@ -1,18 +1,18 @@
-//! The Ark Tasks shape (`videos.md` § Vendors), Seedance's through an Ark
-//! key and any compatible API that chose it:
-//! `POST …/contents/generations/tasks` with `model` and `content`, the
-//! prompt its `text` item and each image an `image_url` item with its
-//! role, answers the task's `id`
-//! ([Create a video generation task](https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api));
+//! The Ark Tasks shape, Seedance's through an Ark key and any compatible API
+//! that chose it: `POST …/contents/generations/tasks` with `model` and
+//! `content`, the prompt its `text` item and each image an `image_url` item
+//! with its role, answers the task's `id` ([Create a video generation
+//! task](https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api));
 //! `GET …/contents/generations/tasks/<id>` answers its `status`, `queued`,
 //! `running`, `succeeded`, `failed`, `cancelled` or `expired`, and once
-//! succeeded its `content.video_url`, kept 24 hours and downloaded without
-//! a header, with the output tokens it was paid by
-//! ([Retrieve a video generation task](https://docs.byteplus.com/en/docs/modelark/get-video-generation-task-api)).
-//! `DELETE` of a task cancels it while it is queued, the one state Ark
-//! cancels in, and deletes the record of a finished one, so a stopped call
-//! reads the task's state first and deletes only a queued one
-//! ([Cancel or delete a video generation task](https://docs.byteplus.com/en/docs/modelark/cancel-or-delete-video-generation-tasks-api)).
+//! succeeded its `content.video_url`, kept 24 hours and downloaded without a
+//! header, with the output tokens it was paid by ([Retrieve a video generation
+//! task](https://docs.byteplus.com/en/docs/modelark/get-video-generation-task-api)).
+//! `DELETE` of a task cancels it while it is queued, the one state Ark cancels
+//! in, and deletes the record of a finished one, so a stopped call reads the
+//! task's state first and deletes only a queued one ([Cancel or delete a video
+//! generation
+//! task](https://docs.byteplus.com/en/docs/modelark/cancel-or-delete-video-generation-tasks-api)).
 //! A video comes as the vendor makes it for its API: `watermark: false`.
 
 use std::sync::Arc;

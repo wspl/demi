@@ -1,7 +1,7 @@
-//! The pages read, kept on the Host for 15 minutes (`web.md` § demi web
-//! fetch), so that reading on fetches a page once: one file per URL under
-//! the temporary directory's `demi-fetch/pages/`, on disk since the service
-//! may exit between calls. Only text answered with a 2xx status is kept.
+//! The pages read, kept on the Host for 15 minutes, so that reading on
+//! fetches a page once: one file per URL under the temporary directory's
+//! `demi-fetch/pages/`, on disk since the service may exit between calls.
+//! Only text answered with a 2xx status is kept.
 
 use std::{
     path::PathBuf,

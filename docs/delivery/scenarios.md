@@ -245,7 +245,7 @@ input closes, serves both.
 The patch protocol has one more check. The Rust agent tests write patch
 sequences together with the snapshot each must produce, and the
 `@demicodes/conversation-client` tests apply them with the web app's patch applier
-([Frame protocol](../agent/rendering.md#frame-protocol)). With the reload check,
+(`crates/conversation-socket-protocol/src/lib.rs`). With the reload check,
 this verifies the patches without a second applier.
 
 ## Real machine acceptance

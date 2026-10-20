@@ -111,8 +111,8 @@ test('the ring\'s tip is the header\'s figure under the word Context, and none w
 })
 
 // A new conversation's card, before its first answer, knows no usage: it
-// holds the usage limits alone, and with none of them there is no meter
-// (`compaction.md` § What fills the context). Microseconds.
+// holds the usage limits alone, and with none of them there is no meter.
+// Microseconds.
 test('a card whose usage or window is unknown shows only the usage limits, and without them nothing', () => {
   const limits = { accountLabel: 'alex@example.com', windows: [], autoRefresh: true }
   const known = usage(12_000)

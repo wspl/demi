@@ -1,8 +1,8 @@
-//! The tree store contract (`runtime.md` § Tree store): how the agent keeps a
-//! conversation's tree in the conversation's database. One store holds one
-//! conversation's tree: every node's record, with its parent link, and its
-//! checkpoint. The backend realizes it over the conversation's database; tests
-//! use [`MemoryTreeStore`](crate::testing::MemoryTreeStore).
+//! The tree store contract: how the agent keeps a conversation's tree in the
+//! conversation's database. One store holds one conversation's tree: every
+//! node's record, with its parent link, and its checkpoint. The backend
+//! realizes it over the conversation's database; tests use
+//! [`MemoryTreeStore`](crate::testing::MemoryTreeStore).
 //!
 //! Creating, saving, closing, reopening and deleting a node are each one atomic
 //! commit, whatever the realization. Parent and child are related by a column,
@@ -59,10 +59,9 @@ pub trait SessionStore {
 
     /// The node's checkpoint, decoded and checked, its media by reference as
     /// saved; none when the node has none. Its transcript is the window a
-    /// live session holds (`runtime.md` § What a session holds): the current
-    /// path's blocks from its last `compaction_boundary` on, or the whole
-    /// path when it has none; no row before it is read. Corrupt data stops
-    /// the load.
+    /// live session holds: the current path's blocks from its last
+    /// `compaction_boundary` on, or the whole path when it has none; no row
+    /// before it is read. Corrupt data stops the load.
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>>;
 
     /// The blocks at the positions `range` of the current path, all of
@@ -104,18 +103,17 @@ pub trait SessionStore {
 
     /// Makes the latest leaf of the `version`th version (from 1) at the
     /// path's position `position` the current leaf, in one commit, and
-    /// answers the path from that position on (`message-editing.md`
-    /// § Versions), and, when that position is before `held_from`, where
-    /// the caller's window starts, what the caller needs to hold the path
-    /// from the last `compaction_boundary` at or before it: all read in the
-    /// switch's transaction, so nothing after its commit can fail. Nothing
-    /// else of the checkpoint changes. A position the path does not reach,
-    /// or a version its place does not hold, is refused without a change.
+    /// answers the path from that position on, and, when that position is
+    /// before `held_from`, where the caller's window starts, what the
+    /// caller needs to hold the path from the last `compaction_boundary` at
+    /// or before it: all read in the switch's transaction, so nothing after
+    /// its commit can fail. Nothing else of the checkpoint changes. A
+    /// position the path does not reach, or a version its place does not
+    /// hold, is refused without a change.
     fn switch(&self, position: usize, version: u32, held_from: usize) -> LocalBoxFuture<'_, Result<Switched, StoreError>>;
 
-    /// The conversation owner's blob namespace (`transcript.md` § Media), where
-    /// the session stores the media that enter its transcript and reads back
-    /// those its requests send.
+    /// The conversation owner's blob namespace, where the session stores the
+    /// media that enter its transcript and reads back those its requests send.
     fn blobs(&self) -> &dyn media::BlobStore;
 }
 
@@ -155,9 +153,8 @@ pub trait AgentTreeStore {
     /// As [`create_node`](Self::create_node), for a node whose path starts
     /// with `prefix`, rows of this tree, or with `root` of the tree of that
     /// conversation root: the store copies them as the node's first rows,
-    /// in the database, without reading them into the process
-    /// (`runtime.md` § What a session holds); `initial` holds the blocks
-    /// after them.
+    /// in the database, without reading them into the process; `initial`
+    /// holds the blocks after them.
     fn create_node_after<'a>(
         &'a self,
         record: NodeRecord,
@@ -207,10 +204,9 @@ pub trait AgentTreeStore {
         round: u64,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
-    /// The conversation's next number of `sequence` (`runtime.md`
-    /// § Identifiers the model sees). The store records the number after it
-    /// before it answers, so no number is given twice and a crash can only
-    /// leave a gap.
+    /// The conversation's next number of `sequence`. The store records the
+    /// number after it before it answers, so no number is given twice and a
+    /// crash can only leave a gap.
     fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>>;
 
     /// What the conversation holds of its command `command`, which ended
@@ -271,7 +267,7 @@ pub struct RunningCommand {
     /// The title its reports name (`crates/agent-session/src/reports.rs`).
     pub title: String,
     /// Its call's script, which the pages' view of it carries with its
-    /// title (`rendering.md` § Frame protocol).
+    /// title.
     pub script: String,
     /// How often its call asked it to report, or only its end when none
     /// (`crates/agent-session/src/reports.rs`): an interrupted call's command
@@ -320,9 +316,8 @@ pub enum StoreError {
 pub struct NodeRecord {
     pub id: NodeId,
     /// The number the model knows the agent by: 0 for the root, then the
-    /// conversation's agent sequence in spawn order (`runtime.md`
-    /// § Identifiers the model sees). A side question is no agent and takes
-    /// none: 0 here, and nothing in the store.
+    /// conversation's agent sequence in spawn order. A side question is no
+    /// agent and takes none: 0 here, and nothing in the store.
     pub number: u64,
     pub parent: Option<NodeId>,
     /// A short title; empty for the root.
@@ -354,9 +349,9 @@ pub struct NodeRecord {
     /// The number of the agent it was forked from; none for one not forked.
     pub forked_from: Option<u64>,
     /// The parent's call block that started it, so the child belongs to the
-    /// branch that call is on (`message-editing.md` § Versions); none for the
-    /// root, for a child started by no call, and for a child stored before
-    /// versions existed, which is on every path.
+    /// branch that call is on; none for the root, for a child started by no
+    /// call, and for a child stored before versions existed, which is on
+    /// every path.
     pub started_by: Option<BlockId>,
     /// A child's own working directory and where the conversation worked
     /// when it was set (`crates/agent-server/src/node/mod.rs`); none for the
@@ -587,8 +582,7 @@ pub struct PendingAgentInput {
     pub message: AgentMessage,
 }
 
-/// The receipt of an accepted edit (`message-editing.md` § Commit and
-/// idempotency).
+/// The receipt of an accepted edit.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditReceipt {
@@ -678,15 +672,13 @@ pub enum Kind {
     ExecutingCall,
     /// A `text` block.
     Text,
-    /// A completed `text`, one a Fork may end at (`conversation-fork.md`
-    /// § Eligibility).
+    /// A completed `text`, one a Fork may end at.
     CompletedText,
     /// An `error` block.
     Error,
     /// A `response` block.
     Response,
-    /// A block that can be the record that ended a turn
-    /// (`failures-and-recovery.md` § The unfinished turn): any but a
+    /// A block that can be the record that ended a turn: any but a
     /// compaction's boundary and marker, an error that ended no turn, and
     /// the agent messages and command reports a turn takes after it ended.
     Record,
@@ -761,10 +753,10 @@ impl Kind {
 }
 
 /// One save: only what changed since the last one. Positions are places on
-/// the current path (`message-editing.md` § Versions). A stored row is never
-/// deleted: from the cut, the lowest of `moved_from` and `block_count`,
-/// the rows the path held leave it, and each block from there is a new row
-/// on a new branch; below the cut, a changed block updates its row.
+/// the current path. A stored row is never deleted: from the cut, the lowest
+/// of `moved_from` and `block_count`, the rows the path held leave it, and
+/// each block from there is a new row on a new branch; below the cut, a
+/// changed block updates its row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckpointUpdate {
     pub state: CheckpointState,
@@ -785,7 +777,7 @@ pub struct CheckpointUpdate {
 /// A subagent as the store holds it (`crates/agent-server/src/server/tree.rs`): its
 /// record, the model selection its checkpoint saved, and whether the call
 /// that started it is on its parent's current path, which a child no call
-/// started is (`message-editing.md` § Versions).
+/// started is.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredSubagent {
     pub record: NodeRecord,
@@ -796,8 +788,7 @@ pub struct StoredSubagent {
 /// What a switch of versions made current: the path from `from`, the
 /// place whose version changed, with the versions there and after. A block
 /// a compaction carried past its boundary shows the versions of the place
-/// it was carried from, which is before it (`message-editing.md`
-/// § Versions).
+/// it was carried from, which is before it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Switched {
     pub from: usize,

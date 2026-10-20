@@ -75,8 +75,8 @@ pub struct RpcInvocation {
     )]
     pub pipes: Option<RelayedPipes>,
     /// The host the leaf's `bringsHost` argument names, as the dispatch
-    /// resolved it once and checked it (`permissions.md` § Hosts); the
-    /// handler acts on it and never resolves the name again.
+    /// resolved it once and checked it; the handler acts on it and
+    /// never resolves the name again.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -183,10 +183,10 @@ pub enum PortRequest {
     /// The next interactive write to the calling job, until it ends.
     ReadLiveStdin {},
     /// The call waits for the user's answer, until it ends or says it no
-    /// longer does (`permissions.md` § The check): meanwhile its job's
-    /// result carries `line` in place of the next step a running command's
-    /// result suggests (`crates/agent-tools/src/result.rs`), and the
-    /// job reports no progress. None says it waits no longer.
+    /// longer does: meanwhile its job's result carries `line` in place of
+    /// the next step a running command's result suggests
+    /// (`crates/agent-tools/src/result.rs`), and the job reports no
+    /// progress. None says it waits no longer.
     AwaitsUser {
         #[serde(deserialize_with = "Option::deserialize")]
         line: Option<String>,

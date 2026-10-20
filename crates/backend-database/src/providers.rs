@@ -76,8 +76,8 @@ pub struct ProviderRow {
     pub audio_generation: bool,
 }
 
-/// The media switches a change of an entry sets, each kind's when given
-/// (`media.md` § Which entries make which media).
+/// The media switches a change of an entry sets, each kind's when
+/// given.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MediaSwitches {
     pub image: Option<bool>,

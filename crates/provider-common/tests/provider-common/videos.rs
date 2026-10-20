@@ -1,5 +1,4 @@
-//! A finished video's download (`videos.md` § The job), against a scripted
-//! server.
+//! A finished video's download, against a scripted server.
 
 use bytes::Bytes;
 use demi_provider_common::ProviderHttp;

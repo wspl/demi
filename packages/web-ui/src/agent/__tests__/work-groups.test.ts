@@ -109,12 +109,12 @@ describe('the steps the transcript shows as one row', () => {
 
 })
 
-// `rendering.md` § Work groups: only a step that has ended joins its run, a
-// call once it returned and thinking once it is written. At a running
-// turn's end, what still runs is a row of its own under the run, so the run
-// is what has happened. Before, the newest step was the run's own face, and
-// the run opened it with the rest as one stack (the user's report: Ran 2
-// commands over the newest command opened together).
+// Only a step that has ended joins its run, a call once it returned and
+// thinking once it is written. At a running turn's end, what still runs is
+// a row of its own under the run, so the run is what has happened. Before,
+// the newest step was the run's own face, and the run opened it with the
+// rest as one stack (the user's report: Ran 2 commands over the newest
+// command opened together).
 describe('the end of a running turn', () => {
   const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
 
@@ -152,10 +152,9 @@ describe('the end of a running turn', () => {
   })
 })
 
-// `rendering.md` § Work groups: thinking blocks next to each other show as one
-// step. One Claude response thought twice in a row, 4 s then 1 s, and ran a
-// shell call; the opened run showed Thought for 4s and Thought for 1s over
-// the call.
+// Thinking blocks next to each other show as one step. One Claude response
+// thought twice in a row, 4 s then 1 s, and ran a shell call; the opened run
+// showed Thought for 4s and Thought for 1s over the call.
 describe('thinking blocks next to each other', () => {
   const at = (seconds: number) => new Date(Date.parse(createdAt) + seconds * 1000).toISOString()
   const thought = (id: string, text: string, second: number): Block => ({ ...thinking(id, text), createdAt: at(second) })
@@ -191,7 +190,7 @@ describe('thinking blocks next to each other', () => {
 })
 
 // A command's notice and an agent's receipt between two calls are steps of
-// the work, as the backend stores them (`rendering.md` § Work groups).
+// the work, as the backend stores them.
 describe('the notices and receipts between the steps', () => {
   test('fold into the run, in their order, and the run reads what its calls did', () => {
     const steps = run('a', call('a'), call('b'), call('c'), notice('n', '17'), receipt('m', 'ag-2'), call('d'), call('e'))
@@ -260,7 +259,7 @@ describe('what a group says it did', () => {
 
 // A run's row is named after the run the backend stored, so it stays one
 // row whichever of its steps ends first; a step that runs is named after
-// itself (`rendering.md` § Work groups).
+// itself.
 test('a run is one row under one name from its first step to its end', () => {
   const keys = (list: readonly MessageListBlock[]) => list.map((row) => (row.type === 'work_group' ? `${row.id}:${row.steps.length}` : rowKey(row)))
   const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
@@ -311,10 +310,10 @@ test('a joined thinking step streams and ends with its last part', () => {
   expect(row.id).toBe('k1')
   expect(isThinkingBlockStreaming(blocks as Block[], 'running', blocks.findIndex((block) => block.id === followedBlockId(row)))).toBe(true)
 })
-// `rendering.md` § Work groups: a run says its total time in its sentence,
-// running or ended, its steps' times added up: a call from its start until
-// it returned, a command left in the background only until then, a thinking
-// until the next block started, and never the model's wait between steps.
+// A run says its total time in its sentence, running or ended, its steps'
+// times added up: a call from its start until it returned, a command left
+// in the background only until then, a thinking until the next block
+// started, and never the model's wait between steps.
 describe('the time a run took', () => {
   const at = (seconds: number) => new Date(Date.parse(createdAt) + seconds * 1000).toISOString()
   const timed = (block: Block, start: number, end?: number): Block =>

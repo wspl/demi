@@ -35,9 +35,8 @@
 //! ([`Binding`]), and [`Node::pin`] turns the one into the other.
 //!
 //! A group may declare permission categories, and a leaf names the one it
-//! needs as its `permission` (`permissions.md` § Categories), and the input
-//! field that may bring a host into the conversation as its `bringsHost`
-//! (`permissions.md` § Hosts): the declaration is all a
+//! needs as its `permission`, and the input field that may bring a host
+//! into the conversation as its `bringsHost`: the declaration is all a
 //! command does about permissions, which the backend's dispatch checks
 //! before a handler runs.
 
@@ -65,8 +64,19 @@ pub const MAX_DEPTH: usize = 32;
 /// The most bytes a command's body read from its standard input may hold.
 pub const MAX_STDIN_BODY: usize = 1024 * 1024;
 
-/// The most characters a group's index entry holds
-/// (`system-prompt.md` § Capability index).
+/// The most characters a group's index entry holds. Registration refuses a
+/// longer one, and a top-level group without one, since a group the index
+/// does not name is one the model never finds. An entry is the most important
+/// text a capability has: a model that does not see from it that the
+/// capability fits the task never asks for its help. It says in three
+/// sentences or fewer what the group does, in the third person and in the
+/// words of the task, not of the implementation; when to use it, as the
+/// situations a user would describe; and when not to, where a common
+/// alternative is better. It gives reasons and situations, never capital
+/// letters or "you must": a newer model follows emphasis too eagerly and
+/// reaches for the capability where it does not fit. A plugin never writes
+/// free text into the system prompt, nor orders its entries: the renderer
+/// does.
 pub const MAX_INDEX_ENTRY: usize = 600;
 
 /// The keyword beside a field's `pattern` that says what the pattern stands
@@ -107,8 +117,8 @@ pub struct Group<B = Binding> {
     pub name: String,
     pub summary: String,
     /// What the group is for and when to use it, as the model's capability
-    /// index shows it (`system-prompt.md` § Capability index): every
-    /// top-level group has one, which the command set checks.
+    /// index shows it: every top-level group has one, which the command
+    /// set checks.
     #[serde(
         default,
         rename = "indexEntry",
@@ -128,8 +138,12 @@ pub struct Group<B = Binding> {
     pub subcommands: Vec<Node<B>>,
 }
 
-/// One power over Demi itself that a user allows for a conversation
-/// (`permissions.md` § Categories).
+/// One power over Demi itself that a user allows for a conversation. It is
+/// what the user decides on, so it never changes meaning while a grant of it
+/// may exist: a group that needs a broader power declares a new category. A
+/// leaf of a `native` command names none, since it runs on the Host, where it
+/// can act only on the Host and never on Demi itself, and its dispatch on the
+/// runner has no grants to check.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Category {
@@ -183,7 +197,7 @@ pub struct Leaf<B = Binding> {
 }
 
 /// A leaf's input field that names a host the call may bring into the
-/// conversation (`permissions.md` § Hosts).
+/// conversation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BringsHost {
@@ -482,8 +496,7 @@ impl<B> Node<B> {
                 let Some(permission) = &leaf.permission else {
                     return Ok(());
                 };
-                // A request asks the user for one thing (`permissions.md`
-                // § Hosts).
+                // A request asks the user for one thing.
                 if leaf.brings_host.is_some() {
                     return Err(invalid(format!(
                         "command {} names a permission and a bringsHost field; a command needs one of the two",

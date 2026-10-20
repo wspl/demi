@@ -24,7 +24,7 @@ import type { VerificationHost } from '../auth/verification'
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
-/** A kind of media an entry may make (`media.md` § Which entries make which media), in the order its sections follow. */
+/** A kind of media an entry may make, in the order its sections follow. */
 export type SettingsMediaKind = 'image' | 'video' | 'audio'
 
 export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'video', 'audio']
@@ -38,7 +38,7 @@ export type SettingsVideoShape = 'grok' | 'xai-videos' | 'veo' | 'openai-videos'
 /** How an entry's API makes audio, as `SettingsImageShape` says of images. */
 export type SettingsAudioShape = 'openai-speech' | 'gemini' | 'elevenlabs' | 'seed' | 'minimax'
 
-/** What an audio model makes (`audio.md` § Commands). */
+/** What an audio model makes. */
 export type SettingsAudioKind = 'speech' | 'music' | 'effect'
 
 /** Each kind's shapes. */
@@ -423,8 +423,8 @@ export interface SettingsProviderEntry {
   /** A subscription's rotation; absent for an API key. */
   rotation?: SettingsRotation
   /**
-   * How it makes each kind of media (`media.md` § Which entries make which
-   * media): a kind with a shape has its switch, such as Image Generation, on its page.
+   * How it makes each kind of media: a kind with a shape has its switch, such as Image
+   * Generation, on its page.
    */
   media: { [K in SettingsMediaKind]: SettingsEntryMedia<K> }
   /** The vendor supports a free quota request when an account becomes visible. */
@@ -555,7 +555,7 @@ export interface SettingsSubagentProfile {
 /** What the profile editor saves: a new profile starts enabled. */
 export type SettingsSubagentDraft = Omit<SettingsSubagentProfile, 'id' | 'enabled'>
 
-/** A credential as Settings › Credentials lists it (`credentials.md` § A credential), its values left out. */
+/** A credential as Settings › Credentials lists it, its values left out. */
 export interface SettingsCredential {
   id: string
   name: string

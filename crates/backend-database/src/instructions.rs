@@ -1,6 +1,5 @@
-//! The users' personal instructions (`storage.md` § Control records;
-//! `instructions.md` § Personal instructions): one text per user who has
-//! any. A write takes a text its caller checked.
+//! The users' personal instructions (`storage.md` § Control records): one
+//! text per user who has any. A write takes a text its caller checked.
 
 use demi_web_api_protocol::ids::UserId;
 use rusqlite::{OptionalExtension, params};

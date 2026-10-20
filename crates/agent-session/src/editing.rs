@@ -1,10 +1,26 @@
-//! Message editing (`message-editing.md`): an accepted edit continues the
-//! conversation from a new version of a user message, and Regenerate from a
-//! new version of its answer; either commits the new branch with its receipt
-//! in one save, leaving the old one stored, and then infers on a fresh
-//! runtime. A switch of versions makes another branch current. A Fork
-//! (`conversation-fork.md`) copies a prefix into a new root's first
-//! checkpoint.
+//! Message editing: an accepted edit continues the conversation from a new
+//! version of a user message, and Regenerate from a new version of its
+//! answer; either commits the new branch with its receipt in one save,
+//! leaving the old one stored, and then infers on a fresh runtime. A switch
+//! of versions makes another branch current. A Fork copies a prefix into a
+//! new root's first checkpoint.
+//!
+//! The session owns the operation, and the transcript the suffix replacement
+//! and the patch that replicates it. The replacement infers on a fork of the
+//! provider runtime, so that no state the provider kept about the removed
+//! history reaches it; it takes a new turn ID, the selected model and a
+//! freshly prepared preamble, and the retained blocks keep their IDs,
+//! timestamps, content and media. Only a `user` block is a target: an
+//! explicit submission has its own block type, so the session and the page
+//! read editability from the type and no second rule decides it.
+//!
+//! A request is checked before its uploads are resolved, so that a repeated
+//! one writes no file: first its operation's receipt, then an edit with its
+//! operation ID still being prepared, then its snapshot. The digest covers
+//! the request as the page sent it, because resolving an upload writes the
+//! file under a name not yet taken, so the same request resolved twice would
+//! differ while its retry must match. A snapshot taken before a restart is
+//! always stale, since every restore starts a new epoch.
 
 use std::rc::Rc;
 
@@ -33,8 +49,7 @@ use super::{
 pub enum EditContent {
     Content(UserContentBlock),
     /// The attachment record the edited message holds under this number,
-    /// such as `a7`, which the session puts in its place
-    /// (`message-editing.md` § Files the edit keeps).
+    /// such as `a7`, which the session puts in its place.
     KeptAttachment(String),
     /// The native media block of this kind the edited message holds by the
     /// blob it names, which the session puts in its place.
@@ -159,8 +174,7 @@ pub async fn accepted(mut acceptance: Acceptance) -> Result<EditReceipt, EditErr
 }
 
 /// The SHA-256 of an edit request's RFC 8785 canonical JSON, as the web app
-/// sent it, before its uploads are resolved (`message-editing.md` § Commit
-/// and idempotency).
+/// sent it, before its uploads are resolved.
 pub fn edit_digest(request: &EditRequest) -> String {
     canonical_digest(request).expect("an edit request serializes")
 }
@@ -170,11 +184,10 @@ pub fn regenerate_digest(request: &RegenerateRequest) -> String {
     canonical_digest(request).expect("a regenerate request serializes")
 }
 
-/// The edit action (`message-editing.md` § Behavior and ownership):
-/// prepares the replacement turn beside the accepted history, commits it
-/// with its receipt in one save, adopts it, closes the runtimes it
-/// discarded, and runs the replacement's turn on a runtime fork. Until the
-/// save commits, nothing of the history changes.
+/// The edit action: prepares the replacement turn beside the accepted
+/// history, commits it with its receipt in one save, adopts it, closes the
+/// runtimes it discarded, and runs the replacement's turn on a runtime
+/// fork. Until the save commits, nothing of the history changes.
 pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     // Held until the edit is accepted or rejected: the replacement's turn
     // may start and close children again.
@@ -345,12 +358,11 @@ impl Candidate {
     }
 }
 
-/// A switch of versions (`message-editing.md` § Versions), admitted as an
-/// edit is: in the session's save order, the store makes the latest leaf of
-/// the `to`th version at the block `target`'s place current, and the
-/// session adopts that path from there as one rewrite batch, on fresh
-/// runtimes, so nothing a provider kept of the path it left reaches the
-/// next request. Nothing else changes.
+/// A switch of versions, admitted as an edit is: in the session's save
+/// order, the store makes the latest leaf of the `to`th version at the
+/// block `target`'s place current, and the session adopts that path from
+/// there as one rewrite batch, on fresh runtimes, so nothing a provider
+/// kept of the path it left reaches the next request. Nothing else changes.
 pub(super) async fn switch(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -396,7 +408,7 @@ fn named(media: &MediaRef) -> (&'static str, &BlobRef) {
 }
 
 /// Each native media block of `content` by its kind and the blob it
-/// references (`transcript.md` § Media).
+/// references.
 fn referenced_media(
     content: &[UserContentBlock],
 ) -> impl Iterator<Item = (&'static str, &BlobRef, &UserContentBlock)> {
@@ -432,11 +444,10 @@ pub enum ForkError {
     Store(String),
 }
 
-/// A Fork's seed (`conversation-fork.md` § The fork seed): the history through
-/// the completed text a [`ForkEnd`] names (`conversation-fork.md` §
-/// Eligibility), idle, with nothing waiting: a new root's, or a forked child's
-/// or side question's (`crates/agent-server/src/server/tree/supervisor.rs`).
-/// The blocks the source's store holds before its window are no part of it:
+/// A Fork's seed: the history through the completed text a [`ForkEnd`] names,
+/// idle, with nothing waiting: a new root's, or a forked child's or side
+/// question's (`crates/agent-server/src/server/tree/supervisor.rs`). The
+/// blocks the source's store holds before its window are no part of it:
 /// `prefix` names them as rows, which the destination's store copies in the
 /// database ([`demi_agent_store::AgentTreeStore::create_node_after`]), and the
 /// checkpoint holds the blocks after them, from its `start`.

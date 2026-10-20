@@ -1,6 +1,6 @@
-//! An HTTP failure and its standard reading (`failures-and-recovery.md` § The
-//! failure record, § Reading a failure): the record that keeps the vendor's
-//! whole answer, and the `Retry-After` header read as RFC 9110 defines it.
+//! An HTTP failure and its standard reading: the record that keeps the
+//! vendor's whole answer, and the `Retry-After` header read as RFC 9110
+//! defines it.
 
 use std::time::SystemTime;
 

@@ -1,6 +1,6 @@
-//! What a session shows beside its transcript (`runtime.md` § Input): its
-//! phase, the messages waiting to run, and the human steers it accepted but
-//! has not yet written.
+//! What a session shows beside its transcript: its phase, the messages
+//! waiting to run, and the human steers it accepted but has not yet
+//! written.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,8 +21,8 @@ pub enum SessionPhase {
 serde_plain::derive_display_from_serialize!(SessionPhase);
 serde_plain::derive_fromstr_from_deserialize!(SessionPhase);
 
-/// How full the session's next request is, as compaction estimates it
-/// (`compaction.md` § Context estimate), with the window its thresholds use.
+/// How full the session's next request is, as compaction estimates it, with
+/// the window its thresholds use.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContextUsage {
@@ -40,11 +40,10 @@ pub struct ContextUsage {
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub compact_from: Option<u64>,
-    /// What fills the context (`compaction.md` § What fills the context),
-    /// one figure each in the order of `ContextRowKind`, which the card
-    /// sorts largest first, a row with no tokens left out. The rows before
-    /// the compaction buffer add up to the estimate, or to more when the
-    /// rows above Messages alone do.
+    /// What fills the context, one figure each in the order of
+    /// `ContextRowKind`, which the card sorts largest first, a row with no
+    /// tokens left out. The rows before the compaction buffer add up to
+    /// the estimate, or to more when the rows above Messages alone do.
     #[garde(dive)]
     pub rows: Vec<ContextRow>,
     /// The account the node's requests use under account rotation
@@ -99,8 +98,7 @@ pub enum ContextRowKind {
 }
 
 impl ContextUsage {
-    /// Whether the user may compact now (`compaction.md` § When compaction
-    /// runs).
+    /// Whether the user may compact now.
     pub fn admits_compaction(&self) -> bool {
         self.compact_from.is_none_or(|from| self.tokens >= from)
     }
@@ -133,8 +131,8 @@ pub struct QueuedMessage {
     pub automation: Option<crate::AutomationMark>,
 }
 
-/// A call the model is writing (`rendering.md` § Calls being written): the
-/// provider opened it and has not handed it over whole. It is never saved.
+/// A call the model is writing: the provider opened it and has not handed
+/// it over whole. It is never saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingCall {

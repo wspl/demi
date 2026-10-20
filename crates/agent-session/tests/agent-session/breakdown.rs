@@ -1,7 +1,6 @@
-//! What fills the context (`compaction.md` § What fills the context): the
-//! rows of the context card add up to the estimate the ring shows, with an
-//! anchor, without one just after a compaction, and when the rows above
-//! Messages alone exceed it.
+//! What fills the context: the rows of the context card add up to the
+//! estimate the ring shows, with an anchor, without one just after a
+//! compaction, and when the rows above Messages alone exceed it.
 
 use demi_agent_session::{PromptLayer, token_threshold};
 use demi_host_interface::{CapabilityIndex, IndexGroup};

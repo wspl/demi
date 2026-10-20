@@ -1,8 +1,8 @@
-//! What a compaction pass reads of the blocks (`compaction.md` § One pass):
-//! the window it summarizes, which ends where the content of a request the
-//! vendor answered ends, and the user's own messages it keeps beside the
-//! summary. Each is a pure reading of the blocks, weighed by the token
-//! estimates of the request the pass serves.
+//! What a compaction pass reads of the blocks: the window it summarizes,
+//! which ends where the content of a request the vendor answered ends, and
+//! the user's own messages it keeps beside the summary. Each is a pure
+//! reading of the blocks, weighed by the token estimates of the request the
+//! pass serves.
 
 use demi_shared_types::{Block, KeptMessage, ModelSelection, UserContentBlock, comments_content};
 
@@ -14,8 +14,7 @@ use super::{
 };
 
 /// What the model reads first of a `compaction_boundary`, before the
-/// messages it kept and its summary (`compaction.md` § What the model
-/// receives afterward).
+/// messages it kept and its summary.
 pub const COMPACTION_NOTE: &str = "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it.";
 
 /// The summary of a `compaction_boundary` as the model reads it: in
@@ -87,11 +86,11 @@ fn same_model(one: &ModelSelection, other: &ModelSelection) -> bool {
 }
 
 /// Where the content of each request answered since the last compaction
-/// ends, in order (`transcript.md` § Replay): each `response` block after the
-/// last boundary and its marker closes an answer, the run of thinking, text
-/// and tool-call blocks directly before it, and what the blocks before that
-/// answer replay is what its request carried. A boundary whose marker an
-/// edit cut counts as the last compaction.
+/// ends, in order: each `response` block after the last boundary and its
+/// marker closes an answer, the run of thinking, text and tool-call blocks
+/// directly before it, and what the blocks before that answer replay is what
+/// its request carried. A boundary whose marker an edit cut counts as the
+/// last compaction.
 pub fn answered_ends(blocks: &[Block]) -> Vec<usize> {
     answered_requests(blocks)
         .into_iter()
@@ -137,13 +136,12 @@ fn unanswered_input(blocks: &[Block]) -> usize {
 }
 
 /// The user's own messages a pass over `window`, blocks of `request`, keeps
-/// beside its summary, oldest first (`compaction.md` § One pass): of the
-/// messages the boundary that opens the window kept, then the window's
-/// `user` and `steer` blocks, the newest first, whole, while they fit
-/// `budget` estimated tokens; the one that crosses it keeps its text up to
-/// the budget, without its media, and older ones are left to the summary.
-/// A receipt of the user's decision, an agent's message and a command
-/// report are not the user's words.
+/// beside its summary, oldest first: of the messages the boundary that
+/// opens the window kept, then the window's `user` and `steer` blocks, the
+/// newest first, whole, while they fit `budget` estimated tokens; the one
+/// that crosses it keeps its text up to the budget, without its media, and
+/// older ones are left to the summary. A receipt of the user's decision, an
+/// agent's message and a command report are not the user's words.
 pub fn kept_messages(window: &[Block], request: &RequestView, budget: u64) -> Vec<KeptMessage> {
     let mut messages: Vec<KeptMessage> = Vec::new();
     for block in window {

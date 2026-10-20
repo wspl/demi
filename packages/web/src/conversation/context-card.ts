@@ -7,11 +7,10 @@ import { useProviderSettings } from '../settings/providers'
 
 /**
  * What a context card needs of the product beside its usage, the composer's
- * for the root and the Agents window's for a child alike
- * (`compaction.md` § What fills the context): the usage limits of the
- * account a provider entry runs on, their refresh, and where an instruction
- * opens. `openFile` shows a Host file in the work panel; absent while no
- * plugin shows files.
+ * for the root and the Agents window's for a child alike: the usage limits
+ * of the account a provider entry runs on, their refresh, and where an
+ * instruction opens. `openFile` shows a Host file in the work panel; absent
+ * while no plugin shows files.
  */
 export function useContextCard(openFile: () => ((target: MessageFileTarget) => void) | undefined) {
   const resources = useResources()

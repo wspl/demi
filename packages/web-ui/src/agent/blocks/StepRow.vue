@@ -8,9 +8,9 @@ import BlockScope from './BlockScope.vue'
 import type { WorkStep } from '../work-groups'
 
 /**
- * A step of a run as its own row (`rendering.md` § Work groups), one
- * component per kind, wherever it stands: as a run of that step alone, and
- * among the steps an opened run shows. It opens to the step alone.
+ * A step of a run as its own row, one component per kind, wherever it
+ * stands: as a run of that step alone, and among the steps an opened run
+ * shows. It opens to the step alone.
  */
 defineProps<{
   step: WorkStep

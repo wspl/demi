@@ -61,8 +61,8 @@ export const LIVE_OUTPUT_CHARS = 32_768
  * What a page adds to a command's output that it shows up to the `shown`-th
  * character of the live view, given the view's `tail`, which ends at its
  * `chars`-th: only the characters beyond those shown, or, after a gap or
- * with nothing shown yet, the tail anew (`rendering.md` § Rendering boundary).
- * Characters are Unicode code points, as the backend counts them.
+ * with nothing shown yet, the tail anew. Characters are Unicode code points,
+ * as the backend counts them.
  */
 export function liveOutputDelta(
   shown: number | undefined,
@@ -86,10 +86,10 @@ export interface TerminalShown {
 /**
  * What a terminal writes to show `output` after what it showed (`shown`,
  * null before anything): for a live view, the characters beyond those shown,
- * by the view's count (`rendering.md` § Rendering boundary); for whole output,
- * what continues it. Otherwise it starts anew, clearing what it showed when
- * it showed anything. The `prompt` line opens the terminal each time it
- * starts and is never part of the output or its count.
+ * by the view's count; for whole output, what continues it. Otherwise it
+ * starts anew, clearing what it showed when it showed anything. The `prompt`
+ * line opens the terminal each time it starts and is never part of the output
+ * or its count.
  */
 export function terminalWrite(
   shown: TerminalShown | null,
@@ -130,10 +130,10 @@ const RESET = '\x1b[0m'
 
 /**
  * The line a command's terminal opens with, as a terminal shows what was
- * typed (`rendering.md` § Rendering boundary): `$ ` and the script's first
- * line, `> ` before each further line, the prompt muted and the script
- * highlighted as Bash by `runs`, in its own color where no run colors it;
- * the terminal wraps what is longer than its width. No script, no line.
+ * typed: `$ ` and the script's first line, `> ` before each further line,
+ * the prompt muted and the script highlighted as Bash by `runs`, in its
+ * own color where no run colors it; the terminal wraps what is longer than
+ * its width. No script, no line.
  */
 export function promptLine(script: string | undefined, colors: PromptColors, runs: readonly PromptRun[] = []): string {
   const text = script?.replace(/(\r?\n)+$/, '')
@@ -191,10 +191,9 @@ export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>
  * The command a page shows after its frame `status` at `now`, given the
  * record it showed before, if any: titled by the title and script of the
  * `shell` call that started it, which the frame carries from the command's
- * record (`rendering.md` § Rendering boundary). Its start is the server's, how long it has
- * run as the frame says, so a page that attached late, after a reload or
- * in a new tab, times it from when it truly started; its end is that start
- * and how long its last frame says it ran.
+ * record. Its start is the server's, how long it has run as the frame says, so a page that
+ * attached late, after a reload or in a new tab, times it from when it truly started; its
+ * end is that start and how long its last frame says it ran.
  */
 export function followFrame(
   current: TerminalRecord | undefined,
@@ -283,12 +282,12 @@ function executingCalls(blocks: readonly Block[]): ReadonlySet<string> {
 const NO_CALLS: ReadonlySet<string> = new Set()
 
 /**
- * The commands the dock holds (`rendering.md` § Rendering boundary): all but
- * those whose `shell` call still runs, whose output shows under the call.
- * Each agent's running calls are a computed of their own, over the latest
- * blocks of that agent's transcript: a patch to one transcript, as each
- * streamed piece is, scans that transcript once and no other, and the
- * commands are then read once, each by the set of its agent.
+ * The commands the dock holds: all but those whose `shell` call still runs,
+ * whose output shows under the call. Each agent's running calls are a
+ * computed of their own, over the latest blocks of that agent's transcript:
+ * a patch to one transcript, as each streamed piece is, scans that
+ * transcript once and no other, and the commands are then read once, each by
+ * the set of its agent.
  */
 export function useDockTerminals(source: () => DockSource): ComputedRef<TerminalRecord[]> {
   const rootCalls = computed(() => executingCalls(latestBlocks(source().history)))
@@ -322,10 +321,9 @@ export function isTerminalRunning(phase: TerminalPhase): boolean {
 }
 
 /**
- * Whether a `shell` row shimmers (`rendering.md` § Rendering boundary):
- * while its call runs, and after the call returned for as long as the
- * command it started runs, as the command's live frames say, until its end
- * arrives.
+ * Whether a `shell` row shimmers: while its call runs, and after the call
+ * returned for as long as the command it started runs, as the command's
+ * live frames say, until its end arrives.
  */
 export function shellRowRunning(
   callStatus: ToolCallBlock['status'],
@@ -335,13 +333,12 @@ export function shellRowRunning(
 }
 
 /**
- * How a `shell` row's command ended (`rendering.md` § Rendering
- * boundary): that a stop waits for its end, while its runner has not said
- * so, or that its start waits for its Host; none while its call runs
- * otherwise; after, the end the command's
- * record has, from its live frames or a stored view, and otherwise the view
- * the call stored, unless that view saw the command still running, which
- * says nothing of its end.
+ * How a `shell` row's command ended: that a stop waits for its end, while
+ * its runner has not said so, or that its start waits for its Host; none
+ * while its call runs otherwise; after, the end the command's record has,
+ * from its live frames or a stored view, and otherwise the view the call
+ * stored, unless that view saw the command still running, which says
+ * nothing of its end.
  */
 export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undefined): CommandEnd | null {
   if (command?.stopping && isTerminalRunning(command.phase)) {
@@ -365,11 +362,11 @@ export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undef
 }
 
 /**
- * How long a `shell` row's command has run or ran (`rendering.md` § Rendering
- * boundary): while it runs, from the start the server reported for it;
- * once it ended, how long it ran, by its live frames or by the view its
- * call stored. None while that is unknown, as for a command whose call
- * returned while it ran and whose end the page never saw.
+ * How long a `shell` row's command has run or ran: while it runs, from the
+ * start the server reported for it; once it ended, how long it ran, by its
+ * live frames or by the view its call stored. None while that is unknown, as
+ * for a command whose call returned while it ran and whose end the page never
+ * saw.
  */
 export type CommandTime =
   | { kind: 'running'; since: number }

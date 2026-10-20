@@ -1,5 +1,5 @@
-//! Subagents through a conversation (`crates/backend-host-access/src/access.rs`, `crates/backend-host-access/src/transition.rs`, `conversation-fork.md`):
-//! the root and its child each learn the Host they work on before their
+//! Subagents through a conversation (`crates/backend-host-access/src/access.rs`,
+//! `crates/backend-host-access/src/transition.rs`): the root and its child each learn the Host they work on before their
 //! first request, once; a child works on the
 //! conversation's Host in its parent's files, keeps its own identity even
 //! for a command it runs through `demi host shell`, and runs on after

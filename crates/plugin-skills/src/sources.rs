@@ -1,7 +1,6 @@
-//! User skills (`skills.md` § User skills, § What the plugin keeps): one
-//! value per source, keyed by its id, whose files are blobs the value
-//! names; the Host directories of the skills that are on; and what the page
-//! reads of them.
+//! User skills: one value per source, keyed by its id, whose files are
+//! blobs the value names; the Host directories of the skills that are on;
+//! and what the page reads of them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -75,7 +74,7 @@ impl Source {
 
 /// What the instance knows of the commit a source's default branch points
 /// to: when it last asked, and what it last heard, if any check or fetch
-/// answered (`skills.md` § Updates available).
+/// answered.
 #[derive(Debug, Clone)]
 pub(crate) struct Head {
     pub(crate) checked_at: Timestamp,

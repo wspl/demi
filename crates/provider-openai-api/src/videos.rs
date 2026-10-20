@@ -1,9 +1,9 @@
 //! The video role of an xAI key and of a compatible entry with a video
-//! shape (`videos.md` § Vendors): the xAI Videos shape under the entry's
-//! base URL for either, and for a compatible API the OpenAI Videos or the
-//! OpenRouter Videos shape it chose, each with the key as a bearer token.
-//! An xAI key lists the video models xAI lists for it; a compatible entry
-//! offers the video models its user added.
+//! shape: the xAI Videos shape under the entry's base URL for either, and
+//! for a compatible API the OpenAI Videos or the OpenRouter Videos shape
+//! it chose, each with the key as a bearer token. An xAI key lists the
+//! video models xAI lists for it; a compatible entry offers the video
+//! models its user added.
 
 use std::sync::Arc;
 

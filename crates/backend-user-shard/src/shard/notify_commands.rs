@@ -21,8 +21,7 @@ const BODY_MAX: usize = 200;
 
 const SUMMARY: &str = "Notifications to the user: send one from this conversation, which reaches the user's browsers and phone even with Demi closed, or check whether one would reach the user.";
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Sends the user a notification from this conversation, which reaches their browsers and phone even with every Demi page closed, and tells whether one would reach them. Use it when the user should know something while away, such as a long task that finished or needs them, and check `status` before relying on it. Not for the end of a turn the user watches, which needs none.";
 
 const SEND_SUMMARY: &str = "Send the user a notification: its title and body show in the system's notifications, and a click opens this conversation. At most 3 a minute and 30 an hour per conversation.";

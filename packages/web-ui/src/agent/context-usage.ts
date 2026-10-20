@@ -19,8 +19,7 @@ export function contextRatio(usage: ContextUsage | null): number | null {
 /**
  * How full the context is as the page says it: whole percent of its
  * window, rounded down as every meter's label is (`formatPercent`) and as
- * the backend words its refusal (`compaction.md` § When compaction runs);
- * null without a window.
+ * the backend words its refusal; null without a window.
  */
 export function contextPercent(usage: ContextUsage | null): string | null {
   return usage?.window ? formatPercent(usage.tokens, usage.window) : null
@@ -35,9 +34,8 @@ export function compactAfterTurn(): string {
  * Why the user may not compact at `usage`, or null when they may: below the
  * estimate the backend takes a `compact` frame from, unless the unfinished
  * turn failed for its size (`sizeRefused`, `refusedForSize`), which the
- * backend compacts at any share (`compaction.md` § When compaction runs). A
- * model without a window, and a usage not known yet, leave the decision to
- * the backend.
+ * backend compacts at any share. A model without a window, and a usage not
+ * known yet, leave the decision to the backend.
  */
 export function compactionRefusal(usage: ContextUsage | null, sizeRefused = false): string | null {
   if (sizeRefused || !usage?.window || usage.compactFrom == null || usage.tokens >= usage.compactFrom) {
@@ -47,7 +45,7 @@ export function compactionRefusal(usage: ContextUsage | null, sizeRefused = fals
   return t('context.availableFrom', { from, now: formatPercent(usage.tokens, usage.window) })
 }
 
-/** What a row of the context card is called (`compaction.md` § What fills the context). */
+/** What a row of the context card is called. */
 function rowLabel(kind: ContextRowKind): string {
   return t(`context.row.${kind}`)
 }
@@ -93,7 +91,7 @@ const TRAILING_ROWS: readonly ContextRowKind[] = ['compactionBuffer', 'freeSpace
 /**
  * The context card's rows for `usage`: what the request carries largest
  * first, equal sizes in the frame's order, then Compaction buffer, then Free
- * space (`compaction.md` § What fills the context).
+ * space.
  */
 export function contextCardRows(usage: ContextUsage): ContextCardRow[] {
   const rows = usage.rows.map((row) => ({ ...row, label: rowLabel(row.kind) }))
@@ -105,7 +103,7 @@ export function contextCardRows(usage: ContextUsage): ContextCardRow[] {
 /**
  * The room before compaction runs: the threshold, the window less the
  * compaction buffer, less the estimate, never below zero; null without a
- * window (`compaction.md` § What fills the context).
+ * window.
  */
 export function untilCompaction(usage: ContextUsage): number | null {
   if (!usage.window) {
@@ -159,10 +157,10 @@ export interface ContextCardParts {
 }
 
 /**
- * What the context card shows (`compaction.md` § What fills the context):
- * the context part while its usage and its window are known, or while it
- * compacts, and the usage limits when the account has them. With neither
- * there is no indicator, as for a new conversation on an API key.
+ * What the context card shows: the context part while its usage and its
+ * window are known, or while it compacts, and the usage limits when the
+ * account has them. With neither there is no indicator, as for a new
+ * conversation on an API key.
  */
 export function contextCardParts(usage: ContextUsage | null, limits: UsageLimits | null, compacting: boolean): ContextCardParts {
   return { context: compacting || usage?.window != null, limits: limits != null }

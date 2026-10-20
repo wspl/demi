@@ -8,11 +8,10 @@ import RequestFrame from './RequestFrame.vue'
 import type { AllowanceRequestView, PermissionDecision } from './types'
 
 /**
- * The body of an allowance request's card (`credentials.md` § Using a
- * credential): a stored credential this conversation asks to use. Allow lets
- * every agent of the conversation read it for the conversation's life. A
- * credential the user removed since says Removed and offers Don’t Allow
- * alone, which decides the request.
+ * The body of an allowance request's card: a stored credential this
+ * conversation asks to use. Allow lets every agent of the conversation read
+ * it for the conversation's life. A credential the user removed since says
+ * Removed and offers Don’t Allow alone, which decides the request.
  */
 const props = defineProps<{
   request: AllowanceRequestView

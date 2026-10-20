@@ -1,9 +1,9 @@
-//! The audio role of a provider (`audio.md` § Vendors): a provider that
-//! makes audio lists its audio models, makes one file of speech, music or
-//! a sound effect in one request for its key, and lists the voices a
-//! speech model speaks in. Every vendor answers within the call, so a call
-//! is one request, as an image's is; what every vendor's request has in
-//! common is in [`crate::media`]. The backend chooses the entry.
+//! The audio role of a provider: a provider that makes audio lists its
+//! audio models, makes one file of speech, music or a sound effect in one
+//! request for its key, and lists the voices a speech model speaks in.
+//! Every vendor answers within the call, so a call is one request, as an
+//! image's is; what every vendor's request has in common is in
+//! [`crate::media`]. The backend chooses the entry.
 
 use bytes::Bytes;
 use demi_shared_types::audio::Pcm;
@@ -64,8 +64,8 @@ pub trait AudioMaker: MediaMaker {
 
     /// The factors of the voice's speed the vendor takes, ends included; a
     /// speed outside them is sent as the nearer end, which the call's
-    /// summary warns of (`audio.md` § Vendors). None for a vendor that
-    /// states none, whose speed is sent as asked.
+    /// summary warns of. None for a vendor that states none, whose speed
+    /// is sent as asked.
     fn speeds(&self) -> Option<(f64, f64)> {
         None
     }
@@ -136,8 +136,7 @@ pub enum AudioOption {
 }
 
 /// The options `request` gives that `shape` has no field for in a call of
-/// its kind, which are not sent (`audio.md` § Commands, § Vendors), in the
-/// order of the options.
+/// its kind, which are not sent, in the order of the options.
 pub fn unsent(shape: AudioShape, request: &AudioRequest) -> Vec<AudioOption> {
     use AudioOption::{Duration, Instructions, Instrumental, Loop, Seed, Speed};
     let lacks: &[AudioOption] = match (shape, request.kind) {

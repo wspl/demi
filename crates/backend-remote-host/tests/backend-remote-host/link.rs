@@ -2779,11 +2779,10 @@ async fn a_command_stopped_with_its_call_ends_as_stopped() {
 /// A Stop of a command stops its waiting rpc calls at once, before its
 /// runner hears of the stop: an answer that arrives in that round trip,
 /// such as the user's Allow of a call held for permission, finds the call
-/// stopped, and the call never acts (`permissions.md` § The check). The
-/// handler here holds as the permission check does: it waits for its
-/// release, then acts only when its call still goes on. Before, the call
-/// stopped only when the runner answered the kill, and the call acted. A
-/// few milliseconds.
+/// stopped, and the call never acts. The handler here holds as the
+/// permission check does: it waits for its release, then acts only when
+/// its call still goes on. Before, the call stopped only when the runner
+/// answered the kill, and the call acted. A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_call_waiting_when_its_command_is_stopped_never_acts_on_a_later_release() {
     let waiting = Rc::new(tokio::sync::Notify::new());

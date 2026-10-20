@@ -13,7 +13,7 @@ export interface TextArrival {
  * of its text arrived, `arrivals`, so a row that shows it fades each piece from then,
  * even a row that mounts later; a block read whole has none, and a replaced block loses
  * them. A block whose place on the path holds other versions keeps where it stands among
- * them, `versions` (`message-editing.md` § Versions).
+ * them, `versions`.
  */
 export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[]; versions?: Versions }
 
@@ -94,10 +94,10 @@ export function heldBlocks<B extends Held>(held: HeldTranscript<B>): B[] {
 }
 
 /**
- * The blocks the page names when it opens or syncs the stream
- * (`rendering.md` § Where a reset starts): the first block of its latest
- * window that may have changed since it read it, its first call that was
- * executing, or else its last block; none without a latest window.
+ * The blocks the page names when it opens or syncs the stream: the first
+ * block of its latest window that may have changed since it read it, its
+ * first call that was executing, or else its last block; none without a
+ * latest window.
  */
 export function heldEdge(held: HeldTranscript): { from: number; edge: string } | undefined {
   const latest = latestWindow(held)
@@ -158,11 +158,10 @@ function joined<B extends Held>(
 }
 
 /**
- * The transcript with the stream's reset in it (`rendering.md` § Where a
- * reset starts): its blocks replace every held block from `start` on.
- * A reset that starts elsewhere than at `asked`, the index the page named,
- * means the transcript was rewritten under the page: the page then keeps
- * only the reset.
+ * The transcript with the stream's reset in it: its blocks replace every
+ * held block from `start` on. A reset that starts elsewhere than at
+ * `asked`, the index the page named, means the transcript was rewritten
+ * under the page: the page then keeps only the reset.
  */
 export function resetTranscript(
   held: HeldTranscript,
@@ -231,10 +230,10 @@ function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], leng
  * The one transcript patch applier (`contracts.md` § Generated TypeScript):
  * `held` with `patches` applied in order. A patch changes the blocks the
  * page holds; one at a block it does not hold changes nothing it shows,
- * and an `add` or a `truncate` moves the indices after it either way
- * (`rendering.md` § Where a reset starts). A block a patch touches is
- * replaced, never changed in place, so snapshots can share blocks. Text an
- * `add` or an `append_text` brings is marked as arrived at `receivedAt`.
+ * and an `add` or a `truncate` moves the indices after it either way. A
+ * block a patch touches is replaced, never changed in place, so snapshots
+ * can share blocks. Text an `add` or an `append_text` brings is marked as
+ * arrived at `receivedAt`.
  */
 export function applyTranscriptPatches(
   held: HeldTranscript,

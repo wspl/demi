@@ -489,8 +489,7 @@ impl ProviderAssembly {
     }
 
     /// The shapes in which `entry` makes media: a compatible entry's, its
-    /// user's choice; a vendor entry's, its family's for its vendor
-    /// (`media.md` § Which entries make which media).
+    /// user's choice; a vendor entry's, its family's for its vendor.
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {

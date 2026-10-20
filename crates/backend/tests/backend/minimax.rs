@@ -1,9 +1,8 @@
-//! MiniMax's entries (`media.md` § Which entries make which media): a
-//! models.dev `minimax` entry makes MiniMax's images, Hailuo's videos and
-//! its speech on its endpoint's origin, and a coding plan makes none; a
-//! Hailuo job read by the request its model takes; speech without a voice
-//! refused before anything is sent, and the voices MiniMax lists. No test
-//! calls a real vendor.
+//! MiniMax's entries: a models.dev `minimax` entry makes MiniMax's
+//! images, Hailuo's videos and its speech on its endpoint's origin, and a
+//! coding plan makes none; a Hailuo job read by the request its model
+//! takes; speech without a voice refused before anything is sent, and the
+//! voices MiniMax lists. No test calls a real vendor.
 
 use std::sync::Arc;
 use std::time::Duration;

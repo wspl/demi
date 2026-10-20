@@ -141,8 +141,8 @@ impl From<demi_shared_types::MediaKind> for MediaKind {
     }
 }
 
-/// A subscription that makes a model without listing it
-/// (`images.md` § Vendors). One this backend does not know is skipped.
+/// A subscription that makes a model without listing it. One this
+/// backend does not know is skipped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Subscription {

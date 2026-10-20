@@ -1,13 +1,15 @@
-//! `demi conversation history` (`compaction.md` § Reading the earlier
-//! history): an agent finds and reads its own transcript, which keeps every
-//! block a compaction summarized, from the conversation's database. `read`
-//! prints a range of blocks as plain text, each message and text whole and
-//! every other block as one line that names how to open it; `open` prints
-//! what such a line names, or saves an attachment under the scratch
-//! directory. The commands reach no Host, but for the one write of a saved
-//! attachment, and need no permission. A block is named by its index in the
-//! agent's transcript, written bare: a word that starts with `#` is a
-//! comment to a shell.
+//! `demi conversation history`: an agent finds and reads its own
+//! transcript, which keeps every block a compaction summarized, from the
+//! conversation's database. `read` prints a range of blocks as plain text,
+//! each message and text whole and every other block as one line that names
+//! how to open it; `open` prints what such a line names, or saves an
+//! attachment under the scratch directory. The commands reach no Host, but
+//! for the one write of a saved attachment, and need no permission. A block
+//! is named by its index in the agent's transcript, written bare: a word
+//! that starts with `#` is a comment to a shell, so that every line the
+//! commands print can be run as it stands. A search covers messages, texts
+//! and the commands' descriptions only: thinking, scripts and command output
+//! are most of a transcript's text and would drown what was said.
 
 use std::ops::{Range, RangeInclusive};
 use std::rc::{Rc, Weak};

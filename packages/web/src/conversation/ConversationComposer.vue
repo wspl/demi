@@ -124,7 +124,7 @@ const commenting = computed(() => store.commenting(props.conversation))
 
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
 const instructions = computed(() => loadedInstructions(latestBlocks(props.conversation.history), props.conversation.instructions))
-/** The unfinished turn failed for its size: Compact is offered at any share (`compaction.md` § When compaction runs). */
+/** The unfinished turn failed for its size: Compact is offered at any share. */
 const sizeRefused = computed(() => refusedForSize(latestBlocks(props.conversation.history)))
 
 const card = useContextCard(() => props.openFile)

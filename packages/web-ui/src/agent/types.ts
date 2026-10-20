@@ -65,12 +65,11 @@ export interface ConversationState {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
-  /** The calls the model is writing, as the server lists them (`rendering.md` § Calls being written). */
+  /** The calls the model is writing, as the server lists them. */
   pendingCalls: PendingCall[]
   /**
    * When the root began to wait for the model's answer, as `Date.now()`, as
-   * the server tells it; null when it waits for none (`rendering.md` § Waiting
-   * for the model).
+   * the server tells it; null when it waits for none.
    */
   waitingSince: number | null
   /** The conversation's model settings, which its composer shows. */
@@ -86,9 +85,8 @@ export interface ConversationState {
    */
   failures: Record<string, ProviderFailureFacts>
   /**
-   * How full the root's next request is, as the backend estimates it
-   * (`compaction.md` § Context estimate); null until the session says. A
-   * subagent's is its record's.
+   * How full the root's next request is, as the backend estimates it;
+   * null until the session says. A subagent's is its record's.
    */
   contextUsage: ContextUsage | null
 }

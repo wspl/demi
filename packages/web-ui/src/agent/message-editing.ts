@@ -77,7 +77,7 @@ export type MessageEditState = z.infer<typeof messageEditStateSchema>
 
 /**
  * The edit of a message with its content as it was sent. Only a `user` block
- * is a message the user can edit (`message-editing.md` § Editable blocks).
+ * is a message the user can edit.
  */
 export function unchangedEditRequest(block: Block, version: TranscriptVersion): MessageEditRequest {
   if (block.type !== 'user') {
@@ -110,10 +110,9 @@ export function lastEditableUserMessageId(blocks: readonly MessageListBlock[]): 
 }
 
 /**
- * The message the page offers to edit, and to regenerate the answer of
- * (`message-editing.md` § Regenerate and the Up Arrow key): the last `user`
- * block, while the conversation is idle and nothing waits to be sent; null
- * when none is offered.
+ * The message the page offers to edit, and to regenerate the answer of: the
+ * last `user` block, while the conversation is idle and nothing waits to be
+ * sent; null when none is offered.
  */
 export function offeredEditId(conversation: {
   blocks: readonly MessageListBlock[]
@@ -132,8 +131,7 @@ const editLastMessageKey: InjectionKey<() => (() => void) | undefined> = Symbol(
 /**
  * What the main composer's Up Arrow does in an empty composer, read at each
  * press: opens the editor on the last message while the page offers editing
- * it, and is absent otherwise, when the key moves the caret as usual
- * (`message-editing.md` § Regenerate and the Up Arrow key).
+ * it, and is absent otherwise, when the key moves the caret as usual.
  */
 export function provideEditLastMessage(handler: () => (() => void) | undefined): void {
   provide(editLastMessageKey, handler)
@@ -144,11 +142,10 @@ export function useEditLastMessage(): () => (() => void) | undefined {
 }
 
 /**
- * The edit as the conversation socket carries it (`message-editing.md`
- * § Files the edit keeps): a file the message already holds by its record's
- * path and its media by blob reference, a file the edit added by its upload,
- * and no bytes at all. Media that is not a blob of the conversation cannot be
- * kept, and the edit is refused before it is sent.
+ * The edit as the conversation socket carries it: a file the message already
+ * holds by its record's path and its media by blob reference, a file the edit
+ * added by its upload, and no bytes at all. Media that is not a blob of the
+ * conversation cannot be kept, and the edit is refused before it is sent.
  */
 export function sentEditRequest(request: MessageEditRequest): EditRequest {
   return { ...request, content: request.content.map(sentEditContent) }
@@ -208,8 +205,7 @@ export function changeMessageEditContent(
 /**
  * Where an edit is kept while it is sent, and how the host sends it: as an
  * edit, or, `regenerate`, as a Regenerate of the answer to its message,
- * which sends no content (`message-editing.md` § Regenerate and the Up
- * Arrow key).
+ * which sends no content.
  */
 export interface MessageEditHost {
   get(): MessageEditState | null
@@ -229,11 +225,10 @@ export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
 
 /**
  * Regenerate: asks at once, without the editor, for a new answer to the
- * last message, `request` naming it with its content unchanged
- * (`message-editing.md` § Regenerate and the Up Arrow key). It goes as an
- * edit does: a lost answer leaves it uncertain, for Retry in the editor,
- * and a refusal opens the editor on the message. Nothing is sent while
- * another edit is in progress.
+ * last message, `request` naming it with its content unchanged. It goes
+ * as an edit does: a lost answer leaves it uncertain, for Retry in the
+ * editor, and a refusal opens the editor on the message. Nothing is sent
+ * while another edit is in progress.
  */
 export async function regenerateMessage(host: MessageEditHost, request: MessageEditRequest): Promise<void> {
   if (host.get()) {

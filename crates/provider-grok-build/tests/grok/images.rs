@@ -1,7 +1,7 @@
-//! Making images (`images.md` § Vendors): the chat proxy's image endpoints
-//! with the account's identity, the shape asked as `aspect_ratio`, the
-//! image always as base64, an edit's images as data URLs, and a refused
-//! model and a used-up account as the call's failures.
+//! Making images: the chat proxy's image endpoints with the account's
+//! identity, the shape asked as `aspect_ratio`, the image always as
+//! base64, an edit's images as data URLs, and a refused model and a
+//! used-up account as the call's failures.
 
 use demi_provider_common::media_catalog::Catalog;
 use bytes::Bytes;

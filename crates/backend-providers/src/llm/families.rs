@@ -61,9 +61,8 @@ pub trait ProviderFamily: Send + Sync + 'static {
     }
 
     /// How a vendor entry of the family makes images, by the models.dev id
-    /// of its vendor, none for a subscription (`media.md` § Which entries
-    /// make which media); none when it makes none. A compatible entry's is
-    /// the one its user chose, whatever its family.
+    /// of its vendor, none for a subscription; none when it makes none. A
+    /// compatible entry's is the one its user chose, whatever its family.
     fn image_shape(&self, _vendor_id: Option<&str>) -> Option<ImageShape> {
         None
     }

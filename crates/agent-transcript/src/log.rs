@@ -1,8 +1,8 @@
 //! The transcript itself: the blocks of its window in order, changed only
 //! through methods that record each change in the journal, and its version.
-//! The window is the part of the path a live session holds
-//! (`runtime.md` § What a session holds): from a position, `start`, to the
-//! path's end. Every index here is a position on the whole path.
+//! The window is the part of the path a live session holds: from a
+//! position, `start`, to the path's end. Every index here is a position on
+//! the whole path.
 
 use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
@@ -41,10 +41,9 @@ pub struct TranscriptLog {
     blocks: Vec<Block>,
     /// What the session keeps of the blocks before `start`.
     earlier: Earlier,
-    /// The versions at each place of the path that holds more than one
-    /// (`message-editing.md` § Versions), as the store reads them; a place
-    /// past the last block holds those of the block that comes there next,
-    /// as after Regenerate cut an answer.
+    /// The versions at each place of the path that holds more than one, as
+    /// the store reads them; a place past the last block holds those of
+    /// the block that comes there next, as after Regenerate cut an answer.
     versions: BTreeMap<usize, Versions>,
     journal: Journal,
     revision: u64,
@@ -116,14 +115,14 @@ impl TranscriptLog {
         &self.earlier
     }
 
-    /// Where replay starts (`transcript.md` § Replay): the position of the
-    /// last `compaction_boundary` held, or the window's start.
+    /// Where replay starts: the position of the last `compaction_boundary`
+    /// held, or the window's start.
     pub fn replay_start(&self) -> usize {
         self.start + crate::replay_start(&self.blocks)
     }
 
     /// The failure that left the last turn unfinished, when its record is
-    /// an `error` block (`failures-and-recovery.md` § The unfinished turn).
+    /// an `error` block.
     pub fn turn_failure(&self) -> Option<&ErrorBlock> {
         match crate::turn_record(&self.blocks) {
             Some(Block::Error(error)) => Some(error),
@@ -149,8 +148,7 @@ impl TranscriptLog {
 
     /// Holds `blocks` too, the path's from `start` up to the window, with
     /// the versions at their places and what `earlier` keeps of the blocks
-    /// before them, as an edit of a message before the window reads them
-    /// (`runtime.md` § What a session holds).
+    /// before them, as an edit of a message before the window reads them.
     pub fn extend_back(&mut self, start: usize, mut blocks: Vec<Block>, versions: BTreeMap<usize, Versions>, earlier: Earlier) {
         assert_eq!(start + blocks.len(), self.start, "the blocks reach the window");
         blocks.append(&mut self.blocks);
@@ -347,15 +345,15 @@ impl TranscriptLog {
     /// window's start on, as a history rewrite publishes
     /// its retained history, and answers the batch that publishes it: a
     /// `truncate` at the first block that differs and an `add` for each
-    /// block from there, never the blocks before it (`transcript.md` § Patches
-    /// and versions). The changes recorded before it are superseded, and
-    /// the rewrite's own save wrote its rows, so the batch marks none.
+    /// block from there, never the blocks before it. The changes recorded
+    /// before it are superseded, and the rewrite's own save wrote its rows, so
+    /// the batch marks none.
     ///
-    /// The rows the rewrite leaves stay stored on their branch
-    /// (`message-editing.md` § Versions): an edit or Regenerate, `version`,
-    /// begins a new version at the first block that differs, the latest of
-    /// its place; the session's own rewrite stands in for what it replaced,
-    /// so the place keeps its versions. The places after it hold none.
+    /// The rows the rewrite leaves stay stored on their branch: an edit or
+    /// Regenerate, `version`, begins a new version at the first block that
+    /// differs, the latest of its place; the session's own rewrite stands
+    /// in for what it replaced, so the place keeps its versions. The places
+    /// after it hold none.
     pub fn replace_all(&mut self, blocks: Vec<Block>, version: bool) -> PatchBatch {
         let kept = self.start + kept(&self.blocks, &blocks);
         let mut versions = std::mem::take(&mut self.versions);
@@ -446,8 +444,8 @@ impl TranscriptLog {
             kept,
             entries: Vec::new(),
         });
-        // The blocks it moves past the boundary keep their versions
-        // (`message-editing.md` § Versions); the boundary shows none.
+        // The blocks it moves past the boundary keep their versions;
+        // the boundary shows none.
         let moved = self.versions.split_off(&index);
         self.versions
             .extend(moved.into_iter().map(|(position, versions)| (position + 1, versions)));
@@ -607,10 +605,9 @@ impl TranscriptLog {
         }));
     }
 
-    /// Marks the last block's text complete, so a Fork may end at it
-    /// (`conversation-fork.md` § Eligibility), and answers whether it did.
-    /// Text that follows a call still executing cannot be a Fork's end, so
-    /// it stays as it is.
+    /// Marks the last block's text complete, so a Fork may end at it, and
+    /// answers whether it did. Text that follows a call still executing
+    /// cannot be a Fork's end, so it stays as it is.
     pub fn complete_tail_text(&mut self) -> bool {
         let Some(at) = self.blocks.len().checked_sub(1) else {
             return false;
@@ -785,7 +782,7 @@ impl TranscriptLog {
     }
 
     /// Appends `block` with the run of steps it joins, which the blocks
-    /// before it decide once (`rendering.md` § Work groups).
+    /// before it decide once.
     fn append(&mut self, mut block: Block) {
         block.set_run(run_of(&self.blocks, &block));
         let index = self.len();

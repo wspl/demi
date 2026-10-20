@@ -4,7 +4,7 @@
 //! at most a later probe. Whether an account can be used is what routes a
 //! request, so the pages are told when it changes: a snapshot written, an
 //! account marked used up, and the moment either lets the account be used
-//! again (`images.md` § Which entry makes an image).
+//! again.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, PoisonError};

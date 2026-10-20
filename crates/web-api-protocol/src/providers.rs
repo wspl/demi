@@ -263,8 +263,7 @@ pub struct ProviderPatch {
     #[schemars(with = "Rotation")]
     #[garde(skip)]
     pub rotation: Option<Rotation>,
-    /// The entry's media shapes and switches (`media.md` § Which entries
-    /// make which media).
+    /// The entry's media shapes and switches.
     #[serde(default)]
     #[garde(skip)]
     pub media: Option<MediaPatch>,

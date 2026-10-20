@@ -174,7 +174,7 @@ input, which the multi-worker control service also relies on
   a new row is. A patch merges the fields it names in one transaction, and
   checks the name's uniqueness in the same one.
 - **Personal instructions:** `user_instructions` stores the
-  [personal instructions](../agent/instructions.md#personal-instructions) of
+  personal instructions (`crates/backend-user-shard/src/conversation/instructions.rs`) of
   each user who has any: user and text. Saving an empty text deletes the row.
 - **Devices and workspaces:** `port_forwards` stores each forward of a user: its name, its Listen On device and port, its Connect To device and address, and whether it is on (`crates/backend-user-shard/src/shard/port_forwards.rs`). `devices` stores ownership, kind, name, the
   home its runner last reported,
@@ -244,7 +244,7 @@ input, which the multi-worker control service also relies on
   again answers as it first did and a stale save of a sent message makes
   no row; a write past the day is a new one.
   `permission_requests` stores each conversation's
-  [permission requests](../agent/permissions.md#requests): id, conversation,
+  permission requests (`crates/backend-permissions/src/lib.rs`): id, conversation,
   categories, a JSON array of category ids sorted so that the same
   categories compare equal, the host it asks to reach, a device or a
   pairing code, the command line, the agent that ran it (its node, number and
@@ -336,7 +336,7 @@ owns the request contract.
   root whose running turn a graceful shutdown began to interrupt, by its
   conversation. The start that resumes
   it deletes the row, and the row goes with its conversation
-  ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)).
+  (`crates/agent-transcript/src/cut.rs`).
 
 
 ## Conversation state and transactions
@@ -344,13 +344,13 @@ owns the request contract.
 Each `conversations/<id>.sqlite` contains one agent tree. Its root node ID is
 the conversation ID; child nodes are subagents. The backend supplies this
 database to the agent through the tree store contract
-([Tree store](../agent/runtime.md#tree-store)), independently of any execution
+(`crates/agent-store/src/lib.rs`), independently of any execution
 Host. The node lifecycle and its commits are defined in
 Subagents (`crates/agent-store/src/lib.rs`).
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added (`crates/agent-store/src/lib.rs`), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
+| `nodes` | Parent relationship, the agent's number and its current round (`crates/shared-types/src/ids.rs`) with the round's start time, description, its profile's name and the instructions the profile added (`crates/agent-store/src/lib.rs`), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs, simulators `demi mobile` opens and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several (`crates/command-protocol/src/numbers.rs`), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command (`crates/backend-http/src/history.rs`) |
 | `block_attachments` | Each attachment a block's text delivers as an attachment block (`packages/web-ui/src/markdown/attachment-block.ts`), by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
@@ -364,7 +364,7 @@ the node checkpoint together. It does not serialize the whole transcript into
 the node's state. A row changes only while its block is produced; once
 settled it is never rewritten or deleted: an edit, Regenerate, a retry or an
 unwind adds rows on a new branch and moves the node's current leaf
-([Versions](../agent/message-editing.md#versions)). The `blocks` table is
+(`crates/agent-store/src/versions.rs`). The `blocks` table is
 therefore append-only once a block settles, a tree of rows by row number,
 each naming the row it follows; the node keeps its current leaf and the
 runs of row numbers its current path is made of, the second stored copy of
@@ -381,7 +381,7 @@ and each blob was stored when its medium entered the transcript
 transaction commits the block rows and the state together or rolls both
 back, so a crash at any moment leaves one complete checkpoint. What a save
 carries and its order belong to the tree store contract
-([Saving](../agent/runtime.md#saving)).
+(`crates/agent-session/src/persist.rs`).
 
 Changed output advances `output_revision` in the checkpoint transaction; input
 alone does not. Input is the user's messages and steers, and the context,
@@ -416,14 +416,14 @@ blob.
 Root and subagent blocks hold their media and edit copies by reference in
 every row and every frame, so the conversation database holds none of their
 bytes. Each is stored once, when it enters: an upload by the upload route, an uploaded image that
-fitting changed ([Images in the transcript](../agent/transcript.md#images-in-the-transcript))
+fitting changed (`crates/agent-store/src/images.rs`)
 by the conversation socket as it resolves the message, a tool's medium by
 the session, through its tree store, before the tool's result enters the
 transcript, and an edit copy by the backend when its command ends
 (`crates/agent-store/src/media.rs`). A session reads back, through the same store, only the media its
 provider requests send, and cold history for the web app reads none. The agent
 defines these rules, including what a missing blob becomes
-([Media](../agent/transcript.md#media)); the backend decides where the bytes go.
+(`crates/agent-store/src/media.rs`); the backend decides where the bytes go.
 Delivery to the web app and uploaded attachment resolution are defined in
 [Backend media handling](backend.md#media-by-reference).
 
@@ -624,7 +624,7 @@ row per searchable text, a conversation's title, or the text of a `user` or
 `steer` block, an agent's text or a command's description, of any agent of
 it, each with its conversation's id, its agent, its block's index, id and
 time,
-so [Reading the earlier history](../agent/compaction.md#reading-the-earlier-history)
+so Reading the earlier history (`crates/backend-user-shard/src/conversation/history.rs`)
 searches it as well as the product's search. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
 three characters or more in every language without splitting words, as
 Chinese needs; a query word of one or two characters is matched by a scan of
@@ -700,7 +700,7 @@ Every stored value has one encoding, fixed by its column or by its type:
   ([Passwords and credentials at rest](#passwords-and-credentials-at-rest)).
 
 An error block's failure record keeps a vendor's answer in the form its
-owner defines ([The failure record](../agent/failures-and-recovery.md#the-failure-record)).
+owner defines (`crates/shared-types/src/failure.rs`).
 
 Every read decodes and validates what it reads, as it would any input from
 outside the process
@@ -719,7 +719,7 @@ same digest. Two digests are stored, both in hexadecimal:
 
 - An edit's receipt, in the node's checkpoint, holds the digest of the edit
   request, by which a retried edit is recognized
-  ([Message editing](../agent/message-editing.md)).
+  (`crates/agent-session/src/editing.rs`).
 - A model catalog record's key is the digest of its entry's configuration and
   active account (`crates/backend-providers/src/llm/catalog_cache.rs`).
 

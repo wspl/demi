@@ -54,9 +54,9 @@ export function binaryFile(file: Omit<EditedFile, 'edits'>): EditedFile {
 }
 
 /**
- * `blocks` as one run of steps, as the backend stores it (`rendering.md`
- * § Work groups): each carries the id of the run's first block, which the
- * fixture names by putting the run's blocks together.
+ * `blocks` as one run of steps, as the backend stores it: each carries
+ * the id of the run's first block, which the fixture names by putting the
+ * run's blocks together.
  */
 export function inRun(...blocks: Block[]): Block[] {
   const run = blocks[0]!.id
@@ -1266,8 +1266,8 @@ export function severalReports(): CommandReport[] {
 
 /**
  * Calls of tools the runtime no longer has, as a conversation from before
- * they were removed keeps them: a look and a wait, each a generic tool card
- * (`rendering.md` § Rendering boundary).
+ * they were removed keeps them: a look and a wait, each a generic tool
+ * card.
  */
 export function removedToolBlocks(): ToolCallBlock[] {
   return [
@@ -1642,13 +1642,12 @@ export function thoughtAnswerBlocks(): Block[] {
 }
 
 /**
- * Runs that only check a command, and ones that run one too (`rendering.md`
- * § Work groups): the agent starts the end-to-end suite and ends its turn;
- * asked, it checks the suite twice; the suite's end report wakes it, a row
- * of its own, and carries the suite's last lines, so the agent answers
- * without a look; asked again, it runs the suite once more and checks the
- * first run's log. The groups read Checked 1 command and Ran 1 command,
- * checked 1 command.
+ * Runs that only check a command, and ones that run one too: the agent
+ * starts the end-to-end suite and ends its turn; asked, it checks the suite
+ * twice; the suite's end report wakes it, a row of its own, and carries the
+ * suite's last lines, so the agent answers without a look; asked again, it
+ * runs the suite once more and checks the first run's log. The groups read
+ * Checked 1 command and Ran 1 command, checked 1 command.
  */
 export function commandLookBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({
@@ -1702,11 +1701,11 @@ export function commandLookBlocks(): Block[] {
 export const RUNNING_RUN_CALL = 'running-run-merge'
 
 /**
- * A turn whose run still goes (`rendering.md` § Work groups): it thought,
- * checked the branch, and its newest call has merged and run the tests for
- * a minute and a half. Folded, the run's row is that call and wears the time
- * its command has run, as the call's own row does; open, it says what runs
- * and for how long. The gallery's `runningRunCommand` is that command.
+ * A turn whose run still goes: it thought, checked the branch, and its
+ * newest call has merged and run the tests for a minute and a half. Folded,
+ * the run's row is that call and wears the time its command has run, as the
+ * call's own row does; open, it says what runs and for how long. The
+ * gallery's `runningRunCommand` is that command.
  */
 export function runningRunBlocks(): Block[] {
   const shell = (id: string, at: number, script: string, description: string, done: boolean): Block => toolCall({
@@ -1753,12 +1752,12 @@ export function steppedRunCall(stage: number): (typeof STEPPED_RUN_CALLS)[number
 }
 
 /**
- * A running turn's run at `stage` of `STEPPED_RUN_STAGES` (`rendering.md`
- * § Work groups), as the transcript shows it while the run goes: one step
- * runs, its own row; it returned and a second runs under it; the second
- * returned failed and joined the run, Requesting under it while the model
- * is waited for; a third runs under the run; and the answer, after the third
- * joined. Its newest running call is `steppedRunCall`'s.
+ * A running turn's run at `stage` of `STEPPED_RUN_STAGES`, as the transcript
+ * shows it while the run goes: one step runs, its own row; it returned and a
+ * second runs under it; the second returned failed and joined the run,
+ * Requesting under it while the model is waited for; a third runs under the
+ * run; and the answer, after the third joined. Its newest running call is
+ * `steppedRunCall`'s.
  */
 export function steppedRunBlocks(stage: number): Block[] {
   const called = [1, 2, 2, 3, 3][stage]!
@@ -1790,10 +1789,10 @@ export function steppedRunBlocks(stage: number): Block[] {
 export const LEFT_RUNNING_CALL = 'left-running-suite'
 
 /**
- * A turn that ended while a command it started runs on (`rendering.md`
- * § Work groups): the agent thought, started the suite, and replied without
- * waiting. The ended run's row says what it did and wears the time the
- * command has run until it ends. The gallery's `leftRunningCommand` is it.
+ * A turn that ended while a command it started runs on: the agent thought,
+ * started the suite, and replied without waiting. The ended run's row says
+ * what it did and wears the time the command has run until it ends. The
+ * gallery's `leftRunningCommand` is it.
  */
 export function leftRunningBlocks(): Block[] {
   return [
@@ -1888,10 +1887,9 @@ export function viewedMediaBlocks(): Block[] {
 }
 
 /**
- * A turn whose model has finished its sentence and goes on writing a call
- * (`rendering.md` § Calls being written): the user's message and the finished
- * text, which the specimens follow with a call being written or with
- * Requesting.
+ * A turn whose model has finished its sentence and goes on writing a call:
+ * the user's message and the finished text, which the specimens follow with a
+ * call being written or with Requesting.
  */
 export function callBeingWrittenBlocks(): Block[] {
   return [

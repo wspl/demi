@@ -1,6 +1,5 @@
-//! Input that waits for a boundary (`runtime.md` § Input, § Send now,
-//! § Command reports, `crates/agent-session/src/input.rs`): human steers, also
-//! sent now, agent messages and command reports.
+//! Input that waits for a boundary (`crates/agent-session/src/input.rs`):
+//! human steers, also sent now, agent messages and command reports.
 
 use demi_agent_store::CommandInterval;
 use demi_agent_transcript::testing::agent_message_envelope;
@@ -984,10 +983,9 @@ async fn a_command_left_running_reports_every_interval_until_its_end_and_as_its_
 
 // A command that waits for the user's answer reports nothing, however long
 // it waits, so nothing wakes the agent; once it goes on, its interval counts
-// from then, and its end reports as any command's does (`permissions.md`
-// § The check). Before, it reported every interval while it waited. One
-// session, four scripted requests and twenty minutes of paused time: a few
-// milliseconds.
+// from then, and its end reports as any command's does. Before, it reported
+// every interval while it waited. One session, four scripted requests and
+// twenty minutes of paused time: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_command_waiting_for_the_user_reports_nothing_until_an_interval_after_it_goes_on() {
     let provider = ScriptedRuntime::new([
@@ -1280,7 +1278,7 @@ fn reports_sent(provider: &ScriptedRuntime) -> Vec<String> {
 // 18 stops it and says so in its result, so its end, before or after the
 // stop is recorded, reports nothing; command 17, which an earlier call left
 // running, runs on and still reports its end, which opens a turn of its
-// own (`runtime.md` § Stop). Paused clock: a few milliseconds.
+// own. Paused clock: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_reporting() {
     for end_on_stop in [true, false] {
@@ -1308,10 +1306,9 @@ async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_repor
 /// A root whose turn failed holds what arrives afterwards: two children's
 /// results and a command's end are written into the failed turn as they
 /// arrive, where they show at once, and no turn starts until the user's
-/// Resume, which answers them in one request (`failures-and-recovery.md`
-/// § The unfinished turn). The failed turn still offers Resume behind them.
-/// A child's failed turn is not held, since its parent decides for it: the
-/// same result opens a continuation at once.
+/// Resume, which answers them in one request. The failed turn still offers
+/// Resume behind them. A child's failed turn is not held, since its parent
+/// decides for it: the same result opens a continuation at once.
 // Two sessions, six scripted requests, a minute of paused time: a few
 // milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]

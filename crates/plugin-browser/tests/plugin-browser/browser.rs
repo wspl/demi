@@ -105,7 +105,7 @@ fn find_reads_stdin_only_with_query() {
 }
 
 /// The `--json` results the model reads name no tab list number: only the
-/// page's `user` calls answer it (`runtime.md`, "Only what the model uses").
+/// page's `user` calls answer it, since the model has no use for it.
 #[test]
 fn no_json_result_names_the_tab_list_number() {
     let root = roots(Browser::new().manifest()).remove(0);

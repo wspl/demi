@@ -40,7 +40,7 @@ paired. Operators handling sensitive prompts should know where data rests:
 - **Failure records.** A failure record keeps only what the vendor sent back,
   never the request Demi sent, so it never contains a credential Demi used.
   Vendor error messages are shown as the vendor sent them, without redaction
-  ([The failure record](docs/agent/failures-and-recovery.md#the-failure-record)).
+  (`crates/shared-types/src/failure.rs`).
 
 ## Sandboxing
 

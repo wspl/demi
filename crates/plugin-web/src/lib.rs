@@ -1,4 +1,4 @@
-//! The `web` plugin (`plugins.md` § Built-in plugins, `web.md`): the `demi
+//! The `web` plugin (`plugins.md` § Built-in plugins): the `demi
 //! web` group, whose `search` runs here against Exa and whose `fetch` is
 //! bound to the `demi.fetch` command package on the Host; the user's Exa
 //! account, signed in through the plugin host's OAuth sign-in or as an API

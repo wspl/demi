@@ -1,9 +1,8 @@
-//! A session's state and every decision about it (`runtime.md` § Sessions
-//! and turns): one status, the actions waiting to run, the input waiting for
-//! a boundary, the commands that report to it, the transcript, the model
-//! selection with its provider runtime, and what the next save writes.
-//! Every method here is synchronous; the worker and the turn loop await
-//! between calls, never inside one.
+//! A session's state and every decision about it: one status, the actions
+//! waiting to run, the input waiting for a boundary, the commands that
+//! report to it, the transcript, the model selection with its provider
+//! runtime, and what the next save writes. Every method here is synchronous;
+//! the worker and the turn loop await between calls, never inside one.
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -50,7 +49,7 @@ use super::{
 
 pub(crate) struct SessionCore {
     /// The calls of the running request that the model is writing, live
-    /// only (`rendering.md` § Calls being written).
+    /// only.
     pub(super) writing: Vec<WritingCall>,
     /// The blocks the running request's entries name (`EntriesOf`), live
     /// only.
@@ -64,15 +63,14 @@ pub(crate) struct SessionCore {
     /// A recorded model switch that has not landed yet.
     pub(super) switch: Option<ModelSwitch>,
     /// A switch that arrived while an edit was being prepared: it waits for
-    /// the edit, and is recorded once the edit is accepted or rejected
-    /// (`runtime.md` § Model switch).
+    /// the edit, and is recorded once the edit is accepted or rejected.
     pub(super) waiting_switch: Option<ModelSwitch>,
     /// Runtimes a later switch replaced before they served a request, closed
     /// when the next switch lands or at dispose.
     pub(super) retired: Vec<Box<dyn ProviderRuntime>>,
     pub(super) transcript: TranscriptLog,
     /// What the session holds for the media its replayed blocks and its
-    /// waiting input reference (`transcript.md` § Media).
+    /// waiting input reference.
     pub(super) media: HeldMedia,
     /// The tools its requests declare, which replay reads.
     pub(super) tools: Arc<[ToolDefinition]>,
@@ -100,7 +98,7 @@ pub(crate) struct SessionCore {
     /// ([`failed_turn_holds`](Self::failed_turn_holds)).
     pub(super) held: bool,
     /// The session sends one request per turn and runs no tool, as a
-    /// session copy does (`compaction.md` § The summary request).
+    /// session copy does.
     pub(super) one_request: bool,
     /// The turn a session copy's request belongs to ([`CoreParts`]).
     request_turn: Option<TurnId>,
@@ -116,8 +114,12 @@ pub(crate) struct SessionCore {
     /// Events of the current change, delivered once it is complete.
     pub(super) outbox: Vec<SessionEvent>,
     /// When the node began to wait for the model's answer, while it waits:
-    /// from when its turn needs the next answer until that answer shows
-    /// (`rendering.md` § Waiting for the model).
+    /// from when its turn needs the next answer until that answer shows.
+    /// How long it has waited is the session's fact, not the page's: a clock
+    /// a page started would say 0s at each reload, as if the request began
+    /// again. The first output of the model ends the wait, reasoning whose
+    /// text the vendor withholds included, so a model that thinks never reads
+    /// as one that has not answered; a compaction pauses it.
     waiting_since: Option<Timestamp>,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
@@ -133,7 +135,7 @@ pub(super) enum Activity {
     Running(ActionRun),
     /// The action ended and its closing save is in progress. The save
     /// records the session idle, while clients see it running until that
-    /// save has committed (`runtime.md` § A turn).
+    /// save has committed.
     Finishing,
     /// Dispose is complete but for the final save; `interrupted` when it
     /// stopped a running turn, whose final checkpoint says `running`.
@@ -152,8 +154,7 @@ pub(super) struct ActionRun {
     /// wrote nothing since has not begun.
     started_at: u64,
     /// The blobs a send's message references until its `user` block is
-    /// written: waiting input meanwhile, whose held bytes stay
-    /// (`transcript.md` § Media).
+    /// written: waiting input meanwhile, whose held bytes stay.
     unwritten_media: Vec<BlobRef>,
     /// What the user sent now, which the turn takes at its next boundary.
     send_now: Option<SendNow>,
@@ -161,8 +162,8 @@ pub(super) struct ActionRun {
     start: Option<StartedAction>,
 }
 
-/// What the user sent now (`runtime.md` § Send now). A queued message
-/// outranks a steer: both are written at the boundary, and the turn ends.
+/// What the user sent now. A queued message outranks a steer: both are
+/// written at the boundary, and the turn ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum SendNow {
     /// A pending steer: the turn goes on with the next request.
@@ -278,8 +279,7 @@ pub(super) enum ActionKind {
     Compact,
     /// An admitted edit, whose submission waits in the session's edit state.
     Edit,
-    /// A switch to the `to`th version at the block `target`'s place
-    /// (`message-editing.md` § Versions).
+    /// A switch to the `to`th version at the block `target`'s place.
     Switch {
         target: BlockId,
         to: u32,
@@ -306,7 +306,11 @@ struct Requests {
 }
 
 /// A call the model is writing: what the page is told, and the input
-/// written so far, from which its description is read.
+/// written so far, from which its description is read. It is live only:
+/// nothing of it is stored, replayed to the model or saved in the checkpoint,
+/// since until it is whole it is not a call. It leaves the list in the same
+/// step that adds its `tool_call` block, so a page never shows the call
+/// twice or not at all.
 pub(super) struct WritingCall {
     call: PendingCall,
     input: String,
@@ -337,9 +341,9 @@ pub(super) struct Effects {
 /// Where a session's provider runtime is. A run takes it out of its slot
 /// for the length of a request, and the session goes on weighing its next
 /// request meanwhile, as when a page opens the conversation while a turn
-/// streams and is told the usage (`compaction.md` § Context estimate): so
-/// the slot keeps what the runtime takes in one request of the current
-/// model, which does not change while the runtime is out.
+/// streams and is told the usage: so the slot keeps what the runtime
+/// takes in one request of the current model, which does not change while
+/// the runtime is out.
 pub(super) enum ProviderSlot {
     Held(Box<dyn ProviderRuntime>),
     Out(RequestLimits),
@@ -387,7 +391,7 @@ pub(super) struct CoreParts {
     pub(super) edits: Vec<EditReceipt>,
     pub(super) account: Option<AgentAccount>,
     /// Whether the session sends one request per turn and runs no tool, as
-    /// a session copy does (`compaction.md` § The summary request).
+    /// a session copy does.
     pub(super) one_request: bool,
     /// The turn a session copy's request belongs to: the one its session's
     /// pass runs in; none for a session, whose requests belong to its own.
@@ -520,7 +524,7 @@ impl SessionCore {
 
     /// Whether the session admits a rewrite of its path made against the
     /// transcript `version`: settled, with nothing waiting, and nothing
-    /// changed since (`message-editing.md` § Admission).
+    /// changed since.
     fn check_settled(&self, version: &demi_conversation_socket_protocol::TranscriptVersion) -> Result<(), EditError> {
         if self.disposing {
             return Err(EditError::Closed);
@@ -703,8 +707,8 @@ impl SessionCore {
 
     /// Starts the first waiting action, or a continuation for input that
     /// waits, or settles: idle, or closed once dispose began. A root whose
-    /// last turn failed writes the input that waits into that turn instead
-    /// (`failures-and-recovery.md` § The unfinished turn).
+    /// last turn failed writes the input that waits into that turn
+    /// instead.
     pub(super) fn start_next(&mut self) {
         if self.disposing {
             self.activity = Activity::Closed { interrupted: false };
@@ -764,9 +768,11 @@ impl SessionCore {
 
     /// Whether the last turn's failure holds the node's waiting input until
     /// the user acts, with Resume or a message: a root's turn that ended
-    /// with an `error` block does, while a child's parent decides for it
-    /// (`failures-and-recovery.md` § The unfinished turn). The user's action
-    /// writes after the record, which ends the hold.
+    /// with an `error` block does, while a child's parent decides for it.
+    /// The user's action writes after the record, which ends the hold.
+    /// Otherwise each wakeup would start a turn that fails the same way, a
+    /// whole history sent for nothing; a Stop holds nothing, since the user
+    /// stopped the work, not the agent's ability to answer.
     fn failed_turn_holds(&self) -> bool {
         self.runtime.user_recovers_turns() && self.transcript.turn_failure().is_some()
     }
@@ -809,7 +815,7 @@ impl SessionCore {
     /// Opens a continuation for the user's decision on a permission request
     /// when nothing runs or waits, also after the user stopped the last turn
     /// or while the session is held: the decision is the user's own next
-    /// action (`permissions.md` § The decision's message).
+    /// action.
     fn wake_for_user(&mut self) {
         if matches!(self.activity, Activity::Idle) && self.pending.is_empty() && !self.disposing {
             let turn = self.new_turn();
@@ -968,9 +974,8 @@ impl SessionCore {
     /// human steers alone; then it completes running calls as aborted and
     /// appends the stopped marker, or the interruption record when the
     /// session is shutting down. A Stop of an action that wrote nothing,
-    /// with what the stop wrote counted, appends no marker: it began no turn
-    /// (`failures-and-recovery.md` § The unfinished turn). The Stop holds
-    /// nothing afterwards (`runtime.md` § Stop).
+    /// with what the stop wrote counted, appends no marker: it began no
+    /// turn. The Stop holds nothing afterwards.
     pub(super) fn record_stop(&mut self, reason: CancelReason) {
         let take = match reason {
             CancelReason::Stop | CancelReason::Hold(_) => Take::Everything,
@@ -1026,11 +1031,10 @@ impl SessionCore {
     }
 
     /// Completes each running call as an error that says what ended it and
-    /// what became of its command,
-    /// keeping in its view the command it started, so that the command's
-    /// later report and notice find their call (`runtime.md` § Stop); a
-    /// command the backend's shutdown leaves running reports to the node
-    /// from its next start, as one a call left running does.
+    /// what became of its command, keeping in its view the command it
+    /// started, so that the command's later report and notice find their
+    /// call; a command the backend's shutdown leaves running reports to the
+    /// node from its next start, as one a call left running does.
     fn abort_executing_calls(&mut self, end: &CallEnd<'_>) {
         for call in self.transcript.pending_tool_calls() {
             let started = self
@@ -1135,10 +1139,9 @@ impl SessionCore {
         true
     }
 
-    /// Sends a queued message now (`runtime.md` § Send now): it moves to the
-    /// front of the queue and, while a turn runs, cuts the turn's round
-    /// short and ends the turn at the boundary. False when no queued message
-    /// has the id.
+    /// Sends a queued message now: it moves to the front of the queue and,
+    /// while a turn runs, cuts the turn's round short and ends the turn at
+    /// the boundary. False when no queued message has the id.
     pub(super) fn send_queued_now(&mut self, id: &TurnId) -> bool {
         if !self.send_next(id) {
             return false;
@@ -1224,14 +1227,13 @@ impl SessionCore {
         self.inputs.cancel_steer(id)
     }
 
-    /// Delivers the pending steer `id` now (`runtime.md` § Send now): the
-    /// turn's round is cut short, and the turn goes on with the steer. A
-    /// steer that is no longer pending changes nothing.
+    /// Delivers the pending steer `id` now: the turn's round is cut
+    /// short, and the turn goes on with the steer. A steer that is no
+    /// longer pending changes nothing.
     ///
     /// A wait for the model that runs starts again from now: the request it
-    /// waited for is stopped, and the next one carries the steer
-    /// (`rendering.md` § Waiting for the model). A wait that does not run, as
-    /// while a call runs, starts before that next request.
+    /// waited for is stopped, and the next one carries the steer. A wait that
+    /// does not run, as while a call runs, starts before that next request.
     pub(super) fn steer_now(&mut self, id: &BlockId) {
         if !self.inputs.has_steer(id) {
             return;
@@ -1415,7 +1417,7 @@ impl SessionCore {
 
     /// Watches `command`, which a call left running, so that it reports
     /// every `interval_ms`, or only its end when none. A Stop of the action
-    /// leaves it running (`runtime.md` § Stop).
+    /// leaves it running.
     pub(super) fn watch_command(&mut self, command: CommandId, interval_ms: Option<u32>) {
         self.watched.add(command, interval_ms);
     }
@@ -1454,9 +1456,9 @@ impl SessionCore {
 
     // The model selection.
 
-    /// Records `switch` in place of the pending one (`runtime.md` § Model
-    /// switch); while an edit is being prepared, in place of the one that
-    /// waits for it. A session that is closing gives it back.
+    /// Records `switch` in place of the pending one; while an edit is
+    /// being prepared, in place of the one that waits for it. A session
+    /// that is closing gives it back.
     pub(super) fn record_switch(&mut self, switch: ModelSwitch) -> Result<(), ModelSwitch> {
         if self.disposing {
             return Err(switch);
@@ -1569,12 +1571,11 @@ impl SessionCore {
             self.keep_entries(of, entries);
             return;
         }
-        // The wait for the model ends with its first output (`rendering.md` §
-        // Waiting for the model): reasoning as soon as its block starts,
-        // with text or without, redacted reasoning too, text, a whole call,
-        // or a call being written once its title is. The response's usage
-        // and a call without its title show nothing, and the row goes on
-        // saying Requesting.
+        // The wait for the model ends with its first output: reasoning as
+        // soon as its block starts, with text or without, redacted reasoning
+        // too, text, a whole call, or a call being written once its title is.
+        // The response's usage and a call without its title show nothing, and
+        // the row goes on saying Requesting.
         let shows = event.is_output()
             && !matches!(
                 event,
@@ -1703,8 +1704,8 @@ impl SessionCore {
     }
 
     /// The node's turn needs the model's next answer: it waits from now,
-    /// unless a wait runs already, whose clock runs on, as across a retry
-    /// (`rendering.md` § Waiting for the model).
+    /// unless a wait runs already, whose clock runs on, as across a
+    /// retry.
     pub(super) fn start_waiting(&mut self) {
         if self.waiting_since.is_none() {
             self.waiting_since = Some(self.clock.now());
@@ -1730,16 +1731,15 @@ impl SessionCore {
     }
 
     /// Records a failed provider request, the turn's own or a compaction's
-    /// summary request, as an `error` block
-    /// (`failures-and-recovery.md` § The failure record).
+    /// summary request, as an `error` block.
     pub(super) fn record_failure(&mut self, failure: &ErrorReport) {
         self.push_failure(failure);
         self.commit();
     }
 
     /// A failure of an action that has not begun ended no turn, as a
-    /// `compact` action whose summary request failed: its record says so
-    /// (`failures-and-recovery.md` § Retries).
+    /// `compact` action whose summary request failed: its record says
+    /// so.
     fn push_failure(&mut self, failure: &ErrorReport) {
         let outside_turn = !self.action_began();
         self.transcript.push_error(
@@ -2034,8 +2034,7 @@ impl SessionCore {
         referenced
     }
 
-    /// Lets go of the media nothing references any more (`transcript.md`
-    /// § Media).
+    /// Lets go of the media nothing references any more.
     pub(super) fn release_media(&mut self) {
         let referenced = self.referenced_media();
         self.media.retain(&referenced);
@@ -2048,11 +2047,10 @@ impl SessionCore {
         ModelView::of(self.transcript.replay_start(), self.replayed(), &self.media)
     }
 
-    /// The estimate of the next request of the current model
-    /// (`compaction.md` § Context estimate), or the blobs to read first. Only
-    /// the blocks after the anchor weigh, so only their media need to be
-    /// held: a session restored with media, which holds none, tells it
-    /// without a read while those blocks reference none.
+    /// The estimate of the next request of the current model, or the blobs to
+    /// read first. Only the blocks after the anchor weigh, so only their
+    /// media need to be held: a session restored with media, which holds
+    /// none, tells it without a read while those blocks reference none.
     pub(super) fn context_estimate(&self, system_prompt: &str) -> Result<u64, Vec<BlobRef>> {
         let start = self.transcript.replay_start();
         let replayed = self.replayed();
@@ -2079,12 +2077,11 @@ impl SessionCore {
 
     // History rewrites.
 
-    /// The save of a rewritten history (`message-editing.md` § Versions):
-    /// the path from the first block that differs, or from a block added
-    /// before it and not saved yet, is new rows, which `version` makes a
-    /// version the user sees; the rows changed in place before it, and the
-    /// state row.
-    /// `blocks` is the path from the window's start on.
+    /// The save of a rewritten history: the path from the first block that
+    /// differs, or from a block added before it and not saved yet, is new
+    /// rows, which `version` makes a version the user sees; the rows
+    /// changed in place before it, and the state row. `blocks` is the path
+    /// from the window's start on.
     pub(super) fn rewrite_update(&self, blocks: &[Block], version: bool) -> CheckpointUpdate {
         let start = self.transcript.start();
         let kept = start + kept(self.transcript.blocks(), blocks);
@@ -2152,9 +2149,9 @@ impl SessionCore {
     }
 
     /// Lets go of the blocks before the last `compaction_boundary` once
-    /// every row up to it is saved (`runtime.md` § What a session holds):
-    /// after a save commits, and when nothing was left to save. Blocks a
-    /// rewrite or an edit read from before the window go the same way.
+    /// every row up to it is saved: after a save commits, and when
+    /// nothing was left to save. Blocks a rewrite or an edit read from
+    /// before the window go the same way.
     pub(super) fn release_settled(&mut self) {
         self.commit();
         let boundary = self.transcript.replay_start();
@@ -2196,8 +2193,8 @@ impl SessionCore {
 
     /// The phase clients see. An action is running until its closing save
     /// has committed, and the next waiting action starts without the session
-    /// going idle between them, so a client that sees `idle` can edit at once
-    /// (`runtime.md` § A turn).
+    /// going idle between them, so a client that sees `idle` can edit at
+    /// once.
     pub(super) fn phase(&self) -> SessionPhase {
         match &self.activity {
             Activity::Running(run) if run.stage == TurnStage::Compacting => {
@@ -2211,7 +2208,7 @@ impl SessionCore {
 
     /// The phase a checkpoint records. The closing save of an action records
     /// the session idle, so a checkpoint that says an action was running is
-    /// one the process died in (`runtime.md` § Saving).
+    /// one the process died in.
     fn recorded_phase(&self) -> SessionPhase {
         match &self.activity {
             Activity::Finishing => SessionPhase::Idle,

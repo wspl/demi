@@ -1,6 +1,6 @@
-//! A run's failure and its typed code (`failures-and-recovery.md`): what the
-//! agent's retry policy reads, the vendor's record that the user and support
-//! read, and the wait the vendor asked for.
+//! A run's failure and its typed code: what the agent's retry policy reads,
+//! the vendor's record that the user and support read, and the wait the
+//! vendor asked for.
 
 use std::{convert::Infallible, error::Error as _, str::FromStr, sync::LazyLock, time::Duration};
 

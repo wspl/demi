@@ -124,8 +124,8 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
 // The model wrote its text and writes a call whose title it has not
 // written: the page says Requesting under the text, from the text's end. A
 // page that opens eleven seconds later receives, after the transcript, how
-// long the root has waited, so a reload goes on counting from 11s
-// (`rendering.md` § Waiting for the model). Cost: one held run.
+// long the root has waited, so a reload goes on counting from 11s. Cost:
+// one held run.
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_after_the_answers_text_ended_receives_how_long_the_root_has_waited() {
     let gate = Gate::new();
@@ -183,8 +183,8 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
     let mut second = fixture.client();
     second.send(open()).await;
     let received = second.received();
-    // The root waits for the held request's answer: the handshake says so
-    // (`rendering.md` § Waiting for the model).
+    // The root waits for the held request's answer: the handshake says
+    // so.
     assert!(
         received.iter().any(|frame| matches!(
             frame,
@@ -219,7 +219,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
 
 // A call the model is writing reaches every page as the complete list,
 // which a page that opens meanwhile receives in its handshake, and leaves
-// the list once the request has ended (`rendering.md` § Calls being written).
+// the list once the request has ended.
 #[tokio::test(flavor = "local")]
 async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in_its_handshake() {
     let gate = Gate::new();
@@ -557,7 +557,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
 
     // A removal that reaches no session is answered `gone_on`, since nothing
     // held it: the page shows the row again at once rather than after its
-    // wait for the answer runs out (`runtime.md` § Pending steers).
+    // wait for the answer runs out.
     assert_eq!(
         client.received(),
         [

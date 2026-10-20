@@ -1,7 +1,7 @@
-//! Codex's image role (`images.md` § Vendors): the Codex backend's image
-//! endpoints, which the Codex CLI's own image tool calls, with the
-//! account's headers as inference sends them. The backend ignores the size
-//! today and may honour it later, so the size of the asked shape is sent.
+//! Codex's image role: the Codex backend's image endpoints, which the
+//! Codex CLI's own image tool calls, with the account's headers as
+//! inference sends them. The backend ignores the size today and may honour
+//! it later, so the size of the asked shape is sent.
 
 use bytes::Bytes;
 use demi_provider_common::{

@@ -1,7 +1,7 @@
-//! What a message and a tool result hold (`transcript.md` § Transcript): text,
-//! media the model reads natively, held by reference or by URL and never as
-//! bytes, references, the records of files that came with a message, and a
-//! tool's media that are gone.
+//! What a message and a tool result hold: text, media the model reads
+//! natively, held by reference or by URL and never as bytes, references, the
+//! records of files that came with a message, and a tool's media that are
+//! gone.
 
 use std::{borrow::Cow, fmt, str::FromStr};
 
@@ -251,8 +251,7 @@ pub struct PixelSize {
 }
 
 /// Where a message's image or video is: never its bytes, which a session
-/// holds beside the transcript while a request can send them (`transcript.md`
-/// § Media).
+/// holds beside the transcript while a request can send them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
@@ -274,7 +273,7 @@ pub enum MediaSource {
         #[garde(skip)]
         media_type: String,
         /// An image's width and height in pixels, as it shows; a video's
-        /// when its container's header gives them (`transcript.md` § Media).
+        /// when its container's header gives them.
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -344,8 +343,7 @@ pub enum ToolResultContentBlock {
         source: DocumentSource,
     },
     /// An image, a video or a document the result no longer holds, in its place: what
-    /// it was and why it is gone (`transcript.md` § Media). The model reads it
-    /// as one line of text.
+    /// it was and why it is gone. The model reads it as one line of text.
     Gone {
         #[garde(skip)]
         kind: ModelMediaKind,
@@ -387,7 +385,7 @@ pub enum ToolMediaSource {
         #[garde(skip)]
         media_type: String,
         /// An image's width and height in pixels, as it shows; a video's
-        /// when its container's header gives them (`transcript.md` § Media).
+        /// when its container's header gives them.
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",

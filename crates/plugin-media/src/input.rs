@@ -23,7 +23,7 @@ pub fn decode_args<T: DeserializeOwned>(invocation: &RpcInvocation) -> Result<T,
 }
 
 /// The model the agent named: it always names one, so no media come from
-/// a model nobody chose (`media.md` § Which entry makes a call).
+/// a model nobody chose.
 pub fn required_model(model: Option<String>, kind: MediaKind) -> Result<String, PluginError> {
     model
         .filter(|model| !model.trim().is_empty())

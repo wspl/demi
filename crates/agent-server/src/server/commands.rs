@@ -145,8 +145,7 @@ struct ShowArgs {
     id: Vec<u64>,
 }
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists and checks the project's workflows. A single lookup or edit is faster by hand.";
 
 /// `demi agent spawn --json`, `fork --json` and `resume --json`.
@@ -171,12 +170,12 @@ struct Aborted {
 }
 
 
-/// The command sets every tree's nodes share (`runtime.md` § What a session
-/// holds): the product's toolset of each revision, and each set with
-/// the runtime's groups grafted, by the product's set it was grafted on and
-/// the spawning right. Each is kept only while a node holds it, so the last
-/// tree to close frees it. The grafted groups hold nothing of a tree: their
-/// handlers find the caller's tree from the invocation.
+/// The command sets every tree's nodes share: the product's toolset of each
+/// revision, and each set with the runtime's groups grafted, by the
+/// product's set it was grafted on and the spawning right. Each is kept
+/// only while a node holds it, so the last tree to close frees it. The
+/// grafted groups hold nothing of a tree: their handlers find the caller's
+/// tree from the invocation.
 #[derive(Default)]
 pub(crate) struct NodeCommandSets {
     toolsets: RefCell<Vec<HeldToolset>>,

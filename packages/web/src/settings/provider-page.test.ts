@@ -370,8 +370,8 @@ test('the warning about several accounts asks before the second account and a ro
 })
 
 // An entry that makes images has the Image Generation switch, which
-// tells the host the new value; one that makes none has no switch
-// (`media.md` § Which entries make which media). Tens of milliseconds.
+// tells the host the new value; one that makes none has no switch. Tens
+// of milliseconds.
 test('the Image Generation switch shows only for an entry that makes images and tells the host its new value', async () => {
   const changes: Partial<SettingsProviderEntry>[] = []
   const providers = shallowRef<SettingsProviderEntry[]>([
@@ -513,14 +513,11 @@ test('a vendor entry’s Images section lists its vendor’s models newest first
   }
 })
 
-// Videos is laid out as Images (`videos.md`,
-// `packages/web-ui/src/settings/SettingsProvidersPage.vue`): a compatible API
-// chooses among the video shapes it may
-// speak, then has Video Generation and its own Add Video Model, whose
-// models stay out of Models; a vendor entry lists its vendor's video
-// models, read only, newest first. Planted defects: the image shapes
-// offered for videos; a video model under Models; the Grok entry's
-// shape row shown, or its models editable. Tens of milliseconds.
+// Videos is laid out as Images (`packages/web-ui/src/settings/SettingsProvidersPage.vue`): a
+// compatible API chooses among the video shapes it may speak, then has Video Generation and its own
+// Add Video Model, whose models stay out of Models; a vendor entry lists its vendor's video models,
+// read only, newest first. Planted defects: the image shapes offered for videos; a video model
+// under Models; the Grok entry's shape row shown, or its models editable. Tens of milliseconds.
 test('a compatible API chooses its video shape and adds video models, and a vendor entry lists its video models', async () => {
   const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
   const providers = shallowRef<SettingsProviderEntry[]>([proxy])
@@ -643,16 +640,12 @@ test('an entry with image models alone offers no Test Connection and says it has
   }
 })
 
-// Audio is the section below Videos (`audio.md` § Accounts,
-// `packages/web/src/state/catalog.ts`): a compatible API chooses None or OpenAI
-// Speech
-// there; an entry of media alone, ElevenLabs, has no Models, lists its
-// audio models with their kinds, and offers Test Connection, which names
-// its first media model rather than a text model it does not have.
-// Planted defects: Models shown for an entry that makes no text; Test
-// Connection refused for want of a text model, or of a listed media model; the kinds left off the
-// rows; the audio shapes missing from the compatible menu. Tens of
-// milliseconds.
+// Audio is the section below Videos (`packages/web/src/state/catalog.ts`): a compatible API chooses
+// None or OpenAI Speech there; an entry of media alone, ElevenLabs, has no Models, lists its audio
+// models with their kinds, and offers Test Connection, which names its first media model rather
+// than a text model it does not have. Planted defects: Models shown for an entry that makes no
+// text; Test Connection refused for want of a text model, or of a listed media model; the kinds
+// left off the rows; the audio shapes missing from the compatible menu. Tens of milliseconds.
 test('a compatible API chooses OpenAI Speech and an entry of media alone shows its audio models and tests without text', async () => {
   const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
   const providers = shallowRef<SettingsProviderEntry[]>([proxy])

@@ -26,16 +26,16 @@ import type {
 } from './types'
 
 /**
- * The Credentials section (`credentials.md` § A credential): the user's
- * credentials by name, each with its fields, a tag of each field's kind,
- * *Kept until* and *Last used*, and an editor. A visible field shows its value
- * as text, as the list carries it. A secret field shows dots and an eye that
- * reads its value from the host and shows it to the user; that value goes
- * again as the pointer or the focus leaves the row, and is not kept anywhere
- * else. The host answers the read only for a browser the user confirmed in
- * the last five minutes; otherwise the eye asks Confirm It’s You first, and
- * reads again once the user confirmed. The host saves and deletes; the next
- * read of an agent uses a change.
+ * The Credentials section: the user's credentials by name, each with its
+ * fields, a tag of each field's kind, *Kept until* and *Last used*, and an
+ * editor. A visible field shows its value as text, as the list carries it. A
+ * secret field shows dots and an eye that reads its value from the host and
+ * shows it to the user; that value goes again as the pointer or the focus
+ * leaves the row, and is not kept anywhere else. The host answers the read
+ * only for a browser the user confirmed in the last five minutes; otherwise
+ * the eye asks Confirm It’s You first, and reads again once the user
+ * confirmed. The host saves and deletes; the next read of an agent uses a
+ * change.
  */
 const props = defineProps<{
   credentials: SettingsCredential[]

@@ -1,6 +1,19 @@
-//! The `demi web` group (`web.md`): `search` runs in the plugin, against
-//! Exa; `fetch` runs `fetch.get` of the `demi.fetch` package on the Host,
-//! its arguments declared from the `command-package-fetch-protocol` types.
+//! The `demi web` group: `search` runs in the plugin, against Exa; `fetch`
+//! runs `fetch.get` of the `demi.fetch` package on the Host, its arguments
+//! declared from the `command-package-fetch-protocol` types.
+//!
+//! The two run in different places on purpose. `search` calls a search vendor
+//! with the user's account, whose token never leaves the backend. `fetch`
+//! reads a page as `curl` on the Host would, through the Host's network,
+//! proxy and VPN, reaching what the Host reaches, `localhost` and the intranet
+//! included, and never through the backend, which would otherwise fetch
+//! addresses for anyone who asks. One group holds both, bound leaf by leaf,
+//! so the model finds them as one capability; a deployment without the
+//! `demi.fetch` package leaves the whole group out. Neither asks the user for
+//! permission: a search spends the user's own search account or the anonymous
+//! allowance, and a fetch does what the agent's `curl` already may. No small
+//! model reads a page first: the agent reads what it fetched and decides what
+//! matters, so nothing is lost on the way.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_fetch_protocol::{
@@ -12,8 +25,7 @@ use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
 
 use crate::search::{DEFAULT_COUNT, MAX_COUNT, SearchArgs, SearchedPage};
 
-/// The group's entry in the model's capability index (`system-prompt.md`
-/// § Capability index).
+/// The group's entry in the model's capability index.
 const ENTRY: &str = "Searches the web and reads pages: `search` lists pages for one to four queries, with their links and the lines that matter, and `fetch` reads a URL from the Host as Markdown, a part at a time, and saves a PDF, an image or any other file for `demi file view`. Use them for documentation, release notes, news or an API's JSON. Not for a page that needs JavaScript, a sign-in or clicks, where `demi browser` works.";
 
 /// The plugin's commands: the `demi web` group.

@@ -529,9 +529,9 @@ impl ControlService {
                 RecordChange::Archived(archived) => {
                     // An archive withdraws the permission requests, decided
                     // ones whose message was not delivered among them, and
-                    // keeps the grants (`permissions.md` § Requests).
-                    // It drops the move and the detaches an agent asked for
-                    // as well (`crates/backend-host-access/src/transition.rs`).
+                    // keeps the grants. It drops the move and the detaches an
+                    // agent asked for as well
+                    // (`crates/backend-host-access/src/transition.rs`).
                     if *archived {
                         archive_in(&transaction, &id)?;
                     } else {
@@ -1112,8 +1112,8 @@ impl ControlService {
 
 /// Archives the conversation `id`. An archive withdraws the permission
 /// requests, decided ones whose message was not delivered among them, and
-/// keeps the grants (`permissions.md` § Requests); it drops the move and
-/// the detaches an agent asked for as well (`crates/backend-host-access/src/transition.rs`).
+/// keeps the grants; it drops the move and the detaches an agent asked for as well
+/// (`crates/backend-host-access/src/transition.rs`).
 pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result<(), StorageError> {
     connection.execute(
         "UPDATE conversation_hosts SET detaching = 0 WHERE conversation_id = ?1",

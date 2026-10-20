@@ -27,9 +27,8 @@ pub enum WireApi {
 
 serde_plain::derive_display_from_serialize!(WireApi);
 
-/// How an entry's API makes images, its *image shape* (`media.md` § Which
-/// entries make which media): a vendor entry's is its vendor's, a
-/// compatible entry's the one its user chose, or none.
+/// How an entry's API makes images, its *image shape*: a vendor entry's
+/// is its vendor's, a compatible entry's the one its user chose, or none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum ImageShape {
     /// The ChatGPT subscription's image endpoints.
@@ -61,9 +60,8 @@ impl ImageShape {
 serde_plain::derive_display_from_serialize!(ImageShape);
 serde_plain::derive_fromstr_from_deserialize!(ImageShape);
 
-/// How an entry's API makes videos, its *video shape* (`videos.md`
-/// § Vendors): a vendor entry's is its vendor's, a compatible entry's the
-/// one its user chose, or none.
+/// How an entry's API makes videos, its *video shape*: a vendor entry's
+/// is its vendor's, a compatible entry's the one its user chose, or none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum VideoShape {
     /// The Grok subscription's video endpoints.
@@ -115,9 +113,8 @@ serde_plain::derive_display_from_serialize!(VideoShape);
 serde_plain::derive_fromstr_from_deserialize!(VideoShape);
 
 /// The resolution a video is asked in, as `--resolution` writes it: a
-/// height, `768p`, or a count of thousands of pixels across, `2k`
-/// (`videos.md` § Commands). Each vendor's request writes it as that vendor
-/// does, `768P` for MiniMax.
+/// height, `768p`, or a count of thousands of pixels across, `2k`. Each
+/// vendor's request writes it as that vendor does, `768P` for MiniMax.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
 #[schemars(with = "String", extend("pattern" = r"^[0-9]+[pPkK]$", "patternDescription" = "a height such as 720p, or 2k or 4k"))]
@@ -185,10 +182,9 @@ impl From<VideoResolution> for String {
     }
 }
 
-/// How an entry's API makes audio, its *audio shape* (`audio.md`
-/// § Vendors): a vendor entry's is its vendor's, a compatible entry's the
-/// one its user chose, or none. A shape makes some of speech, music and
-/// sound effects.
+/// How an entry's API makes audio, its *audio shape*: a vendor entry's is
+/// its vendor's, a compatible entry's the one its user chose, or none. A
+/// shape makes some of speech, music and sound effects.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum AudioShape {
     /// `…/audio/speech`, as OpenAI's API serves it and compatible servers
@@ -242,8 +238,7 @@ impl AudioShape {
 serde_plain::derive_display_from_serialize!(AudioShape);
 serde_plain::derive_fromstr_from_deserialize!(AudioShape);
 
-/// What an audio model makes, and what a call of `demi audio` asks for
-/// (`audio.md` § Commands).
+/// What an audio model makes, and what a call of `demi audio` asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AudioKind {
@@ -268,8 +263,8 @@ impl AudioKind {
 serde_plain::derive_display_from_serialize!(AudioKind);
 serde_plain::derive_fromstr_from_deserialize!(AudioKind);
 
-/// The kinds of media an entry may make, each with its shape and switch
-/// (`media.md` § Which entries make which media).
+/// The kinds of media an entry may make, each with its shape and
+/// switch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaKind {

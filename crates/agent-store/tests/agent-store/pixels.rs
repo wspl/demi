@@ -1,7 +1,7 @@
-//! A medium's size in pixels, read from its header (`transcript.md` § Media).
-//! The videos are fixtures of a few kilobytes that ffmpeg made from its test
-//! pattern: an MP4 of 64 × 36 px with its `moov` box first and one with it
-//! last, a QuickTime movie of 40 × 30 px and a WebM of 48 × 64 px.
+//! A medium's size in pixels, read from its header. The videos are fixtures
+//! of a few kilobytes that ffmpeg made from its test pattern: an MP4 of 64 ×
+//! 36 px with its `moov` box first and one with it last, a QuickTime movie of
+//! 40 × 30 px and a WebM of 48 × 64 px.
 
 use bytes::Bytes;
 use demi_agent_store::{pixels::pixel_size, testing::png};

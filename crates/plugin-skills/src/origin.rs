@@ -1,5 +1,5 @@
-//! A source's origin (`skills.md` § User skills): `owner/repo` for a
-//! repository on GitHub, or an `https` URL of any git repository.
+//! A source's origin: `owner/repo` for a repository on GitHub, or an
+//! `https` URL of any git repository.
 
 use sha2::{Digest, Sha256};
 

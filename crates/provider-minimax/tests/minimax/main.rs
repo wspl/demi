@@ -1,9 +1,8 @@
-//! MiniMax's media through its key (`images.md`, `videos.md`, `audio.md`
-//! § Vendors), against scripted vendors built from its API reference at
-//! platform.minimax.io/docs/api-reference: Text to image and Image to
-//! image, Create, Query and Cancel or delete a v2 video task, Create a v1
-//! text-to-video task, Query a v1 task and Retrieve file, Synchronous text
-//! to speech and Get voice. No test calls a vendor.
+//! MiniMax's media through its key, against scripted vendors built from
+//! its API reference at platform.minimax.io/docs/api-reference: Text to
+//! image and Image to image, Create, Query and Cancel or delete a v2 video
+//! task, Create a v1 text-to-video task, Query a v1 task and Retrieve
+//! file, Synchronous text to speech and Get voice. No test calls a vendor.
 
 use std::sync::Arc;
 

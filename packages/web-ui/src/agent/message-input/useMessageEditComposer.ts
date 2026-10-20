@@ -41,9 +41,9 @@ interface AddedFile {
  * Binds the composer's editor to a detached edit without touching its normal
  * draft: the message opens as it was sent, and every change is the edit's new
  * content, its text and files in the order shown. A file added to the edit is
- * uploaded the way the main composer uploads one (`message-editing.md`
- * § The editor) and joins the edit's content once its upload is done; a
- * deleted capsule stops its upload, and an undo starts it over.
+ * uploaded the way the main composer uploads one and joins the edit's content
+ * once its upload is done; a deleted capsule stops its upload, and an undo
+ * starts it over.
  */
 export function useMessageEditComposer(options: {
   state: () => MessageEditState | null | undefined

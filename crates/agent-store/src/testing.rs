@@ -51,7 +51,7 @@ pub fn model_reading(provider: &str, model: &str, extensions: &[FileExtension]) 
 
 /// A PNG of `width` × `height` px whose pixels follow `seed`, for tests that
 /// send images: a real one, since an image is decoded as it enters a
-/// transcript (`transcript.md` § Images in the transcript).
+/// transcript.
 pub fn png(width: u32, height: u32, seed: u8) -> B64Bytes {
     use image::{DynamicImage, Rgba, RgbaImage, codecs::png::PngEncoder};
 
@@ -226,7 +226,7 @@ impl StoredNode {
     /// The versions at each position of the path from `from` on: a place's
     /// at the block that stands there, or at the block a compaction carried
     /// from there, which the boundary then stands in for without showing
-    /// them (`message-editing.md` § Versions).
+    /// them.
     fn versions(&self, from: usize) -> BTreeMap<usize, Versions> {
         let following = Following::of_rows(&self.rows);
         let mut shown: BTreeMap<Option<u64>, (usize, Versions)> = BTreeMap::new();
@@ -1059,15 +1059,13 @@ impl BlobStore for MemoryBlobs {
     }
 }
 
-/// The tree store contract's cases (`crates/agent-store/src/lib.rs`,
-/// `runtime.md` § Tree store), for any realization of [`AgentTreeStore`]:
-/// create queues the first message with the node, a save delivers the
-/// completions it carries, reopen and delete, a completion of an earlier
-/// round marks nothing delivered, and the blob namespace names bytes by
-/// their SHA-256. Each case
-/// takes a store that holds nothing yet and reads back only through the
-/// contract, so the agent's in-memory store and the backend's database pass
-/// the same cases.
+/// The tree store contract's cases (`crates/agent-store/src/lib.rs`), for any
+/// realization of [`AgentTreeStore`]: create queues the first message with
+/// the node, a save delivers the completions it carries, reopen and delete, a
+/// completion of an earlier round marks nothing delivered, and the blob
+/// namespace names bytes by their SHA-256. Each case takes a store that holds
+/// nothing yet and reads back only through the contract, so the agent's
+/// in-memory store and the backend's database pass the same cases.
 pub mod store_contract {
     use demi_shared_types::{
         AgentMessage, AgentMessageBlock, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionId,
@@ -1258,11 +1256,11 @@ pub mod store_contract {
         demi_conversation_socket_protocol::Versions { index, count }
     }
 
-    /// `message-editing.md` § Versions: an edit adds a version beside the
-    /// rows it leaves, which stay as written; the session's own rewrite
-    /// stands in for what it replaces and is no version; Regenerate's cut
-    /// makes the next row a version of its own; a switch makes the latest
-    /// leaf of a version current, and the load restores that path.
+    /// An edit adds a version beside the rows it leaves, which stay as
+    /// written; the session's own rewrite stands in for what it replaces
+    /// and is no version; Regenerate's cut makes the next row a version
+    /// of its own; a switch makes the latest leaf of a version current,
+    /// and the load restores that path.
     pub async fn a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(store: &dyn AgentTreeStore) {
         create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
         let root = store.session_store(&id("root"));
@@ -1330,12 +1328,12 @@ pub mod store_contract {
         );
     }
 
-    /// `message-editing.md` § Versions: a subagent tells whether the call
-    /// that started it is on its parent's current path; one no call
-    /// started is on every path. Builds the tree the store's own reading
-    /// of whole subtrees is checked on: `root` holds `a1`, which started
-    /// `kept`; `gone` was started by a block the root's path no longer
-    /// holds, and `under` by `g1`, which `gone`'s path holds.
+    /// A subagent tells whether the call that started it is on its
+    /// parent's current path; one no call started is on every path.
+    /// Builds the tree the store's own reading of whole subtrees is
+    /// checked on: `root` holds `a1`, which started `kept`; `gone` was
+    /// started by a block the root's path no longer holds, and `under` by
+    /// `g1`, which `gone`'s path holds.
     pub async fn a_subagent_tells_whether_its_start_is_on_its_parents_path(store: &dyn AgentTreeStore) {
         create(store, record("root", None, 0), update(Vec::new(), vec![said("u1"), said("a1")])).await;
         for (node, parent, number, start, blocks) in [
@@ -1360,10 +1358,10 @@ pub mod store_contract {
         assert_eq!(started, [(1, true), (2, false), (3, true), (4, true)]);
     }
 
-    /// `runtime.md` § Restoring: a load reads the current path's window,
-    /// from its last `compaction_boundary` on, and nothing before it; what
-    /// a session reads of the blocks before is read by range, by id, by
-    /// kind and as the ids it keeps.
+    /// A load reads the current path's window, from its last
+    /// `compaction_boundary` on, and nothing before it; what a session
+    /// reads of the blocks before is read by range, by id, by kind and as
+    /// the ids it keeps.
     pub async fn a_load_reads_the_window_and_the_rest_on_demand(store: &dyn AgentTreeStore) {
         let user = |turn: &str| {
             Block::User(UserBlock {
@@ -1454,10 +1452,9 @@ pub mod store_contract {
         assert_eq!(root.prefix(0).await.expect("the store reads"), None);
     }
 
-    /// `message-editing.md` § Versions: a message that compaction carries
-    /// past its boundary keeps its versions, which its new position shows
-    /// and the boundary does not, and switching there brings back the
-    /// branch before the compaction.
+    /// A message that compaction carries past its boundary keeps its
+    /// versions, which its new position shows and the boundary does not,
+    /// and switching there brings back the branch before the compaction.
     pub async fn a_compaction_keeps_the_versions_of_what_it_carries(store: &dyn AgentTreeStore) {
         create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
         let root = store.session_store(&id("root"));

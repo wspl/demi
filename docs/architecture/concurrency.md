@@ -307,7 +307,7 @@ one owner, or use a named gate).
 not used. A queue's owner decides what a full queue means, and the
 rule lives with the owner: a conversation socket's outbox closes a connection
 that lags, and the client reconnects to the running session
-([Frame protocol](../agent/rendering.md#frame-protocol)); the runner's
+(`crates/conversation-socket-protocol/src/lib.rs`); the runner's
 connection stops reading until it has room (`crates/runner/src/main.rs`).
 
 ## Blocking work

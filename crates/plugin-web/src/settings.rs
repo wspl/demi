@@ -1,6 +1,6 @@
-//! Settings › Web Search (`web.md` § Settings › Web Search): the plugin's
-//! user state, which says how the user is connected to Exa, and the methods
-//! that sign in and out and save and remove the API key.
+//! Settings › Web Search: the plugin's user state, which says how the user
+//! is connected to Exa, and the methods that sign in and out and save and
+//! remove the API key.
 
 use base64::Engine;
 use demi_plugin_interface::{

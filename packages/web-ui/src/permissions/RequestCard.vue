@@ -8,10 +8,9 @@ import type { CredentialAnswer, PermissionDecision, RequestView } from './types'
 
 /**
  * The oldest undecided request of the conversation, pinned above the
- * composer (`permissions.md` § What the user sees): a permission request, a
- * credential to save or a stored credential to allow, each in the card of its
- * kind. With several requests it says which one of how many it shows; the
- * next one takes its place once it is decided.
+ * composer: a permission request, a credential to save or a stored credential
+ * to allow, each in the card of its kind. With several requests it says which
+ * one of how many it shows; the next one takes its place once it is decided.
  */
 const props = defineProps<{
   /** The undecided requests, oldest first; the card shows the first. */

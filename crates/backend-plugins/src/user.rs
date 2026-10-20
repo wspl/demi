@@ -51,7 +51,7 @@ use crate::web;
 /// A video's job as the product runs it: each change of its state, then
 /// its video or the failure that ended it. Dropped before its video, the
 /// job's waiting ends and the job is cancelled where the vendor can cancel
-/// one (`videos.md` § A call is a job).
+/// one.
 pub type VideoJob = LocalBoxStream<'static, Result<VideoStep, PortFailure>>;
 
 /// What the product does for the plugins' port: the operations that reach
@@ -81,7 +81,7 @@ pub trait ProductPort {
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
 
     /// The models of `kind` of the user's provider entries, each with the
-    /// entries that offer it (`media.md`).
+    /// entries that offer it.
     fn media_models(&self, kind: MediaKind) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>>;
 
     /// Makes the image `ask` names for the conversation, through the entry
@@ -121,7 +121,7 @@ pub trait ProductPort {
     ) -> LocalBoxFuture<'a, Result<MadeAudio, PortFailure>>;
 
     /// The voices of speech model `model`, as the entry a call of it takes
-    /// lists them, narrowed by `search` (`audio.md` § Vendors).
+    /// lists them, narrowed by `search`.
     fn audio_voices<'a>(
         &'a self,
         conversation: &'a ConversationId,

@@ -81,8 +81,7 @@ impl LinkPolicy for ShardPolicy {
     /// `bringsHost` argument brings into the conversation, or the computer
     /// `demi host pair` pairs, is checked against the conversation's grants
     /// and the hosts it may reach before the handler runs, and a call that
-    /// lacks it waits for the user's answer (`permissions.md` § The check,
-    /// § Hosts).
+    /// lacks it waits for the user's answer.
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,

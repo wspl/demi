@@ -1,7 +1,7 @@
-//! The video role of a Gemini API key (`videos.md` § Vendors), Veo's:
-//! `POST …/models/<model>:predictLongRunning` with `instances` and
-//! `parameters` answers an operation, `GET …/<operation.name>` reads it
-//! until it is `done`, and the video at
+//! The video role of a Gemini API key, Veo's: `POST
+//! …/models/<model>:predictLongRunning` with `instances` and `parameters`
+//! answers an operation, `GET …/<operation.name>` reads it until it is
+//! `done`, and the video at
 //! `response.generateVideoResponse.generatedSamples[0].video.uri` is
 //! downloaded with the key, following redirects, as Google's guide does
 //! ([Veo](https://ai.google.dev/gemini-api/docs/veo)). The models are those

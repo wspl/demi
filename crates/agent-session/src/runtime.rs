@@ -1,7 +1,7 @@
-//! What a session calls in its node (`runtime.md` § Sessions and turns): the
-//! admission of an action, the prompts and context, and the tools. The node
-//! assembly implements it, so a session never reaches its node otherwise, and
-//! a tool never reaches into its session: it returns its outcome.
+//! What a session calls in its node: the admission of an action, the prompts
+//! and context, and the tools. The node assembly implements it, so a session
+//! never reaches its node otherwise, and a tool never reaches into its
+//! session: it returns its outcome.
 
 use std::{
     cell::{Cell, RefCell},
@@ -20,10 +20,8 @@ use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
 
-/// A system prompt by its layers (`system-prompt.md` § The layers): a
-/// request carries their texts joined, and the context card weighs the
-/// capability index apart from the rest (`compaction.md` § What fills the
-/// context).
+/// A system prompt by its layers: a request carries their texts joined,
+/// and the context card weighs the capability index apart from the rest.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SystemPrompt {
     /// The layers in their order.
@@ -67,14 +65,14 @@ pub trait SessionRuntime {
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease>;
 
     /// Holds off every change of the node's children while an edit is
-    /// prepared and committed (`message-editing.md` § Admission); refused
-    /// while a child lives, starts or closes, or its completion awaits
-    /// delivery. Dropping the reservation ends the hold.
+    /// prepared and committed; refused while a child lives, starts or
+    /// closes, or its completion awaits delivery. Dropping the
+    /// reservation ends the hold.
     fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<Reservation>, String>>;
 
     /// The system prompt of a request that infers with `model`, whose
-    /// last line names that model (`system-prompt.md` § Model identity);
-    /// why it could not be rendered, such as a provider entry that is gone.
+    /// last line names that model; why it could not be rendered, such as a
+    /// provider entry that is gone.
     fn system_prompt<'a>(
         &'a self,
         model: &'a ModelSelection,
@@ -89,10 +87,10 @@ pub trait SessionRuntime {
     /// The text before the content of a user turn.
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
 
-    /// What the context sources tell the node before a request
-    /// (`transcript.md` § Context), in the sources' order: `seen` is each
-    /// context block the model receives, from the last compaction boundary
-    /// on, oldest first, and `turn` the input turn the request belongs to.
+    /// What the context sources tell the node before a request, in the
+    /// sources' order: `seen` is each context block the model receives,
+    /// from the last compaction boundary on, oldest first, and `turn` the
+    /// input turn the request belongs to.
     fn context<'a>(
         &'a self,
         seen: &'a [SeenContext<'a>],
@@ -128,18 +126,18 @@ pub trait SessionRuntime {
     }
 
     /// What the node has running now, which a compaction pass names after
-    /// its marker (`compaction.md` § What the model receives afterward): its
-    /// commands that run and its live subagents. Nothing by default.
+    /// its marker: its commands that run and its live subagents. Nothing by
+    /// default.
     fn running_work(&self) -> LocalBoxFuture<'_, RunningWork> {
         Box::pin(async { RunningWork::default() })
     }
 
     /// Whether the user recovers the node's unfinished turns, a root's, or
-    /// its parent decides for it, a child's (`failures-and-recovery.md`
-    /// § The unfinished turn): a root's turn left undone because a call's
-    /// Host was offline ends unfinished, with an error block that offers
-    /// Resume, and a root's failed turn holds its waiting input until the
-    /// user acts; a child's result says what it could not do.
+    /// its parent decides for it, a child's: a root's turn left undone
+    /// because a call's Host was offline ends unfinished, with an error
+    /// block that offers Resume, and a root's failed turn holds its
+    /// waiting input until the user acts; a child's result says what it
+    /// could not do.
     fn user_recovers_turns(&self) -> bool {
         false
     }
@@ -171,9 +169,9 @@ pub trait SessionRuntime {
     }
 
     /// Whether `command`, which a `shell` call left running, waits for the
-    /// user's answer, as it changes: it reports no progress meanwhile
-    /// (`permissions.md` § The check). None for a command that the node's
-    /// shells do not hold or whose job has not started, and by default.
+    /// user's answer, as it changes: it reports no progress meanwhile.
+    /// None for a command that the node's shells do not hold or whose job
+    /// has not started, and by default.
     fn awaits_user(&self, command: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
         let _ = command;
         None
@@ -247,8 +245,7 @@ pub trait SessionRuntime {
 /// in the step.
 pub type StepOutcomes<'a> = LocalBoxStream<'a, (usize, Result<ToolOutcome, ToolFailure>)>;
 
-/// What a node has running (`compaction.md` § What the model receives
-/// afterward).
+/// What a node has running.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RunningWork {
     /// Each command of the node that runs, by its number, with the title of
@@ -365,7 +362,7 @@ pub(crate) struct Arrivals {
     /// queued message are none.
     pub(crate) joining: u64,
     /// The user sent a steer or a queued message now, and the running turn
-    /// has not reached its boundary yet (`runtime.md` § Send now).
+    /// has not reached its boundary yet.
     pub(crate) send_now: bool,
 }
 
@@ -423,7 +420,7 @@ impl InputArrival {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolOutcome {
     /// The result, with its media's bytes, which the session stores before
-    /// the result enters the transcript (`transcript.md` § Media).
+    /// the result enters the transcript.
     pub output: Vec<ResultPart>,
     pub is_error: bool,
     pub view: Option<ToolView>,
@@ -443,7 +440,7 @@ impl ToolOutcome {
     }
 
     /// A requested call that had not started when the user sent a message
-    /// now (`runtime.md` § Send now).
+    /// now.
     pub fn not_run() -> Self {
         Self::error("Tool call not run: the user sent a message".to_owned())
     }

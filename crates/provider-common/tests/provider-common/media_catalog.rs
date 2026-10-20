@@ -1,9 +1,8 @@
 //! The catalog of image and video models
-//! (`crates/provider-common/src/media_catalog.rs`): the file's
-//! decoding, the repository's own file, the download of the build's
-//! branch with its newer-of rule, and the image models a subscription and
-//! a key's listing read from it (`images.md` § Vendors), against a
-//! scripted server. No test reaches GitHub.
+//! (`crates/provider-common/src/media_catalog.rs`): the file's decoding,
+//! the repository's own file, the download of the build's branch with its
+//! newer-of rule, and the image models a subscription and a key's listing
+//! read from it, against a scripted server. No test reaches GitHub.
 
 use std::sync::Arc;
 use std::time::Duration;

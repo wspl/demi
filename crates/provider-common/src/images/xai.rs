@@ -1,5 +1,5 @@
 //! How xAI's image API, a Grok subscription's and an xAI key's alike,
-//! refuses a shape (`images.md` § Commands).
+//! refuses a shape.
 
 use super::MadeImage;
 use crate::media::{MediaAnswer, MediaFailure};
@@ -34,7 +34,7 @@ fn shapes_taken(message: &str) -> Option<Vec<String>> {
 }
 
 /// `answer` with a refusal of the shape asked for told as the shapes xAI
-/// named, so a shape xAI adds needs no change (`images.md` § Commands).
+/// named, so a shape xAI adds needs no change.
 pub fn with_shapes(mut answer: MediaAnswer<MadeImage>) -> MediaAnswer<MadeImage> {
     if let Err(MediaFailure::Refused { message, code, trace }) = &answer.result
         && let Some(takes) = shapes_taken(message)

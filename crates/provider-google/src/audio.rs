@@ -1,14 +1,12 @@
-//! The audio role of a Gemini API key (`audio.md` § Vendors): speech from
-//! the TTS models and music from Lyria, each one `POST …/interactions`
-//! with the key in `x-goog-api-key`, whose `model_output` step holds the
+//! The audio role of a Gemini API key: speech from the TTS models and music from Lyria, each one
+//! `POST …/interactions` with the key in `x-goog-api-key`, whose `model_output` step holds the
 //! audio as base64 ([Speech generation](https://ai.google.dev/gemini-api/docs/speech-generation),
-//! [Music generation](https://ai.google.dev/gemini-api/docs/music-generation),
-//! [Interactions API](https://ai.google.dev/api/interactions-api)). Speech
-//! takes its instructions as the turn's `speech_metadata` style and its
-//! voice in `generation_config.speech_config`; a block of WAV is written as
-//! it came, one of raw PCM (`audio/l16`, as the older TTS models answer) is
-//! handed on to be wrapped. The models are those Google lists for the key
-//! whose ID names TTS or Lyria; the voices are `GET …/voices`, every page.
+//! [Music generation](https://ai.google.dev/gemini-api/docs/music-generation), [Interactions
+//! API](https://ai.google.dev/api/interactions-api)). Speech takes its instructions as the turn's
+//! `speech_metadata` style and its voice in `generation_config.speech_config`; a block of WAV is
+//! written as it came, one of raw PCM (`audio/l16`, as the older TTS models answer) is handed on
+//! to be wrapped. The models are those Google lists for the key whose ID names TTS or Lyria; the
+//! voices are `GET …/voices`, every page.
 
 use bytes::Bytes;
 use demi_provider_common::{
