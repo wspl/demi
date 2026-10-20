@@ -93,7 +93,7 @@ function onKeydown(event: KeyboardEvent): void {
           @mousedown.prevent
           @click="done('sendNow')"
         >
-          {{ t('comments.sendNow') }}
+          {{ t('composer.send') }}
         </Button>
       </Tooltip>
       <Button
