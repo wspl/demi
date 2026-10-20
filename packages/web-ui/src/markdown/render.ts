@@ -18,24 +18,37 @@ import { declaredSize, type PixelSize } from '../files/thumbnail'
 import type { ShownMedium } from '../files/media-viewer'
 import { t } from '../locales/text'
 
-// Parsing is synchronous, so the renderers read the options of the parse in flight instead of
-// building a Marked instance (and re-registering KaTeX) per call.
+// Parsing is synchronous, so the renderers read the options of the parse in
+// flight instead of building a Marked instance (and re-registering KaTeX) per
+// call.
 let activeOptions: MarkdownRenderOptions | undefined
-/** Links open around the renderer: an image inside one follows it instead of opening itself. */
+/**
+ * Links open around the renderer: an image inside one follows it instead of
+ * opening itself.
+ */
 let openLinks = 0
 
-/** A link that leaves for the web, in a new tab, with `attributes` after its own. */
+/**
+ * A link that leaves for the web, in a new tab, with `attributes` after its
+ * own.
+ */
 function webLink(url: string, attributes = ''): string {
   return `<a href="${escapeHtml(url)}" target="_blank" rel="${WEB_LINK_REL}"${attributes}>`
 }
 
-/** A link that opens a Host file through the `file` intent, at its line when it names one. */
+/**
+ * A link that opens a Host file through the `file` intent, at its line when it
+ * names one.
+ */
 function fileLink({ path, line }: MessageFileTarget, attributes = ''): string {
   const at = line === null ? '' : ` data-line="${line}"`
   return `<a href="${escapeHtml(path)}" data-file-link${at}${attributes}>`
 }
 
-/** A link that opens a commit's changes, in the repository of the folder `root` when the link names one. */
+/**
+ * A link that opens a commit's changes, in the repository of the folder `root`
+ * when the link names one.
+ */
 function commitLink(commit: string, root: string | null, href: string, attributes = ''): string {
   const folder = root === null ? '' : ` data-commit-root="${escapeHtml(root)}"`
   return `<a href="${escapeHtml(href)}" data-commit-link="${escapeHtml(commit)}"${folder}${attributes}>`
@@ -79,12 +92,18 @@ function iconLead(icon: string, body: string): string {
   return `<span class="icon-lead">${icon}${lead}</span>${text.slice(lead.length)}`
 }
 
-/** The classes of a link that starts with an icon, `tight` when ASCII punctuation follows it, which keeps no space after its name. */
+/**
+ * The classes of a link that starts with an icon, `tight` when ASCII
+ * punctuation follows it, which keeps no space after its name.
+ */
 function iconLinkClass(tight: boolean): string {
   return tight ? 'icon-link icon-link-tight' : 'icon-link'
 }
 
-/** Punctuation that stands right after the word before it in Latin text, which a link's own space must not part from it. */
+/**
+ * Punctuation that stands right after the word before it in Latin text, which a
+ * link's own space must not part from it.
+ */
 const CLOSING_PUNCTUATION_RE = /^[.,;:!?)\]}]/
 
 /**
@@ -97,11 +116,13 @@ const CLOSING_PUNCTUATION_RE = /^[.,;:!?)\]}]/
 function tightenLinks(tokens: Token[]): void {
   const mark = (inline: readonly Token[]) => inline.forEach((part, index) => {
     const next = inline[index + 1]
-    // Inline code may become a file's link (`codespan`), so it is marked as a link is.
+    // Inline code may become a file's link (`codespan`), so it is marked as a
+    // link is.
     if ((part.type === 'link' || part.type === 'codespan') && next?.type === 'text' && CLOSING_PUNCTUATION_RE.test(next.raw))
       tightLinks.add(part)
   })
-  // A walk gives each token, but a table's cells hold their inline tokens apart from it.
+  // A walk gives each token, but a table's cells hold their inline tokens apart
+  // from it.
   agentMarked.walkTokens(tokens, (token) => {
     if (token.type === 'table') {
       for (const cell of [...token.header, ...token.rows.flat()])
@@ -118,13 +139,14 @@ const tightLinks = new WeakSet<Token>()
 /**
  * A link to agent `number` of the conversation, around its text: the agent's
  * mark, which the page puts in its place with the agent's live state, then the
- * text, and a click opens it in the Agents window. A number the conversation
- * does not have shows the text alone; the page's tip says so. Outside a
- * conversation, the text alone. It starts with an icon, so it is spaced as a
- * file's link is (`icon-link`), and it is a control of the Agents window, as
- * the window's chip is: a press on it is not one outside the window
- * (`KEEPS_WINDOWS`), so a click when the window shows its tab closes the
- * window.
+ * text. A click opens it in the Agents window. A number the conversation does
+ * not have shows the text alone; the page's tip says so. Outside a
+ * conversation, the text alone.
+ *
+ * It starts with an icon, so it is spaced as a file's link is (`icon-link`). It
+ * is a control of the Agents window, as the window's chip is: a press on it is
+ * not one outside the window (`KEEPS_WINDOWS`), so a click when the window
+ * shows its tab closes the window.
  */
 function agentLink(number: number, body: string, tight: boolean): string {
   const agents = activeOptions?.agents
@@ -156,13 +178,16 @@ function firstWord(html: string): string {
 }
 
 /**
- * The attribute of an attachment's image or video that holds the file as Demi's own
- * form of a copy holds it, which a drag of the link into a composer carries
- * (`copied-message.ts` § `attachmentDrag`).
+ * The attribute of an attachment's image or video that holds the file as Demi's
+ * own form of a copy holds it, which a drag of the link into a composer carries
+ * (`copied-message.ts` § `attachmentDrag`). /
  */
 export const ATTACHMENT_FILE_ATTRIBUTE = 'data-attachment-file'
 
-/** The attribute of a Host image that names its file's path, which a click on it shows in the viewer (`openMessageLink`). */
+/**
+ * The attribute of a Host image that names its file's path, which a click on it
+ * shows in the viewer (`openMessageLink`).
+ */
 export const HOST_FILE_ATTRIBUTE = 'data-host-file'
 
 /** An attachment as Demi's own form of a copy holds a stored file. */
@@ -203,7 +228,10 @@ function attachmentVideo(attachment: MessageAttachment): string {
   return `${attachmentLink(attachment, ' class="message-video"')}${video}${mark}</a>`
 }
 
-/** The attribute of an audio attachment's place, which holds its address, where `AudioPlayer` plays it. */
+/**
+ * The attribute of an audio attachment's place, which holds its address, where
+ * `AudioPlayer` plays it.
+ */
 export const ATTACHMENT_AUDIO_ATTRIBUTE = 'data-attachment-audio'
 
 /**
@@ -215,7 +243,10 @@ function attachmentAudio(attachment: MessageAttachment): string {
   return `<span class="message-audio" ${ATTACHMENT_AUDIO_ATTRIBUTE}="${escapeHtml(attachment.url)}" data-audio-name="${escapeHtml(attachment.name)}"></span>`
 }
 
-/** The attribute of the place of an attachment block's card, which holds the attachment's number, where `AttachmentCard` shows it. */
+/**
+ * The attribute of the place of an attachment block's card, which holds the
+ * attachment's number, where `AttachmentCard` shows it.
+ */
 export const ATTACHMENT_CARD_ATTRIBUTE = 'data-attachment-card'
 
 /**
@@ -226,13 +257,19 @@ export function messageAttachment(files: MessageFiles | undefined, id: string): 
   return files?.attachment?.(id, files.node ?? null)
 }
 
-/** An attachment block's attachment when it is an image or a video, which stands as a tile among the message's media. */
+/**
+ * An attachment block's attachment when it is an image or a video, which stands
+ * as a tile among the message's media.
+ */
 function blockMedium(id: string): MessageAttachment | null {
   const lookup = messageAttachment(activeOptions?.files, id)
   return lookup?.state === 'found' && /^(?:image|video)\//.test(lookup.attachment.mediaType) ? lookup.attachment : null
 }
 
-/** An attachment's image or video as a tile, its record's size its box before its bytes arrive, which a click opens large. */
+/**
+ * An attachment's image or video as a tile, its record's size its box before
+ * its bytes arrive, which a click opens large.
+ */
 function attachmentTile(attachment: MessageAttachment): string {
   if (attachment.mediaType.startsWith('video/'))
     return attachmentVideo(attachment)
@@ -298,8 +335,8 @@ const messageRenderer: RendererObject = {
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')
   },
-  // Inline code that names a file the Host has opens it, as a link of words with the file's
-  // icon.
+  // Inline code that names a file the Host has opens it, as a link of words
+  // with the file's icon.
   codespan(token) {
     const { text } = token
     const code = `<code>${escapeHtml(text)}</code>`
@@ -332,7 +369,8 @@ const messageRenderer: RendererObject = {
     const commit = linkedCommit(token.href)
     if (commit !== null) {
       const files = activeOptions?.files
-      // A folder is read as a relative link's path is; one that names nothing, such as `~/` before the home is known, is text.
+      // A folder is read as a relative link's path is; one that names nothing,
+      // such as `~/` before the home is known, is text.
       const root = commit.folder === null || !files ? null : commitFolder(commit.folder, files)
       if (!files?.openCommit || (commit.folder !== null && root === null))
         return body
@@ -374,7 +412,10 @@ function showsMedium(token: Token): boolean {
   return token.type === 'image' && imageSource(token.href) !== null
 }
 
-/** Whether an inline token is a medium of the message: an image that shows, or a link around one and nothing else. */
+/**
+ * Whether an inline token is a medium of the message: an image that shows, or a
+ * link around one and nothing else.
+ */
 function isMedium(token: Token): boolean {
   if (showsMedium(token))
     return true
@@ -402,7 +443,10 @@ function trimmedText(token: Token, edge: 'start' | 'end'): Token {
   return { ...token, raw: trim(token.raw), text: trim(token.text) }
 }
 
-/** The words of a paragraph between its media, without the white space and line breaks at their edges. */
+/**
+ * The words of a paragraph between its media, without the white space and line
+ * breaks at their edges.
+ */
 function trimmedWords(words: Token[]): Token[] {
   const first = words.findIndex((token) => !isWhiteSpace(token))
   if (first < 0)
@@ -455,7 +499,10 @@ function splitAtMedia(block: Tokens.Paragraph | Tokens.Text | Tokens.Generic): T
   return parts
 }
 
-/** Joins media blocks that follow each other, across the blank lines between them, into one run. */
+/**
+ * Joins media blocks that follow each other, across the blank lines between
+ * them, into one run.
+ */
 function joinMediaRuns(blocks: Token[]): void {
   for (let index = 0; index < blocks.length; index += 1) {
     const first = blocks[index]
@@ -551,7 +598,10 @@ agentMarked.use({
   }],
 })
 
-/** The text of each inline code span of an agent's message, in order, at any depth. */
+/**
+ * The text of each inline code span of an agent's message, in order, at any
+ * depth.
+ */
 export function messageCodeSpans(src: string): string[] {
   const spans: string[] = []
   agentMarked.walkTokens(agentMarked.lexer(src), (token) => {
@@ -595,7 +645,8 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
     const name = token.text || 'image'
     if (image && 'url' in image)
       media.push({ kind: 'image', src: image.url, name })
-    // A Host image is its file, which the viewer shows at the version the page keeps.
+    // A Host image is its file, which the viewer shows at the version the page
+    // keeps.
     else if (image && files?.contents)
       media.push({ kind: 'image', file: { path: image.path, contents: files.contents }, name })
   })
@@ -621,18 +672,22 @@ const MATH_OPENER = /^\${1,2}\n/
 
 /**
  * Where the blocks of `src`, the text of a streaming reply, end that no text
- * arriving after it can change, as offsets into it in order. The blocks are the
- * top-level blocks the message's own reader finds, so a blank line inside a
- * fence, a list item or an indented code block never ends one, and a fence
- * still open runs to the end. They are read from the lines that have ended,
- * since the rest of a line can change what the lines before it are: `1. a`, a
- * blank line and `2` are a list and a paragraph until `. b` makes them one
- * list, and `x | y` above `- | -` reads as a table's head until the line goes
- * on as text. Every block before the last is settled, except:
+ * arriving after it can change, as offsets into it in order.
+ *
+ * The blocks are the top-level blocks the message's own reader finds, so a
+ * blank line inside a fence, a list item or an indented code block never ends
+ * one, and a fence still open runs to the end. They are read from the lines
+ * that have ended, since the rest of a line can change what the lines before it
+ * are: `1. a`, a blank line and `2` are a list and a paragraph until `. b`
+ * makes them one list, and `x | y` above `- | -` reads as a table's head until
+ * the line goes on as text.
+ *
+ * Every block before the last is settled, except:
+ *
  * - a block that opens display math before its closing line (`MATH_OPENER`),
- *   and every block after it;
- * - a raw HTML block, and every block after it: only the whole text nests
- *   what follows `<details>` inside it.
+ *   and every block after it
+ * - a raw HTML block, and every block after it: only the whole text nests what
+ *   follows `<details>` inside it
  */
 export function messageBlockEnds(src: string): number[] {
   const blocks: { start: number; live: boolean }[] = []

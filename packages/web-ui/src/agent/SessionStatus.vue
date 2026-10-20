@@ -8,14 +8,19 @@ import { sessionStatusCopy, type SessionStatusKind } from './session-status'
 
 /**
  * The session pane's stand-in for the transcript: loading, failed, empty,
- * missing, not available offline, or no conversation open. It is the shared `RegionStatus` pane over
- * the session copy table, filling the pane it replaces. Only the kinds with
- * nothing under them act: a failure retries, a missing or absent conversation
- * offers to start one. An empty conversation leaves that to its composer.
+ * missing, not available offline, or no conversation open.
+ *
+ * It is the shared `RegionStatus` pane over the session copy table, filling the
+ * pane it replaces. Only the kinds with nothing under them act. A failure
+ * retries. A missing or absent conversation offers to start one. An empty
+ * conversation leaves that to its composer.
  */
 const props = defineProps<{
   kind: SessionStatusKind
-  /** A failed restore names the reason under the label, with the request it came from. */
+  /**
+   * A failed restore names the reason under the label, with the request it came
+   * from.
+   */
   detail?: ShownError | null
 }>()
 

@@ -20,37 +20,64 @@ import { statusTone } from './conversation-status'
 import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from './subagents'
 
 /**
- * The thin bar along the Agents window's bottom edge that says what the
- * shown child is doing and runs on,
- * in the secondary text color under its own top divider, made of segments as
- * an editor's status bar is: the state and time, the folder it works in,
- * *Forked from agent N*, the profile, the model with its effort, and the
- * context indicator. A segment that acts when pressed, the folder, the
- * forked-from link and the context indicator, shows a hover background over
- * its whole extent; the others only explain.
- * The segments run close to the window's ends (`.status-bar`): the bar's
- * inset is the same on every side, and the first and last text stands as far
- * from the window's side as the window's corner is round, never at the
- * transcript's wide indent; on a phone the bar is a row's height, 44px, and
- * its text 15px, as a tab's. Where
- * the room runs out, *Forked from* gives way first, then the model's name,
- * the profile's tag and the folder's name, which leaves its icon and its tip,
- * by the bar's own width, so a phone's bar keeps the effort whole beside the
- * context indicator; the state and the time always stay. An ended
- * child's session is closed, so its bar has no context indicator.
+ * The thin bar along the Agents window's bottom edge that says what the shown
+ * child is doing and runs on.
+ *
+ * The bar is drawn in the secondary text color under its own top divider. Like
+ * an editor's status bar, it is made of segments:
+ *
+ * - the state and time
+ * - the folder the child works in
+ * - *Forked from agent N*
+ * - the profile
+ * - the model with its effort
+ * - the context indicator
+ *
+ * A segment that acts when pressed shows a hover background over its whole
+ * extent. The folder, the forked-from link and the context indicator act when
+ * pressed. The other segments only explain.
+ *
+ * The segments run close to the window's ends (`.status-bar`):
+ *
+ * - The bar's inset is the same on every side.
+ * - The first and last text stand as far from the window's side as the window's
+ *   corner is round, never at the transcript's wide indent.
+ * - On a phone, the bar is a row's height, 44px, and its text 15px, as a tab's.
+ *
+ * Where the room runs out, segments give way by the bar's own width, in this
+ * order:
+ *
+ * 1. *Forked from*
+ * 2. the model's name
+ * 3. the profile's tag
+ * 4. the folder's name, which leaves its icon and its tip
+ *
+ * A phone's bar thus keeps the effort whole beside the context indicator. The
+ * state and the time always stay.
+ *
+ * An ended child's session is closed, so its bar has no context indicator.
  */
 const props = defineProps<{
   run: AgentRun
   /** The child's context estimate; null until its session says. */
   usage: ContextUsage | null
   compacting: boolean
-  /** Why Compact cannot run now apart from the usage, such as the child's running turn. */
+  /**
+   * Why Compact cannot run now apart from the usage, such as the child's
+   * running turn.
+   */
   unavailableReason: string | null
-  /** The child's unfinished turn failed for its size, so Compact runs at any share. */
+  /**
+   * The child's unfinished turn failed for its size, so Compact runs at any
+   * share.
+   */
   sizeRefused?: boolean
   /** What the child's newest instructions block holds. */
   instructions: readonly InstructionEntry[]
-  /** The usage limits of the account the child runs on; none for a model on an API key. */
+  /**
+   * The usage limits of the account the child runs on; none for a model on an
+   * API key.
+   */
   limits: UsageLimits | null
 }>()
 
@@ -69,7 +96,8 @@ const elapsedMs = useElapsedTime(
   () => (props.run.endedAt ? Date.parse(props.run.endedAt) : null),
 )
 const time = computed(() => formatSpan(elapsedMs.value ?? 0))
-// The dot of the agent's tab, drawn in the flow; a Stop, like a child that ran nothing, has none.
+// The dot of the agent's tab, drawn in the flow; a Stop, like a child that ran
+// nothing, has none.
 const tone = computed(() => statusTone(subagentStatus(props.run.phase)))
 const effort = computed(() => runEffortWords(props.run.model))
 const agents = useMessageAgents()
@@ -77,14 +105,18 @@ function openForked(): void {
   if (props.run.forkedFrom !== null)
     agents()?.open(props.run.forkedFrom)
 }
-// The folder opens the File view on the child's directory where a plugin opens files.
+// The folder opens the File view on the child's directory where a plugin opens
+// files.
 const files = useMessageFiles()
 const openFolder = computed(() => {
   const open = files()?.open
   return open ? () => open({ path: '', line: null, root: props.run.cwd }) : null
 })
 const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.find(props.run.forkedFrom) ?? null))
-/** What *Forked from agent N* says around the agent's name, as the language words it. */
+/**
+ * What *Forked from agent N* says around the agent's name, as the language
+ * words it.
+ */
 const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
 </script>
 
@@ -97,7 +129,9 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         <span class="text-fg-faint" aria-hidden="true">·</span>
         <span class="tabular-nums">{{ time }}</span>
       </StatusBarSegment>
-      <!-- Where it works: the directory's own name, its whole path in the tip. -->
+      <!--
+        Where it works: the directory's own name, its whole path in the tip.
+      -->
       <Tooltip tag="span" class="flex min-w-0" wide>
         <StatusBarSegment :acting="openFolder !== null" class="min-w-0" @click="openFolder?.()">
           <Folder :size="icons.chip" class="shrink-0" aria-hidden="true" />
@@ -107,7 +141,10 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
           <div>{{ run.cwd }}</div>
         </template>
       </Tooltip>
-      <!-- A fork of an agent the conversation does not have names it and acts on nothing. -->
+      <!--
+        A fork of an agent the conversation does not have names it and acts on
+        nothing.
+      -->
       <template v-if="run.forkedFrom !== null">
         <StatusBarSegment v-if="forked" acting class="hidden @min-[40rem]:flex" @click="openForked">
           <span v-if="forkedSentence[0].trim()">{{ forkedSentence[0].trim() }}</span>
@@ -124,7 +161,10 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
       </StatusBarSegment>
       <Tooltip tag="span" class="flex min-w-0" wide>
         <StatusBarSegment class="min-w-0">
-          <!-- One run of text, so that where even the effort has no room it ends in an ellipsis rather than over the indicator. -->
+          <!--
+            One run of text, so that where even the effort has no room it ends
+            in an ellipsis rather than over the indicator.
+          -->
           <span class="truncate">
             <span class="hidden @min-[28rem]:inline">{{ run.model.model }}</span>
             <template v-if="effort">

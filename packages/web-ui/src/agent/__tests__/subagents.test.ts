@@ -202,7 +202,8 @@ test('the Agents panel opens on the oldest running child, or empty when none run
   expect([panels.agentsOpen.value, panels.activeSubagentId.value]).toEqual([true, 'run-old'])
   panels.toggleAgents()
   expect(panels.agentsOpen.value).toBe(false)
-  // Only finished children: it opens on none of them, never one the user did not pick.
+  // Only finished children: it opens on none of them, never one the user did
+  // not pick.
   agents = [done]
   panels.toggleAgents()
   expect([panels.agentsOpen.value, panels.activeSubagentId.value]).toEqual([true, null])

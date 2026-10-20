@@ -22,7 +22,10 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-/** A file the message holds as the user's blob, which a copy carries without its bytes. */
+/**
+ * A file the message holds as the user's blob, which a copy carries without its
+ * bytes.
+ */
 const notes = {
   id: 'notes',
   name: 'notes.md',
@@ -44,7 +47,10 @@ async function mount(markdown: string): Promise<HTMLElement> {
   return root.querySelector<HTMLElement>('.sent-message')!
 }
 
-/** Copies what `range` selects, as ⌘C does: the forms the page put on the clipboard, or none when it left the copy to the browser. */
+/**
+ * Copies what `range` selects, as ⌘C does: the forms the page put on the
+ * clipboard, or none when it left the copy to the browser.
+ */
 function copyOf(range: Range): { plain: string; html: string } | null {
   const selection = document.getSelection()!
   selection.removeAllRanges()
@@ -72,7 +78,8 @@ test('a copy of a sent message, whole or in part, is its Markdown with its files
   whole.selectNodeContents(message)
   const all = copyOf(whole)
   expect(all?.plain).toBe('Compare **before** with https://example.com/a, notes in notes.md\n\n```ts\nconst a = 1\n```')
-  // Demi's own form holds the message as the message itself says it, its file with it.
+  // Demi's own form holds the message as the message itself says it, its file
+  // with it.
   const html = new DOMParser().parseFromString(all?.html ?? '', 'text/html')
   const form = html.querySelector(`[${COPIED_MESSAGE_ATTRIBUTE}]`)?.getAttribute(COPIED_MESSAGE_ATTRIBUTE) ?? ''
   expect(readCopiedMessage(form)).toEqual(messageClipboard(parseUserMarkdown(MESSAGE, [notes])).message)
@@ -108,7 +115,8 @@ test('a copy or a drag of a part wholly within bold, inline code or a link keeps
   selection.addRange(within(message.querySelector('strong')!))
   const dataTransfer = new DataTransfer()
   const drag = new DragEvent('dragstart', { bubbles: true, cancelable: true })
-  // happy-dom's DragEvent leaves out the `dataTransfer` its init names; a browser's carries it.
+  // happy-dom's DragEvent leaves out the `dataTransfer` its init names; a
+  // browser's carries it.
   Object.defineProperty(drag, 'dataTransfer', { value: dataTransfer })
   message.querySelector('strong')!.dispatchEvent(drag)
   expect(dataTransfer.getData('text/plain')).toBe('**efor**')

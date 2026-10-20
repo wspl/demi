@@ -93,7 +93,8 @@ test('a file added to an edit is uploaded and joins the content once the backend
     expect(added!.name).toBe('notes.txt')
     expect(f.editor.transfers.transfer(added!.id)).toEqual({ phase: 'uploading', progress: 0.5 })
     expect(f.editor.sendBlockReason.value).toBe('Wait for attachments to finish uploading')
-    // Until the upload is done the file is not part of what the edit would send.
+    // Until the upload is done the file is not part of what the edit would
+    // send.
     expect(f.state.value!.request.content.map((part) => part.type)).toEqual(['text', 'document', 'document'])
     server.calls[0]!.answer.resolve({ id: 'upload-1', mediaType: 'text/plain', sha256: SHA('3'), snippet: 'notes' })
     await Bun.sleep(0)

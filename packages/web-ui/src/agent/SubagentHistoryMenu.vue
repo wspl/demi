@@ -64,7 +64,10 @@ function select(id: string, close: () => void): void {
         :item-height="28"
         @select="select($event, close)"
       >
-        <!-- The child's profile after its description, as a tag; none for no profile. -->
+        <!--
+          The child's profile after its description, as a tag; none for no
+          profile.
+        -->
         <template #item="{ item, query }">
           <span class="flex min-w-0 flex-1 items-center gap-1.5">
             <span class="min-w-0 truncate"><HighlightText :text="item.label" :query="query" /></span>

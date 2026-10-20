@@ -9,31 +9,44 @@ import { computed, toRaw, type ComputedRef } from 'vue'
 import { t } from './locales/text'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 
-/** Where a command is, as its frames and stored views say: running, exited, stopped (`aborted`), or lost. */
+/**
+ * Where a command is, as its frames and stored views say: running, exited,
+ * stopped (`aborted`), or lost.
+ */
 export type TerminalPhase = ShellViewStatus
 
 /**
- * A command as the page shows it: from the live frames of the
- * conversation's tree (`crates/agent-server/src/server/tree/live.rs`), or, for one the page has
- * seen no frame of, from the transcript's stored view.
+ * A command as the page shows it: from the live frames of the conversation's
+ * tree (`crates/agent-server/src/server/tree/live.rs`), or, for one the page
+ * has seen no frame of, from the transcript's stored view. /
  */
 export interface TerminalRecord {
   id: string
-  /** Its tab's title: the `shell` call's title, as its frames or its call's row give it. */
+  /**
+   * Its tab's title: the `shell` call's title, as its frames or its call's row
+   * give it.
+   */
   title: string
-  /** The `shell` call's script, which the terminal opens with; absent when neither its frames nor a call gave it. */
+  /**
+   * The `shell` call's script, which the terminal opens with; absent when
+   * neither its frames nor a call gave it.
+   */
   script?: string
   phase: TerminalPhase
   startedAt: string
   endedAt?: string
-  /** Its output as the page shows it, at most `LIVE_OUTPUT_CHARS` characters. */
+  /**
+   * Its output as the page shows it, at most `LIVE_OUTPUT_CHARS` characters.
+   */
   output: string
   /**
    * The live view's count of characters at the end of `output`; absent for
    * output from the transcript.
    */
   chars?: number
-  /** Its exit code, once it exited and a live frame or a stored view said so. */
+  /**
+   * Its exit code, once it exited and a live frame or a stored view said so.
+   */
   exitCode?: number
   /** Why its runner lost it, once a live frame said so. */
   lostReason?: string
@@ -54,7 +67,10 @@ export interface TerminalRecord {
   subagentId?: string
 }
 
-/** The most of a command's output a page keeps: as many characters as a call's stored view holds. */
+/**
+ * The most of a command's output a page keeps: as many characters as a call's
+ * stored view holds.
+ */
 export const LIVE_OUTPUT_CHARS = 32_768
 
 /**
@@ -77,7 +93,10 @@ export function liveOutputDelta(
   return { anew: false, text: characters.slice(characters.length - added).join('') }
 }
 
-/** What a terminal shows so far: the output written, and the live view's count at its end. */
+/**
+ * What a terminal shows so far: the output written, and the live view's count
+ * at its end.
+ */
 export interface TerminalShown {
   output: string
   chars: number | undefined
@@ -119,7 +138,10 @@ export interface PromptColors {
   script: string
 }
 
-/** A highlighted run of a script, by where it starts and ends in it, as the escape sequences that draw it (`terminalCodeRuns`). */
+/**
+ * A highlighted run of a script, by where it starts and ends in it, as the
+ * escape sequences that draw it (`terminalCodeRuns`).
+ */
 export interface PromptRun {
   from: number
   to: number
@@ -184,16 +206,20 @@ export function followLiveOutput(
     : next
 }
 
-/** A command's live view, as a `shell_output` frame carries it (`crates/agent-server/src/server/tree/live.rs`). */
+/**
+ * A command's live view, as a `shell_output` frame carries it
+ * (`crates/agent-server/src/server/tree/live.rs`).
+ */
 export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>['status']
 
 /**
- * The command a page shows after its frame `status` at `now`, given the
- * record it showed before, if any: titled by the title and script of the
- * `shell` call that started it, which the frame carries from the command's
- * record. Its start is the server's, how long it has run as the frame says, so a page that
- * attached late, after a reload or in a new tab, times it from when it truly started; its
- * end is that start and how long its last frame says it ran.
+ * The command a page shows after its frame `status` at `now`, given the record
+ * it showed before, if any. It is titled by the title and script of the `shell`
+ * call that started it, which the frame carries from the command's record.
+ *
+ * Its start is the server's, how long it has run as the frame says, so a page
+ * that attached late, after a reload or in a new tab, times it from when it
+ * truly started. Its end is that start and how long its last frame says it ran.
  */
 export function followFrame(
   current: TerminalRecord | undefined,
@@ -253,7 +279,10 @@ export function useCallTerminals(
   return (subagentId, toolUseId) => byCall.value.get(subagentId)?.get(toolUseId)
 }
 
-/** What the dock reads: the commands, and the transcripts of the root and its subagents that run them. */
+/**
+ * What the dock reads: the commands, and the transcripts of the root and its
+ * subagents that run them.
+ */
 export interface DockSource {
   terminals: readonly TerminalRecord[]
   history: HeldTranscript
@@ -333,12 +362,14 @@ export function shellRowRunning(
 }
 
 /**
- * How a `shell` row's command ended: that a stop waits for its end, while
- * its runner has not said so, or that its start waits for its Host; none
- * while its call runs otherwise; after, the end the command's record has,
- * from its live frames or a stored view, and otherwise the view the call
- * stored, unless that view saw the command still running, which says
- * nothing of its end.
+ * How a `shell` row's command ended:
+ *
+ * - that a stop waits for its end, while its runner has not said so, or that
+ *   its start waits for its Host
+ * - none while its call runs otherwise
+ * - after the call, the end the command's record has, from its live frames or a
+ *   stored view, and otherwise the view the call stored, unless that view saw
+ *   the command still running, which says nothing of its end
  */
 export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undefined): CommandEnd | null {
   if (command?.stopping && isTerminalRunning(command.phase)) {
@@ -420,7 +451,9 @@ export function firstRunningTerminalId(
   return runningTerminals(terminals)[0]?.id ?? null
 }
 
-/** Running inspect lists every running job; an exited inspect is that job only. */
+/**
+ * Running inspect lists every running job; an exited inspect is that job only.
+ */
 export function terminalPanelTabs(
   terminals: readonly TerminalRecord[],
   activeId: string | null,

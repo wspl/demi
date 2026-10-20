@@ -1,4 +1,7 @@
-/** How far the dock veil extends into the transcript above the dock's top, whichever part of the dock stands highest. */
+/**
+ * How far the dock veil extends into the transcript above the dock's top,
+ * whichever part of the dock stands highest.
+ */
 export const COMPOSER_VEIL_FADE_PX = 32
 
 /**

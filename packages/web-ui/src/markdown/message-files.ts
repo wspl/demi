@@ -50,13 +50,16 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
 }
 
 /**
- * A click on a message's file link opens the file, at its line when it
- * names one; one on an image the message shows, or on an attachment's image
- * or video or its link, shows it large in `viewer`, where a video plays, and
- * `among` gives the media of the transcript it stands in; an image inside a
- * link follows the link; one on an agent's link opens the agent in the
- * Agents window; one on a commit's link opens the commit in the Change
- * view; any other click is the page's.
+ * A click on a message's file link opens the file, at its line when it names
+ * one. Other clicks:
+ *
+ * - A click on an image the message shows, or on an attachment's image or video
+ *   or its link, shows it large in `viewer`, where a video plays. `among` gives
+ *   the media of the transcript it stands in.
+ * - An image inside a link follows the link.
+ * - A click on an agent's link opens the agent in the Agents window.
+ * - A click on a commit's link opens the commit in the Change view.
+ * - Any other click is the page's.
  */
 export function openMessageLink(
   event: MouseEvent,
@@ -89,7 +92,8 @@ export function openMessageLink(
     const { kind, src, size, caption } = messagePicture(target)
     const path = target.getAttribute(HOST_FILE_ATTRIBUTE)
     const shown = { kind, name: caption || 'image', size, row: transcriptRowOf(target) }
-    // A Host image shows its file, at the version the page keeps, as the message does.
+    // A Host image shows its file, at the version the page keeps, as the
+    // message does.
     viewer.show(path !== null && files?.contents ? { ...shown, file: { path, contents: files.contents } } : { ...shown, src }, among)
     return
   }
@@ -107,14 +111,20 @@ export function openMessageLink(
   files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null })
 }
 
-/** The commit a rendered commit link names, with the folder of its repository when the link names one. */
+/**
+ * The commit a rendered commit link names, with the folder of its repository
+ * when the link names one.
+ */
 function commitTarget(link: Element): MessageCommitTarget {
   const commit = link.getAttribute('data-commit-link') ?? ''
   const root = link.getAttribute('data-commit-root')
   return root === null ? { commit } : { commit, root }
 }
 
-/** A commit's id written whole, SHA-1's or SHA-256's, which needs no reading to be the full hash. */
+/**
+ * A commit's id written whole, SHA-1's or SHA-256's, which needs no reading to
+ * be the full hash.
+ */
 const FULL_HASH = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
 
 /**
@@ -157,7 +167,10 @@ export function messageLinkMenu(
   return null
 }
 
-/** Return or Space on an agent's link, inline text that acts as a button, clicks it as on a button. */
+/**
+ * Return or Space on an agent's link, inline text that acts as a button, clicks
+ * it as on a button.
+ */
 export function pressMessageLink(event: KeyboardEvent): void {
   if (event.key !== 'Enter' && event.key !== ' ')
     return

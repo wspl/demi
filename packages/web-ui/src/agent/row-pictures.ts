@@ -3,10 +3,11 @@ import { declaredSize, ROW_PICTURE, thumbnailBox, type PixelSize } from '../file
 import type { ToolPicture } from './tool-media'
 
 /**
- * How a row's pictures share its one line with its face: they stand at the row's end, right-aligned and at least 8
- * pixels after the face's last part, the chevron or a tag, 4 pixels apart, and never wrap. The face gives way
- * first: its title truncates, but only down to half the row; then the pictures that no longer fit are counted after
- * the last one shown, `+5`.
+ * How a row's pictures share its one line with its face: they stand at the
+ * row's end, right-aligned and at least 8 pixels after the face's last part,
+ * the chevron or a tag, 4 pixels apart, and never wrap. The face gives way
+ * first: its title truncates, but only down to half the row; then the pictures
+ * that no longer fit are counted after the last one shown, `+5`. /
  */
 
 /**
@@ -17,9 +18,15 @@ export function rowPictureBox(picture: ToolPicture): PixelSize {
   return thumbnailBox(declaredSize(picture.source), picture.kind, ROW_PICTURE)
 }
 
-/** The least space between the face's last part and the first picture, the face row's gap. */
+/**
+ * The least space between the face's last part and the first picture, the face
+ * row's gap.
+ */
 export const ROW_PICTURES_LEAD = 8
-/** The space between two pictures, and between the last one shown and the count of the rest. */
+/**
+ * The space between two pictures, and between the last one shown and the count
+ * of the rest.
+ */
 export const ROW_PICTURES_GAP = 4
 
 /**

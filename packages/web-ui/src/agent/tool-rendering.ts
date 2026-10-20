@@ -12,7 +12,10 @@ export function toolRenderKind(toolName: string): ToolRenderKind {
   return toolName === 'shell' ? 'shell' : 'generic'
 }
 
-/** A `shell` call's title: its description, or its script for a call that has none. */
+/**
+ * A `shell` call's title: its description, or its script for a call that has
+ * none.
+ */
 export function shellTitle(input: Record<string, unknown>): string {
   return nonEmptyString(input.description) ?? nonEmptyString(input.script) ?? t('transcript.shellFallback')
 }

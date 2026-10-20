@@ -14,12 +14,21 @@ import { escapeHtml } from './html'
 // highlight style's classes. A chunk of its own, which `highlight.ts` loads as
 // the first code shows.
 
-/** The highlighter, which tells `languageArrived` each time a language it was asked for has loaded. */
+/**
+ * The highlighter, which tells `languageArrived` each time a language it was
+ * asked for has loaded.
+ */
 export function createHighlighter(languageArrived: () => void) {
-  /** The languages asked for, each loaded once; one that fails to load stays plain text. */
+  /**
+   * The languages asked for, each loaded once; one that fails to load stays
+   * plain text.
+   */
   const requested = new Set<LanguageDescription>()
 
-  /** The loaded language a fence names; null until it has loaded, and for one the highlighter does not know. */
+  /**
+   * The loaded language a fence names; null until it has loaded, and for one
+   * the highlighter does not know.
+   */
   function loadedLanguage(fence: string): Language | null {
     const description = fenceLanguage(fence)
     if (!description)
@@ -73,7 +82,10 @@ export function createHighlighter(languageArrived: () => void) {
   }
 
   return {
-    /** Code's text as HTML in the editor's classes: escaped plain text while its language loads, and for one the highlighter does not know. */
+    /**
+     * Code's text as HTML in the editor's classes: escaped plain text while its
+     * language loads, and for one the highlighter does not know.
+     */
     html(code: string, fence: string): string {
       const language = loadedLanguage(fence)
       if (!language)
@@ -87,7 +99,10 @@ export function createHighlighter(languageArrived: () => void) {
       return html
     },
 
-    /** Code's highlighted runs; none while its language loads, and for one the highlighter does not know. */
+    /**
+     * Code's highlighted runs; none while its language loads, and for one the
+     * highlighter does not know.
+     */
     runs(code: string, fence: string): CodeRun[] {
       const language = loadedLanguage(fence)
       if (!language)
@@ -99,7 +114,10 @@ export function createHighlighter(languageArrived: () => void) {
       return runs
     },
 
-    /** A language's full name as the highlighter knows it (`ts` is TypeScript); one it does not know is the fence as written. */
+    /**
+     * A language's full name as the highlighter knows it (`ts` is TypeScript);
+     * one it does not know is the fence as written.
+     */
     label(fence: string): string {
       return fenceLanguage(fence)?.name ?? fence
     },

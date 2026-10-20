@@ -15,7 +15,8 @@ export function useShellRow(block: () => ToolCallBlock) {
   const liveCalls = useLiveCalls()
   /** The command the call started, as its live frames show it. */
   const started = computed(() => liveCalls(block().toolUseId))
-  // How the command ended, also when it ran on after the call returned; none while it runs.
+  // How the command ended, also when it ran on after the call returned; none
+  // while it runs.
   const end = computed(() => shellRowEnd(block(), started.value))
   const endMark = computed(() => commandEndMark(end.value))
   // How long the command has run, from the start the server reported, or ran.
@@ -30,7 +31,10 @@ export function useShellRow(block: () => ToolCallBlock) {
     endMark,
     /** How long the command has run or ran; none while unknown. */
     elapsedMs: computed(() => (time.value?.kind === 'ran' ? time.value.ms : runningFor.value)),
-    /** The row shimmers while its call runs and, after, while its command still does. */
+    /**
+     * The row shimmers while its call runs and, after, while its command still
+     * does.
+     */
     running: computed(() => shellRowRunning(block().status, started.value)),
   }
 }

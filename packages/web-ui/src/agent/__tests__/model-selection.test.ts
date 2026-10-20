@@ -47,7 +47,10 @@ test('new conversations keep independent complete choices including unavailable 
   expect(initialModelSettings()).toEqual({ providerId: '', modelId: '', thinkingEffort: null, serviceTierId: null })
 })
 
-/** A model that levels its thinking with `efforts`, and has `fast` as its Fast tier when given. */
+/**
+ * A model that levels its thinking with `efforts`, and has `fast` as its Fast
+ * tier when given.
+ */
 function leveled(id: string, efforts: string[], options: { canDisable?: boolean; fast?: string } = {}): ModelInfo {
   return {
     ...model(id),

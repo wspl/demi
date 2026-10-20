@@ -1,9 +1,9 @@
 import { t } from './locales/text'
 
 /**
- * The composer's Workflow menu: what the conversation's choice shows as, and the
- * rows the menu offers, derived from the choice and the project's workflows as
- * the page keeps them.
+ * The composer's Workflow menu: what the conversation's choice shows as, and
+ * the rows the menu offers, derived from the choice and the project's workflows
+ * as the page keeps them. /
  */
 
 /** The conversation's choice, as its record holds it. */
@@ -20,17 +20,24 @@ export interface WorkflowOption {
   name: string | null
   /** The file on the Host. */
   path: string
-  /** Why it cannot be used, a link or a file that does not read; null while it can. */
+  /**
+   * Why it cannot be used, a link or a file that does not read; null while it
+   * can.
+   */
   unavailable: string | null
   /** The ids of the profiles it declares, their `--profile` values. */
   profiles: readonly string[]
 }
 
 /**
- * The project's workflows as the page holds them: none to read, for a
- * conversation with no directory yet, which offers Default and No
- * Subagents; being read; read; their directory not usable, as a link, with
- * why; or not readable now.
+ * The project's workflows as the page holds them:
+ *
+ * - none to read, for a conversation with no directory yet, which offers
+ *   Default and No Subagents
+ * - being read
+ * - read
+ * - their directory not usable, as a link, with why
+ * - not readable now
  */
 export type WorkflowList =
   | { state: 'nowhere' }
@@ -61,17 +68,23 @@ function sameChoice(a: WorkflowChoice, b: WorkflowChoice): boolean {
   return a.type === b.type && (a.type !== 'workflow' || (b.type === 'workflow' && a.id === b.id))
 }
 
-/** The user's subagent settings as Global Workflow reads them: the Subagents switch and each profile's. */
+/**
+ * The user's subagent settings as Global Workflow reads them: the Subagents
+ * switch and each profile's.
+ */
 export interface GlobalProfiles {
   enabled: boolean
   profiles: readonly { name: string, enabled: boolean }[]
 }
 
 /**
- * The profiles `choice` offers now, by their `--profile` values: a project
- * workflow's, from `list` while it is read; under Global Workflow the user's
- * enabled profiles while the Subagents switch is on, none while it is off;
- * and none under No Subagents (`packages/web-ui/src/agent/ContextUsageIndicator.vue`).
+ * The profiles `choice` offers now, by their `--profile` values:
+ *
+ * - for a project workflow, its profiles from `list` while it is read
+ * - under Global Workflow, the user's enabled profiles while the Subagents
+ *   switch is on, none while it is off
+ * - none under No Subagents
+ *   (`packages/web-ui/src/agent/ContextUsageIndicator.vue`)
  */
 export function workflowProfiles(choice: WorkflowChoice, list: WorkflowList, global: GlobalProfiles): readonly string[] {
   if (choice.type === 'default')
@@ -81,7 +94,9 @@ export function workflowProfiles(choice: WorkflowChoice, list: WorkflowList, glo
   return list.workflows.find((workflow) => workflow.id === choice.id)?.profiles ?? []
 }
 
-/** What the trigger shows for `choice`, its name from `list` while it is read. */
+/**
+ * What the trigger shows for `choice`, its name from `list` while it is read.
+ */
 export function workflowShown(choice: WorkflowChoice, list: WorkflowList): WorkflowShown {
   if (choice.type === 'default')
     return { label: t('workflows.default'), unavailable: null }
@@ -98,8 +113,9 @@ export function workflowShown(choice: WorkflowChoice, list: WorkflowList): Workf
 }
 
 /**
- * The rows of the menu: Global Workflow and No Subagents, then each workflow by its
- * name, one that does not read with why, and the chosen one when it is gone.
+ * The rows of the menu: Global Workflow and No Subagents, then each workflow by
+ * its name, one that does not read with why, and the chosen one when it is
+ * gone. /
  */
 export function workflowRows(choice: WorkflowChoice, list: WorkflowList): WorkflowRow[] {
   const row = (key: string, label: string, made: WorkflowChoice | null, unavailable: string | null = null): WorkflowRow => ({

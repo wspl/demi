@@ -20,7 +20,10 @@ export interface PanelTab {
  * order, which the backend keeps.
  */
 export interface PanelState {
-  /** The tabs' and pinned kinds' ids the page selected, the newest last (`selectTab`). */
+  /**
+   * The tabs' and pinned kinds' ids the page selected, the newest last
+   * (`selectTab`).
+   */
   history: readonly string[]
   tabs: PanelTab[]
 }
@@ -31,7 +34,6 @@ export interface PanelState {
  */
 export type PinnedTabs = Readonly<Record<string, unknown>>
 
-/** The data the pinned tab of `kind` shows. */
 export function pinnedData(pinned: PinnedTabs, kind: Pick<PanelTabKind, 'kind' | 'pinned'>): unknown {
   return Object.hasOwn(pinned, kind.kind) ? pinned[kind.kind] : kind.pinned?.data()
 }
@@ -46,7 +48,10 @@ export function shownSelection(state: PanelState, kinds: readonly Pick<PanelTabK
   return activeTab([...pinned, ...state.tabs.map((tab) => tab.id)], state.history)
 }
 
-/** A conversation's work panel as a page shows it: its tabs and selection, and its pinned tabs' data. */
+/**
+ * A conversation's work panel as a page shows it: its tabs and selection, and
+ * its pinned tabs' data.
+ */
 export interface ShownPanel {
   panel: PanelState
   pinned: PinnedTabs
@@ -64,15 +69,18 @@ export interface IntentOutcome {
 }
 
 /**
- * What opening `request` does: the first kind
- * of a page the user has on that opens it shows the data it returns, in its
- * pinned tab or in a tab it creates. When the panel's selected tab is that
- * kind's and the kind, which alone knows what its data means, would show
- * the same data for the request, the tab stays as it is, its data the same
- * value, so a second click on a pill or a link leaves the panel showing it. A
- * kind that keys its tabs selects the tab whose data has the request's key,
- * where the strip holds one, as a second click on an attachment's card shows
- * its tab again. Null when no kind opens the intent.
+ * What opening `request` does: the first kind of a page the user has on that
+ * opens it shows the data it returns, in its pinned tab or in a tab it creates.
+ *
+ * - When the panel's selected tab is that kind's and the kind, which alone
+ *   knows what its data means, would show the same data for the request, the
+ *   tab stays as it is, its data the same value, so a second click on a pill or
+ *   a link leaves the panel showing it.
+ * - A kind that keys its tabs selects the tab whose data has the request's key,
+ *   where the strip holds one, as a second click on an attachment's card shows
+ *   its tab again.
+ *
+ * Null when no kind opens the intent.
  */
 export function openIntent(
   shown: ShownPanel,
@@ -110,7 +118,10 @@ export function openIntent(
   return { selection: kind.kind, pinned: { ...pinned, [kind.kind]: data }, created: null }
 }
 
-/** The tab of `kind` among `tabs` whose data has the key of `data`, when the kind keys its tabs. */
+/**
+ * The tab of `kind` among `tabs` whose data has the key of `data`, when the
+ * kind keys its tabs.
+ */
 function keyedTab(kind: PanelKind<unknown, PanelSession | undefined>, tabs: readonly PanelTab[], data: unknown): PanelTab | null {
   const { key } = kind
   if (!key) {
@@ -126,7 +137,9 @@ function keyedTab(kind: PanelKind<unknown, PanelSession | undefined>, tabs: read
   }) ?? null
 }
 
-/** Whether a kind's data `next` changes nothing of `current`, field by field. */
+/**
+ * Whether a kind's data `next` changes nothing of `current`, field by field.
+ */
 function sameData(current: unknown, next: unknown): boolean {
   return next !== null && typeof next === 'object' && Object.keys(dataChanges(current, { ...next })).length === 0
 }
@@ -153,7 +166,10 @@ export function selectedTab(state: PanelState, kinds: readonly PanelTabKind[]): 
   return state.tabs.find((tab) => tab.id === shown) ?? null
 }
 
-/** The state after `ids` close: they leave the tabs and the history, so the panel shows what was selected before. */
+/**
+ * The state after `ids` close: they leave the tabs and the history, so the
+ * panel shows what was selected before.
+ */
 export function removeTabs(state: PanelState, ids: readonly string[]): PanelState {
   return closeTabs(state.tabs, state.history, ids)
 }
@@ -166,10 +182,10 @@ export function removeTabs(state: PanelState, ids: readonly string[]): PanelStat
 export type AppliedShows = Readonly<Record<string, number>>
 
 /**
- * The tabs whose kind counts more showings than the page applied, in the panel's order, and the
- * record once they are applied: the panel opens and selects each, so the
- * last of them shows. Tabs the panel no longer has leave the record. Null
- * when no tab asks; the record then stays as it is.
+ * The tabs whose kind counts more showings than the page applied, in the
+ * panel's order, and the record once they are applied: the panel opens and
+ * selects each, so the last of them shows. Tabs the panel no longer has leave
+ * the record. Null when no tab asks; the record then stays as it is. /
  */
 export function pendingShows(
   tabs: readonly PanelTab[],

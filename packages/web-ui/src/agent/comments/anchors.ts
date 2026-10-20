@@ -2,6 +2,7 @@
  * Where a comment stands in a reply's text block: character offsets into the
  * block's rendered text, so a mark survives the reply being drawn again, as a
  * theme change re-coloring its code does, where a kept DOM Range would not.
+ *
  * Text inside a control set into the reply, such as a code block's Copy, is not
  * the reply's and is skipped.
  */
@@ -45,7 +46,8 @@ function offsetOf(root: HTMLElement, container: Node, offset: number): number {
   probe.selectNodeContents(root)
   probe.setEnd(container, offset)
   let count = 0
-  // Text nodes come in document order: those before the boundary count whole, the one it falls in up to it.
+  // Text nodes come in document order: those before the boundary count whole,
+  // the one it falls in up to it.
   for (const node of textNodes(root)) {
     if (node === container)
       return count + offset
@@ -56,7 +58,10 @@ function offsetOf(root: HTMLElement, container: Node, offset: number): number {
   return count
 }
 
-/** The anchor of `range` in `root`; null when it leaves the reply or holds no text. */
+/**
+ * The anchor of `range` in `root`; null when it leaves the reply or holds no
+ * text.
+ */
 export function anchorOf(root: HTMLElement, range: Range): TextAnchor | null {
   if (!root.contains(range.startContainer) || !root.contains(range.endContainer))
     return null
@@ -65,7 +70,10 @@ export function anchorOf(root: HTMLElement, range: Range): TextAnchor | null {
   return end > start ? { start, end } : null
 }
 
-/** The live range of `anchor` in `root` as it renders now; null when the text is shorter. */
+/**
+ * The live range of `anchor` in `root` as it renders now; null when the text is
+ * shorter.
+ */
 export function rangeOf(root: HTMLElement, anchor: TextAnchor): Range | null {
   const range = document.createRange()
   let count = 0
@@ -95,19 +103,23 @@ export function rangeHas(range: Range | StaticRangeInit, x: number, y: number): 
   return false
 }
 
-/** The anchor of the first place `text` stands in `root`'s own text, as a gallery specimen names what it marks. */
+/**
+ * The anchor of the first place `text` stands in `root`'s own text, as a
+ * gallery specimen names what it marks.
+ */
 export function anchorOfText(root: HTMLElement, text: string): TextAnchor | null {
   const start = textNodes(root).map((node) => node.data).join('').indexOf(text)
   return start < 0 ? null : { start, end: start + text.length }
 }
 
 /**
- * `range` as it stands: the same words, still where they were. A list's
- * rows are moved in the page as a whole, as a window opening beside them
- * moves the list's ancestors, and a move collapses every live Range inside
- * what moved, though its words are unchanged; where it stood, its nodes
- * and offsets, still holds them, so the marks are kept so and read
- * through this. Null when the nodes no longer hold those offsets.
+ * `range` as it stands: the same words, still where they were.
+ *
+ * A list's rows are moved in the page as a whole, as a window opening beside
+ * them moves the list's ancestors. A move collapses every live Range inside
+ * what moved, though its words are unchanged. Where the range stood, its nodes
+ * and offsets, still holds them, so the marks are kept so and read through
+ * this. Null when the nodes no longer hold those offsets.
  */
 export function liveOf(range: Range | StaticRangeInit): Range | null {
   if (range instanceof Range)
@@ -123,7 +135,10 @@ export function liveOf(range: Range | StaticRangeInit): Range | null {
   }
 }
 
-/** Where `range` stands, which a move of its nodes in the page leaves as it is (`liveOf`). */
+/**
+ * Where `range` stands, which a move of its nodes in the page leaves as it is
+ * (`liveOf`).
+ */
 export function staticOf(range: Range): StaticRangeInit {
   const { startContainer, startOffset, endContainer, endOffset } = range
   return { startContainer, startOffset, endContainer, endOffset }
@@ -140,7 +155,10 @@ export function picturesOf(root: HTMLElement): Element[] {
   return [...root.querySelectorAll(PICTURE)].filter((picture) => picture.closest('button, [data-no-anchor], [aria-hidden="true"]') === null)
 }
 
-/** The offset in `root`'s own text where `element` stands: the length of the reply's words before it. */
+/**
+ * The offset in `root`'s own text where `element` stands: the length of the
+ * reply's words before it.
+ */
 function offsetBefore(root: HTMLElement, element: Element): number {
   let count = 0
   for (const node of textNodes(root)) {
@@ -154,7 +172,7 @@ function offsetBefore(root: HTMLElement, element: Element): number {
 /**
  * Where the picture `picture` of `root` stands: its place among the block's
  * pictures, and `at`, the offset in the block's text where it stands, by which
- * its comment takes its place among the block's others in reading order; null
+ * its comment takes its place among the block's others in reading order. Null
  * for a picture the block does not hold.
  */
 export function pictureAnchor(root: HTMLElement, picture: Element): (TextAnchor & { at: number }) | null {

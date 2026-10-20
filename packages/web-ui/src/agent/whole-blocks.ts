@@ -3,9 +3,9 @@ import type { HeldBlock, TextArrival } from '@demicodes/conversation-client'
 import { useTranscript } from './edit-selection'
 
 /**
- * Reads a block whole, for a row whose block the page holds in its light
- * form: the agent's (`node`, null for the conversation's own) and the block's id.
- * The host keeps the block whole once it arrives.
+ * Reads a block whole, for a row whose block the page holds in its light form:
+ * the agent's (`node`, null for the conversation's own) and the block's id. The
+ * host keeps the block whole once it arrives. /
  */
 export type BlockReader = (node: string | null, id: string) => Promise<void>
 
@@ -24,12 +24,17 @@ export function provideBlockReader(reader: () => BlockReader | undefined): void 
   provide(readerKey, reader)
 }
 
-/** Names the block the rows below show, for a row that opens to read it whole. */
+/**
+ * Names the block the rows below show, for a row that opens to read it whole.
+ */
 export function provideBlockScope(block: () => ShownBlock | undefined): void {
   provide(scopeKey, block)
 }
 
-/** When each piece of the text of the row's block reached the page, for its fade; none outside a transcript. */
+/**
+ * When each piece of the text of the row's block reached the page, for its
+ * fade; none outside a transcript.
+ */
 export function useTextArrivals(): () => readonly TextArrival[] | undefined {
   const scope = inject(scopeKey, () => undefined)
   return () => scope()?.arrivals
@@ -51,7 +56,10 @@ export function useWholeBlock(open: () => boolean): { light: Readonly<Ref<boolea
   const reading = ref(0)
   const loading = computed(() => reading.value > 0)
   const light = computed(() => scope()?.light === true && reader() !== undefined)
-  /** The parts of the row's block the page holds light, by id, while the row is open. */
+  /**
+   * The parts of the row's block the page holds light, by id, while the row is
+   * open.
+   */
   const wanted = computed(() => {
     const block = scope()
     if (!open() || !block?.light)
@@ -72,7 +80,8 @@ export function useWholeBlock(open: () => boolean): { light: Readonly<Ref<boolea
     for (const id of ids.filter((each) => !asked.has(each))) {
       asked.add(id)
       reading.value += 1
-      // A read that fails leaves the row open on what it has; opening it again tries again.
+      // A read that fails leaves the row open on what it has; opening it again
+      // tries again.
       read(node, id)
         .catch(() => {})
         .finally(() => {

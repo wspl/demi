@@ -11,22 +11,31 @@ import type { SentenceText } from '../ui/ui-text'
 import { addressUrl } from './address'
 
 /**
- * The address bar both kinds of web page tab share: a `browser` tab of the
- * conversation browser has its own history, a `page` tab keeps a framed page's
- * history to itself. It shows the page's address and follows it, except while
- * the user has the field: then it keeps what the user types, and leaving
- * without Enter, or Escape, shows the page's address again. It reads what the
- * user typed as a browser's address bar does (`addressUrl`). While the page
- * loads, Reload is Stop, in the same place, as in a web browser; Stop is never
- * unavailable while the page loads. It stands right under a tab strip, so the
- * tips of its buttons, and of those its caller adds, open below them, never
- * over the strip.
+ * The address bar that both kinds of web page tab share.
+ *
+ * A `browser` tab of the conversation browser has its own history. A `page` tab
+ * keeps a framed page's history to itself.
+ *
+ * The bar behaves as a web browser's address bar does:
+ *
+ * - It shows the page's address and follows it, except while the user has the
+ *   field. Then it keeps what the user types. Leaving the field without Enter,
+ *   or pressing Escape, shows the page's address again.
+ * - It reads what the user typed as a browser's address bar does
+ *   (`addressUrl`).
+ * - While the page loads, Reload becomes Stop in the same place. Stop is never
+ *   unavailable while the page loads.
+ *
+ * The bar stands right under a tab strip. The tips of its buttons, and of those
+ * its caller adds, therefore open below them, never over the strip.
  */
 const props = withDefaults(
   defineProps<{
-    /** The page's address. */
     address: string
-    /** Why Back is unavailable, when it is, such as a history with no page before this one. */
+    /**
+     * Why Back is unavailable, when it is, such as a history with no page
+     * before this one.
+     */
     backReason?: SentenceText | null
     /** Why Forward is unavailable, when it is. */
     forwardReason?: SentenceText | null
@@ -38,7 +47,10 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  /** Enter on an address, as the whole URL a browser's address bar opens for what the user typed. */
+  /**
+   * Enter on an address, as the whole URL a browser's address bar opens for
+   * what the user typed.
+   */
   submit: [url: string]
   back: []
   forward: []
@@ -49,12 +61,19 @@ const emit = defineEmits<{
 provideTooltipPlacement('bottom')
 
 const field = ref<InstanceType<typeof TextInput> | null>(null)
-/** What the field holds while the user has it; null while it shows the page's address. */
+/**
+ * What the field holds while the user has it; null while it shows the page's
+ * address.
+ */
 const draft = ref<string | null>(null)
-/** The pointer that is giving the field its focus; its release must not drop the selection the focus made. */
+/**
+ * The pointer that is giving the field its focus; its release must not drop the
+ * selection the focus made.
+ */
 let focusing = false
 
-// A click into the address selects it whole, as a web browser's does: the next thing typed replaces it.
+// A click into the address selects it whole, as a web browser's does: the next
+// thing typed replaces it.
 function pointerDown(event: PointerEvent): void {
   focusing = event.target !== document.activeElement
 }
@@ -69,14 +88,15 @@ function pointerUp(event: MouseEvent): void {
   field.value?.select()
 }
 
-// The page's address stands still while the user has the field, selected whole as a web browser's is.
+// The page's address stands still while the user has the field, selected whole
+// as a web browser's is.
 function focus(): void {
   draft.value = props.address
   field.value?.select()
 }
 
-// An address is submitted and the field lets go, so keys reach the page again. An empty field opens
-// nothing.
+// An address is submitted and the field lets go, so keys reach the page again.
+// An empty field opens nothing.
 function submit(): void {
   const url = addressUrl(draft.value ?? props.address)
   if (url === null) {
@@ -86,10 +106,12 @@ function submit(): void {
   field.value?.el?.blur()
 }
 
-// Escape gives up what the user typed: the page's address shows again, selected, as in a browser.
+// Escape gives up what the user typed: the page's address shows again,
+// selected, as in a browser.
 async function revert(): Promise<void> {
   draft.value = props.address
-  // Selected once the field shows the address: writing its value puts the caret at the end.
+  // Selected once the field shows the address: writing its value puts the caret
+  // at the end.
   await nextTick()
   field.value?.select()
 }
@@ -122,8 +144,11 @@ defineExpose({
         :disabled-reason="forwardReason ?? undefined"
         @click="emit('forward')"
       />
-      <!-- Reload and Stop share the place and the size, and a click on either shows the other at once:
-           Reload turns into Stop rather than turning its icon. -->
+      <!--
+        Reload and Stop share the place and the size, and a click on either
+        shows the other at once. Reload turns into Stop rather than turning its
+        icon.
+      -->
       <Tooltip v-if="loading" :content="t('address.stop')" class="inline-flex">
         <IconButton :icon="X" variant="ghost" :aria-label="t('address.stop')" @click="emit('stop')" />
       </Tooltip>
@@ -153,7 +178,10 @@ defineExpose({
       @pointerdown="pointerDown"
       @mouseup="pointerUp"
     />
-    <!-- A trailing control stands as far from the address as the navigation group does. -->
+    <!--
+      A trailing control stands as far from the address as the navigation group
+      does.
+    -->
     <div v-if="$slots.trailing" class="ml-2 flex shrink-0 items-center">
       <slot name="trailing" />
     </div>

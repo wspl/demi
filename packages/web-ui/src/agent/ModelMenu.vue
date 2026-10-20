@@ -25,18 +25,24 @@ const props = defineProps<{
    */
   settings?: ModelSettings | null
   /**
-   * Offers a choice of no model of its own at the top, chosen while
-   * `settings` is none: Parent's Model for a subagent profile, whose
-   * children may infer with their parent's model, or Automatic for the
-   * small model, with what it resolves to as its detail when that is known.
+   * Offers a choice of no model of its own at the top. It is chosen while
+   * `settings` is none.
+   *
+   * - Parent's Model, for a subagent profile, whose children may infer with
+   *   their parent's model.
+   * - Automatic, for the small model, with what it resolves to as its detail
+   *   when that is known.
    */
   standIn?: { label: TitleText; icon: Component; detail?: InlineDetailText }
   /**
    * Leaves out the Context row, the user's limit, as a subagent profile's
-   * editor does, whose Context is the profile's own.
+   * editor does. Its Context is the profile's own.
    */
   withoutContext?: boolean
-  /** Leaves out Fast Mode, as the small model's menu does, whose requests use the default tier. */
+  /**
+   * Leaves out Fast Mode, as the small model's menu does, whose requests use
+   * the default tier.
+   */
   withoutFast?: boolean
 }>()
 
@@ -45,7 +51,10 @@ const emit = defineEmits<{
   standIn: []
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
-  /** The user's context limit on the selected model, for all their conversations with it. */
+  /**
+   * The user's context limit on the selected model, for all their conversations
+   * with it.
+   */
   contextLimit: [change: ContextLimitChange]
 }>()
 
@@ -71,7 +80,8 @@ function setContextLimit(tokens: number | null) {
   emit('contextLimit', { providerId: current.providerId, modelId: current.modelId, tokens })
 }
 
-// A switch is one change: the menu decides what of the settings the new model keeps.
+// A switch is one change: the menu decides what of the settings the new model
+// keeps.
 function selectModel(providerId: string, model: ModelInfo, selected: boolean) {
   if (selected)
     return

@@ -11,12 +11,13 @@ import { t } from '../locales/text'
 import CommentItem from './CommentItem.vue'
 
 /**
- * The comments waiting in the draft, as the composer shows them inside its
- * box: a round-ended pill as tall as the composer's own buttons, a comment
- * mark, *2 Comments* and a ghost ×, which removes them all. A click on the pill
- * lists them, each its quoted text and its comment, with Edit and Delete: by
- * the pill on the desktop, as a sheet on a phone. The composer's `context` slot
- * holds it.
+ * The comments waiting in the draft, as the composer shows them inside its box:
+ * a round-ended pill as tall as the composer's own buttons, a comment mark, *2
+ * Comments* and a ghost ×, which removes them all.
+ *
+ * A click on the pill lists them, each its quoted text and its comment, with
+ * Edit and Delete: by the pill on the desktop, as a sheet on a phone. The
+ * composer's `context` slot holds the pill.
  */
 const props = defineProps<{
   /** The waiting comments, in the order the conversation reads them. */
@@ -68,7 +69,10 @@ function remove(id: string): void {
       />
     </Tooltip>
   </span>
-  <!-- The list opens above the pill, its left edge on the pill's, over the transcript. -->
+  <!--
+    The list opens above the pill, its left edge on the pill's, over the
+    transcript.
+  -->
   <Popover
     v-if="open && pill"
     is-open

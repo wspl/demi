@@ -64,32 +64,45 @@ const props = withDefaults(
   defineProps<{
     placeholder?: PlaceholderText
     /**
-     * A turn runs, or the message that starts one is on its way: Stop shows
+     * A turn runs, or the message that starts one is on its way. Stop shows
      * from the send to the turn's end, and a message is queued meanwhile.
      */
     running?: boolean
     compacting?: boolean
-    /** What Enter does with a message while the agent works; ⌘/Ctrl+Enter does the other. */
+    /**
+     * What Enter does with a message while the agent works; ⌘/Ctrl+Enter does
+     * the other.
+     */
     sendWhileRunning?: SendWhileRunning
     disabled?: boolean
     attachments?: ComposerAttachment[]
     messageEdit?: MessageEditState | null
-    /** Uploads a file the edit composer adds, as the main composer's files are uploaded. */
+    /**
+     * Uploads a file the edit composer adds, as the main composer's files are
+     * uploaded.
+     */
     upload: UploadFile
-    /** Makes an upload of a file the user's blobs hold, for a message pasted into the edit composer. */
+    /**
+     * Makes an upload of a file the user's blobs hold, for a message pasted
+     * into the edit composer.
+     */
     claim: ClaimFile
     /**
-     * Takes the files of a message pasted into the draft: the host carries the
+     * Takes the files of a message pasted into the draft. The host carries the
      * draft's files.
      */
     paste: PasteHost
-    /** The conversation has a host with files: the menu offers a remote file beside local ones. */
+    /**
+     * The conversation has a host with files: the menu offers a remote file
+     * beside local ones.
+     */
     remoteFiles?: boolean
     focused?: boolean
     /**
      * The draft takes the focus as the composer shows, so a new or opened
-     * conversation is typed into at once; not on a phone, where the keyboard
-     * waits for a tap (`useAutofocus`), nor while another field holds the focus.
+     * conversation is typed into at once. Not on a phone, where the keyboard
+     * waits for a tap (`useAutofocus`), and not while another field holds the
+     * focus.
      */
     focusOnShow?: boolean
     attachOpen?: boolean
@@ -101,41 +114,65 @@ const props = withDefaults(
     modelSettings?: ModelSettings | null
     /** How full the next request is, as the backend reports it. */
     usage?: ContextUsage | null
-    /** The unfinished turn failed for its size, so the context card offers Compact at any share. */
+    /**
+     * The unfinished turn failed for its size, so the context card offers
+     * Compact at any share.
+     */
     sizeRefused?: boolean
-    /** What the newest instructions block holds, which the context card lists. */
+    /**
+     * What the newest instructions block holds, which the context card lists.
+     */
     instructions?: readonly InstructionEntry[]
-    /** The usage limits of the account the model runs on, which the context card shows; none on an API key. */
+    /**
+     * The usage limits of the account the model runs on, which the context card
+     * shows; none on an API key.
+     */
     limits?: UsageLimits | null
-    /** What the conversation cost, or the failure of its read, which the host holds while the conversation is open and the context card shows. */
+    /**
+     * What the conversation cost, or the failure of its read, which the host
+     * holds while the conversation is open and the context card shows.
+     */
     cost?: CostState | null
-    /** The names of the profiles the conversation's workflow offers now, which the cost's Profiles part shows. */
+    /**
+     * The names of the profiles the conversation's workflow offers now, which
+     * the cost's Profiles part shows.
+     */
     costProfiles?: readonly string[]
-    /** When no model can send, show Configure Models. Hide the action if the user cannot open that page. */
+    /**
+     * When no model can send, show Configure Models. Hide the action if the
+     * user cannot open that page.
+     */
     canConfigure?: boolean
     /** Replaces the input with the archive bar. */
     archived?: boolean
     /**
-     * Why nothing can be sent for now, such as `Cloud is resetting.`: the input
-     * gives way to that line and returns, draft kept, when the caller clears it.
+     * Why nothing can be sent for now, such as `Cloud is resetting.` The input
+     * gives way to that line and returns, draft kept, when the caller clears
+     * it.
      */
     hold?: string | null
     /**
-     * The version of the draft a later save replaced, which the composer
-     * offers to restore: its Markdown and the names of its files.
+     * The version of the draft a later save replaced, which the composer offers
+     * to restore. It holds the Markdown and the names of the files.
      */
     replaced?: { markdown: string; fileNames: readonly string[] } | null
     /**
-     * The conversation's primary Host is a paired device that is offline:
-     * says how to start its runner again, and offers a move to Run On's
-     * online Hosts.
+     * The conversation's primary Host is a paired device that is offline. The
+     * composer says how to start its runner again, and offers a move to Run
+     * On's online Hosts.
      */
     offlineHost?: OfflineHost | null
-    /** The conversation runs with commands of plugins since turned on or off: offers a reload. */
+    /**
+     * The conversation runs with commands of plugins since turned on or off:
+     * offers a reload.
+     */
     pluginsChanged?: boolean
     /** Stops the turn; Stop works until the session took it. */
     onStop?: Action
-    /** The conversation's ID, which names the target of Stop (`operations.ts`), so Stop shows its own conversation's work only. */
+    /**
+     * The conversation's ID, which names the target of Stop (`operations.ts`),
+     * so Stop shows its own conversation's work only.
+     */
     conversationId?: string
     /** Puts a saved message in the composer, removing it from the list. */
     onEditSaved?: Action<[id: string]>
@@ -148,19 +185,19 @@ const props = withDefaults(
     /** The reload the composer offered is under way. */
     reloading?: boolean
     /**
-     * Counts the drafts shown from outside, another page's or a restored
-     * one: when it changes, the editor shows the draft and its files anew,
-     * even when the text is the same.
+     * Counts the drafts shown from outside, another page's or a restored one.
+     * When it changes, the editor shows the draft and its files anew, even when
+     * the text is the same.
      */
     draftShown?: number
     /**
-     * The conversation's Workflow menu choice and the project's workflows; none
+     * The conversation's Workflow menu choice and the project's workflows. None
      * where a conversation has no choice yet, as before its first send.
      */
     workflow?: { choice: WorkflowChoice; list: WorkflowList } | null
     /**
-     * The conversation's messages saved for later, newest first: the entry under
-     * the composer counts them and opens their list.
+     * The conversation's messages saved for later, newest first. The entry
+     * under the composer counts them and opens their list.
      */
     saved?: SavedRow[]
   }>(),
@@ -176,20 +213,34 @@ const draft = defineModel<string>('draft', { default: '' })
 const savedOpen = defineModel<boolean>('savedOpen', { default: false })
 const emit = defineEmits<{
   retryModels: []
-  /** The draft goes: at once while nothing runs, otherwise as a steer or to the queue. */
+  /**
+   * The draft goes: at once while nothing runs, otherwise as a steer or to the
+   * queue.
+   */
   submit: [way: SendWay]
-  /** Keep the message, its files included, for later, and empty the composer. */
+  /**
+   * Keep the message, its files included, for later, and empty the composer.
+   */
   saveForLater: []
   compact: []
   /** Opens where an instructions entry of the context card is written. */
   openInstruction: [entry: InstructionEntry]
-  /** The host asks the vendor for the usage limits again: automatic when the card showed them, otherwise its Refresh usage button. */
+  /**
+   * The host asks the vendor for the usage limits again: automatic when the
+   * card showed them, otherwise its Refresh usage button.
+   */
   refreshLimits: [automatic: boolean]
   /** Read the cost again after a read that failed. */
   retryCost: []
-  /** Files to attach; their capsules land where they were dropped, pasted or picked. */
+  /**
+   * Files to attach; their capsules land where they were dropped, pasted or
+   * picked.
+   */
   addFiles: [files: File[]]
-  /** Open the host's file browser; the caller attaches what it returns, and its capsule lands at the cursor. */
+  /**
+   * Open the host's file browser; the caller attaches what it returns, and its
+   * capsule lands at the cursor.
+   */
   attachRemote: []
   /** The files the message now carries, in the order of their capsules. */
   arrangeAttachments: [ids: string[]]
@@ -199,7 +250,9 @@ const emit = defineEmits<{
   changeModel: [change: ModelSettingsChange]
   /** The conversation's new Workflow menu choice. */
   changeWorkflow: [choice: WorkflowChoice]
-  /** The user's context limit on a model, for all their conversations with it. */
+  /**
+   * The user's context limit on a model, for all their conversations with it.
+   */
   changeContextLimit: [change: ContextLimitChange]
   configure: []
   restore: []
@@ -210,12 +263,15 @@ const emit = defineEmits<{
   dismissReplaced: []
   /** Open the conversation again with the plugins the user has on. */
   reloadPlugins: []
-  /** A Host the offline primary Host's card chose to move the conversation to. */
+  /**
+   * A Host the offline primary Host's card chose to move the conversation to.
+   */
   moveHost: [host: HostChoice]
 }>()
 /**
- * The edit the composer shows: none while Regenerate sends one, which never
- * opens the editor; the draft stays, and waits for that edit to be answered.
+ * The edit the composer shows. It is none while Regenerate sends one, which
+ * never opens the editor. The draft stays, and waits for that edit to be
+ * answered.
  */
 const regenerating = computed(() => props.messageEdit?.phase === 'regenerating')
 const shownEdit = computed(() => regenerating.value ? null : props.messageEdit ?? null)
@@ -225,11 +281,14 @@ const edit = useMessageEditComposer({
   upload: (file, options) => props.upload(file, options),
   claim: (file, signal) => props.claim(file, signal),
 })
-/** Up Arrow in the empty draft opens the editor on the last message, where the page offers editing it. */
+/**
+ * Up Arrow in the empty draft opens the editor on the last message, where the
+ * page offers editing it.
+ */
 const editLastMessage = useEditLastMessage()
 const editLast = computed(() => props.disabled ? undefined : editLastMessage())
 /**
- * Where a dock stands the composer's cards, above its chips; none outside a
+ * Where a dock stands the composer's cards, above its chips. None outside a
  * dock, where the cards stand over the input.
  */
 const dockCards = inject(dockCardsKey, () => ref<HTMLElement>(), true)
@@ -238,15 +297,16 @@ const takesFocus = props.focusOnShow && !isFocusedElementEditable()
 /** The editor shown: the edit's, or the draft's. */
 const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
-// An editor taken away while it has the focus tells no blur; the one in its place starts unfocused.
+// An editor taken away while it has the focus tells no blur; the one in its
+// place starts unfocused.
 watch(() => shownEdit.value?.request.operationId, () => {
   focused.value = false
 })
 /**
  * The user sent the edit shown. Its editor takes no typing while it is sent,
- * and gives way to the draft's once the edit ends: the draft's takes the
- * focus then, so the next message is typed at once, as after a send, unless
- * the user has put the focus elsewhere meanwhile.
+ * and gives way to the draft's once the edit ends. The draft's editor then
+ * takes the focus, so the next message is typed at once, as after a send,
+ * unless the user has put the focus elsewhere meanwhile.
  */
 let editSent = false
 watch(editor, (current) => {
@@ -261,20 +321,28 @@ watch(editor, (current) => {
 /** The message holds more than one line, so the composer grows to hold it. */
 const multiline = ref(false)
 const fileInput = ref<HTMLInputElement>()
-/** The send button, which says why it cannot send when the message is given to it anyway. */
+/**
+ * The send button, which says why it cannot send when the message is given to
+ * it anyway.
+ */
 const sendButton = ref<InstanceType<typeof IconButton>>()
 /** What the composer carries, as the editor builds its document from it. */
 const carried = computed(() => props.attachments.map(composerCapsule))
 /**
- * The files the message has, in the order of their capsules: the document
- * says so. It starts as the editor builds it, with the files the draft's marks
- * stand for, and not those the composer still holds for an undo; from then on
- * the editor tells every change.
+ * The files the message has, in the order of their capsules, as the document
+ * says.
+ *
+ * It starts as the editor builds it, with the files the draft's marks stand
+ * for, and not those the composer still holds for an undo. From then on the
+ * editor tells every change.
  */
 const capsules = ref<MessageCapsule[]>(
   serializeUserMarkdown<MessageCapsule>(parseUserMarkdown(draft.value, carried.value)).attachments,
 )
-/** Their transfers, and those of the files an edit adds, which the capsules in the editor read. */
+/**
+ * Their transfers, and those of the files an edit adds, which the capsules in
+ * the editor read.
+ */
 provideTransfers({
   transfer: (id) => {
     const item = props.attachments.find((each) => each.id === id)
@@ -293,51 +361,67 @@ provideTransfers({
     return item ? composerCapsule(item) : edit.transfers.current(id)
   },
 })
-/** The files of the message, not the ones the composer still holds for an undo. */
+/**
+ * The files of the message, not the ones the composer still holds for an undo.
+ */
 const carrying = computed(() => {
   const ids = new Set(capsules.value.map((capsule) => capsule.id))
   return props.attachments.filter((item) => ids.has(item.id))
 })
 const slots = useSlots()
 /**
- * What the page sends with the message besides its draft, such as a batch
- * of comments, which its `context` slot shows inside the box: while it is
- * there the box takes its multi-line layout, and Send sends it with the
- * draft, or alone when the draft is empty. Read at each render and each
- * send, as a slot is.
+ * What the page sends with the message besides its draft, such as a batch of
+ * comments, which its `context` slot shows inside the box.
+ *
+ * While it is there, the box takes its multi-line layout. Send sends it with
+ * the draft, or alone when the draft is empty. It is read at each render and
+ * each send, as a slot is.
  */
 const carriesContext = () => slots.context !== undefined
 const hasDraft = computed(
   () => shownEdit.value ? editHasContent(shownEdit.value)
     : !!draft.value.trim() || !!capsules.value.length,
 )
-/** Save for Later keeps a message that holds something; not an edit of a sent one. */
+/**
+ * Save for Later keeps a message that holds something; not an edit of a sent
+ * one.
+ */
 const canSaveForLater = computed(() => hasDraft.value && !shownEdit.value && !props.disabled)
 /**
- * The composer's width under which the entry keeps its mark and count: the
+ * The composer's width under which the entry keeps its mark and count. The
  * model's chip and the context ring need the rest of the row.
  */
 const COMPACT_ENTRY_BELOW_PX = 380
 const composerRoot = ref<HTMLElement | null>(null)
 const { width: composerWidth } = useElementSize(composerRoot)
 const compactEntry = computed(() => composerWidth.value > 0 && composerWidth.value < COMPACT_ENTRY_BELOW_PX)
-/** Edit puts the message in the composer, so the list gives its room back; Send and Delete keep it open for the next. */
+/**
+ * Edit puts the message in the composer, so the list gives its room back; Send
+ * and Delete keep it open for the next.
+ */
 function editSaved(id: string): unknown {
   savedOpen.value = false
   return props.onEditSaved?.(id)
 }
-/** Send goes the way the composer's send button would now: at once, or steering or queueing while the agent works. */
+/**
+ * Send goes the way the composer's send button would now: at once, or steering
+ * or queueing while the agent works.
+ */
 function sendSaved(id: string): unknown {
   return props.onSendSaved?.(id, chooseSendWay(working.value, props.sendWhileRunning, false))
 }
-// The list closes with its last message, so the next one does not open it unasked.
+// The list closes with its last message, so the next one does not open it
+// unasked.
 watch(() => props.saved.length, (count) => {
   if (count === 0) {
     savedOpen.value = false
   }
 })
 
-/** ⌘S (Ctrl+S) saves the message for later, wherever the focus is in the composer, never the page. */
+/**
+ * ⌘S (Ctrl+S) saves the message for later, wherever the focus is in the
+ * composer, never the page.
+ */
 function saveKey(event: KeyboardEvent) {
   if (!asksSaveForLater(event)) {
     return
@@ -356,12 +440,15 @@ const modelState = computed(() =>
     props.modelSettings?.modelId,
   ),
 )
-/** The models are still loading: the page cannot tell yet whether the message can go. */
+/**
+ * The models are still loading. The page cannot tell yet whether the message
+ * can go.
+ */
 const modelsLoading = computed(() => props.modelLoad === 'loading' && modelState.value.kind !== 'ready')
 /**
- * The phases of the draft's uploads that keep it from going: a failed one,
- * or a file that is gone.
- * A message whose files are still uploading goes, and waits for them.
+ * The phases of the draft's uploads that keep it from going: a failed one, or a
+ * file that is gone. A message whose files are still uploading goes, and waits
+ * for them.
  */
 const failedUploads = computed(() => carrying.value
   .filter(isComposerFile)
@@ -389,21 +476,29 @@ const sendBlockReason = computed(() => {
     ? edit.sendBlockReason.value
     : attachmentSendBlockReason(failedUploads.value)
 })
-// The composer shows no failure text of its own: a file an edit could not
-// take or upload is a toast, a failed upload is its capsule's Retry, and a
-// refused edit is the product's toast.
+// The composer shows no failure text of its own. Failures show elsewhere:
+//
+// - A file an edit could not take or upload is a toast.
+// - A failed upload is its capsule's Retry.
+// - A refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
     showToast({ title: t('composer.couldntAttach'), message, tone: 'danger' })
   }
 })
-/** The replaced version as the offer shows it; none while there is none, or while a message is edited. */
+/**
+ * The replaced version as the offer shows it; none while there is none, or
+ * while a message is edited.
+ */
 const replacedPreview = computed(() =>
   props.replaced && !shownEdit.value
     ? draftPreview(props.replaced.markdown, props.replaced.fileNames)
     : null,
 )
-/** Why Compact cannot run now apart from how full the context is: the session takes it only while idle. */
+/**
+ * Why Compact cannot run now apart from how full the context is: the session
+ * takes it only while idle.
+ */
 const compactUnavailable = computed(() => {
   if (shownEdit.value) {
     return t('composer.afterEdit')
@@ -413,13 +508,18 @@ const compactUnavailable = computed(() => {
   }
   return null
 })
-/** The agent works: a message steers it or waits in the queue, one or the other. */
+/**
+ * The agent works. A message steers it or waits in the queue, one or the other.
+ */
 const working = computed(() => props.running || props.compacting)
 const submitLabel = computed(() => shownEdit.value
   ? shownEdit.value.phase === 'uncertain' ? shared('common.retry') : t('composer.saveAndResend')
   : working.value ? sendWayLabel(props.sendWhileRunning) : t('composer.send'),
 )
-/** The send button's tip: while the agent works, also the key that sends the other way. */
+/**
+ * The send button's tip: while the agent works, also the key that sends the
+ * other way.
+ */
 const submitTip = computed(() => !shownEdit.value && working.value
   ? t('composer.sendOtherWay', {
       way: submitLabel.value,
@@ -429,7 +529,10 @@ const submitTip = computed(() => !shownEdit.value && working.value
   : submitLabel.value,
 )
 
-/** Enter pressed on the draft while the models load: the message goes once they have, if it still holds one. */
+/**
+ * Enter pressed on the draft while the models load: the message goes once they
+ * have, if it still holds one.
+ */
 const waitingSend = useSendOnceLoaded({
   blocked: () => sendDisabled.value,
   loading: () => modelsLoading.value,
@@ -440,7 +543,10 @@ const waitingSend = useSendOnceLoaded({
   },
 })
 
-/** Sends the message; `asksOtherWay` for ⌘/Ctrl+Enter outside a code block, or a ⌘/Ctrl-click on the send button. */
+/**
+ * Sends the message; `asksOtherWay` for ⌘/Ctrl+Enter outside a code block, or a
+ * ⌘/Ctrl-click on the send button.
+ */
 function submit(asksOtherWay: boolean) {
   const sendsContext = !shownEdit.value && carriesContext()
   if (sendDisabled.value) {
@@ -474,7 +580,8 @@ function fileChange(event: Event) {
   const input = event.target as HTMLInputElement
   addFiles([...(input.files ?? [])])
   input.value = ''
-  // The menu that opened the chooser took the focus with it: the message gets it back, to go on typing.
+  // The menu that opened the chooser took the focus with it: the message gets
+  // it back, to go on typing.
   editor.value?.focus()
 }
 
@@ -493,29 +600,36 @@ function addFiles(files: File[]): void {
     emit('addFiles', files)
     return
   }
-  // An edit uploads its files itself; their capsules go in where they were told to land.
+  // An edit uploads its files itself; their capsules go in where they were told
+  // to land.
   insertCapsules(edit.addFiles(files))
 }
 
-/** Puts files the host took into the message, where the composer said they would land. */
+/**
+ * Puts files the host took into the message, where the composer said they would
+ * land.
+ */
 function insertCapsules(added: readonly MessageCapsule[]): void {
   editor.value?.insertCapsules(added)
 }
 
 /**
- * A copied message pasted: it goes in where it was pasted at once, text and
- * capsules, and each stored file attaches beside it as an upload does, so the
- * message can be sent meanwhile. A file the paste could not add stands as its
- * name where its capsule stood, and a toast names it once the paste's files
- * have all answered.
+ * A copied message pasted.
+ *
+ * The message goes in where it was pasted at once, text and capsules. Each
+ * stored file attaches beside it as an upload does, so the message can be sent
+ * meanwhile. A file the paste could not add stands as its name where its
+ * capsule stood, and a toast names it once the paste's files have all answered.
  */
 function pasteCopied(message: CopiedMessage, image: File | null): void {
-  // The editor the message was pasted into, which an edit opened or closed meanwhile does not change.
+  // The editor the message was pasted into, which an edit opened or closed
+  // meanwhile does not change.
   const target = editor.value
   const pasted = pasteMessage(message, image, shownEdit.value ? edit.paste : props.paste)
   target?.insertMessage(pasted.markdown, pasted.capsules)
   void Promise.all(pasted.attaching.map(async ({ id, name, kept }) =>
-    // A file of a message sent meanwhile is no longer the composer's: its bubble tells it.
+    // A file of a message sent meanwhile is no longer the composer's: its
+    // bubble tells it.
     !await kept && target?.replaceCapsule(id, name) ? [name] : []))
     .then((names) => missingFiles([...pasted.missing, ...names.flat()]))
 }
@@ -529,15 +643,18 @@ function missingFiles(names: readonly string[]): void {
 }
 
 defineExpose({
-  /** Files the host has taken: their capsules go into the message where they were told to land. */
+  /**
+   * Files the host has taken: their capsules go into the message where they
+   * were told to land.
+   */
   insertCapsules,
   /** Files are on their way: the next capsules land at the cursor. */
   placeNextFiles(event?: DragEvent): void {
     editor.value?.placeNextFiles(event)
   },
   /**
-   * The user asked for this draft again, as New does on the draft it
-   * shows: the message takes the focus, except on a phone (`useAutofocus`).
+   * The user asked for this draft again, as New does on the draft it shows. The
+   * message takes the focus, except on a phone (`useAutofocus`).
    */
   focusDraft(): void {
     editor.value?.takeFocus()
@@ -549,7 +666,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
   const had = capsules.value.map((capsule) => capsule.id).join('\n')
   capsules.value = attachments
   const ids = attachments.map((capsule) => capsule.id)
-  // The host hears which files the message has only when that changes; its text it hears every time.
+  // The host hears which files the message has only when that changes; its text
+  // it hears every time.
   if (ids.join('\n') !== had) {
     emit('arrangeAttachments', ids)
   }
@@ -590,9 +708,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         multiple
         @change="fileChange"
       />
-      <!-- The cards stand above the dock's chips, which sit directly on the input. The dock's
-           place for them exists once the dock is mounted: until then, and outside a dock, they
-           stand here. -->
+      <!--
+        The cards stand above the dock's chips, which sit directly on the input.
+        The dock's place for them exists once the dock is mounted. Until then,
+        and outside a dock, they stand here.
+      -->
       <Teleport :to="dockCards" :disabled="!dockCards">
         <HostOfflineNotice
           v-if="offlineHost"
@@ -667,8 +787,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           />
         </template>
         <template #attach>
-          <!-- The menu opens above the composer, over the conversation it sits under; pinned open in a
-               gallery well, which has its room below, it opens below. -->
+          <!--
+            The menu opens above the composer, over the conversation it sits
+            under. Pinned open in a gallery well, which has its room below, it
+            opens below.
+          -->
           <Dropdown
             v-if="!shownEdit || edit.editable.value"
             :overlay-store="appOverlayStore"
@@ -676,8 +799,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             v-bind="attachOpen ? { open: true } : {}"
           >
             <template #trigger="{ isOpen }">
-              <!-- A press on the paperclip takes no focus, as on the send button: the message keeps it until the
-                   menu takes it, and gets it back when the menu closes. -->
+              <!--
+                A press on the paperclip takes no focus, as on the send button.
+                The message keeps it until the menu takes it, and gets it back
+                when the menu closes.
+              -->
               <Tooltip :content="t('composer.attach')">
                 <IconButton
                   :icon="Paperclip"
@@ -784,7 +910,10 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @click="emit('saveForLater')"
             />
           </Tooltip>
-          <!-- Stop stays for the whole turn, beside the send button while the message holds text. -->
+          <!--
+            Stop stays for the whole turn, beside the send button while the
+            message holds text.
+          -->
           <Tooltip v-if="(running || compacting) && !shownEdit" :content="t('composer.stop')">
             <IconButton
               :icon="Square"
@@ -797,8 +926,10 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @click="onStop?.()"
             />
           </Tooltip>
-          <!-- A press on the send button takes no focus: the message keeps it. A ⌘/Ctrl-click sends
-               the other way while the agent works. -->
+          <!--
+            A press on the send button takes no focus: the message keeps it. A
+            ⌘/Ctrl-click sends the other way while the agent works.
+          -->
           <Tooltip
             v-if="hasDraft || (!shownEdit && carriesContext())"
             :content="submitTip"

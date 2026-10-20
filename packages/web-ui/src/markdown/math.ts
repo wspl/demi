@@ -93,7 +93,10 @@ function inlineMathToken(src: string): Tokens.Generic | undefined {
   return undefined
 }
 
-/** `$$` or `$` alone on a line, the TeX, and the same alone on a line: block math, display for `$$`. */
+/**
+ * `$$` or `$` alone on a line, the TeX, and the same alone on a line: block
+ * math, display for `$$`.
+ */
 const BLOCK_MATH = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/
 
 /** The block math token at the start of `src`. */
@@ -106,14 +109,19 @@ function blockMathToken(src: string): Tokens.Generic | undefined {
 }
 
 /**
- * Math in Markdown, by Pandoc's inline rule, rendered by KaTeX with
- * `options` once it has loaded and as its source until then. The inline
- * rule is Pandoc's, not marked-katex-extension's, whose standard rule wants
- * a space before the opening `$`, which math beside Chinese text lacks, and
- * whose `nonStandard` one takes any pair of dollar signs as math, prices
- * included; and that extension imports KaTeX, which must stay out of the
- * page until math shows. `katex` answers KaTeX once it has loaded, the
- * page's own load unless a test stands in for it.
+ * Math in Markdown, by Pandoc's inline rule, rendered by KaTeX with `options`
+ * once it has loaded and as its source until then.
+ *
+ * The inline rule is Pandoc's, not marked-katex-extension's, for three reasons:
+ *
+ * - Its standard rule wants a space before the opening `$`, which math beside
+ *   Chinese text lacks.
+ * - Its `nonStandard` rule takes any pair of dollar signs as math, prices
+ *   included.
+ * - It imports KaTeX, which must stay out of the page until math shows.
+ *
+ * `katex` answers KaTeX once it has loaded, the page's own load unless a test
+ * stands in for it.
  */
 export function mathExtensions(options: KatexOptions, katex: () => Katex | null = loadedKatex): TokenizerAndRendererExtension[] {
   const render = (token: Tokens.Generic): string => {

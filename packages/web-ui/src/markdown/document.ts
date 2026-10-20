@@ -19,7 +19,9 @@ import { scrollingTable } from './table'
 
 /** Where a document sits, against which the Host paths it names resolve. */
 export interface DocumentPlace {
-  /** The document's own path; a relative target resolves against its directory. */
+  /**
+   * The document's own path; a relative target resolves against its directory.
+   */
   path: string
   /**
    * The workspace root: a target starting with `/` resolves against it, as
@@ -44,7 +46,10 @@ export const HOST_FILE_ATTRIBUTE = 'data-host-file'
  */
 export const HOST_SRCSET_ATTRIBUTE = 'data-host-srcset'
 
-/** One candidate of a `srcset`: an address on the web, or a Host file, and its descriptor such as `2x`. */
+/**
+ * One candidate of a `srcset`: an address on the web, or a Host file, and its
+ * descriptor such as `2x`.
+ */
 const srcsetCandidateSchema = z.union([
   z.object({ url: z.string(), descriptor: z.string() }),
   z.object({ path: z.string(), descriptor: z.string() }),
@@ -55,11 +60,17 @@ type WebCandidate = Extract<SrcsetCandidate, { url: string }>
 /** A document as the page shows it. */
 export interface RenderedDocument {
   html: string
-  /** The Host paths of the images the document names, `srcset` candidates included, each once. */
+  /**
+   * The Host paths of the images the document names, `srcset` candidates
+   * included, each once.
+   */
   hostFiles: string[]
 }
 
-/** Past this size a document shows only its source: rendering that much stalls the page. */
+/**
+ * Past this size a document shows only its source: rendering that much stalls
+ * the page.
+ */
 export const DOCUMENT_RENDER_BYTES = 2 * 1024 * 1024
 
 export function renderable(text: string): boolean {
@@ -91,7 +102,9 @@ const ALLOWED_ATTR = [
   'reversed', 'rowspan', 'scope', 'src', 'srcset', 'start', 'title', 'type',
   'valign', 'width',
 ]
-/** The classes the renderer gives; any other class a document names is dropped. */
+/**
+ * The classes the renderer gives; any other class a document names is dropped.
+ */
 const RENDERER_CLASS = /^(math|math-inline|math-display|table-scroll|markdown-alert(-title|-note|-tip|-important|-warning|-caution)?|language-[\w+#.-]+)$/
 
 /** The kinds of GitHub's alerts, in the words of their marker. */
@@ -111,7 +124,8 @@ const alertKinds = new WeakMap<Token, AlertKind>()
  */
 const githubAlerts: MarkedExtension = {
   walkTokens(token) {
-    // `type` does not narrow marked's tokens, whose union holds an open `Generic`.
+    // `type` does not narrow marked's tokens, whose union holds an open
+    // `Generic`.
     if (token.type !== 'blockquote' || !('tokens' in token) || !token.tokens)
       return
     const paragraph = token.tokens[0]
@@ -156,7 +170,10 @@ const mathPlaceholders: MarkedExtension = {
 
 const documentMarked = markdownReader({ breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable, githubAlerts)
 
-/** What a render in progress reads: where the document sits, and the theme the page shows. */
+/**
+ * What a render in progress reads: where the document sits, and the theme the
+ * page shows.
+ */
 interface ActiveRender {
   place: DocumentPlace
   theme: ThemeMode
@@ -166,18 +183,24 @@ interface ActiveRender {
 // hooks read the render in progress.
 let purifier: Purifier | null = null
 let active: ActiveRender | null = null
-/** The Host path of each image of the render in progress, until the hook that sets its attribute. */
+/**
+ * The Host path of each image of the render in progress, until the hook that
+ * sets its attribute.
+ */
 const hostFiles = new WeakMap<Node, string>()
-/** The `srcset` of each image or source of the render in progress that names a Host file, until the hook that sets its attribute. */
+/**
+ * The `srcset` of each image or source of the render in progress that names a
+ * Host file, until the hook that sets its attribute.
+ */
 const hostSrcsets = new WeakMap<Node, SrcsetCandidate[]>()
 /** The images of the render in progress that show only in the other theme. */
 const otherTheme = new WeakSet<Node>()
 
 /**
  * The document as HTML the page can show as it is, and the Host files its
- * images name. `theme` is the theme the page shows, which picks a
- * `<picture>`'s source for a color scheme and GitHub's mode-only images, so a new
- * theme is a new render.
+ * images name. `theme` is the theme the page shows, which picks a `<picture>`'s
+ * source for a color scheme and GitHub's mode-only images, so a new theme is a
+ * new render. /
  */
 export function renderMarkdownDocument(text: string, place: DocumentPlace, theme: ThemeMode): RenderedDocument {
   const html = documentMarked.parse(frontMatterAsCode(text), { async: false })
@@ -243,8 +266,8 @@ function documentPurifier(): Purifier {
           return image ? [{ ...image, descriptor: descriptor.join(' ') }] : []
         })
         if (candidates.some((candidate) => 'path' in candidate)) {
-          // A Host candidate takes its address where it stands, from the version of
-          // its file the page keeps, as a Host image's `src` does.
+          // A Host candidate takes its address where it stands, from the
+          // version of its file the page keeps, as a Host image's `src` does.
           data.keepAttr = false
           hostSrcsets.set(node, candidates)
         } else if (candidates.length === 0) {
@@ -284,7 +307,8 @@ function documentPurifier(): Purifier {
         node.setAttribute('data-file-link', '')
       }
     }
-    // A task list's checkbox is the one input that passes, and it cannot be ticked.
+    // A task list's checkbox is the one input that passes, and it cannot be
+    // ticked.
     if (node.nodeName === 'INPUT') {
       if (node.getAttribute('type') === 'checkbox')
         node.setAttribute('disabled', '')
@@ -296,7 +320,10 @@ function documentPurifier(): Purifier {
   return instance
 }
 
-/** The candidates an element's `HOST_SRCSET_ATTRIBUTE` holds, which the renderer wrote. */
+/**
+ * The candidates an element's `HOST_SRCSET_ATTRIBUTE` holds, which the renderer
+ * wrote.
+ */
 export function hostSrcsetCandidates(element: Element): SrcsetCandidate[] {
   return z.array(srcsetCandidateSchema).parse(JSON.parse(element.getAttribute(HOST_SRCSET_ATTRIBUTE) ?? '[]'))
 }
@@ -343,7 +370,8 @@ export function mediaForTheme(media: string, theme: ThemeMode): string | null {
       return asks ? [] : ['all']
     if (!asks)
       return []
-    // The scheme holds; what is left of the query decides, `(min-width: 0)`, always true, standing for the scheme.
+    // The scheme holds; what is left of the query decides, `(min-width: 0)`,
+    // always true, standing for the scheme.
     const rest = query.replace(COLOR_SCHEME, '(min-width: 0)').trim()
     return [/^\(min-width: 0\)(\s+and\s+\(min-width: 0\))*$/.test(rest) ? 'all' : rest]
   })
@@ -410,7 +438,10 @@ export function linkTarget(target: string, place: DocumentPlace): string | null 
   return hostPath(trimmed, place)
 }
 
-/** Where an image loads from: the web, at its address, or the Host, from the file at a path; null drops it. */
+/**
+ * Where an image loads from: the web, at its address, or the Host, from the
+ * file at a path; null drops it.
+ */
 export function imageTarget(target: string, place: DocumentPlace): { url: string } | { path: string } | null {
   const trimmed = target.trim()
   if (isExternal(trimmed))
@@ -421,7 +452,10 @@ export function imageTarget(target: string, place: DocumentPlace): { url: string
   return path === null ? null : { path }
 }
 
-/** The Host path a relative or `/`-rooted target names, its query and fragment dropped. */
+/**
+ * The Host path a relative or `/`-rooted target names, its query and fragment
+ * dropped.
+ */
 function hostPath(target: string, place: DocumentPlace): string | null {
   const file = decodedTarget(target.split(/[?#]/)[0] ?? '')
   if (file === '')
@@ -429,7 +463,10 @@ function hostPath(target: string, place: DocumentPlace): string | null {
   return file.startsWith('/') ? joinPath(place.root, file) : joinPath(parentPath(place.path), file)
 }
 
-/** Leading YAML front matter as a YAML code block, fenced past any backticks inside it. */
+/**
+ * Leading YAML front matter as a YAML code block, fenced past any backticks
+ * inside it.
+ */
 export function frontMatterAsCode(text: string): string {
   const match = text.match(/^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/)
   if (!match)

@@ -7,11 +7,19 @@ import type { MessageFileTarget } from './types'
 /** The most paths one reply asks about: the backend's bound on one question. */
 export const CODE_PATHS_MAX = 200
 
-/** A URL scheme of two or more letters; a single letter before `:` is a drive. */
+/**
+ * A URL scheme of two or more letters; a single letter before `:` is a drive.
+ */
 const SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i
-/** Characters a shell or a pattern gives meaning to, which a path written as code does not hold. */
+/**
+ * Characters a shell or a pattern gives meaning to, which a path written as
+ * code does not hold.
+ */
 const NOT_IN_PATH_RE = /[\s*?<>|"'`$;,\\]/
-/** A name with an extension: some of a name, a dot, and a suffix that starts with a letter. */
+/**
+ * A name with an extension: some of a name, a dot, and a suffix that starts
+ * with a letter.
+ */
 const NAME_WITH_EXTENSION_RE = /^[^./][^/]*\.[A-Za-z][A-Za-z0-9_-]*$/
 /** A drive's start, as `C:/`. */
 const DRIVE_RE = /^[A-Za-z]:\//
@@ -36,7 +44,10 @@ export function codePath(code: string): { path: string; line: number | null } | 
   return named ? { path, line: suffix ? Number(suffix[1]) : null } : null
 }
 
-/** The Host file inline code names, resolved against `cwd`, with its line; null for code that names none. */
+/**
+ * The Host file inline code names, resolved against `cwd`, with its line; null
+ * for code that names none.
+ */
 export function codeFileTarget(code: string, cwd: string): MessageFileTarget | null {
   const named = codePath(code)
   return named ? { path: resolveHostPath(cwd, named.path), line: named.line } : null

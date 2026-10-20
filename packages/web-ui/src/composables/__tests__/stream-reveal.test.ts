@@ -55,8 +55,8 @@ test('a view that mounts again mid-stream goes on with each fade where it is, ne
     [1300, [{ op: 'append_text', index: 0, delta: 'but it is really ' }]],
     [1500, [{ op: 'append_text', index: 0, delta: 'a mix.' }]],
   ])
-  // The first piece finished its fade before the view mounted, so it shows solid; the
-  // later two are 240 ms and 40 ms into theirs.
+  // The first piece finished its fade before the view mounted, so it shows
+  // solid; the later two are 240 ms and 40 ms into theirs.
   expect(1540 - 1000).toBeGreaterThan(STREAM_PACE.fadeMs)
   expect(mountAt(held, 1540)).toEqual([
     { start: 22, end: 39, at: 1300 },

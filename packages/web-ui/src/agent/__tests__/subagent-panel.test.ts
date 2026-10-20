@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// The Agents window over a child whose transcript the page does not hold: it
+// The Agents window over a child whose transcript the page does not hold. It
 // says it loads while the read runs, and a failed read says so with Retry,
 // never an empty transcript. Production showed a blank panel while a child's
 // read took a minute, and nothing at all when it failed. A Vue app on a
@@ -59,7 +59,10 @@ function retryButton(): HTMLElement | undefined {
   return [...document.querySelectorAll<HTMLElement>('[role="button"]')].find((button) => button.textContent?.trim() === 'Retry')
 }
 
-/** Mounts the window over `agents`, showing the first, with `readLatest` as its reader. */
+/**
+ * Mounts the window over `agents`, showing the first, with `readLatest` as its
+ * reader.
+ */
 function mountPanel(agents: SubagentRecord[], readLatest: (id: string) => Promise<void>, streamed = true): void {
   const host = document.createElement('div')
   document.body.append(host)
@@ -100,9 +103,9 @@ test('a finished child the window holds none of shows loading, a failed read sho
   expect(shown).not.toContain('Couldn’t load this agent.')
 })
 
-// A live child's transcript comes with the socket's reset once the page
-// shows it (`crates/agent-server/src/server/tree.rs`): reading it over HTTP as well read a
-// large child's page twice. It loads until the reset arrives.
+// A live child's transcript comes with the socket's reset once the page shows
+// it (`crates/agent-server/src/server/tree.rs`). Reading it over HTTP as well
+// read a large child's page twice. It loads until the reset arrives.
 test('showing a live child reads nothing and loads until its transcript arrives', async () => {
   const reads: string[] = []
   const agents = reactive([child('running')])

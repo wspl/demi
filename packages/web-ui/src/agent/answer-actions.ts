@@ -16,17 +16,25 @@ export interface AnswerActionsSource {
   share?: AnswerShare
   /** Share waits until the message completes, as Fork does. */
   shareWait?: boolean
-  /** Offered on the last answer exactly when editing the message before it is. */
+  /**
+   * Offered on the last answer exactly when editing the message before it is.
+   */
   regenerate?: () => void
 }
 
-/** One of an answer's actions, as its footer's button and its menu's row both show it. */
+/**
+ * One of an answer's actions, as its footer's button and its menu's row both
+ * show it.
+ */
 export interface AnswerAction {
   key: 'copy' | 'fork' | 'share' | 'regenerate'
   icon: Component
   /** The button's name, on the answer itself. */
   label: TitleText
-  /** The menu row's name, which names its object beside a link's or a code block's rows. */
+  /**
+   * The menu row's name, which names its object beside a link's or a code
+   * block's rows.
+   */
   menuLabel: TitleText
   disabled: boolean
   disabledReason?: SentenceText
@@ -36,10 +44,10 @@ export interface AnswerAction {
 }
 
 /**
- * An answer's actions, the one owner of which there are, in which order and
- * when each is disabled: Copy, Fork, Share, Regenerate, each where it is
- * offered. The footer draws them as buttons, and the answer's menu as rows.
- * `copy` copies the answer.
+ * An answer's actions: the one owner of which there are, in which order and
+ * when each is disabled. They are Copy, Fork, Share and Regenerate, each where
+ * it is offered. The footer draws them as buttons, and the answer's menu as
+ * rows. `copy` copies the answer.
  */
 export function answerActions(source: AnswerActionsSource, copy: () => unknown): AnswerAction[] {
   const actions: AnswerAction[] = [
@@ -86,7 +94,10 @@ export function answerActions(source: AnswerActionsSource, copy: () => unknown):
   return actions
 }
 
-/** The answer's actions as its menu's rows; a row whose work runs is not chosen again. */
+/**
+ * The answer's actions as its menu's rows; a row whose work runs is not chosen
+ * again.
+ */
 export function answerMenuEntries(actions: readonly AnswerAction[]): ContextMenuEntry[] {
   return actions.map((action) => ({
     icon: action.icon,

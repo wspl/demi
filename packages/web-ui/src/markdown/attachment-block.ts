@@ -15,7 +15,10 @@ const AT_START = new RegExp(String.raw`^ {0,3}${TAG}(?:\n|$)`)
 /** A later line of the text that is the tag, up to three spaces in. */
 const A_LATER_LINE = new RegExp(String.raw`\n {0,3}${TAG}(?:\n|$)`)
 
-/** The attachment block that starts `src`, its whole line and the number it names; null when none does. */
+/**
+ * The attachment block that starts `src`, its whole line and the number it
+ * names; null when none does.
+ */
 export function attachmentBlockAt(src: string): { raw: string; id: string } | null {
   const found = AT_START.exec(src)
   return found ? { raw: found[0], id: found[1]! } : null

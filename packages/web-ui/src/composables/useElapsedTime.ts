@@ -1,7 +1,10 @@
 import { computed, onScopeDispose, watch } from 'vue'
 import { clockNow, holdClock } from './useClock'
 
-/** The time from `startedAt` to `endedAt`, none until both are known; a clock set back reads 0. */
+/**
+ * The time from `startedAt` to `endedAt`, none until both are known; a clock
+ * set back reads 0.
+ */
 export function elapsedBetween(startedAt: number, endedAt: number | null): number | null {
   if (!Number.isFinite(startedAt) || endedAt === null || !Number.isFinite(endedAt)) {
     return null
@@ -9,7 +12,10 @@ export function elapsedBetween(startedAt: number, endedAt: number | null): numbe
   return Math.max(0, endedAt - startedAt)
 }
 
-/** Measures a live interval or a persisted interval; a live one holds the shared clock until it ends or its scope stops. */
+/**
+ * Measures a live interval or a persisted interval; a live one holds the shared
+ * clock until it ends or its scope stops.
+ */
 export function useElapsedTime(
   startedAt: () => number,
   running: () => boolean,

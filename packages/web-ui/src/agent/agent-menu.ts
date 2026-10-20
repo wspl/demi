@@ -11,11 +11,13 @@ export interface MenuAgent {
 }
 
 /**
- * An agent's menu, declared once: a
- * link to the agent offers Open, which acts as clicking the link does, then
- * Stop Agent, which only an agent that runs takes, and Copy Agent ID, the
- * number the `demi agent` commands take; its tab in the Agents window
- * offers the same without Open, and adds Close Tab.
+ * An agent's menu, declared once.
+ *
+ * - A link to the agent offers Open, which acts as clicking the link does, then
+ *   Stop Agent, which only an agent that runs takes, and Copy Agent ID, the
+ *   number the `demi agent` commands take.
+ * - Its tab in the Agents window offers the same without Open, and adds Close
+ *   Tab.
  */
 export function agentMenu(agent: MenuAgent, actions: { open?: () => void; stop: () => void }): ContextMenuGroup[] {
   return [

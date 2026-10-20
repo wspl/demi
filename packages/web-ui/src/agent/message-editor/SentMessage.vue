@@ -18,12 +18,14 @@ import { followMessageLink } from './message-links'
  * A sent message as the conversation shows it: drawn once from the composer's
  * schema, each node as the schema draws it and each file as its capsule, with
  * what the composer's editor draws over its text (code's colors, bare URLs as
- * links), and no editor behind it. Its text selects as any text does; a copy or
- * a drag of it, or of a capsule, carries that part of the message in every
- * form, its formatting and its files with it, as the composer's own copy does:
- * each node it draws says where it stands in the message's document, so the
- * page's selection maps to the document's positions, and the document's slice
- * between them is what goes, as ProseMirror's own copy takes it.
+ * links), and no editor behind it.
+ *
+ * Its text selects as any text does. A copy or a drag of it, or of a capsule,
+ * carries that part of the message in every form, its formatting and its files
+ * with it, as the composer's own copy does. Each node it draws says where it
+ * stands in the message's document, so the page's selection maps to the
+ * document's positions, and the document's slice between them is what goes, as
+ * ProseMirror's own copy takes it.
  */
 const props = withDefaults(defineProps<{
   /** The message's Markdown, an attachment mark where each capsule stands. */
@@ -41,7 +43,9 @@ const renderVersion = useMarkdownRenderVersion()
 const root = ref<HTMLElement>()
 
 const doc = computed(() => schema.nodeFromJSON(parseUserMarkdown(props.markdown, props.attachments)))
-/** Where a drawn node stands in the message's document: the position before it. */
+/**
+ * Where a drawn node stands in the message's document: the position before it.
+ */
 const POSITION = 'data-pos'
 
 /** Whether a spec's entry is the element's attributes. */
@@ -49,7 +53,10 @@ function isAttributes(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-/** The element `spec` describes, with `content` in its hole; the schema draws every node and mark as an array. */
+/**
+ * The element `spec` describes, with `content` in its hole; the schema draws
+ * every node and mark as an array.
+ */
 function fromSpec(spec: unknown, content: VNodeChild[], extra: Record<string, unknown> = {}): VNode {
   if (!Array.isArray(spec) || typeof spec[0] !== 'string') {
     throw new Error('A message node draws as an array spec.')
@@ -71,7 +78,10 @@ function markSpec(mark: ProseMirrorNode['marks'][number]): DOMOutputSpec {
   return toDOM(mark, true)
 }
 
-/** A text node, its bare URLs links, inside its marks as the schema draws them, the first mark outermost. */
+/**
+ * A text node, its bare URLs links, inside its marks as the schema draws them,
+ * the first mark outermost.
+ */
 function drawText(node: ProseMirrorNode): VNodeChild {
   const text = node.text ?? ''
   const parts: VNodeChild[] = []
@@ -100,7 +110,10 @@ function drawCode(node: ProseMirrorNode, colors: ReturnType<typeof codeColors>):
   return parts.filter((part) => part !== '')
 }
 
-/** `node`, which stands at `pos` in the message's document, drawn; each element of a node says where it stands. */
+/**
+ * `node`, which stands at `pos` in the message's document, drawn; each element
+ * of a node says where it stands.
+ */
 function draw(node: ProseMirrorNode, pos: number): VNodeChild {
   if (node.isText) {
     return drawText(node)
@@ -139,14 +152,18 @@ function draw(node: ProseMirrorNode, pos: number): VNodeChild {
     const colors = codeColors(node)
     return fromSpec(spec, drawCode(node, colors), { ...at, style: colors.style })
   }
-  // An empty line, or one that ends in a break, holds a line's height, as the composer's editor gives it.
+  // An empty line, or one that ends in a break, holds a line's height, as the
+  // composer's editor gives it.
   if (node.isTextblock && (node.childCount === 0 || node.lastChild?.type.name === 'hardBreak')) {
     content.push(h('br'))
   }
   return fromSpec(spec, content, at)
 }
 
-/** The message drawn, again as the highlighter's colors arrive or the page's mode changes. */
+/**
+ * The message drawn, again as the highlighter's colors arrive or the page's
+ * mode changes.
+ */
 function Content(): VNodeChild {
   void renderVersion.value
   return draw(doc.value, 0)
@@ -212,14 +229,20 @@ function positionAt(container: Node, offset: number, side: 'start' | 'end'): num
   return parent === element ? doc.value.content.size : positionAttribute(parent) + doc.value.nodeAt(positionAttribute(parent))!.nodeSize - 1
 }
 
-/** The part of the message `range` selects, as the document's slice between its ends. */
+/**
+ * The part of the message `range` selects, as the document's slice between its
+ * ends.
+ */
 function selected(range: Range): Slice | null {
   const from = positionAt(range.startContainer, range.startOffset, 'start')
   const to = positionAt(range.endContainer, range.endOffset, 'end')
   return to > from ? doc.value.slice(from, to) : null
 }
 
-/** The page's selection when it lies within this message, and is not a part of one code block. */
+/**
+ * The page's selection when it lies within this message, and is not a part of
+ * one code block.
+ */
 function ownSelection(): Range | null {
   const selection = document.getSelection()
   const element = root.value
@@ -227,7 +250,8 @@ function ownSelection(): Range | null {
     return null
   }
   const range = selection.getRangeAt(0)
-  // A selection that runs on past the message is the page's to copy, whole and in order.
+  // A selection that runs on past the message is the page's to copy, whole and
+  // in order.
   if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) {
     return null
   }
@@ -237,7 +261,10 @@ function ownSelection(): Range | null {
   return block && block === code(range.endContainer) ? null : range
 }
 
-/** A selection in a sent message copies in every form; a lone picture also as itself. */
+/**
+ * A selection in a sent message copies in every form; a lone picture also as
+ * itself.
+ */
 function copy(event: ClipboardEvent): void {
   const range = ownSelection()
   const transfer = event.clipboardData

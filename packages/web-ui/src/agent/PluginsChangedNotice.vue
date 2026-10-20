@@ -5,10 +5,11 @@ import Button from '../ui/Button.vue'
 
 /**
  * The conversation's tree runs with commands of plugins the user has since
- * turned on or off (`crates/backend-plugins/src/lib.rs`): offered above the
- * composer, with Reload, which opens the conversation again with the
- * plugins on. Nothing is lost by a reload. The row owns the Reload
- * button's inset from its edges.
+ * turned on or off (`crates/backend-plugins/src/lib.rs`).
+ *
+ * The notice is offered above the composer, with Reload, which opens the
+ * conversation again with the plugins on. Nothing is lost by a reload. The row
+ * owns the Reload button's inset from its edges.
  */
 defineProps<{
   /** The reload was asked for and has not ended yet. */
@@ -45,7 +46,10 @@ const emit = defineEmits<{
 .plugins-changed-notice-reload {
   display: flex;
   flex-shrink: 0;
-  /* No inline strut, so the Tooltip's wrapper cannot lift the control off center. */
+  /*
+   * No inline strut, so the Tooltip's wrapper cannot lift the control off
+   * center.
+   */
   line-height: 0;
   margin-right: calc((var(--plugins-changed-row-h) - var(--spacing-hit-sm)) / 2);
 }

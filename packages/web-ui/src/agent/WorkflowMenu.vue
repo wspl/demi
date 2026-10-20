@@ -12,7 +12,7 @@ import { useIconPx } from '../ui/icon-metrics'
 import { workflowRows, workflowShown, type WorkflowChoice, type WorkflowList } from './workflow-menu'
 
 /**
- * The composer's Workflow menu at the row's left end: it shows the
+ * The composer's Workflow menu at the row's left end. It shows the
  * conversation's choice and offers Global Workflow, No Subagents and the
  * project's workflows by name. A workflow that does not read, or the chosen one
  * once it is gone, stands in the menu with why and cannot be chosen. Where the

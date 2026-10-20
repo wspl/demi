@@ -15,7 +15,10 @@ export type { ModelSettings } from './model-selection'
 /** A steer the server holds for the running turn, as it sends them. */
 export type PendingSteerMessage = Pick<PendingSteer, 'id' | 'content' | 'comments'>
 
-/** A message sent but not yet confirmed: the composer's own text and attachments, shown as the message they will become. */
+/**
+ * A message sent but not yet confirmed: the composer's own text and
+ * attachments, shown as the message they will become.
+ */
 export interface PendingSubmissionState {
   id: string
   /**
@@ -29,7 +32,10 @@ export interface PendingSubmissionState {
   comments?: readonly MessageComment[]
   /** Why the delivery failed; null while the message is on its way. */
   error: string | null
-  /** The request ID of the refusal, shown beside `error`; null or absent with none. */
+  /**
+   * The request ID of the refusal, shown beside `error`; null or absent with
+   * none.
+   */
   requestId?: string | null
   /**
    * False for a refusal that sending again cannot change, such as a file of
@@ -45,11 +51,17 @@ export interface PendingSubmissionState {
   followers?: readonly string[]
 }
 
-/** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */
+/**
+ * One conversation's live state, as the runtime keeps it and `ChatSession`
+ * reads it.
+ */
 export interface ConversationState {
   id: string
   cwd: string
-  /** Null for the placeholder, which shows as New conversation in the reader's language. */
+  /**
+   * Null for the placeholder, which shows as New conversation in the reader's
+   * language.
+   */
   title: string | null
   /** The parts of the root's transcript the page holds. */
   history: HeldTranscript
@@ -60,7 +72,10 @@ export interface ConversationState {
    * transcript named them, for when the page does not hold that block.
    */
   instructions: InstructionEntry[]
-  /** Each compaction marker's boundary's summary size, by the marker's id, as pages named them. */
+  /**
+   * Each compaction marker's boundary's summary size, by the marker's id, as
+   * pages named them.
+   */
   summaries: Record<string, number>
   phase: SessionPhase
   queue: QueuedMessage[]
@@ -77,7 +92,10 @@ export interface ConversationState {
   lastError: ShownError | null
   /** History restore and the live socket. A new conversation starts `ready`. */
   load: SessionLoad
-  /** A recovery sent and not yet acknowledged by a `phase` event; the tail row says Requesting meanwhile. */
+  /**
+   * A recovery sent and not yet acknowledged by a `phase` event; the tail row
+   * says Requesting meanwhile.
+   */
   pendingAction: PendingAction
   /**
    * What the providers read out of the error blocks' failure records, by block
@@ -91,7 +109,10 @@ export interface ConversationState {
   contextUsage: ContextUsage | null
 }
 
-/** What `ChatSession` reads: the live conversation fields plus what the product keeps beside them. */
+/**
+ * What `ChatSession` reads: the live conversation fields plus what the product
+ * keeps beside them.
+ */
 export interface ChatSessionState
   extends Pick<
     ConversationState,

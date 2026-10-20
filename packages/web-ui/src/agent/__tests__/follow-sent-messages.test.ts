@@ -6,10 +6,10 @@ import { rowKey } from '../row-key'
 import { useFollowSentMessages } from '../useFollowSentMessages'
 import { userBlock } from './agent-harness'
 
-// A message the reader sends scrolls the list to the bottom; a message not
-// delivered that shows where it was sent, as the page of history that holds
-// its place is read, was not just sent, and the reader reading up stays where
-// they read. Pure: a few ms.
+// A message the reader sends scrolls the list to the bottom. A message not
+// delivered that shows where it was sent, as the page of history that holds its
+// place is read, was not just sent, and the reader reading up stays where they
+// read. Pure: a few ms.
 test('a message not delivered that comes into view leaves the reader where they read, and its Retry follows to the bottom', async () => {
   const rows = shallowRef<MessageListBlock[]>([userBlock('u-1', 'm-1', 'Hello')])
   let scrolls = 0

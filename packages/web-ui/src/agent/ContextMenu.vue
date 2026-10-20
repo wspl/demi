@@ -3,9 +3,9 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 
 /**
- * The windows a Context choice offers, one choice row each: the model
- * menu's Context row for the user's limit, and a subagent profile's own
- * Context (`packages/web-ui/src/agent/context-limit.ts`,
+ * The windows a Context choice offers, one choice row each. It serves two
+ * places: the model menu's Context row, for the user's limit, and a subagent
+ * profile's own Context (`packages/web-ui/src/agent/context-limit.ts`,
  * `crates/agent-server/src/server/tree/profiles.rs`).
  */
 defineProps<{

@@ -22,7 +22,8 @@ const draft = ref(props.text)
 const root = ref<HTMLElement>()
 const empty = computed(() => draft.value.trim() === '')
 
-// Edit asked for the field: it takes the focus, on a phone too, the caret at the end.
+// Edit asked for the field: it takes the focus, on a phone too, the caret at
+// the end.
 onMounted(() => {
   const field = root.value?.querySelector('textarea')
   field?.focus({ preventScroll: true })

@@ -7,10 +7,13 @@ import Tooltip from '../ui/Tooltip.vue'
 import { savedLabel } from './saved'
 
 /**
- * The entry of the messages saved for later at the left of the row under
- * the composer: a quiet chip with the count, like the model's at the other end. Pressing it opens the
- * list under the composer, or closes it. The caller shows it only while there is one. Where the row has
- * no room (`compact`), it keeps its mark and the count alone, and its tip reads the whole label.
+ * The entry of the messages saved for later, at the left of the row under the
+ * composer.
+ *
+ * It is a quiet chip with the count, like the model's at the other end.
+ * Pressing it opens the list under the composer, or closes it. The caller shows
+ * it only while there is one. Where the row has no room (`compact`), it keeps
+ * its mark and the count alone, and its tip reads the whole label.
  */
 const props = defineProps<{
   count: number

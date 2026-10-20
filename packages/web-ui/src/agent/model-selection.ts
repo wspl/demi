@@ -6,10 +6,10 @@ import { fastServiceTier, isFastMode } from './fast-mode'
 export const THINKING_OFF = 'disabled'
 
 /**
- * A conversation's model settings: the provider entry and model, the thinking effort, and the
- * service tier. A conversation with a record shows the record's; a new one
- * keeps its own until its first send writes them there. An empty provider
- * and model mean none is chosen yet.
+ * A conversation's model settings: the provider entry and model, the thinking
+ * effort, and the service tier. A conversation with a record shows the
+ * record's; a new one keeps its own until its first send writes them there. An
+ * empty provider and model mean none is chosen yet. /
  */
 export const modelSettingsSchema = z.object({
   providerId: z.string(),
@@ -78,7 +78,10 @@ export function firstEffort(model: ModelInfo): string | null {
   return model.reasoning?.efforts[0] ?? null
 }
 
-/** Whether `model` offers the effort `effort`: one it lists, or thinking off when it can turn thinking off. */
+/**
+ * Whether `model` offers the effort `effort`: one it lists, or thinking off
+ * when it can turn thinking off.
+ */
 export function offersEffort(model: ModelInfo, effort: string): boolean {
   const reasoning = model.reasoning
   if (!reasoning) {
@@ -94,10 +97,12 @@ export function offersTier(model: ModelInfo, tier: string): boolean {
 
 /**
  * The change a switch to the model `next` of the entry `providerId` makes of
- * `settings`, whose model is `current`: it keeps the effort when the new model
- * offers it, else names the
- * new model's first effort, and keeps Fast when Fast is on and the new model
- * has a Fast tier of its own; the vendor's default tier stands otherwise.
+ * `settings`, whose model is `current`.
+ *
+ * - It keeps the effort when the new model offers it, else names the new
+ *   model's first effort.
+ * - It keeps Fast when Fast is on and the new model has a Fast tier of its own.
+ *   The vendor's default tier stands otherwise.
  */
 export function modelSwitch(
   settings: Pick<ModelSettings, 'thinkingEffort' | 'serviceTierId'> | null | undefined,
@@ -153,7 +158,10 @@ export interface ComposerModelState {
   label: string
 }
 
-/** Providers that are usable right now: available and with at least one catalog model. */
+/**
+ * Providers that are usable right now: available and with at least one catalog
+ * model.
+ */
 export function availableProviders(
   providers: readonly ProviderInfo[],
   models: Record<string, ModelInfo[]>
@@ -237,7 +245,9 @@ export function composerModel(
   }
 }
 
-/** The model the chip can send with. Unusable last choices do not fall through. */
+/**
+ * The model the chip can send with. Unusable last choices do not fall through.
+ */
 export function resolveSelectedModel(
   providers: readonly ProviderInfo[],
   models: Record<string, ModelInfo[]>,

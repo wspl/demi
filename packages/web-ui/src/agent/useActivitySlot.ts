@@ -5,16 +5,25 @@ import type { PendingSubmissionState } from './types'
 
 export interface ActivitySlotState {
   kind: ActivityKind
-  /** When the row's current wait began, as `Date.now()`; the Requesting clock counts from it. */
+  /**
+   * When the row's current wait began, as `Date.now()`; the Requesting clock
+   * counts from it.
+   */
   since: number
 }
 
 export interface ActivitySlotSources {
-  /** What the row's kind is decided from, except whether a message being delivered starts a turn. */
+  /**
+   * What the row's kind is decided from, except whether a message being
+   * delivered starts a turn.
+   */
   input: () => Omit<ActivitySlotInput, 'startingTurn'>
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions: () => readonly PendingSubmissionState[]
-  /** When the agent began to wait for the model's answer, as the server tells it; null when it waits for none. */
+  /**
+   * When the agent began to wait for the model's answer, as the server tells
+   * it; null when it waits for none.
+   */
   waitingSince: () => number | null
   /** The conversation the list shows; another one starts over. */
   scope: () => string
@@ -33,7 +42,9 @@ export interface ActivitySlotSources {
  */
 export function useActivitySlot(sources: ActivitySlotSources): {
   slot: ComputedRef<ActivitySlotState | null>
-  /** A message on its way starts a turn: it is the user's next message already. */
+  /**
+   * A message on its way starts a turn: it is the user's next message already.
+   */
   startingTurn: ComputedRef<boolean>
 } {
   const { input, pendingSubmissions, waitingSince, scope } = sources
@@ -47,16 +58,17 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     activitySlotKind({ ...input(), startingTurn: startingTurn.value }),
   )
 
-  // The clock counts from when the wait began, which is the session's fact,
-  // not this view's: the server tells a start for as long as the row says
+  // The clock counts from when the wait began, which is the session's fact, not
+  // this view's. The server tells a start for as long as the row says
   // Requesting, from the turn's start or a step's end until something of the
-  // answer shows, so a view shown during a wait counts from it, and runs on
-  // across the confirmation of a message and the agent's own retries alike. A
-  // wait this page started, by sending a message or a recovery, counts from
-  // that action, before the server has it; only that wait: a later start the
-  // server tells, as for a steer sent now, is a new wait and counts from the
-  // server's start. Until the server's start arrives, the row counts from when
-  // it began to say Requesting.
+  // answer shows. A view shown during a wait therefore counts from it, and runs
+  // on across the confirmation of a message and the agent's own retries alike.
+  //
+  // A wait this page started, by sending a message or a recovery, counts from
+  // that action, before the server has it. Only that wait counts so: a later
+  // start the server tells, as for a steer sent now, is a new wait and counts
+  // from the server's start. Until the server's start arrives, the row counts
+  // from when it began to say Requesting.
   const requesting = computed(() => kind.value === 'requesting')
   const shownSince = ref(Date.now())
   const startedHere = ref(false)

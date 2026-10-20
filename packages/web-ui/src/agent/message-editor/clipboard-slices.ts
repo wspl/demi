@@ -7,7 +7,10 @@ import type { MessageCapsule } from './capsules'
 // What a composer takes from the clipboard and puts on it, as editor slices:
 // never a blank line of the clipboard's own at either end.
 
-/** How an end of pasted content joins the line it lands in: a paragraph's joins it, a code block stands on its own. */
+/**
+ * How an end of pasted content joins the line it lands in: a paragraph's joins
+ * it, a code block stands on its own.
+ */
 function opens(node: ProseMirrorNode | null | undefined): number {
   return node?.type.name === 'paragraph' ? 1 : 0
 }

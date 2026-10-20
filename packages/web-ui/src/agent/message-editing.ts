@@ -61,12 +61,16 @@ export const messageEditRequestSchema = editRequestSchema.omit({ content: true }
 export type MessageEditRequest = z.infer<typeof messageEditRequestSchema>
 
 /**
- * An edit in progress. `sending` is an edit the user sent from the editor,
- * `regenerating` a Regenerate sent without opening it, which `regenerate`
- * marks while it is uncertain too, so Retry sends the same operation again.
- * `uncertain` means the server's answer was lost: Retry checks the outcome
- * before resending. A failure is told by a toast at the moment it happens;
- * the state itself carries no message.
+ * An edit in progress, in one of these phases:
+ *
+ * - `sending`: an edit the user sent from the editor.
+ * - `regenerating`: a Regenerate sent without opening it, which `regenerate`
+ *   marks while it is uncertain too, so Retry sends the same operation again.
+ * - `uncertain`: the server's answer was lost. Retry checks the outcome before
+ *   resending.
+ *
+ * A failure is told by a toast at the moment it happens; the state itself
+ * carries no message.
  */
 export const messageEditStateSchema = z.object({
   phase: z.enum(['editing', 'sending', 'regenerating', 'uncertain']),
@@ -91,7 +95,10 @@ export function unchangedEditRequest(block: Block, version: TranscriptVersion): 
   }
 }
 
-/** Opens the editor on a message; one without text gets an empty line to type in. */
+/**
+ * Opens the editor on a message; one without text gets an empty line to type
+ * in.
+ */
 export function beginMessageEdit(block: Block, version: TranscriptVersion): MessageEditState {
   const request = unchangedEditRequest(block, version)
   if (!request.content.some((part) => part.type === 'text')) {
@@ -180,7 +187,9 @@ function sentEditContent(part: MessageEditContent): ClientContent {
   }
 }
 
-/** The accepted suffix stays visible but inactive until the edit is resolved. */
+/**
+ * The accepted suffix stays visible but inactive until the edit is resolved.
+ */
 export function messageEditSuffixIds(
   blocks: readonly { id: string }[],
   targetBlockId: string | undefined,
@@ -189,7 +198,9 @@ export function messageEditSuffixIds(
   return new Set(index < 0 ? [] : blocks.slice(index).map((block) => block.id))
 }
 
-/** Keep each draft detached; Vue proxies must not enter persisted request data. */
+/**
+ * Keep each draft detached; Vue proxies must not enter persisted request data.
+ */
 export function changeMessageEditContent(
   state: MessageEditState,
   change: (content: MessageEditContent[]) => void,
@@ -213,7 +224,9 @@ export interface MessageEditHost {
   send(request: MessageEditRequest, regenerate: boolean): Promise<void>
 }
 
-/** Only confirmation or explicit rejection permits changing a submitted request. */
+/**
+ * Only confirmation or explicit rejection permits changing a submitted request.
+ */
 export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
   const draft = host.get()
   if (!draft || draft.phase === 'sending' || draft.phase === 'regenerating' || !editHasContent(draft)) {
@@ -252,7 +265,8 @@ async function sendMessageEdit(
   } catch (error) {
     const rejected = error instanceof EditRejectedError
     if (host.get()?.request.operationId === request.operationId) {
-      // A refused Regenerate opens the editor on the message, whose Save is an edit.
+      // A refused Regenerate opens the editor on the message, whose Save is an
+      // edit.
       host.set(rejected || !regenerate ? { phase: rejected ? 'editing' : 'uncertain', request } : { phase: 'uncertain', request, regenerate })
     }
     reportError(

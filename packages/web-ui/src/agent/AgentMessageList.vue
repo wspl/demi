@@ -49,16 +49,23 @@ import { provideReplySelectionTools } from './reply-selection'
 
 const props = withDefaults(defineProps<{
   conversationId: string
-  /** The agent whose transcript this is: null for the conversation's own, a subagent's id otherwise. */
+  /**
+   * The agent whose transcript this is: null for the conversation's own, a
+   * subagent's id otherwise.
+   */
   node?: string | null
-  /** A subagent's working directory now, which its relative paths read against; absent for the conversation's own agent. */
+  /**
+   * A subagent's working directory now, which its relative paths read against;
+   * absent for the conversation's own agent.
+   */
   cwd?: string
   blocks: HeldBlock[]
   /** The calls the model is writing, shown after the transcript. */
   pendingCalls?: PendingCall[]
   /**
    * When the agent began to wait for the model's answer, as the server tells
-   * it, which the Requesting clock counts from; null when it waits for none.
+   * it. The Requesting clock counts from it; null when the agent waits for
+   * none.
    */
   waitingSince?: number | null
   pendingSteers: PendingSteerMessage[]
@@ -69,56 +76,82 @@ const props = withDefaults(defineProps<{
   /** Hide editing actions on user bubbles. */
   readOnly?: boolean
   fork?: MessageForkHandler
-  /** Shares the answer the text block `blockId` ends; absent, no footer offers Share. */
+  /**
+   * Shares the answer the text block `blockId` ends; absent, no footer offers
+   * Share.
+   */
   share?: (blockId: string) => void
-  /** No answer offers Fork, as on a share's page, which acts on no conversation. */
+  /**
+   * No answer offers Fork, as on a share's page, which acts on no conversation.
+   */
   hideFork?: boolean
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
-  /** The host's connection banner says the backend is away; a reconnecting socket adds no Connecting row. */
+  /**
+   * The host's connection banner says the backend is away; a reconnecting
+   * socket adds no Connecting row.
+   */
   backendAway?: boolean
-  /** A recovery the server has not acknowledged: the tail row says Requesting. */
+  /**
+   * A recovery the server has not acknowledged: the tail row says Requesting.
+   */
   pendingAction?: PendingAction
-  /** What the providers read out of the error blocks' failure records, by block id. */
+  /**
+   * What the providers read out of the error blocks' failure records, by block
+   * id.
+   */
   failures?: Record<string, ProviderFailureFacts>
   loadError?: ShownError | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
-  /** The waiting messages whose Recall is on its way, by id, which show nowhere. */
+  /**
+   * The waiting messages whose Recall is on its way, by id, which show nowhere.
+   */
   removing?: readonly string[]
-  /** A block to bring into view and mark for a moment, as a search result opened at it asks; once shown, `revealed` says so. */
+  /**
+   * A block to bring into view and mark for a moment, as a search result opened
+   * at it asks; once shown, `revealed` says so.
+   */
   revealBlockId?: string | null
   /**
-   * Where `blocks`, the window the list shows, stands in its transcript:
-   * whether it reaches the start and the end, and whether it is the latest, the
-   * only one that shows the turn's tail rows and offers to edit. A whole
-   * transcript, as the gallery gives, reaches both and is the latest.
+   * Where `blocks`, the window the list shows, stands in its transcript.
+   *
+   * The window reaches the start or the end of the transcript, or both, or
+   * neither. It is the latest window or not. Only the latest window shows the
+   * turn's tail rows and offers to edit. A whole transcript, as the gallery
+   * gives, reaches both ends and is the latest.
    */
   atStart?: boolean
   atEnd?: boolean
   latest?: boolean
-  /** Each compaction marker's boundary's summary size, by the marker's id, for a boundary the window does not hold. */
+  /**
+   * Each compaction marker's boundary's summary size, by the marker's id, for a
+   * boundary the window does not hold.
+   */
   summaries?: Record<string, number>
-  /** A share's runs of steps it does not hold, each a line after the row it follows. */
+  /**
+   * A share's runs of steps it does not hold, each a line after the row it
+   * follows.
+   */
   stepsNotShared?: readonly StepsNotSharedRow[]
   /**
-   * The comments waiting in the conversation's draft and what to do with
-   * them: the replies take comments and show the marks of these and of the
-   * ones its messages sent. Absent, as on a share's page or in a subagent's
-   * window, the replies take none and show no mark.
+   * The comments waiting in the conversation's draft and what to do with them.
+   * The replies take comments and show the marks of these and of the ones its
+   * messages sent. Absent, as on a share's page or in a subagent's window, the
+   * replies take none and show no mark.
    */
   commenting?: ReplyCommenting
   /**
-   * The transcript's side questions and what to do with them: the replies
-   * take questions and show each one's words, card and fold. Absent, they take
-   * none.
+   * The transcript's side questions and what to do with them. The replies take
+   * questions and show each one's words, card and fold. Absent, they take none.
    */
   asking?: ReplyAsking
 }>(), {
-  // Vue reads an absent boolean prop as false; a list given no window is a whole transcript.
+  // Vue reads an absent boolean prop as false; a list given no window is a
+  // whole transcript.
   atStart: true,
   atEnd: true,
   latest: true,
@@ -139,14 +172,23 @@ const emit = defineEmits<{
   /** Show the `to`th version at the place of the block `blockId`. */
   switchVersion: [blockId: string, to: number]
   retryLoad: []
-  /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
+  /**
+   * Edit on the message `id`, whose delivery failed: it goes back into the
+   * composer.
+   */
   editSubmission: [id: string]
   /** Delete on the message `id`, whose delivery failed: it goes at once. */
   deleteSubmission: [id: string]
   revealed: []
-  /** The reader nears the start of the window, which does not reach the transcript's. */
+  /**
+   * The reader nears the start of the window, which does not reach the
+   * transcript's.
+   */
   readBefore: []
-  /** The reader nears the end of the window, which does not reach the transcript's. */
+  /**
+   * The reader nears the end of the window, which does not reach the
+   * transcript's.
+   */
   readAfter: []
 }>()
 
@@ -155,7 +197,10 @@ const { states: forkStates, run: forkMessage } = useMessageForks(() => props.for
 /** Where the rows stand, which the comments' marks are drawn over. */
 const rowsRoot = ref<HTMLElement | null>(null)
 const comments = ref<InstanceType<typeof ReplyComments>>()
-/** The comments the messages sent, those still on their way or waiting for the agent included, which mark their replies dimmer. */
+/**
+ * The comments the messages sent, those still on their way or waiting for the
+ * agent included, which mark their replies dimmer.
+ */
 const sent = computed(() => [
   ...props.blocks.flatMap(sentComments),
   ...[...props.pendingSteers, ...props.queue, ...(props.pendingSubmissions ?? [])].flatMap((message) => message.comments ?? []),
@@ -166,7 +211,10 @@ provideReplySelectionTools({
   picture: (reply, image, streaming) => comments.value?.pictureTools(reply, image, streaming) ?? [],
 })
 
-/** Share on the answer the text block `blockId` ends, which its footer's button starts. */
+/**
+ * Share on the answer the text block `blockId` ends, which its footer's button
+ * starts.
+ */
 function answerShare(blockId: string): AnswerShare {
   return { start: () => props.share!(blockId) }
 }
@@ -180,8 +228,8 @@ const {
 } = useMessageRows(() => props)
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
- * The answer whose footer offers Regenerate: the last one after the message
- * the page offers to edit, since regenerating is that edit.
+ * The answer whose footer offers Regenerate. It is the last answer after the
+ * message the page offers to edit, since regenerating is that edit.
  */
 const regenerateId = computed(() => {
   const target = editableUserId.value
@@ -201,10 +249,14 @@ function regenerate(): void {
 
 /**
  * The versions each row shows, by its id: an edited message's under it, a
- * regenerated answer's in its footer. A subagent's transcript shows none,
- * since only the conversation's own path switches; switching waits, as an
- * edit does, while the agent works, anything waits to be sent or the page
- * offers no edit (`readOnly`).
+ * regenerated answer's in its footer.
+ *
+ * A subagent's transcript shows none, since only the conversation's own path
+ * switches. Switching waits, as an edit does, in these cases:
+ *
+ * - The agent works.
+ * - Anything waits to be sent.
+ * - The page offers no edit (`readOnly`).
  */
 const versionChoices = computed(() => {
   const choices = new Map<string, VersionChoice>()
@@ -223,29 +275,33 @@ const versionChoices = computed(() => {
   }
   return choices
 })
-// The summary size each compaction divider tells, by the id of the block that shows it.
+// The summary size each compaction divider tells, by the id of the block that
+// shows it.
 const summaryTokens = computed(() => new Map([
   ...Object.entries(props.summaries ?? {}),
   ...compactionSummaryTokens(props.blocks),
 ]))
 // A row enters once, as it first appears, under the key the list draws it
-// under: a run's row does not enter again as its first step becomes a
-// block, nor does a row that takes another's place.
+// under. A run's row does not enter again as its first step becomes a block,
+// nor does a row that takes another's place.
 const { isEntering } = useChromeEntrance(
   () => renderBlocks.value.map(keyOf),
   () => props.conversationId,
   () => props.load ?? 'ready',
 )
 
-// The tail row alone is no transcript: it waits for one; nor is a failure told at the tail.
+// The tail row alone is no transcript: it waits for one; nor is a failure told
+// at the tail.
 const paneStatus = computed(() =>
   props.pendingSubmissions?.length ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure')),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
-// Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
-// The transcript's requests, which its rows' file pills read for what each opens.
+// The transcript's requests, which its rows' file pills read for what each
+// opens. Every streamed delta re-renders the visible rows, so the lookup must
+// not rescan the transcript per row.
 const requests = computed(() => storedRequests(props.blocks))
-// Where a subagent wrote each block, from the working directory blocks of its transcript.
+// Where a subagent wrote each block, from the working directory blocks of its
+// transcript.
 const directories = computed(() => props.cwd === undefined ? null : blockDirectories(props.blocks, props.cwd))
 const conversationFiles = useMessageFiles()
 const mediaAddress = useMediaAddress()
@@ -268,7 +324,8 @@ const transcriptIndexById = computed(
     new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index]))
 )
 
-// A row's streaming and end follow its transcript block: a joined thinking step's last part.
+// A row's streaming and end follow its transcript block: a joined thinking
+// step's last part.
 function transcriptIndexAt(index: number): number {
   const block = renderBlocks.value[index]
   return block ? transcriptIndexById.value.get(followedBlockId(block)) ?? -1 : -1
@@ -290,8 +347,9 @@ function isStreamingTextAt(index: number): boolean {
   )
 }
 
-// The next block's createdAt marks when a thinking block stopped (null while it's still the last,
-// i.e. actively thinking). Lets ThinkingBlock show a frozen "thought for Xs" that survives reload.
+// The next block's createdAt marks when a thinking block stopped; it is null
+// while the block is still the last, that is, actively thinking. ThinkingBlock
+// shows a frozen "thought for Xs" from it, which survives reload.
 function thinkingEndedAt(index: number): string | null {
   const transcriptIndex = transcriptIndexAt(index)
   if (transcriptIndex < 0)
@@ -320,18 +378,21 @@ onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
 })
 
-// The runs the reader or a reveal opened, which stay open while the list shows this transcript.
+// The runs the reader or a reveal opened, which stay open while the list shows
+// this transcript.
 const runs = useOpenRuns(() => renderBlocks.value, () => props.conversationId, keyOf)
-// A block a search result opened: shown once the history holds it, after the list placed itself,
-// and marked as it appears; the next request or leaving the list ends a mark still waiting.
+// The block a search result opened. It is shown once the history holds it and
+// the list has placed itself, and it is marked as it appears. The next request,
+// or leaving the list, ends a mark that still waits.
 let revealing: AbortController | null = null
 /**
- * Brings the block `id`'s own row into view and marks it for a moment, the
- * one way every reveal of this list goes, a search result's, a notice's
- * call's and a receipt's block's alike: a block folded in a run opens the
- * run first, and its step's row is the one placed and marked, never the
- * run's (`crates/agent-session/src/reports.rs`). False when the list does not
- * hold it.
+ * Brings the block `id`'s own row into view and marks it for a moment. Returns
+ * false when the list does not hold the block.
+ *
+ * Every reveal of this list goes this way: a search result's, a notice's call's
+ * and a receipt's block's alike. A block folded in a run opens the run first.
+ * The block's own step row, never the run's, is the one placed and marked
+ * (`crates/agent-session/src/reports.rs`).
  */
 function revealAndMark(id: string): boolean {
   const scroller = scrollContainer.value
@@ -340,9 +401,9 @@ function revealAndMark(id: string): boolean {
     return false
   const rowSelector = `[data-block-id="${CSS.escape(target.row)}"]`
   const step = target.step === null ? null : `[data-step-id="${CSS.escape(target.step)}"]`
-  // A run that opens draws its step's row in the next render: the list
-  // places the row at once and the step as the row draws it, and the mark
-  // waits for it.
+  // A run that opens draws its step's row in the next render. The list places
+  // the row at once and the step as the row draws it, and the mark waits for
+  // it.
   reveal(target.row, props.bottomOffset, step ?? undefined)
   revealing?.abort()
   revealing = new AbortController()
@@ -362,9 +423,9 @@ watch(
   { immediate: true, flush: 'post' },
 )
 onBeforeUnmount(() => revealing?.abort())
-// A report row's title brings the call that started its command into view:
-// the first call whose view names the command, a later one being a look. A
-// call the window does not hold, the host finds.
+// A report row's title brings the call that started its command into view. That
+// call is the first one whose view names the command; a later one is only a
+// look. The host finds a call the window does not hold.
 const findCommand = useCommandRevealer()
 provideCommandRevealer((commandId) => {
   const call = props.blocks.find((block) => block.type === 'tool_call' && storedShellView(block)?.commandId === commandId)
@@ -374,8 +435,8 @@ provideCommandRevealer((commandId) => {
       }
     : findCommand(commandId)
 })
-// A receipt's name opens where it came from: in this transcript, the
-// block when the window holds it; anywhere else, as the host opens it.
+// A receipt's name opens where it came from. When the window holds the block,
+// the name opens it in this transcript; otherwise the host opens it elsewhere.
 const openOrigin = useOriginRevealer()
 provideOriginRevealer((origin) => {
   const { blockId } = origin
@@ -392,13 +453,13 @@ const { height: viewportHeight } = useElementSize(scrollContainer)
 useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
 // Within a screen of an edge that is not the transcript's, the next page is
-// read there; the host reads each page once.
+// read there. The host reads each page once.
 watch(
   [scrollOffset, () => props.blocks, viewportHeight, () => props.atStart, () => props.atEnd, () => props.revealBlockId],
   () => {
     const el = scrollContainer.value
-    // A block being brought into view places the list first; until then
-    // its scroll position belongs to the window shown before.
+    // A block being brought into view places the list first. Until then, the
+    // list's scroll position belongs to the window shown before.
     if (!el || paneStatus.value || props.revealBlockId) {
       return
     }
@@ -412,8 +473,9 @@ watch(
   { flush: 'post' },
 )
 
-// Composer or task-control growth covers the tail; a reader at the bottom stays there.
-// bottomOffset includes the permanent control row, even when its scroll button is hidden.
+// Composer or task-control growth covers the tail, and a reader at the bottom
+// stays there. `bottomOffset` includes the permanent control row, even when its
+// scroll button is hidden.
 watch(
   () => props.bottomOffset,
   () => {
@@ -427,8 +489,9 @@ watch(
   { flush: 'post' },
 )
 
-// The list's own height changes, as when a phone's on-screen keyboard opens over the page and the
-// app shrinks above it (`phone-page.ts`): a reader at the end stays there, with the latest in view.
+// The list's own height changes, as when a phone's on-screen keyboard opens
+// over the page and the app shrinks above it (`phone-page.ts`). A reader at the
+// end stays there, with the latest in view.
 let listHeight: number | null = null
 useResizeObserver(scrollContainer, ([entry]) => {
   const height = entry?.contentRect.height ?? null
@@ -445,12 +508,18 @@ defineExpose({
 </script>
 
 <template>
-  <!-- The transcript is read as one text: its rows are antialiased as its prose is, so they never draw heavier beside it. -->
+  <!--
+    The transcript is read as one text: its rows are antialiased as its prose
+    is, so they never draw heavier beside it.
+  -->
   <div
     class="relative h-full antialiased"
     :style="{ '--transcript-clearance': `${props.bottomOffset + COMPOSER_CLEARANCE_PX}px` }"
   >
-    <!-- The scroll padding keeps a control the keyboard focuses out from under the dock, as the padding keeps the last block. -->
+    <!--
+      The scroll padding keeps a control the keyboard focuses out from under the
+      dock, as the padding keeps the last block.
+    -->
     <ScrollArea
       ref="scrollArea"
       class="h-full"

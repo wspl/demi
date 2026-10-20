@@ -8,16 +8,20 @@ import { provideBlockScope } from '../whole-blocks'
 
 /**
  * Input another agent, the user's decision or Demi sent the agent, as a notice
- * row of the same form as a command's end. It does not open: what it would show
- * is where the agent's name leads, the call that sent the update or the answer
- * that is the result, and a notice that names no agent says all there is. It
- * is inspectable context and never user input, so it is no user bubble and
+ * row of the same form as a command's end.
+ *
+ * The row does not open. What it would show is where the agent's name leads,
+ * the call that sent the update or the answer that is the result, and a notice
+ * that names no agent says all there is.
+ *
+ * It is inspectable context and never user input, so it is no user bubble and
  * offers no pending-steer, edit or Fork control.
  */
 defineProps<{
   message: AgentMessage
 }>()
-// What the row shows, the light form keeps: it never opens to read the block whole.
+// What the row shows, the light form keeps: it never opens to read the block
+// whole.
 provideBlockScope(() => undefined)
 </script>
 

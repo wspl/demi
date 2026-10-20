@@ -8,7 +8,10 @@ import { formatPercent } from '../ui/percent'
 import { formatTokens } from '../ui/token-count'
 import { t } from './locales/text'
 
-/** How full the context is, from 0 to 1 of its window, full at most; null without a window. */
+/**
+ * How full the context is, from 0 to 1 of its window, full at most; null
+ * without a window.
+ */
 export function contextRatio(usage: ContextUsage | null): number | null {
   if (!usage?.window) {
     return null
@@ -25,17 +28,20 @@ export function contextPercent(usage: ContextUsage | null): string | null {
   return usage?.window ? formatPercent(usage.tokens, usage.window) : null
 }
 
-/** Why Compact waits while the agent's turn runs, which the session refuses as busy. */
+/**
+ * Why Compact waits while the agent's turn runs, which the session refuses as
+ * busy.
+ */
 export function compactAfterTurn(): string {
   return t('context.afterTurn')
 }
 
 /**
- * Why the user may not compact at `usage`, or null when they may: below the
- * estimate the backend takes a `compact` frame from, unless the unfinished
- * turn failed for its size (`sizeRefused`, `refusedForSize`), which the
- * backend compacts at any share. A model without a window, and a usage not
- * known yet, leave the decision to the backend.
+ * Why the user may not compact at `usage`, or null when they may. Compact is
+ * refused below the estimate the backend takes a `compact` frame from, unless
+ * the unfinished turn failed for its size (`sizeRefused`, `refusedForSize`),
+ * which the backend compacts at any share. A model without a window, and a
+ * usage not known yet, leave the decision to the backend.
  */
 export function compactionRefusal(usage: ContextUsage | null, sizeRefused = false): string | null {
   if (sizeRefused || !usage?.window || usage.compactFrom == null || usage.tokens >= usage.compactFrom) {
@@ -71,16 +77,19 @@ export function contextFilled(usage: ContextUsage): number {
 }
 
 /**
- * The figure the context card's header shows and the ring's tip repeats after its label:
- * what fills the context against the window and its share, such as
- * `139K / 1M (13%)`; the filled tokens alone while the model has no window.
+ * The figure the context card's header shows and the ring's tip repeats after
+ * its label: what fills the context against the window and its share, such as
+ * `139K / 1M (13%)`. The filled tokens alone while the model has no window.
  */
 export function contextFigure(usage: ContextUsage): string {
   const filled = formatTokens(contextFilled(usage))
   return usage.window ? `${filled} / ${formatTokens(usage.window)} (${contextPercent(usage)})` : filled
 }
 
-/** The ring's tip: the card header's figure under the word Context; none while the model has no window. */
+/**
+ * The ring's tip: the card header's figure under the word Context; none while
+ * the model has no window.
+ */
 export function contextTip(usage: ContextUsage | null): string | undefined {
   return usage?.window ? t('context.tip', { figure: contextFigure(usage) }) : undefined
 }
@@ -113,11 +122,17 @@ export function untilCompaction(usage: ContextUsage): number | null {
   return Math.max(0, usage.window - buffer - usage.tokens)
 }
 
-/** The parts of the context card that open and close: the context window's rows, and the cost's details. */
+/**
+ * The parts of the context card that open and close: the context window's rows,
+ * and the cost's details.
+ */
 export const CONTEXT_CARD_SECTIONS = ['context', 'cost'] as const
 export type ContextCardSection = (typeof CONTEXT_CARD_SECTIONS)[number]
 
-/** `raw` as one of the card's sections, or none for anything else the browser holds under the key. */
+/**
+ * `raw` as one of the card's sections, or none for anything else the browser
+ * holds under the key.
+ */
 function parseSection(raw: string): ContextCardSection | null {
   return CONTEXT_CARD_SECTIONS.find((section) => section === raw) ?? null
 }
@@ -137,7 +152,10 @@ export function useContextCardSection(): Ref<ContextCardSection | null> {
 /** Where the browser keeps which part of the context card stands open. */
 const CONTEXT_CARD_SECTION_KEY = 'demi-context-card-open'
 
-/** `tokens` as a share of `window` to a tenth of a percent, "24.2%"; a share too small to show reads "<0.1%". */
+/**
+ * `tokens` as a share of `window` to a tenth of a percent, "24.2%"; a share too
+ * small to show reads "<0.1%".
+ */
 export function formatShare(tokens: number, window: number): string {
   const share = tokens / window
   const format = new Intl.NumberFormat(pageLanguage(), {
@@ -150,7 +168,10 @@ export function formatShare(tokens: number, window: number): string {
 
 /** The parts of the context card there is something to show in. */
 export interface ContextCardParts {
-  /** The context's header, bar, rows and Compact line, and the instructions under the limits. */
+  /**
+   * The context's header, bar, rows and Compact line, and the instructions
+   * under the limits.
+   */
   context: boolean
   /** The usage limits of the conversation's account. */
   limits: boolean
@@ -177,8 +198,14 @@ export interface UsageLimits {
   accountLabel: string
   windows: SettingsQuotaWindow[]
   autoRefresh: boolean
-  /** A manual refresh runs: the card's button turns and the windows stay as they were. */
+  /**
+   * A manual refresh runs: the card's button turns and the windows stay as they
+   * were.
+   */
   refreshing?: boolean
-  /** The vendor's words for the last manual refresh that failed, with its request, shown under the header until the next answer. */
+  /**
+   * The vendor's words for the last manual refresh that failed, with its
+   * request, shown under the header until the next answer.
+   */
   error?: ShownError | null
 }

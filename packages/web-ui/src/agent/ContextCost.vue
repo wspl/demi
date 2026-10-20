@@ -22,14 +22,19 @@ import { t } from './locales/text'
 
 /**
  * The context card's Cost section
- * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): closed, the
- * equivalent API price and the main conversation's cache
- * hit rate side by side; opened by its caption, a disclosure of its own,
- * the price by kind of token, the share of the profiles the conversation's
- * workflow offers and the chart of the main conversation's recent cache
- * hits. A figure that cannot be computed is left out with its label. A read
- * that failed says so under the caption, with its request's id and Retry,
- * and has nothing to open.
+ * (`packages/web-ui/src/agent/ContextUsageIndicator.vue`).
+ *
+ * Closed, the section shows the equivalent API price and the main
+ * conversation's cache hit rate side by side. Its caption is a disclosure of
+ * its own. Opened, the section shows:
+ *
+ * - the price by kind of token
+ * - the share of the profiles the conversation's workflow offers
+ * - the chart of the main conversation's recent cache hits
+ *
+ * A figure that cannot be computed is left out with its label. A read that
+ * failed says so under the caption, with its request's id and Retry, and has
+ * nothing to open.
  */
 const props = defineProps<{
   state: CostState
@@ -37,11 +42,14 @@ const props = defineProps<{
   open: boolean
   /** The section is the card's first, with no divider above it. */
   first?: boolean
-  /** The call, by its place among the conversation's, whose tip the chart shows without the pointer, as a gallery specimen pins it. */
+  /**
+   * The call, by its place among the conversation's, whose tip the chart shows
+   * without the pointer, as a gallery specimen pins it.
+   */
   pinnedTip?: number | null
   /**
-   * The names of the profiles the conversation's workflow offers now, whose
-   * subagents' prices the Profiles part shows; none under No Subagents.
+   * The names of the profiles the conversation's workflow offers now. The
+   * Profiles part shows their subagents' prices. None under No Subagents.
    */
   profiles?: readonly string[]
 }>()
@@ -56,11 +64,16 @@ const emit = defineEmits<{
 const cost = computed(() => (props.state.status === 'read' ? props.state.cost : null))
 
 const price = computed(() => cost.value?.totals.price.total ?? null)
-/** The main conversation's recent calls, which the rate counts and the chart draws. */
+/**
+ * The main conversation's recent calls, which the rate counts and the chart
+ * draws.
+ */
 const recent = computed(() => recentCalls(cost.value?.calls ?? []))
 const rate = computed(() => (cost.value ? hitRate(recent.value.calls) : null))
 const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 0 })
-/** The chart shows once the main conversation made enough calls to draw a line. */
+/**
+ * The chart shows once the main conversation made enough calls to draw a line.
+ */
 const charted = computed(() => recent.value.calls.length >= CHART_CALLS)
 
 /** The two figures of the closed section, each that can be computed. */
@@ -90,7 +103,10 @@ function share(price: number): string {
 
 <template>
   <div :class="[first ? 'pt-1' : 'border-t border-line', cost && open ? 'pb-2' : 'pb-1']">
-    <!-- The caption is the section's disclosure, as the context window's header is. -->
+    <!--
+      The caption is the section's disclosure, as the context window's header
+      is.
+    -->
     <button
       v-if="cost"
       type="button"
@@ -115,7 +131,10 @@ function share(price: number): string {
       </div>
       <RequestIdLine v-if="state.error.requestId" :request-id="state.error.requestId" />
     </div>
-    <!-- Closed, two figures side by side: the price at the text's left edge, the rate at the middle. -->
+    <!--
+      Closed, two figures side by side: the price at the text's left edge, the
+      rate at the middle.
+    -->
     <Fold v-if="cost" :open="!open">
       <div class="cost-figures px-3 pb-1">
         <div v-for="figure in figures" :key="figure.key">
@@ -187,9 +206,11 @@ function share(price: number): string {
   line-height: 0.875rem;
 }
 
-/* The kinds of token: their names, their tokens and their prices, each
-   figure's column as wide as its widest figure across the rows, so a price
-   never wraps and the figures line up. */
+/*
+ * The kinds of token: their names, their tokens and their prices. Each figure's
+ * column is as wide as its widest figure across the rows, so a price never
+ * wraps and the figures line up.
+ */
 .cost-rows {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -204,7 +225,6 @@ function share(price: number): string {
   min-height: 1.5rem;
 }
 
-/* A part's caption. */
 .cost-caption {
   display: flex;
   align-items: center;

@@ -6,13 +6,16 @@ import { chromium, type Browser, type Page } from 'playwright'
 import { vueSingleFileComponents } from '../../__tests__/vue-components'
 
 // The work panel's tab strip keeps every tab's width and reach when crowded:
-// the pinned tabs show their kinds' own titles, whatever they show; selecting a
-// tab changes no tab's width, a long title, a selected one or the open file's
-// name, never widens its tab past its share, and with more tabs than fit a list
-// of every tab selects the one picked. Widths are layout, so this runs the
-// product's WorkPanel in a real Chromium with the stylesheet Tailwind builds
-// from it; happy-dom lays nothing out. About 5 s: the page's and the
-// stylesheet's builds and the browser's start, shared, and a page per test.
+//
+// - The pinned tabs show their kinds' own titles, whatever they show.
+// - Selecting a tab changes no tab's width. A long title, a selected one or the
+//   open file's name never widens its tab past its share.
+// - With more tabs than fit, a list of every tab selects the one picked.
+//
+// Widths are layout, so this runs the product's WorkPanel in a real Chromium
+// with the stylesheet Tailwind builds from it; happy-dom lays nothing out.
+// About 5 s: the page's and the stylesheet's builds and the browser's start,
+// shared, and a page per test.
 
 /** One tab of the strip as the page measures it. */
 interface Box {
@@ -25,7 +28,10 @@ interface Box {
 
 declare global {
   interface Window {
-    /** Mounts a work panel `width` px wide with a page tab of each title, the `selected` one selected, and Changes and Files pinned. */
+    /**
+     * Mounts a work panel `width` px wide with a page tab of each title, the
+     * `selected` one selected, and Changes and Files pinned.
+     */
     showPanel(options: { width: number; titles: string[]; selected: string; file?: string }): void
     /** Every tab of the strip, the pinned ones first. */
     tabBoxes(): Box[]
@@ -110,7 +116,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     if (!build.success)
       throw new AggregateError(build.logs, 'The page did not build')
     script = await build.outputs[0]!.text()
-    // The product's stylesheet with every class the page's code names, as Tailwind's scan of the sources finds them.
+    // The product's stylesheet with every class the page's code names, as
+    // Tailwind's scan of the sources finds them.
     const styles = fileURLToPath(new URL('../../styles/', import.meta.url))
     const compiler = await compile(`@import 'tailwindcss';\n@import './base.css';`, { base: styles, onDependency: () => {} })
     css = compiler.build([...new Set(script.split(/[\s'"`\\]+/))])
@@ -125,7 +132,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await opened.route('https://demi.test/', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
     await opened.goto('https://demi.test/')
     await opened.addStyleTag({ content: css })
-    // A module, so the bundle's top-level functions, such as Vue's addEventListener, stay off the window.
+    // A module, so the bundle's top-level functions, such as Vue's
+    // addEventListener, stay off the window.
     await opened.addScriptTag({ content: script, type: 'module' })
     // An inline module runs once the page has parsed it, after the tag is in.
     await opened.waitForFunction(() => typeof window.showPanel === 'function')
@@ -133,7 +141,9 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     return opened
   }
 
-  /** The tabs once the strip has measured them and settled, across two frames. */
+  /**
+   * The tabs once the strip has measured them and settled, across two frames.
+   */
   async function settled(opened: Page): Promise<Box[]> {
     await opened.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     return opened.evaluate(() => window.tabBoxes())
@@ -162,14 +172,17 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     const plain = await settled(opened)
     const view = await opened.evaluate(() => window.stripView())
     const [change, file, short, longTab, request, dashboard] = plain
-    // The pinned tabs show their kinds' titles beside their icons, not the open file's name, which is File's tooltip.
+    // The pinned tabs show their kinds' titles beside their icons, not the open
+    // file's name, which is File's tooltip.
     expect(change!.name).toBe('Changes+4066−2005')
     expect(file!.name).toBe('Files')
     expect(file!.width).toBeGreaterThan(40)
-    // The tabs whose titles are cut share the room equally, the long one no wider than the rest.
+    // The tabs whose titles are cut share the room equally, the long one no
+    // wider than the rest.
     expect(longTab!.width).toBeCloseTo(request!.width, 0)
     expect(longTab!.width).toBeCloseTo(dashboard!.width, 0)
-    // A short title takes what it needs and leaves the rest to them: no room stays empty while a title is cut.
+    // A short title takes what it needs and leaves the rest to them: no room
+    // stays empty while a title is cut.
     expect(short!.width).toBeLessThan(request!.width)
     expect(dashboard!.right).toBeCloseTo(view.right, 0)
     // Every tab shows within the strip, none under the panel's own controls.
@@ -205,7 +218,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     expect(picked.selected).toBe(true)
     expect(picked.left).toBeGreaterThanOrEqual(view.left - 0.5)
     expect(picked.right).toBeLessThanOrEqual(view.right + 0.5)
-    // The titled pinned tabs leave the strip's tabs their least width, and the strip scrolls the rest out of view.
+    // The titled pinned tabs leave the strip's tabs their least width, and the
+    // strip scrolls the rest out of view.
     const [change, file, ...pages] = tabs
     expect([change!.name, file!.name]).toEqual(['Changes+4066−2005', 'Files'])
     for (const tab of pages)

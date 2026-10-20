@@ -13,7 +13,9 @@ import { chooseSendWay, turnStartingMessage, useSendOnceLoaded, type SendWay, ty
 const PARAGRAPH: JSONContent = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'skip the e2e tests' }] }] }
 const CODE: JSONContent = { type: 'doc', content: [{ type: 'codeBlock', content: [{ type: 'text', text: 'bun test' }] }] }
 
-/** A key as the keydown event gives it; `mod` is ⌘ on macOS and Ctrl elsewhere. */
+/**
+ * A key as the keydown event gives it; `mod` is ⌘ on macOS and Ctrl elsewhere.
+ */
 interface Key {
   key: string
   keyCode: number
@@ -24,7 +26,10 @@ interface Key {
 const ENTER: Key = { key: 'Enter', keyCode: 13 }
 const MOD_ENTER: Key = { ...ENTER, mod: true }
 
-/** What a keydown in a composer did: the sends it asked, the edits it ended, and whether listeners around the editor got it. */
+/**
+ * What a keydown in a composer did: the sends it asked, the edits it ended, and
+ * whether listeners around the editor got it.
+ */
 interface Pressed {
   sent: boolean[]
   cancelled: number
@@ -95,9 +100,11 @@ test('in a code block ⌘/Ctrl+Enter is the send key and sends the preferred way
 
 test("an input method's Enter sends nothing and its Escape ends no edit, in Chrome's order and in Safari's", () => {
   const kept: Pressed = { sent: [], cancelled: 0, reachesPage: false }
-  // Chrome: the Enter that commits the candidate comes while the composition is open.
+  // Chrome: the Enter that commits the candidate comes while the composition is
+  // open.
   expect(press(PARAGRAPH, { key: 'Enter', keyCode: 229, isComposing: true })).toEqual(kept)
-  // Safari: the composition ended before the Enter's keydown, which only its key code marks.
+  // Safari: the composition ended before the Enter's keydown, which only its
+  // key code marks.
   expect(press(PARAGRAPH, { key: 'Enter', keyCode: 229 })).toEqual(kept)
   expect(press(PARAGRAPH, { key: 'Escape', keyCode: 229 })).toEqual(kept)
   // The next Enter is the user's own.
@@ -122,9 +129,11 @@ test.each<{ name: string; phase: SessionPhase; sent: ReturnType<typeof onItsWay>
   { name: 'a steer during a run', phase: 'running', sent: [onItsWay('a', 'steer')], starts: null },
   { name: 'a queued message during a compaction', phase: 'compacting', sent: [onItsWay('a', 'queue')], starts: null },
   { name: 'back-to-back sends: the second steers the first one\'s turn', phase: 'idle', sent: [onItsWay('a', 'send'), onItsWay('b', 'steer')], starts: 'a' },
-  // Split: the backend starts the turn before it writes the message, and the composer counted the phase alone.
+  // Split: the backend starts the turn before it writes the message, and the
+  // composer counted the phase alone.
   { name: 'back-to-back sends once the backend runs the first one\'s turn', phase: 'running', sent: [onItsWay('a', 'send'), onItsWay('b', 'steer')], starts: 'a' },
-  // Split: the session refuses the steer, as nothing runs, and answers it as the next message.
+  // Split: the session refuses the steer, as nothing runs, and answers it as
+  // the next message.
   { name: 'back-to-back sends whose first was not delivered', phase: 'idle', sent: [onItsWay('a', 'send', FAILED), onItsWay('b', 'steer')], starts: 'b' },
   { name: 'a message not delivered', phase: 'idle', sent: [onItsWay('a', 'send', FAILED)], starts: null },
   // Split: a queued message whose turn ended goes as the next message.
@@ -160,10 +169,12 @@ test('Enter while the models load waits, and the message goes the way Enter aske
     blocked.value = false
     await nextTick()
     expect(sent).toEqual([true])
-    // Once loaded, Enter on a message that cannot go keeps nothing: the button says why.
+    // Once loaded, Enter on a message that cannot go keeps nothing: the button
+    // says why.
     blocked.value = true
     expect(wait.keep(false)).toBe(false)
-    // Models that loaded and still cannot send end the wait; a model chosen later sends nothing.
+    // Models that loaded and still cannot send end the wait; a model chosen
+    // later sends nothing.
     loading.value = true
     await nextTick()
     expect(wait.keep(false)).toBe(true)

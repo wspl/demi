@@ -11,7 +11,10 @@ import { useElapsedTime } from '../../composables/useElapsedTime'
 const props = defineProps<{
   streaming: boolean
   createdAt: string
-  /** The start of the block after the thinking, when it ended; none while it streams or nothing followed. */
+  /**
+   * The start of the block after the thinking, when it ended; none while it
+   * streams or nothing followed.
+   */
   endedAt?: string | null
 }>()
 

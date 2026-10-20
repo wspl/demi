@@ -1,28 +1,34 @@
 /**
- * Work groups: an agent often takes many steps in a row, and listed one per
- * row a run would push the answer off the screen, so the transcript shows each
- * run of consecutive steps as one row.
+ * Work groups: an agent often takes many steps in a row, and listed one per row
+ * a run would push the answer off the screen, so the transcript shows each run
+ * of consecutive steps as one row.
  *
- * The backend decides which blocks make a run, once: each block of a run
+ * The backend decides which blocks make a run, once. Each block of a run
  * carries `run`, the id of the run's first block, set as the block is stored,
- * so the page groups by it and judges nothing; a run's start depends only on
- * the blocks before it, so `run` never changes. Only a step that has ended
- * joins its run: what still runs, a call being written or waiting for its
- * result or thinking being written, is a row of its own under the run, so at
- * the end of a running turn the run is what has happened and the row under it
- * what happens now. What ends a run is what the reader reads: the agent's
- * text and the user's own words and decisions, never folded. A `resume` block
- * ends none, as it shows nothing: the work after a Continue or a Resume joins
- * the run before it.
+ * so the page groups by it and judges nothing. A run's start depends only on
+ * the blocks before it, so `run` never changes.
+ *
+ * What joins and ends a run:
+ *
+ * - Only a step that has ended joins its run. What still runs, a call being
+ *   written or waiting for its result or thinking being written, is a row of
+ *   its own under the run, so at the end of a running turn the run is what has
+ *   happened and the row under it what happens now.
+ * - What ends a run is what the reader reads: the agent's text and the user's
+ *   own words and decisions, never folded.
+ * - A `resume` block ends none, as it shows nothing: the work after a Continue
+ *   or a Resume joins the run before it.
  *
  * Thinking that streams never opens by itself, since folding itself when it
  * ends would shrink the list with nothing the reader did. Thinking blocks next
  * to each other show as one step, while each stays its own block with its
- * signature for replay: only the page joins them. A run's time is the time of
- * its steps added up, each from its start to its end, so a command left in the
- * background counts only until its call returned and the wait for the model
- * between steps is not counted; a call's block records when it returned
- * (`endedAt`), and a thinking block ends where the next block starts.
+ * signature for replay: only the page joins them.
+ *
+ * A run's time is the time of its steps added up, each from its start to its
+ * end. A command left in the background counts only until its call returned,
+ * and the wait for the model between steps is not counted. A call's block
+ * records when it returned (`endedAt`), and a thinking block ends where the
+ * next block starts.
  */
 import type { HeldBlock, TextArrival } from '@demicodes/conversation-client'
 import type { MessageListBlock } from './pending-steers'
@@ -43,7 +49,10 @@ import { shellStatusLooks, toolRenderKind } from './tool-rendering'
  */
 export type WorkStep = Extract<MessageListBlock, { type: 'thinking' | 'tool_call' | 'pending_call' | 'wakeup' | 'agent_message' }>
 
-/** A step that tells of work done elsewhere: a command's notice or another agent's receipt. */
+/**
+ * A step that tells of work done elsewhere: a command's notice or another
+ * agent's receipt.
+ */
 export type NoticeStep = Extract<WorkStep, { type: 'wakeup' | 'agent_message' }>
 
 /** A call: one written whole, or one the model is still writing. */
@@ -75,7 +84,10 @@ export function isWorkStep(block: MessageListBlock): block is WorkStep {
   return block.type === 'pending_call' || ('run' in block && block.run !== undefined)
 }
 
-/** The run a step belongs to; none for a call being written, which joins whichever run it follows. */
+/**
+ * The run a step belongs to; none for a call being written, which joins
+ * whichever run it follows.
+ */
 function runOf(step: WorkStep): string | undefined {
   return step.type === 'pending_call' ? undefined : step.run
 }
@@ -84,12 +96,18 @@ export function isNoticeStep(step: WorkStep): step is NoticeStep {
   return step.type === 'wakeup' || step.type === 'agent_message'
 }
 
-/** Whether `step` shows the block `id`: it is that block, or thinking that joins it. */
+/**
+ * Whether `step` shows the block `id`: it is that block, or thinking that joins
+ * it.
+ */
 export function stepHolds(step: WorkStep & Pick<ShownBlock, 'parts'>, id: string): boolean {
   return step.id === id || (step.parts?.some((part) => part.id === id) ?? false)
 }
 
-/** What names a step across its forms: a call keeps its key from being written to its block, so its row never rolls again. */
+/**
+ * What names a step across its forms: a call keeps its key from being written
+ * to its block, so its row never rolls again.
+ */
 export function stepKey(step: WorkStep): string {
   switch (step.type) {
     case 'tool_call':
@@ -113,37 +131,39 @@ function isEmptyThinking(block: MessageListBlock): boolean {
 }
 
 /**
- * The list's rows with the work grouped: the steps of one run, as the
- * backend stored each step's run, and the calls being written after them. A
- * thinking block without text shows only while it is the newest block of a
- * running turn, as what the agent is doing; once anything follows it or the
- * turn ends, it has nothing to show and goes. Thinking blocks next to each
- * other are one step.
+ * The list's rows with the work grouped: the steps of one run, as the backend
+ * stored each step's run, and the calls being written after them.
  *
- * Only a step that has ended joins its run's row: a call once it returned,
- * thinking once it is written. A step that still runs is a row of its own
- * after the run's, as the step's own block: a call waiting for its result,
- * wherever its run stands, and at the end of a running turn a call being
- * written or thinking being written. A run that holds only thinking shows
- * no row while a step of it runs, until a step that says something joins
- * it. A run's row is named after the run the backend stored (`runRowId`),
- * so it stays one row whichever of its steps ends first, as parallel calls
- * return in any order; the row a lone step ran in becomes the run's row by
- * taking its place (`succeedKeys`).
+ * - A thinking block without text shows only while it is the newest block of a
+ *   running turn, as what the agent is doing. Once anything follows it or the
+ *   turn ends, it has nothing to show and goes.
+ * - Thinking blocks next to each other are one step.
+ * - Only a step that has ended joins its run's row: a call once it returned,
+ *   thinking once it is written. A step that still runs is a row of its own
+ *   after the run's, as the step's own block: a call waiting for its result,
+ *   wherever its run stands, and at the end of a running turn a call being
+ *   written or thinking being written.
+ * - A run that holds only thinking shows no row while a step of it runs, until
+ *   a step that says something joins it.
+ * - A run's row is named after the run the backend stored (`runRowId`), so it
+ *   stays one row whichever of its steps ends first, as parallel calls return
+ *   in any order. The row a lone step ran in becomes the run's row by taking
+ *   its place (`succeedKeys`).
  */
 export function groupWork(blocks: readonly MessageListBlock[], running: boolean): MessageListBlock[] {
   return groupRuns(blocks, running, new Map(), new Map())
 }
 
 /**
- * `groupWork` for a transcript that changes a little at a time, as a turn
- * that streams changes its last blocks many times a second: each call
- * groups the blocks it is given, and a run whose blocks, the block after
- * it and whether it is live are the ones the last call grouped keeps the
- * rows it had then, the same objects. A change at the end then regroups
- * only the run it is in, and the list redraws none of the rows above it.
- * A block that changes is replaced, never changed in place
- * (`applyTranscriptPatches`), so the same block is the same content.
+ * `groupWork` for a transcript that changes a little at a time, as a turn that
+ * streams changes its last blocks many times a second.
+ *
+ * Each call groups the blocks it is given. A run whose blocks, the block after
+ * it and whether it is live are the ones the last call grouped keeps the rows
+ * it had then, the same objects. A change at the end then regroups only the run
+ * it is in, and the list redraws none of the rows above it. A block that
+ * changes is replaced, never changed in place (`applyTranscriptPatches`), so
+ * the same block is the same content.
  */
 export function workGrouping(): (blocks: readonly MessageListBlock[], running: boolean) => MessageListBlock[] {
   let last = new Map<MessageListBlock, GroupedRun>()
@@ -155,10 +175,15 @@ export function workGrouping(): (blocks: readonly MessageListBlock[], running: b
   }
 }
 
-/** The rows a run of steps was grouped into, and what they were grouped from. */
+/**
+ * The rows a run of steps was grouped into, and what they were grouped from.
+ */
 interface GroupedRun {
   blocks: readonly MessageListBlock[]
-  /** The block after the run, whose start is when its last step ended; none at the transcript's end. */
+  /**
+   * The block after the run, whose start is when its last step ended; none at
+   * the transcript's end.
+   */
   next: MessageListBlock | undefined
   live: boolean
   rows: readonly MessageListBlock[]
@@ -204,7 +229,10 @@ function groupRuns(
   return rows
 }
 
-/** Whether `grouped` was grouped from the run `blocks[index..end]`, followed by `next`. */
+/**
+ * Whether `grouped` was grouped from the run `blocks[index..end]`, followed by
+ * `next`.
+ */
 function sameRun(
   grouped: GroupedRun,
   blocks: readonly MessageListBlock[],
@@ -229,9 +257,11 @@ function runRows(blocks: readonly MessageListBlock[], next: MessageListBlock | u
   const runs = (step: WorkStep, at: number) => stepRuns(step, live, at === steps.length - 1)
   const ended = steps.filter((step, at) => !runs(step, at))
   const runningSteps = steps.filter(runs)
-  // Thinking alone is one step once joined, so every ended run that shows anything is a row.
+  // Thinking alone is one step once joined, so every ended run that shows
+  // anything is a row.
   if (ended.length > 0 && !((live || runningSteps.length > 0) && ended.every((step) => step.type === 'thinking'))) {
-    // Where each block stands in the run, so each step finds the block after it at once.
+    // Where each block stands in the run, so each step finds the block after it
+    // at once.
     const positions = new Map(blocks.map((block, at) => [block.id, at]))
     rows.push({
       type: 'work_group',
@@ -254,7 +284,10 @@ export function followedBlockId(row: MessageListBlock): string {
   return row.type === 'thinking' && 'parts' in row && Array.isArray(row.parts) ? row.parts.at(-1)!.id : row.id
 }
 
-/** When `block`, the block after a step, started, which is when the step, if thinking, ended. */
+/**
+ * When `block`, the block after a step, started, which is when the step, if
+ * thinking, ended.
+ */
 function startOf(block: MessageListBlock | undefined): string | null {
   return block && 'createdAt' in block ? block.createdAt : null
 }
@@ -380,12 +413,18 @@ export function runLabel(group: WorkGroupBlock): string {
   return time < 1000 ? what : t('transcript.work.took', { what, span: formatSpan(time) })
 }
 
-/** The name of the row of the run `run`, the id of its first block, as the backend stored it. */
+/**
+ * The name of the row of the run `run`, the id of its first block, as the
+ * backend stored it.
+ */
 export function runRowId(run: string): string {
   return `run:${run}`
 }
 
-/** The name of the row `first` shows in as a step of its own: while it runs, and as an ended run's lone step before any other step. */
+/**
+ * The name of the row `first` shows in as a step of its own: while it runs, and
+ * as an ended run's lone step before any other step.
+ */
 export function workRowId(first: WorkStep): string {
   return `work:${stepKey(first)}`
 }
@@ -410,7 +449,10 @@ function callKind(step: CallStep): CallKind {
   return looked === null ? { kind: 'run' } : { kind: 'check', commands: looked }
 }
 
-/** A run's calls by what they did, in the order the run first did each, with the commands each kind touched. */
+/**
+ * A run's calls by what they did, in the order the run first did each, with the
+ * commands each kind touched.
+ */
 interface CallGroup {
   kind: CallKind['kind']
   tool: string
@@ -452,7 +494,10 @@ function joinPhrases(parts: readonly string[]): string {
   return parts.reduce((joined, part) => t('transcript.work.joined', { first: joined, next: part }))
 }
 
-/** Each kind of call the run made, once, in the order it first made it, joined as one phrase. */
+/**
+ * Each kind of call the run made, once, in the order it first made it, joined
+ * as one phrase.
+ */
 function describeCalls(steps: readonly WorkStep[]): string {
   const parts = callGroups(steps).map((group) => WORDS[group.kind](group.touched.size, group.tool))
   return parts.length === 0 ? '' : upperFirst(joinPhrases(parts))
@@ -472,7 +517,9 @@ type Told = ToldEvent & {
   names: Set<string>
 }
 
-/** The words of what the run was told: what it named, counted, and how it ended. */
+/**
+ * The words of what the run was told: what it named, counted, and how it ended.
+ */
 function toldWords(told: Told): string {
   const count = told.names.size
   switch (told.subject) {

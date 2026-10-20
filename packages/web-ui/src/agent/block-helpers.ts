@@ -48,7 +48,10 @@ export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown
   }
 }
 
-/** A tool call's title, as its row in the transcript names it: a `shell` call's, or another tool's name. */
+/**
+ * A tool call's title, as its row in the transcript names it: a `shell` call's,
+ * or another tool's name.
+ */
 export function toolCallTitle(block: ToolCallBlock): string {
   return toolRenderKind(block.toolName) === 'shell'
     ? shellTitle(parseToolCallInput(block))

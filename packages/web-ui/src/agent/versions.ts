@@ -11,7 +11,9 @@ export interface VersionChoice extends Versions {
   choose: (to: number) => void
 }
 
-/** The versions at a block's place on the path, by the block whose place it is. */
+/**
+ * The versions at a block's place on the path, by the block whose place it is.
+ */
 export interface VersionPlace extends Versions {
   blockId: string
 }

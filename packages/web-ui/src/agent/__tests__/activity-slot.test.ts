@@ -47,11 +47,11 @@ test('a running turn requests after a completed tool while waiting for the model
   expect(kind('running', [toolCallBlock('error')])).toBe('requesting')
 })
 
-// A run's row holds only the steps that ended, so at a running turn's end it
-// is what has happened, and the turn waits for the model under it; a step that
+// A run's row holds only the steps that ended, so at a running turn's end it is
+// what has happened, and the turn waits for the model under it. A step that
 // still runs is a row of its own after the run, the turn's activity, and no
-// Requesting row shows while it runs. Before, the run's row stood for the
-// wait, and no Requesting showed under it.
+// Requesting row shows while it runs. Before, the run's row stood for the wait,
+// and no Requesting showed under it.
 test('a run whose steps ended waits for the model under it; a step that runs is the activity', () => {
   const transcript = [userBlock(), thinkingBlock(), toolCallBlock('completed')]
   expect(kind('running', transcript, groupWork(transcript, true))).toBe('requesting')
@@ -62,7 +62,7 @@ test('a run whose steps ended waits for the model under it; a step that runs is 
 })
 
 // Review: a call still waiting for its result keeps the turn waiting for it,
-// wherever it stands: the agent started A, wrote a line, and B in a new run
+// wherever it stands. The agent started A, wrote a line, and B in a new run
 // returned. Before, the run of B at the tail read as the model's turn.
 test('no Requesting shows while a call in an earlier run still executes', () => {
   const started = { ...toolCallBlock('executing'), run: 'thinking-1' } as MessageListBlock
@@ -191,7 +191,8 @@ test('a message sent to an idle conversation says Requesting from the send, thro
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
-  // The message's block confirms it; the page drops the pending message in the same update.
+  // The message's block confirms it; the page drops the pending message in the
+  // same update.
   at(8_000)
   conversation.blocks = [textBlock(), userBlock()]
   conversation.pendingSubmissions = []
@@ -239,9 +240,9 @@ test('a message this page sent counts from its send, also once the server tells 
   expect(slot.value).toEqual({ kind: 'requesting', since: 20_000 })
 })
 
-// The request has shown nothing for 74 s when the user sends a steer now:
-// the server starts the wait again, and the sending page counts from there
-// as every other page does.
+// The request has shown nothing for 74 s when the user sends a steer now. The
+// server starts the wait again, and the sending page counts from there as every
+// other page does.
 test('a message this page sent counts from its send only for its own wait, not for one a steer sent now starts', async () => {
   using session = slotOver('idle', [textBlock()])
   const { conversation, slot, at } = session
@@ -291,11 +292,11 @@ test('a message sent while the socket reconnects says Connecting, and Requesting
   expect(slot.value).toEqual({ kind: 'requesting', since: 12_000 })
 })
 
-// Back-to-back sends 400 ms apart, the first one failing: the composer's
-// Stop and the transcript's Requesting read one rule, so the one shows
-// exactly while the other does. Before, the composer kept Stop for the
-// second message, a steer that goes as the next message, while the row
-// showed nothing. About 1 ms.
+// Back-to-back sends 400 ms apart, the first one failing. The composer's Stop
+// and the transcript's Requesting read one rule, so the one shows exactly while
+// the other does. Before, the composer kept Stop for the second message, a
+// steer that goes as the next message, while the row showed nothing. About 1
+// ms.
 test('the composer shows Stop exactly while the row says Requesting for a message that starts a turn', async () => {
   using session = slotOver('idle', [textBlock()])
   const { conversation, slot } = session
@@ -318,7 +319,8 @@ test('the composer shows Stop exactly while the row says Requesting for a messag
   // Sent while the first is on its way: it steers the turn the first starts.
   conversation.pendingSubmissions = [message('a', 'send'), message('b', 'steer')]
   expect(await shown()).toEqual(both(true))
-  // The first is not delivered: the session answers the steer as the next message.
+  // The first is not delivered: the session answers the steer as the next
+  // message.
   conversation.pendingSubmissions = [message('a', 'send', 'Upload failed'), message('b', 'steer')]
   expect(await shown()).toEqual(both(true))
   conversation.pendingSubmissions = [message('a', 'send', 'Upload failed'), message('b', 'steer', 'Upload failed')]
@@ -367,7 +369,10 @@ function steerBlock(): MessageListBlock {
   }
 }
 
-/** A compaction inside a turn shows as its marker at the tail; the turn then asks the model again. */
+/**
+ * A compaction inside a turn shows as its marker at the tail; the turn then
+ * asks the model again.
+ */
 function compactionMarkerBlock(): MessageListBlock {
   return {
     type: 'compaction_marker',

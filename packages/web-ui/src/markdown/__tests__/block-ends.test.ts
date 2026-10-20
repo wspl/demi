@@ -23,7 +23,8 @@ test('a blank line ends a block outside a fence, a list item, an indented code b
 })
 
 test('a block stays live while what follows could still join it or change it', () => {
-  // The next item's number has arrived without its dot: it may continue the list.
+  // The next item's number has arrived without its dot: it may continue the
+  // list.
   expect(settled('1. a\n\n2')).toEqual([])
   expect(settled('1. a\n\n2. b\n\nnext\n')).toEqual(['1. a\n\n2. b\n\n'])
   // Display math lexes as text until its closing line arrives.
@@ -32,7 +33,10 @@ test('a block stays live while what follows could still join it or change it', (
   expect(settled('Intro.\n\n<details>\n<summary>More</summary>\n\nbody\n\nend\n')).toEqual(['Intro.\n\n'])
 })
 
-/** A deterministic source of numbers in [0, 1), so a failing case is found again. */
+/**
+ * A deterministic source of numbers in [0, 1), so a failing case is found
+ * again.
+ */
 function seeded(seed: number): () => number {
   let state = seed
   return () => {
@@ -43,7 +47,10 @@ function seeded(seed: number): () => number {
   }
 }
 
-/** A reply of the blocks an agent writes, blank lines inside lists, fences and code included. */
+/**
+ * A reply of the blocks an agent writes, blank lines inside lists, fences and
+ * code included.
+ */
 function randomReply(random: () => number): string {
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!
   const words = () => Array.from({ length: 2 + Math.floor(random() * 8) }, () => pick(['the', 'step', '**bold**', '`code`', 'x', '2.', '-', '1)', '$', '|'])).join(' ')

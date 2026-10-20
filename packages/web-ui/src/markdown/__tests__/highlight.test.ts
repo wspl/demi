@@ -22,7 +22,8 @@ test('a code block is labeled with the full name of the language its fence names
   expect(label('bash')).toBe('Shell')
   expect(label('py')).toBe('Python')
   expect(label('yml')).toBe('YAML')
-  // An extension the editor reads as a language the data does not match by name, as a file of it is named.
+  // An extension the editor reads as a language the data does not match by
+  // name, as a file of it is named.
   expect(label('jsonc')).toBe('JSON')
   // One the highlighter does not know shows as the fence wrote it, and plain.
   expect(label('text')).toBe('text')
@@ -31,14 +32,20 @@ test('a code block is labeled with the full name of the language its fence names
   expect(label('')).toBeNull()
 })
 
-/** A message's code block as runs of its text and the classes that color them; unstyled text is left out. */
+/**
+ * A message's code block as runs of its text and the classes that color them;
+ * unstyled text is left out.
+ */
 function messageRuns(fence: string, code: string): [string, string][] {
   const html = renderMarkdown(`\`\`\`${fence}\n${code}\n\`\`\``)
   const unescape = (text: string) => text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
   return [...html.matchAll(/<span class="([^"]+)">([^<]*)<\/span>/g)].map((match) => [unescape(match[2]!), match[1]!])
 }
 
-/** The same code in the editor, for a file of that name: the runs its syntax highlighting colors, with the editor's classes. */
+/**
+ * The same code in the editor, for a file of that name: the runs its syntax
+ * highlighting colors, with the editor's classes.
+ */
 async function editorRuns(path: string, code: string): Promise<[string, string][]> {
   const state = EditorState.create({ doc: code, extensions: [editorTheme(), await loadFileLanguage(path)] })
   const tree = ensureSyntaxTree(state, state.doc.length, 5_000)!

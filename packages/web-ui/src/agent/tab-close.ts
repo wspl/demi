@@ -1,7 +1,13 @@
-/** Which tabs a close command in a tab's menu takes: the tab, the others, or one side of it. */
+/**
+ * Which tabs a close command in a tab's menu takes: the tab, the others, or one
+ * side of it.
+ */
 export type TabCloseScope = 'self' | 'others' | 'right' | 'left'
 
-/** The ids `scope` closes, in strip order; empty when there is nothing on that side. */
+/**
+ * The ids `scope` closes, in strip order; empty when there is nothing on that
+ * side.
+ */
 export function tabsToClose(
   tabs: readonly { id: string }[],
   id: string,

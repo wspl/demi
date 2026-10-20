@@ -227,7 +227,8 @@ test('a run of text typed at once formats every construct it closes, as typing i
     length: 66,
     nodes: [{ type: 'text', text: 'Open ' }, link('README.md', 'README.md'), { type: 'text', text: ' and ' }, link('README.zh-CN.md', 'README.zh-CN.md')],
   })
-  // Bold waits for its second star there too, and what follows the last construct stays text.
+  // Bold waits for its second star there too, and what follows the last
+  // construct stays text.
   expect(typedFormat([], '', '**a** and *b* end')).toEqual({ length: 17, nodes: [text('a', 'bold'), text(' and '), text('b', 'italic'), text(' end')] })
   expect(typedFormat([], 'a *b', '*')).toEqual({ length: 5, nodes: [text('a '), text('b', 'italic')] })
   expect(typedFormat([], '', 'snake_case and 2 * 3')).toBeNull()

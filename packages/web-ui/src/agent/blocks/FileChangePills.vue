@@ -12,13 +12,17 @@ import { useIconPx } from '../../ui/icon-metrics'
 import type { ChangeFile } from '../../files/changes'
 
 /**
- * The files a tool call changed, as pills that wrap: icon, name, and the
- * line counts. A new file carries a green plus at its icon's lower right
- * corner, as a file added in an editor's tree does; a deleted file is
- * struck through; a renamed file names its old path in the tooltip.
- * The pills take at most two lines; the files that do not fit fold into a
- * last pill, "+N Files", which asks for the call's whole list (`openRest`)
- * where a pill asks for its file.
+ * The files a tool call changed, as pills that wrap: icon, name, and the line
+ * counts.
+ *
+ * - A new file carries a green plus at its icon's lower right corner, as a file
+ *   added in an editor's tree does.
+ * - A deleted file is struck through.
+ * - A renamed file names its old path in the tooltip.
+ *
+ * The pills take at most two lines. The files that do not fit fold into a last
+ * pill, "+N Files", which asks for the call's whole list (`openRest`) where a
+ * pill asks for its file.
  */
 const props = withDefaults(
   defineProps<{
@@ -48,7 +52,10 @@ function opens(path: string): boolean {
 }
 
 const container = ref<HTMLElement>()
-/** The pills in the order of `files`, which `measure` lays out and each tip points at. */
+/**
+ * The pills in the order of `files`, which `measure` lays out and each tip
+ * points at.
+ */
 const pillEls = ref<HTMLElement[]>([])
 
 /** What the last pill says for the files that do not fit, "+3 Files". */
@@ -56,10 +63,15 @@ function moreLabel(count: number): string {
   return t('transcript.moreFiles', { count }, count)
 }
 
-/** The "+N Files" button's width beside its text: its side paddings (`px-2`). */
+/**
+ * The "+N Files" button's width beside its text: its side paddings (`px-2`).
+ */
 const MORE_PADDING_PX = 16
 
-/** How many pills fit within `maxRows` rows with the "+N Files" button after them. */
+/**
+ * How many pills fit within `maxRows` rows with the "+N Files" button after
+ * them.
+ */
 const fitCount = useFitMore({
   items: () => props.files,
   box: () => container.value,
@@ -101,13 +113,18 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
         :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
         @click="opens(file.path) && emit('select', file.path)"
       >
-        <!-- The pills stand under the row they belong to, quieter than it: the
-          icon a step back too, never so faint it reads as unavailable. -->
+        <!--
+          The pills stand under the row they belong to, quieter than it: the
+          icon a step back too, never so faint it reads as unavailable.
+        -->
         <span class="relative inline-flex shrink-0 opacity-80 transition-opacity duration-200 ease-out group-hover/pill:opacity-100">
           <FileIcon :name="baseName(file.path)" :is-directory="false" :size="icons.in20" />
           <CornerPlus v-if="file.kind === 'added'" :label="t('transcript.newFile')" />
         </span>
-        <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
+        <!--
+          Name and counts use different fonts and sizes: align them on the
+          baseline, not the box.
+        -->
         <span class="inline-flex min-w-0 items-baseline gap-1.5">
           <span
             class="min-w-0 truncate"

@@ -12,24 +12,37 @@ import type { SavedRow } from './saved'
 
 /**
  * The list of messages saved for later under the composer, about four rows tall
- * and scrolling within; a fifth row shows half, so the list reads as one that
- * goes on. Each row is a menu row: its first line and, when the message has
- * files, their count, with no time; pressing it edits the message. Edit, Send
- * and Delete always stand at the row's end, where the row keeps their inset,
- * the count before them: quiet, and the normal icon color while the pointer or
- * the focus is on the row. A message the server did not save reads Not Saved in
- * secondary red, with Retry in Send's place.
+ * and scrolling within.
+ *
+ * A fifth row shows half, so the list reads as one that goes on.
+ *
+ * Each row is a menu row:
+ *
+ * - It shows the message's first line and, when the message has files, their
+ *   count, with no time.
+ * - Pressing it edits the message.
+ * - Edit, Send and Delete always stand at the row's end, where the row keeps
+ *   their inset, the count before them. They are quiet, and take the normal
+ *   icon color while the pointer or the focus is on the row.
+ *
+ * A message the server did not save reads Not Saved in secondary red, with
+ * Retry in Send's place.
  */
 defineProps<{
   rows: SavedRow[]
-  /** Each action may return a promise, which its control shows until it settles. */
+  /**
+   * Each action may return a promise, which its control shows until it settles.
+   */
   onEdit?: Action<[id: string]>
   onSend?: Action<[id: string]>
   onDelete?: Action<[id: string]>
   onRetry?: Action<[id: string]>
 }>()
 
-/** Edit, Send, Retry and Delete of one saved message exclude each other (`operations.ts`). */
+/**
+ * Edit, Send, Retry and Delete of one saved message exclude each other
+ * (`operations.ts`).
+ */
 function onSaved(action: 'edit' | 'send' | 'retry' | 'delete', id: string) {
   return { action, target: `saved:${id}`, group: 'saved' }
 }

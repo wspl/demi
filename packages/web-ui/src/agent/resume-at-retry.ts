@@ -28,11 +28,12 @@ export function useResumeAtRetry(): () => ResumeAtRetry | undefined {
 }
 
 /**
- * The label of the Resume at control a failure's record carries, or none: a
- * record of the conversation's own agent, where the host offers the
- * preference, while the time its failure names is still to come at `now`,
- * in milliseconds. A subagent's turn is never resumed by itself, since its
- * parent decides for it, and a time that has passed leaves nothing to
+ * The label of the Resume at control a failure's record carries, or none.
+ *
+ * The control belongs to a record of the conversation's own agent, where the
+ * host offers the preference, while the time its failure names is still to come
+ * at `now`, in milliseconds. A subagent's turn is never resumed by itself,
+ * since its parent decides for it. A time that has passed leaves nothing to
  * resume at.
  */
 export function resumeAtLabel(

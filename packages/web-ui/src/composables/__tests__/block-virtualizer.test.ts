@@ -10,7 +10,10 @@ GlobalRegistrator.register({ url: 'https://demi.test/' })
 const { createApp, defineComponent, h, nextTick, ref } = await import('vue')
 const { useBlockVirtualizer } = await import('../useBlockVirtualizer')
 
-/** happy-dom lays nothing out: each box is as tall as its `data-height` says, and nothing resizes. */
+/**
+ * happy-dom lays nothing out: each box is as tall as its `data-height` says,
+ * and nothing resizes.
+ */
 const rect = HTMLElement.prototype.getBoundingClientRect
 HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
   const height = Number(this.dataset['height'] ?? 0)
@@ -20,7 +23,10 @@ const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'off
 const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get(this: HTMLElement) { return Number(this.dataset['height'] ?? 0) } })
 Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 600 })
-/** Reports each box it is given once, at its size, as a browser's first observation does. */
+/**
+ * Reports each box it is given once, at its size, as a browser's first
+ * observation does.
+ */
 globalThis.ResizeObserver = class {
   constructor(private readonly report: ResizeObserverCallback) {}
   observe(target: Element): void {
@@ -44,7 +50,10 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-/** Lets the list render until its rows stop changing, as the measurements of the rows it mounts land. */
+/**
+ * Lets the list render until its rows stop changing, as the measurements of the
+ * rows it mounts land.
+ */
 async function settled(drawn: { value: number[] }): Promise<void> {
   for (let renders = 0; renders < 20; renders += 1) {
     const before = drawn.value.join()
@@ -86,7 +95,8 @@ test('scrolling within a row taller than the view brings the next row once it co
   await settled(drawn)
   expect(drawn.value).toEqual([0])
 
-  // 500 px before the first row's end: the next row lies within a view's height below.
+  // 500 px before the first row's end: the next row lies within a view's height
+  // below.
   scroller!.scrollTop = 4300
   scroller!.dispatchEvent(new Event('scroll'))
   await settled(drawn)

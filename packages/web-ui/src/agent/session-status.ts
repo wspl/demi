@@ -10,20 +10,21 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
 /**
  * How far the conversation's opening has come, and the state of its connection
  * since:
- * - `loading`: its history or its agents are not read yet; the pane says it
+ *
+ * - `loading`: its history or its agents are not read yet. The pane says it
  *   loads.
  * - `opening`: the first step. The transcript and everything that names its
- *   agents show; the session is opening, and nothing only the live session
+ *   agents show. The session is opening, and nothing only the live session
  *   knows shows yet.
- * - `connecting`: the first step, whose session could not be reached yet and
- *   is tried again; the transcript's tail says it connects.
+ * - `connecting`: the first step, whose session could not be reached yet and is
+ *   tried again. The transcript's tail says it connects.
  * - `ready`: the second step, the session open and shown; or a conversation
  *   that opens no session, which stops at the first step.
- * - `reconnecting`: an open session whose connection was lost; what it showed
+ * - `reconnecting`: an open session whose connection was lost. What it showed
  *   stays while it is tried again.
  * - `failed`: the opening failed, or the session refused to open.
- * - `offline`: the opening cannot reach the backend and the page keeps no
- *   copy of the conversation for opening offline; it opens once the backend answers.
+ * - `offline`: the opening cannot reach the backend and the page keeps no copy
+ *   of the conversation for opening offline. It opens once the backend answers.
  */
 export type SessionLoad = ListLoad | 'opening' | 'connecting' | 'reconnecting' | 'offline'
 
@@ -45,26 +46,33 @@ export function transcriptShown(load: SessionLoad): boolean {
   return load !== 'loading' && load !== 'failed' && load !== 'offline'
 }
 
-/** Whether the conversation is still opening for the first time: what joins it now is not new. */
+/**
+ * Whether the conversation is still opening for the first time: what joins it
+ * now is not new.
+ */
 export function isOpening(load: SessionLoad): boolean {
   return load === 'loading' || load === 'opening' || load === 'connecting' || load === 'offline'
 }
 
 /**
- * What the session pane shows instead of the transcript. `empty` is an open
- * conversation with no messages yet: the composer under it is the way in.
- * `none` is the chat route with no conversation open at all, so the pane
- * itself offers to start one. `offline` is a conversation the page cannot
- * read while the backend cannot be reached and keeps no copy of.
+ * What the session pane shows instead of the transcript:
+ *
+ * - `empty` is an open conversation with no messages yet: the composer under it
+ *   is the way in.
+ * - `none` is the chat route with no conversation open at all, so the pane
+ *   itself offers to start one.
+ * - `offline` is a conversation the page cannot read while the backend cannot
+ *   be reached and keeps no copy of.
  */
 export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'none' | 'offline'
 
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
- * never reads as an empty conversation, even with cached blocks. Connecting and reconnecting
- * keep the transcript (or an empty list) and say so in the tail row. A failure with
- * history in memory also keeps the transcript: the dock's notice names the
- * failure and offers Retry, and nothing the reader already had disappears.
+ * never reads as an empty conversation, even with cached blocks. Connecting and
+ * reconnecting keep the transcript (or an empty list) and say so in the tail
+ * row. A failure with history in memory also keeps the transcript: the dock's
+ * notice names the failure and offers Retry, and nothing the reader already had
+ * disappears. /
  */
 export function sessionPaneStatus(
   load: SessionLoad,
@@ -90,7 +98,9 @@ export interface SessionFailureNotice {
   label: SentenceText
   /** Retry reopens the session; a refused request has nothing to reopen. */
   retry: boolean
-  /** The request the failure came from, such as the socket that refused a frame. */
+  /**
+   * The request the failure came from, such as the socket that refused a frame.
+   */
   requestId: string | null
 }
 
@@ -167,12 +177,19 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
 
 /**
  * The recovery the dock offers for a turn that did not finish, from the record
- * that ended the last turn among the visible `blocks`: an error resumes, the
- * user's own Stop continues, and anything else is finished or still running. An
- * error that ended no turn, such as a Compact whose summary request failed, a
- * compaction's boundary and marker, and the agent messages and command reports
- * a failed turn took after it ended leave the turn before them as it was. Both
- * are the session's `resume`; the word tells the cause.
+ * that ended the last turn among the visible `blocks`:
+ *
+ * - an error resumes
+ * - the user's own Stop continues
+ * - anything else is finished or still running
+ *
+ * Both recoveries are the session's `resume`; the word tells the cause.
+ *
+ * The following leave the turn before them as it was:
+ *
+ * - an error that ended no turn, such as a Compact whose summary request failed
+ * - a compaction's boundary and marker
+ * - the agent messages and command reports a failed turn took after it ended
  */
 export function turnRecovery(
   phase: 'idle' | string,
@@ -202,9 +219,9 @@ export function refusedForSize(blocks: readonly RecordCandidate[]): boolean {
  * The account a usage limit that ended the unfinished turn offers to go on
  * with, beside Resume, on an entry without rotation
  * (`crates/backend-providers/src/llm/rotation.rs`): the one its failure's facts
- * name. It reads the
- * turn's record as Resume does, so input written behind the failure, such
- * as a child's report, keeps it. Null while running, and for any other end.
+ * name. It reads the turn's record as Resume does, so input written behind the
+ * failure, such as a child's report, keeps it. Null while running, and for any
+ * other end. /
  */
 export function continueWithOffer(
   phase: 'idle' | string,
@@ -223,11 +240,11 @@ export function continueWithOffer(
 }
 
 /**
- * Whether the unfinished turn ended because the vendor signed its account
- * out, which the dock answers with Open Providers
+ * Whether the unfinished turn ended because the vendor signed its account out,
+ * which the dock answers with Open Providers
  * (`crates/provider-claude-code/src/account.rs`): its failure's facts name the
- * account while it is
- * still signed out. False while running, and for any other end.
+ * account while it is still signed out. False while running, and for any other
+ * end. /
  */
 export function signedOutOffer(
   phase: 'idle' | string,
@@ -242,12 +259,12 @@ export function signedOutOffer(
 }
 
 /**
- * The port that the unfinished turn's request named on the user's device
- * while the device had not exposed it, which the dock offers to expose
- * before the turn resumes (`crates/backend-user-shard/src/shard/exposed_ports.rs`, Recovery):
- * none once `exposed` says the port is exposed by now, from Settings or
- * another tab, when Resume alone tries again. Null while running, and for
- * any other end.
+ * The port that the unfinished turn's request named on the user's device while
+ * the device had not exposed it, which the dock offers to expose before the
+ * turn resumes (`crates/backend-user-shard/src/shard/exposed_ports.rs`,
+ * Recovery): none once `exposed` says the port is exposed by now, from Settings
+ * or another tab, when Resume alone tries again. Null while running, and for
+ * any other end. /
  */
 export function notExposedOffer(
   phase: 'idle' | string,
@@ -274,7 +291,10 @@ interface RecordCandidate {
   placement?: string
 }
 
-/** The record that ended the last turn among `blocks`, or the block that ended it otherwise. */
+/**
+ * The record that ended the last turn among `blocks`, or the block that ended
+ * it otherwise.
+ */
 function turnRecord<T extends RecordCandidate>(blocks: readonly T[]): T | undefined {
   return blocks.findLast(
     (block) => !isCompactionDivider(block)
@@ -292,7 +312,10 @@ export function endsWithErrorRecord(blocks: readonly RecordCandidate[]): boolean
   return blocks.findLast((block) => !isLateInput(block))?.type === 'error'
 }
 
-/** Input a turn takes without opening one: an agent message, or command reports placed as a steer. */
+/**
+ * Input a turn takes without opening one: an agent message, or command reports
+ * placed as a steer.
+ */
 function isLateInput(block: RecordCandidate): boolean {
   return block.type === 'agent_message' || (block.type === 'wakeup' && block.placement === 'steer')
 }

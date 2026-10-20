@@ -25,7 +25,10 @@ afterEach(() => {
   jest.useRealTimers()
 })
 
-/** Lets the Host's answers and its watch's messages land: they land in microtasks. */
+/**
+ * Lets the Host's answers and its watch's messages land: they land in
+ * microtasks.
+ */
 async function settle(): Promise<void> {
   for (let tick = 0; tick < 20; tick++)
     await Promise.resolve()
@@ -47,7 +50,10 @@ function host() {
     },
   }, { files: kept, watch })
   const files: MessageFiles = { cwd: '/w', contents, open: () => {} }
-  /** Something on the Host overwrites the file, as a subagent's new screenshot does. */
+  /**
+   * Something on the Host overwrites the file, as a subagent's new screenshot
+   * does.
+   */
   const overwrite = (next: string) => {
     version = next
     watched.change(PATH)
@@ -58,7 +64,10 @@ function host() {
 /** The page's app, whose context a message's component runs in. */
 const app = createApp({})
 
-/** Shows a message naming the image, as a reply on screen does, until its scope stops. */
+/**
+ * Shows a message naming the image, as a reply on screen does, until its scope
+ * stops.
+ */
 function message(files: MessageFiles) {
   const scope = effectScope()
   const images = app.runWithContext(() => scope.run(() => useHostImagesAt(() => files.contents, () => hostImagePaths(`The new rows:\n\n![row hover](${PATH})`, files)))!)
@@ -76,7 +85,8 @@ test('a reply’s Host image shows the new version when the file is overwritten,
   await settle()
   expect(first.src()).toEqual({ state: 'shown', src: `/raw?path=${PATH}&version="v2"` })
 
-  // A later reply naming the same path shows the version the page keeps, the new one.
+  // A later reply naming the same path shows the version the page keeps, the
+  // new one.
   const second = message(files)
   expect(second.src()).toEqual({ state: 'shown', src: `/raw?path=${PATH}&version="v2"` })
   first.stop()
@@ -89,7 +99,8 @@ test('the media viewer opened on a Host image shows the version the message show
   await settle()
   const [medium] = messageMedia(`![row hover](${PATH})`, files)
   const viewer = createMediaViewer(() => ({ page: { width: 1440, height: 900 }, pixelRatio: 1 }))
-  // The transcript's pictures find the one clicked by its file, whatever version shows.
+  // The transcript's pictures find the one clicked by its file, whatever
+  // version shows.
   viewer.show({ ...medium!, row: 'r1' }, () => [{ ...medium!, row: 'r1' }])
   expect(viewer.position.value).toEqual({ at: 1, of: 1 })
 

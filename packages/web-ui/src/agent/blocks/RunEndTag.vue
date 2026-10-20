@@ -6,11 +6,17 @@ import Tooltip from '../../ui/Tooltip.vue'
 import type { SentenceText } from '../../ui/ui-text'
 
 /**
- * How a row's work went wrong, after its title: red Failed, or grey Stopped,
- * Stopping… while a stop waits for the runner, Waiting for MacBook Pro while
- * a command's start waits for its offline Host, `host`, or Lost. It never
- * shrinks, so a long title gives up its end to it. `hint` is the tooltip
- * that says more (a command's exit code, why it was lost).
+ * How a row's work went wrong, after its title:
+ *
+ * - red Failed
+ * - grey Stopped
+ * - grey Stopping… while a stop waits for the runner
+ * - grey Waiting for MacBook Pro while a command's start waits for its offline
+ *   Host, `host`
+ * - grey Lost
+ *
+ * The tag never shrinks, so a long title gives up its end to it. `hint` is the
+ * tooltip that says more (a command's exit code, why it was lost).
  */
 export type RunEndKind = 'failed' | 'stopped' | 'stopping' | 'waiting' | 'lost'
 

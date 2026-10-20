@@ -1,9 +1,9 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, spyOn, test } from 'bun:test'
 
-// Comments on a reply's words: Comment on selected words saves the comment with
-// its quote and where it stands; the reply marks a waiting comment and, once a
-// message sent it, marks it dimmer; the sent message's bubble shows each quote
+// Comments on a reply's words. Comment on selected words saves the comment with
+// its quote and where it stands. The reply marks a waiting comment and, once a
+// message sent it, marks it dimmer. The sent message's bubble shows each quote
 // and its comment before its text. Vue apps on a happy-dom page; a few ms
 // besides the page's start.
 
@@ -53,7 +53,10 @@ test('a message sent with comments shows each quoted text as a quote and its com
 const REPLY = 'Uploads fail because the client gives up first. Upload in chunks of 4 MB.'
 const START = REPLY.indexOf('Upload in chunks')
 
-/** A reply's text block as the transcript draws it, with the comments layer over it. */
+/**
+ * A reply's text block as the transcript draws it, with the comments layer over
+ * it.
+ */
 async function reply(options: { waiting: MessageComment[]; sent: MessageComment[] }) {
   const host = document.createElement('div')
   document.body.append(host)
@@ -125,7 +128,8 @@ test('a waiting comment marks its words, and once a message sent it the mark is 
   const page = await reply({ waiting: [chunks], sent: [] })
   const marker = () => page.host.querySelector('[data-comment-marker]')
   expect(marker()?.classList.contains('comment-marker-sent')).toBe(false)
-  // The message is sent: the comment leaves the draft and the sent message holds it.
+  // The message is sent: the comment leaves the draft and the sent message
+  // holds it.
   page.waiting.value = []
   page.sent.value = [chunks]
   await nextTick()
@@ -187,7 +191,10 @@ async function mounted(render: () => ReturnType<typeof h>, ready: (host: HTMLEle
   return host
 }
 
-/** A conversation whose second message comments on the first reply, as a `user` block or as another kind. */
+/**
+ * A conversation whose second message comments on the first reply, as a `user`
+ * block or as another kind.
+ */
 async function commentedHistory() {
   const { createdAt, model, userBlock } = await import('./agent-harness')
   return {
@@ -314,11 +321,10 @@ test.each([
   expect(sent).toEqual([whole])
 })
 
-// A comment's anchor is character offsets into the reply's own text: a
+// A comment's anchor is character offsets into the reply's own text. A
 // selection across code and a link finds the same words once the reply is drawn
 // again with its text split otherwise, as a theme change re-coloring its code
-// does, and a control set into the reply, as a code block's Copy, is not
-// counted.
+// does. A control set into the reply, as a code block's Copy, is not counted.
 test('an anchor across code and a link finds the same words after the reply is drawn again', async () => {
   const { anchorOf, rangeOf } = await import('../comments/anchors')
   const draw = (code: string, control: string) => {
@@ -336,14 +342,18 @@ test('an anchor across code and a link finds the same words after the reply is d
   range.setEnd(linkText, 9)
   const anchor = anchorOf(before, range)!
   expect(range.toString()).toBe('tch with the retry')
-  // Drawn again: the code block's words in spans of their colors, its Copy just used.
+  // Drawn again: the code block's words in spans of their colors, its Copy just
+  // used.
   const after = draw('<span>let</span> <span>size</span> = <span>4</span>', 'Copied')
   expect(rangeOf(after, anchor)?.toString()).toBe('tch with the retry')
 })
 
 const CHART = 'https://example.com/chart.png'
 
-/** A reply holding `pictures`, each `[alt, src]`, with the comments layer over it; `draw` draws it again. */
+/**
+ * A reply holding `pictures`, each `[alt, src]`, with the comments layer over
+ * it; `draw` draws it again.
+ */
 async function pictured(pictures: readonly (readonly [string, string])[], options: { waiting: MessageComment[]; sendNow?: (comment: MessageComment) => void; keep?: import('../comments/pictures').KeepPicture }) {
   const { provideKeepPicture } = await import('../comments/pictures')
   const host = document.createElement('div')
@@ -402,7 +412,10 @@ async function pictured(pictures: readonly (readonly [string, string])[], option
   }
 }
 
-/** Opens Comment from the menu of the reply's picture `index` and types `text` into its box. */
+/**
+ * Opens Comment from the menu of the reply's picture `index` and types `text`
+ * into its box.
+ */
 async function commentOnPicture(page: Awaited<ReturnType<typeof pictured>>, index: number, text: string): Promise<HTMLTextAreaElement> {
   const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
   const image = replyRoot.querySelectorAll('img')[index]!
@@ -451,8 +464,8 @@ test('in a comment\'s box Command-Return sends it alone now and adds nothing to 
   expect(page.host.querySelector('textarea')).toBeNull()
 })
 
-// The anchor names the picture by its place and its words: drawn again, it
-// finds its picture in new elements; a reply whose picture at that place is
+// The anchor names the picture by its place and its words. Drawn again, it
+// finds its picture in new elements. A reply whose picture at that place is
 // another picture shows no outline.
 test('a picture comment finds its picture after the reply is drawn again, and none once the picture there is another', async () => {
   const comment: MessageComment = { id: 'c1', blockId: 'text-1', start: 1, end: 2, at: 1, quote: 'The chart', picture: { type: 'url', url: CHART }, text: 'Which?' }

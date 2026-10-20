@@ -50,7 +50,10 @@ const props = defineProps<{
   editable?: boolean
   /** Regenerate in an answer's footer; absent where it is not offered. */
   regenerate?: () => void
-  /** The versions the row shows: an edited message's, or a regenerated answer's in its footer. */
+  /**
+   * The versions the row shows: an edited message's, or a regenerated answer's
+   * in its footer.
+   */
   versions?: VersionChoice
   fork?: () => Promise<void>
   forkState?: MessageForkState
@@ -59,17 +62,20 @@ const props = defineProps<{
   hideFork?: boolean
   /** What the provider read out of this error block's failure record. */
   failure?: ProviderFailureFacts
-  /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
+  /**
+   * The block just arrived in a live transcript: a chrome row slides in from
+   * the left as it fades in.
+   */
   entering?: boolean
   /** The summary size a compaction divider tells. */
   summaryTokens?: number
 }>()
 
 /**
- * A run's row, or the row of a step that runs under it, is open, as the
- * list keeps it by the key it draws the row under (`useOpenRuns`), so a
- * step opened while it runs is still open as the run it starts; other rows
- * ignore it.
+ * Whether a run's row, or the row of a step that runs under it, is open. The
+ * list keeps it by the key it draws the row under (`useOpenRuns`), so a step
+ * opened while it runs is still open as the run it starts. Other rows ignore
+ * it.
  */
 const runOpen = defineModel<boolean>('open', { default: false })
 
@@ -79,7 +85,10 @@ const emit = defineEmits<{
   recallQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
-  /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
+  /**
+   * Edit on the message `id`, whose delivery failed: it goes back into the
+   * composer.
+   */
   editSubmission: [id: string]
   /** Delete on the message `id`, whose delivery failed: it goes at once. */
   deleteSubmission: [id: string]
@@ -95,7 +104,10 @@ const files = useMessageFiles()
 provideMessageFiles(() => blockMessageFiles(files(), transcript?.directory(props.block.id) ?? null, transcript?.node ?? null))
 // A light block's row opens to read it whole.
 provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
-/** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
+/**
+ * Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its
+ * own.
+ */
 const entersAsChrome = computed(() =>
   props.entering
   && (props.block.type === 'agent_message' || props.block.type === 'wakeup' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort' || props.block.type === 'activity_slot'),
@@ -124,7 +136,10 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
 </script>
 
 <template>
-  <!-- A row that takes another's place rolls its face over the one it replaces (`rowFace`). -->
+  <!--
+    A row that takes another's place rolls its face over the one it replaces
+    (`rowFace`).
+  -->
   <RowRoll :face-key="rowFace(block)">
     <PendingSubmission
       v-if="block.type === 'pending_submission'"
@@ -182,7 +197,10 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :count="block.count"
     />
-    <!-- The edge of a window that does not reach the transcript's own, while its next page comes. -->
+    <!--
+      The edge of a window that does not reach the transcript's own, while its
+      next page comes.
+    -->
     <div
       v-else-if="block.type === 'history_edge'"
       v-bind="attrs"

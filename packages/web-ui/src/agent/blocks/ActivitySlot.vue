@@ -14,7 +14,10 @@ import FunctionalBlock from './FunctionalBlock.vue'
  */
 const props = defineProps<{
   kind: ActivityKind
-  /** When the wait began, as `Date.now()`; Requesting shows how long it has waited since. */
+  /**
+   * When the wait began, as `Date.now()`; Requesting shows how long it has
+   * waited since.
+   */
   since: number
 }>()
 
@@ -34,7 +37,10 @@ const label = computed(() => {
 </script>
 
 <template>
-  <!-- data-transcript-wait: the product checks tell a turn on its way by it, in any language (`browse.md`). -->
+  <!--
+    data-transcript-wait: the product checks tell a turn on its way by it, in
+    any language (`browse.md`).
+  -->
   <div class="px-[var(--agent-pad-x,2rem)]" :data-transcript-wait="kind">
     <!-- The wait mark stays while only the reason changes. -->
     <FunctionalBlock

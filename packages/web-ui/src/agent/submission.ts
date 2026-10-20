@@ -15,7 +15,10 @@ export function hasAcceptedSubmission(
     state.pendingSteers.some((steer) => steer.id === id)
 }
 
-/** Whether the transcript holds the message `id`: as the message of its turn, or as a steer. */
+/**
+ * Whether the transcript holds the message `id`: as the message of its turn, or
+ * as a steer.
+ */
 export function isWritten(state: Pick<ConversationState, 'history'>, id: string): boolean {
   return latestBlocks(state.history).some((block) =>
     (block.type === 'user' && block.turnId === id) || (block.type === 'steer' && block.id === id))

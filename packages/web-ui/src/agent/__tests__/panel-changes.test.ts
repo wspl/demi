@@ -38,7 +38,10 @@ function backend(first: PanelRead) {
     reads: () => reads,
     /** The backend's panel from now on. */
     set: (next: PanelRead) => void (panel = next),
-    /** Answers the oldest request still waiting: changed, unless the test says not. */
+    /**
+     * Answers the oldest request still waiting: changed, unless the test says
+     * not.
+     */
     answer: async (revision: number, changed = true) => {
       answers.shift()!.resolve({ revision, changed })
       await settled()
@@ -143,7 +146,8 @@ test('a removed tab never comes back from a panel read before its removal reache
   world.tabs.change({ type: 'remove', id: 'a' })
   expect(ids(world.tabs)).toEqual(['b'])
 
-  // Another page's change reaches the panel first: a newer panel that still has the tab.
+  // Another page's change reaches the panel first: a newer panel that still has
+  // the tab.
   world.tabs.receive({ revision: 2, tabs: [page('a'), page('b'), page('c')] })
   expect(ids(world.tabs)).toEqual(['b', 'c'])
   // The removal is answered at 3, the panel held with it.
@@ -163,7 +167,8 @@ test('a request the backend refuses leaves, the panel shows as the backend has i
   expect(ids(world.tabs)).toEqual(['b', 'a'])
   await world.refuse(new Error('panel_full'))
   expect(world.refused).toEqual([new Error('panel_full')])
-  // The move of a tab the panel never got does nothing, and is still sent in its turn.
+  // The move of a tab the panel never got does nothing, and is still sent in
+  // its turn.
   expect(ids(world.tabs)).toEqual(['a'])
   await world.answer(1, false)
   expect(ids(world.tabs)).toEqual(['a'])

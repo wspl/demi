@@ -28,7 +28,10 @@ const emit = defineEmits<{
   retry: []
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
-  /** The user's context limit on the selected model, for all their conversations with it. */
+  /**
+   * The user's context limit on the selected model, for all their conversations
+   * with it.
+   */
   contextLimit: [change: ContextLimitChange]
 }>()
 
@@ -48,8 +51,8 @@ const selected = computed(() =>
 const fast = computed(() =>
   isFastMode(selected.value?.model, props.settings?.serviceTierId),
 )
-// The chip names the reasoning level beside the model, quieter than the name, so the
-// current effort is visible without opening the menu.
+// The chip names the reasoning level beside the model, quieter than the name,
+// so the current effort is visible without opening the menu.
 const reasoningLabel = computed(() => {
   const reasoning = buildReasoningState(selected.value?.model ?? null)
   return reasoning ? reasoningOptionLabel(reasoning, props.settings?.thinkingEffort ?? null) : ''
@@ -66,8 +69,11 @@ const labelText = computed(() => {
 </script>
 
 <template>
-  <!-- Where the row has no room for the whole chip, it gives way: its text is cut short with an
-       ellipsis, the model's name in the ready chip, and the level, the marks and the chevron stay. -->
+  <!--
+    Where the row has no room for the whole chip, the chip gives way. Its text
+    is cut short with an ellipsis, the model's name in the ready chip. The
+    level, the marks and the chevron stay.
+  -->
   <div class="flex min-w-0">
     <span
       v-if="load === 'loading'"
@@ -97,8 +103,11 @@ const labelText = computed(() => {
     >
       <template #trigger="{ isOpen }">
         <span class="relative inline-flex min-w-0 items-center overflow-hidden">
-          <!-- The name sits a step above the chip's tone and the level a step below it, so the
-               two stay two steps apart whether the chip is subtle (closed) or body (open). -->
+          <!--
+            The name sits a step above the chip's tone and the level a step
+            below it, so the two stay two steps apart whether the chip is subtle
+            (closed) or body (open).
+          -->
           <span class="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
             <span class="min-w-0 truncate" :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
             <span

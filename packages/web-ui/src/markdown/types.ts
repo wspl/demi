@@ -3,10 +3,11 @@ import type { FileContents } from '../files/types'
 import type { HostImage } from '../files/host-image'
 
 /**
- * An attachment of the conversation, sent in a message or uploaded by the agent (`crates/backend-host-access/src/attachment_commands.rs`), as a message shows it.
+ * An attachment of the conversation, sent in a message or uploaded by the agent
+ * (`crates/backend-host-access/src/attachment_commands.rs`), as a message shows
+ * it. /
  */
 export interface MessageAttachment {
-  /** The file's name. */
   name: string
   /** The media type the backend read from its bytes. */
   mediaType: string
@@ -14,7 +15,10 @@ export interface MessageAttachment {
   url: string
   /** Its size in bytes. */
   size: number
-  /** Its bytes' SHA-256 in the user's blobs, which a drag of it into a composer names it by. */
+  /**
+   * Its bytes' SHA-256 in the user's blobs, which a drag of it into a composer
+   * names it by.
+   */
   sha256: string
   /**
    * An image's or a video's size in pixels, which its record carries when
@@ -58,9 +62,10 @@ export interface ConversationFiles {
    */
   home?: string | null
   /**
-   * The Host's files a message's images load from: each image shows the version of its file the
-   * page keeps, which the Host's watch keeps current, so it changes when the file does. Absent
-   * while the Host is not known, and a Host image then shows its alt text.
+   * The Host's files a message's images load from: each image shows the version
+   * of its file the page keeps, which the Host's watch keeps current, so it
+   * changes when the file does. Absent while the Host is not known, and a Host
+   * image then shows its alt text. /
    */
   contents?: FileContents
   /**
@@ -104,8 +109,8 @@ export interface ConversationFiles {
   /**
    * Shows a commit a message links as `commit:3f2a9c1`, or as
    * `commit:src/v8@86229da` in the repository of that folder, in the Change
-   * view's Commits mode, through the `commit` intent; absent while no plugin the
-   * user has on opens it, so such a link shows as text.
+   * view's Commits mode, through the `commit` intent; absent while no plugin
+   * the user has on opens it, so such a link shows as text. /
    */
   openCommit?(target: MessageCommitTarget): void
   /**
@@ -127,17 +132,29 @@ export interface MessageCommitTarget {
   root?: string
 }
 
-/** The same for one message, with the working directory its relative paths resolve against. */
+/**
+ * The same for one message, with the working directory its relative paths
+ * resolve against.
+ */
 export interface MessageFiles extends ConversationFiles {
   cwd: string
-  /** The node of the agent that wrote the messages: a subagent's or a side question's id; null or absent, the conversation's own agent. */
+  /**
+   * The node of the agent that wrote the messages: a subagent's or a side
+   * question's id; null or absent, the conversation's own agent.
+   */
   node?: string | null
 }
 
 export interface MarkdownRenderOptions {
-  /** Absent, a message's paths stay text and its Host images show their alt text. */
+  /**
+   * Absent, a message's paths stay text and its Host images show their alt
+   * text.
+   */
   files?: MessageFiles
-  /** The paths of the message's inline code the Host has as files, which show as links to them. */
+  /**
+   * The paths of the message's inline code the Host has as files, which show as
+   * links to them.
+   */
   codeFiles?: ReadonlySet<string> | null
   /**
    * What shows of each Host image the message names, by its absolute path
@@ -145,6 +162,9 @@ export interface MarkdownRenderOptions {
    * shows its alt text meanwhile.
    */
   hostImages?: ReadonlyMap<string, HostImage>
-  /** The conversation's agents, which `agent:4` links; absent, such a link shows its text alone. */
+  /**
+   * The conversation's agents, which `agent:4` links; absent, such a link shows
+   * its text alone.
+   */
   agents?: MessageAgents
 }

@@ -37,7 +37,10 @@ const writing = (id: string, toolName = 'shell'): MessageListBlock => ({
 })
 const steps = (...blocks: (Block | MessageListBlock)[]) => blocks as WorkGroupBlock['steps']
 type CommandEvent = Extract<Block, { type: 'wakeup' }>['reports'][number]['event']
-/** A command's notice: the end of each command it names, each as `event` says it ended. */
+/**
+ * A command's notice: the end of each command it names, each as `event` says it
+ * ended.
+ */
 const ended = (id: string, event: CommandEvent, ...commandIds: string[]): Block => ({
   type: 'wakeup',
   id,
@@ -119,11 +122,13 @@ describe('the end of a running turn', () => {
   const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
 
   test('what runs is a row of its own under the steps that ended', () => {
-    // Thinking being written, a call waiting for its result, and a call being written each stand alone.
+    // Thinking being written, a call waiting for its result, and a call being
+    // written each stand alone.
     expect(rows(groupWork([text('r'), ...run('t1', thinking('t1'))], true))).toEqual(['r', 't1'])
     expect(rows(groupWork([text('r'), ...run('a', call('a'), executing('b'))], true))).toEqual(['r', ['a'], 'b'])
     expect(rows(groupWork([text('r'), ...run('a', call('a'), call('b')), writing('c')], true))).toEqual(['r', ['a', 'b'], 'pending-call:c-use'])
-    // A call that ended joins the run even when one before it, started with it, still runs.
+    // A call that ended joins the run even when one before it, started with it,
+    // still runs.
     expect(rows(groupWork([text('r'), ...run('a', executing('a'), call('b'))], true))).toEqual(['r', ['b'], 'a'])
     // A call being written after what ends a run starts one.
     expect(rows(groupWork([...run('a', call('a')), text('r'), writing('b')], true))).toEqual([['a'], 'r', 'pending-call:b-use'])
@@ -132,7 +137,9 @@ describe('the end of a running turn', () => {
   })
 
   test('a call whose command goes on in the background has ended, and wears the time of that command', () => {
-    /** A call that returned while its command ran on, as its stored view says. */
+    /**
+     * A call that returned while its command ran on, as its stored view says.
+     */
     const runsOn = (id: string): Block => ({
       ...call(id, 'shell', { script: 'sleep 600', description: `Run ${id}` }),
       view: { kind: 'shell', status: 'running', commandId: '7', runningMs: 15_000, idleMs: 0, viewTruncated: false, chunks: [] },
@@ -270,10 +277,12 @@ test('a run is one row under one name from its first step to its end', () => {
   expect(keys(groupWork([text('t'), ...run('c1', call('c1')), writing('c2')], true))).toEqual(['t', 'run:c1:1', 'work:c2-use'])
   expect(keys(groupWork([text('t'), ...run('c1', call('c1'), call('c2'))], true))).toEqual(['t', 'run:c1:2'])
   expect(keys(groupWork([text('t'), ...run('c1', call('c1')), text('r')], false))).toEqual(['t', 'run:c1:1', 'r'])
-  // A run that a thinking without text opened keeps that thinking's name once it has gone.
+  // A run that a thinking without text opened keeps that thinking's name once
+  // it has gone.
   expect(keys(groupWork([text('t'), ...run('k', thinking('k'))], true))).toEqual(['t', 'work:k'])
   expect(keys(groupWork([text('t'), ...run('k', thinking('k'), call('c1'))], true))).toEqual(['t', 'run:k:1'])
-  // A notice or a receipt that joins keeps the run's name, and one that starts the run names it.
+  // A notice or a receipt that joins keeps the run's name, and one that starts
+  // the run names it.
   expect(keys(groupWork([text('t'), ...run('c1', call('c1'), notice('n', '17'), receipt('m', 'ag-2'))], true))).toEqual(['t', 'run:c1:3'])
   expect(keys(groupWork([text('t'), ...run('n', notice('n', '17'))], true))).toEqual(['t', 'run:n:1'])
   expect(keys(groupWork([text('t'), ...run('n', notice('n', '17'), thinking('k'), call('c1'))], true))).toEqual(['t', 'run:n:2'])
@@ -333,7 +342,8 @@ describe('the time a run took', () => {
     expect(label([...steps, timed(text('r'), 49)], false)).toBe('Ran 2 commands for 16s')
     // While the turn runs, the same steps say the same.
     expect(label(steps, true)).toBe('Ran 2 commands for 16s')
-    // Thinking that ended before a call that still runs ends where that call starts.
+    // Thinking that ended before a call that still runs ends where that call
+    // starts.
     expect(label(run('k', timed(thinking('k', 'Check.'), 0), timed(call('a'), 6, 8), timed(thinking('t', 'Then run it.'), 8), timed(call('c', 'shell', undefined, 'executing'), 70)), true))
       .toBe('Ran 1 command for 1m 10s')
     // Review: a thinking ends where the next block starts in the transcript,

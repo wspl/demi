@@ -13,9 +13,15 @@ import { t } from './locales/text'
  * says where they can go.
  */
 export interface SendTargets {
-  /** The conversations the user was last active in, most recent first; the search window's recent list. */
+  /**
+   * The conversations the user was last active in, most recent first; the
+   * search window's recent list.
+   */
   recent: () => readonly SearchRow[]
-  /** The search window's search, over every conversation, the archived ones included. */
+  /**
+   * The search window's search, over every conversation, the archived ones
+   * included.
+   */
   search: SearchSource
   /**
    * How the sidebar draws the conversation `id`: what its status dot shows,
@@ -33,7 +39,10 @@ export interface SendTargets {
   send: (to: string | null, words: CopiedMessage) => void
 }
 
-/** A conversation as its sidebar row shows it: its dot's state and its project's name. */
+/**
+ * A conversation as its sidebar row shows it: its dot's state and its project's
+ * name.
+ */
 export interface SendTargetLook {
   status: Pick<SidebarConversation, 'status' | 'needsYou' | 'unread'>
   project: string | null
@@ -48,12 +57,18 @@ export function provideSendTargets(targets: SendTargets): void {
   provide(sendTargetsKey, targets)
 }
 
-/** Where words can go; none where the page offers no conversations, as on a share's page. */
+/**
+ * Where words can go; none where the page offers no conversations, as on a
+ * share's page.
+ */
 export function useSendTargets(): SendTargets | null {
   return inject(sendTargetsKey, null)
 }
 
-/** The conversations the submenu lists while its field is empty: the last active, leaving out the shown one and the archived ones. */
+/**
+ * The conversations the submenu lists while its field is empty: the last
+ * active, leaving out the shown one and the archived ones.
+ */
 export function restingTargets(targets: SendTargets): SearchRow[] {
   const shown = targets.shown()
   return targets.recent().filter((row) => !row.archived && row.conversationId !== shown).slice(0, SEND_RECENT)
@@ -69,7 +84,10 @@ export function quotedWords(text: string): CopiedMessage {
   return textWords(text.replace(/\n+$/, '').split('\n').map((line) => (line === '' ? '>' : `> ${line}`)).join('\n'))
 }
 
-/** The Send to Conversation row, its submenu the search and the conversations; `words` is read as one is picked. */
+/**
+ * The Send to Conversation row, its submenu the search and the conversations;
+ * `words` is read as one is picked.
+ */
 export function sendEntry(targets: SendTargets, words: () => CopiedMessage | Promise<CopiedMessage>): ContextMenuEntry {
   return {
     icon: Send,

@@ -10,7 +10,10 @@ export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null):
   return streaming ? t('transcript.thinking.nowFor', { span }) : t('transcript.thinking.doneFor', { span })
 }
 
-/** The tail row while the provider is asked, with how long the request has waited. */
+/**
+ * The tail row while the provider is asked, with how long the request has
+ * waited.
+ */
 export function providerWaitLabel(elapsedMs: number): string {
   if (elapsedMs <= 1000)
     return t('transcript.thinking.requesting')

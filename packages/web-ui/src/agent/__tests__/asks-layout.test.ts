@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// Side questions' cards in a reply: two questions about words of one paragraph
+// Side questions' cards in a reply. Two questions about words of one paragraph
 // each set their card after it, in the order they were asked, and the layer
 // comes to rest, moving nothing once they stand there. A Vue app on a happy-dom
 // page; a few ms besides the page's start.
@@ -121,7 +121,7 @@ test('a card offers Reply only once its answer is made', async () => {
   expect(reply()).toBe(true)
 })
 
-// A card's answer is the side question's agent's: set in the root's reply, it
+// A card's answer is the side question's agent's. Set in the root's reply, it
 // shows the attachment the side question uploaded, and the reply's own as
 // missing. Planted defect this catches: a card that asks as the reply it sits
 // in, so the side question's file is missing and the root's shows. A few
@@ -136,7 +136,8 @@ test('a card shows what its side question uploaded, not what the reply it sits i
   const app = createApp(defineComponent({
     setup: () => {
       provideMediaViewer()
-      // The root's reply, whose own agent's files are the conversation's agent's.
+      // The root's reply, whose own agent's files are the conversation's
+      // agent's.
       provideMessageFiles(() => ({
         cwd: '/work',
         attachment: (id: string, node: string | null) => uploaders.has(id) && uploaders.get(id) === node

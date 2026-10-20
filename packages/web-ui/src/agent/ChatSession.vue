@@ -85,8 +85,8 @@ const props = withDefaults(defineProps<{
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
-   * The waiting messages whose Recall is on its way, by id: their rows are
-   * gone from the press, and come back only when the removal is refused.
+   * The waiting messages whose Recall is on its way, by id. Their rows are gone
+   * from the press, and come back only when the removal is refused.
    */
   removing?: readonly string[]
   editVersion?: TranscriptVersion | null
@@ -94,119 +94,144 @@ const props = withDefaults(defineProps<{
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
   /**
-   * Shares the conversation, and an answer by its footer's Share, as the
-   * share dialog asks; absent, the conversation has nothing to share yet, as
-   * one not saved, and neither control is offered.
+   * Shares the conversation, and an answer by its footer's Share, as the share
+   * dialog asks. Absent, the conversation has nothing to share yet, as one not
+   * saved, and neither control is offered.
    */
   share?: ShareService
-  /** The conversation's shares, which the dialog opens on instead of making another. */
+  /**
+   * The conversation's shares, which the dialog opens on instead of making
+   * another.
+   */
   shares?: readonly ExistingShare[]
-  /** Whether the app frame's work panel is open; absent when the host has none. */
+  /**
+   * Whether the app frame's work panel is open; absent when the host has none.
+   */
   asideOpen?: boolean
-  /** How many tabs the work panel has, its pinned ones aside, which the phone's panel button shows. */
+  /**
+   * How many tabs the work panel has, its pinned ones aside, which the phone's
+   * panel button shows.
+   */
   panelTabs?: number
   /**
-   * The conversation as the sidebar lists it: on a phone its title sheet
+   * The conversation as the sidebar lists it. On a phone, its title sheet
    * offers the sidebar row's menu for it. Absent, as for a conversation not
    * saved yet or archived, the sheet offers only where it runs.
    */
   listed?: { pinned: boolean }
   /**
-   * The automations that wake the conversation: a chip above the composer lists
+   * The automations that wake the conversation. A chip above the composer lists
    * them.
    */
   automations?: readonly AutomationLink[]
-  /** The conversation's Host files its messages name; absent, their paths stay text. */
+  /**
+   * The conversation's Host files its messages name; absent, their paths stay
+   * text.
+   */
   files?: ConversationFiles
   /**
-   * The conversation's current primary Host, live over its state updates:
-   * the dock's Resume continues an unfinished turn there, so it waits while
-   * that Host is an offline device. Absent, Resume waits for nothing.
+   * The conversation's current primary Host, live over its state updates. The
+   * dock's Resume continues an unfinished turn there, so it waits while that
+   * Host is an offline device. Absent, Resume waits for nothing.
    */
   primaryHost?: HostMenuHost | null
-  /** The conversation's undecided requests of any kind, oldest first, which the card above the composer shows. */
+  /**
+   * The conversation's undecided requests of any kind, oldest first, which the
+   * card above the composer shows.
+   */
   permissionRequests?: readonly RequestView[]
   /** A decision on a request is on its way. */
   decidingPermission?: boolean
-  /** What the backend refused the last credential answer for, shown under the card's form. */
+  /**
+   * What the backend refused the last credential answer for, shown under the
+   * card's form.
+   */
   requestError?: ShownError | null
   /**
-   * A block to bring into view and mark for a moment, as a search result
-   * opened at it or a report's title asks: in the list, or in the subagent
-   * panel, which then shows that subagent.
+   * A block to bring into view and mark for a moment, as a search result opened
+   * at it or a report's title asks. The block is in the list, or in the
+   * subagent panel, which then shows that subagent.
    */
   reveal?: TranscriptReveal | null
   /**
-   * Finds the call that started a command a report names when the window
-   * shown does not hold it: the host reads where it lies and sets `reveal`. Absent, such a
-   * title is no link.
+   * Finds the call that started a command a report names, when the window shown
+   * does not hold it. The host reads where the call lies and sets `reveal`.
+   * Absent, such a title is no link.
    */
   revealCommand?: (commandId: string) => void
-  /** Reads a block whole for a row the page holds light; absent, no row is light. */
+  /**
+   * Reads a block whole for a row the page holds light; absent, no row is
+   * light.
+   */
   readBlock?: BlockReader
   /**
-   * Reads the latest page of a subagent's transcript that the session does
-   * not send (`subagentsStreamed`), for its panel, which shows it loading
-   * meanwhile and a failure with Retry. Absent, the panel reads nothing.
+   * Reads the latest page of a subagent's transcript that the session does not
+   * send (`subagentsStreamed`), for its panel. The panel shows it loading
+   * meanwhile, and a failure with Retry. Absent, the panel reads nothing.
    */
   readSubagentLatest?: (id: string) => Promise<void>
   /**
-   * Whether the page has, or is opening, a session that sends a live
-   * child's transcript once its panel shows it (`crates/agent-server/src/server/tree.rs`).
+   * Whether the page has, or is opening, a session that sends a live child's
+   * transcript once its panel shows it
+   * (`crates/agent-server/src/server/tree.rs`).
    */
   subagentsStreamed?: boolean
   /**
-   * The usage limits of the account a provider entry runs on, which a
-   * child's context card in the Agents window shows; absent, it shows none.
+   * The usage limits of the account a provider entry runs on, which a child's
+   * context card in the Agents window shows. Absent, it shows none.
    */
   usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
   /**
    * What each provider entry holds, which a failure's record names, as *The
-   * provider refused the API key*; absent, records read their code's words.
+   * provider refused the API key*. Absent, records read their code's words.
    */
   credentialKinds?: CredentialKinds
   /**
-   * Whether the user's device exposes the port by now, as the page learns
-   * of each change: a failure for a port exposed meanwhile offers Resume
-   * alone, not Expose Port; absent, no port counts as exposed.
+   * Whether the user's device exposes the port by now, as the page learns of
+   * each change. A failure for a port exposed meanwhile offers Resume alone,
+   * not Expose Port. Absent, no port counts as exposed.
    */
   isExposed?: (deviceId: string, port: number) => boolean
   /**
-   * The host's connection banner says the backend is away: the transcript adds
-   * no Connecting row of its own while the conversation's socket waits for it.
+   * The host's connection banner says the backend is away. The transcript adds
+   * no Connecting row of its own while the conversation's socket waits for the
+   * backend.
    */
   backendAway?: boolean
   /**
    * The user's preference to resume a turn by itself at the time its failure
-   * names, which such a failure's record offers; absent, it offers none.
+   * names, which such a failure's record offers. Absent, it offers none.
    */
   resumeAtRetry?: boolean
   /**
    * The comments waiting in the draft and what to do with them, which the
-   * replies take; absent, they take none.
+   * replies take. Absent, they take none.
    */
   commenting?: ReplyCommenting
   /**
    * The conversation's side questions and what to do with them, which the
-   * replies take and whose full conversation opens in the subagent window;
-   * absent, they take none.
+   * replies take. The full conversation of a question opens in the subagent
+   * window. Absent, the replies take none.
    */
   asking?: ReplyAsking
   /**
-   * Whether calls and folded runs show the files they changed as pills; the
+   * Whether calls and folded runs show the files they changed as pills. The
    * product shows none for a conversation outside a project
    * (`crates/agent-store/src/changes.rs`). Absent, they show.
    */
   filePills?: boolean
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
-  // where there is no panel; absent stays undefined.
+  // where there is no panel. Absent stays undefined.
   asideOpen: undefined,
   panelTabs: 0,
   resumeAtRetry: undefined,
   filePills: true,
 })
-/** The share of the session area's height the dock's windows keep; the host keeps it (`dock-window.ts`). */
+/**
+ * The share of the session area's height the dock's windows keep; the host
+ * keeps it (`dock-window.ts`).
+ */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
 
 const sharing = useShare(() => props.share, () => props.shares ?? [])
@@ -215,35 +240,52 @@ const shareConversation = { kind: 'conversation' } as const
 const emit = defineEmits<{
   /** Open an automation that wakes the conversation, from its mark. */
   openAutomation: [id: string]
-  /** The dock windows' share settled: a drag ended, a key or a double-click applied. */
+  /**
+   * The dock windows' share settled: a drag ended, a key or a double-click
+   * applied.
+   */
   dockWindowResizeEnd: [share: number]
-  /** A failure's record turned the preference to resume at its time on or off. */
+  /**
+   * A failure's record turned the preference to resume at its time on or off.
+   */
   'update:resumeAtRetry': [on: boolean]
   openAside: []
   rename: [title: string]
-  /** The row menu's commands, from the phone's title sheet; Delete once the user confirmed it. */
+  /**
+   * The row menu's commands, from the phone's title sheet; Delete once the user
+   * confirmed it.
+   */
   pin: [pinned: boolean]
   archive: []
   delete: []
   retry: []
   /**
-   * The failed turn's usage limit offered another account of its entry,
-   * without rotation: the host makes it active, then resumes
+   * The failed turn's usage limit offered another account of its entry, without
+   * rotation. The host makes it active, then resumes
    * (`crates/backend-providers/src/llm/rotation.rs`).
    */
   continueWith: [providerId: string, credentialId: string]
-  /** Open Settings › Providers, where an account the vendor signed out is signed in again. */
+  /**
+   * Open Settings › Providers, where an account the vendor signed out is signed
+   * in again.
+   */
   openProviders: []
-  /** Expose Port on the turn's failure: the port of the user's device it named, then the turn resumes. */
+  /**
+   * Expose Port on the turn's failure: the port of the user's device it named,
+   * then the turn resumes.
+   */
   exposePort: [deviceId: string, port: number]
   retryLoad: []
   /**
-   * The dock's Retry: the messages not delivered go again in the order they
-   * were sent, each as a new message at the end, but one a resend cannot
+   * The dock's Retry. The messages not delivered go again in the order they
+   * were sent, each as a new message at the end, except one a resend cannot
    * deliver.
    */
   retryUndelivered: []
-  /** Edit on the message `id`, whose delivery failed: it goes back into the composer. */
+  /**
+   * Edit on the message `id`, whose delivery failed: it goes back into the
+   * composer.
+   */
   editSubmission: [id: string]
   /** Delete on the message `id`, whose delivery failed: it goes at once. */
   deleteSubmission: [id: string]
@@ -256,8 +298,8 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
   /**
-   * Regenerate: the edit of the last message with its content unchanged,
-   * which the host sends at once through `regenerateMessage`.
+   * Regenerate: the edit of the last message with its content unchanged. The
+   * host sends it at once through `regenerateMessage`.
    */
   regenerate: [request: MessageEditRequest]
   /** Show the `to`th version at the place of the block `blockId`. */
@@ -267,28 +309,44 @@ const emit = defineEmits<{
   /** The block `reveal` names is in view. */
   revealed: []
   /**
-   * Bring this block into view and mark it, as a receipt's name asks:
-   * the host reads the window around
-   * it and sets `reveal`.
+   * Bring this block into view and mark it, as a receipt's name asks. The host
+   * reads the window around it and sets `reveal`.
    */
   reveal: [at: TranscriptReveal]
-  /** The reader nears the start of the window shown, which does not reach the transcript's. */
+  /**
+   * The reader nears the start of the window shown, which does not reach the
+   * transcript's.
+   */
   readBefore: []
-  /** The reader nears the end of the window shown, which does not reach the transcript's. */
+  /**
+   * The reader nears the end of the window shown, which does not reach the
+   * transcript's.
+   */
   readAfter: []
-  /** Show the latest window, as the scroll-to-bottom button asks while another is shown. */
+  /**
+   * Show the latest window, as the scroll-to-bottom button asks while another
+   * is shown.
+   */
   showLatest: []
-  /** Read the page of a subagent's transcript before the window its panel shows. */
+  /**
+   * Read the page of a subagent's transcript before the window its panel shows.
+   */
   readSubagent: [id: string]
   /**
-   * The children whose transcripts the page shows, the whole set, at first
-   * and whenever it changes: the child the Agents window shows, none while
-   * it is closed (`crates/agent-server/src/server/tree.rs`).
+   * The children whose transcripts the page shows, the whole set, at first and
+   * whenever it changes. They are the child the Agents window shows, or none
+   * while it is closed (`crates/agent-server/src/server/tree.rs`).
    */
   showSubagents: [ids: string[]]
-  /** Compact in a child's context card, in the Agents window: that child's context. */
+  /**
+   * Compact in a child's context card, in the Agents window: that child's
+   * context.
+   */
   compactSubagent: [id: string]
-  /** A child's context card asks for the usage limits of the account it runs on, `account` of its entry `providerId`, again. */
+  /**
+   * A child's context card asks for the usage limits of the account it runs on,
+   * `account` of its entry `providerId`, again.
+   */
   refreshLimits: [providerId: string, account: string | null, automatic: boolean]
   /** An instruction in a child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
@@ -300,11 +358,12 @@ provideResumeAtRetry(() => props.resumeAtRetry === undefined
   : { on: props.resumeAtRetry, set: (on) => emit('update:resumeAtRetry', on) })
 provideBlockReader(() => props.readBlock)
 provideCredentialKinds(() => props.credentialKinds)
-// A running call shows its command's output under it; once the call
-// returned, a command that still runs is the dock's.
+// A running call shows its command's output under it. Once the call returned, a
+// command that still runs is the dock's.
 const commandOf = useCallTerminals(() => props.conversation.terminals)
 provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
-// A report's title whose call the window shown does not hold asks the host where it lies.
+// A report's title whose call the window shown does not hold asks the host
+// where it lies.
 provideCommandRevealer((commandId) => {
   const find = props.revealCommand
   return find && (() => {
@@ -315,7 +374,10 @@ const terminals = useDockTerminals(() => props.conversation)
 /** The window of the transcript the list shows, and where it stands. */
 const shown = computed(() => shownWindow(props.conversation.history, props.conversation.shownAt))
 
-/** The side question whose whole conversation the subagent window shows; ↗ on its card opens it. */
+/**
+ * The side question whose whole conversation the subagent window shows; ↗ on
+ * its card opens it.
+ */
 const fullAsk = ref<string | null>(null)
 const fullQuestion = computed(() => props.asking?.questions.find((question) => question.id === fullAsk.value) ?? null)
 const shownAsking = computed<ReplyAsking | undefined>(() => props.asking && {
@@ -328,10 +390,11 @@ const shownEdges = computed(() => windowEdges(props.conversation.history, shown.
 const shownLatest = computed(() => shown.value === latestWindow(props.conversation.history) || shownEdges.value.atEnd)
 /**
  * The blocks at the transcript's end, which a turn, its recovery and the
- * message offered to edit read, as plain data: a block that changes is
- * replaced, never changed in place, so the window's new list is the change
- * to follow, and reading every block through its proxy at each streamed
- * piece would track every field of a long transcript.
+ * message offered to edit read, as plain data.
+ *
+ * A block that changes is replaced, never changed in place, so the window's new
+ * list is the change to follow. Reading every block through its proxy at each
+ * streamed piece would track every field of a long transcript.
  */
 const latest = computed(() => toRaw(latestBlocks(props.conversation.history)).map(toRaw))
 /** The blocks at the transcript's end the reader sees. */
@@ -339,23 +402,29 @@ const latestVisible = computed(() => getVisibleBlocks(latest.value))
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
-// The title is the last thing in the header to be cut short, up to its
-// greatest width: the controls beside it give up their labels before a title
-// narrower than that is cut, and keep them while a longer one is cut to it.
+// The title is the last thing in the header to be cut short, up to its greatest
+// width. The controls beside it give up their labels before a title narrower
+// than that is cut, and keep them while a longer one is cut to it.
 const TITLE_MAX_PX = 260
 /** The Rename button beside the title, and the gap before it. */
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
 
-// A phone shows one top bar (`SidebarLayout`): the sidebar's button, drawn
-// as the three lines of a phone app's conversation list; the title, which
-// opens the title sheet with what the desktop's header shows beside the
-// title; and the panel's button, drawn as the panel's tabs are counted on a
-// phone browser's tab button.
+// A phone shows one top bar (`SidebarLayout`), with three controls:
+//
+// - The sidebar's button, drawn as the three lines of a phone app's
+//   conversation list.
+// - The title, which opens the title sheet with what the desktop's header shows
+//   beside the title.
+// - The panel's button, drawn as the panel's tabs are counted on a phone
+//   browser's tab button.
 const phone = usePhone()
 const drawer = useSidebarDrawer()
 const titleSheetOpen = ref(false)
-/** The panel button's icon: the panel's tabs as a phone browser draws its tab button. */
+/**
+ * The panel button's icon: the panel's tabs as a phone browser draws its tab
+ * button.
+ */
 const tabsIcon = computed(() => tabCountIcon(props.panelTabs))
 /** Where the title sheet shows the conversation's place, while it is open. */
 const workspaceTarget = ref<HTMLElement | null>(null)
@@ -364,7 +433,10 @@ const hostNotReady = computed(() => {
   const host = props.primaryHost
   return host && host.state !== 'online' ? host : null
 })
-/** On a phone, a rename asks in a dialog, as a phone's own apps do; the bar has no room for the field. */
+/**
+ * On a phone, a rename asks in a dialog, as a phone's own apps do. The bar has
+ * no room for the field.
+ */
 const renameAsked = computed(() => renaming.value && phone.value)
 
 /** Closes the title sheet, then does what its item chose. */
@@ -375,7 +447,10 @@ function fromTitleSheet(then: () => void): void {
 /** Delete… from the title sheet asks first, as the sidebar's does. */
 const deleteAsked = ref(false)
 
-/** The conversation's commands in the title sheet: the sidebar row's, but Open, since it is the one shown. */
+/**
+ * The conversation's commands in the title sheet: the sidebar row's, but Open,
+ * since it is the one shown.
+ */
 function titleSheetEntries(listed: { pinned: boolean }) {
   return selectionEntries([{ id: props.conversation.id, pinned: listed.pinned }], {
     open: () => undefined,
@@ -396,9 +471,10 @@ function beginRename(): void {
 const titleCell = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
 /**
- * The title cell's width, unknown until it is first laid out; its room is
- * unknown until then, and every label shows. Taken for zero wide, the cell
- * would hide the labels beside it and bring them back within its first
+ * The title cell's width, unknown until it is first laid out.
+ *
+ * Until then its room is unknown, and every label shows. Taken for zero wide,
+ * the cell would hide the labels beside it and bring them back within its first
  * measurement, resizing itself inside its own ResizeObserver callback.
  */
 /** The title the session shows, the placeholder's in the reader's language. */
@@ -414,7 +490,8 @@ watch(
     if (titleCellWidth.value === undefined) {
       return
     }
-    // The input a rename swaps in is as wide as a title gets, and leaves no button beside it.
+    // The input a rename swaps in is as wide as a title gets, and leaves no
+    // button beside it.
     const need = title.value
       ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + TITLE_ACTION_PX
       : TITLE_MAX_PX
@@ -423,9 +500,13 @@ watch(
   { flush: 'post' },
 )
 provideLabelRoom(() => titleRoom.value)
-// Recovery of an unfinished turn needs a provider and a conversation that is
-// neither archived nor being edited, whose session has told its turn. A
-// message the user sent and still on its way is the other way forward; one
+// Recovery of an unfinished turn needs:
+//
+// - a provider
+// - a conversation that is neither archived nor being edited
+// - a session that has told its turn
+//
+// A message the user sent and still on its way is the other way forward. One
 // not delivered is not, and the dock's Retry stands before Resume for it.
 const canRecover = computed(
   () =>
@@ -435,9 +516,12 @@ const canRecover = computed(
     !props.conversation.archived &&
     sessionShown(props.conversation.load),
 )
-// A session-level failure is told once, in the transcript flow: never beside
-// the status pane that already replaced the transcript, never under an error
-// record that already says it, also when receipts arrived behind it.
+// A session-level failure is told once, in the transcript flow. It is never
+// told:
+//
+// - beside the status pane that already replaced the transcript
+// - under an error record that already says it, even when receipts arrived
+//   behind the record
 const failureNotice = computed(() => {
   const visible = latestVisible.value
   return sessionFailureNotice(
@@ -447,7 +531,8 @@ const failureNotice = computed(() => {
     endsWithErrorRecord(visible),
   )
 })
-// One control in the dock: Resume after an error, Continue after the user's Stop.
+// One control in the dock: Resume after an error, Continue after the user's
+// Stop.
 const recovery = computed(() =>
   canRecover.value
     ? turnRecovery(props.conversation.phase, latestVisible.value)
@@ -457,22 +542,28 @@ function recover(): void {
   emit('retry')
 }
 /**
- * The account a usage limit of an entry without rotation offers to go on
- * with, the one with the most room as the failure's facts name it, beside
- * Resume; none for any other failure.
+ * The account that a usage limit of an entry without rotation offers to go on
+ * with, beside Resume. It is the account with the most room, as the failure's
+ * facts name it. None for any other failure.
  */
 const continueWith = computed(() =>
   canRecover.value
     ? continueWithOffer(props.conversation.phase, latestVisible.value, props.conversation.failures)
     : null,
 )
-/** The port of the user's device the turn's request named while it was not exposed and still is not, which the dock offers to expose. */
+/**
+ * The port of the user's device the turn's request named while it was not
+ * exposed and still is not, which the dock offers to expose.
+ */
 const notExposed = computed(() =>
   canRecover.value
     ? notExposedOffer(props.conversation.phase, latestVisible.value, props.conversation.failures, props.isExposed ?? (() => false))
     : null,
 )
-/** Whether the turn ended because the vendor signed its account out, which the dock answers with Open Providers. */
+/**
+ * Whether the turn ended because the vendor signed its account out, which the
+ * dock answers with Open Providers.
+ */
 const signedOut = computed(() =>
   canRecover.value && signedOutOffer(props.conversation.phase, latestVisible.value, props.conversation.failures),
 )
@@ -481,7 +572,10 @@ const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.conversation.archived
   && !props.conversation.subagents.some((agent) => agent.phase === 'running'))
 
-/** The message the page offers to edit, and to regenerate the answer of; null for none. */
+/**
+ * The message the page offers to edit, and to regenerate the answer of; null
+ * for none.
+ */
 const offeredId = computed(() => canEdit.value
   ? offeredEditId({ ...props.conversation, blocks: latest.value })
   : null)
@@ -517,7 +611,10 @@ const list = ref<{
   isAtBottom: boolean
   scrollToBottom: () => void
 }>()
-/** The button's way to the end: to the latest window when another is shown, then to its end. */
+/**
+ * The button's way to the end: to the latest window when another is shown, then
+ * to its end.
+ */
 function scrollToBottom(): void {
   if (!shownLatest.value) {
     emit('showLatest')
@@ -527,9 +624,9 @@ function scrollToBottom(): void {
   list.value?.scrollToBottom()
 }
 /**
- * The children the Agents window and `agent:` links show: those started on
- * the current path; a child of another version of a message stays stored
- * and comes back with its version.
+ * The children the Agents window and `agent:` links show: those started on the
+ * current path. A child of another version of a message stays stored and comes
+ * back with its version.
  */
 const shownAgents = computed(() => props.conversation.subagents.filter((agent) => agent.onPath))
 const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
@@ -538,9 +635,9 @@ const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerm
     () => terminals.value,
     () => (props.conversation.load === 'loading' ? null : props.conversation.id),
   )
-// A receipt's name opens the Agents window on its sender's tab, a finished
-// sender as Completed picks it, and the host brings the block it names into
-// view there; the root's block, in the transcript.
+// A receipt's name opens the Agents window on its sender's tab. A finished
+// sender is picked as Completed picks it. The host brings the block the receipt
+// names into view there; the root's block, in the transcript.
 provideOriginRevealer(({ node, blockId }) => {
   if (node === null && blockId === null) {
     return undefined
@@ -554,8 +651,8 @@ provideOriginRevealer(({ node, blockId }) => {
     }
   }
 })
-// A message's link to an agent opens the Agents window on its tab, and
-// leaves it as it is when it shows that tab already; agent 0's brings this
+// A message's link to an agent opens the Agents window on its tab, and leaves
+// it as it is when it shows that tab already. Agent 0's link brings this
 // transcript into view.
 provideMessageAgents(() => ({
   find: (number) => findAgent(shownAgents.value, number),
@@ -574,7 +671,8 @@ provideMessageAgents(() => ({
       close()
     }
   },
-  // Stop Agent in the link's menu stops it as its tab's does; the conversation's own agent has no tab to stop.
+  // Stop Agent in the link's menu stops it as its tab's does; the
+  // conversation's own agent has no tab to stop.
   stop: (number) => {
     const agent = shownAgents.value.find((candidate) => candidate.number === number)
     if (agent) {
@@ -589,7 +687,8 @@ watch(
   (id) => emit('showSubagents', id === null ? [] : [id]),
   { immediate: true },
 )
-// A block in a subagent's transcript shows in the panel, on that subagent's tab.
+// A block in a subagent's transcript shows in the panel, on that subagent's
+// tab.
 watch(
   () => props.reveal?.node,
   (node) => {
@@ -615,7 +714,10 @@ watch(
         :aria-label="t('session.conversations')"
         @click="drawer.open()"
       />
-      <!-- The title is centered between the bar's two buttons, whichever of them shows. -->
+      <!--
+        The title is centered between the bar's two buttons, whichever of them
+        shows.
+      -->
       <span v-else class="size-hit shrink-0" />
       <button
         type="button"
@@ -640,7 +742,10 @@ watch(
         @click="emit('openAside')"
       />
       <span v-else class="size-hit shrink-0" />
-      <!-- A menu sheet: the title it acts on stays in the bar above it, so the sheet repeats no heading. -->
+      <!--
+        A menu sheet: the title it acts on stays in the bar above it, so the
+        sheet repeats no heading.
+      -->
       <Sheet :open="titleSheetOpen" :label="shownTitle" :overlay-store="appOverlayStore" @close="titleSheetOpen = false">
         <Menu v-if="listed || share">
           <template v-if="share">
@@ -656,14 +761,20 @@ watch(
             :groups="titleSheetEntries(listed)"
           />
         </Menu>
-        <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->
+        <!--
+          Where the conversation runs, as the desktop's header shows it beside
+          the title.
+        -->
         <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
           <p class="pb-1 text-detail text-fg-subtle">{{ t('session.runsOn') }}</p>
           <div ref="workspaceTarget" />
         </div>
       </Sheet>
-      <!-- The place stays mounted while the sheet is closed, as the desktop's header keeps it: the
-           composer's offline card moves the conversation through it. The sheet shows it while open. -->
+      <!--
+        The place stays mounted while the sheet is closed, as the desktop's
+        header keeps it. The composer's offline card moves the conversation
+        through it. The sheet shows it while open.
+      -->
       <div class="hidden">
         <Teleport :to="workspaceTarget ?? 'body'" :disabled="workspaceTarget === null">
           <slot name="workspace" />
@@ -748,7 +859,9 @@ watch(
             </Menu>
           </template>
         </Dropdown>
-        <!-- Only while the panel is closed: open, its own fold control closes it. -->
+        <!--
+          Only while the panel is closed: open, its own fold control closes it.
+        -->
         <Tooltip
           v-if="asideOpen === false"
           :content="t('session.openPanel')"
@@ -763,7 +876,10 @@ watch(
         </Tooltip>
       </div>
     </header>
-    <!-- A bar about where the conversation belongs, under the header: an automation's run's. -->
+    <!--
+      A bar about where the conversation belongs, under the header: an
+      automation's run's.
+    -->
     <slot name="bar" />
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <SessionSurface
@@ -834,7 +950,10 @@ watch(
               />
             </template>
             <template #chips>
-              <!-- The transcript says what happened; the recovery controls are here, over the input. -->
+              <!--
+                The transcript says what happened; the recovery controls are
+                here, over the input.
+              -->
               <UndeliveredRetryChip
                 v-if="hasProvider && !conversation.archived"
                 :pending-submissions="pendingSubmissions ?? []"
@@ -875,7 +994,10 @@ watch(
                 @open="(id) => emit('openAutomation', id)"
               />
             </template>
-            <!-- With the transcript: a message sent while the session opens goes once it has. -->
+            <!--
+              With the transcript: a message sent while the session opens goes
+              once it has.
+            -->
             <slot
               v-if="conversation.archived || transcriptShown(conversation.load)"
               name="composer"

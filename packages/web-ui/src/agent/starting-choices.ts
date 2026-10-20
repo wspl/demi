@@ -4,8 +4,8 @@ import type { WorkflowChoice, WorkflowList } from './workflow-menu'
 /**
  * What a new conversation starts with: the model settings and the workflow last
  * chosen in its project, or outside projects for a conversation outside one. A
- * project keeps them on its workspace, the conversations outside a project in the
- * preferences.
+ * project keeps them on its workspace, the conversations outside a project in
+ * the preferences. /
  */
 export interface RememberedChoices {
   lastModel?: ModelSettings
@@ -22,11 +22,11 @@ export interface StartingChoices {
 const NO_SUBAGENTS: WorkflowChoice = { type: 'none' }
 
 /**
- * The choices a new conversation starts with, each on its own: its
- * `project`'s, or, where the project remembers none, as a project never
- * used, one the page does not know or a conversation outside projects
- * (`project` null) does, that of the conversations outside a project. A
- * workflow remembered nowhere is No Subagents.
+ * The choices a new conversation starts with, each on its own: its `project`'s.
+ * Where the project remembers none, as with a project never used, one the page
+ * does not know, or a conversation outside projects (`project` null), the
+ * choice is that of the conversations outside a project. A workflow remembered
+ * nowhere is No Subagents.
  */
 export function startingChoices(project: RememberedChoices | null, outside: RememberedChoices): StartingChoices {
   return {

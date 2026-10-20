@@ -55,7 +55,8 @@ test('the usage the composer shows is the one the session reports, not one read 
   const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
   await runtime.connect()
   try {
-    // A response before the compaction still measures the history the summary replaced.
+    // A response before the compaction still measures the history the summary
+    // replaced.
     h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
     h.receive({ type: 'context_usage', node: 'conversation', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [], account: null } })
     expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [], account: null })
@@ -95,7 +96,8 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
       if (failure === 'none') {
         expect(current.lastError).toBeNull()
       } else {
-        // The failure kept: the page's headline for the one the socket reported, whose code names no headline of its own.
+        // The failure kept: the page's headline for the one the socket
+        // reported, whose code names no headline of its own.
         const message = failure === 'before-confirmation' ? 'The turn failed.' : 'generation failed'
         expect({ ...current.lastError }).toEqual({ message, requestId: null })
       }
@@ -181,9 +183,9 @@ test('send now on a pending steer or a queued message stops nothing and never tu
   }
 })
 
-// Remove on a steer or a queued message: the session answers whether it removed
-// the message or the message had gone on, and the removal settles on that
-// answer alone, whatever frames come before it.
+// Remove on a steer or a queued message. The session answers whether it removed
+// the message or the message had gone on. The removal settles on that answer
+// alone, whatever frames come before it.
 test.each([
   { kind: 'steer', outcome: 'removed' },
   { kind: 'steer', outcome: 'gone_on' },
@@ -612,7 +614,8 @@ test('a saved message whose socket is lost before the session took it goes again
     })
     expect(await sending).toBe(true)
 
-    // The session holds it already, as when the first send reached it: nothing goes again.
+    // The session holds it already, as when the first send reached it: nothing
+    // goes again.
     const held = sockets.last()
     const sent = held.sent.length
     expect(await runtime.sendSaved('saved', 'turn', 'message')).toBe(true)
@@ -702,10 +705,10 @@ test('a page back from sleep breaks a conversation socket that still waits for i
   }
 })
 
-// The frames of the handshake wait until the session has opened, then go:
-// the subscription that held them lives as long as the connection, and
-// once held a transcript and every command's output for that long. Cost:
-// one opening and two collections.
+// The frames of the handshake wait until the session has opened, then go. The
+// subscription that held them lives as long as the connection, and once held a
+// transcript and every command's output for that long. Cost: one opening and
+// two collections.
 test('the handshake\'s frames are applied once the session opens and are not kept after', async () => {
   const current = state()
   let deliver: (frame: unknown) => void = () => {}
@@ -744,9 +747,9 @@ test('the handshake\'s frames are applied once the session opens and are not kep
   }
 })
 
-// A page that hides a child while its open's handshake is on its way lets
-// go of the child's transcript (`crates/agent-server/src/server/tree.rs`); the reset the
-// handshake held for it revived it, stale from then on. A side question's
+// A page that hides a child while its open's handshake is on its way lets go of
+// the child's transcript (`crates/agent-server/src/server/tree.rs`). The reset
+// the handshake held for it revived it, stale from then on. A side question's
 // transcript, which no page names, still comes. Cost: one opening.
 test('a child the page hides while the handshake arrives takes nothing of it, and a side question its own', async () => {
   let shown = ['child']
@@ -829,7 +832,8 @@ test('disposing during the backoff wait ends the retries', async () => {
     await turn()
     expect(connects).toBe(1)
     runtime.dispose()
-    // Every timer still set fires now: a backoff wait that dispose left running would start another attempt.
+    // Every timer still set fires now: a backoff wait that dispose left running
+    // would start another attempt.
     jest.runAllTimers()
     expect(await result).toBeInstanceOf(Error)
     await turn()
@@ -878,7 +882,8 @@ test('failure facts arrive beside the transcript and accumulate across patches a
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
   h.receive({ type: 'transcript_patch', revision: 3, patches: [] })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
-  // A reset brings the blocks from its start; the page may hold the blocks before it, with their facts.
+  // A reset brings the blocks from its start; the page may hold the blocks
+  // before it, with their facts.
   h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 4 }, blocks: [] })
   expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
   runtime.dispose()

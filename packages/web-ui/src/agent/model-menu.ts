@@ -12,7 +12,10 @@ import {
 } from './model-selection'
 import { buildReasoningState, reasoningOptionIndex, reasoningOptionLabel } from './reasoning'
 
-/** What the model menu offers for `settings`: each row it shows, null for one it leaves out. */
+/**
+ * What the model menu offers for `settings`: each row it shows, null for one it
+ * leaves out.
+ */
 export interface ModelMenuRows {
   /** The model the settings name, when the menu can send with it. */
   selected: SelectedModel | null
@@ -24,12 +27,18 @@ export interface ModelMenuRows {
   standIn: { selected: boolean } | null
   /** Fast Mode, for a model with a Fast tier. */
   fast: { tier: ModelServiceTier; on: boolean } | null
-  /** Reasoning, for a model that lists efforts: Off when it can turn thinking off, then each effort. */
+  /**
+   * Reasoning, for a model that lists efforts: Off when it can turn thinking
+   * off, then each effort.
+   */
   reasoning: {
     value: string
     options: { label: TitleText; effort: string; icon: Component; selected: boolean }[]
   } | null
-  /** Context, for a model whose window offers limits: the full window, then each limit. */
+  /**
+   * Context, for a model whose window offers limits: the full window, then each
+   * limit.
+   */
   context: {
     value: string
     options: { label: string; window: number; tokens: number | null; selected: boolean }[]
@@ -50,9 +59,9 @@ export interface ModelMenuRows {
 }
 
 /**
- * The rows of the model menu: one derivation for the composer, the profile editor and
- * the small model's menu, so the stand-in at the top, Parent's Model or Automatic, is
- * the only row another menu adds.
+ * The rows of the model menu: one derivation for the composer, the profile
+ * editor and the small model's menu, so the stand-in at the top, Parent's Model
+ * or Automatic, is the only row another menu adds. /
  */
 export function modelMenuRows(
   providers: readonly ProviderInfo[],
@@ -94,7 +103,8 @@ export function modelMenuRows(
         }
       : null,
     model: {
-      // A choice the menu cannot send with still names itself, as the composer's chip does.
+      // A choice the menu cannot send with still names itself, as the
+      // composer's chip does.
       value: standInChosen
         ? ''
         : model?.name ?? composerModel(providers, models, settings?.providerId, settings?.modelId).label,

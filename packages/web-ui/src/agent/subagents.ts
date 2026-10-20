@@ -24,13 +24,19 @@ export interface AgentRun {
   phase: SubagentPhase
   startedAt: string
   endedAt?: string
-  /** Where its `shell` calls start now, on the primary Host (`crates/agent-server/src/node/mod.rs`). */
+  /**
+   * Where its `shell` calls start now, on the primary Host
+   * (`crates/agent-server/src/node/mod.rs`).
+   */
   cwd: string
 }
 
 export interface SubagentRecord extends AgentRun {
   id: string
-  /** The number the model knows it by, which a message links it with as `agent:<number>`. */
+  /**
+   * The number the model knows it by, which a message links it with as
+   * `agent:<number>`.
+   */
   number: number
   name: string
   /**
@@ -45,12 +51,16 @@ export interface SubagentRecord extends AgentRun {
   sessionPhase: SessionPhase
   startedAt: string
   endedAt?: string
-  /** The parts of this agent's transcript the page holds, from its pages and its stream. */
+  /**
+   * The parts of this agent's transcript the page holds, from its pages and its
+   * stream.
+   */
   history: HeldTranscript
   /**
-   * The revision of its transcript as the last open's snapshot listed it,
-   * which tells whether a finished child's held transcript is still
-   * current (`crates/agent-server/src/server/tree.rs`); absent before a snapshot listed it.
+   * The revision of its transcript as the last open's snapshot listed it, which
+   * tells whether a finished child's held transcript is still current
+   * (`crates/agent-server/src/server/tree.rs`); absent before a snapshot listed
+   * it. /
    */
   revision?: number
   /** The calls this agent's model is writing. */
@@ -85,7 +95,10 @@ export function agentCompaction(agent: SubagentRecord): { compacting: boolean, u
   }
 }
 
-/** What a child's job sets on its record: who it is, and its round as the job says it now. */
+/**
+ * What a child's job sets on its record: who it is, and its round as the job
+ * says it now.
+ */
 export type SubagentJobFields = Pick<SubagentRecord, 'id' | 'number' | 'name' | 'onPath'> & AgentRun
 
 /**
@@ -164,7 +177,10 @@ export function subagentStatus(phase: SubagentPhase): ConversationStatus {
   return 'done'
 }
 
-/** How long a child has run, or ran, in the duration words: a running one counts to `nowMs`. */
+/**
+ * How long a child has run, or ran, in the duration words: a running one counts
+ * to `nowMs`.
+ */
 export function formatSubagentDuration(
   agent: SubagentRecord,
   nowMs: number,

@@ -5,7 +5,10 @@ import { FIELD } from '../ui/autofocus'
 export interface EscapeKey {
   defaultPrevented: boolean
   isComposing: boolean
-  /** The element the key went to, the one with the focus; none for the page itself. */
+  /**
+   * The element the key went to, the one with the focus; none for the page
+   * itself.
+   */
   target: { closest(selectors: string): unknown } | null
 }
 

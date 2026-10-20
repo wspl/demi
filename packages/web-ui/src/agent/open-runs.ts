@@ -27,12 +27,15 @@ export interface OpenRuns {
 }
 
 /**
- * The runs of a transcript list that are open, by the keys the list draws their rows
- * under (`keyOf`): the row a lone step ran in is the run's row once the step ended, so
- * a step opened while it runs is still open as the run it starts. The list owns them
- * rather than each run's row, so a reveal opens a run whatever the row's state, and a
- * run stays as the reader left it when its row scrolls out of the drawn range and back.
- * Another `scope`, the list showing another transcript, starts folded.
+ * The runs of a transcript list that are open, by the keys the list draws their
+ * rows under (`keyOf`): the row a lone step ran in is the run's row once the
+ * step ended, so a step opened while it runs is still open as the run it
+ * starts.
+ *
+ * The list owns them rather than each run's row, so a reveal opens a run
+ * whatever the row's state, and a run stays as the reader left it when its row
+ * scrolls out of the drawn range and back. Another `scope`, the list showing
+ * another transcript, starts folded.
  */
 export function useOpenRuns(
   rows: () => readonly MessageListBlock[],

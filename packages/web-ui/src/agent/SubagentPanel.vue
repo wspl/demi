@@ -27,21 +27,28 @@ const props = withDefaults(
     agents: readonly SubagentRecord[]
     /** The conversation's commands: a child's running calls show theirs. */
     terminals?: readonly TerminalRecord[]
-    /** A block of a child's transcript to bring into view and mark for a moment, on that child's tab. */
+    /**
+     * A block of a child's transcript to bring into view and mark for a moment,
+     * on that child's tab.
+     */
     reveal?: TranscriptReveal | null
-    /** The usage limits of the account a provider entry runs on, which a child's context card shows; absent, it shows none. */
+    /**
+     * The usage limits of the account a provider entry runs on, which a child's
+     * context card shows; absent, it shows none.
+     */
     usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
     /**
      * Reads the latest page of a child's transcript, for a child the panel
-     * shows and holds none of, unless the session sends it (`streamed`);
-     * it resolves once the page is in the child's record. The panel shows the child loading meanwhile, and a failed read
-     * with Retry. Absent, the panel reads nothing and shows what it is given.
+     * shows and holds none of, unless the session sends it (`streamed`). It
+     * resolves once the page is in the child's record. The panel shows the
+     * child loading meanwhile, and a failed read with Retry. Absent, the panel
+     * reads nothing and shows what it is given.
      */
     readLatest?: (id: string) => Promise<void>
     /**
-     * Whether the page has, or is opening, a session that sends a live
-     * child's transcript once the panel shows it; without one the panel
-     * reads a live child's latest page as it reads a finished one's.
+     * Whether the page has, or is opening, a session that sends a live child's
+     * transcript once the panel shows it. Without one, the panel reads a live
+     * child's latest page as it reads a finished one's.
      */
     streamed?: boolean
   }>(),
@@ -65,13 +72,16 @@ const emit = defineEmits<{
   revealed: []
   /** Compact in the shown child's context card: that child's context. */
   compactAgent: [id: string]
-  /** The child's context card asks for the usage limits of the account it runs on, `account` of its entry `providerId`, again. */
+  /**
+   * The child's context card asks for the usage limits of the account it runs
+   * on, `account` of its entry `providerId`, again.
+   */
   refreshLimits: [providerId: string, account: string | null, automatic: boolean]
   /** An instruction in the child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
 }>()
 /**
- * Whether the panel is open, and the child it shows: none leaves it open,
+ * Whether the panel is open, and the child it shows. None leaves it open,
  * empty, as it opens when no child runs.
  */
 const open = defineModel<boolean>('open', { required: true })
@@ -81,13 +91,13 @@ const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
 const active = computed(() => tabs.value.find((agent) => agent.id === activeId.value) ?? null)
 const commandOf = useCallTerminals(() => props.terminals)
 provideLiveCalls((toolUseId) => active.value ? commandOf(active.value.id, toolUseId) : undefined)
-// A child's transcript shows its latest window, and earlier pages as the reader scrolls up.
+// A child's transcript shows its latest window, and earlier pages as the reader
+// scrolls up.
 const shown = computed(() => active.value ? shownWindow(active.value.history, null) : null)
 const shownEdges = computed(() => active.value && shown.value ? windowEdges(active.value.history, shown.value) : null)
 /**
- * Each child's read of its latest page while it runs, or once it failed, by
- * the child's id; a child the map does not name was read, or never needed
- * to be.
+ * Each child's read of its latest page while it runs, or once it failed, by the
+ * child's id. A child the map does not name was read, or never needed to be.
  */
 const reads = reactive(new Map<string, { phase: 'loading' } | { phase: 'failed'; error: ShownError }>())
 function readLatest(id: string): Promise<void> | undefined {
@@ -105,15 +115,20 @@ function readLatest(id: string): Promise<void> | undefined {
     },
   )
 }
-/** Whether the session sends the child `agent`'s transcript once the panel shows it: it is live, and the page has a session. */
+/**
+ * Whether the session sends the child `agent`'s transcript once the panel shows
+ * it: it is live, and the page has a session.
+ */
 function sent(agent: SubagentRecord): boolean {
   return agent.phase === 'running' && props.streamed
 }
-// A child the panel holds none of reads its latest page when it shows,
-// unless the session sends it: a live child's transcript comes with the
-// socket's reset once the page shows it (`crates/agent-server/src/server/tree.rs`). One
-// whose read failed waits for Retry; one that ends, or whose page loses its
-// session, before its reset came reads then.
+// A child the panel holds none of reads its latest page when it shows, unless
+// the session sends it. A live child's transcript comes with the socket's reset
+// once the page shows it (`crates/agent-server/src/server/tree.rs`).
+//
+// - A child whose read failed waits for Retry.
+// - A child that ends, or whose page loses its session, before its reset came
+//   reads then.
 watch(
   () => {
     const agent = active.value
@@ -127,9 +142,9 @@ watch(
   { immediate: true },
 )
 /**
- * The shown child's load while the panel holds none of its transcript:
- * never an empty transcript in its place. A child the session sends loads
- * until its reset arrives, whatever the socket's own state; a page that
+ * The shown child's load while the panel holds none of its transcript, so the
+ * panel never shows an empty transcript in its place. A child the session sends
+ * loads until its reset arrives, whatever the socket's own state. A page that
  * arrives shows at once.
  */
 const load = computed(() => {
@@ -147,7 +162,7 @@ function activate(id: string): void {
   activeId.value = id
 }
 
-// A child picked from Completed replaces the finished tab in place: nothing
+// A child picked from Completed replaces the finished tab in place. Nothing
 // opened or closed, so the strip shows the change at once.
 const replacing = ref(false)
 function pick(id: string): void {
@@ -182,7 +197,10 @@ function agentOf(id: string): SubagentRecord | undefined {
   return tabs.value.find((agent) => agent.id === id)
 }
 
-/** A tab's menu: its agent's, a link's less Open, then Close Tab once the agent is done. */
+/**
+ * A tab's menu: its agent's, a link's less Open, then Close Tab once the agent
+ * is done.
+ */
 function tabMenu(id: string): () => ContextMenuGroup[] {
   return () => {
     const agent = agentOf(id)
@@ -201,7 +219,8 @@ function stripMenu(): ContextMenuGroup[] {
   return [[{ icon: CircleStop, label: t('subagents.stopAll'), disabled: !anyRunning.value, run: () => emit('abort') }]]
 }
 
-// A finished child's tab puts it away; a running one's tab stays until the child is stopped.
+// A finished child's tab puts it away; a running one's tab stays until the
+// child is stopped.
 function closeTab(id: string): void {
   activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
 }

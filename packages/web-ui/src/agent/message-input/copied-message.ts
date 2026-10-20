@@ -14,20 +14,30 @@ import { contentMessage, type MessageCapsule } from '../message-editor/capsules'
 // Demi's own form travels as a JSON attribute of the HTML's outermost element,
 // since browsers keep HTML on the clipboard and no format of a page's own.
 
-/** The attribute of the copied HTML's outermost element that holds Demi's own form. */
+/**
+ * The attribute of the copied HTML's outermost element that holds Demi's own
+ * form.
+ */
 export const COPIED_MESSAGE_ATTRIBUTE = 'data-demi-message'
 
-/** A file the message holds as a blob of the user's: the upload a paste makes of it sends no bytes. */
+/**
+ * A file the message holds as a blob of the user's: the upload a paste makes of
+ * it sends no bytes.
+ */
 export const copiedStoredFileSchema = z.object({
   type: z.literal('stored'),
   name: z.string().min(1),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
   mediaType: z.string(),
-  /** The file's size; absent for a picture the message holds without its record. */
+  /**
+   * The file's size; absent for a picture the message holds without its record.
+   */
   size: z.number().int().nonnegative().optional(),
 })
 
-/** A file on a paired device, which the message names by its device and path. */
+/**
+ * A file on a paired device, which the message names by its device and path.
+ */
 const copiedDeviceFileSchema = z.object({
   type: z.literal('device'),
   name: z.string().min(1),
@@ -66,7 +76,10 @@ export type FileReference =
   | Omit<CopiedStoredFile, 'name'>
   | Pick<CopiedDeviceFile, 'type' | 'deviceId'>
 
-/** A line of a paragraph that holds nothing but white space: a line break, or white-space text. */
+/**
+ * A line of a paragraph that holds nothing but white space: a line break, or
+ * white-space text.
+ */
 function isBlankInline(node: JSONContent): boolean {
   return node.type === 'hardBreak' || (node.type === 'text' && !node.text?.trim())
 }
@@ -122,14 +135,23 @@ export function trimBlankLines(blocks: readonly JSONContent[]): { blocks: JSONCo
   return { blocks: kept, from, to }
 }
 
-/** The forms of a copy that need no page: Demi's own and plain text, with the lone picture a copy carries as itself. */
+/**
+ * The forms of a copy that need no page: Demi's own and plain text, with the
+ * lone picture a copy carries as itself.
+ */
 export interface MessageClipboard {
   message: CopiedMessage
   /** The Markdown, each file by its name. */
   plain: string
-  /** The copy holds one picture and no text: its capsule, whose picture also goes on the clipboard. */
+  /**
+   * The copy holds one picture and no text: its capsule, whose picture also
+   * goes on the clipboard.
+   */
   image: MessageCapsule | null
-  /** What the copy holds, without blank lines at its ends: the document its HTML is made from, so every form holds the same lines. */
+  /**
+   * What the copy holds, without blank lines at its ends: the document its HTML
+   * is made from, so every form holds the same lines.
+   */
   doc: JSONContent
 }
 
@@ -173,7 +195,10 @@ export function contentCopy(content: readonly MessageEditContent[]): CopiedMessa
   return messageClipboard(parseUserMarkdown(markdown, capsules)).message
 }
 
-/** A capsule's file as Demi's own form holds it; null when the message does not hold it yet. */
+/**
+ * A capsule's file as Demi's own form holds it; null when the message does not
+ * hold it yet.
+ */
 function copiedFile(capsule: MessageCapsule): CopiedFile | null {
   const reference = capsule.reference
   if (reference?.type === 'stored') {
@@ -185,7 +210,10 @@ function copiedFile(capsule: MessageCapsule): CopiedFile | null {
   return null
 }
 
-/** Demi's own form from the attribute's value; null when it is not one, such as HTML from elsewhere. */
+/**
+ * Demi's own form from the attribute's value; null when it is not one, such as
+ * HTML from elsewhere.
+ */
 export function readCopiedMessage(value: string | null): CopiedMessage | null {
   if (!value) {
     return null
@@ -226,7 +254,10 @@ export function attachmentDrag(event: DragEvent): void {
   transfer.setData('text/html', copiedMessageHtml({ text: ATTACHMENT_MARK, files: [read.data] }, picture))
 }
 
-/** Demi's own form of the message a paste or a drop carries in its HTML; null for HTML from elsewhere. */
+/**
+ * Demi's own form of the message a paste or a drop carries in its HTML; null
+ * for HTML from elsewhere.
+ */
 export function transferCopiedMessage(transfer: DataTransfer): CopiedMessage | null {
   const html = transfer.getData('text/html')
   if (!html.includes(COPIED_MESSAGE_ATTRIBUTE)) {
@@ -239,13 +270,18 @@ export function transferCopiedMessage(transfer: DataTransfer): CopiedMessage | n
 /**
  * How a composer takes the files of a pasted message. A stored file is a
  * capsule at once, and attaches beside it as an upload does: the backend makes
- * an upload of the user's own stored file, sending no bytes. `kept` answers
- * whether the capsule stays: true once the file is attached, or when the paste
- * could not use it and `picture`, the picture the copy carried, uploads in its
- * place under the file's name; false when neither could, and the composer puts
- * the file's name where the capsule stood. A device file is its reference, or
- * null when the composer cannot take files, as an edit that is no longer
- * editable cannot.
+ * an upload of the user's own stored file, sending no bytes.
+ *
+ * `kept` answers whether the capsule stays:
+ *
+ * - true once the file is attached, or when the paste could not use it and
+ *   `picture`, the picture the copy carried, uploads in its place under the
+ *   file's name
+ * - false when neither could, and the composer puts the file's name where the
+ *   capsule stood
+ *
+ * A device file is its reference, or null when the composer cannot take files,
+ * as an edit that is no longer editable cannot.
  */
 export interface PasteHost {
   claim(file: CopiedStoredFile, picture: File | null): { capsule: MessageCapsule; kept: Promise<boolean> }
@@ -297,7 +333,10 @@ export function pasteMessage(message: CopiedMessage, image: File | null, host: P
   return { markdown, capsules, attaching, missing }
 }
 
-/** The picture a copy carried, under its file's name when it is that file's kind, as web browsers name every pasted picture `image.png`. */
+/**
+ * The picture a copy carried, under its file's name when it is that file's
+ * kind, as web browsers name every pasted picture `image.png`.
+ */
 function namedPicture(image: File, file: CopiedStoredFile): File {
   return file.mediaType === image.type ? new File([image], file.name, { type: image.type }) : image
 }

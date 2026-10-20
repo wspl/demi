@@ -5,13 +5,19 @@ import StatusDot from '../ui/StatusDot.vue'
 withDefaults(defineProps<{
   dot?: 'accent' | 'success' | 'muted'
   breathing?: boolean
-  /** It cannot act now, as a Resume that waits for its device; its owner says why. */
+  /**
+   * It cannot act now, as a Resume that waits for its device; its owner says
+   * why.
+   */
   disabled?: boolean
 }>(), {})
 </script>
 
 <template>
-  <!-- The dock floats over the scrolling transcript, so a chip takes the opaque control surface. -->
+  <!--
+    The dock floats over the scrolling transcript, so a chip takes the opaque
+    control surface.
+  -->
   <span
     role="button"
     :aria-disabled="disabled || undefined"

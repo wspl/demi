@@ -19,7 +19,10 @@ let copied: string[] = []
 let calls: string[] = []
 let failWith: Error | null = null
 let held: ExistingShare[] = []
-/** The click being handled: a write outside it is refused, as Safari refuses one. */
+/**
+ * The click being handled: a write outside it is refused, as Safari refuses
+ * one.
+ */
 let inClick = false
 /** The answer of the next `create`, which the test gives when it wants. */
 let pending: { resolve: () => void; reject: (error: Error) => void } | null = null

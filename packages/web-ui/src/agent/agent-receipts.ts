@@ -6,19 +6,28 @@ import { hostAction, reachAction, useCredentialAction, wordedActions } from '../
 import { around, t } from './locales/text'
 
 /**
- * A receipt's row: what happened, in
- * the user's words, and the agent it names by its description, which is
- * an imperative title and so the notice's object, never its subject. The
- * main agent, which has no description of its own, is named as such and
- * ends the sentence without a colon: *Message from main agent*.
+ * A receipt's row: what happened, in the user's words, and the agent it names
+ * by its description. The description is an imperative title and so the
+ * notice's object, never its subject. The main agent, which has no description
+ * of its own, is named as such and ends the sentence without a colon: *Message
+ * from main agent*.
  */
 export interface ReceiptRow {
   notice: string
-  /** The agent the row names; none for a row the user's own decision or Demi makes. */
+  /**
+   * The agent the row names; none for a row the user's own decision or Demi
+   * makes.
+   */
   title: string | null
-  /** The title stands inside the notice's sentence, with no colon: the sentence is `notice`, the title, then `after`. */
+  /**
+   * The title stands inside the notice's sentence, with no colon: the sentence
+   * is `notice`, the title, then `after`.
+   */
   inline: boolean
-  /** What follows an inline title in the sentence; empty where the language ends it with the title. */
+  /**
+   * What follows an inline title in the sentence; empty where the language ends
+   * it with the title.
+   */
   after: string
   /** The tag after the title: only what went wrong. */
   tag: 'failed' | 'stopped' | null
@@ -31,7 +40,8 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
   const named = (notice: string, tag: ReceiptRow['tag'] = null): ReceiptRow =>
     ({ notice, title: senderName(message), inline: false, after: '', tag })
   switch (event.type) {
-    // The user's decision on a permission request, which reached the agent as this message.
+    // The user's decision on a permission request, which reached the agent as
+    // this message.
     case 'permission': {
       const action = permissionAction(event)
       return plain(event.outcome === 'allowed'
@@ -41,7 +51,8 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
     // The user's move of the conversation, which the user told the agent of.
     case 'moved':
       return plain(t('transcript.receipt.moved', { host: event.host, path: homePath(event.path, event.home) }))
-    // Demi's notice that a move the agent asked for failed, and why, as the row's own words.
+    // Demi's notice that a move the agent asked for failed, and why, as the
+    // row's own words.
     case 'move_failed':
       return plain(t('transcript.receipt.moveFailed', {
         reason: (event.code ? codeText(event.code) : null) ?? event.reason,
@@ -62,9 +73,9 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
 }
 
 /**
- * *Message from main agent*, its title inside the sentence: the catalogue's
- * one sentence is split at the agent, so a language that puts the agent
- * before its words (*メインエージェントからのメッセージ*) is worded as it reads.
+ * *Message from main agent*, its title inside the sentence. The catalogue's one
+ * sentence is split at the agent, so a language that puts the agent before its
+ * words (*メインエージェントからのメッセージ*) is worded as it reads.
  */
 function mainAgentMessage(): ReceiptRow {
   const [before, after] = around('transcript.receipt.fromMain', 'agent')
@@ -73,9 +84,11 @@ function mainAgentMessage(): ReceiptRow {
 
 /**
  * What a permission decision let the conversation do, in the page's words: its
- * categories' actions and its host's, or the use of a saved credential; the
- * English the message recorded for a category the page has no words for, or for
- * a decision recorded before ids were, which names neither.
+ * categories' actions and its host's, or the use of a saved credential.
+ *
+ * For a category the page has no words for, and for a decision recorded before
+ * ids were, which names neither, the result is the English the message
+ * recorded.
  */
 function permissionAction(event: Extract<AgentMessage['event'], { type: 'permission' }>): string {
   if (event.credential) {
@@ -86,7 +99,9 @@ function permissionAction(event: Extract<AgentMessage['event'], { type: 'permiss
   return (categories.length || host.length ? wordedActions(categories, host) : null) ?? event.action
 }
 
-/** The agent a message names: its description, or its number when it has none. */
+/**
+ * The agent a message names: its description, or its number when it has none.
+ */
 function senderName(message: AgentMessage): string {
   const sender = message.sender
   return sender?.description.trim() || t('transcript.receipt.unnamed', { number: sender?.number ?? '' }).trim()
@@ -95,8 +110,13 @@ function senderName(message: AgentMessage): string {
 /**
  * Where a receipt came from: the sender's transcript, null for the
  * conversation's own (the root, agent 0), and the block of it the receipt
- * names, if any: an update's call that sent it; a completion's last
- * answer, or a failed child's failure record.
+ * names, if any.
+ *
+ * The named block is:
+ *
+ * - an update's call that sent it
+ * - a completion's last answer
+ * - a failed child's failure record
  */
 export interface ReceiptOrigin {
   node: string | null
@@ -114,9 +134,11 @@ export function receiptOrigin(message: AgentMessage): ReceiptOrigin | null {
 
 /**
  * Opens where a receipt came from, as a click on its agent's name asks: the
- * Agents window on the sender's tab, and the block it names brought into
- * view and marked, from the window shown when it holds the block, else by
- * the host, which reads where it lies; none where nothing can.
+ * Agents window on the sender's tab, and the block it names brought into view
+ * and marked.
+ *
+ * The window shown does this when it holds the block. Otherwise the host does,
+ * which reads where the block lies. None where nothing can.
  */
 export type OriginRevealer = (origin: ReceiptOrigin) => (() => void) | undefined
 
@@ -127,7 +149,9 @@ export function provideOriginRevealer(revealer: OriginRevealer): void {
   provide(originRevealerKey, revealer)
 }
 
-/** The way to open where a receipt came from; a block shown alone reaches none. */
+/**
+ * The way to open where a receipt came from; a block shown alone reaches none.
+ */
 export function useOriginRevealer(): OriginRevealer {
   return inject(originRevealerKey, () => undefined)
 }

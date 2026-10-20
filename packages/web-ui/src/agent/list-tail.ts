@@ -6,17 +6,21 @@ import { turnStartingMessage } from './send-way'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 
 // The end of a running conversation changes in the frame that causes it, so the
-// list never twitches: it only grows, except where the user's own action shrinks
-// it (folding, editing, deleting) or asks for the change (Continue, Resume,
-// Retry), and a row that gives way to what comes next rolls over it in place
-// (`RowRoll`) instead of leaving while another appears. Messages that wait, the
-// pending steers and the queue, stand below the turn and never in its flow: what
-// the turn is doing is read from the transcript alone, so the tail row
-// (Requesting or Connecting) stands right after the transcript, above them.
-// The Requesting row says one word for as long as the provider is asked, since
-// which part of the system holds a message is no concern of the person waiting,
-// and a row that changed its word as Demi confirmed the message, or with each
-// retry, would show two names for one wait.
+// list never twitches.
+//
+// - The list only grows, except where the user's own action shrinks it
+//   (folding, editing, deleting) or asks for the change (Continue, Resume,
+//   Retry).
+// - A row that gives way to what comes next rolls over it in place (`RowRoll`)
+//   instead of leaving while another appears.
+// - Messages that wait, the pending steers and the queue, stand below the turn
+//   and never in its flow. What the turn is doing is read from the transcript
+//   alone, so the tail row (Requesting or Connecting) stands right after the
+//   transcript, above them.
+// - The Requesting row says one word for as long as the provider is asked,
+//   since which part of the system holds a message is no concern of the person
+//   waiting. A row that changed its word as Demi confirmed the message, or with
+//   each retry, would show two names for one wait.
 
 /**
  * A compaction in progress: its divider, at the end of the transcript, where
@@ -49,7 +53,10 @@ export interface ListTailInput {
   elsewhere?: ReadonlySet<string>
 }
 
-/** What the list shows after the transcript, in two parts the tail row stands between. */
+/**
+ * What the list shows after the transcript, in two parts the tail row stands
+ * between.
+ */
 export interface ListTail {
   /**
    * The turn's own rows: a compaction in progress, the calls the model is
@@ -67,18 +74,21 @@ export interface ListTail {
 }
 
 /**
- * What the list shows after the transcript. Steers that arrive during a
- * compaction wait outside what it summarizes, so they follow its divider. A
- * message the session holds already shows there alone, in the transcript, as
- * a steer or in the queue: the row it was waiting in becomes that one
- * (`row-key.ts`), so it never shows twice, whichever of the two the server
- * tells first. A message whose Recall is on its way shows nowhere. A message
- * whose delivery failed is followed by the row that tells it. A steer on its
- * way that starts the turn, as when nothing runs and the message before it
- * was not delivered, is the user's next message: it stands in the turn's flow,
- * in the row it keeps. A message not delivered stands here, at the end of what
- * it was sent as, only while no message sent after it shows
- * (`undeliveredPlaces`).
+ * What the list shows after the transcript.
+ *
+ * - Steers that arrive during a compaction wait outside what it summarizes, so
+ *   they follow its divider.
+ * - A message the session holds already shows there alone, in the transcript,
+ *   as a steer or in the queue. The row it was waiting in becomes that one
+ *   (`row-key.ts`), so it never shows twice, whichever of the two the server
+ *   tells first.
+ * - A message whose Recall is on its way shows nowhere.
+ * - A message whose delivery failed is followed by the row that tells it.
+ * - A steer on its way that starts the turn, as when nothing runs and the
+ *   message before it was not delivered, is the user's next message. It stands
+ *   in the turn's flow, in the row it keeps.
+ * - A message not delivered stands here, at the end of what it was sent as,
+ *   only while no message sent after it shows (`undeliveredPlaces`).
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
   const written = new Set(input.blocks.flatMap((block) =>
@@ -128,7 +138,10 @@ export function submissionRows(submission: PendingSubmissionState, startsTurn = 
   ]
 }
 
-/** The message a row shows, by the id it was sent with; none for a row of another kind. */
+/**
+ * The message a row shows, by the id it was sent with; none for a row of
+ * another kind.
+ */
 export function rowMessageId(row: MessageListBlock): string | undefined {
   switch (row.type) {
     case 'user':
@@ -154,17 +167,27 @@ export function rowMessageId(row: MessageListBlock): string | undefined {
 export type UndeliveredPlace =
   /** Before the row of the message `before`. */
   | { before: string }
-  /** At the end of what it was sent as, since no message sent after it shows. */
+  /**
+   * At the end of what it was sent as, since no message sent after it shows.
+   */
   | 'end'
-  /** Outside the window shown: a message sent after it is earlier or later than the window. */
+  /**
+   * Outside the window shown: a message sent after it is earlier or later than
+   * the window.
+   */
   | 'outside'
 
 export interface UndeliveredPlacesInput {
   /** The messages sent and not yet confirmed, in the order they were sent. */
   submissions: readonly PendingSubmissionState[]
-  /** The messages that have a row of their own in the list, by the id they were sent with. */
+  /**
+   * The messages that have a row of their own in the list, by the id they were
+   * sent with.
+   */
   shown: ReadonlySet<string>
-  /** The waiting messages whose Recall is on its way, by id, which show nowhere. */
+  /**
+   * The waiting messages whose Recall is on its way, by id, which show nowhere.
+   */
   removing: ReadonlySet<string>
   /** The window reaches the transcript's end. */
   latest: boolean
@@ -173,14 +196,16 @@ export interface UndeliveredPlacesInput {
 }
 
 /**
- * The place of each message not delivered, by its id. Its place is before
- * the first message sent after it that shows; one taken back, or one not
- * delivered either, is passed over. A message the session took that shows
- * nowhere is in the transcript outside the window, unless the window holds
- * the whole transcript, where it is one taken back elsewhere and is passed
- * over too; so is the message not delivered, which shows when its window
- * does. In the latest window, one with no message after it that shows
- * stands at the end; any other window holds only those it can place.
+ * The place of each message not delivered, by its id. Its place is before the
+ * first message sent after it that shows.
+ *
+ * - One taken back, or one not delivered either, is passed over.
+ * - A message the session took that shows nowhere is in the transcript outside
+ *   the window, unless the window holds the whole transcript, where it is one
+ *   taken back elsewhere and is passed over too; so is the message not
+ *   delivered, which shows when its window does.
+ * - In the latest window, one with no message after it that shows stands at the
+ *   end. Any other window holds only those it can place.
  */
 export function undeliveredPlaces(input: UndeliveredPlacesInput): Map<string, UndeliveredPlace> {
   const undelivered = input.submissions.filter((submission) => submission.error !== null && !input.removing.has(submission.id))

@@ -1,6 +1,9 @@
 import { declaredSize, loadedSize, tileBox, tileFrame, type PixelSize } from '../files/thumbnail'
 
-/** A message's images and videos, lone and in runs, which stand in blocks of their own (`render.ts`). */
+/**
+ * A message's images and videos, lone and in runs, which stand in blocks of
+ * their own (`render.ts`).
+ */
 const MESSAGE_MEDIA = ':is(.media-lone, .media-run) :is(img, video)'
 
 /**
@@ -14,7 +17,10 @@ function renderedSize(element: HTMLElement): PixelSize | null {
   return declaredSize({ width: Number(width), height: Number(height) })
 }
 
-/** How wide the block a message's medium stands in is: the message's width, or a list item's within it. */
+/**
+ * How wide the block a message's medium stands in is: the message's width, or a
+ * list item's within it.
+ */
 function blockWidth(element: HTMLElement): number {
   return element.closest<HTMLElement>('.media-lone, .media-run')?.clientWidth ?? 0
 }
@@ -54,13 +60,19 @@ export interface MessagePicture {
   element: HTMLImageElement | HTMLVideoElement
   kind: 'image' | 'video'
   src: string
-  /** Its size from its render, else from its bytes once loaded; null before either. */
+  /**
+   * Its size from its render, else from its bytes once loaded; null before
+   * either.
+   */
   size: PixelSize | null
   /** Its alt text. */
   caption: string
 }
 
-/** The pictures of the message under `root`, each a tile with its preview on hover. */
+/**
+ * The pictures of the message under `root`, each a tile with its preview on
+ * hover.
+ */
 export function messagePictures(root: ParentNode): MessagePicture[] {
   return [...root.querySelectorAll<HTMLImageElement | HTMLVideoElement>(MESSAGE_MEDIA)].map(messagePicture)
 }

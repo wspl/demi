@@ -2,12 +2,15 @@ import type { MessageEditContent } from '../message-editing'
 import type { MessageComment } from '@demicodes/protocol'
 
 /**
- * Comments on a reply's words: each saved comment waits in the conversation's
+ * Comments on a reply's words. Each saved comment waits in the conversation's
  * draft until a message sends it, and the reply shows the marks of both, a sent
  * one dimmer, read from the sent messages.
  */
 
-/** A comment the transcript marks: one waiting in the draft, or one a message sent. */
+/**
+ * A comment the transcript marks: one waiting in the draft, or one a message
+ * sent.
+ */
 export interface MarkedComment extends MessageComment {
   sent: boolean
 }
@@ -23,9 +26,9 @@ export interface ReplyCommenting {
   add: (comment: MessageComment) => void
   /**
    * Send Now: sends a message holding `comment` alone at once, as the
-   * composer's send would, steering or waiting while the agent works, and
-   * leaves the waiting comments and the typed draft as they are; absent
-   * where nothing sends, as a gallery's still specimen.
+   * composer's send would, steering or waiting while the agent works. It leaves
+   * the waiting comments and the typed draft as they are. Absent where nothing
+   * sends, as a gallery's still specimen.
    */
   sendNow?: (comment: MessageComment) => void
   /** Changes the text of the waiting comment `id`. */
@@ -34,14 +37,17 @@ export interface ReplyCommenting {
   remove: (id: string) => void
 }
 
-/** The comments a sent message holds, as its `user` or `steer` block keeps them; none for any other block. */
+/**
+ * The comments a sent message holds, as its `user` or `steer` block keeps them;
+ * none for any other block.
+ */
 export function sentComments(block: { type: string; comments?: readonly MessageComment[] }): readonly MessageComment[] {
   return block.type === 'user' || block.type === 'steer' ? block.comments ?? [] : []
 }
 
 /**
  * `comments` as the model reads them before a message's text: each quoted text
- * as a `>` quote, its comment after it, a blank line between them; empty for
+ * as a `>` quote, its comment after it, a blank line between them. Empty for
  * none. The page's twin of the backend's `comments_markdown`, which writes them
  * into the model's request.
  */
@@ -49,7 +55,8 @@ export function commentsMarkdown(comments: readonly Pick<MessageComment, 'quote'
   return comments
     .map(({ quote, text }) => {
       const lines = quote.split('\n').map((line) => line.replace(/\r$/, ''))
-      // As Rust's `str::lines`: a final line break ends the last line and starts none.
+      // As Rust's `str::lines`: a final line break ends the last line and
+      // starts none.
       if (lines.at(-1) === '') {
         lines.pop()
       }
@@ -61,9 +68,10 @@ export function commentsMarkdown(comments: readonly Pick<MessageComment, 'quote'
 /**
  * `comments` as content before a message's own, as the model reads them: the
  * quoted words as `commentsMarkdown` writes them, and each quoted picture as an
- * image, then its comment. The page's twin of the backend's `comments_content`,
- * by which Copy Message and Send to Conversation take a message's comments, its
- * pictures as files.
+ * image, then its comment.
+ *
+ * The page's twin of the backend's `comments_content`, by which Copy Message
+ * and Send to Conversation take a message's comments, its pictures as files.
  */
 export function commentsContent(comments: readonly Pick<MessageComment, 'quote' | 'picture' | 'text'>[]): MessageEditContent[] {
   const content: MessageEditContent[] = []
@@ -87,11 +95,11 @@ export function commentsContent(comments: readonly Pick<MessageComment, 'quote' 
 }
 
 /**
- * `comments` in the order the conversation reads: by the place of their
- * reply among `blockIds`, then by where each stands in the block's reading
- * order, words and pictures together (`at`); a picture before the words
- * right after it. A comment whose reply the list does not hold goes last,
- * in the order given.
+ * `comments` in the order the conversation reads: by the place of their reply
+ * among `blockIds`, then by where each stands in the block's reading order,
+ * words and pictures together (`at`). A picture comes before the words right
+ * after it. A comment whose reply the list does not hold goes last, in the
+ * order given.
  */
 export function inReadingOrder<T extends MessageComment>(comments: readonly T[], blockIds: readonly string[]): T[] {
   const place = new Map(blockIds.map((id, index) => [id, index]))

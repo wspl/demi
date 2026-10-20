@@ -1,7 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import { escapeCloses } from '../useEscapeClose'
 
-/** An element the focus is on, which the given selectors in a selector list match. */
+/**
+ * An element the focus is on, which the given selectors in a selector list
+ * match.
+ */
 function focusOn(own: string) {
   return { closest: (selectors: string) => (selectors.split(',').some((selector) => selector.trim() === own) ? {} : null) }
 }

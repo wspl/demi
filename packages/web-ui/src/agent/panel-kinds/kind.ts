@@ -25,9 +25,15 @@ export interface PanelTabKind<Data = unknown> {
   title(data: Data): string
   /** The strip's mark. Props: `data`. */
   mark: Component
-  /** A picture in place of the mark, such as a web page's icon, as an image URL; null while there is none. */
+  /**
+   * A picture in place of the mark, such as a web page's icon, as an image URL;
+   * null while there is none.
+   */
   icon?(data: Data, id: string): string | null
-  /** Whether the tab `id` is at work, read reactively: its mark is a spinner meanwhile. */
+  /**
+   * Whether the tab `id` is at work, read reactively: its mark is a spinner
+   * meanwhile.
+   */
   busy?(data: Data, id: string): boolean
   /**
    * The tab's content. Props: `tabId`, `data`, and `shown`, whether the tab is
@@ -41,9 +47,15 @@ export interface PanelTabKind<Data = unknown> {
    * lives in the page's memory. Its id is the kind's id.
    */
   pinned?: { data(): Data }
-  /** What the tab's menu offers before its Close commands, read when the menu opens. */
+  /**
+   * What the tab's menu offers before its Close commands, read when the menu
+   * opens.
+   */
   commands?(data: Data, id: string): readonly TabCommand[]
-  /** What the strip shows after a pinned tab's title, such as its counts. Props: `data`. */
+  /**
+   * What the strip shows after a pinned tab's title, such as its counts. Props:
+   * `data`.
+   */
   badge?: Component
 }
 

@@ -26,12 +26,17 @@ export function loadedInstructions(
 export interface InstructionRow {
   entry: InstructionEntry
   /**
-   * What the row says: `Personal instructions`; a project file's path from
-   * the outermost file's directory; or `Workflow: Review Team` for the
-   * conversation's workflow.
+   * What the row says:
+   *
+   * - `Personal instructions`
+   * - a project file's path from the outermost file's directory
+   * - `Workflow: Review Team` for the conversation's workflow
    */
   label: string
-  /** The full path of a file, the workflow's included; none for the personal instructions. */
+  /**
+   * The full path of a file, the workflow's included; none for the personal
+   * instructions.
+   */
   path: string | null
 }
 

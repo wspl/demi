@@ -29,7 +29,8 @@ test('a receipt says what happened and names the agent as its object, tagged whe
 })
 
 test('a message from the main agent, in its child’s transcript, names it after the notice and opens the call that sent it', () => {
-  // The root has no description of its own: as the object, "Message from agent: root session" read wrongly.
+  // The root has no description of its own: as the object, "Message from agent:
+  // root session" read wrongly.
   const fromMain = fromAgent({ type: 'message' }, 'root-call', 0)
   expect(receiptRow(fromMain)).toEqual({ notice: 'Message from ', title: 'main agent', inline: true, after: '', tag: null })
   expect(receiptOrigin(fromMain)).toEqual({ node: null, blockId: 'root-call' })
@@ -53,7 +54,8 @@ test('a row that does not open says all there is in its words: a failed move say
 })
 
 test('a receipt opens the block it names in its sender’s transcript, the root’s as the conversation’s own', () => {
-  // An update names the call that sent it; a completion the child's last answer.
+  // An update names the call that sent it; a completion the child's last
+  // answer.
   expect(receiptOrigin(fromAgent({ type: 'message' }, 'send-call')))
     .toEqual({ node: 'ag-3', blockId: 'send-call' })
   expect(receiptOrigin(fromAgent({ type: 'completion', outcome: 'completed' }, 'last-answer')))

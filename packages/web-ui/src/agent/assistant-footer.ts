@@ -2,16 +2,20 @@ import type { Block, SessionPhase } from '@demicodes/protocol'
 import { isCompactionDivider } from './visible-blocks'
 
 /**
- * The blocks that end their reply: after each, the work it belongs to is
- * done. Visible transcript order tells them from intermediate updates: the
- * next block is the user's next message or the user's Stop, or there is
- * none and the session is idle. Anything else that follows (a call, a
- * steer, a wakeup, another agent's message, a resume) continues the work.
- * A compaction's divider after a block leaves it the end: the user
- * compacted after it, and nothing of the turn followed. A message being
- * sent, `sending`, is the user's next message from the moment it is sent,
- * so the last block stays the end while the message is delivered and its
- * turn starts.
+ * The blocks that end their reply: after each, the work it belongs to is done.
+ *
+ * Visible transcript order tells them from intermediate updates. After a block
+ * that ends its reply, the next block is the user's next message or the user's
+ * Stop, or there is none and the session is idle. Anything else that follows (a
+ * call, a steer, a wakeup, another agent's message, a resume) continues the
+ * work.
+ *
+ * A compaction's divider after a block leaves it the end: the user compacted
+ * after it, and nothing of the turn followed.
+ *
+ * A message being sent, `sending`, is the user's next message from the moment
+ * it is sent, so the last block stays the end while the message is delivered
+ * and its turn starts.
  */
 export function replyEndIds(
   visibleBlocks: readonly Pick<Block, 'id' | 'type'>[],

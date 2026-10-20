@@ -12,11 +12,17 @@ import { chromium, type Browser } from 'playwright'
 
 declare global {
   interface Window {
-    /** Shows a reply and publishes a side question's mark on `quote`, inside a wrapper the test moves. */
+    /**
+     * Shows a reply and publishes a side question's mark on `quote`, inside a
+     * wrapper the test moves.
+     */
     markReply(quote: string): void
     /** The words each painted `ask` mark covers now. */
     painted(): string[]
-    /** Moves the reply's wrapper in the page, as a sibling inserted before it does. */
+    /**
+     * Moves the reply's wrapper in the page, as a sibling inserted before it
+     * does.
+     */
     moveReply(): void
   }
 }

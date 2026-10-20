@@ -12,18 +12,24 @@ import { MOVE_LOCK_REASON, type MoveLock } from '../hosts/move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
- * The conversation's primary Host is a paired device whose runner is not
- * connected: offered above the composer with how to start the runner again, and
- * Move to Another Host…, which lists Run On's online Hosts once the
- * conversation's work is idle; choosing one is the host's to carry out, as the
- * header's host menu's choice is. Gone once the device is online. The row owns
- * the button's inset from its edges. On a phone the sentence is never cut for
- * the button: it wraps, and the button moves under it, at its leading edge,
- * when the two do not fit on one line, as iOS's inline notices keep their text
- * whole.
+ * The notice that the conversation's primary Host is a paired device whose
+ * runner is not connected.
+ *
+ * It is offered above the composer, with:
+ *
+ * - how to start the runner again
+ * - Move to Another Host…, which lists Run On's online Hosts once the
+ *   conversation's work is idle. Choosing one is the host's to carry out, as
+ *   the header's host menu's choice is.
+ *
+ * The notice is gone once the device is online. The row owns the button's inset
+ * from its edges.
+ *
+ * On a phone, the sentence is never cut for the button. When the two do not fit
+ * on one line, the sentence wraps and the button moves under it, at its leading
+ * edge, as iOS's inline notices keep their text whole.
  */
 defineProps<{
-  /** The device's name. */
   name: string
   start: DeviceStart
   /** The offline device, checked in Run On. */
@@ -93,7 +99,10 @@ function choose(host: HostChoice): void {
 .host-offline-notice-move {
   display: flex;
   flex-shrink: 0;
-  /* No inline strut, so the Dropdown's wrapper cannot lift the control off center. */
+  /*
+   * No inline strut, so the Dropdown's wrapper cannot lift the control off
+   * center.
+   */
   line-height: 0;
   margin-right: calc((var(--host-offline-row-h) - var(--spacing-hit-sm)) / 2);
 }

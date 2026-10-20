@@ -86,7 +86,8 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
   }])).toMatchObject({ name: 'package.json', host: 'alex-mbp', path: '/Users/alex/Projects/demi/package.json' })
   expect(composerCapsule(composerAttachment({ id: 'u', name: 'shot.png', phase: 'uploading', progress: 0.42 })))
     .toEqual({ id: 'u', name: 'shot.png' })
-  // How far a file has come is not a fact of the message: it travels beside the capsule.
+  // How far a file has come is not a fact of the message: it travels beside the
+  // capsule.
   expect(composerTransfer(composerAttachment({ id: 'u', name: 'shot.png', phase: 'uploading', progress: 0.42 })))
     .toEqual({ phase: 'uploading', progress: 0.42 })
   expect(composerTransfer(composerAttachment({ id: 'f', name: 'shot.png', phase: 'failed' })))

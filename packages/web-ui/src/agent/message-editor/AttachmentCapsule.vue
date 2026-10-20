@@ -11,26 +11,33 @@ import { useMediaUrl } from '../media-source'
 import type { MessageCapsule, MessageTransfer } from './capsules'
 
 /**
- * One file in a message's text: its picture or its kind's icon, then its
- * name, and the device a file on another device is on. Pointed at, an image
- * or a video shows large in its preview card, and a text file its opening lines. An
- * upload in progress shows how far it has come; a failed one says so, with Retry where
- * it can be uploaded from there, as in the composer; a missing one, whose bytes are
- * gone, says so, and is deleted or attached again.
+ * One file in a message's text: its picture or its kind's icon, then its name,
+ * and the device a file on another device is on.
+ *
+ * - Pointed at, an image or a video shows large in its preview card, and a text
+ *   file its opening lines.
+ * - An upload in progress shows how far it has come.
+ * - A failed upload says so, with Retry where it can be uploaded from there, as
+ *   in the composer.
+ * - A missing file, whose bytes are gone, says so, and is deleted or attached
+ *   again.
  *
  * The capsule fits inside the line it stands in, at every text size: never
- * taller than the line, never reaching into the next one (`base.css`
- * § `.message-capsule-line`). Its icon, thumbnail, name and Retry are
- * centred in the pill.
+ * taller than the line, never reaching into the next one (`base.css` §
+ * `.message-capsule-line`). Its icon, thumbnail, name and Retry are centred in
+ * the pill.
  *
  * It is a character of the message, so it is deleted as one, by the editor's
- * own keys; it carries no control of its own for that.
+ * own keys. It carries no control of its own for that.
  */
 const props = defineProps<{
   capsule: MessageCapsule
   /** How far the file is on its way, while the composer still carries it. */
   transfer?: MessageTransfer
-  /** The editor holds it as its selection, which it shows by a fill, never by the focus ring. */
+  /**
+   * The editor holds it as its selection, which it shows by a fill, never by
+   * the focus ring.
+   */
   selected?: boolean
   /** A failed upload offers Retry here. */
   retryable?: boolean
@@ -53,7 +60,10 @@ const loaded = useMediaUrl(() => typeof props.capsule.image === 'object' ? props
 const image = computed(() => typeof props.capsule.image === 'string' ? props.capsule.image : loaded.value)
 const video = useMediaUrl(() => props.capsule.video)
 const pill = ref<HTMLElement | null>(null)
-/** The picture's size from its media block, known before its bytes arrive, else from the capsule's own thumbnail once loaded. */
+/**
+ * The picture's size from its media block, known before its bytes arrive, else
+ * from the capsule's own thumbnail once loaded.
+ */
 const thumbSize = ref<PixelSize | null>(null)
 const pictureSize = computed(() => {
   const source = props.capsule.image ?? props.capsule.video
@@ -67,7 +77,10 @@ function onThumbLoad(event: Event): void {
 }
 const uploading = computed(() => props.transfer?.phase === 'uploading' ? props.transfer : null)
 const attaching = computed(() => props.transfer?.phase === 'attaching')
-/** On its way: an upload, which tells how far it has come, or an attaching, which goes round. */
+/**
+ * On its way: an upload, which tells how far it has come, or an attaching,
+ * which goes round.
+ */
 const busy = computed(() => !!uploading.value || attaching.value)
 const failed = computed(() => props.transfer?.phase === 'failed')
 const missing = computed(() => props.transfer?.phase === 'missing')
@@ -90,7 +103,10 @@ const caption = computed(() => {
   return host ? `${host} · ${path ?? name}` : path ?? name
 })
 
-/** What the capsule shows when pointed at; a file still on its way shows its caption alone. */
+/**
+ * What the capsule shows when pointed at; a file still on its way shows its
+ * caption alone.
+ */
 const preview = computed<
   { kind: 'image' | 'video'; src: string } | { kind: 'lines'; text: string } | { kind: 'caption' }
 >(() => {

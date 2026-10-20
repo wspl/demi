@@ -11,12 +11,14 @@ describe('work panel tab closing', () => {
     expect(activeTab(ids(pages), history)).toBe('b')
     let next = closeTabs(pages, history, ['b'])
     expect(activeTab(ids(next.tabs), next.history)).toBe('c')
-    // c closes while it is not active, then the active a closes: no tab selected before it is left.
+    // c closes while it is not active, then the active a closes: no tab
+    // selected before it is left.
     next = closeTabs(next.tabs, selectTab(next.history, 'a'), ['c'])
     expect(activeTab(ids(next.tabs), next.history)).toBe('a')
     next = closeTabs(next.tabs, next.history, ['a'])
     expect(next).toEqual({ tabs: [{ id: 'd' }], history: [] })
-    // With no selection left, the first tab is active, and an empty strip has none.
+    // With no selection left, the first tab is active, and an empty strip has
+    // none.
     expect(activeTab(ids(next.tabs), next.history)).toBe('d')
     expect(activeTab([], next.history)).toBeNull()
   })

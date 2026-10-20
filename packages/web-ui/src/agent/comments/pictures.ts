@@ -7,12 +7,15 @@ import { pictureQuote } from './anchors'
 
 /**
  * A picture in the agent's reply as a comment, a side question and Send to
- * Conversation take it: the blob of the user's it already is, for an
- * attachment; the blob the page makes of the bytes it shows, for a Host image,
- * whose file may change or go, and for a picture of the web whose site lets the
- * page read it, so every provider reads its bytes; or else the address the
- * picture loads from, which a provider that fetches addresses reads and any
- * other names in a note.
+ * Conversation take it:
+ *
+ * - For an attachment, the blob of the user's it already is.
+ * - For a Host image, the blob the page makes of the bytes it shows, since its
+ *   file may change or go.
+ * - For a picture of the web whose site lets the page read it, the same kind of
+ *   blob, so every provider reads its bytes.
+ * - Otherwise, the address the picture loads from, which a provider that
+ *   fetches addresses reads and any other names in a note.
  */
 
 /** A blob of the user's: its name, its SHA-256 and its media type. */
@@ -38,7 +41,10 @@ export function useKeepPicture(): KeepPicture | null {
   return inject(keepPictureKey, null)
 }
 
-/** The attachment `image` shows, as its link names it; null for any other picture. */
+/**
+ * The attachment `image` shows, as its link names it; null for any other
+ * picture.
+ */
 function attachmentOf(image: HTMLImageElement): KeptPicture | null {
   const named = image.closest(`[${ATTACHMENT_FILE_ATTRIBUTE}]`)?.getAttribute(ATTACHMENT_FILE_ATTRIBUTE)
   if (!named)
@@ -47,7 +53,10 @@ function attachmentOf(image: HTMLImageElement): KeptPicture | null {
   return parsed.success ? { sha256: parsed.data.sha256, mediaType: parsed.data.mediaType } : null
 }
 
-/** The picture's size as it shows, which a tile of it is laid out by before its bytes arrive. */
+/**
+ * The picture's size as it shows, which a tile of it is laid out by before its
+ * bytes arrive.
+ */
 function sizeOf(image: HTMLImageElement): { width?: number; height?: number } {
   return image.naturalWidth > 0 ? { width: image.naturalWidth, height: image.naturalHeight } : {}
 }
@@ -72,8 +81,8 @@ export async function pictureSource(image: HTMLImageElement, keep: KeepPicture |
     const kept = await keep(src, pictureQuote(image))
     return { type: 'ref', ref: kept.sha256, mediaType: kept.mediaType, ...sizeOf(image) }
   } catch (error) {
-    // A picture of the web whose site does not let the page read it stays
-    // its address; a Host image's bytes have no other way to the model.
+    // A picture of the web whose site does not let the page read it stays its
+    // address. A Host image's bytes have no other way to the model.
     if (host)
       throw error
     return { type: 'url', url: src }
@@ -81,10 +90,10 @@ export async function pictureSource(image: HTMLImageElement, keep: KeepPicture |
 }
 
 /**
- * `image` as Send to Conversation adds it to another conversation's draft:
- * a file of the draft, the blob it is or the page keeps of it; a picture of
- * the web the page cannot read, as one whose site does not let it, goes as
- * its Markdown, which shows it again.
+ * `image` as Send to Conversation adds it to another conversation's draft: a
+ * file of the draft, the blob it is or the page keeps of it. A picture of the
+ * web the page cannot read, as one whose site does not let it, goes as its
+ * Markdown, which shows it again.
  */
 export async function pictureWords(image: HTMLImageElement, keep: KeepPicture | null): Promise<CopiedMessage> {
   const name = pictureQuote(image)

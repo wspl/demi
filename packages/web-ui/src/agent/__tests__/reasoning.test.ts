@@ -62,6 +62,7 @@ test('every reasoning option has an icon, and the marks of Off, Low, Medium and 
   const icons = buildReasoningState(base)!.options.map((option) => option.icon)
   expect(icons.every((icon) => icon !== undefined)).toBe(true)
   expect(new Set(icons).size).toBe(icons.length)
-  // An effort no table names still gets a mark, so the menu never mixes icons and none.
+  // An effort no table names still gets a mark, so the menu never mixes icons
+  // and none.
   expect(effortIcon('some-new-effort')).toBeDefined()
 })

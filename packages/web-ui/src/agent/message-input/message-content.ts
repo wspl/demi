@@ -42,7 +42,10 @@ export function splitMessageContent<Block extends { type: string; text?: unknown
   return { markdown, files }
 }
 
-/** A message with nothing in it, no text and no file, as an empty composer holds. */
+/**
+ * A message with nothing in it, no text and no file, as an empty composer
+ * holds.
+ */
 export function isEmptyMessage(markdown: string, fileCount: number): boolean {
   return !markdown.trim() && fileCount === 0
 }
@@ -75,12 +78,14 @@ export function joinMessageContent<Block>(
 }
 
 /**
- * The Markdown, with a mark where each of its `fileCount` files stands, that
- * a message written as `markdown` shows once the server holds it: what it
- * sends, `joinMessageContent`, read back as `splitMessageContent` reads the
- * message's blocks. A message being sent shows this, so it is drawn as the
- * message it becomes, without a space or a line break the send drops, such
- * as the newline an input method's Enter can leave.
+ * The Markdown, with a mark where each of its `fileCount` files stands, that a
+ * message written as `markdown` shows once the server holds it. It is what the
+ * message sends (`joinMessageContent`), read back as `splitMessageContent`
+ * reads the message's blocks.
+ *
+ * A message being sent shows this, so it is drawn as the message it becomes,
+ * without a space or a line break the send drops, such as the newline an input
+ * method's Enter can leave.
  */
 export function sentMarkdown(markdown: string, fileCount: number): string {
   return splitMessageContent(joinMessageContent(markdown, Array.from({ length: fileCount }, () => [FILE]))).markdown

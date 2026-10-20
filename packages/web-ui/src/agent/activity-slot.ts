@@ -3,11 +3,13 @@ import type { MessageListBlock } from './pending-steers'
 import type { SessionLoad } from './session-status'
 
 /**
- * Why the transcript's tail row is waiting. `connecting` is the socket;
- * `requesting` is the wait for the provider's answer: from the send of a
- * message that starts a turn, its delivery included, and a recovery the server
- * has not acknowledged yet and the agent's own retries, which are the same
- * wait and keep the same word.
+ * Why the transcript's tail row is waiting.
+ *
+ * - `connecting` is the socket.
+ * - `requesting` is the wait for the provider's answer. It runs from the send
+ *   of a message that starts a turn, its delivery included. A recovery the
+ *   server has not acknowledged yet and the agent's own retries are the same
+ *   wait and keep the same word.
  */
 export type ActivityKind = 'connecting' | 'requesting'
 
@@ -47,7 +49,6 @@ export interface ActivitySlotInput {
    * the turn yet.
    */
   startingTurn: boolean
-  /** The visible transcript. */
   transcriptBlocks: readonly MessageListBlock[]
   /**
    * The transcript's rows as the list draws them, the runs of steps grouped,
@@ -60,14 +61,18 @@ export interface ActivitySlotInput {
 
 /**
  * The tail row's kind, or null when the tail is content (streaming thinking or
- * text, a call being written or executing) or nothing is happening. Text the
- * model finished, with nothing after it yet, is followed by Requesting. A lost
- * socket wins over everything, since a recovery or a turn cannot progress
- * without it: the row says Connecting while the page still reaches the backend,
- * and nothing while the connection banner says the backend is away. A
- * conversation that failed to open waits for nothing: the failure told at the
- * tail says so. A first opening whose socket is not made yet says Connecting as
- * a lost one does.
+ * text, a call being written or executing) or nothing is happening.
+ *
+ * - Text the model finished, with nothing after it yet, is followed by
+ *   Requesting.
+ * - A lost socket wins over everything, since a recovery or a turn cannot
+ *   progress without it. The row says Connecting while the page still reaches
+ *   the backend, and nothing while the connection banner says the backend is
+ *   away.
+ * - A conversation that failed to open waits for nothing. The failure told at
+ *   the tail says so.
+ * - A first opening whose socket is not made yet says Connecting as a lost one
+ *   does.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
   if (input.load === 'reconnecting' || input.load === 'connecting') {
@@ -82,7 +87,10 @@ export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null 
   return isWaitingForProvider(input) ? 'requesting' : null
 }
 
-/** A running turn with nothing streaming and a tail that waits for the model's next output. */
+/**
+ * A running turn with nothing streaming and a tail that waits for the model's
+ * next output.
+ */
 function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (input.phase !== 'running' || hasActiveOutput(input.transcriptBlocks)) {
     return false
@@ -107,9 +115,9 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
 }
 
 /**
- * Whether the turn's newest output still streams, or a call still waits for
- * its result, wherever it stands: the turn waits for that call, not for the
- * model, as parallel calls return in any order.
+ * Whether the turn's newest output still streams, or a call still waits for its
+ * result, wherever it stands. The turn waits for that call, not for the model,
+ * as parallel calls return in any order.
  */
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {
   const last = blocks[blocks.length - 1]
