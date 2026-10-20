@@ -1545,23 +1545,21 @@ ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 ///   first delivered it as a block, or the root's when none did, so a reply that
 ///   showed it still does.
 fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
-    transaction.execute_batch("ALTER TABLE attachments ADD COLUMN node_id TEXT;")?;
-    number_attachments(transaction)?;
-    transaction.execute_batch("CREATE TEMP TABLE held (number INTEGER PRIMARY KEY);")?;
+    transaction.execute_batch(
+        "ALTER TABLE attachments ADD COLUMN node_id TEXT;
+         CREATE TEMP TABLE held (number INTEGER PRIMARY KEY);",
+    )?;
     {
+        // The numbering reads every text that holds an attachment record
+        // anyway: the files the messages hold are taken from that one scan,
+        // since reading the blocks' text is most of the step's time.
         let mut hold = transaction.prepare("INSERT OR IGNORE INTO temp.held (number) VALUES (?1)")?;
-        for (table, column) in [("blocks", "block"), ("share_blocks", "block"), ("nodes", "state")] {
-            let texts = transaction
-                .prepare(&format!("SELECT {column} FROM {table} WHERE instr({column}, '\"type\":\"attachment\"') > 0"))?
-                .query_map([], |row| row.get::<_, String>(0))?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
-            for text in texts {
-                let value: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
-                for number in held_attachments(&value) {
-                    hold.execute([number])?;
-                }
+        number_attachments_then(transaction, |value| {
+            for number in held_attachments(value) {
+                hold.execute([number])?;
             }
-        }
+            Ok(())
+        })?;
     }
     transaction.execute_batch(
         "UPDATE attachments SET node_id = coalesce(
@@ -1609,6 +1607,16 @@ fn held_attachments(value: &serde_json::Value) -> Vec<i64> {
 ///   blocks or states with the current types, which take a numbered record alone,
 ///   and once more at the end.
 fn number_attachments(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    number_attachments_then(transaction, |_| Ok(()))
+}
+
+/// [`number_attachments`], which hands `scanned` each text it reads, a block
+/// or a state that may hold an attachment record, once its records are
+/// numbered.
+fn number_attachments_then(
+    transaction: &Transaction<'_>,
+    mut scanned: impl FnMut(&serde_json::Value) -> rusqlite::Result<()>,
+) -> rusqlite::Result<()> {
     let mut numbers = AttachmentNumbers {
         by_file: HashMap::new(),
         next: transaction
@@ -1642,6 +1650,7 @@ fn number_attachments(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
             if numbers.renumber(&mut value, &mut insert)? {
                 update.execute(rusqlite::params![row, value.to_string()])?;
             }
+            scanned(&value)?;
         }
     }
     // A conversation that numbered no file keeps its sequences as they were.
@@ -3362,29 +3371,56 @@ impl Schema {
         }
         if recorded == 0 && tables(&transaction)? == 0 {
             transaction.execute_batch(self.sql)?;
-        } else {
-            let migrations = self
-                .migrations(recorded)
-                .ok_or_else(|| StorageError::OtherSchema {
-                    path: path.to_owned(),
-                })?;
-            migrating();
-            for shipped in migrations {
-                let migrated = match shipped.migration {
+            transaction.pragma_update(None, "user_version", self.version())?;
+            transaction.commit()?;
+            return Ok(());
+        }
+        let migrations = self
+            .migrations(recorded)
+            .ok_or_else(|| StorageError::OtherSchema {
+                path: path.to_owned(),
+            })?;
+        migrating();
+        // A migration runs once per database, on its first open or read
+        // after an upgrade, and that open or read waits for it: the log says
+        // when it ran and what it cost.
+        let (from, to) = (recorded, self.version());
+        tracing::info!(path = %path.display(), from, to, steps = migrations.len(), "a database's schema migration starts");
+        let started = std::time::Instant::now();
+        let migrated = migrations
+            .iter()
+            .try_for_each(|shipped| {
+                match shipped.migration {
                     Migration::Sql(sql) => transaction.execute_batch(sql),
                     Migration::Code(migrate) => migrate(&transaction, blobs),
                     Migration::Reseal(migrate) => migrate(&transaction, seals),
-                };
-                migrated.map_err(|source| StorageError::Migration {
+                }
+                .map_err(|source| StorageError::Migration {
                     path: path.to_owned(),
                     from: version_of(shipped.sql),
                     source,
-                })?;
-            }
+                })
+            })
+            .and_then(|()| Ok(transaction.pragma_update(None, "user_version", to)?))
+            .and_then(|()| Ok(transaction.commit()?));
+        match &migrated {
+            Ok(()) => tracing::info!(
+                path = %path.display(),
+                from,
+                to,
+                elapsed = ?started.elapsed(),
+                "a database's schema migration ended"
+            ),
+            Err(error) => tracing::warn!(
+                path = %path.display(),
+                from,
+                to,
+                elapsed = ?started.elapsed(),
+                error = error as &dyn std::error::Error,
+                "a database's schema migration failed and changed nothing"
+            ),
         }
-        transaction.pragma_update(None, "user_version", self.version())?;
-        transaction.commit()?;
-        Ok(())
+        migrated
     }
 
     /// Whether a database that records `recorded` opens as it is, or must be
