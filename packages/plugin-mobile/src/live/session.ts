@@ -12,6 +12,10 @@
  *   both at once until a newer frame replaces it.
  * - Watches a device only while one of its tabs is shown in a visible page, so a
  *   device nobody looks at gets its hour.
+ * - Turns a device's shown picture and frame at once when the viewer rotates
+ *   it, until a picture drawn in the orientation the device reports replaces
+ *   them, and turns them back if the device refuses
+ *   (`decisions/0007-rotation-shows-at-once.md`).
  */
 import { reactive } from 'vue'
 import {
@@ -38,6 +42,7 @@ import {
   type MobilePlatform,
   type Orientation,
   type PanelReason,
+  type Turn,
 } from '../generated/plugin'
 
 export { REFUSED_FRAME, SILENT_STREAM, type LiveConnection } from '@demicodes/plugin-sdk'
@@ -71,6 +76,44 @@ export interface DeviceFrame {
   frame: LiveFrame | null
 }
 
+/**
+ * A press of Rotate Left or Right on a device, until the device has shown
+ * its effect: its identity, its quarter turn, the orientation it turns the
+ * shown device to, and once the device answered, the orientation it answered
+ * with.
+ */
+export interface DeviceTurn {
+  id: number
+  device: string
+  quarters: number
+  expected: Orientation
+  answered: Orientation | null
+  /** The orientations the device's pictures came in since the press. */
+  reported: Orientation[]
+}
+
+/** Each orientation's quarter turns clockwise from portrait, as the device turns. */
+const QUARTERS: Record<Orientation, number> = {
+  'portrait': 0,
+  'landscape-right': 1,
+  'portrait-upside-down': 2,
+  'landscape-left': 3,
+}
+const ORIENTATIONS: readonly Orientation[] = ['portrait', 'landscape-right', 'portrait-upside-down', 'landscape-left']
+
+/** `orientation` turned by `quarters` clockwise. */
+function turned(orientation: Orientation, quarters: number): Orientation {
+  return ORIENTATIONS[(((QUARTERS[orientation] + quarters) % 4) + 4) % 4]!
+}
+
+/** The quarter turns, clockwise, from `from` to `to`, the shorter way: -1 to 2. */
+export function quartersBetween(from: Orientation, to: Orientation): number {
+  const quarters = (((QUARTERS[to] - QUARTERS[from]) % 4) + 4) % 4
+  return quarters === 3 ? -1 : quarters
+}
+
+const TURN_QUARTERS: Record<Turn, number> = { left: -1, right: 1 }
+
 export interface LiveState {
   connection: LiveConnection
   /** The conversation's open devices on this Host, each with whether it records. */
@@ -87,6 +130,10 @@ export interface LiveState {
   screenOff: boolean
   pictureless: PicturelessReason | null
   ended: string | null
+  /** The viewer's presses of Rotate Left or Right whose effect the device has not reported yet. */
+  turning: DeviceTurn[]
+  /** Each device's orientation, as its last announced pictures report it. */
+  orientations: Record<string, Orientation>
 }
 
 export interface MobileSessionOptions {
@@ -137,6 +184,8 @@ export class MobileSession {
     screenOff: false,
     pictureless: null,
     ended: null,
+    turning: [],
+    orientations: {},
   })
 
   private readonly link: LiveLink<Frame, DeviceStream>
@@ -152,6 +201,8 @@ export class MobileSession {
   private area: { width: number; height: number; scale: number } | null = null
   /** The device pixels the view shows the screen at, as it last measured them. */
   private screenSize: { width: number; height: number } | null = null
+  /** The identity the next press of Rotate Left or Right takes. */
+  private nextTurn = 1
 
   constructor(private readonly options: MobileSessionOptions) {
     this.link = new LiveLink(this.state, {
@@ -167,6 +218,8 @@ export class MobileSession {
       },
       received: (frame) => this.receive(frame),
       ended: () => {
+        // The next connection's pictures report the devices' orientations anew.
+        this.state.orientations = {}
         this.state.pictureless = null
         this.state.activity = IDLE
         this.state.screenOff = false
@@ -232,10 +285,16 @@ export class MobileSession {
       case 'state':
         this.link.live()
         this.state.devices = message.devices
-        // A device that closed takes its frame along.
+        // A device that closed takes its frame and its turn along.
         for (const device of Object.keys(this.state.frames)) {
           if (!message.devices.some((listed) => listed.id === device)) {
             delete this.state.frames[device]
+          }
+        }
+        this.state.turning = this.state.turning.filter((turn) => message.devices.some((listed) => listed.id === turn.device))
+        for (const device of Object.keys(this.state.orientations)) {
+          if (!message.devices.some((listed) => listed.id === device)) {
+            delete this.state.orientations[device]
           }
         }
         if (this.state.watched !== message.watched) {
@@ -248,6 +307,7 @@ export class MobileSession {
         }
         break
       case 'stream':
+        this.reported(message.device, message.orientation)
         this.link.generation({
           device: message.device,
           generation: message.generation,
@@ -298,6 +358,84 @@ export class MobileSession {
 
   resync(): void {
     this.link.resync()
+  }
+
+  /**
+   * The viewer pressed Rotate Left or Right on `device`: the press, until
+   * the device has shown its effect, turns the device's shown picture and
+   * frame a quarter at once. Answers the press's identity, which its answer
+   * names; none when the device has reported no orientation yet to turn
+   * from.
+   */
+  turning(device: string, turn: Turn): number | null {
+    const shown = this.shownOrientation(device)
+    if (!shown) {
+      return null
+    }
+    const id = this.nextTurn++
+    const quarters = TURN_QUARTERS[turn]
+    this.state.turning.push({ id, device, quarters, expected: turned(shown, quarters), answered: null, reported: [] })
+    return id
+  }
+
+  /**
+   * The device answered the press `id` with `orientation`, or refused it
+   * (none), which takes the press back. A press whose answer the device has
+   * reported since it was pressed is done; an answer to a press already done
+   * or never kept changes nothing.
+   */
+  turnAnswered(id: number | null, orientation: Orientation | null): void {
+    const turn = this.state.turning.find((each) => each.id === id)
+    if (!turn) {
+      return
+    }
+    if (orientation === null || turn.reported.includes(orientation)) {
+      this.state.turning = this.state.turning.filter((each) => each !== turn)
+      return
+    }
+    turn.answered = orientation
+  }
+
+  /**
+   * `device`'s pictures come in `orientation`, as it announced them,
+   * whoever turned it: a press it answered with that orientation, or one
+   * not answered yet that turns the device to it, is done, the device now
+   * showing it, and so is every answered press before it, which the device
+   * has turned past. A turn by someone else that ends where a press aims
+   * ends the press too; the device's further turns show as it reports them.
+   */
+  private reported(device: string, orientation: Orientation): void {
+    this.state.orientations[device] = orientation
+    const presses = this.state.turning.filter((turn) => turn.device === device)
+    for (const turn of presses) {
+      turn.reported.push(orientation)
+    }
+    const shows = (turn: DeviceTurn) => (turn.answered ?? turn.expected) === orientation
+    const last = presses.findLastIndex(shows)
+    const done = new Set(presses.filter((turn, at) => shows(turn) || (at < last && turn.answered !== null)))
+    this.state.turning = this.state.turning.filter((turn) => !done.has(turn))
+  }
+
+  /**
+   * The orientation `device`'s picture is shown in: the one it reports,
+   * turned by the viewer's presses whose effect it has not reported, answered
+   * or not; none before it reports one.
+   */
+  shownOrientation(device: string): Orientation | null {
+    const reported = this.state.orientations[device]
+    if (!reported) {
+      return null
+    }
+    const quarters = this.state.turning
+      .filter((turn) => turn.device === device)
+      .reduce((sum, turn) => sum + turn.quarters, 0)
+    return turned(reported, quarters)
+  }
+
+  /** The quarter turns, clockwise, the view adds to `drawn`, the orientation of its device's picture drawn now. */
+  pendingQuarters(device: string, drawn: Orientation): number {
+    const shown = this.shownOrientation(device)
+    return shown ? quartersBetween(drawn, shown) : 0
   }
 
   /** Without a byte for a second the connection is stalled, and what the viewer holds is let go. */

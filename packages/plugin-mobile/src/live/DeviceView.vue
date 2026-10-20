@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch, type CSSP
 import {
   Button,
   CanvasPictures,
+  DRAWN_FRAME_ROOM,
   LiveActivityOverlay,
   LiveDrawnFrame,
   RegionStatus,
@@ -15,7 +16,7 @@ import {
   touchInput,
   wheelInput,
 } from '@demicodes/plugin-sdk'
-import type { DeviceStream, MobileSession } from './session'
+import type { DeviceFrame, DeviceStream, MobileSession } from './session'
 import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, type Placement, type Size } from './view'
 import { insertedText } from './typed'
 import { t } from '../locales/text'
@@ -45,23 +46,45 @@ const keys = ref<HTMLInputElement | null>(null)
 const size = ref<Size>({ width: 0, height: 0 })
 /** The area's size once a change of it has held, as after a drag of the panel's edge. */
 const settledSize = ref<Size>({ width: 0, height: 0 })
-/** The generation the canvas shows, which places it and maps input on it. */
+/** The generation of the picture the canvas shows, which places it and maps input on it. */
 const picture = shallowRef<DeviceStream | null>(null)
+/**
+ * The generation announced before any picture is drawn, whose size the view
+ * says at once; once a picture is drawn, layout, frame and turn follow the
+ * picture drawn, not one only announced.
+ */
+const announced = shallowRef<DeviceStream | null>(null)
 const painted = ref(false)
 const watching = computed(() => props.shown && props.session.state.watched === props.device)
 /** The device's last frame as the module drew it, kept with its last picture until a newer one comes. */
 const framed = computed(() => props.session.state.frames[props.device] ?? null)
-/** The screen in points: the picture's, or before the first picture the frame's, so the view says its size at once. */
+/** The screen in points: the drawn picture's, before the first one the announced one's or the frame's, so the view says its size at once. */
 const screen = computed<Size | null>(() => {
-  if (picture.value) {
-    return { width: picture.value.pointsWidth, height: picture.value.pointsHeight }
+  const stream = picture.value ?? announced.value
+  if (stream) {
+    return { width: stream.pointsWidth, height: stream.pointsHeight }
   }
   return framed.value ? { width: framed.value.pointsWidth, height: framed.value.pointsHeight } : null
 })
-/** The frame drawn for the picture's orientation; a frame of the orientation before a turn is not this picture's. */
+/**
+ * The last frame drawn for the shown picture's orientation, kept while the
+ * frame of a turn comes before the turned pictures.
+ */
+const pictureFrame = shallowRef<DeviceFrame | null>(null)
+watch([framed, picture], ([drawn, shown]) => {
+  if (drawn && shown && drawn.orientation === shown.orientation) {
+    pictureFrame.value = drawn
+  }
+}, { immediate: true })
+/** The frame drawn for the picture's orientation; a frame of the orientation after a turn is not this picture's. */
 const frame = computed(() => {
   const drawn = framed.value
-  return drawn && drawn.orientation === (picture.value?.orientation ?? drawn.orientation) ? drawn.frame : null
+  const orientation = picture.value?.orientation ?? drawn?.orientation
+  if (drawn && drawn.orientation === orientation) {
+    return drawn.frame
+  }
+  const kept = pictureFrame.value
+  return kept && kept.device === props.device && kept.orientation === orientation ? kept.frame : null
 })
 /** A drawn frame's image, its box in the area, and the device's silhouette that bounds the picture under it, if any. */
 type FrameImage = { src: string; box: Placement; silhouette: string | null }
@@ -130,6 +153,26 @@ const bounds = computed<CSSProperties | undefined>(() => {
   const drawn = drawnFrame.value
   return drawn ? { clipPath: drawnFramePictureClip(placed.width, placed.height, drawn.corners) } : undefined
 })
+/**
+ * The quarter turns, clockwise, from the picture drawn to the orientation
+ * the device is shown in, the one it reports turned by the viewer's presses
+ * it has not shown yet, and the scale that fits the turned device into the
+ * area's room.
+ */
+const pending = computed(() => {
+  const shown = picture.value
+  const quarters = shown ? props.session.pendingQuarters(props.device, shown.orientation) : 0
+  const placed = placement.value
+  if (quarters === 0 || !placed || !layout.value) {
+    return null
+  }
+  // The device's box: its drawn image, or the screen with the frame the view draws around it.
+  const around = DRAWN_FRAME_ROOM * Math.min(placed.width, placed.height)
+  const device = layout.value.image?.box ?? { width: placed.width + 2 * around, height: placed.height + 2 * around }
+  const room = frameRoom(size.value)
+  const scale = quarters % 2 === 0 ? 1 : Math.min(1, room.width / device.height, room.height / device.width)
+  return { quarters, transform: `rotate(${quarters * 90}deg) scale(${scale})` }
+})
 const activity = computed(() => watching.value ? props.session.state.activity : { active: false })
 const mark = computed(() => {
   const point = activity.value.point
@@ -172,7 +215,9 @@ function attach(): void {
   // The canvas takes the generation's frames; its size waits for the first picture.
   const sink = {
     start: (stream: DeviceStream) => {
-      picture.value = stream
+      if (!picture.value) {
+        announced.value = stream
+      }
       pictures?.start(stream)
     },
     show: (frame: Parameters<CanvasPictures<DeviceStream>['show']>[0]) => pictures?.show(frame),
@@ -359,58 +404,61 @@ function composed(event: CompositionEvent): void {
 
 <template>
   <div ref="area" class="relative min-h-0 flex-1 overflow-hidden bg-sunken">
-    <canvas
-      ref="canvas"
-      class="absolute touch-none select-none"
-      :class="painted ? '' : 'invisible'"
-      :style="placement ? {
-        left: `${placement.left}px`,
-        top: `${placement.top}px`,
-        width: `${placement.width}px`,
-        height: `${placement.height}px`,
-        ...bounds,
-      } : undefined"
-      @pointerdown="down"
-      @pointermove="move"
-      @pointerup="up"
-      @pointercancel="cancel"
-      @wheel="wheel"
-      @contextmenu.prevent
-    />
-    <div
-      v-if="screenOff && placement"
-      class="absolute flex flex-col items-center justify-center gap-3 bg-black/60"
-      :style="{
-        left: `${placement.left}px`,
-        top: `${placement.top}px`,
-        width: `${placement.width}px`,
-        height: `${placement.height}px`,
-        ...bounds,
-      }"
-      @pointerdown="down"
-    >
-      <span class="text-[13px] font-medium text-white">{{ t('screenOff.title') }}</span>
-      <Button size="sm" @pointerdown.stop @click="session.wake()">{{ t('screenOff.wake') }}</Button>
+    <!-- The device, turned at once for a rotation its pictures do not show yet. -->
+    <div class="absolute inset-0" :style="pending ? { transform: pending.transform } : undefined">
+      <canvas
+        ref="canvas"
+        class="absolute touch-none select-none"
+        :class="painted ? '' : 'invisible'"
+        :style="placement ? {
+          left: `${placement.left}px`,
+          top: `${placement.top}px`,
+          width: `${placement.width}px`,
+          height: `${placement.height}px`,
+          ...bounds,
+        } : undefined"
+        @pointerdown="down"
+        @pointermove="move"
+        @pointerup="up"
+        @pointercancel="cancel"
+        @wheel="wheel"
+        @contextmenu.prevent
+      />
+      <div
+        v-if="screenOff && placement"
+        class="absolute flex flex-col items-center justify-center gap-3 bg-black/60"
+        :style="{
+          left: `${placement.left}px`,
+          top: `${placement.top}px`,
+          width: `${placement.width}px`,
+          height: `${placement.height}px`,
+          ...bounds,
+        }"
+        @pointerdown="down"
+      >
+        <span class="text-[13px] font-medium text-white">{{ t('screenOff.title') }}</span>
+        <Button size="sm" @pointerdown.stop @click="session.wake()">{{ t('screenOff.wake') }}</Button>
+      </div>
+      <!-- The frame lies over the picture, which shows through its screen. -->
+      <LiveDrawnFrame
+        v-if="drawnFrame && placement && painted"
+        :screen="placement"
+        :corners="drawnFrame.corners"
+        :buttons="drawnFrame.buttons"
+      />
+      <img
+        v-if="layout?.image && painted"
+        class="pointer-events-none absolute select-none"
+        :src="layout.image.src"
+        alt=""
+        :style="{
+          left: `${layout.image.box.left}px`,
+          top: `${layout.image.box.top}px`,
+          width: `${layout.image.box.width}px`,
+          height: `${layout.image.box.height}px`,
+        }"
+      >
     </div>
-    <!-- The frame lies over the picture, which shows through its screen. -->
-    <LiveDrawnFrame
-      v-if="drawnFrame && placement && painted"
-      :screen="placement"
-      :corners="drawnFrame.corners"
-      :buttons="drawnFrame.buttons"
-    />
-    <img
-      v-if="layout?.image && painted"
-      class="pointer-events-none absolute select-none"
-      :src="layout.image.src"
-      alt=""
-      :style="{
-        left: `${layout.image.box.left}px`,
-        top: `${layout.image.box.top}px`,
-        width: `${layout.image.box.width}px`,
-        height: `${layout.image.box.height}px`,
-      }"
-    >
     <RegionStatus
       v-if="session.state.pictureless"
       class="absolute inset-0 bg-surface"

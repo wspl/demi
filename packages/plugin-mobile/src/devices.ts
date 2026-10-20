@@ -24,6 +24,7 @@ import {
   type PressButton,
   type RecordAction,
   type RecordDevice,
+  type RotateResult,
   type RecordResult,
   type RotateDevice,
   type Saved,
@@ -55,7 +56,7 @@ export class MobileError extends Error {
 
 export interface MobileApi {
   close(device: string): Promise<void>
-  rotate(device: string, turn: Turn): Promise<void>
+  rotate(device: string, turn: Turn): Promise<RotateResult>
   toggleAppearance(device: string): Promise<void>
   press(device: string, button: PanelButton): Promise<void>
   screenshot(device: string): Promise<Saved>
@@ -81,7 +82,7 @@ export function mobileApi(plugin: ConversationPlugin): MobileApi {
       await call('close', { device } satisfies OnDevice, closeResultSchema)
     },
     rotate: async (device, turn) => {
-      await call('rotate', { device, turn } satisfies RotateDevice, rotateResultSchema)
+      return await call('rotate', { device, turn } satisfies RotateDevice, rotateResultSchema)
     },
     toggleAppearance: async (device) => {
       await call('toggleAppearance', { device } satisfies OnDevice, appearanceResultSchema)

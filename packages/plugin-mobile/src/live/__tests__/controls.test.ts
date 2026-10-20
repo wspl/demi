@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { computed, effectScope, shallowRef } from 'vue'
-import { LIVE_CONTROL_FRAME, type ConversationPlugin, type PluginCallError, type UserStreamHandlers } from '@demicodes/plugin-sdk'
-import type { LiveModuleMessage, LiveViewerMessage } from '../../generated/plugin'
+import { LIVE_CONTROL_FRAME, pageReturned, type ConversationPlugin, type PluginCallError, type UserStreamHandlers } from '@demicodes/plugin-sdk'
+import type { LiveModuleMessage, LiveViewerMessage, Orientation } from '../../generated/plugin'
 import { mobileApi } from '../../devices'
 import { MobileDevicesController, noticeText } from '../controller'
 import { DEVICE_CONTROLS, deviceControls } from '../controls'
@@ -26,6 +26,7 @@ function plugin(
   calls: Array<[string, object]>,
   streams: UserStreamHandlers[] = [],
   sent: LiveViewerMessage[] = [],
+  answer: (method: string) => Promise<unknown> = async (method) => ANSWERS[method],
 ): ConversationPlugin {
   const state = shallowRef<unknown>(null)
   return {
@@ -39,7 +40,7 @@ function plugin(
     }),
     call: async (method, params, result) => {
       calls.push([method, params])
-      return result.parse(ANSWERS[method])
+      return result.parse(await answer(method))
     },
     stream: () => (handlers) => {
       streams.push(handlers)
@@ -363,4 +364,206 @@ test('the view follows whether the watched device’s screen is off, and of no o
   session.wake()
   expect(sent.filter((message) => message.type === 'wake')).toEqual([{ type: 'wake', device: 'm1' }])
   session.close()
+})
+
+/**
+ * A controller over a device m1 whose live view is open, and whose rotations
+ * wait until the test answers each, in turn: `answer` gives the next one the
+ * device's answer and waits for its press to end, `refuse` its refusal.
+ * `reports` sends the device's notice that its pictures now come in an
+ * orientation, as the module announces each generation, whoever turned it.
+ */
+function rotating() {
+  const waiting: Array<{ resolve: (value: unknown) => void; reject: (error: Error) => void }> = []
+  const streams: UserStreamHandlers[] = []
+  const reported: unknown[] = []
+  const scope = effectScope()
+  const controller = scope.run(() => new MobileDevicesController(
+    mobileApi(plugin([], streams, [], (method) => new Promise((resolve, reject) => {
+      if (method !== 'rotate') {
+        resolve(ANSWERS[method])
+        return
+      }
+      waiting.push({ resolve, reject })
+    }))),
+    { report: (_, error) => void reported.push(error), defect: (_, error) => { throw error } },
+    { pictures: async () => false, platform: 'mac' },
+  ))!
+  const session = controller.session
+  const presses: Array<Promise<unknown>> = []
+  let generation = 0
+  const open = () => {
+    session.start()
+    streams.at(-1)!.data(framed({
+      type: 'state',
+      devices: [{ id: 'm1', name: 'Pixel 10', platform: 'android', os: 'Android 16', model: 'Pixel 10', recording: false }],
+      watched: 'm1',
+    }))
+  }
+  open()
+  const reports = (orientation: Orientation) => {
+    generation += 1
+    const upright = orientation === 'portrait' || orientation === 'portrait-upside-down'
+    streams.at(-1)!.data(framed({
+      type: 'stream', device: 'm1', generation,
+      width: upright ? 1080 : 2424, height: upright ? 2424 : 1080,
+      pointsWidth: upright ? 412 : 924, pointsHeight: upright ? 924 : 412,
+      orientation, scale: 1,
+    }))
+  }
+  return {
+    session,
+    reported,
+    reports,
+    /** The connection drops and opens again: its generations start over. */
+    reconnect: async () => {
+      const before = streams.length
+      streams.at(-1)!.closed('the connection dropped')
+      generation = 0
+      // The page's return opens it again without the rest of its wait.
+      await pageReturned()
+      expect(streams).toHaveLength(before + 1)
+      streams.at(-1)!.data(framed({
+        type: 'state',
+        devices: [{ id: 'm1', name: 'Pixel 10', platform: 'android', os: 'Android 16', model: 'Pixel 10', recording: false }],
+        watched: 'm1',
+      }))
+    },
+    rotate: (turn: 'left' | 'right') => {
+      presses.push(controller.run({ method: 'rotate', params: { device: 'm1', turn } }))
+    },
+    /** The quarter turns the view adds to the picture it has drawn, of `drawn`. */
+    quarters: (drawn: Orientation) => session.pendingQuarters('m1', drawn),
+    answer: async (orientation: Orientation) => {
+      waiting.shift()!.resolve({ device: 'm1', orientation, width: 1, height: 1 })
+      await presses.shift()
+    },
+    refuse: async () => {
+      waiting.shift()!.reject(new Error('the device did not turn'))
+      await presses.shift()
+    },
+    end: () => {
+      session.close()
+      controller.dispose()
+      scope.stop()
+    },
+  }
+}
+
+test('a rotation turns the drawn picture at once until a picture in the device’s new orientation is drawn, however late it answers', async () => {
+  const device = rotating()
+  device.reports('portrait')
+  // Rotate Right: a quarter clockwise before the device has answered.
+  device.rotate('right')
+  expect(device.quarters('portrait')).toBe(1)
+  // The device announces its landscape pictures; the portrait one stays drawn, turned.
+  device.reports('landscape-right')
+  expect(device.quarters('portrait')).toBe(1)
+  expect(device.quarters('landscape-right')).toBe(0)
+  // Its answer comes after the pictures: nothing turns again.
+  await device.answer('landscape-right')
+  expect(device.quarters('landscape-right')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  expect(device.reported).toEqual([])
+  device.end()
+})
+
+test('a refused rotation turns the picture back and shows the error', async () => {
+  const device = rotating()
+  device.reports('portrait')
+  device.rotate('left')
+  expect(device.quarters('portrait')).toBe(-1)
+  await device.refuse()
+  expect(device.quarters('portrait')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  expect(device.reported).toHaveLength(1)
+  device.end()
+})
+
+test('quick presses add up, a refused one among them comes off, and the device’s pictures end them', async () => {
+  const device = rotating()
+  device.reports('portrait')
+  device.rotate('right')
+  device.rotate('right')
+  device.rotate('right')
+  // Three quarters clockwise show as one counterclockwise.
+  expect(device.quarters('portrait')).toBe(-1)
+  await device.answer('landscape-right')
+  await device.refuse()
+  await device.answer('portrait-upside-down')
+  // Two of the three turned the device: upside down.
+  expect(device.quarters('portrait')).toBe(2)
+  expect(device.reported).toHaveLength(1)
+  // The device's pictures came by its last orientation only: every press is done.
+  device.reports('portrait-upside-down')
+  expect(device.quarters('portrait-upside-down')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  device.end()
+})
+
+test('the viewer and the agent turning the device together end where the device does', async () => {
+  const device = rotating()
+  device.reports('portrait')
+  device.rotate('right')
+  // The agent's turn right and then the viewer's come before the viewer's answer.
+  device.reports('landscape-right')
+  device.reports('portrait-upside-down')
+  expect(device.quarters('portrait-upside-down')).toBe(0)
+  await device.answer('portrait-upside-down')
+  expect(device.quarters('portrait-upside-down')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  // Again, the device announcing only where both turns ended.
+  device.rotate('right')
+  device.reports('landscape-left')
+  await device.answer('landscape-left')
+  expect(device.quarters('landscape-left')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  device.end()
+})
+
+test('a refused turn while the agent turned the device shows the device’s orientation', async () => {
+  const device = rotating()
+  device.reports('portrait')
+  device.rotate('left')
+  // The agent turns it right meanwhile.
+  device.reports('landscape-right')
+  await device.refuse()
+  expect(device.quarters('landscape-right')).toBe(0)
+  expect(device.quarters('portrait')).toBe(1)
+  expect(device.session.state.turning).toEqual([])
+  device.end()
+})
+
+test('a turn the device answered before a reconnect ends with the new connection’s pictures', async () => {
+  const device = rotating()
+  for (const orientation of ['portrait', 'landscape-right', 'portrait-upside-down', 'landscape-left', 'portrait'] as const) {
+    device.reports(orientation)
+  }
+  device.rotate('right')
+  await device.answer('landscape-right')
+  await device.reconnect()
+  // Nothing the old connection reported turns the picture until the new one reports.
+  expect(device.quarters('portrait')).toBe(0)
+  // The new connection's generations start at 1.
+  device.reports('landscape-right')
+  expect(device.quarters('landscape-right')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  device.end()
+})
+
+test('a press before the device reported its orientation leaves later presses alone', async () => {
+  const device = rotating()
+  device.rotate('right')
+  expect(device.quarters('portrait')).toBe(0)
+  device.reports('portrait')
+  device.rotate('right')
+  expect(device.quarters('portrait')).toBe(1)
+  // The first press's answer is no answer to the second.
+  await device.answer('landscape-right')
+  expect(device.quarters('portrait')).toBe(1)
+  device.reports('landscape-right')
+  await device.answer('landscape-right')
+  expect(device.quarters('landscape-right')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  device.end()
 })

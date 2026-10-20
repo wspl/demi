@@ -82,9 +82,20 @@ export class MobileDevicesController {
   async run(call: DeviceCall): Promise<string | null> {
     try {
       switch (call.method) {
-        case 'rotate':
-          await this.api.rotate(call.params.device, call.params.turn)
+        case 'rotate': {
+          // The shown picture turns at once, and back if the device refuses.
+          const { device, turn } = call.params
+          const press = this.session.turning(device, turn)
+          let answered
+          try {
+            answered = await this.api.rotate(device, turn)
+          } catch (error) {
+            this.session.turnAnswered(press, null)
+            throw error
+          }
+          this.session.turnAnswered(press, answered.orientation)
           return null
+        }
         case 'toggleAppearance':
           await this.api.toggleAppearance(call.params.device)
           return null
