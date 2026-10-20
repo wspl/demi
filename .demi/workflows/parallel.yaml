@@ -77,7 +77,7 @@ profiles:
       - SQL text in `crates/backend-database` (the `.sql` files and the SQL inside `schema.rs` strings), `cloud-guest-image/rootfs/overlay/etc/skel/.bashrc`, `vendor/`, generated files, gitignored files and CHANGELOG files.
 
       Git: start the branch as the brief says, stage files by name, keep one commit and fold later work into it with `git commit --amend`, never push or merge, never `git stash`.
-      Checks at the end, after rebasing onto the current `feat/demi-next`: `cargo check -q --workspace --all-targets --features demi-runner/test-fixtures`, `bun run typecheck:web`, and a pass over `git diff -U0 feat/demi-next` that finds no changed line outside a comment.
+      Check at the end, after rebasing onto the current `feat/demi-next`: strip the comments from every changed file, old and new, and compare what is left; it must be identical. A change of comments alone cannot break a build or a test, so run no build, type check or test.
 
       Your report, in English and short: branch and commit; how many files and comment blocks changed; how many comments you deleted as restating the code, with three examples; anything you left alone and why.
   - id: review
