@@ -198,6 +198,10 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
 ///   itself.
 /// - An MCP tool-output limit of one million tokens means the CLI never cuts a
 ///   result Demi sends.
+/// - The CLI's reminder after several turns without text to the user is off:
+///   the user of Demi watches every command as it runs, and the reminder,
+///   whose wording the vendor sets remotely, has the model stop its work to
+///   report.
 /// - `CLAUDECODE` is removed, so the CLI never takes itself for a session
 ///   inside another Claude Code.
 /// - The input the session ends with is answered at once.
@@ -217,6 +221,7 @@ fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
         ("DISABLE_AUTOUPDATER".to_owned(), set("1")),
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),
         ("MAX_MCP_OUTPUT_TOKENS".to_owned(), set("1000000")),
+        ("CLAUDE_CODE_SILENT_TURN_REMINDER".to_owned(), set("0")),
         ("CLAUDECODE".to_owned(), None),
     ])
 }

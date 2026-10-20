@@ -389,6 +389,10 @@ async fn a_new_process_starts_with_the_cli_contract_in_its_accounts_directory_wi
             "CLAUDE_CODE_RESUME_INTERRUPTED_TURN".to_owned(),
             Some("1".to_owned()),
         ),
+        (
+            "CLAUDE_CODE_SILENT_TURN_REMINDER".to_owned(),
+            Some("0".to_owned()),
+        ),
         ("DISABLE_AUTOUPDATER".to_owned(), Some("1".to_owned())),
         ("DISABLE_AUTO_COMPACT".to_owned(), Some("1".to_owned())),
         (
