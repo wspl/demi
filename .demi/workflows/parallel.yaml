@@ -32,8 +32,8 @@ subagent_instructions: |
 profiles:
   - id: implement
     description: "Use to implement a settled design or rework a delivered branch: code, tests, checks and its acceptance on the product. Not for design decisions or documentation."
-    model: claude-opus-5-5
-    effort: medium
+    model: claude-sonnet-5-5
+    effort: high
     context: 500K
     instructions: |
       You implement what the lead designed. You make no design decision and write no decision record or document; the comments of the code you change stay true. If the design leaves a question open, implement the rest and name the gap.
