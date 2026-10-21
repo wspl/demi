@@ -83,13 +83,17 @@ const linear: CredentialDto = {
   updatedAt: '2026-10-01T00:00:00.000Z',
 }
 
-/** The requests the page sent besides the model catalog's, each answered by `answer` or refused as not in the test. */
+/** The requests the page sent besides the model and vendor catalogs', each answered by `answer` or refused as not in the test. */
 function backend(answer: (key: string, body: unknown) => Response | null): string[] {
   const requests: string[] = []
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? 'GET'} ${String(input)}`
     if (key === 'GET /api/models') {
       return Response.json({ providers: [], smallModel: null })
+    }
+    // The vendor catalog the page reads as it starts.
+    if (key === 'GET /api/providers/catalog') {
+      return Response.json({ subscriptions: [], vendors: [] })
     }
     requests.push(key)
     const body = init?.body === undefined ? undefined : JSON.parse(String(init.body))

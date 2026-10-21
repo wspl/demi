@@ -76,6 +76,8 @@
     "measure": "測量",
     "measuring": "正在測量…",
     "noAnswer": "無回應",
+    "notMeasured": "未測量",
+    "measuredAt": "{when}測量",
     "device": "裝置",
     "name": "名稱",
     "rename": "重新命名…",

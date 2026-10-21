@@ -77,7 +77,6 @@ import {
   type SettingsAudioKind,
   type SettingsModelDraft,
   type SettingsModelSearch,
-  type SettingsQuotaRefresh,
   type SettingsModelEditor,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
@@ -139,7 +138,8 @@ const props = defineProps<{
   vendorLoad?: 'loading' | 'ready' | 'failed'
   modelLoad?: 'loading' | 'ready' | 'failed'
   overlayStore: OverlayStore
-  refreshingUsage?: Record<string, Record<string, SettingsQuotaRefresh>>
+  /** The accounts whose usage the vendor is asked for again, by provider. */
+  refreshingUsage?: Record<string, Record<string, true>>
   /** The vendor's words for each account's last manual usage refresh that failed, by provider and account. */
   usageFailures?: Record<string, Record<string, ShownError>>
   /**
@@ -190,7 +190,7 @@ const emit = defineEmits<{
   exposePort: [provider: SettingsProviderEntry, deviceId: string, port: number]
   refresh: [provider: SettingsProviderEntry]
   /** Ask the vendor for one account's usage again. */
-  refreshUsage: [provider: SettingsProviderEntry, accountId: string, automatic?: boolean]
+  refreshUsage: [provider: SettingsProviderEntry, accountId: string]
   /** Read the CLI's newest version again. */
   checkCli: [provider: SettingsProviderEntry]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
@@ -1019,9 +1019,8 @@ function endpointCheck(value: string) {
                     <ProviderQuota
                       :key="`${selected.id}:${account.id}`"
                       :windows="account.quota"
-                      :auto-refresh="selected.autoRefreshUsage === true"
+                      :observed-at="account.quotaAt"
                       :error="usageFailures?.[selected.id]?.[account.id]"
-                      @refresh="emit('refreshUsage', selected, account.id, true)"
                     />
                   </template>
                   <!-- A sign-in that names the account replaces its sign-in, so it skips the
@@ -1040,15 +1039,14 @@ function endpointCheck(value: string) {
                     @click="emit('activateAccount', selected, account.id)"
                     >{{ t('providers.account.activate') }}</Button
                   >
-                  <!-- Automatic refresh shares the same account request with this explicit retry. -->
                   <Tooltip :content="t('providers.account.refreshUsage')"
                     ><IconButton
                       size="sm"
                       :icon="RefreshCw"
                       :aria-label="t('providers.account.refreshUsage')"
                       spin-on-click
-                      :spinning="refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
-                      :disabled="busy(selected.id) || refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
+                      :spinning="refreshingUsage?.[selected.id]?.[account.id] === true"
+                      :disabled="busy(selected.id) || refreshingUsage?.[selected.id]?.[account.id] === true"
                       @click="emit('refreshUsage', selected, account.id)"
                   /></Tooltip>
                   <!-- The test asks with this account, in use or not; its answer is a toast,

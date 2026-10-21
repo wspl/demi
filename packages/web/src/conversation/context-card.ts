@@ -37,18 +37,18 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
       ? {
           accountLabel: current.account.label,
           windows: current.account.quota,
-          autoRefresh: current.provider.autoRefreshUsage ?? false,
-          refreshing: providerSettings.refreshingUsage[current.provider.id]?.[current.account.id] === 'manual',
+          observedAt: current.account.quotaAt ?? null,
+          refreshing: providerSettings.refreshingUsage[current.provider.id]?.[current.account.id] === true,
           error: providerSettings.usageFailures[current.provider.id]?.[current.account.id] ?? null,
         }
       : null
   }
 
-  /** The card showed the limits (automatic, at most once a minute per account) or its Refresh usage button was pressed: the store's request, as Settings asks. */
-  function refreshLimits(providerId: string, account: string | null, automatic: boolean): void {
+  /** The card's Refresh usage button: the store's request, as Settings asks. */
+  function refreshLimits(providerId: string, account: string | null): void {
     const current = accountOf(providerId, account)
     if (current) {
-      void providerSettings.refreshUsage(current.provider, current.account.id, automatic)
+      void providerSettings.refreshUsage(current.provider, current.account.id)
     }
   }
 

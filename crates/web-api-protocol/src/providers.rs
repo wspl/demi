@@ -515,6 +515,13 @@ pub struct ProviderState {
     #[serde(flatten)]
     pub provider: ProviderDto,
     pub details: ProviderReading,
+    /// The user's last install of the entry's command-line tool on the
+    /// Claude Code machine that no conversation asked for, since the backend
+    /// started; null before one. The backend announces each change, so a
+    /// page follows an install without asking.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<CliInstall>")]
+    pub cli_install: Option<CliInstall>,
 }
 
 /// What the backend read of an entry's provider when it answered.
@@ -601,10 +608,12 @@ pub enum TestResult {
     },
 }
 
-/// `GET /providers/catalog`: what the page can add.
+/// `GET /providers/catalog`: what the page can add, the same for every user
+/// of a backend. The page reads it once per backend version, so a vendor
+/// models.dev adds meanwhile is offered from the next version on.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct VendorCatalog {
-    /// Each subscription family, with whether the scope holds its entry.
+    /// Each subscription family.
     pub subscriptions: Vec<SubscriptionFamily>,
     /// The models.dev vendors a family speaks to, by name.
     pub vendors: Vec<Vendor>,
@@ -614,7 +623,6 @@ pub struct VendorCatalog {
 #[serde(rename_all = "camelCase")]
 pub struct SubscriptionFamily {
     pub provider_type: String,
-    pub configured: bool,
 }
 
 /// A vendor the page can add an entry from.
@@ -1001,16 +1009,13 @@ pub struct ModelMatch {
     pub release_date: Option<String>,
 }
 
-/// `GET /providers/:id/cli`: the command-line tool of an entry whose
-/// provider runs one on the Claude Code machine. Reading it wakes nothing.
+/// `GET /providers/:id/cli`: the newest version of the command-line tool
+/// of an entry whose provider runs one on the Claude Code machine. Reading
+/// it wakes nothing; the install's state is the entry's
+/// ([`ProviderState::cli_install`]).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ProviderCli {
     pub newest: NewestVersion,
-    /// The caller's last install on the Claude Code machine that no
-    /// conversation asked for, since the backend started; null before one.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<CliInstall>")]
-    pub install: Option<CliInstall>,
 }
 
 /// The vendor's newest version, or why it could not be read.
@@ -1041,12 +1046,6 @@ pub enum CliInstall {
     Failed {
         message: String,
     },
-}
-
-/// The 202 answer of `POST /providers/:id/cli/install`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct CliInstallAnswer {
-    pub install: CliInstall,
 }
 
 #[cfg(test)]

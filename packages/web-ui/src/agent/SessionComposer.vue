@@ -229,11 +229,8 @@ const emit = defineEmits<{
   compact: []
   /** Opens where an instructions entry of the context card is written. */
   openInstruction: [entry: InstructionEntry]
-  /**
-   * The host asks the vendor for the usage limits again: automatic when the
-   * card showed them, otherwise its Refresh usage button.
-   */
-  refreshLimits: [automatic: boolean]
+  /** The context card's Refresh usage button asks the vendor for the usage limits again. */
+  refreshLimits: []
   /**
    * Files to attach; their capsules land where they were dropped, pasted or
    * picked.
@@ -920,7 +917,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :cost-profiles="costProfiles"
             @compact="emit('compact')"
             @open-instruction="emit('openInstruction', $event)"
-            @refresh-limits="emit('refreshLimits', $event)"
+            @refresh-limits="emit('refreshLimits')"
           />
         </template>
 

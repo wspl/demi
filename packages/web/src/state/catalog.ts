@@ -230,6 +230,7 @@ export function providerView(
             },
           ]
         }) ?? [],
+        quotaAt: account.quota?.observedAt ?? null,
       })) ?? [],
     rotation: entry.kind === 'subscription' ? entry.rotation : undefined,
     // A vendor's media models are the catalog's; a compatible API's are its list's, above.
@@ -238,8 +239,6 @@ export function providerView(
       video: { ...entry.media.video, models: entry.compatible ? undefined : catalog?.videoModels ?? [] },
       audio: { ...entry.media.audio, models: entry.compatible ? undefined : catalog?.audioModels ?? [] },
     },
-    autoRefreshUsage: details?.quotaCapability.type === 'supported'
-      && details.quotaCapability.probe === 'free',
     logo: providerLogo(entry),
   }
 }

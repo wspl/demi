@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, watch, watchEffect } from 'vue'
-import { useDocumentVisibility } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
@@ -51,21 +50,6 @@ watch(
     if (id && snapshot && !snapshot.devices.some((device) => device.id === id))
       void address.show('devices')
   },
-)
-const visibility = useDocumentVisibility()
-// The shown device's paths are measured each time its page becomes visible
-// with its runner connected: opened, or its browser tab brought to the front.
-watch(
-  () => {
-    const id = shown.value
-    const device = id ? resources.devices.find((candidate) => candidate.id === id) : undefined
-    return visibility.value === 'visible' && device?.state === 'online' ? device.id : null
-  },
-  (id) => {
-    if (id)
-      measureDirect(id)
-  },
-  { immediate: true },
 )
 </script>
 

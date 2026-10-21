@@ -1,9 +1,9 @@
-import { computed, ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref } from 'vue'
 import { requestFailure } from './request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { UsageLimits } from '@demicodes/web-ui/agent/context-usage'
 import type { QuotaKind, QuotaWindowName } from '@demicodes/protocol'
-import { DAY, HOUR, MINUTE, ahead } from './time'
+import { DAY, HOUR, MINUTE, ago, ahead } from './time'
 
 /** Seconds in an hour, a day and a week, which a window's period counts. */
 export const HOUR_SECONDS = 3600
@@ -21,9 +21,10 @@ export function windowNamed(kind: QuotaKind, periodSeconds: number | null, model
 
 /**
  * What one card specimen keeps of its account's usage limits, as the product's
- * store does: the windows, whether a manual refresh runs and the vendor's
- * words for one that failed. A probe takes a moment and reads each window a
- * little further used; the automatic one, run when the card shows, is silent.
+ * store does: the windows with when they were reported, whether a manual
+ * refresh runs and the vendor's words for one that failed. Refresh usage
+ * takes a moment and reads each window a little further used, reported now;
+ * showing the card asks nothing. A refresh under way ends with the specimen.
  */
 export function useCardLimits(accountLabel: string, failure: string | null = null) {
   const windows = ref<UsageLimits['windows']>([
@@ -31,29 +32,31 @@ export function useCardLimits(accountLabel: string, failure: string | null = nul
     { id: 'seven_day', name: windowNamed('limit', WEEK_SECONDS), used: 34, max: 100, resetsAt: ahead(5 * DAY + 2 * HOUR) },
     { id: 'limit:weekly_scoped:Fable', name: windowNamed('limit', WEEK_SECONDS, 'Fable'), used: 81, max: 100, resetsAt: ahead(12 * DAY) },
   ])
+  const observedAt = ref(ago(6 * MINUTE))
   const refreshing = ref(false)
   const error = ref<ShownError | null>(null)
+  let timer: number | undefined
+  if (getCurrentScope()) {
+    onScopeDispose(() => window.clearTimeout(timer))
+  }
   const limits = computed<UsageLimits>(() => ({
     accountLabel,
-    autoRefresh: true,
     windows: windows.value,
+    observedAt: observedAt.value,
     refreshing: refreshing.value,
     error: error.value,
   }))
   function answer(): void {
     windows.value = windows.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 1) }))
+    observedAt.value = new Date().toISOString()
     error.value = null
   }
-  function refresh(automatic: boolean): void {
-    if (automatic) {
-      answer()
-      return
-    }
+  function refresh(): void {
     if (refreshing.value) {
       return
     }
     refreshing.value = true
-    window.setTimeout(() => {
+    timer = window.setTimeout(() => {
       refreshing.value = false
       if (failure) {
         error.value = requestFailure(failure)

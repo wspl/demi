@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { onMounted, watch } from 'vue'
+import { watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
@@ -49,14 +49,10 @@ async function exposeAndTest(provider: SettingsProviderEntry, deviceId: string, 
   }
 }
 
-// The vendor catalog's failure is the page's region state, with its own Retry.
+// The vendor catalog, which the page reads as it starts, fails in the Add
+// Provider dialog's region, with its own Retry.
 function loadVendors(): void {
   void product.loadVendors().catch(() => {})
-}
-
-function retry(): void {
-  product.reconnect()
-  loadVendors()
 }
 
 // The model list's failure is its region's state: a load that fails again says so there.
@@ -67,13 +63,12 @@ function retryModels(): void {
 function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-onMounted(loadVendors)
-// A process provider's CLI is read when the page shows that provider, and again
-// when its accounts change, since adding one starts an install.
+// A process provider's newest CLI version is read when the page shows that
+// provider set up; an install's progress and end arrive with the providers.
 watch(
   () => {
     const shown = providers.value.find((provider) => provider.id === resources.selectedProviderId)
-    return shown?.cli === undefined ? null : `${shown.id}:${shown.accounts.length}`
+    return shown?.cli === undefined || shown.configured === false ? null : shown.id
   },
   () => {
     const shown = providers.value.find((provider) => provider.id === resources.selectedProviderId)
@@ -91,10 +86,10 @@ watch(
     v-model:selected-id="resources.selectedProviderId"
     v-model:detail-open="resources.providerDetailOpen"
     :providers="providers"
-    :load="product.load !== 'ready' ? product.load : product.vendorLoad"
+    :load="product.load"
     :vendor-load="product.vendorLoad"
     :model-load="product.catalogLoad"
-    @retry="retry"
+    @retry="product.reconnect"
     @retry-vendors="loadVendors"
     @retry-models="retryModels"
     :vendors="resources.vendors"

@@ -13,6 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::fetch::{FetchProblem, Fetched, Skipped};
+use crate::heads::Head;
 use crate::skill;
 
 /// A source as its value keeps it.
@@ -70,15 +71,6 @@ impl Source {
             .collect();
         blobs.into_iter().cloned().collect()
     }
-}
-
-/// What the instance knows of the commit a source's default branch points
-/// to: when it last asked, and what it last heard, if any check or fetch
-/// answered.
-#[derive(Debug, Clone)]
-pub(crate) struct Head {
-    pub(crate) checked_at: Timestamp,
-    pub(crate) commit: Option<String>,
 }
 
 /// The user's sources, by id, each with the revision its write names.

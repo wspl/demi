@@ -57,7 +57,7 @@ const model = {
 const stubProvider = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
   wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }, models: null, createdAt: '2026-09-09T00:00:00.000Z',
-  details: { type: 'failed' as const, message: 'Not read in this test' },
+  details: { type: 'failed' as const, message: 'Not read in this test' }, cliInstall: null,
 }
 /** The state the page read lists the stub provider entry too. */
 function addStubProvider(): void {

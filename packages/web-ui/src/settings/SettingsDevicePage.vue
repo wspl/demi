@@ -14,7 +14,7 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import type { StatusDotTone } from '../ui/StatusDot.vue'
-import { useTimeUntil } from '../composables/useRelativeTime'
+import { useRelativeTime, useTimeUntil } from '../composables/useRelativeTime'
 import { formatDay, formatMoment } from '../ui/dates'
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
@@ -60,7 +60,8 @@ import type { SettingsDevice } from './types'
  *   route; P2P, while the device is online and its route allows a peer, saying
  *   in a sentence how the P2P connection fares, with Try Again and Details… for
  *   the last attempt's diagnostics; and the two paths' latency from this
- *   browser's last measurement, with Measure.
+ *   browser's last measurement, with when it was taken and Measure, which
+ *   alone measures from here: showing the page measures nothing.
  * - Device holds the facts, with Rename…
  * - Exposed Ports lists the ports Demi's own requests may reach, the Cloud's as a
  *   device's.
@@ -146,13 +147,24 @@ const noAutostart = computed(() => {
  *   runs.
  * - Measuring… until the first ends.
  * - No answer after one the device answered none of.
+ * - Not measured before this browser measured.
  */
 const latency = computed<SentenceText | null>(() => {
-  if (!direct.value || !online.value) {
+  const status = direct.value
+  if (!status || !online.value) {
     return null
   }
-  return pathsLatency(direct.value) ?? (direct.value.measuring ? t('page.measuring') : t('page.noAnswer'))
+  if (status.measuring && !status.figures.relay && !status.figures.direct) {
+    return t('page.measuring')
+  }
+  return pathsLatency(status) ?? (status.measuredAt ? t('page.noAnswer') : t('page.notMeasured'))
 })
+
+const measuredAgo = useRelativeTime(() => direct.value?.measuredAt ?? new Date().toISOString())
+/** When the figures were taken, under them: "Measured 3 minutes ago". */
+const measuredWhen = computed(() =>
+  direct.value?.measuredAt ? t('page.measuredAt', { when: measuredAgo.value }) : undefined,
+)
 
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
 
@@ -298,7 +310,7 @@ async function revoke(): Promise<void> {
         <Button v-if="canTryAgain" size="sm" :loading="tryAgain.loading.value" @click="tryAgain.click">{{ uiText('common.retry') }}</Button>
         <Button v-if="attempt" size="sm" @click="detailsOpen = true">{{ t('page.details') }}</Button>
       </SettingsRow>
-      <SettingsRow v-if="latency" :label="t('page.latency')">
+      <SettingsRow v-if="latency" :label="t('page.latency')" :description="measuredWhen">
         <span class="text-chrome text-fg-muted">{{ latency }}</span>
         <Button size="sm" :loading="measure.loading.value" @click="measure.click">{{ t('page.measure') }}</Button>
       </SettingsRow>

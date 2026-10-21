@@ -50,6 +50,10 @@ beforeEach(() => {
       // The catalog each snapshot loads, which these tests do not follow.
       return Response.json({ providers: [], smallModel: null })
     }
+    if (request === 'GET /api/providers/catalog') {
+      // The vendor catalog the page reads as it starts, which these tests do not follow.
+      return Response.json({ subscriptions: [], vendors: [] })
+    }
     if (away) {
       refused.push(request)
       return proxyAnswer()

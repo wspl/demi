@@ -90,7 +90,7 @@ const emit = defineEmits<{
    * The child's context card asks for the usage limits of the account it runs
    * on, `account` of its entry `providerId`, again.
    */
-  refreshLimits: [providerId: string, account: string | null, automatic: boolean]
+  refreshLimits: [providerId: string, account: string | null]
   /** An instruction in the child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
 }>()
@@ -313,7 +313,7 @@ function closeTab(id: string): void {
         :cost="agentCost?.(active.id)"
         @compact="emit('compactAgent', active.id)"
         @open-instruction="emit('openInstruction', $event)"
-        @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null, $event)"
+        @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null)"
       />
     </div>
     <RegionStatus v-else class="h-full" status="note" :icon="Bot" :label="t('subagents.none')" />

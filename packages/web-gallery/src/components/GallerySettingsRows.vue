@@ -25,7 +25,7 @@ import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import { productWould } from '../product-would'
-import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
+import { DAY, HOUR, MINUTE, ago, ahead } from '../fixtures/time'
 import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limits'
 
 /**
@@ -82,6 +82,8 @@ const usage = ref<SettingsQuotaWindow[]>([
   { id: 'five_hour', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
   { id: 'seven_day', name: windowNamed('limit', WEEK_SECONDS), used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
 ])
+/** When the vendor reported the usage. */
+const usageAt = ref(ago(3 * MINUTE))
 /** The vendor's words for a refresh that failed, until the next answer. */
 const usageFailure = ref<ShownError | null>(null)
 /** Every other press fails, so the row shows both outcomes. */
@@ -93,6 +95,7 @@ function refreshUsage(): void {
   }
   usageFailure.value = null
   usage.value = usage.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 3) }))
+  usageAt.value = new Date().toISOString()
 }
 </script>
 
@@ -171,7 +174,7 @@ function refreshUsage(): void {
         <IconButton size="sm" :icon="RefreshCw" :aria-label="c.refresh" spin-on-click @click="refreshUsage" />
       </Tooltip>
       <template #below>
-        <ProviderQuota :windows="usage" :auto-refresh="false" :error="usageFailure" @refresh="refreshUsage" />
+        <ProviderQuota :windows="usage" :observed-at="usageAt" :error="usageFailure" />
       </template>
     </SettingsRow>
   </SettingsGroup>

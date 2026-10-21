@@ -115,21 +115,19 @@ pub(super) async fn order(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// What the page can add: each subscription family with whether the scope
-/// holds its entry, and the models.dev vendors a family speaks to.
+/// What the page can add: each subscription family, and the models.dev
+/// vendors a family speaks to. Which of them the user holds is the
+/// providers' part of the product state.
 pub(super) async fn catalog(
     State(services): State<Arc<Services>>,
-    AuthUser(user): AuthUser,
+    AuthUser(_): AuthUser,
 ) -> Result<Json<VendorCatalog>, ApiError> {
-    let owner = services.vault.owner_for(&user.id).await?;
-    let entries = services.vault.entries(owner).await?;
     let assembly = &services.assembly;
     let subscriptions = assembly
         .families()
         .subscriptions()
         .map(|family| SubscriptionFamily {
             provider_type: family.to_owned(),
-            configured: entries.iter().any(|entry| entry.family == family),
         })
         .collect();
     let vendors = assembly

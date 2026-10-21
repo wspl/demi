@@ -1,8 +1,10 @@
 /**
- * The measuring of one device's paths (`packages/web/src/direct/measure.ts`): a measurement only when something reads it, when a peer connects,
- * the device's page shows or the user selects Measure, never on a timer.
- * Its figures are the device page's until the next one replaces them, and
- * Automatic decides from them.
+ * The measuring of one device's paths (`packages/web/src/direct/measure.ts`):
+ * a measurement only when the user selects Measure or the path this page
+ * uses to the device changes, as a peer connects or goes, never on a timer
+ * or because the device's page shows. Its figures, with when they were
+ * taken, are the device page's until the next one replaces them, in this
+ * page and the next ones of this browser, and Automatic decides from them.
  */
 import type { DeviceRoute, PathFigures } from '@demicodes/web-ui/devices/direct'
 import { directWorse, measurePaths, type MeasureClock } from './measure'
@@ -13,12 +15,14 @@ import type { DeviceSignaling } from './signaling'
 export interface MeterState {
   /** Each path's figures from the last measurement; null before one found any. */
   figures: { direct: PathFigures | null; relay: PathFigures | null }
+  /** When the last measurement ended, as an ISO 8601 timestamp; null before the first. */
+  measuredAt: string | null
   /** A measurement runs. */
   measuring: boolean
 }
 
 export function meterState(): MeterState {
-  return { figures: { direct: null, relay: null }, measuring: false }
+  return { figures: { direct: null, relay: null }, measuredAt: null, measuring: false }
 }
 
 /** The page's own clock. */
@@ -47,6 +51,8 @@ export class DeviceMeter {
     /** Where the figures are kept for the views; a reactive object in the page. */
     readonly state: MeterState = meterState(),
     private readonly clock: MeasureClock = pageClock,
+    /** Keeps each measurement's figures and time for the browser's next pages. */
+    private readonly keep: (state: MeterState) => void = () => {},
   ) {}
 
   /**
@@ -87,6 +93,8 @@ export class DeviceMeter {
       return
     }
     this.state.figures = { direct: peer ? measured.direct : null, relay: measured.relay }
+    this.state.measuredAt = new Date().toISOString()
+    this.keep(this.state)
     // A peer that went or was replaced meanwhile has its own measurement.
     if (peer && peer === this.choice.connected() && this.route() === 'automatic') {
       this.choice.setSlower(directWorse(measured.direct, measured.relay))

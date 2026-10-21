@@ -217,6 +217,7 @@
   },
   "quota": {
     "unavailable": "사용량을 아직 확인할 수 없음",
+    "updatedAt": "{when} 업데이트됨",
     "used": "{share} 사용",
     "window": {
       "period": {

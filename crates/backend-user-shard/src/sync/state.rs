@@ -243,6 +243,7 @@ impl Shard {
             ProviderState {
                 provider: services.assembly.provider_dto(entry),
                 details,
+                cli_install: services.cli_installs.state(&user.id, &entry.id),
             }
         }))
         .await;

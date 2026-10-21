@@ -27,7 +27,7 @@ use demi_web_api_protocol::providers::{
     Accounts, ActiveAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
     ProviderReading, RemovedAccount,
     ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers,
-    QuotaAnswer, QuotaCapability, VendorCatalog,
+    QuotaAnswer, QuotaCapability,
 };
 use demi_web_api_protocol::settings::InstanceMode;
 use reqwest::StatusCode;
@@ -437,14 +437,6 @@ async fn simultaneous_first_logins_share_one_login_which_publishes_one_entry() {
     assert!(!stored.1.windows(12).any(|window| window == b"login-secret"));
 
     // One subscription entry per owner and family.
-    let offered = backend.get("/api/providers/catalog", Some(&master)).await;
-    assert!(
-        offered
-            .json::<VendorCatalog>()
-            .subscriptions
-            .iter()
-            .any(|family| family.provider_type == "device" && family.configured)
-    );
     let again = backend
         .post(login, Some(&master), json!({ "providerType": "device" }))
         .await;

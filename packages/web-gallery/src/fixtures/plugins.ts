@@ -14,7 +14,6 @@ import {
 import { bindTabSchema, navigateTabSchema, stopTabSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import {
   addSourceSchema,
-  checkUpdatesSchema,
   setEnabledSchema,
   setSourceEnabledSchema,
   sourceCallSchema,
@@ -370,9 +369,6 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     state: () => withTakenNames(state),
     call: async (method, params) => {
       switch (method) {
-        case 'check_updates':
-          checkUpdatesSchema.parse(params)
-          return null
         case 'add_source': {
           const { origin } = addSourceSchema.parse(params)
           if (!/^(https:\/\/\S+\/\S+|[\w.-]+\/[\w.-]+)$/.test(origin.trim())) {

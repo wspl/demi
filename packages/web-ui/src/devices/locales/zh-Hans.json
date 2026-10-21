@@ -76,6 +76,8 @@
     "measure": "测量",
     "measuring": "正在测量…",
     "noAnswer": "无响应",
+    "notMeasured": "未测量",
+    "measuredAt": "{when}测量",
     "device": "设备",
     "name": "名称",
     "rename": "重命名…",

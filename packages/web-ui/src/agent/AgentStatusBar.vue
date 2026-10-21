@@ -91,7 +91,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   compact: []
   openInstruction: [entry: InstructionEntry]
-  refreshLimits: [automatic: boolean]
+  refreshLimits: []
 }>()
 
 const icons = useIconPx()
@@ -202,7 +202,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         :cost="cost"
         @compact="emit('compact')"
         @open-instruction="emit('openInstruction', $event)"
-        @refresh-limits="emit('refreshLimits', $event)"
+        @refresh-limits="emit('refreshLimits')"
       />
     </div>
   </div>

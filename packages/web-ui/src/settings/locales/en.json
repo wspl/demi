@@ -217,6 +217,7 @@
   },
   "quota": {
     "unavailable": "Usage not available yet",
+    "updatedAt": "Updated {when}",
     "used": "{share} used",
     "window": {
       "period": {

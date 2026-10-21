@@ -224,12 +224,72 @@ function pageBuild(): string | null {
   return import.meta.env.DEMI_WEB_BUILD ?? null
 }
 
+/** Where this browser keeps the vendor catalog, with the build it was read by. */
+const VENDORS_KEY = 'demi.vendors'
+const keptVendorsSchema = z.object({ build: z.string(), catalog: vendorCatalogSchema })
+
+/**
+ * The vendor catalog this browser read with this build, which the backend
+ * that serves it answers alike for every user; none in development, where
+ * the backend changes without a build.
+ */
+function keptVendors(): VendorCatalog | null {
+  const build = pageBuild()
+  if (build === null) {
+    return null
+  }
+  try {
+    const kept = keptVendorsSchema.safeParse(JSON.parse(localStorage.getItem(VENDORS_KEY) ?? 'null'))
+    return kept.success && kept.data.build === build ? kept.data.catalog : null
+  } catch {
+    // The browser's storage is optional: without it the page reads the
+    // catalog as it starts.
+    return null
+  }
+}
+
+function keepVendors(catalog: VendorCatalog): void {
+  const build = pageBuild()
+  if (build === null) {
+    return
+  }
+  try {
+    localStorage.setItem(VENDORS_KEY, JSON.stringify({ build, catalog }))
+  } catch {
+    // A full or absent storage costs one read on the next start.
+  }
+}
+
 function parse(data: unknown): unknown {
   try {
     return JSON.parse(String(data))
   } catch {
     return null
   }
+}
+
+/**
+ * What of entry `provider` the model catalog answers for: its configuration
+ * and active account, not what the backend read of its state, such as its
+ * usage or a Claude Code install under way.
+ */
+function catalogInputs(provider: ProductState['providers'][number]) {
+  const { details, cliInstall: _install, ...config } = provider
+  return { ...config, account: details.type === 'read' ? details.active : null }
+}
+
+/**
+ * Whether the providers `after` differ from `before` only in an install's
+ * state. Equal parts are not: a new API key, which no field shows, arrives as
+ * an equal part.
+ */
+function onlyInstallsChanged(before: ProductState['providers'] | undefined, after: ProductState['providers']): boolean {
+  if (!before || before.length !== after.length) {
+    return false
+  }
+  const installs = (providers: ProductState['providers']) => JSON.stringify(providers.map((provider) => provider.cliInstall))
+  const rest = (providers: ProductState['providers']) => JSON.stringify(providers.map(({ cliInstall: _install, ...provider }) => provider))
+  return installs(before) !== installs(after) && rest(before) === rest(after)
 }
 
 /** What a write's answer says of its part, as the slot takes it. */
@@ -280,7 +340,12 @@ export const useProduct = defineStore('product', () => {
     smallModelInputs: string
     checkedAt: number
   } | null>(null)
-  const vendors = ref<VendorCatalog | null>(null)
+  /**
+   * What the page can add, read once in the background as the page starts
+   * unless this browser kept it for this build, so Settings › Providers
+   * never waits for it.
+   */
+  const vendors = ref<VendorCatalog | null>(keptVendors())
   const modelError = ref<{ key: string; retryAt: number; message: string } | null>(null)
   const vendorError = ref<string | null>(null)
   const vendorLoad = computed(() =>
@@ -325,10 +390,7 @@ export const useProduct = defineStore('product', () => {
     const served = servedBuild.value
     return page !== null && served !== null && served !== page ? served : null
   })
-  const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(provider => {
-    const { details, ...config } = provider
-    return { ...config, account: details.type === 'read' ? details.active : null }
-  })))
+  const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(catalogInputs)))
   const catalog = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? modelSnapshot.value.providers : [])
   /**
@@ -514,12 +576,14 @@ export const useProduct = defineStore('product', () => {
       void loadModels().catch(() => {})
       return
     }
+    const providersBefore = read.value?.providers
     if (!slot.receive(partOf(event), (state) => withPart(state, event)) && event.type === 'user') {
       // The channel of an account still to choose its password carries the
       // account alone, until the choice, on this page or another.
       firstUser.value = event.user
     }
-    if (event.type === 'providers') {
+    // An install that started or ended changes nothing the catalog answers.
+    if (event.type === 'providers' && !onlyInstallsChanged(providersBefore, event.providers)) {
       providersChanged()
     }
     // The preferences Automatic is resolved with changed, on this page or
@@ -763,6 +827,7 @@ export const useProduct = defineStore('product', () => {
         const next = await readResponse(response, vendorCatalogSchema)
         current.signal.throwIfAborted()
         vendors.value = next
+        keepVendors(next)
       } catch (cause) {
         if (!current.signal.aborted) {
           vendorError.value =
@@ -792,6 +857,8 @@ export const useProduct = defineStore('product', () => {
     // cannot reach it, until the page stops following the state.
     stopWaiting = waitForBackendWith((attempt, signal) => reachable(attempt, AbortSignal.any([signal, lifetime.signal])))
     connect()
+    // Its failure is the Add Provider dialog's region state, with its own Retry.
+    void loadVendors().catch(() => {})
   }
 
   /**
@@ -836,7 +903,7 @@ export const useProduct = defineStore('product', () => {
     slot.clear()
     firstUser.value = null
     clearModels()
-    vendors.value = null
+    vendors.value = keptVendors()
     vendorRequest = null
     vendorError.value = null
     activeConversationId.value = null

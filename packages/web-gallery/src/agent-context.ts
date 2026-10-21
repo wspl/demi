@@ -12,7 +12,7 @@ import { productWould } from './product-would'
 export function useAgentContext() {
   const { limits, refresh } = useCardLimits('alex@example.com')
   const usageLimits = () => limits.value
-  const onRefreshLimits = (_providerId: string, _account: string | null, automatic: boolean) => refresh(automatic)
+  const onRefreshLimits = () => refresh()
   const onOpenInstruction = (entry: InstructionEntry) => demoOpenInstruction(entry, productWould)
   const compact = () => productWould('Compact the Agent’s Context')
   return {

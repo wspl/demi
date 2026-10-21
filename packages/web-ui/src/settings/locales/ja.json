@@ -217,6 +217,7 @@
   },
   "quota": {
     "unavailable": "使用量はまだ取得できません",
+    "updatedAt": "{when}に更新",
     "used": "{share} 使用済み",
     "window": {
       "period": {
