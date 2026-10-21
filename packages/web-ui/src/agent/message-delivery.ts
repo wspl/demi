@@ -5,9 +5,9 @@ import type { MessageListBlock } from './pending-steers'
  * waiting as a steer or in the queue), starting (the turn started with it and
  * has not written it yet) or written in the transcript.
  *
- * A message is one row through its whole delivery, so what names a row, what
- * it shows as a face and whether the list follows a send all ask this one
- * classification (`rowKey`, `rowFace`, `useFollowSentMessages`). A row type
+ * A message is one row through its whole delivery, so what names a row and
+ * whether the list follows a send both ask this one classification (`rowKey`,
+ * `useFollowSentMessages`). A row type
  * that shows a message at a new stage of its delivery is added here, and so
  * to all of them at once.
  */

@@ -5,7 +5,7 @@ import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, useAttrs } from 'vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
-import { rowFace } from '../row-key'
+import { drawnAsFunctionalBlock, rowFace } from '../row-key'
 import RowRoll from '../../ui/RowRoll.vue'
 import ErrorNotice from '../../ui/ErrorNotice.vue'
 import type { PendingSubmissionState } from '../types'
@@ -105,14 +105,8 @@ const files = useMessageFiles()
 provideMessageFiles(() => blockMessageFiles(files(), transcript?.directory(props.block.id) ?? null, transcript?.node ?? null))
 // A light block's row opens to read it whole.
 provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
-/**
- * Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its
- * own.
- */
-const entersAsChrome = computed(() =>
-  props.entering
-  && (props.block.type === 'agent_message' || props.block.type === 'wakeup' || props.block.type === 'thinking' || props.block.type === 'tool_call' || props.block.type === 'pending_call' || props.block.type === 'work_group' || props.block.type === 'abort' || props.block.type === 'activity_slot'),
-)
+/** Rows built on FunctionalBlock enter as chrome. Text streams in on its own. */
+const entersAsChrome = computed(() => props.entering && drawnAsFunctionalBlock(props.block))
 
 const revealOrigin = useOriginRevealer()
 /**
@@ -159,8 +153,8 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
 
 <template>
   <!--
-    A row that takes another's place rolls its face over the one it replaces
-    (`rowFace`).
+    A FunctionalBlock row that takes another's place rolls its face over the
+    one it replaces (`rowFace`).
   -->
   <RowRoll :face-key="rowFace(block)">
     <PendingSubmission

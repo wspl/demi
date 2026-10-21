@@ -10,12 +10,16 @@ import { CHROME_ROLL_EASING, CHROME_ROLL_MS } from './chrome-roll'
  * rolls).
  *
  * A row that takes another's place rolls over it this way: Stopped into
- * Requesting, Requesting into the step it waited for or the answer. A row mounted
- * with its face does not roll.
+ * Requesting, Requesting into the step it waited for. A row mounted with its
+ * face does not roll, nor one whose face, before or after, is one that never
+ * rolls.
  */
 const props = defineProps<{
-  /** When this changes, the row rolls. */
-  faceKey: string
+  /**
+   * When this changes, the row rolls; null for a face that never rolls, which
+   * shows and goes in place.
+   */
+  faceKey: string | null
 }>()
 
 const root = ref<HTMLElement>()
@@ -40,17 +44,19 @@ function finish(): void {
 
 // The snapshot is taken from the DOM still showing the old face: this runs
 // before the row renders the new one.
-watch(() => props.faceKey, () => {
+watch(() => props.faceKey, (next, previous) => {
   const old = face.value
-  if (!old) {
+  if (!old || next === null || previous === null) {
     return
   }
   const change = ++changes
   const height = old.offsetHeight
   const copy = old.cloneNode(true) as HTMLElement
   // The copy is a picture of the old face: nothing in it is read, focused or clicked, and no id is there twice.
+  // `data-roll-leaving` tells a roll under way from an inert part of a face.
   copy.inert = true
   copy.setAttribute('aria-hidden', 'true')
+  copy.dataset.rollLeaving = ''
   copy.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'))
   copy.style.cssText = 'position:absolute;top:0;left:0;right:0;pointer-events:none'
   void nextTick(() => {

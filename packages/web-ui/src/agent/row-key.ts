@@ -1,5 +1,6 @@
 import type { MessageListBlock } from './pending-steers'
 import { sentMessage } from './message-delivery'
+import { receivedAsBubble } from './agent-receipts'
 import { isWorkStep, workRowId } from './work-groups'
 
 /**
@@ -15,8 +16,8 @@ import { isWorkStep, workRowId } from './work-groups'
  *
  * The list keeps a row it names the same, with the height it measured, and
  * changes it in place, rather than building a new one that it lays out at a
- * guess for a frame. What replaces a row of another name takes the key the list
- * draws it under (`succeedKeys`).
+ * guess for a frame. A `FunctionalBlock` row that replaces another of another
+ * name takes the key the list draws it under (`succeedKeys`).
  */
 export function rowKey(block: MessageListBlock): string {
   if (isWorkStep(block)) {
@@ -27,36 +28,55 @@ export function rowKey(block: MessageListBlock): string {
 }
 
 /**
- * What a row shows, as far as a change of it is a new face: a row whose face
- * changes under the key it keeps rolls the new face over the old one
- * (`RowRoll`), as the Stopped row rolls into Requesting and Requesting into
- * the step it waited for. A message is one face through its whole delivery
- * (`sentMessage`), and a run one face from its first step, while it runs,
- * on: a step that ends becomes its run's row without a roll.
+ * Whether the list draws `row` with `FunctionalBlock`, the 28px face of the
+ * agent's work and the tail's state: a step or a run, a command's notice, an
+ * agent's receipt, the Stopped row and the wait row (Requesting or
+ * Connecting). Such a row enters as chrome (`chromeEntrance`) and rolls into
+ * another such row (`rowFace`). Every other row, the agent's text, a message
+ * bubble (another agent's message included, `receivedAsBubble`), an error, a
+ * compaction rule, appears and changes in place.
  */
-export function rowFace(row: MessageListBlock): string {
-  if (isWorkStep(row) || row.type === 'work_group') {
-    return 'work'
-  }
-  if (sentMessage(row)) {
-    return 'message'
-  }
+export function drawnAsFunctionalBlock(row: MessageListBlock): boolean {
   switch (row.type) {
-    case 'compaction_marker':
-    case 'compaction_boundary':
-      return 'compaction'
+    case 'agent_message':
+      return !receivedAsBubble(row)
+    case 'wakeup':
+    case 'thinking':
+    case 'tool_call':
+    case 'pending_call':
+    case 'work_group':
+    case 'abort':
+    case 'activity_slot':
+      return true
     default:
-      return row.type
+      return false
   }
 }
 
 /**
- * A row of the list: the key it names itself by, and whether it neither gives
- * nor takes a key.
+ * What a row shows, as far as a change of it is a new face; null for a row
+ * not drawn with `FunctionalBlock`, which never rolls.
+ *
+ * A row whose face changes from one `FunctionalBlock` face to another under
+ * the key it keeps rolls the new face over the old one (`RowRoll`), as the
+ * Stopped row rolls into Requesting and Requesting into the step it waited
+ * for. A run is one face from its first step, while it runs, on: a step that
+ * ends becomes its run's row without a roll.
+ */
+export function rowFace(row: MessageListBlock): string | null {
+  if (!drawnAsFunctionalBlock(row)) {
+    return null
+  }
+  return isWorkStep(row) || row.type === 'work_group' ? 'work' : row.type
+}
+
+/**
+ * A row of the list: the key it names itself by, and whether it rolls
+ * (`rowFace`), which alone gives and takes a key.
  */
 export interface ListRow {
   natural: string
-  fixed: boolean
+  rolls: boolean
 }
 
 /** A row the list drew, with the key it drew it under. */
@@ -69,16 +89,17 @@ export interface DrawnRow extends ListRow {
  *
  * - A row the list drew before keeps the key it was drawn under, wherever it
  *   moved.
- * - A row that is gone gives its key to the first new row that stands where it
- *   stood, between the same rows that stayed in their order. The new state
- *   takes the old one's place, its height and its entrance, and rolls over it
- *   rather than one row going while another appears: Stopped and the Requesting
- *   row of the Continue, Requesting and the step it waited for, a call being
- *   written and its call.
- * - A row gone with no new row in its place goes, as the Requesting row of a
- *   Continue when the step it waited for joins the run above it.
- * - `fixed` rows, such as the edges of a window of history, neither give nor
- *   take a key.
+ * - A row that rolls and is gone gives its key to the first new row that rolls
+ *   and stands where it stood, between the same rows that stayed in their
+ *   order. The new state takes the old one's place, its height and its
+ *   entrance, and rolls over it rather than one row going while another
+ *   appears: Stopped and the Requesting row of the Continue, Requesting and the
+ *   step it waited for, a call being written and its call.
+ * - A row gone with no new row that rolls in its place goes, as the Requesting
+ *   row of a Continue when the step it waited for joins the run above it, or
+ *   Requesting when the answer's text or an error comes, which appears as a
+ *   row of its own.
+ * - A row that does not roll neither gives nor takes a key.
  * - A new row whose own key another row is drawn under takes a key of its own.
  */
 export function succeedKeys(
@@ -101,7 +122,7 @@ export function succeedKeys(
   for (const row of previous) {
     if (still.has(row.natural)) {
       gap = row.drawn
-    } else if (!staying.has(row.natural) && !row.fixed) {
+    } else if (!staying.has(row.natural) && row.rolls) {
       given.set(gap, [...(given.get(gap) ?? []), row.drawn])
     }
   }
@@ -118,7 +139,7 @@ export function succeedKeys(
       continue
     }
     // A key a new row took by its own name before is not given again.
-    const offered = row.fixed ? undefined : given.get(gap)?.shift()
+    const offered = row.rolls ? given.get(gap)?.shift() : undefined
     const inherited = offered !== undefined && !used.has(offered) ? offered : undefined
     let key = inherited ?? row.natural
     for (let suffix = 2; inherited === undefined && used.has(key); suffix += 1) {

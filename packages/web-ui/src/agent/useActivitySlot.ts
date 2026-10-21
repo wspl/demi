@@ -39,8 +39,9 @@ export interface ActivitySlotSources {
  * start the server told, so a list drawn again, a reload or a reconnect
  * shows the same count. Which message on its way starts a turn is
  * `turnStartingMessage`'s, which the composer's Stop reads too, so the two
- * show together. What follows the wait, a step, the answer or a Stop, takes
- * the row's place and rolls over it (`succeedKeys`, `RowRoll`).
+ * show together. A step or a Stop that follows the wait takes the row's place
+ * and rolls over it (`succeedKeys`, `RowRoll`); the answer, a failure or
+ * anything else appears in its place.
  */
 export function useActivitySlot(sources: ActivitySlotSources): {
   slot: ComputedRef<ActivitySlotState | null>

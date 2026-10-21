@@ -11,8 +11,10 @@ import type { PendingSteerMessage, PendingSubmissionState } from './types'
 // - The list only grows, except where the user's own action shrinks it
 //   (folding, editing, deleting) or asks for the change (Continue, Resume,
 //   Retry).
-// - A row that gives way to what comes next rolls over it in place (`RowRoll`)
-//   instead of leaving while another appears.
+// - A row drawn with `FunctionalBlock` that gives way to another rolls over it
+//   in place (`RowRoll`) instead of leaving while another appears. Any other
+//   row appears in the place of the row it follows, without a roll
+//   (`drawnAsFunctionalBlock`).
 // - Messages that wait, the pending steers and the queue, stand below the turn
 //   and never in its flow. What the turn is doing is read from the transcript
 //   alone, so the tail row (Requesting or Connecting) stands right after the
