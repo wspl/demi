@@ -4,6 +4,7 @@ import { useElementSize } from '@vueuse/core'
 import DockWindowArea from './DockWindowArea.vue'
 import { DOCK_WINDOW_SHARE } from './dock-window'
 import SessionBottomVeil from './SessionBottomVeil.vue'
+import { COMPOSER_VEIL_FADE_PX } from './composer-clearance'
 import { sessionComposerKey, sessionCoverKey } from './session-cover'
 
 /**
@@ -33,12 +34,24 @@ provide(sessionCoverKey, coverHeight)
 /** The dock's composer, under its chips row; the dock sets it. */
 const composerHeight = ref(0)
 provide(sessionComposerKey, composerHeight)
+const dockRef = ref<HTMLDivElement>()
+const { height: dockOwnHeight } = useElementSize(dockRef, { width: 0, height: 0 }, { box: 'border-box' })
+/**
+ * How high the veil reaches from the area's foot: the padding under the dock,
+ * the composer, and the veil's fade above it (`SessionBottomVeil`).
+ */
+const veilReach = computed(() =>
+  composerHeight.value > 0
+    ? dockFootprint.value - dockOwnHeight.value + composerHeight.value + COMPOSER_VEIL_FADE_PX
+    : 0,
+)
 /**
  * What the transcript keeps clear at its foot: the dock and what stands over
- * it. A panel the dock opened stands on the dock alone, so the card covers
- * its lower part and it never moves when a card comes or goes.
+ * it, or the veil where it reaches higher. A panel the dock opened stands on
+ * the dock alone, so the card covers its lower part and it never moves when
+ * a card comes or goes.
  */
-const dockHeight = computed(() => dockFootprint.value + coverHeight.value)
+const dockHeight = computed(() => Math.max(dockFootprint.value + coverHeight.value, veilReach.value))
 
 defineExpose({ dockHeight })
 </script>
@@ -78,7 +91,7 @@ defineExpose({ dockHeight })
       class="absolute bottom-0 left-0 right-0 px-[calc(var(--session-gutter)+0.75rem)] pb-[max(0.75rem,var(--safe-bottom))]"
     >
       <SessionBottomVeil :composer="composerHeight" />
-      <div class="relative z-30">
+      <div ref="dockRef" class="relative z-30">
         <slot name="dock" />
       </div>
     </div>
