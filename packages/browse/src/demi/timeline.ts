@@ -63,9 +63,12 @@ export async function timeline(
     // stays still has none: the picture before the action stands for it,
     // at CSS pixels as the stream's.
     frames.push({ at: Date.now(), picture: await tool.browser.capture({ scale: 1 / screen.scale }), width: screen.width })
-    await action()
     start = Date.now()
-    await page.waitForTimeout((sorted.at(-1) ?? 0) + AFTER_MS)
+    await action()
+    const remaining = start + (sorted.at(-1) ?? 0) + AFTER_MS - Date.now()
+    if (remaining > 0) {
+      await page.waitForTimeout(remaining)
+    }
   } finally {
     cdp.off('Page.screencastFrame', onFrame)
     // A page that closed during the action has no stream left to stop.
