@@ -2,7 +2,7 @@
 //! (`crates/backend-host-access/src/host_commands.rs`).
 //!
 //! With the user's Organize Conversations, an agent renames its conversation at
-//! once and lists the user's projects. Where the conversation runs decides its
+//! once. Listing the user's projects only reads, so it asks no permission. Where the conversation runs decides its
 //! project, so an agent moves it into or out of one with `demi host move`
 //! (`host_commands.rs`).
 
@@ -27,7 +27,7 @@ pub(crate) const ORGANIZE: &str = "conversation.organize";
 
 const ORGANIZE_ACTION: &str = "organize conversations";
 
-const ORGANIZE_DESCRIPTION: &str = "Organize Conversations lets the agents of this conversation rename it and list your projects.";
+const ORGANIZE_DESCRIPTION: &str = "Organize Conversations lets the agents of this conversation rename it.";
 
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects; and your own history in it, which history searches and reads.";
 
@@ -68,7 +68,6 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("projects", PROJECTS_SUMMARY)
                 .input::<NoArgs>()
-                .permission(ORGANIZE)
                 .json_output::<Vec<ListedProject>>()
                 .bind(TypedRpc::new(verb(shard.clone(), projects))),
         )

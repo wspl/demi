@@ -43,7 +43,7 @@
     },
     "conversation_organize": {
       "action": "整理对话",
-      "description": "“整理对话”允许此对话的智能体重命名此对话并列出你的项目。"
+      "description": "“整理对话”允许此对话的智能体重命名此对话。"
     },
     "agent_profiles": {
       "action": "更改子智能体配置",

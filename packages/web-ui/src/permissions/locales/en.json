@@ -43,7 +43,7 @@
     },
     "conversation_organize": {
       "action": "organize conversations",
-      "description": "Organize Conversations lets the agents of this conversation rename it and list your projects."
+      "description": "Organize Conversations lets the agents of this conversation rename it."
     },
     "agent_profiles": {
       "action": "change subagent profiles",
