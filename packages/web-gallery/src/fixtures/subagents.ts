@@ -112,9 +112,10 @@ const SUITE_PATHS_UPDATE = 'The status file still lists the suites under `test/m
 
 /**
  * The receipts the gallery's children sent their parent, one of each kind:
- * each names the block of its
- * child's transcript it came from, an update the call that sent it, a
- * completion the last answer; the stopped child gave none.
+ * an update names the block of its
+ * child's transcript it came from, the call that sent it, and a notice of an
+ * end carries no word of the child's: only a failed child's names its failure
+ * record and says why.
  */
 export const agentReceiptMessages: AgentMessage[] = [
   {
@@ -131,9 +132,8 @@ export const agentReceiptMessages: AgentMessage[] = [
     sender: { id: 'ag-comments', number: 4, description: 'Update helper comments', round: 2 },
     recipientId: 'gallery-parent',
     timestamp: '2026-09-12T12:01:00.000Z',
-    content: COMMENTS_RESULT,
+    content: '',
     event: { type: 'completion', outcome: 'completed' },
-    origin: 'ag-comments-text',
   },
   {
     id: 'subagent:ag-fixture:1',
@@ -149,7 +149,7 @@ export const agentReceiptMessages: AgentMessage[] = [
     sender: { id: 'ag-ci', number: 5, description: 'CI screenshot review', round: 1 },
     recipientId: 'gallery-parent',
     timestamp: '2026-09-12T12:03:00.000Z',
-    content: 'The parent stopped this round before validation finished.',
+    content: '',
     event: { type: 'completion', outcome: 'aborted' },
   },
 ]
@@ -616,9 +616,8 @@ function notesBlocks(report: boolean): Block[] {
             sender: { ...LINKS, round: 1 },
             recipientId: NOTES.id,
             timestamp: ago(120_000),
-            content: 'All 14 links resolve.',
+            content: '',
             event: { type: 'completion', outcome: 'completed' },
-            origin: 'ag-links-text',
           },
         } satisfies Block]
       : []),

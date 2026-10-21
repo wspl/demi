@@ -379,7 +379,7 @@ async fn a_read_stops_at_about_eight_thousand_characters_and_cuts_a_longer_messa
 // A few seconds: a real device runs the shell jobs of a parent and its
 // child.
 #[tokio::test]
-async fn a_subagent_reads_its_own_transcript_and_its_parent_opens_its_report() {
+async fn a_subagent_reads_its_own_transcript_and_its_parent_opens_its_message() {
     let scripts = Arc::new(Scripts::default());
     let (_harness, backend, master, _laptop, _root, _) = tree_on(&scripts, Harness::new()).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -388,19 +388,24 @@ async fn a_subagent_reads_its_own_transcript_and_its_parent_opens_its_report() {
         shell("c1", "demi conversation history read 0.."),
         titled("c2", "Look for the release switch", "true"),
         shell("c3", "demi conversation history search release switch"),
-        say("The flag is --release."),
+        shell("c4", "demi agent send parent <<< 'The flag is --release.'"),
+        // The child ends after its parent read the message, not during the read.
+        shell("c5", "sleep 1"),
+        say("sent"),
     ]);
     scripts.root(
         FIRST,
         vec![
             shell("t1", "demi agent spawn --description finder <<< 'Find the build flag, the release switch'"),
             say("dispatched"),
-            // The child's report wakes the idle parent.
+            // The child's report is a message, which wakes the idle parent.
             shell(
                 "t2",
-                "n=$(demi conversation history read 0.. | sed -n 's/^\\[\\([0-9]*\\) report.*/\\1/p') && demi conversation history open \"$n\"",
+                "n=$(demi conversation history read 0.. | sed -n 's/^\\[\\([0-9]*\\) message from agent 1.*/\\1/p') && demi conversation history open \"$n\"",
             ),
             say("received"),
+            // The notice that the child finished wakes it once more.
+            say("noted"),
         ],
     );
     socket.chat("m1", "Find the release switch for me").await;
@@ -421,9 +426,9 @@ async fn a_subagent_reads_its_own_transcript_and_its_parent_opens_its_report() {
     // index holds since the child's search found them.
     let product = backend.get("/api/search?q=Look", Some(&master)).await;
     assert!(String::from_utf8_lossy(&product.body).contains(r#""results":[]"#), "{}", String::from_utf8_lossy(&product.body));
-    // The parent reads the report as a line and opens it.
+    // The parent finds the child's message in its history and opens it.
     let report = result(&backend, &master, "t2").await;
-    assert!(report.contains(" report of agent 1 (finder) · completed]"), "{report}");
+    assert!(report.contains(" message from agent 1 · "), "{report}");
     assert!(report.contains("The flag is --release."), "{report}");
     backend.close().await;
 }

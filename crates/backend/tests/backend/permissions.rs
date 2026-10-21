@@ -630,7 +630,8 @@ async fn a_stopped_command_runs_nothing_and_its_request_is_answered_to_the_paren
     scripts.root_anew(FIRST, answers);
     socket.send(&crate::conversations::send("m2", "Stop the install")).await;
     until_asked(&scripts, |session| session != FIRST, "was stopped by agent 0").await;
-    settled(&scripts, &backend, &master, FIRST, &["the install was stopped"]).await;
+    // The parent is told only that the child finished.
+    settled(&scripts, &backend, &master, FIRST, &["outcome", "completed"]).await;
     // The stop dispatched nothing and left the request to the user.
     assert_eq!(sources(&harness), 0);
     assert_eq!(permissions(&backend, &master, FIRST).await.requests, read.requests);

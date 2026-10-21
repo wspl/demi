@@ -216,14 +216,14 @@ fn copy_prefix(
 /// The `nodes` row of `record`, with `initial`'s state, and its
 /// `side_questions` row for a side question.
 fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &CheckpointUpdate) -> Result<(), StorageError> {
-    let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
+    let (phase, closed_at, failure) = close_columns(record.closed.as_ref());
     // A side question is no agent: its number is none.
     let number = record.side.is_none().then_some(integer(record.number));
     transaction.execute(
         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
-           can_spawn, closed_phase, closed_at, result, failure, delivered, state,
+           can_spawn, closed_phase, closed_at, failure, delivered, state,
            output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by, model)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
         params![
             record.id.as_str(),
             number,
@@ -236,7 +236,6 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
             record.can_spawn_subagents,
             phase,
             closed_at,
-            result,
             failure,
             record.delivered,
             to_json(&initial.state),
@@ -379,14 +378,14 @@ impl AgentTreeStore for SqliteTreeStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
         Box::pin(async move {
-            let (phase, closed_at, result, failure) = close_columns(Some(&close));
+            let (phase, closed_at, failure) = close_columns(Some(&close));
             let changed = self
                 .db
                 .call(move |connection| {
                     let changed = connection.execute(
-                        "UPDATE nodes SET closed_phase = ?2, closed_at = ?3, result = ?4, failure = ?5, delivered = 0
+                        "UPDATE nodes SET closed_phase = ?2, closed_at = ?3, failure = ?4, delivered = 0
                          WHERE id = ?1",
-                        params![node.as_str(), phase, closed_at, result, failure],
+                        params![node.as_str(), phase, closed_at, failure],
                     )?;
                     Ok(changed)
                 })
@@ -426,7 +425,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     };
                     transaction.execute(
                         "UPDATE nodes SET round = ?2, started_at = ?3, closed_phase = NULL, closed_at = NULL,
-                           result = NULL, failure = NULL, delivered = 0, state = ?4
+                           failure = NULL, delivered = 0, state = ?4
                          WHERE id = ?1",
                         params![node.as_str(), integer(round), started_at.as_millisecond(), to_json(&state)],
                     )?;
@@ -1339,7 +1338,7 @@ fn node_state(
 /// The columns of a node's record, from [`NODES`].
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
-     closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
+     closed_phase, closed_at, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
      context_limit, model, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote, picture,
      question, asked_at";
 
@@ -1421,9 +1420,7 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
         None => None,
         Some(phase) => {
             let phase = match phase.as_str() {
-                "completed" => ClosePhase::Completed {
-                    result: required(row, "result")?,
-                },
+                "completed" => ClosePhase::Completed,
                 "aborted" => ClosePhase::Aborted,
                 "error" => ClosePhase::Error {
                     failure: required(row, "failure")?,
@@ -1528,24 +1525,17 @@ fn required(row: &Row<'_>, column: &'static str) -> Result<String, StorageError>
     })
 }
 
-/// A close as its columns: the phase, the time, and the result or failure
-/// the phase carries.
-fn close_columns(
-    close: Option<&NodeClose>,
-) -> (
-    Option<&'static str>,
-    Option<i64>,
-    Option<String>,
-    Option<String>,
-) {
+/// A close as its columns: the phase, the time, and the failure a failed
+/// phase carries.
+fn close_columns(close: Option<&NodeClose>) -> (Option<&'static str>, Option<i64>, Option<String>) {
     let Some(close) = close else {
-        return (None, None, None, None);
+        return (None, None, None);
     };
     let at = Some(close.at.as_millisecond());
     match &close.phase {
-        ClosePhase::Completed { result } => (Some("completed"), at, Some(result.clone()), None),
-        ClosePhase::Aborted => (Some("aborted"), at, None, None),
-        ClosePhase::Error { failure } => (Some("error"), at, None, Some(failure.clone())),
+        ClosePhase::Completed => (Some("completed"), at, None),
+        ClosePhase::Aborted => (Some("aborted"), at, None),
+        ClosePhase::Error { failure } => (Some("error"), at, Some(failure.clone())),
     }
 }
 
@@ -2996,7 +2986,7 @@ pub(crate) mod tests {
         let (tree, _stores, _data) = store().await;
         store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&tree).await;
         let (tree, _stores, _data) = store().await;
-        store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(&tree).await;
+        store_contract::children_list_in_spawn_order_and_a_close_keeps_its_phase(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::the_blob_namespace_names_bytes_by_their_sha256(&tree).await;
         let (tree, _stores, _data) = store().await;

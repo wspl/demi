@@ -10,7 +10,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{
     RunningCommand,
-    AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement,
+    AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, PendingAgentInput, Placement,
     testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
@@ -25,7 +25,7 @@ use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
     ChangedFile, EditKind, EditSegment, EditedFile, ToolCallBlock, ToolView,
     AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome, EXECUTION_SOURCE, NodeId,
-    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
+    QueuedMessage, Sender, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
 use demi_host_interface::Seen;
 use serde_json::{Value, json};
@@ -550,10 +550,11 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     let job = child_in(&frames[closed], &child).expect("its entry");
     assert_eq!(job.state, JobPhase::Completed);
     assert!(job.ended_at.is_some());
-    // Its result is its transcript's last answer, which the receipt carries.
+    // The receipt only says it finished: the child's answer stays in its own
+    // transcript.
     assert_eq!(
         root_receipts(&fixture).last().map(|receipt| receipt.content.as_str()),
-        Some("the file says 42")
+        Some("")
     );
     let receipt = frames
         .iter()
@@ -561,8 +562,8 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         .expect("the parent wrote the receipt");
     assert!(closed < receipt, "{frames:#?}");
 
-    // The child was asked with its preamble and its brief, then where it
-    // works.
+    // The child was asked with its preamble and its brief, then how its parent
+    // hears from it and where it works.
     let asked = model.requests_of("Read notes.md");
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].session_id, child.as_str());
@@ -574,11 +575,13 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     );
     let [
         InferenceItem::UserMessage { content },
+        InferenceItem::UserMessage { content: reporting },
         InferenceItem::UserMessage { content: directory },
     ] = &*asked[0].items
     else {
         panic!("{:?}", asked[0].items)
     };
+    assert!(texts(reporting).starts_with(REPORTING_RULE), "{reporting:?}");
     assert!(
         texts(directory).starts_with("Your working directory is /workspace: "),
         "{directory:?}"
@@ -593,25 +596,21 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert!(preamble.contains("`demi agent spawn` spawns your own children."));
     assert_eq!(first, brief);
 
-    // The parent heard the result once, as agent input of the request that
-    // answered it.
+    // The parent was told of its end once, as agent input of the request that
+    // answered it, with none of the child's words.
     let answered = model.root_requests().pop().unwrap();
     let Some(InferenceItem::UserSteer { content }) = answered.items.last() else {
         panic!("{:?}", answered.items)
     };
     let envelope = texts(content);
-    assert!(
-        envelope.contains("\"content\":\"the file says 42\""),
-        "{envelope}"
-    );
+    assert!(envelope.contains("\"content\":\"\""), "{envelope}");
+    assert!(!envelope.contains("the file says 42"), "{envelope}");
     assert!(envelope.contains("\"outcome\":\"completed\""), "{envelope}");
     let record = fixture.store.record(&child).unwrap();
     assert_eq!(record.parent, Some(root()));
     assert_eq!(
         closed_phase(&fixture, &child),
-        Some(ClosePhase::Completed {
-            result: "the file says 42".into()
-        })
+        Some(ClosePhase::Completed)
     );
     assert!(
         record.delivered,
@@ -906,7 +905,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             format!("{}{}", shown.stdout, show_archived.stdout)
         )
     );
-    // An archived child shows how and when it closed, and its result.
+    // An archived child shows how and when it closed, and no result.
     let (times, lines) = instants(&show_archived.stdout);
     assert_eq!(times.len(), 2, "{}", show_archived.stdout);
     assert_eq!(
@@ -918,8 +917,6 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "Profile: -",
             "Description: delta",
             "Directory: /workspace",
-            "Result:",
-            "  delta done",
         ]
     );
     let mut archived: Value = serde_json::from_str(&show_archived_json.stdout).unwrap();
@@ -935,7 +932,6 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "description": "delta",
             "profile": null,
             "status": "completed",
-            "result": "delta done",
             "cwd": "/workspace",
         })
     );
@@ -952,9 +948,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     assert_eq!(model.requests_of("task beta").len(), 2);
     assert_eq!(
         closed_phase(&fixture, &beta),
-        Some(ClosePhase::Completed {
-            result: "beta heard".into()
-        })
+        Some(ClosePhase::Completed)
     );
     client.until_idle().await;
     let senders: Vec<NodeId> = root_receipts(&fixture)
@@ -1073,9 +1067,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     assert_eq!(model.requests_of("task beta").len(), 2);
     assert_eq!(
         closed_phase(&fixture, &beta),
-        Some(ClosePhase::Completed {
-            result: "beta after restart".into()
-        })
+        Some(ClosePhase::Completed)
     );
     assert!(model.is_done());
 }
@@ -1294,9 +1286,92 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
     assert!(woken.contains("Command 1 (Run the tests) ended with exit code 0."), "{woken}");
     assert_eq!(
         store.record(&child).and_then(|record| record.closed).map(|close| close.phase),
-        Some(ClosePhase::Completed {
-            result: "tests passed".into()
+        Some(ClosePhase::Completed)
+    );
+}
+
+// A child reports with `demi agent send parent`, ends its turn to wait for its
+// tests, and answers once more when their end wakes it.
+//
+// The parent holds its report as it was sent and one notice that the child
+// finished, which carries no word of the later answer: nothing a child says
+// after it reports can replace the report. The child's end is not noticed while
+// its tests run.
+//
+// Under a second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_report_by_message_is_not_replaced_by_the_answer_after_a_wake() {
+    let model = Model::default();
+    model.child(
+        "task test",
+        [
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "test", "description": "Run the tests", "intervalMs": null}),
+            )]),
+            said("waiting"),
+            said("The test passed."),
+        ],
+    );
+    model.root([said("noted"), said("noted")]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = TestClient::connect(&server, &conversation());
+    page.open().await;
+    page.next_until(is_request_output).await;
+    let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
+    let child = named_node(&store, &spawned);
+    wait_for_execution(&server, "waiting").await;
+
+    let sent = agent(&server, &child, "send", json!({ "id": "parent", "message": "The suite is running." })).await;
+    assert_eq!(sent.code, 0, "{sent:?}");
+    // The tests run, so the child has not ended.
+    assert!(store.record(&child).and_then(|record| record.closed).is_none());
+    shells.last().exit_with(Vec::new());
+    page.next_until(is_closed(&child)).await;
+    until(|| {
+        server
+            .tree(&root())
+            .expect("the tree is live")
+            .root()
+            .session()
+            .transcript()
+            .blocks
+            .iter()
+            .filter(|block| matches!(block, Block::AgentMessage(_)))
+            .count()
+            == 2
+    })
+    .await;
+
+    let received: Vec<(AgentMessageEvent, String)> = server
+        .tree(&root())
+        .expect("the tree is live")
+        .root()
+        .session()
+        .transcript()
+        .blocks
+        .into_iter()
+        .filter_map(|block| match block {
+            Block::AgentMessage(receipt) => Some((receipt.message.event, receipt.message.content)),
+            _ => None,
         })
+        .collect();
+    assert_eq!(
+        received,
+        [
+            (AgentMessageEvent::Message {}, "The suite is running.".to_owned()),
+            (
+                AgentMessageEvent::Completion {
+                    outcome: CompletionOutcome::Completed
+                },
+                String::new()
+            ),
+        ]
     );
 }
 
@@ -1348,9 +1423,7 @@ async fn a_status_that_shows_the_end_leaves_no_end_report() {
     assert_eq!(model.requests_of("task test").len(), 2, "the shown end woke the child again");
     assert_eq!(
         store.record(&child).and_then(|record| record.closed).map(|close| close.phase),
-        Some(ClosePhase::Completed {
-            result: "waiting".into()
-        })
+        Some(ClosePhase::Completed)
     );
 }
 
@@ -1643,7 +1716,7 @@ async fn an_open_reads_as_much_for_many_closed_children_as_for_one() {
             .await
             .unwrap();
         let completed = NodeClose {
-            phase: ClosePhase::Completed { result: "done".into() },
+            phase: ClosePhase::Completed,
             at: Timestamp::UNIX_EPOCH,
         };
         for number in 1..=children {
@@ -1706,9 +1779,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         .await
         .unwrap();
     let close = NodeClose {
-        phase: ClosePhase::Completed {
-            result: "closed result".into(),
-        },
+        phase: ClosePhase::Completed,
         at: Timestamp::UNIX_EPOCH,
     };
     let closed = NodeId::try_from("closed").unwrap();
@@ -1750,17 +1821,11 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         .collect();
     senders.sort();
     assert_eq!(senders, ["closed", "lost", "quiet"]);
-    for (id, result) in [
-        ("lost", "lost result"),
-        ("quiet", "quiet result"),
-        ("closed", "closed result"),
-    ] {
+    for id in ["lost", "quiet", "closed"] {
         let id = NodeId::try_from(id).unwrap();
         assert_eq!(
             closed_phase(&fixture, &id),
-            Some(ClosePhase::Completed {
-                result: result.into()
-            })
+            Some(ClosePhase::Completed)
         );
         assert!(store.record(&id).unwrap().delivered, "{id}");
     }
@@ -1776,6 +1841,109 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     assert!(frames.iter().any(is_request_output));
 }
 
+// A parent holds, as waiting input, the report of a child that finished under
+// the release before the notice-only completions: its body is the words the
+// child ended with. The restore gives the parent those words once, and does not
+// tell it of the child again.
+#[tokio::test(flavor = "local")]
+async fn a_restore_gives_the_parent_the_report_a_finished_child_left_waiting_for_it() {
+    let store = MemoryTreeStore::new();
+    let mut parent = checkpoint(Vec::new(), Vec::new());
+    parent.state.agent_inputs.push(PendingAgentInput {
+        turn_id: TurnId::try_from("subagent:done:1").unwrap(),
+        model: test_model(),
+        message: AgentMessage {
+            id: CompletionId { child: NodeId::try_from("done").unwrap(), round: 1 }.block_id(),
+            sender: Some(Sender {
+                id: NodeId::try_from("done").unwrap(),
+                number: 1,
+                description: "done".into(),
+                round: 1,
+            }),
+            recipient_id: root(),
+            timestamp: Timestamp::UNIX_EPOCH,
+            content: "The cache read is fixed.".into(),
+            event: AgentMessageEvent::Completion { outcome: CompletionOutcome::Completed },
+            origin: None,
+        },
+    });
+    store.create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), parent).await.unwrap();
+    let done = NodeId::try_from("done").unwrap();
+    store
+        .create_node(child_record("done", 1, "conversation", None), checkpoint(Vec::new(), Vec::new()))
+        .await
+        .unwrap();
+    store
+        .close_node(&done, NodeClose { phase: ClosePhase::Completed, at: Timestamp::UNIX_EPOCH })
+        .await
+        .unwrap();
+    store.mark_delivered(&done, 1).await.unwrap();
+    let model = Model::default();
+    model.root([said("noted")]);
+    let fixture = Fixture::with_model(&model, TestProduct::default(), store.clone(), ServerConfig::default());
+    let mut client = fixture.client();
+    client.open().await;
+    until(|| root_receipts(&fixture).len() == 1).await;
+    client.until_idle().await;
+
+    let receipts = root_receipts(&fixture);
+    assert_eq!(receipts.len(), 1, "{receipts:?}");
+    assert_eq!(receipts[0].content, "The cache read is fixed.");
+    let asked = model.root_requests();
+    assert_eq!(asked.len(), 1);
+    assert!(request_text(&asked[0]).contains("The cache read is fixed."));
+}
+
+/// What every subagent is told of how its parent hears from it.
+const REPORTING_RULE: &str = "Your parent receives only what you send it with `demi agent send parent`";
+
+// A child tells its parent only by message, and learns that before its first
+// request. One that ran under the release before, whose stored history says
+// its final answer reaches its parent, and that the parent's message wakes
+// without a turn of the user's to carry a new preamble, learns it before its
+// next request.
+#[tokio::test(flavor = "local")]
+async fn a_subagent_is_told_how_its_parent_hears_from_it_whether_new_or_restored() {
+    let store = MemoryTreeStore::new();
+    store
+        .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), checkpoint(Vec::new(), Vec::new()))
+        .await
+        .unwrap();
+    let Block::User(mut brief) = user("o1", "task old") else { unreachable!() };
+    brief.preamble = Some("A turn you end with your answer returns that answer to the parent as the result.".into());
+    let mut old = checkpoint(Vec::new(), vec![Block::User(brief), answer("o2", "halfway")]);
+    old.state.agent_inputs.push(PendingAgentInput {
+        turn_id: TurnId::try_from("m1").unwrap(),
+        model: test_model(),
+        message: AgentMessage {
+            id: BlockId::try_from("m1").unwrap(),
+            sender: Some(Sender { id: root(), number: 0, description: "root session".into(), round: 1 }),
+            recipient_id: NodeId::try_from("old").unwrap(),
+            timestamp: Timestamp::UNIX_EPOCH,
+            content: "Any news?".into(),
+            event: AgentMessageEvent::Message {},
+            origin: None,
+        },
+    });
+    store.create_node(child_record("old", 1, "conversation", None), old).await.unwrap();
+    let model = Model::default();
+    model.root([said("noted"), said("noted")]);
+    model.child("task old", [said("old done")]);
+    model.child("task new", [said("new done")]);
+    let fixture = Fixture::with_model(&model, TestProduct::default(), store.clone(), ServerConfig::default());
+    let mut client = fixture.client();
+    client.open().await;
+    until(|| model.requests_of("task old").len() == 1).await;
+    spawn(&fixture, &root(), json!({ "prompt": "task new" })).await;
+    until(|| model.requests_of("task new").len() == 1).await;
+
+    for prompt in ["task old", "task new"] {
+        let text = request_text(&model.requests_of(prompt)[0]);
+        assert_eq!(text.matches(REPORTING_RULE).count(), 1, "{prompt}: {text}");
+    }
+    assert!(!request_text(&model.requests_of("task new")[0]).contains("returns that answer to the parent"));
+}
+
 // A restore of two closed children and one edit; well under a second.
 #[tokio::test(flavor = "local")]
 async fn an_edit_that_leaves_a_childs_start_takes_its_whole_subtree_off_the_current_path() {
@@ -1788,7 +1956,7 @@ async fn an_edit_that_leaves_a_childs_start_takes_its_whole_subtree_off_the_curr
         .await
         .unwrap();
     let completed = NodeClose {
-        phase: ClosePhase::Completed { result: "done".into() },
+        phase: ClosePhase::Completed,
         at: Timestamp::UNIX_EPOCH,
     };
     // The child was started by the root's answer, the grandchild by the
@@ -1920,9 +2088,7 @@ async fn a_start_under_way_outlives_a_cancelled_call() {
     let child = lifecycle(&frames)[0].1.clone();
     assert_eq!(
         closed_phase(&fixture, &child),
-        Some(ClosePhase::Completed {
-            result: "first done".into()
-        })
+        Some(ClosePhase::Completed)
     );
     assert!(model.is_done());
 }
@@ -2017,9 +2183,7 @@ async fn a_child_whose_turn_fails_closes_as_an_error_naming_its_failure_and_a_si
     );
     assert_eq!(
         closed_phase(&fixture, &silent),
-        Some(ClosePhase::Completed {
-            result: String::new()
-        })
+        Some(ClosePhase::Completed)
     );
     let outcomes: Vec<(NodeId, String, AgentMessageEvent)> = root_receipts(&fixture)
         .into_iter()
@@ -2045,7 +2209,7 @@ async fn a_child_whose_turn_fails_closes_as_an_error_naming_its_failure_and_a_si
         ]
     );
     // The failed child's receipt names its failure record, which its row's
-    // name brings into view; the silent one gave no answer to name.
+    // name brings into view; the silent one has none to name.
     let failure = fixture
         .store
         .checkpoint(&failing)
@@ -2066,9 +2230,10 @@ async fn a_child_whose_turn_fails_closes_as_an_error_naming_its_failure_and_a_si
 
 /// A receipt names the block of its sender's transcript it came from, which its
 /// row's name brings into view: for an update, the call whose command sent it;
-/// for a completion, the child's last answer.
+/// a notice that a child finished names none, since the child's answers are
+/// no one's.
 #[tokio::test(flavor = "local")]
-async fn a_receipt_names_the_call_that_sent_it_and_the_answer_that_completed() {
+async fn a_message_receipt_names_the_call_that_sent_it_and_a_finished_notice_names_none() {
     let model = Model::default();
     let gate = Gate::new();
     model.root([said("noted"), said("heard")]);
@@ -2105,10 +2270,6 @@ async fn a_receipt_names_the_call_that_sent_it_and_the_answer_that_completed() {
         Block::ToolCall(call) if call.tool_use_id == AGENT_CALL => Some(call.id.clone()),
         _ => None,
     });
-    let answer = blocks.iter().find_map(|block| match block {
-        Block::Text(text) if text.text == "task done" => Some(text.id.clone()),
-        _ => None,
-    });
     let origins: Vec<(AgentMessageEvent, Option<BlockId>)> = root_receipts(&fixture)
         .into_iter()
         .map(|message| (message.event, message.origin))
@@ -2121,7 +2282,7 @@ async fn a_receipt_names_the_call_that_sent_it_and_the_answer_that_completed() {
                 AgentMessageEvent::Completion {
                     outcome: CompletionOutcome::Completed
                 },
-                answer
+                None
             ),
         ]
     );
@@ -2137,7 +2298,9 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
         [
             held_said(&gate, "delegating"),
             Turn::Respond(Box::new(|request| {
-                assert!(request_text(request).contains("grandchild done"));
+                let text = request_text(request);
+                assert!(text.contains("\"outcome\":\"completed\""), "{text}");
+                assert!(!text.contains("grandchild done"), "{text}");
                 vec![event::text("parent done"), event::response(1, 1)]
             })),
         ],
@@ -2204,7 +2367,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
                 AgentMessageEvent::Completion {
                     outcome: CompletionOutcome::Completed
                 },
-                "parent done".to_owned()
+                String::new()
             ),
         ]
     );
@@ -2460,15 +2623,11 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     );
     assert_eq!(
         closed_phase(&fixture, &inner),
-        Some(ClosePhase::Completed {
-            result: "inner done".into()
-        })
+        Some(ClosePhase::Completed)
     );
     assert_eq!(
         closed_phase(&fixture, &outer),
-        Some(ClosePhase::Completed {
-            result: "outer done".into()
-        })
+        Some(ClosePhase::Completed)
     );
     let senders: Vec<NodeId> = root_receipts(&fixture)
         .into_iter()

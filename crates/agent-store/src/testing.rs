@@ -1213,7 +1213,7 @@ pub mod store_contract {
             }),
             recipient_id: id("root"),
             timestamp: Timestamp::UNIX_EPOCH,
-            content: format!("{child} done"),
+            content: String::new(),
             event: AgentMessageEvent::Completion {
                 outcome: CompletionOutcome::Completed,
             },
@@ -1231,11 +1231,9 @@ pub mod store_contract {
         })
     }
 
-    fn completed(result: &str) -> NodeClose {
+    fn completed() -> NodeClose {
         NodeClose {
-            phase: ClosePhase::Completed {
-                result: result.into(),
-            },
+            phase: ClosePhase::Completed,
             at: Timestamp::UNIX_EPOCH,
         }
     }
@@ -1634,7 +1632,7 @@ pub mod store_contract {
             )
             .await;
             store
-                .close_node(&id(child), completed(&format!("{child} done")))
+                .close_node(&id(child), completed())
                 .await
                 .expect("the node closes");
         }
@@ -1739,7 +1737,7 @@ pub mod store_contract {
         first.can_spawn_subagents = false;
         create(store, first, update(Vec::new(), Vec::new())).await;
         store
-            .close_node(&id("child"), completed("first"))
+            .close_node(&id("child"), completed())
             .await
             .expect("the node closes");
 
@@ -1787,7 +1785,7 @@ pub mod store_contract {
         )
         .await;
         store
-            .close_node(&id("child"), completed("first"))
+            .close_node(&id("child"), completed())
             .await
             .expect("the node closes");
         store
@@ -1795,7 +1793,7 @@ pub mod store_contract {
             .await
             .expect("the node reopens");
         store
-            .close_node(&id("child"), completed("second"))
+            .close_node(&id("child"), completed())
             .await
             .expect("the node closes");
 
@@ -1888,7 +1886,7 @@ pub mod store_contract {
         )
         .await;
         store
-            .close_node(&id("child"), completed("child done"))
+            .close_node(&id("child"), completed())
             .await
             .expect("the node closes");
         let Block::AgentMessage(receipt) = receipt("child", 1) else {
@@ -1909,9 +1907,9 @@ pub mod store_contract {
     }
 
     /// A node's children list in spawn order, the order of their numbers,
-    /// whatever order the store received them in; a close keeps its phase,
-    /// time and result.
-    pub async fn children_list_in_spawn_order_and_a_close_keeps_its_result(
+    /// whatever order the store received them in; a close keeps its phase
+    /// and time.
+    pub async fn children_list_in_spawn_order_and_a_close_keeps_its_phase(
         store: &dyn AgentTreeStore,
     ) {
         create(
@@ -1929,9 +1927,7 @@ pub mod store_contract {
             .await;
         }
         let close = NodeClose {
-            phase: ClosePhase::Completed {
-                result: "found it".into(),
-            },
+            phase: ClosePhase::Completed,
             at: Timestamp::from_millisecond(90_000).expect("the time is in range"),
         };
         store
@@ -1999,7 +1995,7 @@ pub mod store_contract {
         assert_eq!(stored(store, "asked").await, Some(side("asked", 1_000, "Is that so?")));
 
         let close = NodeClose {
-            phase: ClosePhase::Completed { result: String::new() },
+            phase: ClosePhase::Completed,
             at: Timestamp::from_millisecond(3_000).expect("the time is in range"),
         };
         store.close_node(&id("asked"), close).await.expect("the node closes");

@@ -13,14 +13,14 @@
 //! lifecycle is its client's.
 //!
 //! A child exists because a parent's context is expensive. It works in a
-//! session of its own, and only its result returns to the parent, never its
+//! session of its own, and only what it sends the parent returns, never its
 //! tool history. It is not a session copy: compaction's copy carries history, a
 //! child starts empty.
 //!
 //! ```text
 //!  root --spawn, fork, resume, abort--> child --(same verbs)--> grandchild
 //!    ^                                    |
-//!    '------- completion receipt ---------'
+//!    '------ reports, and the notice of its end -----'
 //!  any live node --send, show, list--> any live node  (the agent directory)
 //! ```
 //!
@@ -37,9 +37,13 @@
 //! - Deciding that a child is quiescent and closing it are one step with no
 //!   await: a message accepted before it keeps the child open, and one sent
 //!   after it is refused.
-//! - The result is saved before its completion goes to the parent. The
+//! - The close is saved before its completion goes to the parent. The
 //!   completion's id names the round (`subagent:<child>:<round>`), so no older
 //!   completion acknowledges the next round of a resumed child.
+//! - A completion is only a notice of how the round ended, finished, failed or
+//!   stopped, and carries no word the child wrote: a child reports with
+//!   `demi agent send parent`, which no later answer of its own replaces. A failed
+//!   child's notice carries the failure reason Demi recorded.
 //! - A start runs in a task of the tree, so a creation command cancelled after
 //!   reaching the supervisor still creates its child. A start under way counts
 //!   as a live child of its owner, which therefore does not close under it.
@@ -71,7 +75,8 @@
 //!   close).
 //! - `send --wait`: reciprocal waits would block each other, and ask-and-answer
 //!   is a close then `resume`.
-//! - `wait` or `result` verbs: the completion message is the outcome.
+//! - `wait` or `result` verbs: the child's reports are its messages, and the
+//!   completion notice only says it ended.
 //! - Lifecycle authority over other agents' children.
 //! - Tailing a child's transcript into its parent's context, the failure
 //!   subagents exist to avoid.
@@ -88,7 +93,7 @@ use demi_agent_session::{
     Subscription,
 };
 use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, Reprofile};
-use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
+use demi_agent_transcript::{CutError, ForkEnd, last_failure};
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
     JobModel, JobPhase, ServerFrame, TranscriptPatch,
@@ -116,8 +121,8 @@ use crate::{
     server::{AgentServer, stored_fork_seed},
 };
 
-/// The bound of a completion's result and of `show`'s last assistant text,
-/// in UTF-8 bytes.
+/// The bound of `show`'s last assistant text and of an archived child's
+/// failure, in UTF-8 bytes.
 const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// The most recent tool calls `show` lists.
 const SHOW_RECENT_TOOLS: usize = 8;
@@ -1342,18 +1347,18 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The block of the stored transcript of the closed child `id` its
-    /// completion names, by how it closed `phase`: its last answer, or a failed
-    /// child's failure record.
+    /// completion names, by how it closed `phase`: a failed child's failure
+    /// record, none for any other.
     ///
-    /// None when it has none, or when its transcript does not load, which only
-    /// costs the receipt its link.
+    /// None too when it has no failure record, or when its transcript does not
+    /// load, which only costs the receipt its link.
     async fn stored_origin(&self, id: &NodeId, phase: &ClosePhase) -> Option<BlockId> {
+        if !matches!(phase, ClosePhase::Error { .. }) {
+            return None;
+        }
         match self.store.session_store(id).load().await {
-            Ok(checkpoint) => checkpoint.and_then(|checkpoint| match phase {
-                ClosePhase::Error { .. } => last_failure(&checkpoint.transcript).map(|error| error.id.clone()),
-                ClosePhase::Completed { .. } | ClosePhase::Aborted => {
-                    last_answer(&checkpoint.transcript, 0).map(|text| text.id.clone())
-                }
+            Ok(checkpoint) => checkpoint.and_then(|checkpoint| {
+                last_failure(&checkpoint.transcript).map(|error| error.id.clone())
             }),
             Err(error) => {
                 tracing::warn!(node = %id, %error, "a closed subagent's transcript did not load for its completion");
@@ -1387,8 +1392,8 @@ impl<H: HostResolver> Tree<H> {
         })
     }
 
-    /// Watches `child` until it closes: it closes with its result once it is
-    /// quiescent, and with the failure once an action failed for good.
+    /// Watches `child` until it closes: it closes as finished once it is
+    /// quiescent, and as failed once an action failed for good.
     fn supervise(self: &Rc<Self>, child: &Rc<Child<H>>) {
         let task = tokio::task::spawn_local(supervision(Rc::downgrade(self), Rc::downgrade(child)));
         *child.supervision.borrow_mut() = Some(AbortOnDropHandle::new(task));
@@ -1405,7 +1410,9 @@ impl<H: HostResolver> Tree<H> {
     /// - no child of its own is live;
     /// - no command it started still runs.
     ///
-    /// It closes with its last answer.
+    /// A turn it ended to wait for its commands or children is no end, and a
+    /// child that reported by message and went on to wait closes only when none
+    /// of these is left.
     fn decide(&self, child: &Child<H>) -> Decision {
         if child.closing.get() || self.disposing.get() {
             return Decision::Stop;
@@ -1493,16 +1500,10 @@ impl<H: HostResolver> Tree<H> {
             Box::pin(self.abort_children_of(child.id())).await;
         }
         // The completion names the block of the child's transcript it comes
-        // from: the last answer, or a failed child's failure record.
-        let answer = session.last_answer();
+        // from: a failed child's failure record.
         let (phase, origin) = match kind {
-            CloseKind::Completed => (
-                ClosePhase::Completed {
-                    result: bounded(answer.as_ref().map_or("", |(_, text)| text)).to_owned(),
-                },
-                answer.map(|(id, _)| id),
-            ),
-            CloseKind::Aborted => (ClosePhase::Aborted, answer.map(|(id, _)| id)),
+            CloseKind::Completed => (ClosePhase::Completed, None),
+            CloseKind::Aborted => (ClosePhase::Aborted, None),
             CloseKind::Error => (
                 ClosePhase::Error {
                     failure: child.failure.borrow().clone().unwrap_or_default(),
@@ -1829,10 +1830,9 @@ impl<H: HostResolver> Tree<H> {
         let Some(close) = record.closed else {
             return Ok(None);
         };
-        let (result, failure) = match close.phase {
-            ClosePhase::Completed { ref result } => (Some(bounded(result).to_owned()), None),
-            ClosePhase::Error { ref failure } => (None, Some(bounded(failure).to_owned())),
-            ClosePhase::Aborted => (None, None),
+        let failure = match close.phase {
+            ClosePhase::Error { ref failure } => Some(bounded(failure).to_owned()),
+            ClosePhase::Completed | ClosePhase::Aborted => None,
         };
         let archived = ArchivedSnapshot {
             id: record.number,
@@ -1842,7 +1842,6 @@ impl<H: HostResolver> Tree<H> {
             status: close.phase.job_phase(),
             started_at: record.started_at,
             closed_at: close.at,
-            result,
             failure,
             cwd: record
                 .cwd
@@ -2025,16 +2024,16 @@ pub(super) async fn stop_all(session: &AgentSession) {
 /// A closed round's completion message
 /// (`crates/shared-types/src/agent_message.rs`).
 ///
-/// Its id names the round, and its body is the result, or the failure text,
-/// which can be empty. It comes from the block `origin` of the child's
-/// transcript.
+/// Its id names the round, and its body is the failure reason of a failed
+/// round, which can be empty, and empty otherwise. It comes from the block
+/// `origin` of the child's transcript, a failed child's failure record.
 fn completion(record: &NodeRecord, close: &NodeClose, origin: Option<BlockId>) -> AgentMessage {
     let round = CompletionId {
         child: record.id.clone(),
         round: record.round,
     };
     let (content, outcome) = match &close.phase {
-        ClosePhase::Completed { result } => (result.clone(), CompletionOutcome::Completed),
+        ClosePhase::Completed => (String::new(), CompletionOutcome::Completed),
         ClosePhase::Aborted => (String::new(), CompletionOutcome::Aborted),
         ClosePhase::Error { failure } => (failure.clone(), CompletionOutcome::Failed),
     };
@@ -2080,9 +2079,9 @@ fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
     };
     [
         format!("You are a subagent: agent {child} of this conversation, spawned by agent {parent}. Your transcript starts empty; the task brief in the first user message is your entire context."),
-        "A turn you end with your answer returns that answer to the parent as the result and ends the session once nothing you started still runs: no queued or unread messages or command reports, no running children or commands of your own. To wait for your commands or children, end your turn: their end wakes you.".to_owned(),
+        "Your session ends once nothing you started still runs: no queued or unread messages or command reports, no running children or commands of your own. To wait for your commands or children, end your turn: their end wakes you.".to_owned(),
         spawning.to_owned(),
-        "`demi agent send <id|parent>` delivers a message through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). Your final answer is delivered automatically. `demi agent list` renders the whole agent tree with your position.".to_owned(),
+        "`demi agent send <id|parent>` delivers a message through internal steering or an idle wakeup. It reads the message only from stdin (use a quoted heredoc). `demi agent list` renders the whole agent tree with your position.".to_owned(),
         "You are not talking to the product user; do not address them.".to_owned(),
     ]
     .join("\n")
@@ -2379,7 +2378,7 @@ pub(crate) enum ShownAgent {
 }
 
 /// An archived child as `demi agent show --json` gives it: how and when it
-/// closed, and its result or failure with the bound of a completion.
+/// closed, and its failure with the bound of a completion's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ArchivedSnapshot {
@@ -2391,8 +2390,6 @@ pub(crate) struct ArchivedSnapshot {
     status: JobPhase,
     started_at: Timestamp,
     closed_at: Timestamp,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     failure: Option<String>,
     /// Its working directory on the primary Host as it closed.
@@ -2526,11 +2523,9 @@ fn archived_text(archived: &ArchivedSnapshot) -> String {
         .field("Directory", archived.cwd.as_str())
         .field("Started", archived.started_at)
         .field("Closed", archived.closed_at);
-    match (&archived.result, &archived.failure) {
-        (Some(result), _) => fields.text("Result", result),
-        (None, Some(failure)) => fields.text("Failure", failure),
-        (None, None) => &mut fields,
-    };
+    if let Some(failure) = &archived.failure {
+        fields.text("Failure", failure);
+    }
     fields.render()
 }
 

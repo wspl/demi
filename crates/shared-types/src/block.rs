@@ -418,7 +418,7 @@ pub struct ContextBlock {
     #[garde(dive)]
     pub model: ModelSelection,
     /// The source that answered: `execution`, [`INSTRUCTIONS_SOURCE`],
-    /// [`WORKING_DIRECTORY_SOURCE`], or a plugin's id.
+    /// [`WORKING_DIRECTORY_SOURCE`], [`REPORTING_SOURCE`], or a plugin's id.
     #[garde(length(chars, min = 1, max = 64))]
     pub source: String,
     #[garde(skip)]
@@ -465,6 +465,11 @@ pub const EXECUTION_SOURCE: &str = "execution";
 /// and after each compaction. No plugin may be named so: a plugin's id has no
 /// `_`.
 pub const WORKING_DIRECTORY_SOURCE: &str = "working_directory";
+
+/// The context source of what a subagent is told of how its parent hears from
+/// it (`crates/agent-server/src/node/mod.rs`): before its first request and
+/// after each compaction. No plugin may be named so: a plugin's id has no `_`.
+pub const REPORTING_SOURCE: &str = "agent_reporting";
 
 /// The context source of the skills plugin, whose block is the skills
 /// catalog, the context card's Skills row.

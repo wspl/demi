@@ -170,7 +170,7 @@ async fn a_resume_onto_another_profile_goes_on_with_its_history_on_that_models_p
     assert_eq!(record.model.as_ref().map(|model| model.model.id.as_str()), Some("other-model"));
     assert_eq!(
         closed_phase(&fixture, &child),
-        Some(ClosePhase::Completed { result: "Fixed the cache read.".into() })
+        Some(ClosePhase::Completed)
     );
     assert_eq!(
         text_models(&fixture, &child).await,
@@ -384,7 +384,7 @@ async fn child_on(
         instructions: Some("Write for the web app.".into()),
         model: Some(record_model),
         closed: archived.then(|| NodeClose {
-            phase: ClosePhase::Completed { result: "first".into() },
+            phase: ClosePhase::Completed,
             at: Timestamp::UNIX_EPOCH,
         }),
         delivered: archived,
@@ -425,7 +425,7 @@ async fn a_resume_goes_on_on_the_records_model_when_the_old_provider_is_gone() {
     assert_eq!(resumed.code, 0, "{resumed:?}");
     client.next_until(round_closed(&child, 2)).await;
     assert_eq!(other.requests_of("task trace the estimate")[0].model_id, "other-model");
-    assert_eq!(closed_phase(&fixture, &child), Some(ClosePhase::Completed { result: "Fixed.".into() }));
+    assert_eq!(closed_phase(&fixture, &child), Some(ClosePhase::Completed));
     until(|| fixture.store.record(&child).unwrap().delivered).await;
     // The round saved the model it ran on; a resume after it names no profile.
     let again = agent(&fixture.server, &root(), "resume", json!({ "id": 1, "message": "Once more." })).await;
@@ -457,7 +457,7 @@ async fn a_resume_and_a_restore_go_on_on_the_records_model_when_the_old_provider
         let asked = other.requests_of("task trace the estimate");
         assert_eq!(asked.len(), 1, "archived: {archived}");
         assert_eq!(asked[0].model_id, "other-model");
-        assert_eq!(closed_phase(&fixture, &child), Some(ClosePhase::Completed { result: "Fixed.".into() }));
+        assert_eq!(closed_phase(&fixture, &child), Some(ClosePhase::Completed));
     }
 }
 
@@ -538,7 +538,7 @@ async fn an_inheriting_child_keeps_the_instructions_its_parent_had_at_its_spawn(
                 instructions: Some("Read only.".into()),
                 model: Some(model_of("other", "other-model")),
                 closed: Some(NodeClose {
-                    phase: ClosePhase::Completed { result: "first".into() },
+                    phase: ClosePhase::Completed,
                     at: Timestamp::UNIX_EPOCH,
                 }),
                 delivered: true,

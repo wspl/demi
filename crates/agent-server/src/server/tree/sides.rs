@@ -604,7 +604,7 @@ impl<H: HostResolver> Tree<H> {
             side.events.borrow_mut().take();
             let phase = match failure {
                 Some(failure) => ClosePhase::Error { failure },
-                None => ClosePhase::Completed { result: String::new() },
+                None => ClosePhase::Completed,
             };
             let close = NodeClose { phase, at: tree.clock.now() };
             if let Err(error) = tree.store.close_node(&id, close).await {
