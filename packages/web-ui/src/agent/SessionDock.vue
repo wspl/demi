@@ -109,7 +109,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       where it covers nothing the user reads last.
     -->
     <span
-      class="pointer-events-none absolute z-20 inline-flex size-hit"
+      class="pointer-events-none absolute z-20 inline-flex size-chip"
       :style="{ bottom: scrollBottom, left: scrollLeft }"
     >
       <Transition
@@ -125,6 +125,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
           class="pointer-events-auto"
           :icon="ChevronDown"
           variant="solid"
+          size="chip"
           circle
           :aria-label="t('dock.scrollToBottom')"
           @click="emit('scrollToBottom')"
@@ -157,7 +158,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       <div ref="chipsRef" class="flex shrink-0 items-center gap-1.5">
         <slot name="chips" />
       </div>
-      <span v-if="showScrollToBottom" class="w-hit shrink-0" />
+      <span v-if="showScrollToBottom" class="w-chip shrink-0" />
       <div class="flex min-w-0 flex-1 justify-end pe-[var(--composer-inset)]">
         <RequestOutputMeter :output="output" :scope="scope" :turn-speed="turnSpeed" />
       </div>

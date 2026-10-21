@@ -960,9 +960,9 @@ watch(
         <template #dock>
           <SessionDock
             :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
-            :output="() => conversation.requestOutput"
+            :output="() => (transcriptShown(conversation.load) ? conversation.requestOutput : null)"
             :scope="conversation.id"
-            :turn-speed="conversation.turnSpeed"
+            :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
             @scroll-to-bottom="scrollToBottom"
           >
             <template v-if="permissionRequests?.length" #above>

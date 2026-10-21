@@ -28,7 +28,7 @@ const props = withDefaults(
   defineProps<{
     icon: Component
     iconSize?: number
-    size?: 'xs' | 'sm' | 'md' | 'lg'
+    size?: 'xs' | 'sm' | 'md' | 'lg' | 'chip'
     variant?: 'default' | 'solid' | 'ghost' | 'danger' | 'accent'
     circle?: boolean
     disabled?: boolean
@@ -143,7 +143,9 @@ const glyphPx = computed(() => {
             ? 'size-hit-sm'
             : size === 'lg'
               ? 'size-hit-lg'
-              : 'size-hit',
+              : size === 'chip'
+                ? 'size-chip'
+                : 'size-hit',
         disabled
           ? 'pointer-events-none cursor-not-allowed text-fg-ghost'
           : variant === 'accent'
