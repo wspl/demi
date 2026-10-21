@@ -3,14 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import { stackAbove } from '../overlay/stacking'
 import { usePhone } from './phone'
-import { selectionTools, shownContextMenu, type SelectionTools } from './context-menu'
+import { selectedLinesBounds, selectionTools, shownContextMenu, type SelectionTools } from './context-menu'
 import SelectionToolRow from './SelectionToolRow.vue'
 
 /**
  * The text selection's toolbar, which the app mounts once at its root.
  *
- * While a selection holds text in one object that offers tools for it, as a
- * message does (`selectionTools`), a row of its tools stands by it:
+ * While the selection holds one object's own text and the object offers tools
+ * for it, as a message does (`selectionTools`), a row of its tools stands by it:
  *
  * - On the desktop it shows the tools that act in place, such as Comment. The
  *   right-click menu holds Copy and the rest.
@@ -19,9 +19,9 @@ import SelectionToolRow from './SelectionToolRow.vue'
  *
  * Placement and timing:
  *
- * - On the desktop it stands above the selection, once the mouse that drags it is
- *   released. On a phone it stands under the selection, clear of the system's
- *   callout above.
+ * - It is centered on the bounds of the selected text's lines. On the desktop it
+ *   stands above them, once the mouse that drags the selection is released. On a
+ *   phone it stands under them, clear of the system's callout above.
  * - It shows once the selection is made, already where it stands.
  * - It steps aside while a context menu is open, the one control for the
  *   selection then, and comes back as the menu closes on the selection still
@@ -41,7 +41,7 @@ const holding = ref(false)
 function read(): void {
   if (holding.value)
     return
-  tools.value = selectionTools(window.getSelection(), phone.value)
+  tools.value = selectionTools(phone.value)
 }
 
 const listeners = new AbortController()
@@ -65,30 +65,25 @@ onBeforeUnmount(() => listeners.abort())
  * text is read as the selection's, so the toolbar never stands for text that went.
  */
 watch(tools, (now, _before, onCleanup) => {
-  const around = now?.range.commonAncestorContainer
   // The object the text is in, whose part holding the text may itself be replaced.
-  const element = (around instanceof Element ? around : around?.parentElement)?.closest('[data-context-menu]')
-  if (!element)
+  if (!now)
     return
   const observer = new MutationObserver(read)
-  observer.observe(element, { childList: true, subtree: true, characterData: true })
+  observer.observe(now.object, { childList: true, subtree: true, characterData: true })
   onCleanup(() => observer.disconnect())
 })
 
 const shown = computed(() => tools.value !== null && !dragging.value && shownContextMenu.value === null)
 
 const reference = computed(() => {
-  const range = tools.value?.range
-  if (!range)
+  const now = tools.value
+  if (!now)
     return null
-  const start = range.startContainer
   return {
-    contextElement: start instanceof Element ? start : start.parentElement ?? undefined,
-    // Above the selection's first line on the desktop; under its last on a phone.
-    getBoundingClientRect: () => {
-      const rects = [...range.getClientRects()]
-      return (phone.value ? rects.at(-1) : rects[0]) ?? range.getBoundingClientRect()
-    },
+    contextElement: now.object,
+    // The selected lines' bounds, whose top the desktop's toolbar stands above
+    // and whose bottom a phone's stands under.
+    getBoundingClientRect: () => selectedLinesBounds(now.range) ?? now.range.getBoundingClientRect(),
   }
 })
 

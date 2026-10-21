@@ -7,7 +7,7 @@ import SendField from '../../ui/SendField.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { appOverlayStore } from '../../overlay/appOverlay'
 import { usePhone } from '../../ui/phone'
-import type { ContextMenuEntry } from '../../ui/context-menu'
+import { readSelection, selectedText, type ContextMenuEntry, type ResolvedSelection } from '../../ui/context-menu'
 import { t } from '../locales/text'
 import { reportError } from '../../infra/errors'
 import { anchorOf, liveOf, pictureAnchor, pictureOf, pictureQuote, rangeHas, rangeOf, staticOf, type TextAnchor } from './anchors'
@@ -113,12 +113,13 @@ function liveRange(item: Placed): Range | null {
 }
 
 /**
- * `item`'s live range while the reply still holds what it quotes: its words, or
- * its picture, which `liveRange` checks.
+ * `item`'s live range while the reply still holds what it quotes: its words, read
+ * as the page reads a selection's (`selectedText`), or its picture, which
+ * `liveRange` checks.
  */
 function heldRange(item: Placed): Range | null {
   const range = liveRange(item)
-  return range && (item.picture || range.toString() === item.quote) ? range : null
+  return range && (item.picture || selectedText(range) === item.quote) ? range : null
 }
 
 // --- The box under a selection, a new comment or a side question.
@@ -196,27 +197,19 @@ async function sendBox(text: string, now = false): Promise<void> {
 }
 
 /**
- * Comment for the selection in the reply `reply`, the text block `blockId`
- * whose rendered text is `root`. It is disabled while the reply is still being
- * written, read where the tool is drawn, so it turns enabled as the reply ends
- * under a selection that stays. None for a selection the reply does not hold.
+ * Comment and Ask for `selected`, the reply's own text the page's selection takes
+ * as the page read it (`readSelection`), in the reply `reply`, the text block
+ * `blockId` whose rendered text is `root`: the comment quotes its text, as Copy
+ * copies it. They are disabled while the reply is still being written, read where
+ * the tool is drawn, so they turn enabled as the reply ends under a selection that
+ * stays. None for a selection outside the reply's rendered text.
  */
-function selectionTools(reply: { blockId: string; root: HTMLElement }, streaming: () => boolean): ContextMenuEntry[] {
-  const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0)
-    return []
-  const range = selection.getRangeAt(0)
+function selectionTools(reply: { blockId: string; root: HTMLElement }, selected: ResolvedSelection, streaming: () => boolean): ContextMenuEntry[] {
   const at = reply.root.querySelector<HTMLElement>('.markdown-body')
-  // A selection reaching into a side question's card is the card's, which asks
-  // nothing again.
-  if (at && [...at.querySelectorAll('[data-ask-host]')].some((host) => range.intersectsNode(host)))
-    return []
-  const anchor = at ? anchorOf(at, range) : null
+  const anchor = at ? anchorOf(at, selected.range) : null
   if (!at || !anchor)
     return []
-  // The quote is read as the mark is checked against it (`measure`), so the two
-  // agree.
-  const quote = rangeOf(at, anchor)?.toString() ?? range.toString()
+  const quote = selected.text
   // Read where the tool is drawn: it turns enabled as the reply ends under a
   // selection that stays.
   const tool = (kind: 'comment' | 'ask') => ({
@@ -565,7 +558,7 @@ function onPointerLeave(): void {
 function onClick(event: MouseEvent): void {
   // A picture's click opens it in the viewer, as anywhere; its card shows under
   // the pointer and from its mark.
-  if (!window.getSelection()?.isCollapsed || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card], a, button, img'))
+  if (readSelection() !== null || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card], a, button, img'))
     return
   const asking = askAt(event.clientX, event.clientY)
   if (asking) {

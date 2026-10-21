@@ -29,7 +29,8 @@ const actions = computed(() => answerActions(props, () => undefined))
 
 <template>
   <!-- A phone's actions are 36 px, 8 apart, each its own target. -->
-  <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint phone:gap-2">
+  <!-- No text of the reply's: a selection that takes its timestamp is not the reply's words. -->
+  <div data-context-chrome class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint phone:gap-2">
     <VersionSwitcher v-if="versions" :choice="versions" />
     <template v-for="action in actions" :key="action.key">
       <CopyButton v-if="action.key === 'copy'" :source="content" />

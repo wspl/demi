@@ -35,6 +35,12 @@ import type { SentenceText, TitleText } from './ui-text'
  * On a phone a message's text keeps the system's long press, which selects words.
  * The selection's toolbar (`selectionTools`, SelectionToolbar) offers what a menu
  * would.
+ *
+ * The page's selection is read in one place (`readSelection`): what it selects,
+ * judged by the characters and pictures it takes rather than by where the browser
+ * puts its ends, its text, and the object whose own text it is. The toolbar, the
+ * selection's menu and the objects' tools all take that reading, so they agree on
+ * every selection.
  */
 
 /** One row of a context menu: what it says and what choosing it does. */
@@ -84,10 +90,11 @@ export interface ContextMenuDeclaration {
    */
   text?: boolean
   /**
-   * What the object offers for text selected in it, after the selection's
-   * Copy in its menu, and on the selection's toolbar (`selectionTools`).
+   * What the object offers for its own text selected (`readSelection`), after
+   * the selection's Copy in its menu, and on the selection's toolbar
+   * (`selectionTools`).
    */
-  selectionEntries?: (text: string) => readonly ContextMenuEntry[]
+  selectionEntries?: (selected: ResolvedSelection) => readonly ContextMenuEntry[]
   /**
    * What the object offers for a picture in it, a group after the
    * picture's Copy Image and Save Image, as a reply's Comment, Ask and
@@ -225,27 +232,24 @@ function inSelectableText(target: Element): boolean {
  * lines or the margin of a list item included (the caret the point gives lies within
  * it). Blank space outside its bounds never is.
  */
-function selectionUnder(ask: ContextMenuAsk): string | null {
-  const selection = window.getSelection()
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0)
+function selectionUnder(ask: ContextMenuAsk): SelectionReading | null {
+  const reading = readSelection()
+  if (!reading)
     return null
-  const text = selection.toString()
-  if (text.trim() === '')
-    return null
-  const range = selection.getRangeAt(0)
+  const { range } = reading
   const point = ask.point
   if (point === null)
-    return ask.target.contains(range.commonAncestorContainer) || range.intersectsNode(ask.target) ? text : null
+    return ask.target.contains(range.commonAncestorContainer) || range.intersectsNode(ask.target) ? reading : null
   const onText = [...range.getClientRects()].some((rect) =>
     point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom)
   if (onText)
-    return text
+    return reading
   // The caret snaps blank space beside the selection, such as a message's padding, to its nearest end: only a point within the selection's own bounds counts.
   const bounds = range.getBoundingClientRect()
   if (point.x < bounds.left || point.x > bounds.right || point.y < bounds.top || point.y > bounds.bottom)
     return null
   const caret = caretAt(point)
-  return caret && range.isPointInRange(caret.node, caret.offset) ? text : null
+  return caret && range.isPointInRange(caret.node, caret.offset) ? reading : null
 }
 
 /** The caret position a click at `point` gives, as the browser's own selection reads it. */
@@ -260,20 +264,19 @@ function caretAt(point: { x: number; y: number }): { node: Node; offset: number 
 }
 
 /**
- * The selection's menu, which ends the walk: Copy, then what the object around
- * `target` offers for `text`, its selected text, and nothing of the object's own
- * menu.
+ * The selection's menu, which ends the walk: Copy, then what the object whose own
+ * text it selects offers for it (`readSelection`), and nothing of the object's own
+ * menu. A selection of no one object's own text, as one across two messages, has
+ * Copy alone.
  *
  * Its rows are read as it opens, from the selection as it is then, so they agree with
  * each other whatever becomes of the selection meanwhile, as when the focus moving
  * into a submenu's field ends it.
  */
-function selectionMenu(target: Element, text: string, services: ContextMenuServices): ComposedMenu {
-  let object: Element | null = target
-  while (object && !declarations.has(object))
-    object = object.parentElement
-  const offered = object ? declarations.get(object)?.selectionEntries?.(text) ?? [] : []
-  const group: ContextMenuGroup = [{ icon: Copy, label: shared('common.copy'), run: () => services.copy(text) }, ...offered]
+function selectionMenu(reading: SelectionReading, services: ContextMenuServices): ComposedMenu {
+  const { object } = reading
+  const offered = object ? declarations.get(object)?.selectionEntries?.({ ...reading, object }) ?? [] : []
+  const group: ContextMenuGroup = [{ icon: Copy, label: shared('common.copy'), run: () => services.copy(reading.text) }, ...offered]
   return { groups: () => [group], objects: object ? [object] : [], opened: () => {}, closed: () => {} }
 }
 
@@ -339,9 +342,9 @@ function contentGroup(el: Element, services: ContextMenuServices): ContextMenuGr
  * menu of its own.
  */
 export function composeContextMenu(ask: ContextMenuAsk, services: ContextMenuServices): ComposedMenu | null {
-  const selected = selectionUnder(ask)
-  if (selected !== null)
-    return selectionMenu(ask.target, selected, services)
+  const reading = selectionUnder(ask)
+  if (reading !== null)
+    return selectionMenu(reading, services)
   const parts: (() => ContextMenuGroup[])[] = []
   const asked: ContextMenuDeclaration[] = []
   const objects: Element[] = []
@@ -574,17 +577,275 @@ export function closeContextMenu(): void {
   shown.menu.closed()
 }
 
-/** What the selection's toolbar shows: the selected text, where it is, and its tools. */
-export interface SelectionTools {
+/** The page's selection as the page's tools take it (`readSelection`). */
+export interface SelectionReading {
+  /** Its text, as Copy copies it (`selectedText`). */
   text: string
+  /**
+   * From the first character or picture it selects to the last. An end the
+   * browser puts where it selects nothing, such as the start of a timestamp under
+   * a reply's last line, is left out; whitespace it selects is kept.
+   */
   range: Range
+  /**
+   * The object whose own content it selects: the nearest element around it that
+   * declares its menu (`vContextMenu`), when every character and picture it takes
+   * is of that object's own content. Null for any other selection: one across two
+   * messages, or one that takes a character of what is no content of the object,
+   * a control, a part marked `data-context-chrome` (a message's footer with its
+   * timestamp), or another object set into it (a side question's card).
+   */
+  object: Element | null
+}
+
+/** A selection of one object's own content, which the object's tools act on. */
+export interface ResolvedSelection extends SelectionReading {
+  object: Element
+}
+
+/**
+ * A picture: an image, a video, or the box that stands in a picture's place
+ * (`role="img"`), whose words are no text. An icon, which the page hides from
+ * assistive technology, is none.
+ */
+const PICTURE = 'img, video, [role="img"]'
+
+/** What a range takes: the part of a text node it selects, or a picture. */
+type SelectedItem = { node: Text; start: number; end: number } | { node: Element }
+
+function isPicture(el: Element): boolean {
+  return el.matches(PICTURE) && el.closest('[aria-hidden="true"]') === null
+}
+
+/**
+ * What `range` takes, in document order: each text node it selects at least one
+ * character of, with that part, and each picture it holds. A boundary that selects
+ * nothing of a node, as one at the start of a timestamp, takes nothing of it.
+ */
+function selectedItems(range: Range): SelectedItem[] {
+  const around = range.commonAncestorContainer
+  if (around instanceof Text)
+    return range.endOffset > range.startOffset ? [{ node: around, start: range.startOffset, end: range.endOffset }] : []
+  const items: SelectedItem[] = []
+  const walker = document.createTreeWalker(around, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!range.intersectsNode(node))
+      continue
+    if (node instanceof Element) {
+      if (isPicture(node))
+        items.push({ node })
+      continue
+    }
+    if (!(node instanceof Text) || node.parentElement?.closest(PICTURE))
+      continue
+    const start = node === range.startContainer ? range.startOffset : 0
+    const end = node === range.endContainer ? range.endOffset : node.length
+    if (end > start)
+      items.push({ node, start, end })
+  }
+  return items
+}
+
+/** Whether `item` is a picture or holds a character that is not whitespace. */
+function visible(item: SelectedItem): boolean {
+  return !('start' in item) || /\S/.test(item.node.data.slice(item.start, item.end))
+}
+
+/** Whether the whitespace `item` selects is drawn: kept by its style, or given a width. */
+function drawn(item: SelectedItem): boolean {
+  if (!('start' in item))
+    return true
+  const space = item.node.parentElement ? getComputedStyle(item.node.parentElement).whiteSpace : ''
+  if (space.startsWith('pre') || space === 'break-spaces')
+    return true
+  const part = document.createRange()
+  part.setStart(item.node, item.start)
+  part.setEnd(item.node, item.end)
+  return [...part.getClientRects()].some((rect) => rect.width > 0)
+}
+
+/** The object `node` belongs to: the nearest element around it that declares its menu. */
+function ownerOf(node: Node): Element | null {
+  for (let el = node.parentElement; el; el = el.parentElement) {
+    if (declarations.has(el))
+      return el
+  }
+  return null
+}
+
+/** Whether `item` is of `object`'s own content: in it, and in no control or chrome of it. */
+function ownedBy(item: SelectedItem, object: Element): boolean {
+  if (ownerOf(item.node) !== object)
+    return false
+  const element = item.node instanceof Element ? item.node : item.node.parentElement
+  const apart = element?.closest(`[data-context-chrome], ${CONTROL}`)
+  return !apart || !object.contains(apart)
+}
+
+/**
+ * The page's selection, read in the one place every tool that acts on it reads
+ * it: the toolbar, the selection's menu and the objects' own tools take this, and
+ * none reads the browser's selection itself.
+ *
+ * It is judged by what it selects, not by where the browser puts its ends: a
+ * triple-click on a reply's last paragraph ends at the start of the timestamp under
+ * it, and on a paragraph before a side question's card at the start of the card's
+ * title, though it selects nothing of either. A selection that takes a character
+ * of the timestamp or of the card is no longer the reply's own content; one that
+ * takes a picture of the reply still is.
+ *
+ * Null when it selects no character but whitespace, or starts in a text field.
+ */
+export function readSelection(): SelectionReading | null {
+  const selection = window.getSelection()
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0)
+    return null
+  const selected = selection.getRangeAt(0)
+  const start = selected.startContainer instanceof Element ? selected.startContainer : selected.startContainer.parentElement
+  if (!start || inTextField(start))
+    return null
+  const items = selectedItems(selected)
+  const first = items.find((item) => 'start' in item && visible(item))
+  if (!first)
+    return null
+  const candidate = ownerOf(first.node)
+  const object = candidate && items.every((item) => !visible(item) || ownedBy(item, candidate)) ? candidate : null
+  // Whitespace at either end counts when it is drawn and, for an object, is of
+  // its content, as the space after a bold word; the line break between two
+  // blocks, or one in a footer, selects nothing.
+  const counts = (item: SelectedItem) => visible(item) || (drawn(item) && (!candidate || ownedBy(item, candidate)))
+  const head = items.find(counts)!
+  const tail = items.findLast(counts)!
+  const range = document.createRange()
+  if ('start' in head)
+    range.setStart(head.node, head.start)
+  else
+    range.setStartBefore(head.node)
+  if ('start' in tail)
+    range.setEnd(tail.node, tail.end)
+  else
+    range.setEndAfter(tail.node)
+  return { text: selectedText(range), range, object }
+}
+
+/**
+ * The text of `range` as the page copies it, quotes it and checks a quote against
+ * it: its characters as they are drawn, by the rules of `innerText`. Whitespace
+ * collapses as its style collapses it, a block starts and ends a line, a paragraph
+ * with a blank line, and a picture gives none.
+ */
+export function selectedText(range: Range): string {
+  const parts: ({ text: string; collapsible: boolean } | number)[] = []
+  const styles = new Map<Element, CSSStyleDeclaration>()
+  const styleOf = (el: Element) => {
+    let style = styles.get(el)
+    if (!style) {
+      style = getComputedStyle(el)
+      styles.set(el, style)
+    }
+    return style
+  }
+  const text = (node: Text) => {
+    const start = node === range.startContainer ? range.startOffset : 0
+    const end = node === range.endContainer ? range.endOffset : node.length
+    const data = node.data.slice(start, end)
+    const space = node.parentElement ? styleOf(node.parentElement).whiteSpace : 'normal'
+    if (space === 'pre' || space === 'pre-wrap' || space === 'break-spaces')
+      parts.push({ text: data, collapsible: false })
+    else if (space === 'pre-line')
+      parts.push({ text: data.replace(/[ \t]+/g, ' '), collapsible: true })
+    else
+      parts.push({ text: data.replace(/[ \t\n\r]+/g, ' '), collapsible: true })
+  }
+  const walk = (parent: Node) => {
+    for (const node of parent.childNodes) {
+      if (!range.intersectsNode(node))
+        continue
+      if (node instanceof Text) {
+        text(node)
+        continue
+      }
+      if (!(node instanceof Element) || isPicture(node))
+        continue
+      const style = styleOf(node)
+      if (style.display === 'none')
+        continue
+      if (node.tagName === 'BR') {
+        parts.push({ text: '\n', collapsible: false })
+        continue
+      }
+      const lines = style.display.startsWith('inline') || style.display === 'contents' ? 0 : node.tagName === 'P' ? 2 : 1
+      parts.push(lines)
+      walk(node)
+      parts.push(lines)
+    }
+  }
+  const around = range.commonAncestorContainer
+  if (around instanceof Text)
+    text(around)
+  else
+    walk(around)
+  let out = ''
+  let lines = 0
+  // `out` ends in a space that collapses away at the end of a line.
+  let spaceAtEnd = false
+  for (const part of parts) {
+    if (typeof part === 'number') {
+      lines = Math.max(lines, part)
+      continue
+    }
+    const words = part.collapsible && (lines > 0 || spaceAtEnd) ? part.text.replace(/^ /, '') : part.text
+    if (words === '')
+      continue
+    if (lines > 0 && out !== '')
+      out = (spaceAtEnd ? out.slice(0, -1) : out) + '\n'.repeat(lines)
+    lines = 0
+    out += words
+    spaceAtEnd = part.collapsible && out.endsWith(' ')
+  }
+  return out
+}
+
+/**
+ * The bounds of the lines and pictures `range` selects: the boxes of its
+ * characters and pictures alone, without those the browser gives a block it wholly
+ * selects, which span the block's width. Null when it draws none, as a range whose
+ * text left the page.
+ */
+export function selectedLinesBounds(range: Range): DOMRect | null {
+  let left = Infinity
+  let top = Infinity
+  let right = -Infinity
+  let bottom = -Infinity
+  const part = document.createRange()
+  for (const item of selectedItems(range)) {
+    if ('start' in item) {
+      part.setStart(item.node, item.start)
+      part.setEnd(item.node, item.end)
+    } else {
+      part.selectNode(item.node)
+    }
+    for (const rect of part.getClientRects()) {
+      if (rect.width === 0)
+        continue
+      left = Math.min(left, rect.left)
+      top = Math.min(top, rect.top)
+      right = Math.max(right, rect.right)
+      bottom = Math.max(bottom, rect.bottom)
+    }
+  }
+  return left === Infinity ? null : new DOMRect(left, top, right - left, bottom - top)
+}
+
+/** What the selection's toolbar shows: the selection read and its object's tools. */
+export interface SelectionTools extends ResolvedSelection {
   entries: readonly ContextMenuEntry[]
 }
 
 /**
- * The tools for the selection `selection` holds, when it holds text inside one
- * object that offers tools for its selected text, as a message does
- * (`selectionEntries`).
+ * The tools for the page's selection, when it selects one object's own content
+ * and the object offers tools for it, as a message does (`readSelection`,
+ * `selectionEntries`).
  *
  * - On the desktop they are those that act in place (`inPlace`), since the
  *   right-click menu holds Copy and the rest.
@@ -594,24 +855,13 @@ export interface SelectionTools {
  * Null when there are none, and for any other selection, one across two messages
  * or in a text field included.
  */
-export function selectionTools(selection: Selection | null, phone: boolean): SelectionTools | null {
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0)
+export function selectionTools(phone: boolean): SelectionTools | null {
+  const reading = readSelection()
+  const object = reading?.object
+  const offer = object ? declarations.get(object)?.selectionEntries : undefined
+  if (!reading || !object || !offer)
     return null
-  const text = selection.toString()
-  if (text.trim() === '')
-    return null
-  const range = selection.getRangeAt(0)
-  const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement
-  if (!start || inTextField(start))
-    return null
-  for (let el: Element | null = start; el; el = el.parentElement) {
-    const declaration = declarations.get(el)
-    if (!declaration)
-      continue
-    if (!declaration.selectionEntries || !el.contains(range.endContainer))
-      return null
-    const entries = declaration.selectionEntries(text).filter((entry) => phone || entry.inPlace === true)
-    return entries.length > 0 ? { text, range, entries } : null
-  }
-  return null
+  const selected = { ...reading, object }
+  const entries = offer(selected).filter((entry) => phone || entry.inPlace === true)
+  return entries.length > 0 ? { ...selected, entries } : null
 }
