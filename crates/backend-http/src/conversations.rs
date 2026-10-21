@@ -88,6 +88,9 @@ pub(super) async fn list(
 /// - A new conversation with what the request names answers 201.
 /// - The caller's conversation of that id again applies nothing and answers
 ///   200.
+/// - A first message the request carries is admitted once the record exists,
+///   and the answer says whether it was taken or why not; the conversation
+///   exists either way, and a request sent again takes the message once.
 /// - Another user's conversation holding the id, or a Fork reserving it,
 ///   answers 409 `id_unavailable`.
 ///
@@ -98,10 +101,10 @@ pub(super) async fn create(
     AuthUser(user): AuthUser,
     JsonBody(request): JsonBody<CreateConversation>,
 ) -> Result<(StatusCode, Json<CreatedConversation>), ApiError> {
-    let creation = state
+    let (creation, first_message) = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.create_conversation(request).await })
+        .call(move |shard, _| async move { shard.create_conversation_sending(request).await })
         .await?
         .map_err(hosts::refused)?;
     let (status, record) = match creation {
@@ -124,7 +127,7 @@ pub(super) async fn create(
             Ok::<_, demi_backend_database::StorageError>((conversation, shard.conversation_metadata(record).await?))
         })
         .await??;
-    Ok((status, Json(CreatedConversation { conversation, metadata })))
+    Ok((status, Json(CreatedConversation { conversation, metadata, first_message })))
 }
 
 /// `GET /conversations/:id/attachments/:attachment/file`: whether the file the

@@ -4,6 +4,13 @@
 //! its settings. Each is checked as its own change would check it before
 //! anything is created, so a refused one creates nothing.
 //!
+//! A first message the request carries is admitted once the record exists
+//! (`create_conversation_sending`), as the conversation socket admits a
+//! `send` (`socket.rs`, `admit_first_message`): the creation does not wait
+//! for the page's socket, and the conversation exists whether or not the
+//! session takes the message
+//! (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+//!
 //! Its directory is selected as a move's is, in the transaction that creates
 //! it, which makes the directory's project when there is none, by the
 //! directory's name on its Host (`crates/backend-database/src/selection.rs`).
@@ -11,12 +18,35 @@
 use demi_backend_database::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_page_sync::Part;
-use demi_web_api_protocol::conversations::{ConversationTarget, CreateConversation, ModelSettings};
+use demi_web_api_protocol::conversations::{
+    ConversationTarget, CreateConversation, FirstMessageAnswer, ModelSettings,
+};
 
 use crate::shard::Shard;
 
 impl Shard {
-    /// Creates the user's conversation `request.id` as the request says. The
+    /// Creates the conversation as the request says, then admits the first
+    /// message it carries, if any, in the session the creation opens
+    /// (`admit_first_message`). The conversation exists whatever the message's
+    /// answer is, and one that already existed takes the message as a repeated
+    /// request would: once.
+    pub async fn create_conversation_sending(
+        &self,
+        mut request: CreateConversation,
+    ) -> Result<(Creation, Option<FirstMessageAnswer>), ChangeRefusal> {
+        let first_message = request.first_message.take();
+        let creation = self.create_conversation(request).await?;
+        let answer = match (&creation, first_message) {
+            (Creation::Created(record) | Creation::Existing(record), Some(message)) => {
+                Some(self.this().admit_first_message(&record.id, message).await)
+            }
+            _ => None,
+        };
+        Ok((creation, answer))
+    }
+
+    /// Creates the user's conversation `request.id` as the request says,
+    /// without its first message, which the caller admits. The
     /// user's conversation of that id answers as it is, and nothing of the
     /// request applies to it.
     pub async fn create_conversation(

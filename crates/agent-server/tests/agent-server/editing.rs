@@ -485,7 +485,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
         file_name: file_name.into(),
     };
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: TurnId::try_from("m1").unwrap(),
             content: vec![
@@ -496,7 +496,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
                 upload("upload-2", "clip.mp4"),
                 upload("upload-3", "paper.pdf"),
             ],
-        })
+        }))
         .await;
     client.until_idle().await;
     let target = user_block(&fixture, "m1");
@@ -691,11 +691,11 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     };
     assert_eq!(seeded[..], blocks[..2]);
     forked
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: TurnId::try_from("m3").unwrap(),
             content: client_text("U3"),
-        })
+        }))
         .await;
     forked.until_idle().await;
     assert_eq!(script.remaining(), 0);
@@ -998,11 +998,11 @@ async fn a_picture_comment_reaches_the_model_as_the_image_then_its_comment() {
             text: "Is this the 3G test?".into(),
         };
         client
-            .send(ClientFrame::Send {
+            .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
                 message_id: crate::support::turn("m2"),
                 content: client_text("Otherwise go ahead"),
                 comments: vec![timeout, picture],
-            })
+            }))
             .await;
         client.until_idle().await;
 
@@ -1044,11 +1044,11 @@ async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
     let reply = session_of(&fixture).transcript().blocks[1].id().clone();
     let comments = two_comments(&reply);
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             message_id: crate::support::turn("m2"),
             content: client_text("Otherwise go ahead"),
             comments: comments.clone(),
-        })
+        }))
         .await;
     client.until_idle().await;
     let answer = session_of(&fixture).transcript().blocks[4].id().clone();
@@ -1095,11 +1095,11 @@ async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_ed
     let reply = session_of(&fixture).transcript().blocks[1].id().clone();
     let comments = two_comments(&reply);
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             message_id: crate::support::turn("m2"),
             content: client_text("Otherwise go ahead"),
             comments: comments.clone(),
-        })
+        }))
         .await;
     client.until_idle().await;
 
