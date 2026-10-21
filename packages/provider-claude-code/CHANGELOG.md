@@ -1,5 +1,13 @@
 # @demicodes/provider-claude-code
 
+## 0.25.12
+
+### Patch Changes
+
+- @demicodes/core@0.25.12
+- @demicodes/provider@0.25.12
+- @demicodes/utils@0.25.12
+
 ## 0.25.11
 
 ### Patch Changes

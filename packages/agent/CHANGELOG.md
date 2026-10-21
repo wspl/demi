@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.25.12
+
+### Patch Changes
+
+- b5e9f83: Guide shell_exec timeoutMs toward the command's expected run time so results return in the same call instead of through extra shell_status round trips, and ask for independent commands to be issued together in one response.
+  - @demicodes/core@0.25.12
+  - @demicodes/provider@0.25.12
+  - @demicodes/shell@0.25.12
+  - @demicodes/utils@0.25.12
+
 ## 0.25.11
 
 ### Patch Changes
