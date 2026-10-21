@@ -2,7 +2,8 @@ import { computed, ref, toRaw, watch, type ComputedRef } from 'vue'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import type { PendingAction } from './activity-slot'
-import { listTailBlocks, rowMessageId, submissionRows, undeliveredPlaces } from './list-tail'
+import { listTailBlocks, submissionRows, undeliveredPlaces } from './list-tail'
+import { sentMessage } from './message-delivery'
 import type { ActivitySlotRow, MessageListBlock, StepsNotSharedRow } from './pending-steers'
 import { rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
@@ -275,12 +276,12 @@ export function useMessageRows(
     ]
     const before = placed.value
     const inPlace = (list: readonly MessageListBlock[]) => before.size === 0 ? list : list.flatMap((row) => {
-      const sent = rowMessageId(row)
+      const sent = sentMessage(row)?.id
       return sent === undefined ? [row] : [...before.get(sent) ?? [], row]
     })
     // One whose message shows in no row after all stands at the end of the
     // transcript.
-    const present = new Set([...sharedRows.value, ...tailRows].flatMap((row) => rowMessageId(row) ?? []))
+    const present = new Set([...sharedRows.value, ...tailRows].flatMap((row) => sentMessage(row)?.id ?? []))
     const unplaced = [...before].flatMap(([sent, list]) => present.has(sent) ? [] : list)
     return [
       ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
