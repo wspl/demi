@@ -5,12 +5,15 @@ import { usePageHost, useBoundKinds } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { useProduct } from '../state/product'
+import { useConversations } from './store'
 import { useWorkPanel } from './work'
 
 /**
  * The work panel beside one conversation: its saved tabs and pinned tabs from
  * the work store, and the kinds of the plugin pages the user has on, bound
- * to the conversation.
+ * to the conversation. It shows with the conversation's other facts, once the
+ * opening has them (`docs/decisions/0029-a-conversation-opens-whole.md`): a
+ * panel drawn before them shows the pinned tabs alone, then the saved ones.
  */
 const props = defineProps<{ conversationId: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -18,10 +21,17 @@ const emit = defineEmits<{ close: [] }>()
 const product = useProduct()
 const host = usePageHost()
 const work = useWorkPanel()
+const conversations = useConversations()
 
 const state = computed(() => work.stateFor(props.conversationId))
 
 const recorded = computed(() => work.recorded(props.conversationId))
+
+/** Whether the conversation's opening has its facts, from the disk's copy or the socket's opening. */
+const opened = computed(() => {
+  const load = conversations.items.find((item) => item.id === props.conversationId)?.load
+  return load !== 'reading' && load !== 'loading'
+})
 
 /**
  * The pages' kinds for this conversation (`packages/web-ui/src/plugins/page.ts`), while the panel
@@ -39,6 +49,7 @@ const kinds = useBoundKinds(
 
 <template>
   <WorkPanel
+    v-if="opened"
     :panel="state.panel"
     :tabs-read="state.tabsRead"
     :pinned="state.pinned"

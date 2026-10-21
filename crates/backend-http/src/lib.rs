@@ -83,7 +83,6 @@ mod sync;
 mod transfer;
 mod usage;
 mod users;
-mod workflows;
 mod workspaces;
 
 use std::io;
@@ -338,7 +337,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             post(attachments::upload).layer(DefaultBodyLimit::max(attachments::BODY_LIMIT)),
         )
         .route("/blobs/{sha256}", get(blobs::blob))
-        .route("/models", get(models::models))
+        .route("/models/refresh", post(models::refresh))
         .route("/models/search", get(models::search))
         .route("/providers", get(providers::list).post(providers::create))
         .route("/providers/catalog", get(providers::catalog))
@@ -429,18 +428,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/conversations/{id}/read", post(conversations::read))
         .route(
-            "/conversations/{id}/attachments/{attachment}",
-            get(conversations::attachment),
-        )
-        .route(
             "/conversations/{id}/attachments/{attachment}/file",
             get(conversations::attachment_file),
         )
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/fs/watch", get(file_watch::open))
-        .route("/conversations/{id}/panel", get(panel::read))
-        .route("/conversations/{id}/workflows", get(workflows::list))
         .route("/conversations/{id}/panel/changes", post(panel::change))
         .route(
             "/conversations/{id}/draft",
@@ -449,16 +442,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
         .route(
             "/conversations/{id}/saved",
-            get(saved::list).post(saved::save),
+            post(saved::save),
         )
         .route("/conversations/{id}/saved/from-draft", post(saved::from_draft))
         .route(
             "/conversations/{id}/saved/{message}",
-            put(saved::write).delete(saved::remove),
-        )
-        .route(
-            "/conversations/{id}/permissions",
-            get(permissions::read),
+            get(saved::read).put(saved::write).delete(saved::remove),
         )
         .route(
             "/conversations/{id}/permissions/requests/{request}",
@@ -549,10 +538,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route(
             "/conversations/{id}/fs/raw",
             get(files::raw).put(files::upload),
-        )
-        .route(
-            "/conversations/{id}/hosts",
-            get(hosts::list),
         )
         .route(
             "/conversations/{id}/hosts/{device}",

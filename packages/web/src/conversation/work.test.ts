@@ -26,7 +26,7 @@ const { z } = await import('zod')
 const { waitFor } = await import('@demicodes/utils')
 const { createRouter, createWebHistory } = await import('vue-router')
 const { useSession } = await import('../auth/session')
-const { identitySchema } = await import('../api/generated/web-api')
+const { identitySchema, panelReadSchema } = await import('../api/generated/web-api')
 const { readLocalState } = await import('../state/local')
 const { useResources } = await import('../state/resources')
 const { useProduct } = await import('../state/product')
@@ -255,8 +255,9 @@ test('an attachment’s card opens it in a tab of its own, and a later click sel
 })
 
 /**
- * Answers the work panel's routes as the backend does, from `stored`,
- * counting its reads and keeping each change it was sent.
+ * Answers the work panel's change route as the backend does, from `stored`,
+ * keeping each change it was sent; a read of the panel, which its
+ * conversation's metadata brings, is counted and refused.
  */
 function stubPanelRoutes(stored: { revision: number; tabs: PanelTab[] }) {
   const route = { stored, reads: 0, sent: [] as { method: string; path: string; body: unknown }[] }
@@ -265,7 +266,7 @@ function stubPanelRoutes(stored: { revision: number; tabs: PanelTab[] }) {
     const method = init?.method ?? 'GET'
     if (method === 'GET') {
       route.reads += 1
-      return Response.json({ states: [], ...route.stored })
+      return Response.json({ code: 'not_found', message: 'No such route' }, { status: 404 })
     }
     route.sent.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : null })
     route.stored = { ...route.stored, revision: route.stored.revision + 1 }
@@ -303,11 +304,11 @@ test('a new conversation\'s panel reads and sends nothing until its first send c
   expect(route.reads).toBe(0)
   expect(route.sent).toEqual([])
 
-  // What the first send's record does: the panel is read, and what the user opened before is sent.
+  // What the first send's record does: what the user opened before is sent.
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   work.load(id)
   await settled()
-  expect(route.reads).toBeGreaterThan(0)
+  expect(route.reads).toBe(0)
   expect(route.sent).toEqual([{
     method: 'POST',
     path: `/api/conversations/${id}/panel/changes`,
@@ -315,7 +316,7 @@ test('a new conversation\'s panel reads and sends nothing until its first send c
   }])
 })
 
-test('the selection is this page\'s own, and a higher revision in the metadata reads the panel again', async () => {
+test('the selection is this page\'s own, and the metadata brings another page\'s tab with no read', async () => {
   signIn('one')
   const route = stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://a.test/' } }] })
   const conversations = useConversations()
@@ -324,7 +325,7 @@ test('the selection is this page\'s own, and a higher revision in the metadata r
   const product = useProduct()
   const summary = (panelRevision: number) => {
     useProduct().read = productState({ conversations: [conversationSummary(id, '')] })
-    showMetadata(id, { panelRevision })
+    showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored, revision: panelRevision }) })
   }
   summary(1)
   const work = useWorkPanel()
@@ -335,7 +336,7 @@ test('the selection is this page\'s own, and a higher revision in the metadata r
   await nextTick()
   expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 
-  // Another page added a tab: the metadata's revision rose.
+  // Another page added a tab: the metadata brings it.
   route.stored = { revision: 2, tabs: [...route.stored.tabs, { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } }] }
   summary(2)
   await settled()
@@ -348,6 +349,7 @@ test('the selection is this page\'s own, and a higher revision in the metadata r
   })
 
   // Closing the tab the page went to last leaves the one before it, which a reload shows again.
+  expect(route.reads).toBe(0)
   work.select(id, 'p2')
   work.closeTabs(id, ['p2'])
   await nextTick()
@@ -360,7 +362,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
     { id: 'b1', kind: 'browser', data: { url: 'https://a.test/', tab: 't1', ...(shows ? { shows } : {}) } },
     { id: 'b2', kind: 'browser', data: { url: 'https://b.test/', tab: 't2' } },
   ]
-  const route = stubPanelRoutes({ revision: 1, tabs: tabs() })
+  let route = stubPanelRoutes({ revision: 1, tabs: tabs() })
   const conversations = useConversations()
   const id = conversations.create()
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
@@ -370,7 +372,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
       conversations: [conversationSummary(id, '')],
       plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
     })
-    showMetadata(id, { panelRevision })
+    showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored, revision: panelRevision }) })
   }
   summary(1)
   const work = useWorkPanel()
@@ -397,7 +399,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   pinia = createPinia()
   setActivePinia(pinia)
   signIn('one')
-  const reloadedRoute = stubPanelRoutes({ revision: 3, tabs: tabs(1) })
+  route = stubPanelRoutes({ revision: 3, tabs: tabs(1) })
   useConversations().items.push(...conversations.items)
   summary(3)
   const reloaded = useWorkPanel()
@@ -406,7 +408,7 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   await settled()
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([false, 'b2'])
   // A new showing shows it again.
-  reloadedRoute.stored = { revision: 4, tabs: tabs(2) }
+  route.stored = { revision: 4, tabs: tabs(2) }
   summary(4)
   await settled()
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([true, 'b1'])
@@ -436,10 +438,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
     [a]: { revision: 1, tabs: [] },
     [b]: { revision: 1, tabs: browserTab(1) },
   }
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const id = new URL(String(input), 'http://page.test').pathname.split('/')[3]!
-    return Response.json({ states: [], ...stored[id] })
-  }) as typeof fetch
+  const route = stubPanelRoutes({ revision: 0, tabs: [] })
   const product = useProduct()
   const summaries = () => {
     product.read = productState({
@@ -447,7 +446,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
       plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
     })
     for (const id of [a, b]) {
-      showMetadata(id, { panelRevision: stored[id]!.revision })
+      showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...stored[id]! }) })
     }
   }
   summaries()
@@ -493,6 +492,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
   expect(work.stateFor(a).open).toBe(true)
   await settled()
   expect(readLocalState('one').workPanelOpen).toEqual({ [a]: true })
+  expect(route.reads).toBe(0)
 })
 
 const Page = defineComponent({ render: () => null })
@@ -622,7 +622,7 @@ test('the address bar’s Back is unavailable at the conversation’s first pane
 // panel cannot show.
 test('a link naming a closed tab shows what the panel would without it, its address corrected in place', async () => {
   signIn('one')
-  stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://example.test/' } }] })
+  const route = stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://example.test/' } }] })
   const conversations = useConversations()
   const id = conversations.create()
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
@@ -631,7 +631,7 @@ test('a link naming a closed tab shows what the panel would without it, its addr
     conversations: [conversationSummary(id, '')],
     plugins: [plugin('changes'), plugin('file-browser')],
   })
-  showMetadata(id, { panelRevision: 1 })
+  showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored }) })
   const work = useWorkPanel()
   const router = attachRouter(work)
   await moving(router, () => void router.push(`/chat/${id}?panel=t7`))
@@ -684,7 +684,7 @@ test('on a phone Back from the panel closes it and shows the conversation, as it
 // address that names what the panel shows.
 test('a show from before the page read the tabs leaves an address that names a file as it is', async () => {
   signIn('one')
-  stubPanelRoutes({ revision: 1, tabs: [{ id: 'b1', kind: 'browser', data: { url: 'https://example.test/', tab: 't1', shows: 1 } }] })
+  const route = stubPanelRoutes({ revision: 1, tabs: [{ id: 'b1', kind: 'browser', data: { url: 'https://example.test/', tab: 't1', shows: 1 } }] })
   const conversations = useConversations()
   const id = conversations.create()
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
@@ -693,7 +693,7 @@ test('a show from before the page read the tabs leaves an address that names a f
     conversations: [conversationSummary(id, '')],
     plugins: [plugin('browser'), plugin('file-browser')],
   })
-  showMetadata(id, { panelRevision: 1 })
+  showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored }) })
   const work = useWorkPanel()
   const router = attachRouter(work)
   const link = `/chat/${id}?panel=file&path=/work/a.md&view=preview`

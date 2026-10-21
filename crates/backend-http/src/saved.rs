@@ -1,12 +1,12 @@
-//! The conversation's messages saved for later: `GET/POST
-//! /conversations/:id/saved`, `POST .../saved/from-draft`, and `PUT` and
-//! `DELETE .../saved/:messageId`.
+//! The conversation's messages saved for later: `POST
+//! /conversations/:id/saved`, `POST .../saved/from-draft`, and `GET`, `PUT` and
+//! `DELETE .../saved/:messageId`. The conversation's metadata lists them.
 //!
 //! - A save of the composer's message empties the conversation's draft in one
 //!   transaction. A plain save, Undo's, and the write of an edit's Save, which
 //!   keeps the message in its place, leave the draft alone.
-//! - An archived conversation reads its list and refuses the rest, as it does
-//!   its draft.
+//! - An archived conversation reads its messages and refuses the rest, as it
+//!   does its draft.
 //! - A save names its message's id; one sent again with the same id and content
 //!   answers as the first did.
 //!
@@ -24,7 +24,7 @@ use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::drafts::DRAFT_BYTES_MAX;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::saved::{
-    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedFromDraft, SavedList, SavedRemoved, SavedSave,
+    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedFromDraft, SavedMessage, SavedRemoved, SavedSave,
     SavedWrite,
 };
 
@@ -34,13 +34,20 @@ use super::drafts::staged_files;
 use super::error::ApiError;
 use super::gate::AuthUser;
 
-pub(super) async fn list(
+/// `GET /conversations/:id/saved/:messageId`: the message whole, which the
+/// page reads as it uses it; the metadata lists each with its opening alone.
+pub(super) async fn read(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<SavedList>, ApiError> {
+    Path((id, message)): Path<(String, String)>,
+) -> Result<Json<SavedMessage>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    Ok(Json(services.control.saved_messages(record.id).await?))
+    services
+        .control
+        .saved_message(record.id, message)
+        .await?
+        .map(Json)
+        .ok_or_else(|| refused(SavedRefusal::NotFound))
 }
 
 /// Saves the composer's message for later and empties the draft.
@@ -101,20 +108,20 @@ pub(super) async fn write(
     Ok(Json(answer))
 }
 
-/// Removes the message; one already gone answers the same.
+/// Removes the message; one already gone answers the same, without a message.
 pub(super) async fn remove(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path((id, message)): Path<(String, String)>,
 ) -> Result<Json<SavedRemoved>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    let revisions = services
+    let (revisions, message) = services
         .control
         .delete_saved(record.id.clone(), message)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Metadata(record.id));
-    Ok(Json(SavedRemoved { revisions }))
+    Ok(Json(SavedRemoved { revisions, message }))
 }
 
 fn refused(refusal: SavedRefusal) -> ApiError {

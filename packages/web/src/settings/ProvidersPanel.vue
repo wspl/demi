@@ -55,11 +55,6 @@ function loadVendors(): void {
   void product.loadVendors().catch(() => {})
 }
 
-// The model list's failure is its region's state: a load that fails again says so there.
-function retryModels(): void {
-  void product.loadModels(true).catch(() => {})
-}
-
 function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
@@ -91,7 +86,6 @@ watch(
     :model-load="product.catalogLoad"
     @retry="product.reconnect"
     @retry-vendors="loadVendors"
-    @retry-models="retryModels"
     :vendors="resources.vendors"
     :overlay-store="appOverlayStore"
     :refreshing-usage="settings.refreshingUsage"

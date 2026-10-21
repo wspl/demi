@@ -120,7 +120,6 @@
     "upload_cancelled": "上传已取消。",
     "restore_before_sending": "发送前请先恢复此对话。",
     "no_model_available": "此对话没有可用的模型。",
-    "models_not_loaded": "无法加载模型。{failure}",
     "source_conversation_unavailable": "源对话不可用。",
     "file_not_owned": "它不在此账户的文件中。",
     "no_passkey": "浏览器未提供通行密钥。",

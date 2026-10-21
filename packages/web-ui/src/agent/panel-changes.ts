@@ -42,9 +42,12 @@ export interface PanelAnswer {
   changed: boolean
 }
 
-/** Where the panel's tabs are kept: the backend's routes, or a fixture's. */
+/**
+ * Where the panel's changes go: the backend's route, or a fixture's. The
+ * panel itself comes to the page as its owner announces it
+ * (`PanelTabs.receive`), never by a read.
+ */
 export interface PanelBackend {
-  read(): Promise<PanelRead>
   /**
    * Applies the changes in order, all or none, as one change of the panel,
    * and answers the panel's revision once they are in it and whether they
@@ -134,11 +137,10 @@ interface Unsent {
  * - A change shows at once. The changes made while none is on its way go
  *   together, in order, as one request, so Close Others is one request.
  * - An answer that changed the panel one revision past the one the page holds
- *   is the panel with the request in it. The panel is read only when an answer,
- *   or the summary, names a revision past the one the page then holds, which
- *   says another change came in between.
+ *   is the panel with the request in it. Any other answer waits for the panel
+ *   it names, which the conversation's metadata brings.
  * - A change leaves once a panel at least as new as its answer is held, so a
- *   panel read after a removal never brings the tab back.
+ *   panel received after a removal never brings the tab back.
  * - A request the backend refuses leaves at once, and the panel shows as the
  *   backend has it.
  */
@@ -149,14 +151,12 @@ export class PanelTabs {
   private unsent: Unsent[] = []
   private sending = false
   private started = false
-  /** The newest revision the page heard of: an answer's, or the summary's. */
-  private known = -1
   /** The tabs the page shows. */
   readonly tabs: ComputedRef<PanelTab[]>
 
   constructor(
     private readonly backend: PanelBackend,
-    /** Reports a change the backend refused, or a read that failed. */
+    /** Reports a change the backend refused. */
     private readonly refused: (error: unknown) => void,
     /** Takes the plugin states a panel read brings, as it is taken. */
     private readonly held: (states: readonly HeldPluginState[]) => void = () => {},
@@ -164,26 +164,25 @@ export class PanelTabs {
     this.tabs = computed(() => this.slot.shown.value ?? [])
   }
 
-  /** The revision of the panel last read; -1 before the first read. */
+  /** The revision of the panel last received; -1 before the first. */
   get revision(): number {
     return this.slot.revision()
   }
 
-  /** Whether the panel was read once. */
+  /** Whether the panel was received once. */
   get read(): boolean {
     return this.slot.read.value !== null
   }
 
   /**
-   * Starts reading and sending: before it, as for a conversation that has no
-   * backend record yet, changes only show.
+   * Starts sending: before it, as for a conversation that has no backend
+   * record yet, changes only show.
    */
   start(): void {
     if (this.started) {
       return
     }
     this.started = true
-    void this.refresh()
     void this.flush()
   }
 
@@ -200,29 +199,8 @@ export class PanelTabs {
   }
 
   /**
-   * Hears of the panel's revision, as the conversation's summary carries
-   * it: a panel read once is read again when the revision is past the one
-   * it holds, unless a request of the page's is on its way, whose answer
-   * may be that revision.
-   */
-  noticed(revision: number): void {
-    this.known = Math.max(this.known, revision)
-    if (!this.sending && this.read && this.known > this.revision) {
-      void this.refresh()
-    }
-  }
-
-  /** Reads the panel again. */
-  async refresh(): Promise<void> {
-    try {
-      this.receive(await this.backend.read())
-    } catch (error) {
-      this.refused(error)
-    }
-  }
-
-  /**
-   * Takes a panel read anywhere: an older one than the panel held changes
+   * Takes the panel as its owner announced it, such as in the
+   * conversation's metadata: one no newer than the panel held changes
    * nothing.
    */
   receive(panel: PanelRead): void {
@@ -252,20 +230,13 @@ export class PanelTabs {
           this.refused(error)
           continue
         }
-        this.known = Math.max(this.known, answer.revision)
         // A request that alone made the next revision leaves the panel as the
         // tabs held with it; any other answer waits for the panel it names.
         const alone = this.read && answer.changed && answer.revision === this.revision + 1
-        const read = this.read
         this.slot.land(shown, {
           revisions: { '': answer.revision },
           ...(alone ? { value: (tabs: PanelTab[]) => batch.reduce((next, entry) => applyPanelChange(next, entry.change), tabs) } : {}),
         })
-        // Another change came in between, or after: only then is the panel
-        // read.
-        if (read && this.known > this.revision) {
-          await this.refresh()
-        }
       }
     } finally {
       this.sending = false

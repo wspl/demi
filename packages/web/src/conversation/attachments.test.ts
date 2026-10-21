@@ -3,12 +3,12 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { conversationSummary, productState } from '../__tests__/product-state'
 
 // A reply that names `attachment:a2` before the agent uploads it shows it
-// missing, and once the upload is stored, the conversation's metadata on its
-// socket carries it as the latest attachment and the reply shows
-// the image in place. The reply is the product's message view on a page of
-// happy-dom, given the conversation's attachments as the conversation page
-// gives them; the backend is a played channel and a stubbed fetch. A few
-// milliseconds.
+// missing, and once the upload is stored, the conversation's socket brings
+// its description and the reply shows the image in place. The reply is the
+// product's message view on a page of happy-dom, given the conversation's
+// attachments as the conversation page gives them, from the descriptions
+// the conversation holds; the backend is a played channel and a stubbed
+// fetch, which no lookup of an attachment reaches. A few milliseconds.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
 // After the page, since the components ask for its elements and the played
@@ -22,7 +22,7 @@ const { provideMessageFiles } = await import('@demicodes/web-ui/markdown/message
 const { provideMediaViewer } = await import('@demicodes/web-ui/files/media-viewer')
 const { useProduct } = await import('../state/product')
 const { useConversations } = await import('./store')
-const { showMetadata } = await import('../__tests__/shown-metadata')
+const { describeAttachments } = await import('./activity')
 const { attachmentOrigin, useMessageAttachments } = await import('./attachments')
 const { default: MediaView } = await import('@demicodes/web-ui/files/MediaView.vue')
 const { HostFiles } = await import('@demicodes/web-ui/files/file-cache')
@@ -49,11 +49,11 @@ afterEach(() => {
 })
 
 /**
- * Answers the attachment route from `stored`, by number, and keeps the numbers
- * the page asked for; each is `held`, a PNG unless the test says. An
- * attachment's file check (`…/attachments/:id/file`) answers whether its
- * source's path is in `onHost`, the files of the Host it came from, and is
- * kept in `checked`.
+ * Answers an attachment's file check (`…/attachments/:id/file`) for those
+ * of `stored`: whether its source's path is in `onHost`, the files of the
+ * Host it came from, each kept in `checked`. Any other request of an
+ * attachment, a lookup of its description, is kept in what it answers and
+ * refused.
  */
 function stubBackend(
   stored: Set<string>,
@@ -74,13 +74,28 @@ function stubBackend(
         ? new Response(null, { status: 204 })
         : Response.json({ requestId: 'req_test000000000002', code: 'not_found', message: 'No file' }, { status: 404 })
     }
-    const id = path.slice(prefix.length)
-    asked.push(id)
-    return stored.has(id)
-      ? Response.json({ id, ...held, size: 4, ...(held.mediaType.startsWith('image/') ? { width: 4, height: 3 } : {}), blob: id === 'a16' ? OTHER_BLOB : BLOB })
-      : Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No attachment ${id}` }, { status: 404 })
+    asked.push(path.slice(prefix.length))
+    return Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: 'No such route' }, { status: 404 })
   }) as typeof fetch
   return asked
+}
+
+/**
+ * The conversation holds the description of attachment `id`, `held`, as
+ * its transcript's frames bring it, for the replies of `node`.
+ */
+function describe(
+  pinia: ReturnType<typeof createPinia>,
+  id: string,
+  held: { name: string; mediaType: string; source?: { host: string; path: string } },
+  node = CONVERSATION,
+  blob = BLOB,
+): void {
+  const conversation = useConversations(pinia).items.find((item) => item.id === CONVERSATION)!
+  const { name, mediaType, source } = held
+  describeAttachments(conversation, node, [{
+    id, name, mediaType, size: 4, ...(mediaType.startsWith('image/') ? { width: 4, height: 3 } : {}), blob, ...(source ? { source } : {}),
+  }])
 }
 
 /** Resolves once `done` holds, checked at each change of `element`'s content. */
@@ -96,7 +111,7 @@ function changed(element: Element, done: () => boolean): Promise<void> {
   })
 }
 
-test('a reply that named an attachment before its upload shows the image in place once the metadata announces it', async () => {
+test('a reply that named an attachment before its upload shows the image in place once the socket brings its description', async () => {
   const stored = new Set<string>()
   const asked = stubBackend(stored)
   const pinia = createPinia()
@@ -105,7 +120,6 @@ test('a reply that named an attachment before its upload shows the image in plac
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 1 })
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -125,10 +139,10 @@ test('a reply that named an attachment before its upload shows the image in plac
   expect(reply.textContent).toContain('No attachment a2 in this conversation')
   expect(asked).toEqual([])
 
-  // The upload stores a2, and the conversation's socket sends its metadata.
+  // The upload stores a2, and the conversation's socket sends its description.
   stored.add('a2')
   const shown = changed(reply, () => reply.querySelector('img') !== null)
-  showMetadata(CONVERSATION, { lastAttachment: 2 })
+  describe(pinia, 'a2', { name: 'concept-28.png', mediaType: 'image/png' })
   await shown
 
   // The same reply, not one mounted again, shows the image.
@@ -137,7 +151,7 @@ test('a reply that named an attachment before its upload shows the image in plac
   expect(image.getAttribute('alt')).toBe('concept-28.png')
   expect(image.getAttribute('src')).toContain(BLOB)
   expect(reply.textContent).not.toContain('No attachment')
-  expect(asked).toEqual(['a2'])
+  expect(asked).toEqual([])
   app.unmount()
   product.stop()
   // The deadline only guards against a reply that never shows it.
@@ -146,31 +160,20 @@ test('a reply that named an attachment before its upload shows the image in plac
 // A reply shows only what its own agent uploaded: a subagent's reply that names
 // the root's a2, which it never uploaded, shows a2 missing, and its own a3
 // shows. The backend stub answers each number only to the agent that uploaded
-// it, as the route does with `?node=`. Planted defect this catches: a lookup
-// that asks without the reply's agent, so a guessed number shows another
-// agent's file. A few milliseconds.
+// it, as the transcript's frames do. Planted defect this catches: a lookup
+// that ignores the reply's agent, so a guessed number shows another agent's
+// file. A few milliseconds.
 test('a subagent\'s reply shows the attachment it uploaded and a number it did not upload as missing', async () => {
   const CHILD = 'node-child'
-  const uploaders = new Map([['a2', CONVERSATION], ['a3', CHILD]])
-  const asked: string[] = []
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const url = new URL(String(input), 'http://127.0.0.1:3271')
-    const prefix = `/api/conversations/${CONVERSATION}/attachments/`
-    if (!url.pathname.startsWith(prefix))
-      throw new Error(`Unexpected request: ${url.pathname}`)
-    const id = url.pathname.slice(prefix.length)
-    asked.push(`${id} ${url.searchParams.get('node')}`)
-    return uploaders.get(id) === url.searchParams.get('node')
-      ? Response.json({ id, name: `${id}.png`, mediaType: 'image/png', size: 4, width: 4, height: 3, blob: BLOB })
-      : Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No attachment ${id}` }, { status: 404 })
-  }) as typeof fetch
+  const asked = stubBackend(new Set())
   const pinia = createPinia()
   const product = useProduct(pinia)
   // The conversations follow the product state from its first, as on the page.
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 3 })
+  describe(pinia, 'a2', { name: 'a2.png', mediaType: 'image/png' })
+  describe(pinia, 'a3', { name: 'a3.png', mediaType: 'image/png' }, CHILD)
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -188,7 +191,7 @@ test('a subagent\'s reply shows the attachment it uploaded and a number it did n
   const reply = page.firstElementChild!
   expect(reply.textContent).toContain('No attachment a2 in this conversation')
   expect([...reply.querySelectorAll('img')].map((image) => image.getAttribute('alt'))).toEqual(['a3.png'])
-  expect(asked.sort()).toEqual([`a2 ${CHILD}`, `a3 ${CHILD}`])
+  expect(asked).toEqual([])
   app.unmount()
   product.stop()
 }, 2000)
@@ -206,7 +209,7 @@ test('an audio attachment shows its inline player with its name and length, and 
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 3 })
+  describe(pinia, 'a3', { name: 'welcome.mp3', mediaType: 'audio/mpeg' })
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -280,7 +283,7 @@ test('a file\'s card opens it in the work panel on a click, and only its Downloa
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 4 })
+  describe(pinia, 'a4', { name: 'report.pdf', mediaType: 'application/pdf' })
   const opened: [string, string, number][] = []
   const downloads: [string, string][] = []
   const realClick = HTMLAnchorElement.prototype.click
@@ -375,7 +378,7 @@ test('an attachment\'s card opens its file while the conversation\'s Host has it
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 14 })
+  describe(pinia, 'a14', { name: 'report.pdf', mediaType: 'application/pdf', source: { host: 'dev-1', path: '/work/report.pdf' } })
   const { host, contents } = openingHost(present)
   const files: string[] = []
   const copies: string[] = []
@@ -446,7 +449,8 @@ test('a picture attachment opens in the Media tab as its copy, asking nothing ab
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 16 })
+  describe(pinia, 'a15', held)
+  describe(pinia, 'a16', held, CONVERSATION, OTHER_BLOB)
   const { host, contents, described } = openingHost(present)
   let revealed = 0
   const page = document.createElement('div')

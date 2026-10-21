@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, jest, mock, setSystemTime, spyOn, test } from 'bun:test'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { AgentEntry, Block, CacheChart, ClientContent, ClientFrame, MessageComment, ProviderFailureFacts, ServerFrame, SessionPhase } from '@demicodes/protocol'
+import type { AgentEntry, Block, CacheChart, ClientContent, ConversationAttachment, ClientFrame, MessageComment, ProviderFailureFacts, ServerFrame, SessionPhase } from '@demicodes/protocol'
 import { RefusedError, heldEdge } from '@demicodes/conversation-client'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
@@ -13,13 +13,13 @@ import { codeText, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { createPageI18n } from '@demicodes/web-ui/i18n/text'
 import { sendPageErrorReport } from '../api/page-errors'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
-import { readConversationCopy } from '../state/offline'
+import { deleteAccountCache, readConversationCopy } from '../state/offline'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import type { AttachedHost, ConversationDraft, ConversationMetadata, ConversationSummary, DraftFile, Preferences, SavedMessage, WorkspaceDto } from '../api/generated/web-api'
+import { modelCatalogSchema, type ConversationDraft, type ConversationMetadata, type ConversationSummary, type DraftFile, type ListedSavedMessage, type Preferences, type SavedMessage, type WorkspaceDto } from '../api/generated/web-api'
 import { changeMessageEditContent, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { useSession } from '../auth/session'
 import { conversationMetadata, conversationSummary, productState } from '../__tests__/product-state'
@@ -81,6 +81,12 @@ function stubCatalog() {
   }], smallModel: null }
 }
 
+/** The catalog's owner announces the stub's catalog on the channel, as it does after an entry changes. */
+async function announceCatalog(): Promise<void> {
+  channels.last().send({ type: 'models', models: modelCatalogSchema.parse(stubCatalog()) })
+  await nextTick()
+}
+
 /**
  * The upload transport is XHR; this one answers every POST with a fresh
  * attachment id, once `gate` opens when a test holds the uploads, and with the
@@ -124,8 +130,9 @@ let records: ConversationSummary[]
 /** Each conversation's metadata as the backend keeps it, by id. */
 let metas: Map<string, ConversationMetadata>
 /** Each conversation's attached hosts, as the backend serves them. */
-let serverHosts = new Map<string, AttachedHost[]>()
 /** Each conversation's root transcript, as the played backend serves it. */
+/** The descriptions of the attachments each conversation's root reply names, which its reset carries. */
+let rootAttachments = new Map<string, ConversationAttachment[]>()
 let rootBlocks = new Map<string, Block[]>()
 /** Each conversation's subagents' entries, as the played backend serves them. */
 let subagentEntries = new Map<string, AgentEntry[]>()
@@ -198,33 +205,49 @@ function metaOf(id: string): ConversationMetadata {
 
 /** The conversation's revisions of its draft and its list, as every write answers them. */
 function revisionsOf(id: string) {
-  return { draft: serverDrafts.get(id)?.revision ?? 0, saved: metaOf(id).savedRevision }
+  return { draft: serverDrafts.get(id)?.revision ?? 0, saved: metaOf(id).saved.revision }
+}
+
+/** How many characters of a saved message's text its listing holds, as the backend's `SAVED_OPENING_CHARS`. */
+const SAVED_OPENING = 300
+
+/** `message` as the metadata lists it: its opening, its length and its files. */
+function listing(message: SavedMessage): ListedSavedMessage {
+  const characters = [...message.text]
+  return { id: message.id, opening: characters.slice(0, SAVED_OPENING).join(''), length: characters.length, files: message.files, savedAt: message.savedAt }
+}
+
+/** The backend lists the messages it keeps of `id` in its metadata, under `revision`. */
+function listSaved(id: string, revision: number): void {
+  metaOf(id).saved = { revision, messages: (serverSaved.get(id) ?? []).map(listing) }
 }
 
 /**
- * The backend's routes of messages saved for later: the list, with the revision the
- * conversation's summary carries; a save of the composer's message, which empties the
- * draft, and a plain one, each under the page's id; the write of an edit's Save, in
- * the message's place; and a deletion, which a message gone already answers the same.
+ * The backend's routes of messages saved for later: the read of one whole, which a
+ * use of it needs, while the conversation's metadata lists them; a save of the
+ * composer's message, which empties the draft, and a plain one, each under the
+ * page's id; the write of an edit's Save, in the message's place; and a deletion,
+ * which a message gone already answers the same.
  */
 function savedRoute(id: string, method: string, path: string, body: Record<string, unknown>): Response {
   const metadata = metaOf(id)
   const messages = serverSaved.get(id) ?? []
   const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], comments: [], replaced: null }
-  const raise = () => {
-    metadata.savedRevision += 1
-    metadata.saved = serverSaved.get(id)!.length
-  }
+  const raise = () => listSaved(id, metadata.saved.revision + 1)
   const [, messageId] = /^\/saved(?:\/([^/]+))?$/.exec(path) ?? []
   if (method === 'GET') {
-    return Response.json({ revision: metadata.savedRevision, messages })
+    const whole = messages.find((message) => message.id === messageId)
+    return whole
+      ? Response.json(whole)
+      : Response.json({ requestId: 'req_test000000000001', code: 'saved_not_found', message: 'No such message saved for later' }, { status: 404 })
   }
   if (method === 'DELETE') {
-    if (messages.some((message) => message.id === messageId)) {
+    const removed = messages.find((message) => message.id === messageId)
+    if (removed) {
       serverSaved.set(id, messages.filter((message) => message.id !== messageId))
       raise()
     }
-    return Response.json({ revisions: revisionsOf(id) })
+    return Response.json({ revisions: revisionsOf(id), message: removed ?? null })
   }
   if (method === 'PUT') {
     const written = messages.find((message) => message.id === messageId)
@@ -285,8 +308,8 @@ beforeEach(async () => {
   }
   pageSockets = []
   rootBlocks = new Map()
+  rootAttachments = new Map()
   subagentEntries = new Map()
-  serverHosts = new Map()
   savedPreferences = { appearance: {}, shortcuts: {} }
   workspaces = []
   serverDrafts = new Map()
@@ -308,9 +331,6 @@ beforeEach(async () => {
     if (path === '/api/settings/preferences') {
       savedPreferences = { ...savedPreferences, ...body }
       return Response.json({ preferences: savedPreferences })
-    }
-    if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
     }
     const workspacePatch = /^\/api\/workspaces\/([^/]+)$/.exec(path)
     if (workspacePatch && init?.method === 'PATCH') {
@@ -423,10 +443,6 @@ beforeEach(async () => {
     if (page) {
       const blocks = page[1] === page[2] ? rootBlocks.get(decodeURIComponent(page[1]!)) ?? [] : []
       return Response.json({ ...EMPTY_PAGE, length: blocks.length, blocks })
-    }
-    const hosts = /^\/api\/conversations\/([^/]+)\/hosts$/.exec(path)
-    if (hosts) {
-      return Response.json({ hosts: serverHosts.get(decodeURIComponent(hosts[1]!)) ?? [] })
     }
     const draft = /^\/api\/conversations\/([^/]+)\/draft(\/replaced)?$/.exec(path)
     if (draft) {
@@ -828,7 +844,7 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
 
 /** The node `node`'s transcript reset to `blocks` with the failure facts `failures`, as the client tells it. */
 function nodeReset(node: string, blocks: Block[], failures: Record<string, ProviderFailureFacts> = {}): ClientSessionEvent {
-  return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'c', revision: 1 }, versions: [], failures, asked: undefined }
+  return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'c', revision: 1 }, versions: [], failures, attachments: [], asked: undefined }
 }
 
 // `crates/agent-server/src/server/tree/live.rs`: every page keeps one record of
@@ -890,7 +906,7 @@ test('a child keeps the failure facts of its transcript, which resets and patche
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
   applyConversationEvent(conversation, nodeReset('child', [], { first: lifts }))
   applyConversationEvent(conversation, {
-    type: 'transcript_patch', node: 'child', patches: [], version: { epoch: 'c', revision: 2 }, failures: { second: { retryAt: null } },
+    type: 'transcript_patch', node: 'child', patches: [], version: { epoch: 'c', revision: 2 }, failures: { second: { retryAt: null } }, attachments: [],
   })
   expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures)
     .toEqual({ first: lifts, second: { retryAt: null } })
@@ -1010,9 +1026,7 @@ test('a choice made while the first message makes the record applies before that
   // A model the conversation can open with.
   product.snapshot!.providers.push(stubProvider)
   const backend = globalThis.fetch
-  globalThis.fetch = (async (input, init) =>
-    String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : backend(input, init)) as typeof fetch
-  await product.loadModels(true)
+  await announceCatalog()
   await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
   conversation.draft = 'First message'
   // The record's creation is held; meanwhile the user chooses Review Team.
@@ -1077,8 +1091,6 @@ function answerOpening(id: string, intercept: (path: string) => void = () => {})
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     intercept(path)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
@@ -1094,7 +1106,7 @@ function answerOpening(id: string, intercept: (path: string) => void = () => {})
 /** The conversation infers with the stub model, which the catalog lists. */
 async function chooseStubModel(conversation: ReturnType<typeof useConversations>['items'][number]): Promise<void> {
   addStubProvider()
-  await useProduct().loadModels(true)
+  await announceCatalog()
   await useConversations().changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
 }
 
@@ -1585,8 +1597,6 @@ test('the first send keeps the new conversation shown while its record opens', a
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
@@ -1599,7 +1609,7 @@ test('the first send keeps the new conversation shown while its record opens', a
   const shown: string[] = []
   const stop = watch(() => conversation.load, (load) => shown.push(load), { flush: 'sync' })
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
     conversation.draft = 'First message'
     await store.send(conversation)
@@ -1624,14 +1634,13 @@ test('the first send creates the conversation with its settings and no title in 
   const readBack: string[] = []
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path.startsWith(`/api/conversations/${id}`)) readBack.push(`${init?.method ?? 'GET'} ${path}`)
     return originalFetch(input, init)
   }) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
     conversation.draft = 'First message'
     await store.send(conversation)
@@ -1661,13 +1670,11 @@ test('a draft moves on the page and is created where it moved; a conversation wi
   const conversation = store.items.find((item) => item.id === id)!
   addStubProvider()
   const originalFetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) =>
-    String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : originalFetch(input, init)) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
   const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/ada/work' }
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
     expect(await store.switchTarget(id, onLaptop)).toBe(true)
     conversation.draft = 'First message'
@@ -1692,7 +1699,7 @@ test('a draft moves on the page and is created where it moved; a conversation wi
 test('a detach shows the hosts without the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  first.attachedHosts.replace([{ deviceId: 'laptop', name: 'laptop', cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }])
+  first.attachedHosts.replace([{ deviceId: 'laptop', name: 'laptop', cwd: null, attachedAt: '2026-09-09T00:00:00.000Z' }])
   const originalFetch = globalThis.fetch
   const sent: string[] = []
   globalThis.fetch = (async (input, init) => {
@@ -1775,10 +1782,6 @@ test('a message sends its text and files in the order the composer shows them', 
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) {
-      return Response.json(stubCatalog())
-    }
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
@@ -1789,7 +1792,7 @@ test('a message sends its text and files in the order the composer shows them', 
     sent = content
   })
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     const taken = await store.addFiles(current, [
       new File(['before'], 'before.png', { type: 'image/png' }),
       new File(['after'], 'after.png', { type: 'image/png' }),
@@ -1834,7 +1837,7 @@ async function withSession(check: (current: ReturnType<typeof useConversations>[
     sent.push(content)
   })
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await check(current, sent)
   } finally {
     submit.mockRestore()
@@ -2993,7 +2996,8 @@ function backendOpening(
     { type: 'request_output', output: null },
     ...nodes.map((node) => {
       const blocks = node === id ? root : []
-      return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'e', revision: 1 } }
+      const attachments = node === id ? rootAttachments.get(id) ?? [] : []
+      return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'e', revision: 1 }, attachments }
     }),
   ]
 }
@@ -3016,39 +3020,24 @@ async function openSent(sockets: TestSocket[], index = 0): Promise<void> {
  * the socket answers `open` as the backend does (`backendOpening`), its
  * root's transcript one block and its agents the root and `agents`, then
  * the handshake's frames, in one message; without, the test answers it.
- * `models` holds the model list until it answers. Answers the
- * conversation, its sockets in the order the page opened them, and the
- * opening.
+ * Answers the conversation, its sockets in the order the page opened them,
+ * and the opening.
  */
 async function startOpening(
   id: string,
-  { handshake, agents = [], models }: {
+  { handshake, agents = [] }: {
     handshake?: ServerFrame[]
     /** The entries of the root's subagents. */
     agents?: AgentEntry[]
-    models?: Promise<void>
   } = {},
 ) {
   metaOf(id).model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(id)
   addStubProvider()
-  const answering = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) {
-      await models
-      return Response.json(stubCatalog())
-    }
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    return answering(input, init)
-  }) as typeof fetch
   rootBlocks.set(id, [shownBlock])
   subagentEntries.set(id, agents)
   const sockets = playPageSockets(handshake && ((opened, open, nodes) => [...backendOpening(opened, open, nodes), ...handshake]))
-  const listed = useProduct().loadModels(true)
-  if (!models) {
-    await listed
-  }
+  await announceCatalog()
   const store = useConversations()
   const opening = store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
@@ -3255,8 +3244,6 @@ test('a new conversation whose first session cannot connect is opening, not reco
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
       return Response.json({ conversation: records.find((item) => item.id === id), metadata: metaOf(id), results: [] })
     }
@@ -3267,7 +3254,7 @@ test('a new conversation whose first session cannot connect is opening, not reco
   const loads: string[] = []
   const stop = watch(() => conversation.load, (load) => loads.push(load), { flush: 'sync' })
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
     conversation.draft = 'First message'
     void store.send(conversation)
@@ -3809,18 +3796,130 @@ test('failed Fork creates no local conversation; retry forwards the same destina
 // transcript, the draft and the cost reads before the page opened its
 // socket. The socket opens at once and its answer shows the conversation;
 // its hosts and its saved list join as they answer. Cost: one opening.
-test('opening a conversation opens its socket at once and shows it before its hosts or its saved list answer', async () => {
-  const held = holdAnswers((path, method) => method === 'GET' && (path.endsWith('/hosts') || path.endsWith('/saved')))
+/** What the view of `conversation` shows of its facts besides its transcript, as one value. */
+function shownFacts(conversation: ReturnType<typeof useConversations>['items'][number]) {
+  const metadata = conversation.metadata.shown.value
+  const chosen = metadata?.model
+  return {
+    load: conversation.load,
+    model: useProduct().catalog.find((provider) => provider.providerId === chosen?.providerId)
+      ?.models.find((each) => each.id === chosen?.modelId)?.displayName ?? null,
+    saved: listed(conversation),
+    hosts: (conversation.attachedHosts.shown.value ?? []).map((host) => host.name),
+    permissions: metadata?.permissions.requests.map((request) => request.id) ?? [],
+    workflows: metadata?.workflows.list.state ?? null,
+    tabs: metadata?.panel.tabs.map((tab) => tab.id) ?? [],
+    attachment: conversation.attachmentDescriptions[conversation.id]?.a1
+      ? [conversation.attachmentDescriptions[conversation.id]!.a1!.width, conversation.attachmentDescriptions[conversation.id]!.a1!.height]
+      : null,
+  }
+}
+
+// The opening carries every fact the view shows, and the view shows when
+// they are all in, from the copy or from the opening, never a part of them
+// (`docs/decisions/0029-a-conversation-opens-whole.md`). Planted defects it
+// catches: a list read by its own route after the metadata, and an
+// attachment card that waits for a lookup to learn its size. Cost: three
+// openings, a reload among them, and the page's first reconnect wait,
+// under a second.
+test('a conversation opens in one step with its model, saved messages, hosts, permissions, workflows, panel tabs and attachment cards, cold, from the copy and after a reconnect, with no further request', async () => {
+  const signOut = signIn()
+  channels.last().send({ type: 'snapshot', state: { ...backendState(), providers: [stubProvider], models: modelCatalogSchema.parse(stubCatalog()) } })
+  await nextTick()
+  serverSaved.set(FIRST, [savedMessage('dns', 'Check the DNS next')])
+  listSaved(FIRST, 1)
+  Object.assign(metaOf(FIRST), {
+    hosts: { revision: 1, hosts: [{ deviceId: 'ci', name: 'ci', cwd: '/work', attachedAt: '2026-09-09T00:00:00.000Z' }] },
+    permissions: { revision: 1, requests: [{ kind: 'permission', id: 'pr-1', categories: [{ id: 'skills.manage', action: 'manage skills', description: 'Manage Skills.' }], host: null, command: 'demi skills add acme/tools', agent: null, createdAt: '2026-10-05T00:00:00.000Z' }] },
+    workflows: { revision: 1, list: { state: 'read', list: { directory: '/work/.demi/workflows', unavailable: null, workflows: [] }, readAt: '2026-10-05T00:00:00.000Z' } },
+    panel: { revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://example.test/' } }], states: [] },
+    lastAttachment: 1,
+  })
+  rootBlocks.set(FIRST, [{ ...shownBlock, text: 'Here it is: <attachment id="a1" />' }])
+  rootAttachments.set(FIRST, [{ id: 'a1', name: 'chart.png', mediaType: 'image/png', size: 2048, width: 640, height: 480, blob: SHA }])
+  const whole: Omit<ReturnType<typeof shownFacts>, 'load'> = {
+    model: 'Stub', saved: ['Check the DNS next'], hosts: ['ci'], permissions: ['pr-1'], workflows: 'read', tabs: ['p1'], attachment: [640, 480],
+  }
+  /** The facts each time the conversation's load changes, from `activate` on. */
+  const steps = (conversation: ReturnType<typeof useConversations>['items'][number]) => {
+    const seen: ReturnType<typeof shownFacts>[] = []
+    const stop = watch(() => conversation.load, () => seen.push(shownFacts(conversation)), { flush: 'sync' })
+    return { seen, stop }
+  }
+  /** The requests of the conversation's own routes, which none of its facts needs. */
+  const reads = () => requests.filter((item) => item.path.startsWith(`/api/conversations/${FIRST}/`) && item.body === null)
+
+  // Cold: no copy of an earlier test's is on the disk.
+  await deleteAccountCache()
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  rootBlocks.set(FIRST, [shownBlock])
-  const opened = store.activate(FIRST)
-  await opened
-  expect(first.load).toBe('ready')
-  expect(latestBlocks(first.history).map((block) => block.id)).toEqual(['shown'])
-  await held.arrived(2)
-  held.release()
-  held.release()
+  const cold = steps(first)
+  const sockets = playPageSockets(backendOpening)
+  await store.activate(FIRST)
+  cold.stop()
+  expect(cold.seen.at(-1)).toEqual({ load: 'ready', ...whole })
+  expect(cold.seen.filter((step) => step.load === 'ready' || step.load === 'opening')).toEqual([{ load: 'ready', ...whole }])
+
+  // After a reconnect: the socket ends, and the next opening shows it whole again.
+  const before = reads().length
+  sockets[0]!.end()
+  // The page connects again by itself, after its first wait.
+  await waitFor(() => sockets.length > 1 && first.load === 'ready', () => `it is ${first.load}`, { timeoutMs: 3_000 })
+  expect(shownFacts(first)).toEqual({ load: 'ready', ...whole })
+  await store.keepCopies()
+
+  // From the copy, as after a reload: its first frame is its whole view.
+  signOut()
+  store.stopAll()
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  const signedOut = signIn()
+  try {
+    const page = useConversations()
+    await connect()
+    channels.last().send({ type: 'snapshot', state: { ...backendState(), providers: [stubProvider], models: modelCatalogSchema.parse(stubCatalog()) } })
+    await nextTick()
+    const again = playPageSockets()
+    const reopened = page.items.find((item) => item.id === FIRST)!
+    const copy = steps(reopened)
+    void page.activate(FIRST)
+    await openSent(again)
+    expect(copy.seen.at(-1)).toEqual({ load: 'opening', ...whole })
+    deliver(again[0]!, backendOpening(FIRST, again[0]!.sent.find((frame) => frame.type === 'open')!, [FIRST]))
+    await waitFor(() => reopened.load === 'ready', () => `it is ${reopened.load}`)
+    copy.stop()
+    expect(copy.seen.filter((step) => step.load !== 'loading' && step.load !== 'reading')).toEqual([{ load: 'opening', ...whole }, { load: 'ready', ...whole }])
+    expect(reads().slice(before).map((item) => item.path)).toEqual([])
+  } finally {
+    signedOut()
+  }
+})
+
+// An agent's upload after the opening reaches the open page with its
+// description, so its card has its size before its bytes. Planted defect:
+// the frame ignored, which leaves the card missing. Cost: one opening.
+test('an attachment uploaded after the opening reaches the open page with its description, and no read', async () => {
+  const signOut = signIn()
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  await store.activate(FIRST)
+  const before = requests.length
+  sendOnSockets(FIRST, { type: 'attachments', node: FIRST, attachments: [{ id: 'a2', name: 'plot.png', mediaType: 'image/png', size: 4096, width: 800, height: 600, blob: SHA }] })
+  await nextTick()
+  expect(first.attachmentDescriptions[FIRST]?.a2).toMatchObject({ name: 'plot.png', width: 800, height: 600 })
+  expect(requests.slice(before)).toEqual([])
+  // A second upload joins the first, and the disk keeps both: the descriptions
+  // stay plain objects, which IndexedDB can clone.
+  sendOnSockets(FIRST, { type: 'attachments', node: FIRST, attachments: [{ id: 'a3', name: 'map.png', mediaType: 'image/png', size: 1024, width: 400, height: 300, blob: SHA }] })
+  await nextTick()
+  await store.keepCopies()
+  const copy = await readConversationCopy(productState().user.id, FIRST)
+  expect(Object.keys(copy?.attachments[FIRST] ?? {}).sort()).toEqual(Object.keys(first.attachmentDescriptions[FIRST]!).sort())
+  expect(copy?.attachments[FIRST]?.a2).toMatchObject({ name: 'plot.png' })
+  expect(copy?.attachments[FIRST]?.a3).toMatchObject({ name: 'map.png', width: 400 })
+  signOut()
 })
 
 // A conversation refused by the backend's own answer shows the failure pane,
@@ -4051,24 +4150,24 @@ test('a conversation shown before the few most recent is let go, and shown again
   signOut()
 })
 
-test('output that advances an open conversation\'s revision reads nothing; a raised hosts revision reads and shows its hosts without opening it again', async () => {
+// Planted defect: the hosts read by a route after the metadata names a
+// revision, which the stub backend no longer answers.
+test('output that advances an open conversation\'s revision reads nothing; a change of its hosts shows with the metadata, with no read and no new opening', async () => {
   const store = useConversations()
   await store.activate(FIRST)
-  const reads = (route: string) => requests.filter((item) => item.path === `/api/conversations/${FIRST}/${route}`).length
-  expect(reads('hosts')).toBe(1)
+  const reads = () => requests.filter((item) => item.path.startsWith(`/api/conversations/${FIRST}/`) && item.body === null).length
+  const before = reads()
   // A background job's turn: each saved step advances the revision.
   for (const revision of [1, 2, 3]) {
     records[0]!.revision = revision
     await changed(FIRST)
   }
-  expect(reads('hosts')).toBe(1)
   // A shell on the attached host ended in another directory.
-  serverHosts.set(FIRST, [{ deviceId: 'ci', name: 'ci', cwd: '/work/sub', state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }])
-  metaOf(FIRST).hostsRevision = 1
+  metaOf(FIRST).hosts = { revision: 1, hosts: [{ deviceId: 'ci', name: 'ci', cwd: '/work/sub', attachedAt: '2026-09-09T00:00:00.000Z' }] }
   await changed(FIRST)
   const first = store.items.find((item) => item.id === FIRST)!
-  await waitFor(() => first.attachedHosts.shown.value?.[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
-  expect([reads('hosts'), socketsOf(FIRST).length, first.load]).toEqual([2, 1, 'ready'])
+  expect(first.attachedHosts.shown.value?.[0]?.cwd).toBe('/work/sub')
+  expect([reads() - before, socketsOf(FIRST).length, first.load]).toEqual([0, 1, 'ready'])
 })
 
 test('leaving and returning while it opens shares the opening', async () => {
@@ -4084,14 +4183,10 @@ test('leaving and returning while it opens shares the opening', async () => {
   expect(store.items[0]!.load).toBe('ready')
 })
 
-test('a raised hosts revision reads the hosts of a conversation opened before and nothing of one never opened; retry explicitly reloads', async () => {
+test('retry explicitly reloads the session of a conversation opened before, and nothing else opens', async () => {
   const store = useConversations()
   await store.activate(FIRST)
   await store.activate(SECOND)
-  const hostReads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/hosts`).length
-  metaOf(FIRST).hostsRevision = 1
-  await changed(FIRST)
-  await waitFor(() => hostReads(FIRST) === 2, () => 'the hosts were not read again')
   await store.activate(FIRST)
   expect([socketsOf(FIRST).length, socketsOf(SECOND).length]).toEqual([1, 1])
   await store.reloadSession(SECOND)
@@ -4101,9 +4196,7 @@ test('a raised hosts revision reads the hosts of a conversation opened before an
   records.push(third)
   await changed(third.id)
   expect(store.items.some((item) => item.id === third.id)).toBe(true)
-  metaOf(third.id).hostsRevision = 1
-  await changed(third.id)
-  expect(hostReads(third.id)).toBe(0)
+  expect(socketsOf(third.id)).toHaveLength(0)
 })
 
 test('a conversation removed and brought back opens again', async () => {
@@ -4131,31 +4224,6 @@ test('logout cancels a pending opening and prevents late state restoration', asy
   expect(store.items).toEqual([])
   expect(current.load).toBe('loading')
   expect(current.history.windows).toEqual([])
-})
-
-test('slow or failed model discovery does not hold history behind the loading pane', async () => {
-  const store = useConversations()
-  const current = store.items[0]!
-  const modelResponse = deferred<Response>()
-  const originalFetch = globalThis.fetch
-  const block = {
-    type: 'user' as const, id: 'visible-history', turnId: 'history-turn', preamble: null, model,
-    createdAt: '2026-09-13T00:00:00.000Z', content: [{ type: 'text' as const, text: 'Read this while models load' }],
-  }
-  rootBlocks.set(current.id, [block])
-  globalThis.fetch = (async (input, init) => {
-    if (String(input).startsWith('/api/models')) return modelResponse.promise
-    return originalFetch(input, init)
-  }) as typeof fetch
-  const models = useProduct().loadModels(true).catch(error => error)
-  await store.activate(current.id)
-  expect(current.lastError).toBeNull()
-  expect(current.load).toBe('ready')
-  expect(latestBlocks(current.history)[0]?.id).toBe('visible-history')
-  modelResponse.reject(new Error('Catalog offline'))
-  expect(await models).toBeInstanceOf(Error)
-  expect(current.load).toBe('ready')
-  expect(latestBlocks(current.history)[0]?.id).toBe('visible-history')
 })
 
 test('a rename shows at once, survives a summary read before the write lands, and a refused one gives the title back', async () => {
@@ -4340,7 +4408,6 @@ test.each([
   const claimsFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return claimsFetch(input, init)
@@ -4374,8 +4441,6 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
@@ -4384,7 +4449,7 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => accepted.promise)
   jest.useFakeTimers()
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await store.activate(FIRST)
     expect(current.draft).toBe('Ship it')
     const sending = store.send(current)
@@ -4426,8 +4491,6 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
     return originalFetch(input, init)
@@ -4435,7 +4498,7 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
   const steer = spyOn(ConversationRuntime.prototype, 'steer').mockResolvedValue()
   try {
-    await useProduct().loadModels(true)
+    await announceCatalog()
     await store.activate(FIRST)
     // Another page saves a comment: this page's composer shows it waiting.
     serverDrafts.set(FIRST, { ...serverDrafts.get(FIRST)!, revision: 2, comments: [later] })
@@ -4633,33 +4696,41 @@ test('a node\'s cache chart comes with its subscription and each call, and the c
   expect(reads.filter((path) => path.includes('/agents/'))).toEqual([])
 })
 
-// Under 50 ms each: the backend is the stub above.
-test('the messages saved for later show as the conversation opens, and a raised revision reads them again, once', async () => {
+// Under 50 ms each: the backend is the stub above. Planted defect: the list
+// read by its route after the metadata, which the stub answers no more.
+test('the messages saved for later show as the conversation opens, and another page\'s save reaches it with the metadata, with no read', async () => {
   serverSaved.set(FIRST, [savedMessage('dns', 'Check prod’s DNS next')])
-  metaOf(records[0]!.id).savedRevision = 1
+  listSaved(FIRST, 1)
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  const reads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/saved`).length
+  const reads = () => requests.filter((item) => item.path.startsWith(`/api/conversations/${FIRST}/saved`)).length
   await store.activate(FIRST)
-  await until(() => first.record.revision('saved') === 1, 'the list is read as the conversation opens')
-  expect(listed(first)).toEqual(['Check prod’s DNS next'])
+  expect([first.record.revision('saved'), listed(first)]).toEqual([1, ['Check prod’s DNS next']])
 
-  // Another page saved one: the summary's revision moves ahead, the page
-  // reads the list again; the same summary again reads nothing.
+  // Another page saved one: the metadata brings the list.
   serverSaved.set(FIRST, [savedMessage('ipv6', 'Then the IPv6'), ...serverSaved.get(FIRST)!])
-  metaOf(records[0]!.id).savedRevision = 2
+  listSaved(FIRST, 2)
   await changed(FIRST)
-  await changed(FIRST)
-  await until(() => first.record.revision('saved') === 2, 'the list is read again')
   expect(listed(first)).toEqual(['Then the IPv6', 'Check prod’s DNS next'])
-  await settle()
-  expect(reads(FIRST)).toBe(2)
+  expect(reads()).toBe(0)
+})
 
-  // A conversation this page never opened reads nothing.
-  metaOf(records[1]!.id).savedRevision = 1
-  await changed(SECOND)
-  await settle()
-  expect(reads(SECOND)).toBe(0)
+// A message of the list carries its opening alone: its whole text is read
+// when it is used, and only then. Planted defect: a send of the opening,
+// which drops the rest of a long message. Cost: one opening, one read.
+test('a long saved message is listed by its opening, and Edit reads it whole; a short one is used as listed', async () => {
+  const long = `Check the DNS ${'and the records '.repeat(40)}end`
+  const { store, first } = await openWithSaved([savedMessage('long', long), savedMessage('short', 'Short one')])
+  const reads = () => requests.filter((item) => item.path.startsWith(`/api/conversations/${FIRST}/saved/`) && item.body === null).map((item) => item.path)
+  expect(listed(first)).toEqual([[...long].slice(0, 300).join(''), 'Short one'])
+
+  await store.editSaved(first, 'short')
+  expect(JSON.parse(JSON.stringify(first.messageEdit))).toMatchObject({ savedId: 'short', content: [{ type: 'text', text: 'Short one' }] })
+  expect(reads()).toEqual([])
+
+  await store.editSaved(first, 'long')
+  expect(JSON.parse(JSON.stringify(first.messageEdit))).toMatchObject({ savedId: 'long', content: [{ type: 'text', text: long }] })
+  expect(reads()).toEqual([`/api/conversations/${FIRST}/saved/long`])
 })
 
 /**
@@ -4709,13 +4780,13 @@ const refusal = (code: string, status = 409) =>
   Response.json({ requestId: 'req_test000000000001', code, message: `The backend refuses: ${code}` }, { status })
 const savedMessage = (id: string, text: string): SavedMessage => ({ id, text, files: [], savedAt: '2026-09-09T00:00:00.000Z' })
 /** The texts of the list the conversation's composer shows, without the messages not saved. */
-const listed = (conversation: { record: { shown: { value: { saved: SavedMessage[] } | null } } }) =>
-  (conversation.record.shown.value?.saved ?? []).map((message) => message.text)
+const listed = (conversation: { record: { shown: { value: { saved: ListedSavedMessage[] } | null } } }) =>
+  (conversation.record.shown.value?.saved ?? []).map((message) => message.opening)
 
 /** The conversation `FIRST` opened with its draft and its list of messages saved for later read. */
 async function openWithSaved(saved: SavedMessage[]) {
   serverSaved.set(FIRST, saved)
-  metaOf(records[0]!.id).savedRevision = 1
+  listSaved(FIRST, 1)
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
   await store.activate(FIRST)
@@ -4725,12 +4796,16 @@ async function openWithSaved(saved: SavedMessage[]) {
 }
 
 /** The backend's summary of `FIRST` reaches the page, which reads what changed, and holds it. */
-async function readAgain(first: { record: { revision: (part: string) => number } }): Promise<void> {
+async function readAgain(first: { record: { revision: (part: string) => number; pending: () => readonly { status: string }[] } }): Promise<void> {
   await changed(FIRST)
   await until(
-    () => first.record.revision('saved') === metaOf(records[0]!.id).savedRevision && first.record.revision('draft') === (serverDrafts.get(FIRST)?.revision ?? 0),
+    () => first.record.revision('saved') === metaOf(FIRST).saved.revision && first.record.revision('draft') === (serverDrafts.get(FIRST)?.revision ?? 0),
     'the draft and the list are read again',
   )
+  // The metadata may bring a write's effect before its answer, which then lands.
+  for (let turn = 0; turn < 200 && first.record.pending().some((change) => change.status === 'sent'); turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
 }
 
 test('Save for Later lists the composer\'s message at once under the id its request names, sent on the revision it was built on', async () => {
@@ -4754,7 +4829,7 @@ test('Save for Later lists the composer\'s message at once under the id its requ
       held.restore()
     }
     await readAgain(first)
-    expect([first.draft, listed(first), first.record.pending()]).toEqual(['', ['Check prod’s DNS next'], []])
+    expect([first.draft, listed(first), first.record.pending().length]).toEqual(['', ['Check prod’s DNS next'], 0])
   } finally {
     signOut()
   }
@@ -4846,6 +4921,8 @@ test('Edit on a saved message opens it beside the draft, another Edit replaces i
     expect(held.waiting[0]).toMatchObject({ method: 'PUT', path: `/api/conversations/${FIRST}/saved/b`, body: { text: 'Message B, edited', files: [] } })
     await held.waiting[0]!.pass()
     await readAgain(first)
+    // The metadata brings the list with the edit before the write's answer lands.
+    await until(() => first.record.pending('saved').length === 0, 'the write lands')
     expect([first.draft, listed(first), first.notSaved, first.record.pending('saved').length]).toEqual(['Draft D', ['Message A', 'Message B, edited'], [], 0])
   } finally {
     held.restore()
@@ -4860,7 +4937,7 @@ test('Save of a saved message another page deleted meanwhile keeps the edit as N
     store.editSaved(first, 'a')
     typeInEdit(first, 'Message A, edited')
     serverSaved.set(FIRST, [savedMessage('b', 'Message B')])
-    metaOf(records[0]!.id).savedRevision += 1
+    listSaved(FIRST, metaOf(FIRST).saved.revision + 1)
     store.saveSavedEdit(first)
     await until(() => first.notSaved.length === 1, 'the edit stands as Not Saved')
     await readAgain(first)
@@ -4885,7 +4962,7 @@ test('a refused Save of an edit that reads as the draft leaves the draft as it i
     store.editSaved(first, 'a')
     typeInEdit(first, 'Same text')
     serverSaved.set(FIRST, [])
-    metaOf(records[0]!.id).savedRevision += 1
+    listSaved(FIRST, metaOf(FIRST).saved.revision + 1)
     store.saveSavedEdit(first)
     await until(() => first.notSaved.length === 1, 'the edit stands as Not Saved')
     await readAgain(first)
@@ -5021,7 +5098,7 @@ test('Retry on a message not saved saves it under its own id, and it is listed a
     expect(listed(first)).toEqual(['Look at the IPv6 setup'])
     await held.waiting[1]!.pass()
     await readAgain(first)
-    expect([listed(first), first.notSaved, first.record.pending()]).toEqual([['Look at the IPv6 setup'], [], []])
+    expect([listed(first), first.notSaved, first.record.pending().length]).toEqual([['Look at the IPv6 setup'], [], 0])
   } finally {
     held.restore()
     signOut()
@@ -5034,14 +5111,13 @@ async function withStubModel(first: Parameters<ReturnType<typeof useConversation
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
     if (path === `/api/conversations/${FIRST}` && init?.method === 'PATCH') {
       return Response.json({ conversation: records[0], metadata: metaOf(records[0]!.id), results: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  await useProduct().loadModels(true)
+  await announceCatalog()
   await useConversations().changeModel(first, { model: { providerId: 'stub', modelId: 'stub' } })
   return () => {
     connect.mockRestore()
@@ -5129,7 +5205,7 @@ test('a saved message the session took leaves the list for good once read', asyn
   const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(async () => {
     // The backend takes it off its list as the session takes it.
     serverSaved.set(FIRST, [])
-    metaOf(records[0]!.id).savedRevision += 1
+    listSaved(FIRST, metaOf(FIRST).saved.revision + 1)
     return true
   })
   try {
@@ -5137,7 +5213,7 @@ test('a saved message the session took leaves the list for good once read', asyn
     await until(() => first.pendingSends.length === 0, 'the session holds it')
     expect(listed(first)).toEqual([])
     await readAgain(first)
-    expect([listed(first), first.record.pending()]).toEqual([[], []])
+    expect([listed(first), first.record.pending().length]).toEqual([[], 0])
   } finally {
     send.mockRestore()
     restore()
@@ -5252,6 +5328,38 @@ test('a deleted saved message leaves at once with its Undo toast, and Undo saves
     expect(undo.id).not.toBe('dns')
   } finally {
     held.restore()
+  }
+})
+
+test('a long saved message is deleted at once without a read, and Undo saves it whole from the answer of the deletion', async () => {
+  const long = `Check the DNS ${'and the records '.repeat(40)}end`
+  const { store, first } = await openWithSaved([savedMessage('long', long)])
+  toasts.splice(0)
+  const reads: string[] = []
+  const original = globalThis.fetch
+  globalThis.fetch = ((input, init) => {
+    if ((init?.method ?? 'GET') === 'GET' && String(input).includes('/saved/')) {
+      reads.push(String(input))
+    }
+    return original(input, init)
+  }) as typeof fetch
+  const held = holdWrites()
+  try {
+    const deleting = store.deleteSaved(first, 'long')
+    await until(() => held.waiting.length === 1, 'the delete reaches the backend')
+    // It left the list and the toast stands while the backend has not answered.
+    expect(listed(first)).toEqual([])
+    expect(toasts.map((toast) => toast.title)).toEqual(['Saved Message Deleted'])
+    // Undo before the answer waits for the message the answer carries.
+    toasts[0]!.action!.run()
+    await held.waiting[0]!.pass()
+    await deleting
+    await until(() => held.waiting.length === 2, 'the Undo reaches the backend')
+    expect((held.waiting[1]!.body as { text: string }).text).toBe(long)
+    expect(reads).toEqual([])
+  } finally {
+    held.restore()
+    globalThis.fetch = original
   }
 })
 

@@ -6,10 +6,12 @@
 //! - `demi attachment upload` copies files beside the invocation into the
 //!   conversation as `a1`, `a2`, …. A file it cannot copy fails with its own
 //!   line while the others are stored.
-//! - The page reads an attachment by its number from the conversation's
-//!   database, and its bytes as a blob, with the file it was copied from: the
-//!   device and the file's full path, which the page opens in the copy's
-//!   place while it can read it.
+//! - A reply that names an attachment by its number carries its description
+//!   from the conversation's database, and the page reads its bytes as a
+//!   blob, with the file it was copied from: the device and the file's full
+//!   path, which the page opens in the copy's place while it can read it.
+//! - A page that shows the conversation is sent the description of each
+//!   attachment as it is stored, since a reply may name it first.
 //! - A job `demi host shell` runs on an attached Host uploads that Host's
 //!   files. A file whose blob the namespace holds already is not read again.
 //!
@@ -17,12 +19,17 @@
 //! runners.
 
 use demi_agent_tools::testing::{field, shown_output};
-use demi_provider_common::testing::MockVendor;
+use demi_conversation_socket_protocol::{ServerFrame, TranscriptPatch};
+use demi_provider_common::testing::{MockResponse, MockVendor};
+use demi_shared_types::Block;
+use serde_json::json;
 use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, ConversationAttachment};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 
-use crate::conversations::{anthropic_at, create, on_device, working_on};
+use crate::conversations::{
+    anthropic_at, create, delivering, events, message_start, metadata, named_attachments, on_device, text_block, working_on,
+};
 use crate::holding_edge::HoldingEdge;
 use crate::support::{Harness, eventually};
 use crate::uploads::PNG;
@@ -100,7 +107,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     // Paths resolve against the directory the command runs in.
     let script = "cd out && demi attachment upload login.png ../notes.md missing.png ../huge.bin";
     let uploaded = work
-        .turn(vec![shell("t1", script, 30_000), say("uploaded")])
+        .turn(vec![shell("t1", script, 30_000), say(&delivering("uploaded", &["a1", "a2", "a3"]))])
         .await;
     let result = &uploaded.received[0];
     assert_eq!(field(result, "exitCode"), "1", "{result}");
@@ -130,26 +137,27 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         )
     );
 
-    // Each is a record of the conversation with its blob, read without a
-    // live Host; a number it does not have is not found.
-    let read = async |number: &str| {
-        backend
-            .get(
-                &format!("/api/conversations/{CONVERSATION}/attachments/{number}"),
-                Some(&master),
-            )
-            .await
-    };
-    let first = read("a1").await;
-    assert_eq!(first.status, StatusCode::OK);
-    let first: ConversationAttachment = first.json();
+    // Each is a record of the conversation with its blob, which the reply
+    // that names it carries, read without a live Host; a number it does not
+    // have is named by nothing.
+    let described = named_attachments(&backend, &master, CONVERSATION, CONVERSATION).await;
+    // A page that opens the conversation is sent them with the reply, in
+    // its handshake.
+    let mut page = crate::conversations::Socket::connect(&backend, &master, CONVERSATION).await;
+    let handshake = page.open().await;
+    let reset = handshake.iter().find_map(|frame| match frame {
+        ServerFrame::TranscriptReset { attachments, .. } => Some(attachments),
+        _ => None,
+    });
+    assert_eq!(reset, Some(&described), "{handshake:?}");
+    drop(page);
+    let [first, second]: [ConversationAttachment; 2] = described.try_into().expect("a1 and a2 alone");
     assert_eq!(
         (first.id.as_str(), first.name.as_str(), first.media_type.as_str(), first.size),
         ("a1", "login.png", "image/png", png as u64)
     );
     // An image's record carries its size in pixels, read from its header.
     assert_eq!((first.width, first.height), (Some(4), Some(3)));
-    let second: ConversationAttachment = read("a2").await.json();
     assert_eq!(
         (second.name.as_str(), second.media_type.as_str(), second.size),
         ("notes.md", "text/markdown", 8)
@@ -165,14 +173,6 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
             std::fs::canonicalize(&file).unwrap(),
             "{}",
             source.path
-        );
-    }
-    for missing in ["a3", "a0", "3", "a01"] {
-        let answer = read(missing).await;
-        assert_eq!(
-            (answer.status, answer.error().code),
-            (StatusCode::NOT_FOUND, ErrorCode::NotFound),
-            "{missing}"
         );
     }
     let bytes = backend
@@ -208,11 +208,15 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     let linked = work
         .turn(vec![
             shell("t3", "cd out && demi attachment upload link/../report.md", 30_000),
-            say("linked"),
+            say(&delivering("linked", &["a4"])),
         ])
         .await;
     assert_eq!(field(&linked.received[0], "exitCode"), "0", "{}", linked.received[0]);
-    let report: ConversationAttachment = read("a4").await.json();
+    let report = named_attachments(&backend, &master, CONVERSATION, CONVERSATION)
+        .await
+        .into_iter()
+        .find(|attachment| attachment.id == "a4")
+        .expect("the reply carries a4");
     let read_file = std::fs::canonicalize(exports.path().join("report.md")).unwrap();
     assert_eq!(
         report.source.map(|source| source.path),
@@ -226,10 +230,10 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
 // Planted defect it catches: the upload stores the attachment and tells no
 // page, so a page that showed a reply naming `a1` before it existed keeps
 // showing it missing. The job waits on a pipe after the upload until the
-// test has seen the metadata, so no other change of the conversation, such as
-// the turn's end, can carry the number first.
+// test has seen the description, so no other change of the conversation,
+// such as the turn's end, can carry it first.
 #[tokio::test]
-async fn the_pages_learn_of_a_new_attachment_from_the_metadata_as_it_is_stored() {
+async fn the_pages_are_sent_a_new_attachment_with_its_description_as_it_is_stored() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -244,12 +248,85 @@ async fn the_pages_learn_of_a_new_attachment_from_the_metadata_as_it_is_stored()
     let script = "mkfifo gate && demi attachment upload shot.png > /dev/null && read -r go < gate";
     let turn = work.turn(vec![shell("t1", script, 30_000), say("uploaded")]);
     let announced = async {
-        page.metadata_until(|metadata| metadata.last_attachment == 1).await;
+        let (node, attachments) = page.attachments_until().await;
+        assert_eq!(node.as_str(), CONVERSATION);
+        assert_eq!(
+            attachments.iter().map(|attachment| (attachment.id.as_str(), attachment.name.as_str())).collect::<Vec<_>>(),
+            [("a1", "shot.png")]
+        );
         // Opening the pipe to write waits for the job to read it.
         tokio::fs::write(&gate, b"go\n").await.unwrap();
     };
     let (uploaded, ()) = tokio::join!(turn, announced);
     assert_eq!(field(&uploaded.received[0], "exitCode"), "0", "{}", uploaded.received[0]);
+    backend.close().await;
+}
+
+// Under a second: a real device runs one shell job, and the reply that names
+// its upload streams in two pieces.
+//
+// Planted defect it catches: a frame names attachments from its own delta
+// alone, so the piece that completes a tag split between two deltas carries
+// no description, and the page draws the reply's picture as unavailable until
+// a later frame of the block, if any, brings it.
+#[tokio::test]
+async fn a_tag_split_across_deltas_carries_its_attachment_with_the_piece_that_completes_it() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    std::fs::write(format!("{root}/shot.png"), &*PNG).unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+
+    // The reply's second piece waits until the test has seen the first.
+    let (release, held) = tokio::sync::watch::channel(false);
+    let usage = json!({ "input_tokens": 1, "output_tokens": 0 });
+    let mut head = vec![message_start(usage)];
+    head.extend(text_block(0, &["Here it is:\n\n<attachm"]));
+    let tail = [
+        json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "ent id=\"a1\" />\n" } }),
+        json!({ "type": "content_block_stop", "index": 0 }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+        json!({ "type": "message_stop" }),
+    ];
+    let streamed = MockResponse::status(200)
+        .header("content-type", "text/event-stream")
+        .chunk(events(&head))
+        .then_held(held)
+        .chunk(events(&tail));
+    work.start(vec![shell("t1", "demi attachment upload shot.png", 30_000), streamed]).await;
+
+    // The first piece arrives with the block's first patch, the next as text
+    // appended to it.
+    let begun = |frame: &ServerFrame| {
+        matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| matches!(
+            patch,
+            TranscriptPatch::Add { value: Block::Text(text), .. } if text.text.contains("<attachm")
+        )))
+    };
+    let appended = |frame: &ServerFrame, piece: &str| {
+        matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| matches!(
+            patch,
+            TranscriptPatch::AppendText { delta, .. } if delta.contains(piece)
+        )))
+    };
+    let first = work.socket.until(|frame| begun(frame)).await;
+    release.send(true).unwrap();
+    let rest = work.socket.until_idle().await;
+
+    let carried = |frame: &ServerFrame| match frame {
+        ServerFrame::TranscriptPatch { attachments, .. } => {
+            attachments.iter().map(|attachment| attachment.id.clone()).collect::<Vec<_>>()
+        }
+        _ => Vec::new(),
+    };
+    // The first piece names no attachment, and the piece that completes the
+    // tag brings a1 in the same frame, before any later frame of the block.
+    assert!(first.iter().all(|frame| carried(frame).is_empty()), "{first:?}");
+    let completing = rest.iter().find(|frame| appended(frame, "ent id")).expect("the second piece reaches the page");
+    assert_eq!(carried(completing), ["a1"], "{completing:?}");
     backend.close().await;
 }
 
@@ -282,11 +359,10 @@ async fn a_job_on_an_attached_host_uploads_that_hosts_file() {
         "demi host shell --host alpha 'kill -STOP {} && cd out && demi attachment upload shot.png'",
         beta.runner.pid()
     );
-    let attachment = format!("/api/conversations/{CONVERSATION}/attachments/a1");
-    let turn = work.turn(vec![shell("t1", &script, 30_000), say("uploaded")]);
+    let turn = work.turn(vec![shell("t1", &script, 30_000), say(&delivering("uploaded", &["a1"]))]);
     let stored = async {
         eventually("the far job stored a1", async || {
-            backend.get(&attachment, Some(&master)).await.status == StatusCode::OK
+            metadata(&backend, &master, CONVERSATION).await.last_attachment == 1
         })
         .await;
         beta.runner.resume();
@@ -298,7 +374,10 @@ async fn a_job_on_an_attached_host_uploads_that_hosts_file() {
         format!("ID  MEDIA TYPE  SIZE (BYTES)  PATH\na1  image/png   {:<12}  shot.png\n", PNG.len()),
         "{result}"
     );
-    let attachment: ConversationAttachment = backend.get(&attachment, Some(&master)).await.json();
+    let [attachment]: [ConversationAttachment; 1] = named_attachments(&backend, &master, CONVERSATION, CONVERSATION)
+        .await
+        .try_into()
+        .expect("the reply carries a1");
     let bytes = backend
         .get(&format!("/api/blobs/{}", attachment.blob), Some(&master))
         .await;
@@ -323,7 +402,7 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
 
     for (turn, number) in [("t1", "a1"), ("t2", "a2")] {
         let uploaded = work
-            .turn(vec![shell(turn, "demi attachment upload shot.png", 30_000), say(turn)])
+            .turn(vec![shell(turn, "demi attachment upload shot.png", 30_000), say(&delivering(turn, &[number]))])
             .await;
         assert_eq!(
             shown_output(&uploaded.received[0]),
@@ -332,16 +411,10 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
     }
     // The file's bytes went to the backend once, the first time.
     assert_eq!(edge.pipe_uploads_of(&PNG), 1);
-    let read = async |number: &str| {
-        backend
-            .get(
-                &format!("/api/conversations/{CONVERSATION}/attachments/{number}"),
-                Some(&master),
-            )
-            .await
-            .json::<ConversationAttachment>()
-    };
-    let (first, again) = (read("a1").await, read("a2").await);
+    let [first, again]: [ConversationAttachment; 2] = named_attachments(&backend, &master, CONVERSATION, CONVERSATION)
+        .await
+        .try_into()
+        .expect("the replies carry a1 and a2");
     assert_eq!(first.blob, again.blob);
     // The held blob's opening gives the record the image's size all the same.
     assert_eq!((again.width, again.height), (Some(4), Some(3)));
@@ -351,8 +424,8 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
 // A few seconds: the root, its child and a side question each run shell jobs
 // on a real device.
 //
-// A reply shows only what its own agent uploaded, as the page asks for it with
-// `?node=`:
+// A reply shows only what its own agent uploaded, as each transcript page
+// carries the attachments its replies name:
 //
 // - The root shows its a1, the child its a2, the side question its a3, each
 //   none of another's.
@@ -375,13 +448,15 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
     }
     let mut socket = crate::conversations::Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
+    // Every agent's last reply names all three; each shows its own.
+    let named = |text: &str| delivering(text, &["a1", "a2", "a3"]);
     // Each round's child waits until the root's turn has ended, so that its
     // completion wakes the idle root, which answers it.
     let go = format!("{root}/go");
     let mut round = async |id: &str, command: &str, child: Vec<Answer>| {
         let _ = std::fs::remove_file(&go);
         scripts.child(child);
-        scripts.root(FIRST, vec![call(id, command), say("dispatched"), say("received")]);
+        scripts.root(FIRST, vec![call(id, command), say("dispatched"), say(&named("received"))]);
         socket.chat(id, "Go").await;
         std::fs::write(&go, "").unwrap();
         socket.until_child_closed().await;
@@ -390,7 +465,7 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
     round(
         "t1",
         "demi attachment upload root.png && demi agent spawn <<< 'Upload'",
-        vec![call("c1", &format!("{WAIT} && demi attachment upload child.png")), say("child")],
+        vec![call("c1", &format!("{WAIT} && demi attachment upload child.png")), say(&named("child"))],
     )
     .await;
     let tree = transcript(&backend, &master, FIRST).await;
@@ -406,13 +481,13 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
         .blocks
         .iter()
         .rev()
-        .find(|block| matches!(block, Block::Text(text) if text.text == "received"))
+        .find(|block| matches!(block, Block::Text(text) if text.text.starts_with("received")))
         .expect("the root answered")
         .id()
         .to_string();
 
     // A side question about the root's reply uploads its own file.
-    scripts.child(vec![call("s1", "demi attachment upload side.png"), say("side")]);
+    scripts.child(vec![call("s1", "demi attachment upload side.png"), say(&named("side"))]);
     let asked = backend
         .post(
             &format!("/api/conversations/{FIRST}/side-questions"),
@@ -422,7 +497,7 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
         .await;
     assert_eq!(asked.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&asked.body));
     crate::support::eventually("the side question answers", || async {
-        last_text(&crate::conversations::agent_history(&backend, &master, FIRST, Some(SIDE)).await.0) == "side"
+        last_text(&crate::conversations::agent_history(&backend, &master, FIRST, Some(SIDE)).await.0).starts_with("side")
     })
     .await;
 
@@ -431,17 +506,11 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
         (child.as_str(), ["a2"].as_slice()),
         (SIDE, ["a3"].as_slice()),
     ] {
-        let mut answered = Vec::new();
-        for number in ["a1", "a2", "a3"] {
-            let answer = backend
-                .get(&format!("/api/conversations/{FIRST}/attachments/{number}?node={node}"), Some(&master))
-                .await;
-            match answer.status {
-                StatusCode::OK => answered.push(number),
-                StatusCode::NOT_FOUND => {}
-                status => panic!("{number} for {node}: {status}"),
-            }
-        }
+        let answered: Vec<String> = named_attachments(&backend, &master, FIRST, node)
+            .await
+            .into_iter()
+            .map(|attachment| attachment.id)
+            .collect();
         assert_eq!(answered, shown, "the replies of {node}");
     }
     backend.close().await;

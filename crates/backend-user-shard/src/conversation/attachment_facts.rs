@@ -1,0 +1,178 @@
+//! The attachments a transcript's replies name, which travel beside the
+//! blocks as failure facts do, never stored with them
+//! (`docs/decisions/0029-a-conversation-opens-whole.md`).
+//!
+//! A reply names an attachment by a line that is its tag alone,
+//! `<attachment id="a3" />`, the rule the page's renderer follows
+//! (`demi_backend_database::shares::named_attachments`). The socket's
+//! transcript frames and the history route both carry the attachments their
+//! blocks and their text name that the node's replies show, so the page draws
+//! each card or picture at its size with the reply, and asks for none.
+//!
+//! A reply streams as appended text, and a tag may arrive in pieces, so a
+//! frame that completes one is named from the block's text so far, never from
+//! its own delta: [`StreamedText`] keeps what a socket needs of it.
+
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+use demi_backend_database::StorageError;
+use demi_backend_database::conversation_attachments::{AttachmentNumber, read_all_shown};
+use demi_backend_database::conversations::ConversationStores;
+use demi_backend_database::shares::named_attachments;
+use demi_conversation_socket_protocol::{ConversationAttachment, TranscriptPatch};
+use demi_shared_types::{Block, NodeId};
+use demi_web_api_protocol::ids::ConversationId;
+
+/// How many text blocks of a node a socket keeps the text of: the one being
+/// written and the few before it.
+const KEPT_BLOCKS: usize = 8;
+
+/// The attachments named in `texts`, the replies' texts, that the replies of
+/// the node `node` of `conversation` show, in their order; none for a
+/// conversation without a database yet.
+pub async fn attachment_facts<'a>(
+    conversations: &ConversationStores,
+    conversation: &ConversationId,
+    node: &NodeId,
+    texts: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<ConversationAttachment>, StorageError> {
+    described(conversations, conversation, node, texts.into_iter().flat_map(named_attachments).collect()).await
+}
+
+/// The descriptions of `numbers` that the replies of `node` show.
+async fn described(
+    conversations: &ConversationStores,
+    conversation: &ConversationId,
+    node: &NodeId,
+    numbers: BTreeSet<AttachmentNumber>,
+) -> Result<Vec<ConversationAttachment>, StorageError> {
+    if numbers.is_empty() {
+        return Ok(Vec::new());
+    }
+    let node = node.clone();
+    let rows = conversations
+        .read(conversation, move |connection| read_all_shown(connection, &numbers, &node))
+        .await?
+        .unwrap_or_default();
+    Ok(rows.into_iter().map(|row| row.description()).collect())
+}
+
+/// The texts of the replies among `blocks`.
+pub fn reply_texts(blocks: &[Block]) -> impl Iterator<Item = &str> {
+    blocks.iter().filter_map(|block| match block {
+        Block::Text(text) => Some(text.text.as_str()),
+        _ => None,
+    })
+}
+
+/// What one socket knows of the replies it streams to its page: the text of
+/// each node's latest text blocks, so a tag that arrives in pieces is named
+/// by the frame that completes it, and the attachments it described already,
+/// so a later frame brings only what is new.
+#[derive(Default)]
+pub struct StreamedText {
+    texts: HashMap<NodeId, BTreeMap<u32, String>>,
+    described: HashSet<(NodeId, AttachmentNumber)>,
+}
+
+impl StreamedText {
+    /// A reset of `node`'s transcript from `start`: the blocks it holds are
+    /// the text so far, of which only the latest may still be written.
+    pub fn reset(&mut self, node: &NodeId, start: u32, blocks: &[Block]) {
+        let texts = self.texts.entry(node.clone()).or_default();
+        texts.clear();
+        if let (Some(Block::Text(last)), Ok(count)) = (blocks.last(), u32::try_from(blocks.len())) {
+            texts.insert(start + count - 1, last.text.clone());
+        }
+    }
+
+    /// Takes `described` as sent to the page, whichever frame carries it.
+    pub fn sent(&mut self, node: &NodeId, described: &[ConversationAttachment]) {
+        for attachment in described {
+            if let Ok(number) = attachment.id.parse() {
+                self.described.insert((node.clone(), number));
+            }
+        }
+    }
+
+    /// The attachments the replies of `node` name after `patches` apply that
+    /// the page was not sent, read from `conversations` and now taken as sent.
+    ///
+    /// A block's text is read as it stands after the patch, whole, so a tag
+    /// completed by the last of its pieces names its attachment then. A delta
+    /// is read again only when it can close a tag or a line.
+    pub async fn named(
+        &mut self,
+        conversations: &ConversationStores,
+        conversation: &ConversationId,
+        node: &NodeId,
+        patches: &[TranscriptPatch],
+    ) -> Result<Vec<ConversationAttachment>, StorageError> {
+        let mut named = BTreeSet::new();
+        for text in self.apply(node, patches) {
+            named.extend(named_attachments(&text));
+        }
+        named.retain(|number| !self.described.contains(&(node.clone(), *number)));
+        let found = described(conversations, conversation, node, named).await?;
+        self.sent(node, &found);
+        Ok(found)
+    }
+
+    /// Applies `patches` to the text kept of `node`, and answers the block
+    /// texts they leave that may name an attachment not named before.
+    fn apply(&mut self, node: &NodeId, patches: &[TranscriptPatch]) -> Vec<String> {
+        let texts = self.texts.entry(node.clone()).or_default();
+        let mut to_read = Vec::new();
+        for patch in patches {
+            match patch {
+                TranscriptPatch::Add { index, value, .. } => {
+                    // The blocks from the index on move one place.
+                    let moved: Vec<u32> = texts.range(*index..).map(|(each, _)| *each).collect();
+                    for each in moved.into_iter().rev() {
+                        if let Some(text) = texts.remove(&each) {
+                            texts.insert(each + 1, text);
+                        }
+                    }
+                    if let Block::Text(text) = value {
+                        texts.insert(*index, text.text.clone());
+                        to_read.push(text.text.clone());
+                    }
+                }
+                TranscriptPatch::ReplaceBlock { index, value } => match value {
+                    Block::Text(text) => {
+                        texts.insert(*index, text.text.clone());
+                        to_read.push(text.text.clone());
+                    }
+                    _ => {
+                        texts.remove(index);
+                    }
+                },
+                TranscriptPatch::AppendText { index, delta } => {
+                    // A block this socket holds no text of, such as a thinking
+                    // block, is read from its delta alone.
+                    let so_far = texts.get_mut(index);
+                    let whole = match so_far {
+                        Some(so_far) => {
+                            so_far.push_str(delta);
+                            so_far.as_str()
+                        }
+                        None => delta.as_str(),
+                    };
+                    if delta.contains(['>', '\n']) && whole.contains("<attachment") {
+                        to_read.push(whole.to_owned());
+                    }
+                }
+                TranscriptPatch::Truncate { length } => {
+                    let gone: Vec<u32> = texts.range(*length..).map(|(each, _)| *each).collect();
+                    for each in gone {
+                        texts.remove(&each);
+                    }
+                }
+            }
+        }
+        while texts.len() > KEPT_BLOCKS {
+            texts.pop_first();
+        }
+        to_read
+    }
+}

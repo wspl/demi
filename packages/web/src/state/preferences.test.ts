@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import type { Preferences } from '../api/generated/web-api'
+import { modelCatalogSchema, type Preferences } from '../api/generated/web-api'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { deferred, waitFor } from '@demicodes/utils'
@@ -15,24 +15,18 @@ let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 let saved: Preferences
 let patches: unknown[]
-/** What `/api/models` answers. */
-let catalog: unknown
 
 beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   saved = { appearance: {}, shortcuts: {} }
   patches = []
-  catalog = { providers: [], smallModel: null }
   Object.defineProperty(navigator, 'languages', {
     configurable: true,
     get: () => ['zh-cn', 'en', 'zh-CN'],
   })
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) {
-      return Response.json(catalog)
-    }
     if (path === '/api/settings/preferences' && init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body))
       patches.push(body)
@@ -134,13 +128,13 @@ function catalogModel(id: string) {
 }
 
 test("a model or an entry the user turns off is saved in the user's preferences, and every page's menus leave it out", async () => {
-  catalog = { providers: [{
+  const models = modelCatalogSchema.parse({ providers: [{
     providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], audioModels: [], stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [catalogModel('a'), catalogModel('b')],
-  }], smallModel: null }
+  }], smallModel: null })
   useProduct().start()
-  channels.last().connect(productState({ preferences: saved, providers: [stub] }))
+  channels.last().connect(productState({ preferences: saved, providers: [stub], models }))
   const preferences = usePreferences()
   const resources = useResources()
   await waitFor(() => resources.models.stub?.length === 2, () => 'the catalog did not load')
@@ -233,21 +227,16 @@ test("a switch's change is written at once, and one behind a write in flight goe
   }
 })
 
-test('Settings › Agent names Automatic’s model from the catalog, read again when what Automatic depends on changes, and a choice shows at once until Automatic clears it', async () => {
-  let modelReads = 0
+test('Settings › Agent names Automatic’s model from the catalog, as its owner announces it when what Automatic depends on changes, and a choice shows at once until Automatic clears it', async () => {
   const haiku = {
     providerId: 'p1',
     model: { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000, outputLimit: null, thinking: [], acceptedExtensions: null },
     thinking: null,
     serviceTierId: null,
   }
-  catalog = { providers: [], smallModel: haiku }
   const fetchAsBefore = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) {
-      modelReads++
-    }
     if (path === '/api/settings/preferences' && init?.method === 'PATCH') {
       // The backend stores no choice for Automatic.
       const { smallModel, ...body } = JSON.parse(String(init.body))
@@ -262,10 +251,9 @@ test('Settings › Agent names Automatic’s model from the catalog, read again 
   }) as typeof fetch
   const product = useProduct()
   product.start()
-  channels.last().connect(productState({ preferences: saved }))
+  channels.last().connect(productState({ preferences: saved, models: { providers: [], smallModel: haiku } }))
   const preferences = usePreferences()
-  await waitFor(() => product.automaticSmallModel?.model.name === 'Claude Haiku 4.5')
-  expect(modelReads).toBe(1)
+  expect(product.automaticSmallModel?.model.name).toBe('Claude Haiku 4.5')
 
   const chosen = { providerId: 'p1', modelId: 'claude-sonnet', thinkingEffort: 'low' }
   preferences.update({ smallModel: chosen })
@@ -276,12 +264,9 @@ test('Settings › Agent names Automatic’s model from the catalog, read again 
   expect(patches).toEqual([{ smallModel: null }])
   expect(product.snapshot?.preferences.smallModel).toBeUndefined()
 
-  // A change Automatic does not depend on reads nothing; small requests
-  // kept on the conversation's provider, from another page, read the
-  // catalog again, which then names no model.
-  channels.last().send({ type: 'preferences', preferences: { ...saved, sendWhileRunning: 'queue' } })
-  catalog = { providers: [], smallModel: null }
+  // Small requests kept on the conversation's provider, from another page:
+  // the backend announces the catalog, which then names no model.
   channels.last().send({ type: 'preferences', preferences: { ...saved, smallModelSameProvider: true } })
-  await waitFor(() => product.automaticSmallModel === null)
-  expect(modelReads).toBe(2)
+  channels.last().send({ type: 'models', models: { providers: [], smallModel: null } })
+  expect(product.automaticSmallModel).toBeNull()
 })

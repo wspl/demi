@@ -10,7 +10,7 @@
 use demi_web_api_protocol::attachments::AttachmentAnswer;
 use demi_shared_types::{BlockId, MessageComment};
 use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, ReplacedDraft};
-use demi_web_api_protocol::saved::{FromDraftAnswer, SavedList};
+use demi_web_api_protocol::saved::FromDraftAnswer;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
@@ -411,12 +411,9 @@ async fn waiting_comments_reach_every_session_and_stay_in_the_draft_when_its_tex
         .await;
     assert_eq!(written.status, StatusCode::OK, "{}", String::from_utf8_lossy(&written.body));
     assert_eq!(read(&backend, &laptop, &id).await, typed);
-    let list = backend
-        .get(&format!("/api/conversations/{id}/saved"), Some(&laptop))
-        .await
-        .json::<SavedList>();
+    let list = crate::conversations::metadata(&backend, &laptop, &id).await.saved;
     assert_eq!(
-        list.messages.iter().map(|each| each.text.as_str()).collect::<Vec<_>>(),
+        list.messages.iter().map(|each| each.opening.as_str()).collect::<Vec<_>>(),
         ["Otherwise go ahead, with retries"]
     );
 }

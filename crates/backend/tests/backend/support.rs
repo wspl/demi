@@ -668,6 +668,22 @@ impl Harness {
         connection
     }
 
+    /// The blob of the conversation `id`'s attachment `number`, as its
+    /// database keeps it; none while it has none by that number. A file the
+    /// user sent shows in no reply, so only `demi attachment download` and
+    /// this read reach its record.
+    pub fn attachment_blob(&self, id: &str, number: u64) -> Option<String> {
+        let path = self.data_dir().join("conversations").join(format!("{id}.sqlite"));
+        let connection = rusqlite::Connection::open(path).unwrap();
+        connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+        rusqlite::OptionalExtension::optional(connection.query_row(
+            "SELECT blob FROM attachments WHERE number = ?1",
+            [i64::try_from(number).unwrap()],
+            |row| row.get(0),
+        ))
+        .unwrap()
+    }
+
     /// Attaches `device` to the conversation `id` as the attach does,
     /// written to the control database: the conversation's agents attach
     /// devices, and the page has no route for it (`crates/backend-database/src/conversation_index.rs`).
@@ -1094,6 +1110,29 @@ impl TestBackend {
         step: demi_backend_user_shard::sync::SyncStep,
     ) -> demi_backend_user_shard::holds::StepHold {
         self.backend.hold_sync(step)
+    }
+
+    /// The model catalog as the product state of `session`'s page carries
+    /// it now.
+    pub async fn models(&self, session: &Session) -> demi_web_api_protocol::providers::ModelCatalog {
+        self.sync(session).await.snapshot().await.models
+    }
+
+    /// The model catalog once the entries' lists have been read: a page opened
+    /// on an entry no record holds yet gets the snapshot without its models,
+    /// and the catalog follows as an event when the read ends.
+    pub async fn models_after_read(&self, session: &Session) -> demi_web_api_protocol::providers::ModelCatalog {
+        let mut channel = self.sync(session).await;
+        channel.snapshot().await;
+        let events = channel
+            .until(|event| {
+                matches!(event, SyncEvent::Models { models } if models.providers.iter().any(|entry| !entry.models.is_empty()))
+            })
+            .await;
+        match events.into_iter().last() {
+            Some(SyncEvent::Models { models }) => models,
+            other => panic!("the catalog follows the read: {other:?}"),
+        }
     }
 
     /// The session's synchronization channel, opened from a page of the

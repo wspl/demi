@@ -1,11 +1,14 @@
 //! Conversations as the web app lists and shows them: the sidebar entry of
-//! each, and the metadata of one a page shows
-//! (`docs/decisions/0009-agent-sessions-and-sync.md`).
+//! each, and the metadata of one a page shows.
 //!
 //! An entry comes with its status, from the live tree or else from its last
 //! checkpoint, and its output revision. Metadata comes with the directory its
 //! work runs in, its root's latest ended turn, from that same checkpoint, the
-//! cost of its rows of no agent and the version of each of its collections.
+//! cost of its rows of no agent, and each list its view shows whole under its
+//! revision (`docs/decisions/0029-a-conversation-opens-whole.md`): its messages
+//! saved for later as the composer lists them, its work panel's tabs with the states plugins hold, its
+//! attached hosts, its directory's workflows and its permission requests. Each
+//! is read with an indexed query that touches no transcript row.
 //!
 //! The persisted facts come from a read-only connection, so listing hundreds of
 //! conversations takes no writer from a running one.
@@ -18,9 +21,11 @@ use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
     ConversationMetadata, ConversationStatus, ConversationSummary, LastTurn, ModelSettings, TurnOutcome,
 };
+use demi_web_api_protocol::hosts::{AttachedHost, ConversationHosts};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use demi_web_api_protocol::shares::ConversationShare;
 use futures_util::future::try_join_all;
+use tokio_util::sync::CancellationToken;
 
 use crate::shard::Shard;
 use demi_backend_host_access::root_of;
@@ -96,14 +101,25 @@ impl Shard {
             .into_iter()
             .map(|share| ConversationShare::new(share.token, share.target))
             .collect();
-        let workflows_revision = match resolved.device() {
-            Some(device) => services
-                .control
-                .host_workflows(device.clone(), resolved.path().to_owned())
-                .await?
-                .map_or(0, |kept| kept.revision),
-            None => 0,
-        };
+        let workflows = self.conversation_workflows(&record.id).await;
+        let hosts = services
+            .control
+            .attached_host_listing(record.id.clone())
+            .await?
+            .into_iter()
+            .map(|(host, attached_at)| AttachedHost {
+                device_id: host.device,
+                name: host.name,
+                cwd: host.cwd,
+                attached_at,
+            })
+            .collect();
+        let saved = services.control.saved_listing(record.id.clone()).await?;
+        let panel = self
+            .plugins()
+            .panel_read(record.id.clone(), CancellationToken::new())
+            .await?;
+        let permissions = demi_backend_permissions::read(self.permission_shard(), &record.id).await?;
         let other_cost = services
             .control
             .conversation_costs(record.id.clone())
@@ -120,14 +136,16 @@ impl Shard {
             turn_speed: facts.turn_speed,
             plugins_changed,
             other_cost,
-            saved: record.saved,
-            saved_revision: record.saved_revision,
-            panel_revision: record.panel_revision,
-            hosts_revision: record.hosts_revision,
-            workflows_revision,
+            saved,
+            panel,
+            hosts: ConversationHosts {
+                revision: record.hosts_revision,
+                hosts,
+            },
+            workflows,
             last_attachment: facts.last_attachment,
             plugin_revisions: self.plugins().plugin_revisions(&record.id),
-            permissions_revision: self.permission_revisions().of(&record.id),
+            permissions,
             shares,
             id: record.id,
         })

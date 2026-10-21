@@ -17,7 +17,8 @@ import {
   wholeBlockSchema,
   type TranscriptPage,
 } from '../api/generated/web-api'
-import type { Block, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
+import type { Block, ConversationAttachment, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
+import { describeAttachments } from './activity'
 
 /** The blocks a disk copy holds whole, with the facts of their failures. */
 export interface KeptBlocks {
@@ -69,6 +70,8 @@ export interface HistoryHolder {
   subagents: HistoryAgent[]
   /** A conversation's side questions, whose transcripts its routes read by their nodes as a subagent's; a share has none. */
   sides?: HistoryAgent[]
+  /** A conversation's descriptions of the attachments its replies name, which its pages bring (`describeAttachments`); a share has none. */
+  attachmentDescriptions?: Record<string, Record<string, ConversationAttachment>>
 }
 
 /**
@@ -207,6 +210,9 @@ export function createHistoryReads<T extends HistoryHolder>(
   /** Takes `page` into the agent's history, with what it names beside its blocks. */
   function take(holder: T, node: string | null, page: TranscriptPage): void {
     const failures = { ...page.failures }
+    if (holder.attachmentDescriptions) {
+      describeAttachments({ attachmentDescriptions: holder.attachmentDescriptions }, node ?? holder.id, page.attachments ?? [])
+    }
     if (node === null) {
       holder.history = boundedHistory(addPage(holder.history, page, live(holder, null)), holder.shownAt)
       holder.failures = { ...holder.failures, ...failures }

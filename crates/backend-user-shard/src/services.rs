@@ -419,6 +419,16 @@ impl Services {
             providers.clock,
             media.clone(),
         ));
+        // A source's new model list changes the catalog of every user who
+        // infers with its entry: their pages hear of it. The task ends with
+        // the cache, whose last owner drops the sender.
+        let mut models = assembly.catalogs().subscribe();
+        let announced = sync.clone();
+        tokio::spawn(async move {
+            while models.changed().await.is_ok() {
+                announced.mark_everyone(&demi_backend_page_sync::Part::Models);
+            }
+        });
         let operations = Arc::new(ProviderOperations::default());
         let logins = LoginFlows::new(
             assembly.clone(),

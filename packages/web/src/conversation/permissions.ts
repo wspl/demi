@@ -10,13 +10,13 @@ import {
   type RequestView,
 } from '@demicodes/web-ui/permissions/types'
 import { ApiError } from '../api/client'
-import { decidePermission, readPermissions } from '../api/permissions'
+import { decidePermission } from '../api/permissions'
 import type { ConversationPermissions, PermissionCategory, PermissionRequest } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 import { useConversations } from './store'
 import { isNewer, type RunRevision } from '../state/revisions'
 
-/** One conversation's permission requests, as this page last read them. */
+/** One conversation's permission requests, as its metadata last brought them. */
 export interface PermissionsState {
   /** The revision of the answer the page holds; null before the first. */
   held: RunRevision | null
@@ -63,17 +63,6 @@ function view(request: PermissionRequest): RequestView {
 }
 
 /**
- * The conversations' permission requests: a page reads them for a conversation it
- * shows, and again whenever its metadata's `permissionsRevision` is newer than the
- * revision it holds, a count of another run of the backend included.
- *
- * - An answer older than the one it holds is dropped, since a read and the metadata
- *   can arrive in either order.
- * - A decision shows at once and is not read back. One refused goes back to the
- *   requests as they were, and another page's decision reaches this one through the
- *   metadata.
- */
-/**
  * Why the values in a credential card do not fit its request, in the page's
  * words: the field without a value, or the one over the size a value may
  * have; null for an answer the card did not send as it should, which the
@@ -89,6 +78,16 @@ function answerProblem(error: ApiError): string | null {
     : codeText('invalid_answer_missing', { field })
 }
 
+/**
+ * The conversations' permission requests, as the metadata of each conversation a
+ * page shows brings them with their revision: a list newer than the one the page
+ * holds replaces it, a count of another run of the backend included.
+ *
+ * - A list older than the one it holds is dropped.
+ * - A decision shows at once and is not read back. One refused goes back to the
+ *   requests as they were, and another page's decision reaches this one through the
+ *   metadata.
+ */
 export const usePermissions = defineStore('permissions', () => {
   const product = useProduct()
   const conversations = useConversations()
@@ -117,58 +116,41 @@ export const usePermissions = defineStore('permissions', () => {
     state.error = null
   }
 
-  /** The reads on their way, each with whether a newer revision was heard of meanwhile. */
-  const reading = new Map<string, { again: boolean }>()
-
-  /** Whether the conversation's metadata names a revision newer than the one the page holds. */
-  function behind(conversationId: string): boolean {
-    const metadata = conversations.metadataOf(conversationId)
-    const run = product.snapshot?.run ?? null
-    return metadata !== null && isNewer({ run, revision: metadata.permissionsRevision }, stateFor(conversationId).held)
-  }
-
   /**
-   * Reads the requests, unless a read is on its way: that one is read again
-   * after, if the metadata is still newer than what it brought, so a page
-   * that opens a conversation reads its requests once.
+   * The requests each followed conversation's metadata brought last, which
+   * were taken under the run the page held as they came: the same value
+   * seen again, as after the page's next snapshot names another run, is not
+   * taken again.
    */
-  async function read(conversationId: string): Promise<void> {
-    const running = reading.get(conversationId)
-    if (running) {
-      running.again = true
-      return
-    }
-    const state = stateFor(conversationId)
-    const current = { again: false }
-    reading.set(conversationId, current)
-    try {
-      take(state, await readPermissions(conversationId))
-    } catch (error) {
-      reportError(t('failures.readPermissions'), error)
-    } finally {
-      reading.delete(conversationId)
-    }
-    if (current.again && behind(conversationId)) {
-      await read(conversationId)
+  const brought = new Map<string, ConversationPermissions>()
+
+  /** Takes `permissions`, unless it is the value of the conversation's metadata taken last. */
+  function bring(conversationId: string, permissions: ConversationPermissions): void {
+    if (brought.get(conversationId) !== permissions) {
+      brought.set(conversationId, permissions)
+      take(stateFor(conversationId), permissions)
     }
   }
 
-  /** Reads the conversation's permissions once a page shows it; the metadata keeps them current from then on. */
+  /** Takes the requests the conversation's metadata brings, once a page shows it, and each newer list it brings from then on. */
   function follow(conversationId: string): void {
-    if (!states.has(conversationId)) {
-      void read(conversationId)
+    stateFor(conversationId)
+    const metadata = conversations.metadataOf(conversationId)
+    if (metadata) {
+      bring(conversationId, metadata.permissions)
     }
   }
 
   watch(
-    () => [...states.keys()].map((id) => [id, conversations.metadataOf(id)?.permissionsRevision] as const),
+    () => [...states.keys()].map((id) => [id, conversations.metadataOf(id)?.permissions] as const),
     (followed) => {
-      for (const [id] of followed) {
-        if (behind(id)) {
-          void read(id)
+      for (const [id, permissions] of followed) {
+        if (permissions) {
+          bring(id, permissions)
         }
       }
     },
+    { flush: 'sync' },
   )
 
   /**

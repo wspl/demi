@@ -139,7 +139,6 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
             format!("/api/conversations/{c}"),
             Some(json!({ "archived": true })),
         ),
-        (Method::GET, format!("/api/conversations/{c}/hosts"), None),
         (Method::GET, format!("/api/conversations/{c}/fs"), None),
         (
             Method::POST,
@@ -157,7 +156,6 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
             None,
         ),
         (Method::GET, format!("/api/conversations/{c}/changes"), None),
-        (Method::GET, format!("/api/conversations/{c}/panel"), None),
         (
             Method::POST,
             format!("/api/conversations/{c}/panel/changes"),
@@ -267,11 +265,8 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
     }
 
     // Alice still has everything.
-    let hosts: Value = backend
-        .get(&format!("/api/conversations/{c}/hosts"), Some(&alice))
-        .await
-        .json();
-    assert_eq!(hosts["hosts"].as_array().unwrap().len(), 1);
+    let hosts = crate::conversations::metadata(&backend, &alice, &c).await.hosts.hosts;
+    assert_eq!(hosts.len(), 1);
     assert_eq!(list_lengths(&backend, &alice).await, [1, 1, 1]);
     assert_eq!(
         backend
@@ -308,11 +303,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         .await;
     assert_eq!(revoked.status, StatusCode::OK);
     assert_eq!(revoked.json::<Value>(), json!({ "removed": [workspace] }));
-    let hosts: Value = backend
-        .get(&format!("/api/conversations/{c}/hosts"), Some(&alice))
-        .await
-        .json();
-    assert_eq!(hosts["hosts"], json!([]));
+    assert!(crate::conversations::metadata(&backend, &alice, &c).await.hosts.hosts.is_empty());
     eventually("the revoked runner stops", || {
         let running = laptop.runner.running();
         async move { !running }

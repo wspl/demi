@@ -1,10 +1,11 @@
+import { toRaw } from 'vue'
 import {
   EMPTY_TRANSCRIPT,
   applyTranscriptPatches,
   resetTranscript,
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
-import type { AgentEntry, Version } from '@demicodes/protocol'
+import type { AgentEntry, ConversationAttachment, Version } from '@demicodes/protocol'
 import { boundedHistory, latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation, SideRecord } from '../state/types'
 import { settleSent, sideRecord } from './side-records'
@@ -82,6 +83,27 @@ export function takeAgents(
   conversation.agentsHeld = version
 }
 
+/**
+ * Holds `attachments`, the descriptions of attachments the replies of the
+ * node `node` show, as a frame or a page brings them; a description held
+ * already stands, as the attachment does.
+ */
+export function describeAttachments(
+  holder: Pick<Conversation, 'attachmentDescriptions'>,
+  node: string,
+  attachments: readonly ConversationAttachment[],
+): void {
+  // The raw map, so descriptions stay plain objects the offline copy can keep.
+  const held = toRaw(holder.attachmentDescriptions[node] ?? {})
+  const fresh = attachments.filter((attachment) => !(attachment.id in held))
+  if (fresh.length > 0) {
+    holder.attachmentDescriptions[node] = {
+      ...held,
+      ...Object.fromEntries(fresh.map((attachment) => [attachment.id, attachment])),
+    }
+  }
+}
+
 /** The record of the node `node` other than the root, whose messages it holds. */
 function nodeRecord(conversation: Conversation, node: string): Conversation['subagents'][number] | SideRecord | undefined {
   return conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
@@ -101,6 +123,7 @@ export function applyConversationEvent(
       takeAgents(conversation, [event.agent], { epoch: held.epoch, revision: event.revision }, event.receivedAt, false)
     }
   } else if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
+    describeAttachments(conversation, event.node, event.attachments)
     // The root's messages are the runtime's.
     const record = event.node === conversation.id ? undefined : nodeRecord(conversation, event.node)
     if (record) {

@@ -62,9 +62,9 @@ import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import type { ConversationClient } from '@demicodes/web-ui/transport/protocol'
-import { REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
+import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
+import { readSaved } from '../api/saved'
 import {
-  attachedHostsSchema,
   batchAnswerSchema,
   createdConversationSchema,
   conversationDetailSchema,
@@ -94,8 +94,8 @@ import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
-import { applyConversationEvent, takeAgents, updateLiveStatus } from './activity'
-import { composerWriting, createRecordSync, draftFile, editedMessage, newRecord, type Message, type Writing } from './record'
+import { applyConversationEvent, describeAttachments, takeAgents, updateLiveStatus } from './activity'
+import { composerWriting, createRecordSync, draftFile, editedMessage, newRecord, wholeListed, type Message, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
 import { createConversationCopies } from './offline'
 import { readConversationCopy, readNodeCopy } from '../state/offline'
@@ -346,9 +346,9 @@ export const useConversations = defineStore('conversations', () => {
    * page's changes over it: the model settings its record holds, whichever
    * page or device changed them last, its directory, workflow, shares and
    * plugins. A record without a model leaves the page's own settings, which
-   * a send writes to it. A newer revision of its messages saved for later
-   * or of its hosts reads them again, while the page keeps the conversation
-   * open.
+   * a send writes to it. Its messages saved for later and its hosts come
+   * whole with it, under their revisions, and one no newer than the page's
+   * changes nothing.
    */
   function followMetadata(conversation: Conversation): void {
     const shown = conversation.metadata.shown.value
@@ -363,15 +363,8 @@ export const useConversations = defineStore('conversations', () => {
     if (shown.model) {
       conversation.model = { ...shown.model }
     }
-    if (!cache.get(conversation.id)) {
-      return
-    }
-    if (conversation.record.ask(shown.savedRevision, 'saved')) {
-      void recordSync.readSaved(conversation).catch((error) => report(t('failures.readSaved'), error))
-    }
-    if (conversation.attachedHosts.ask(shown.hostsRevision)) {
-      void readHosts(conversation).catch((error) => report(t('failures.readHosts'), error))
-    }
+    recordSync.receiveSaved(conversation, shown.saved)
+    conversation.attachedHosts.replace(shown.hosts.hosts, { revisions: { '': shown.hosts.revision } })
   }
 
   /** Takes `metadata` as a read of the conversation's, as its socket or a read of it brings it. */
@@ -457,6 +450,7 @@ export const useConversations = defineStore('conversations', () => {
       messageEdit: null,
       scroll: null,
       attachedHosts: markRaw(new Slot<AttachedHost[]>([])),
+      attachmentDescriptions: {},
       subagents: [],
       shownSubagents: [],
       sides: [],
@@ -1187,6 +1181,8 @@ export const useConversations = defineStore('conversations', () => {
         }
         if (parsed.data.type === 'conversation') {
           takeMetadata(conversation, parsed.data.metadata)
+        } else if (parsed.data.type === 'attachments') {
+          describeAttachments(conversation, parsed.data.node, parsed.data.attachments)
         } else {
           // A draft no newer than the one held, as this page's own save's,
           // which its answer's revision already holds, changes nothing.
@@ -1199,11 +1195,12 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Opens the conversation: it shows at once what the disk keeps of it,
-   * its messages, metadata and agents, then its socket's open, which names
-   * the versions it holds, brings what changed since, its draft among them,
-   * and keeps it live. Nothing else is waited for: its hosts, its cost's
-   * calls and its other collections join as they arrive. A conversation the
-   * socket opens no session for, archived or without a model, reads its
+   * its messages, metadata with every list the view shows, agents and
+   * attachment descriptions, then its socket's open, which names the
+   * versions it holds, brings what changed since, its draft among them, and
+   * keeps it live; no list is read by a route
+   * (`docs/decisions/0029-a-conversation-opens-whole.md`). A conversation
+   * the socket opens no session for, archived or without a model, reads its
    * metadata and its latest page instead.
    */
   async function loadConversation(
@@ -1228,9 +1225,6 @@ export const useConversations = defineStore('conversations', () => {
         conversation.load = 'ready'
         return
       }
-      // Share global model discovery, but render history before it completes.
-      // Model load errors belong to the composer, not transcript restoration.
-      void product.loadModels().catch(() => {})
       if (madeHere.delete(conversation.id)) {
         // Its record is what the page created: no transcript yet, the
         // metadata its answer brought, and the composer's draft.
@@ -1239,8 +1233,8 @@ export const useConversations = defineStore('conversations', () => {
       } else {
         await Promise.all([draftRestored, showFromDisk(conversation, signal)])
       }
-      // The saved list and the hosts are read at the revisions the metadata
-      // names, the disk's now and the socket's as it arrives, each once.
+      // The saved list and the hosts come with the metadata, the disk's now
+      // and the socket's as it arrives.
       followMetadata(conversation)
       if (conversation.archived) {
         void early?.then((client) => client.disconnect(), () => {})
@@ -1303,6 +1297,11 @@ export const useConversations = defineStore('conversations', () => {
         conversation.contextUsage = rootEntry.context
       }
     }
+    if (copy) {
+      for (const [node, described] of Object.entries(copy.attachments)) {
+        describeAttachments(conversation, node, Object.values(described))
+      }
+    }
     copies.shownFromDisk(conversation.id, conversation.id, root.transcript)
     conversation.history = root.transcript
     conversation.failures = root.failures
@@ -1330,6 +1329,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.history = addPage(EMPTY_TRANSCRIPT, page, false)
     conversation.shownAt = null
     conversation.failures = page.failures ?? {}
+    describeAttachments(conversation, conversation.id, page.attachments ?? [])
     conversation.instructions = page.instructions
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
@@ -1601,20 +1601,6 @@ export const useConversations = defineStore('conversations', () => {
     return agent ? { cost: agentCost(agent.cost), chart } : null
   }
 
-  /**
-   * Reads the hosts of an open conversation again, after a summary raised
-   * their revision; an answer that a later read overtook is dropped.
-   */
-  async function readHosts(conversation: Conversation): Promise<void> {
-    const revision = conversation.attachedHosts.requested()
-    const since = conversation.attachedHosts.now()
-    const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, {
-      signal: lifetime.signal,
-    })
-    const answer = await readResponse(response, attachedHostsSchema)
-    conversation.attachedHosts.replace(answer.hosts, { revisions: { '': revision }, since })
-  }
-
   async function runtimeFor(
     conversation: Conversation,
   ): Promise<ConversationRuntime> {
@@ -1642,13 +1628,9 @@ export const useConversations = defineStore('conversations', () => {
     }
     const runtime = cache.get(conversation.id)?.runtime
     if (!runtime) {
-      // A model list that failed is why no model could be picked.
-      const failure = product.catalogFailure
       throw conversation.lastError
         ? new Error(conversation.lastError.message)
-        : failure === null
-          ? coded(new Error('No available model for this conversation.'), 'no_model_available')
-          : coded(new Error(`Couldn’t load the models: ${failure}`), 'models_not_loaded', { failure })
+        : coded(new Error('No available model for this conversation.'), 'no_model_available')
     }
     return runtime
   }
@@ -2069,13 +2051,8 @@ export const useConversations = defineStore('conversations', () => {
     conversation.persistence = 'synced'
     Object.assign(conversation, listEntry(result.conversation))
     cache.delete(conversation.id)
-    // A retry that found the record an earlier attempt made reads it. One
-    // this request made holds no message saved for later and no attached
-    // host, which nothing reads back.
     if (response.status === 201) {
       madeHere.add(conversation.id)
-      conversation.record.ask(result.metadata.savedRevision, 'saved')
-      conversation.attachedHosts.ask(result.metadata.hostsRevision)
     }
     takeMetadata(conversation, result.metadata)
     // It applies before the first message goes, so the first turn's spawns
@@ -2524,18 +2501,57 @@ export const useConversations = defineStore('conversations', () => {
    * edit opens with, the message as the list holds it unless an edited send
    * of it came back undelivered.
    */
-  function editSaved(conversation: Conversation, id: string, message?: Message): void {
-    const open = conversation.messageEdit
-    if (conversation.archived || (open?.kind === 'message' && open.phase !== 'editing')) {
-      return
+  function editSaved(conversation: Conversation, id: string, message?: Message): Promise<void> {
+    const editable = () => {
+      const open = conversation.messageEdit
+      return !conversation.archived && !(open?.kind === 'message' && open.phase !== 'editing')
     }
-    const listed = conversation.notSaved.find((row) => row.id === id) ??
-      conversation.record.shown.value?.saved.find((each) => each.id === id)
-    const opened = message ?? listed
-    if (!opened) {
-      return
+    const open = (opened: Message) => {
+      if (editable()) {
+        conversation.messageEdit = beginSavedEdit(id, savedEditContent(conversation, opened))
+      }
     }
-    conversation.messageEdit = beginSavedEdit(id, savedEditContent(conversation, opened))
+    if (!editable()) {
+      return Promise.resolve()
+    }
+    const given = message ?? conversation.notSaved.find((row) => row.id === id)
+    if (given) {
+      open(given)
+      return Promise.resolve()
+    }
+    return withSavedMessage(conversation, id, open)
+  }
+
+  /**
+   * Runs `use` with the saved message `id` whole, as a use of it needs: at
+   * once when the list holds its whole text, otherwise once it is read. It
+   * does not run for a message no longer listed, nor when the read failed,
+   * which is reported.
+   */
+  function withSavedMessage(conversation: Conversation, id: string, use: (message: Message) => void): Promise<void> {
+    const listedNow = () => conversation.record.shown.value?.saved.find((each) => each.id === id)
+    const listed = listedNow()
+    if (!listed) {
+      return Promise.resolve()
+    }
+    const whole = wholeListed(listed)
+    if (whole) {
+      use(whole)
+      return Promise.resolve()
+    }
+    return readSaved(conversation.id, id, lifetime.signal).then(
+      ({ text, files }) => {
+        // Another page may have sent or deleted it while it was read.
+        if (listedNow()) {
+          use({ text, files })
+        }
+      },
+      (error: unknown) => {
+        if (!(error instanceof ApiError && error.code === 'saved_not_found')) {
+          report(t('failures.readSaved'), error)
+        }
+      },
+    )
   }
 
   /** A saved message as its edit holds it: its text, and each file where its mark stands. */
@@ -2629,12 +2645,15 @@ export const useConversations = defineStore('conversations', () => {
    * again from the list with the same turn; one another page sent or
    * deleted first is gone, and nothing is sent.
    */
-  function sendSaved(conversation: Conversation, id: string, way: SendWay): void {
-    const message = conversation.record.shown.value?.saved.find((each) => each.id === id)
-    if (conversation.archived || !message) {
-      return
+  function sendSaved(conversation: Conversation, id: string, way: SendWay): Promise<void> {
+    if (conversation.archived) {
+      return Promise.resolve()
     }
-    sendListed(conversation, id, message, way, false)
+    return withSavedMessage(conversation, id, (message) => {
+      if (!conversation.archived) {
+        sendListed(conversation, id, message, way, false)
+      }
+    })
   }
 
   /**
@@ -2673,13 +2692,28 @@ export const useConversations = defineStore('conversations', () => {
       })
       return
     }
-    const message = conversation.record.shown.value?.saved.find((each) => each.id === id)
-    if (conversation.archived || !message) {
+    const listed = conversation.record.shown.value?.saved.find((each) => each.id === id)
+    if (!listed || conversation.archived) {
       return
     }
-    const ended = recordSync.remove(conversation, id)
-    const toast = showDeleted(() => void recordSync.resave(conversation, crypto.randomUUID(), message))
-    if (await ended === 'refused') {
+    // The message leaves and the toast shows at once, whatever its length. Undo
+    // saves it again whole: the list holds it whole when it is short, and the
+    // backend's answer to the deletion carries it otherwise.
+    const whole = wholeListed(listed)
+    const removal = recordSync.remove(conversation, id)
+    const saveAgain = (message: Message | null) => {
+      if (message) {
+        void recordSync.resave(conversation, crypto.randomUUID(), message)
+      }
+    }
+    const toast = showDeleted(() => {
+      if (whole) {
+        saveAgain(whole)
+      } else {
+        void removal.then(({ message }) => saveAgain(message))
+      }
+    })
+    if ((await removal).ended === 'refused') {
       dismissToast(toast)
     }
   }
@@ -3002,7 +3036,7 @@ export const useConversations = defineStore('conversations', () => {
         ? { text: pending.text, files: filesById(conversation, pending.fileIds).flatMap((file) => draftFile(file) ?? []) }
         : undefined
       backToList(conversation, id)
-      editSaved(conversation, pending.saved, edited)
+      void editSaved(conversation, pending.saved, edited)
       return
     }
     const marks = markCount(pending.text)

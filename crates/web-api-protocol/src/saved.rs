@@ -58,7 +58,7 @@ pub struct SavedWrite {
     pub files: Vec<ClientContent>,
 }
 
-/// A message saved for later.
+/// A message saved for later, whole, as `GET .../saved/:messageId` answers it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedMessage {
@@ -71,13 +71,35 @@ pub struct SavedMessage {
     pub saved_at: Timestamp,
 }
 
-/// `GET /conversations/:id/saved`: the list, newest first, with its
-/// revision.
+/// How many characters of a saved message's text its listing carries.
+pub const SAVED_OPENING_CHARS: usize = 300;
+
+/// The messages a conversation keeps saved for later as the composer lists
+/// them, newest first, with the list's revision: each carries its text's
+/// opening, never the whole of it, since a message may hold up to a draft's
+/// size (`docs/decisions/0029-a-conversation-opens-whole.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct SavedList {
+pub struct SavedListing {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
-    pub messages: Vec<SavedMessage>,
+    pub messages: Vec<ListedSavedMessage>,
+}
+
+/// A message saved for later as the composer lists it. Its whole text is
+/// `GET /conversations/:id/saved/:messageId`, read when the message is used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedSavedMessage {
+    pub id: String,
+    /// The text's first [`SAVED_OPENING_CHARS`] characters, the whole text
+    /// when it is no longer.
+    pub opening: String,
+    /// How many characters the whole text holds.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub length: u64,
+    /// The files in the order of their marks.
+    pub files: Vec<DraftFile>,
+    pub saved_at: Timestamp,
 }
 
 /// `POST /conversations/:id/saved`'s and `PUT .../saved/:messageId`'s
@@ -98,8 +120,11 @@ pub struct FromDraftAnswer {
 }
 
 /// `DELETE /conversations/:id/saved/:messageId`'s answer, whether the
-/// message was there or gone already: the revisions after it.
+/// message was there or gone already: the revisions after it, and the
+/// message as it was, whole, which the page's Undo saves again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SavedRemoved {
     pub revisions: Revisions,
+    /// The message the request removed; absent when it was gone already.
+    pub message: Option<SavedMessage>,
 }

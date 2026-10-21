@@ -387,16 +387,8 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         sent.contains(&format!("[attachment {} is not available]", hers.id)),
         "{sent}"
     );
-    // The user's attachment answers by its number, as the agent's do.
-    let numbered = backend
-        .get(&format!("/api/conversations/{FIRST}/attachments/a1"), Some(&master))
-        .await;
-    assert_eq!(numbered.status, StatusCode::OK);
-    let numbered = numbered.json::<serde_json::Value>();
-    assert_eq!(
-        (&numbered["name"], &numbered["blob"]),
-        (&json!("shot.png"), &json!(sha256))
-    );
+    // The user's attachment is recorded under its number, as the agent's are.
+    assert_eq!(harness.attachment_blob(FIRST, 1), Some(sha256.to_string()));
     // The page receives the image by reference, never its bytes, and reads
     // them from its blobs.
     let frames = serde_json::to_string(&turn).unwrap();
@@ -802,11 +794,7 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_its_a
     // The upload's attachment keeps the original, and so does the file the
     // shell viewed; the model reads the image fitted to 2,000 px, the same
     // bytes in every request and from either source.
-    let original = backend
-        .get(&format!("/api/conversations/{FIRST}/attachments/a1"), Some(&master))
-        .await
-        .json::<serde_json::Value>();
-    assert_eq!(original["blob"], json!(format!("{:x}", Sha256::digest(&wide))));
+    assert_eq!(harness.attachment_blob(FIRST, 1), Some(format!("{:x}", Sha256::digest(&wide))));
     let requests: Vec<serde_json::Value> = vendor
         .requests()
         .iter()

@@ -8,6 +8,12 @@
 //!   refreshes for a minute.
 //! - A source answer marked stale, such as the models.dev copy returned after a
 //!   failed request, counts as a failed refresh.
+//! - A refresh that ends, with another catalog than the one held or with a
+//!   failure, is announced to the cache's subscribers, so the pages that list
+//!   the catalog hear of it.
+//! - A page never waits for a source: [`ModelCatalogCache::known`] answers
+//!   what the cache holds and starts the refresh a source with no record
+//!   needs, whose end the pages hear of.
 //!
 //! The last rule is why a provider keeps no catalog cache of its own: the
 //! backend would treat its cached answer as a failure, and one cache per
@@ -23,6 +29,7 @@ use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared};
 use garde::Validate;
 use jiff::SignedDuration;
+use tokio::sync::watch;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -55,6 +62,8 @@ pub struct ModelCatalogCache {
     /// A `std` mutex: readers on any thread look entries up and never await
     /// under it.
     entries: Mutex<HashMap<ProviderId, Arc<Entry>>>,
+    /// Woken by each refresh that kept another catalog than the entry held.
+    changes: watch::Sender<()>,
 }
 
 /// The cache of one entry under one key.
@@ -108,7 +117,14 @@ impl ModelCatalogCache {
             refreshes: TaskTracker::new(),
             closing: CancellationToken::new(),
             entries: Mutex::default(),
+            changes: watch::Sender::new(()),
         }
+    }
+
+    /// Hears of each refresh that kept another catalog than the one its entry
+    /// held; the receiver's `changed` ends once the cache is dropped.
+    pub fn subscribe(&self) -> watch::Receiver<()> {
+        self.changes.subscribe()
     }
 
     /// The catalog of entry `provider` under `key`:
@@ -130,6 +146,36 @@ impl ModelCatalogCache {
         fetch: impl FnOnce() -> CatalogFetch,
         force: bool,
     ) -> Result<ProviderModelList, String> {
+        let answer = self.lookup(provider, key, revision, fetch, force, true).await?;
+        Ok(answer.expect("a read that waits answers"))
+    }
+
+    /// What [`read`](Self::read) answers at once, never waiting for a source:
+    /// none while the entry has no record to show and its source is being
+    /// read, which a refresh the read starts if none runs; its end is
+    /// announced to the subscribers. A source known to fail answers its failure
+    /// until the next automatic refresh.
+    pub async fn known(
+        &self,
+        provider: &ProviderId,
+        key: String,
+        revision: Option<String>,
+        fetch: impl FnOnce() -> CatalogFetch,
+    ) -> Result<Option<ProviderModelList>, String> {
+        self.lookup(provider, key, revision, fetch, false, false).await
+    }
+
+    /// The one read behind both: the answer at once, or the refresh's when
+    /// `wait` says to wait for it; none when it would wait and `wait` is false.
+    async fn lookup(
+        &self,
+        provider: &ProviderId,
+        key: String,
+        revision: Option<String>,
+        fetch: impl FnOnce() -> CatalogFetch,
+        force: bool,
+        wait: bool,
+    ) -> Result<Option<ProviderModelList>, String> {
         if self.closing.is_cancelled() {
             return Err("The model catalog cache is closed".into());
         }
@@ -148,7 +194,7 @@ impl ModelCatalogCache {
                     .as_ref()
                     .filter(|record| current && fresh(record, now)),
             ) {
-                return Ok(record.catalog.clone());
+                return Ok(Some(record.catalog.clone()));
             }
             let holding_off = state
                 .failure
@@ -157,7 +203,7 @@ impl ModelCatalogCache {
                 .map(|failure| failure.message.clone());
             if let (false, Some(message)) = (force, &holding_off) {
                 return match record {
-                    Some(record) => Ok(stale(&record, message)),
+                    Some(record) => Ok(Some(stale(&record, message))),
                     None => Err(message.clone()),
                 };
             }
@@ -176,17 +222,20 @@ impl ModelCatalogCache {
                     .failure
                     .as_ref()
                     .map(|failure| failure.message.as_str());
-                return Ok(match failure {
+                return Ok(Some(match failure {
                     Some(message) => stale(record, message),
                     None => stale_without_warning(record),
-                });
+                }));
             }
             refresh
         };
+        if !wait {
+            return Ok(None);
+        }
         match refresh.await {
-            Ok(record) => Ok(record.catalog.clone()),
+            Ok(record) => Ok(Some(record.catalog.clone())),
             Err(message) => match entry.lock().record.clone().flatten() {
-                Some(record) => Ok(stale(&record, &message)),
+                Some(record) => Ok(Some(stale(&record, &message))),
                 None => Err(message),
             },
         }
@@ -283,6 +332,7 @@ impl ModelCatalogCache {
         let task = refresh(
             self.control.clone(),
             self.clock.clone(),
+            self.changes.clone(),
             provider.clone(),
             entry.clone(),
             revision,
@@ -324,6 +374,7 @@ fn stale_without_warning(record: &CatalogRecord) -> ProviderModelList {
 async fn refresh(
     control: ControlService,
     clock: Arc<dyn Clock>,
+    changes: watch::Sender<()>,
     provider: ProviderId,
     entry: Arc<Entry>,
     revision: Option<String>,
@@ -359,6 +410,10 @@ async fn refresh(
     if !entry.cancel.is_cancelled() {
         match &outcome {
             Ok(record) => {
+                let held = state.record.clone().flatten();
+                if held.is_none_or(|held| held.catalog != record.catalog) {
+                    changes.send_replace(());
+                }
                 state.record = Some(Some(record.clone()));
                 state.revision = revision;
                 state.failure = None;
@@ -368,6 +423,9 @@ async fn refresh(
                     message: message.clone(),
                     retry_at: Instant::now() + RETRY_AFTER,
                 });
+                // The pages list the failure, as a warning on the kept record
+                // or as the entry's reason for having no models.
+                changes.send_replace(());
             }
         }
     }
@@ -537,6 +595,55 @@ mod tests {
 
     fn name(list: &ProviderModelList) -> &str {
         &list.models[0].display_name
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_known_read_never_waits_for_a_source_and_its_end_is_announced_with_the_catalog_or_the_failure() {
+        let fixture = Fixture::new().await;
+        let reads = Arc::new(AtomicUsize::new(0));
+        let cache = fixture.cache();
+        let mut announced = cache.subscribe();
+        announced.mark_unchanged();
+
+        // No record and a source that has not answered: nothing is known, the
+        // read answers at once and one refresh runs for all the readers.
+        let (answer, awaited) = source();
+        let started = awaited.started.clone();
+        let first = cache
+            .known(&fixture.provider, "key".into(), None, awaiting(&reads, awaited))
+            .await;
+        assert!(matches!(first, Ok(None)));
+        started.notified().await;
+        let second = cache
+            .known(&fixture.provider, "key".into(), None, answering(&reads, Ok(catalog("Unused"))))
+            .await;
+        assert!(matches!(second, Ok(None)));
+        assert_eq!(reads.load(Ordering::SeqCst), 1);
+
+        // Its end is announced, and the record is known from then on.
+        answer.send(catalog("First")).unwrap();
+        announced.changed().await.unwrap();
+        let known = cache
+            .known(&fixture.provider, "key".into(), None, answering(&reads, Ok(catalog("Unused"))))
+            .await
+            .unwrap()
+            .expect("the record is known");
+        assert_eq!(name(&known), "First");
+
+        // A source that fails with no record to show is announced too, and
+        // answers its failure until the next automatic refresh.
+        let other = ProviderId::try_from("other").unwrap();
+        announced.mark_unchanged();
+        let pending = cache
+            .known(&other, "key".into(), None, answering(&reads, Err("down".into())))
+            .await;
+        assert!(matches!(pending, Ok(None)));
+        announced.changed().await.unwrap();
+        let failed = cache
+            .known(&other, "key".into(), None, answering(&reads, Ok(catalog("Unused"))))
+            .await;
+        assert_eq!(failed, Err("down".to_owned()));
+        cache.close().await;
     }
 
     #[tokio::test(start_paused = true)]

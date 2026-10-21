@@ -108,7 +108,7 @@ pub fn protocol() -> Vec<Root> {
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
     use api::{
-        attachments, auth, automations, cloud, conversations, credentials, devices, diagnostics, drafts, error, exposed_ports, files, hosts, instructions, port_forwards,
+        attachments, auth, automations, cloud, conversations, credentials, devices, diagnostics, drafts, error, exposed_ports, files, instructions, port_forwards,
         panel,
         passkeys,
         permissions,
@@ -191,7 +191,6 @@ pub fn web() -> Vec<Root> {
         receives::<providers::LoginAnswer>(),
         receives::<providers::CodeTaken>(),
         sends::<providers::LoginCode>(),
-        receives::<providers::ModelCatalog>(),
         receives::<providers::ModelSearchResults>(),
         receives::<providers::ProviderCli>(),
         receives::<devices::Devices>(),
@@ -232,7 +231,6 @@ pub fn web() -> Vec<Root> {
         receives::<attachments::AttachmentAnswer>(),
         receives::<attachments::AttachmentCheckAnswer>(),
         receives::<attachments::ConversationAttachment>(),
-        receives::<hosts::AttachedHosts>(),
         receives::<files::Directory>(),
         sends::<files::DirectoryLists>(),
         receives::<files::ListedDirectories>(),
@@ -260,7 +258,6 @@ pub fn web() -> Vec<Root> {
         sends::<workspaces::ChangeWorkspace>(),
         receives::<workspaces::WorkspaceAnswer>(),
         sends::<sidebar::SidebarReorder>(),
-        receives::<panel::PanelRead>(),
         sends::<panel::PanelChanges>(),
         receives::<panel::PanelAnswer>(),
         receives::<workflows::KeptWorkflowList>(),
@@ -272,10 +269,8 @@ pub fn web() -> Vec<Root> {
         receives::<saved::FromDraftAnswer>(),
         sends::<saved::SavedSave>(),
         sends::<saved::SavedWrite>(),
-        receives::<saved::SavedList>(),
         receives::<saved::SavedAnswer>(),
         receives::<saved::SavedRemoved>(),
-        receives::<permissions::ConversationPermissions>(),
         sends::<permissions::DecidePermission>(),
         sends::<devices::DirectRequest>(),
         receives::<devices::DirectMessage>(),

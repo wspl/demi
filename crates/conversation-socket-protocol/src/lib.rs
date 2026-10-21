@@ -76,7 +76,8 @@ pub use agents::{AgentEntry, AgentRole, HeldEdge, SideQuestion, Subagent};
 pub use cost::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 pub use ping::PagePing;
 pub use server::{
-    AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,
+    AbortResult, AbortTarget, AgentCode, AttachmentSourceDto, CommandView, ConversationAttachment, EditOutcome,
+    Failures, JobModel, JobPhase, Refusal,
     RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, TurnSpeed,
 };
 pub use transcript::{

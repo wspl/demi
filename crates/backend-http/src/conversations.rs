@@ -18,7 +18,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use demi_backend_database::conversation_index::{ConversationRecord, Creation};
-use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
+use demi_backend_database::conversation_attachments::{self, AttachmentNumber};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::OpenedRead;
@@ -28,7 +28,6 @@ use demi_web_api_protocol::conversations::{
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest,
 };
-use demi_web_api_protocol::attachments::{AttachmentSourceDto, ConversationAttachment, ConversationAttachmentQuery};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
@@ -128,42 +127,6 @@ pub(super) async fn create(
     Ok((status, Json(CreatedConversation { conversation, metadata })))
 }
 
-/// `GET /conversations/:id/attachments/:attachment`: an attachment of the
-/// conversation, by its number such as `a3`, from the conversation's database
-/// alone; it wakes no Host.
-///
-/// With `?node=`, only one that node's replies show
-/// (`conversation_attachments::read_shown`). A number the conversation does not
-/// have, or those replies do not show, answers 404 `not_found`.
-pub(super) async fn attachment(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, attachment)): Path<(String, String)>,
-    QueryParams(query): QueryParams<ConversationAttachmentQuery>,
-) -> Result<Json<ConversationAttachment>, ApiError> {
-    let services = &state.services;
-    let record = owned(services, &user.id, &id).await?;
-    let no_attachment = || {
-        ApiError::new(
-            StatusCode::NOT_FOUND,
-            ErrorCode::NotFound,
-            format!("No attachment {attachment} in this conversation"),
-        )
-    };
-    let number: AttachmentNumber = attachment.parse().map_err(|_| no_attachment())?;
-    let row = services
-        .conversations
-        .read(&record.id, move |connection| match &query.node {
-            Some(node) => conversation_attachments::read_shown(connection, number, node),
-            None => conversation_attachments::read(connection, number),
-        })
-        .await
-        .map_err(ApiError::conversation_unreadable)?
-        .flatten()
-        .ok_or_else(no_attachment)?;
-    Ok(Json(attachment_answer(row)))
-}
-
 /// `GET /conversations/:id/attachments/:attachment/file`: whether the file the
 /// attachment was uploaded from is there to open in the Files panel in its
 /// copy's place (`docs/decisions/0003-attachment-opens-its-file.md`), asked
@@ -219,23 +182,6 @@ pub(super) async fn attachment_file(
         .await??;
     found.flatten().ok_or_else(no_file)?;
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// An attachment's row as an attachment route answers it.
-pub(super) fn attachment_answer(row: AttachmentRow) -> ConversationAttachment {
-    ConversationAttachment {
-        id: row.number.to_string(),
-        name: row.name,
-        media_type: row.media_type,
-        size: row.size,
-        width: row.pixels.map(|pixels| pixels.width),
-        height: row.pixels.map(|pixels| pixels.height),
-        blob: row.blob,
-        source: row.source.map(|source| AttachmentSourceDto {
-            host: source.host,
-            path: source.path,
-        }),
-    }
 }
 
 /// `PATCH /conversations/:id`: each field applied on its own, the archive

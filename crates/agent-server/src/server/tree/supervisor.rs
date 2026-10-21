@@ -982,6 +982,7 @@ impl<H: HostResolver> Tree<H> {
                                 patches: patches.clone(),
                                 revision: *revision,
                                 failures: None,
+                                attachments: Vec::new(),
                             });
                         }
                         SessionEvent::ActionFailed { report } => {

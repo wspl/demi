@@ -375,7 +375,7 @@ test('each subscribed node\'s transcript follows the same revision rule, and a n
   h.receive({ type: 'transcript_patch', node: 'child', patches: [{ op: 'append_text', index: 0, delta: ' again' }], revision: 4 })
   const patches = h.events.filter((event) => event.type === 'transcript_patch')
   expect(patches).toEqual([
-    { type: 'transcript_patch', node: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], version: { epoch: 'c', revision: 4 }, failures: {} },
+    { type: 'transcript_patch', node: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], version: { epoch: 'c', revision: 4 }, failures: {}, attachments: [] },
   ])
   expect(h.client.transcriptVersion('child')).toEqual({ epoch: 'c', revision: 4 })
   h.receive({ type: 'transcript_patch', node: 'child', patches: [], revision: 6 })

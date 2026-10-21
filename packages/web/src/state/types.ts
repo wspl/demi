@@ -1,4 +1,4 @@
-import type { AgentCost, Block, CacheChart, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
+import type { AgentCost, Block, CacheChart, ConversationAttachment, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
@@ -130,8 +130,16 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   removing: string[]
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
-  /** The devices the conversation's agents attached, as a slot whose revision is the metadata's `hostsRevision`: metadata with a higher one reads them again. */
+  /** The devices the conversation's agents attached, as a slot under the revision the metadata's hosts carry. */
   attachedHosts: Raw<Slot<AttachedHost[]>>
+  /**
+   * The descriptions of the attachments its agents' replies name, by the
+   * node whose replies show them and then by their ids, such as `a3`: what
+   * the transcript's frames and pages and the socket's later uploads bring
+   * (`docs/decisions/0029-a-conversation-opens-whole.md`). An attachment
+   * never changes, so a description, once held, stands.
+   */
+  attachmentDescriptions: Record<string, Record<string, ConversationAttachment>>
   subagents: SubagentRecord[]
   /**
    * The children whose transcripts the page shows, the child its Agents

@@ -113,7 +113,8 @@ export function useGalleryWork(
       void plugin.removed(tab)
     }
   }
-  backend.changed = (revision) => tabs.noticed(revision)
+  tabs.receive(backend.current())
+  backend.changed = (panel) => tabs.receive(panel)
   tabs.start()
 
   const history = ref<readonly string[]>(selection === null ? [] : [selection])

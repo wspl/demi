@@ -289,10 +289,10 @@ function freshRuns(window: TranscriptWindow, end: number): { start: number, end:
 }
 
 /**
- * The conversation's metadata and agents as the disk keeps them: the agents
- * as they were at the version the copy names, the calls being written
- * included, since an opening from the copy asks the server only for what
- * changed since that version. A wait's time is the one part left out: it
+ * The conversation's metadata, agents and attachment descriptions as the
+ * disk keeps them: the agents as they were at the version the copy names,
+ * the calls being written included, since an opening from the copy asks the
+ * server only for what changed since that version. A wait's time is the one part left out: it
  * counts on while nothing changes, and the server tells every wait again on
  * each connection. None before the page holds its metadata and agents.
  */
@@ -319,7 +319,7 @@ function copyOf(conversation: Conversation): ConversationCopy | null {
     ...conversation.subagents.map((agent) => subagentEntry(toRaw(agent))),
     ...conversation.sides.flatMap((side) => sideEntry(toRaw(side))),
   ]
-  return { metadata: toRaw(metadata), agents: { version: toRaw(version), entries } }
+  return { metadata: toRaw(metadata), agents: { version: toRaw(version), entries }, attachments: toRaw(conversation.attachmentDescriptions) }
 }
 
 /** A child as its entry says it. */

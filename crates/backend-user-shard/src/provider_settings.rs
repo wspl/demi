@@ -465,7 +465,58 @@ impl Services {
         Ok(entry)
     }
 
-    /// Each entry's models of `kind` by entry id, which `GET /api/models`
+    /// The catalog of every entry `user` infers with, as the product state
+    /// carries it (`crates/backend-providers/src/llm/catalog.rs`): each model
+    /// with the selection the backend builds from it, each entry with its
+    /// health and its media models, and what the small model's Automatic
+    /// resolves to. It wakes no Cloud and runs no model; `refresh` waits for
+    /// a shared forced refresh of each source.
+    pub async fn model_catalog(
+        &self,
+        user: &UserId,
+        refresh: bool,
+    ) -> Result<demi_web_api_protocol::providers::ModelCatalog, CatalogError> {
+        self.catalog_of(user, Some(refresh)).await
+    }
+
+    /// The catalog a page is shown: [`model_catalog`](Self::model_catalog)
+    /// with no wait for a source, so no model source, however slow, holds
+    /// the page's state back. An entry whose source was never read lists no
+    /// models until the cache announces its read as a new catalog.
+    pub async fn known_model_catalog(
+        &self,
+        user: &UserId,
+    ) -> Result<demi_web_api_protocol::providers::ModelCatalog, CatalogError> {
+        self.catalog_of(user, None).await
+    }
+
+    /// The catalog of `user`'s entries: waiting for each source, with
+    /// `Some(refresh)`, or as known now.
+    async fn catalog_of(
+        &self,
+        user: &UserId,
+        waits: Option<bool>,
+    ) -> Result<demi_web_api_protocol::providers::ModelCatalog, CatalogError> {
+        let owner = self.vault.owner_for(user).await?;
+        let entries = self.vault.entries(owner).await?;
+        let preferences = self.control.preferences(user.clone()).await?;
+        let mut providers = match waits {
+            Some(refresh) => self.assembly.model_catalog(&entries, refresh).await,
+            None => self.assembly.known_model_catalog(&entries).await,
+        };
+        let mut images = self.entry_media_models(user, MediaKind::Image).await?;
+        let mut videos = self.entry_media_models(user, MediaKind::Video).await?;
+        let mut audio = self.entry_media_models(user, MediaKind::Audio).await?;
+        for provider in &mut providers {
+            provider.image_models = images.remove(provider.provider_id.as_str()).unwrap_or_default();
+            provider.video_models = videos.remove(provider.provider_id.as_str()).unwrap_or_default();
+            provider.audio_models = audio.remove(provider.provider_id.as_str()).unwrap_or_default();
+        }
+        let small_model = demi_backend_providers::llm::small_model::automatic_small_model(&providers, &preferences);
+        Ok(demi_web_api_protocol::providers::ModelCatalog { providers, small_model })
+    }
+
+    /// Each entry's models of `kind` by entry id, which the model catalog
     /// carries for the settings page.
     pub async fn entry_media_models(
         &self,
@@ -566,4 +617,13 @@ fn free_label(name: String, taken: impl Fn(&str) -> bool) -> String {
         .map(|number| format!("{name} ({number})"))
         .find(|label| !taken(label))
         .expect("a scope holds finitely many entries")
+}
+
+/// Why the model catalog could not be read.
+#[derive(Debug, thiserror::Error)]
+pub enum CatalogError {
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+    #[error(transparent)]
+    Assembly(#[from] demi_backend_providers::llm::assembly::AssemblyError),
 }

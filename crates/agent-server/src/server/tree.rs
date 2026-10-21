@@ -514,6 +514,7 @@ impl<H: HostResolver> Tree<H> {
                         patches: patches.clone(),
                         revision: *revision,
                         failures: None,
+                        attachments: Vec::new(),
                     });
                 } else if let Some(frame) = frame_of(event) {
                     sink.emit(frame);
@@ -1309,5 +1310,6 @@ pub(super) fn reset_frame(node: NodeId, reset: Reset) -> ServerFrame {
         versions: reset.versions,
         version: reset.version,
         failures: None,
+        attachments: Vec::new(),
     }
 }

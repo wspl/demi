@@ -36,9 +36,6 @@ const explore: SubagentProfile = {
 
 /** What the backend answers to each request, by method and path. */
 function answer(method: string, path: string): Response {
-  if (path.startsWith('/api/models')) {
-    return Response.json({ providers: [], smallModel: null })
-  }
   if (method === 'POST' && path === '/api/subagents/profiles') {
     const body = sent.at(-1)?.body
     const name = body !== null && typeof body === 'object' && 'name' in body ? body.name : null

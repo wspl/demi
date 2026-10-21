@@ -284,26 +284,24 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         .await;
     let own = transcript(&backend, &master, FIRST).await;
     let child = crate::conversations::child_of(&own.subagents[0]).number;
-    // The child's attachment, which no text of the root names.
-    let viewed = backend.get(&format!("/api/conversations/{FIRST}/attachments/a3"), Some(&master)).await;
-    assert_eq!(viewed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&viewed.body));
-    let viewed = viewed.json::<demi_web_api_protocol::attachments::ConversationAttachment>().blob;
-    // An agent's reply shows only what that agent uploaded: the root's a2,
-    // not the user's a1 or the child's a3, and the child's own a3 alone.
+    // The child's attachment, which no text of the root names, as the page
+    // was sent it when the child stored it.
     let child_node = own.subagents[0].id.as_str().to_owned();
-    for (agent, number, shown) in [
-        (FIRST, "a2", true),
-        (FIRST, "a1", false),
-        (FIRST, "a3", false),
-        (child_node.as_str(), "a3", true),
-        (child_node.as_str(), "a2", false),
-    ] {
-        let answer = backend
-            .get(&format!("/api/conversations/{FIRST}/attachments/{number}?node={agent}"), Some(&master))
-            .await;
-        let expected = if shown { StatusCode::OK } else { StatusCode::NOT_FOUND };
-        assert_eq!(answer.status, expected, "{number} in a reply of {agent}");
-    }
+    let viewed = loop {
+        let (node, attachments) = socket.attachments_until().await;
+        if let Some(viewed) = attachments.into_iter().find(|attachment| attachment.id == "a3") {
+            assert_eq!(node.as_str(), child_node);
+            break viewed.blob;
+        }
+    };
+    // The root's reply shows only what the root uploaded: its a2, not the
+    // user's a1, the child's a3 or a4, which does not exist yet.
+    let shown: Vec<String> = crate::conversations::named_attachments(&backend, &master, FIRST, FIRST)
+        .await
+        .into_iter()
+        .map(|attachment| attachment.id)
+        .collect();
+    assert_eq!(shown, ["a2"]);
 
     let ShareAnswer::Conversation { token, .. } =
         shared(&share(&backend, &master, json!({ "kind": "conversation" })).await)
@@ -384,14 +382,9 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     // sentence, in code and in a comment, is not served, nor its bytes.
     missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment named only as text");
     missed(&public(&backend, &answer, &format!("/blobs/{viewed}"), None).await, "the bytes of one named only as text");
-    // A number past the column's range is no attachment, here and in the
-    // conversation's own route.
+    // A number past the column's range is no attachment.
     let past = "a9223372036854775808";
     missed(&public(&backend, &answer, &format!("/attachments/{past}"), None).await, "a number out of range");
-    let own_past = backend
-        .get(&format!("/api/conversations/{FIRST}/attachments/{past}"), Some(&master))
-        .await;
-    assert_eq!(own_past.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
 
     // A later message, the attachments it uploads and the subagent it
     // starts are not shared until the owner makes the list again: each, and

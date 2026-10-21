@@ -18,7 +18,6 @@ use demi_backend_blobs::counting::ObjectCounts;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, BlockId, ToolView};
-use demi_web_api_protocol::attachments::ConversationAttachment;
 use demi_web_api_protocol::conversations::{ConversationStatus, ForkAnswer};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -518,16 +517,8 @@ async fn a_fork_keeps_the_attachments_of_its_source_and_numbers_on_from_them() {
         String::from_utf8_lossy(&created.body)
     );
     // The destination's message names a1, which it holds with the same blob.
-    let read = async |conversation: &str, number: &str| {
-        backend
-            .get(
-                &format!("/api/conversations/{conversation}/attachments/{number}"),
-                Some(&master),
-            )
-            .await
-            .json::<ConversationAttachment>()
-    };
-    assert_eq!(read(SECOND, "a1").await, read(FIRST, "a1").await);
+    assert_eq!(harness.attachment_blob(SECOND, 1), harness.attachment_blob(FIRST, 1));
+    assert!(harness.attachment_blob(FIRST, 1).is_some());
     // Its next upload takes the number after its source's.
     let mut socket = Socket::connect(&backend, &master, SECOND).await;
     socket.open().await;

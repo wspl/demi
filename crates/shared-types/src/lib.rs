@@ -131,7 +131,7 @@ pub use file_types::{
 #[doc(hidden)]
 pub use ids::__private;
 pub use ids::{
-    AutomationId, AutomationRunId, BlockId, CommandId, EmptyId, NodeId, OperationId, RequestId,
+    AutomationId, AutomationRunId, BlockId, CommandId, DeviceId, EmptyId, NodeId, OperationId, RequestId,
     Sequence, TurnId,
 };
 pub use media::{

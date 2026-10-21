@@ -9,9 +9,13 @@ import { useConversations } from './store'
 import { useConversationWorkflows } from './workflows'
 
 // The Workflow menu's list (`crates/backend-user-shard/src/conversation/workflows.rs`) as the
-// page reads it, against a played backend: the product channel, the
-// conversation's metadata and the workflows routes. The page never follows
-// the Host for them: no file watch opens.
+// page shows it, against a played backend: the product channel, the
+// conversation's metadata, which carries a recorded conversation's list,
+// and the device's workflows route of a new conversation. The page never
+// follows the Host for them: no file watch opens.
+//
+// Planted defect: a recorded conversation's list read by a route, which
+// the fetch refuses.
 // Cost: no network, a fake WebSocket; a few event-loop turns each.
 
 const realFetch = globalThis.fetch
@@ -20,7 +24,7 @@ const CONVERSATION = '6a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 const LAPTOP = 'b5c6d7e8-0000-4000-8000-000000000002'
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
-/** The workflows routes the page read, in order. */
+/** The device workflows routes the page read, in order. */
 let read: string[]
 const sockets: WatchSocket[] = []
 
@@ -43,15 +47,19 @@ class WatchSocket extends EventTarget {
   close(): void {}
 }
 
-/** Moves the conversation `id` to `directory` of the laptop, as its list entry and its metadata tell the page. */
-function moveTo(id: string, title: string, directory: string, connect = false): void {
+/**
+ * Moves the conversation `id` to `directory` of the laptop, as its list entry
+ * and its metadata tell the page, with the workflows the backend read there
+ * for its `answer`th time.
+ */
+function moveTo(id: string, title: string, directory: string, connect = false, answer = 1): void {
   const summary = conversationSummary(id, title, { target: { kind: 'device', deviceId: LAPTOP, path: directory } })
   if (connect) {
     channels.last().connect(productState({ devices: [laptop], conversations: [summary] }))
   } else {
     channels.last().send({ type: 'conversation', conversation: summary })
   }
-  showMetadata(id, { cwd: directory })
+  showMetadata(id, { cwd: directory, workflows: { revision: answer, list: kept(directory, answer) } })
 }
 
 /** The workflows of `directory` as the backend read them for its `answer`th answer. */
@@ -65,7 +73,7 @@ function workflowsOf(directory: string, answer: number) {
 
 /** The backend's answer: the list as it read it, with when. */
 function kept(directory: string, answer: number) {
-  return { state: 'read', list: workflowsOf(directory, answer), readAt: '2026-09-10T00:00:00.000Z' }
+  return { state: 'read' as const, list: workflowsOf(directory, answer), readAt: '2026-09-10T00:00:00.000Z' }
 }
 
 beforeEach(() => {
@@ -76,19 +84,8 @@ beforeEach(() => {
   }
   pinia = createPinia()
   setActivePinia(pinia)
-  let cwd = '/home/ada/repo-a'
-  globalThis.fetch = (async (input) => {
-    const path = String(input)
-    if (path.split('?')[0] === `/api/conversations/${CONVERSATION}/workflows`) {
-      read.push(path)
-      // The backend reads the conversation's directory as it is now.
-      cwd = useConversations().metadataOf(CONVERSATION)!.cwd
-      return Response.json(kept(cwd, read.length))
-    }
-    if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
-    }
-    throw new Error(`Unexpected request: ${path}`)
+  globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+    throw new Error(`Unexpected request: ${String(input)}`)
   }) as typeof fetch
   channels = playChannels()
   const played = globalThis.WebSocket
@@ -132,56 +129,42 @@ function listOf(id: string) {
 
 test('a conversation moved to another directory of the same Host lists that directory’s workflows, and follows no Host', async () => {
   const { list, scope } = listOf(CONVERSATION)
-  await until(() => list.value.state === 'read')
   expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a', 1).workflows })
 
   // The user moves the conversation to repo-b on the same laptop.
-  moveTo(CONVERSATION, 'Work', '/home/ada/repo-b')
+  moveTo(CONVERSATION, 'Work', '/home/ada/repo-b', false, 2)
   await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b (2)')
-  expect(read).toHaveLength(2)
+  expect(read).toEqual([])
   expect(sockets).toEqual([])
   scope.stop()
 })
 
-// The backend reads the list again when the Host reports a change, and
-// raises the revision the conversation's metadata carries: the page reads
-// the list then, and at no other change of the metadata.
-test('a page reads the list again when the metadata names a newer revision, and only then', async () => {
+// The backend reads the list again when the Host reports a change, and the
+// conversation's metadata brings it under a newer revision.
+test('a list the backend reads again reaches an open page with its value, and no read', async () => {
   const { list, scope } = listOf(CONVERSATION)
-  await until(() => list.value.state === 'read')
-  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 1 })
-  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-a (2)')
-  // Another change of the metadata, at the same revision.
-  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 1, savedRevision: 4 })
-  await nextTick()
-  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 2 })
-  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-a (3)')
-  expect(read).toHaveLength(3)
-  expect(sockets).toEqual([])
-  scope.stop()
-})
-
-// The backend answers at once, never waiting on the Host: before its first
-// read it says it knows nothing yet, and announces the read when it comes.
-test('a list the backend has not read yet reads until the backend announces it', async () => {
-  const answers = [{ state: 'unknown' }, kept('/home/ada/repo-a', 2)]
-  globalThis.fetch = (async (input) => {
-    const path = String(input)
-    if (path !== `/api/conversations/${CONVERSATION}/workflows`) {
-      throw new Error(`Unexpected request: ${path}`)
-    }
-    read.push(path)
-    return Response.json(answers[read.length - 1])
-  }) as typeof fetch
-  const { list, scope } = listOf(CONVERSATION)
-  await until(() => read.length === 1)
-  await nextTick()
-  expect(list.value).toEqual({ state: 'reading' })
-  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflowsRevision: 1 })
-  await until(() => list.value.state === 'read')
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflows: { revision: 2, list: kept('/home/ada/repo-a', 2) } })
   expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a', 2).workflows })
+  expect(read).toEqual([])
   scope.stop()
 })
+
+// Before its first read the backend says it knows nothing yet, and a read
+// that failed says why, in the file views' words.
+test('a list the backend has not read yet reads until the metadata brings it, and a refused read says why', async () => {
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflows: { revision: 0, list: { state: 'unknown' } } })
+  const { list, scope } = listOf(CONVERSATION)
+  expect(list.value).toEqual({ state: 'reading' })
+  showMetadata(CONVERSATION, { cwd: '/home/ada/repo-a', workflows: { revision: 1, list: kept('/home/ada/repo-a', 1) } })
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a', 1).workflows })
+  showMetadata(CONVERSATION, {
+    cwd: '/home/ada/repo-a',
+    workflows: { revision: 2, list: { state: 'refused', code: 'device_offline', status: 503, message: 'The device is offline' } },
+  })
+  expect(list.value.state).toBe('failed')
+  scope.stop()
+})
+
 test('a new conversation in a Cloud project reads its project’s workflows and keeps the one the project remembers', async () => {
   const product = useProduct()
   const app = {

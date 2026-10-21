@@ -75,7 +75,7 @@ test('frames travel as JSON text messages both ways', async () => {
   socket.message(JSON.stringify({ type: 'send_result', messageId: 'm1', at: null }))
   await submitting
   socket.message(JSON.stringify({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 }))
-  expect(events.at(-1)).toEqual({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], version: { epoch: 'e', revision: 2 }, failures: {} })
+  expect(events.at(-1)).toEqual({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], version: { epoch: 'e', revision: 2 }, failures: {}, attachments: [] })
 })
 
 // The backend sends the frames it has ready at once in one message, as a

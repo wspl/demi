@@ -358,7 +358,13 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         )
         .await;
     assert_eq!(limits.status, StatusCode::NO_CONTENT);
-    let limited = synced(&mut page).await;
+    // The events of the switches before it may still be on their way.
+    let events = page
+        .until(|event| matches!(event, SyncEvent::Subagents { subagents } if subagents.max_live == limit(4, true)))
+        .await;
+    let Some(SyncEvent::Subagents { subagents: limited }) = events.into_iter().last() else {
+        panic!("no subagents message");
+    };
     assert_eq!(
         (limited.enabled, limited.max_live, limited.max_depth),
         (false, limit(4, true), limit(3, false))

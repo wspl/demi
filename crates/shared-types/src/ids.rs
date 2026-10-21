@@ -159,6 +159,11 @@ crate::id!(
     NodeId
 );
 crate::id!(
+    /// A device's id, which the backend assigns when the device is paired or
+    /// its Cloud is first used.
+    DeviceId
+);
+crate::id!(
     /// A command a `shell` call started; its handle for the `demi shell`
     /// commands.
     CommandId

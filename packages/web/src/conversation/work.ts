@@ -461,16 +461,18 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return states.get(conversationId)!
   }
 
-  // A panel a page has read is read again when its conversation's metadata says it changed.
+  // Each conversation's panel is the one its metadata brings, under its
+  // revision, whatever the page shows.
   watch(
-    () => conversations.items.map((item) => [item.id, item.metadata.shown.value?.panelRevision] as const),
+    () => conversations.items.map((item) => [item.id, item.metadata.shown.value?.panel] as const),
     (followed) => {
-      for (const [id, revision] of followed) {
-        if (revision !== undefined) {
-          panels.get(id)?.noticed(revision)
+      for (const [id, panel] of followed) {
+        if (panel !== undefined) {
+          tabsOf(id).receive(panel)
         }
       }
     },
+    { immediate: true, flush: 'sync' },
   )
   // The pages the user has on say what an address names: a change of them reads the address again.
   watch(

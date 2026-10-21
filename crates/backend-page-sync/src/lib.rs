@@ -72,6 +72,10 @@ pub enum Part {
     Plugins,
     /// A plugin's state, by the plugin's id.
     Plugin(String),
+    /// The catalog of the entries' models, which the providers and the
+    /// preferences decide too: a channel sends it after them, last, since
+    /// a source's first read may take a while.
+    Models,
 }
 
 /// Every user's open channels. Cloning it shares it.
@@ -130,7 +134,14 @@ impl Channel {
         if !follows {
             return;
         }
-        self.lock().parts.insert(part);
+        let mut marked = self.lock();
+        // The catalog lists the entries' models, and Automatic reads the
+        // preferences: a change of either is one of the catalog too.
+        if matches!(part, Part::Providers | Part::Preferences) {
+            marked.parts.insert(Part::Models);
+        }
+        marked.parts.insert(part);
+        drop(marked);
         self.wake.notify_one();
     }
 }

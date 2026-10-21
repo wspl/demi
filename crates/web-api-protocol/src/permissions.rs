@@ -168,8 +168,8 @@ impl PermissionRequest {
     }
 }
 
-/// `GET /conversations/:id/permissions`: the undecided requests, oldest
-/// first, with the revision they were read at.
+/// A conversation's undecided requests, oldest first, with the revision they
+/// were read at, as its metadata carries them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationPermissions {

@@ -18,6 +18,7 @@ mod connection_test;
 pub mod cost;
 mod creation;
 mod deletion;
+mod attachment_facts;
 mod failure_facts;
 mod history;
 mod fork;
@@ -62,6 +63,7 @@ use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 
 pub use self::deletion::finish_deletions;
+pub use self::attachment_facts::{attachment_facts, reply_texts};
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::pending::settle_pending;

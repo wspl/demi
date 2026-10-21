@@ -631,7 +631,7 @@ fn command_line(invocation: &RpcInvocation) -> Result<String, RpcError> {
 pub async fn read(
     shard: &dyn PermissionShard,
     conversation: &ConversationId,
-) -> Result<ConversationPermissions, PermissionError> {
+) -> Result<ConversationPermissions, StorageError> {
     let revision = shard.revisions().of(conversation);
     let requests = shard.control().permission_requests(conversation.clone()).await?;
     let categories = declared(shard).await;

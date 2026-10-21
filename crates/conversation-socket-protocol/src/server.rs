@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{
-    Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId,
+    BlobRef, Block, BlockId, CommandId, DeviceId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId,
     ProviderErrorDiagnostics, ProviderFailureFacts, RequestId, TurnId,
 };
 use schemars::JsonSchema;
@@ -17,6 +17,69 @@ use crate::{AgentEntry, BlockVersions, CacheChart, ClientFrameKind, TranscriptPa
 /// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
 /// Attached when the frame is sent, never stored.
 pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
+
+/// An attachment of the conversation as a reply shows it
+/// (`crates/backend-host-access/src/attachment_commands.rs`): what its card
+/// or its picture needs before its bytes. It never changes.
+///
+/// A frame or a page that carries blocks carries the attachments their texts
+/// name that their agent shows, read when it is sent, never stored with the
+/// blocks (`docs/decisions/0029-a-conversation-opens-whole.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationAttachment {
+    /// Its number in the conversation, such as `a3`.
+    pub id: String,
+    /// The file's name.
+    pub name: String,
+    /// The media type the backend read from the bytes.
+    pub media_type: String,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub size: u64,
+    /// An image's or a video's width and height in pixels, which the
+    /// backend read from its header when it stored it; absent for any other
+    /// file, and for one whose header does not give them.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u32")]
+    pub width: Option<u32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u32")]
+    pub height: Option<u32>,
+    /// The hash its bytes are served under, at `GET /blobs/:sha256`.
+    pub blob: BlobRef,
+    /// The file the agent uploaded it from, which a card of a file that is no
+    /// image or video opens in the Files panel in the copy's place while the
+    /// conversation's Host is that device, online, and has the file
+    /// (`docs/decisions/0003-attachment-opens-its-file.md`); absent for a file
+    /// the user sent, for an upload stored before uploads kept it, and on a
+    /// share.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "AttachmentSourceDto")]
+    pub source: Option<AttachmentSourceDto>,
+}
+
+/// The file of a Host an attachment was uploaded from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AttachmentSourceDto {
+    /// The device whose runner ran the upload.
+    pub host: DeviceId,
+    /// The file's full path, as that Host writes it, such as
+    /// `/Users/alex/shop/chart.png` or `C:\Users\alex\shop\chart.png`.
+    pub path: String,
+}
 
 /// A frame the backend sends on a conversation's socket. Every frame for one
 /// attachment goes through one outbox in causal order.
@@ -83,6 +146,10 @@ pub enum ServerFrame {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(dive)]
         versions: Vec<BlockVersions>,
+        /// The attachments its blocks name that the node's replies show.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(skip)]
+        attachments: Vec<ConversationAttachment>,
     },
     /// The patches of one batch of the node `node`'s transcript; `revision`
     /// is one past the previous one of that node's.
@@ -101,6 +168,11 @@ pub enum ServerFrame {
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
+        /// The attachments the blocks and the text its patches add name that
+        /// the node's replies show.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(skip)]
+        attachments: Vec<ConversationAttachment>,
     },
     /// The conversation's agents at `version`: every one when `since` is
     /// absent, else those changed after the revision `since`, which the page

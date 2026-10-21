@@ -1,9 +1,9 @@
 //! A conversation's Workflow menu
 //! (`crates/backend-user-shard/src/conversation/workflows.rs`):
 //!
-//! - `GET /conversations/:id/workflows` lists the workflows of its working
-//!   directory as the backend last read them, with when; the conversation's
-//!   metadata carries their revision, so a page hears of a change.
+//! - The conversation's metadata carries the workflows of its working
+//!   directory as the backend last read them, with when, under their
+//!   revision, so a page hears of a change with its value.
 //! - `GET /devices/:id/workflows?directory=` lists those of a new
 //!   conversation's directory before its first message.
 
@@ -11,8 +11,9 @@ use demi_runner_protocol::files::SubscriptionKind;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use demi_shared_types::{Nullable, Timestamp};
+use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 
+use crate::error::ErrorCode;
 use crate::files::AbsolutePath;
 
 /// The project's workflows as the menu lists them, by id.
@@ -45,6 +46,23 @@ pub enum KeptWorkflowList {
         list: ConversationWorkflows,
         read_at: Timestamp,
     },
+    /// The first read of a conversation's directory failed, as the code and
+    /// the HTTP status of the refusal say; the next read is announced.
+    Refused {
+        code: ErrorCode,
+        status: u16,
+        message: String,
+    },
+}
+
+/// The workflows of a conversation's working directory as its metadata
+/// carries them, under the revision the backend raises when the Host reports
+/// a change, 0 before the backend first read them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ConversationWorkflowList {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub revision: u64,
+    pub list: KeptWorkflowList,
 }
 
 /// One workflow file.

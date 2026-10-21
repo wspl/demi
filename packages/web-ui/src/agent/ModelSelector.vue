@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { t as shared } from '../locales/text'
 import { computed } from 'vue'
-import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
+import { TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
-import Button from '../ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isFastMode } from './fast-mode'
@@ -17,7 +15,8 @@ import { buildReasoningState, reasoningOptionLabel } from './reasoning'
 import ModelMenu from './ModelMenu.vue'
 
 const props = defineProps<{
-  load?: 'loading' | 'ready' | 'failed'
+  /** Whether the models have come with the product's state. */
+  load?: 'loading' | 'ready'
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
   /** The conversation's model settings; none while nothing is chosen. */
@@ -25,7 +24,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  retry: []
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
   /**
@@ -62,8 +60,6 @@ const reasoningLabel = computed(() => {
 const labelText = computed(() => {
   if (props.load === 'loading')
     return t('models.loading')
-  if (props.load === 'failed')
-    return t('models.loadFailed')
   return reasoningLabel.value ? `${state.value.label} · ${reasoningLabel.value}` : state.value.label
 })
 </script>
@@ -83,16 +79,6 @@ const labelText = computed(() => {
     >
       <IndeterminateSpinner :size="icons.chip" class="shrink-0" />
       <span class="min-w-0 truncate pl-1.5">{{ labelText }}</span>
-    </span>
-    <span
-      v-else-if="load === 'failed'"
-      class="relative inline-flex h-chip min-w-0 items-center overflow-hidden pl-2 text-chrome text-on-danger"
-      role="alert"
-      :aria-label="labelText"
-    >
-      <CircleX :size="icons.chip" class="shrink-0" />
-      <span class="min-w-0 truncate pl-1.5">{{ labelText }}</span>
-      <Button size="sm" class="ml-1.5 shrink-0" @click="emit('retry')">{{ shared('common.retry') }}</Button>
     </span>
     <Dropdown
       v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"

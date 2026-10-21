@@ -2,13 +2,13 @@ import { apiRequest, jsonBody, readResponse } from './client'
 import {
   fromDraftAnswerSchema,
   savedAnswerSchema,
-  savedListSchema,
+  savedMessageSchema,
   savedRemovedSchema,
   type FromDraftAnswer,
-  type Revisions,
+  type SavedRemoved,
   type SavedAnswer,
   type SavedFromDraft,
-  type SavedList,
+  type SavedMessage,
   type SavedSave,
   type SavedWrite,
 } from './generated/web-api'
@@ -19,9 +19,13 @@ function savedPath(conversationId: string, messageId?: string): string {
   return messageId === undefined ? list : `${list}/${encodeURIComponent(messageId)}`
 }
 
-export async function loadSaved(conversationId: string, signal: AbortSignal): Promise<SavedList> {
-  const response = await apiRequest(savedPath(conversationId), { signal })
-  return readResponse(response, savedListSchema)
+/**
+ * Reads the saved message `messageId` whole, as a use of it needs, where the
+ * list holds only its opening.
+ */
+export async function readSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<SavedMessage> {
+  const response = await apiRequest(savedPath(conversationId, messageId), { signal })
+  return readResponse(response, savedMessageSchema)
 }
 
 /** Saves the composer's message for later; the backend empties the conversation's draft with it. */
@@ -42,8 +46,11 @@ export async function putSaved(conversationId: string, messageId: string, write:
   return readResponse(response, savedAnswerSchema)
 }
 
-/** Deletes the message; one gone already answers the same. Answers the revisions after it. */
-export async function deleteSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<Revisions> {
+/**
+ * Deletes the message; one gone already answers the same. Answers the
+ * revisions after it, and the message as it was, whole, null when it was gone.
+ */
+export async function deleteSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<SavedRemoved> {
   const response = await apiRequest(savedPath(conversationId, messageId), { method: 'DELETE', signal })
-  return (await readResponse(response, savedRemovedSchema)).revisions
+  return readResponse(response, savedRemovedSchema)
 }

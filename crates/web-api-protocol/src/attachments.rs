@@ -1,13 +1,13 @@
 //! Uploads: a file's bytes go to the caller's blobs with one attachment record,
 //! and a send, steer or edit frame names the upload by its id.
 
-use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp};
+use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::ids::{AttachmentId, DeviceId};
+use crate::ids::AttachmentId;
 
 /// The most bytes an upload holds.
 pub const ATTACHMENT_MAX_BYTES: usize = 25 * 1024 * 1024;
@@ -72,73 +72,6 @@ pub struct AttachmentDto {
     pub snippet: Option<String>,
 }
 
-/// `?node=<id>` of `GET /conversations/:id/attachments/:attachment`: the
-/// node whose text names the attachment in a block, the root's by the
-/// conversation's id, a subagent's or a side question's by its own, which
-/// shows only what that agent uploaded; absent, any attachment of the
-/// conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConversationAttachmentQuery {
-    #[serde(default)]
-    pub node: Option<NodeId>,
-}
-
-/// `GET /conversations/:id/attachments/:attachment`: an attachment the agent
-/// uploaded to the conversation (`crates/backend-host-access/src/attachment_commands.rs`). It
-/// never changes, so a page asks for each once.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationAttachment {
-    /// Its number in the conversation, such as `a3`.
-    pub id: String,
-    /// The file's name.
-    pub name: String,
-    /// The media type the backend read from the bytes.
-    pub media_type: String,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub size: u64,
-    /// An image's or a video's width and height in pixels, which the
-    /// backend read from its header when it stored it; absent for any other
-    /// file, and for one whose header does not give them.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "u32")]
-    pub width: Option<u32>,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "u32")]
-    pub height: Option<u32>,
-    /// The hash its bytes are served under, at `GET /blobs/:sha256`.
-    pub blob: BlobRef,
-    /// The file the agent uploaded it from, which a card of a file that is no
-    /// image or video opens in the Files panel in the copy's place while the
-    /// conversation's Host is that device, online, and has the file
-    /// (`docs/decisions/0003-attachment-opens-its-file.md`); absent for a file
-    /// the user sent, for an upload stored before uploads kept it, and on a
-    /// share.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "AttachmentSourceDto")]
-    pub source: Option<AttachmentSourceDto>,
-}
-
-/// The file of a Host an attachment was uploaded from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct AttachmentSourceDto {
-    /// The device whose runner ran the upload.
-    pub host: DeviceId,
-    /// The file's full path, as that Host writes it, such as
-    /// `/Users/alex/shop/chart.png` or `C:\Users\alex\shop\chart.png`.
-    pub path: String,
-}
+/// An attachment as a reply shows it, which a share's
+/// `GET /shares/:token/attachments/:attachment` answers.
+pub use demi_conversation_socket_protocol::{AttachmentSourceDto, ConversationAttachment};

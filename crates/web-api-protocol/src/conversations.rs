@@ -1,6 +1,8 @@
 //! Conversations as the web app creates, lists and follows them.
 
-use demi_conversation_socket_protocol::{AgentCost, AgentEntry, BlockVersions, Failures, TurnSpeed, Version};
+use demi_conversation_socket_protocol::{
+    AgentCost, AgentEntry, BlockVersions, ConversationAttachment, Failures, TurnSpeed, Version,
+};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
     WorkflowChoice,
@@ -13,7 +15,12 @@ use crate::error::ErrorCode;
 use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
 use crate::drafts::ConversationDraft;
+use crate::hosts::ConversationHosts;
+use crate::panel::PanelRead;
+use crate::permissions::ConversationPermissions;
+use crate::saved::SavedListing;
 use crate::shares::ConversationShare;
+use crate::workflows::ConversationWorkflowList;
 use crate::text::Trimmed;
 
 /// The most characters (Unicode scalar values) a conversation's title has.
@@ -188,11 +195,12 @@ pub struct ConversationSummary {
     pub automation: Option<crate::automations::FiledRun>,
 }
 
-/// What a page shows of an open conversation beside its sidebar entry and its
-/// agents (`docs/decisions/0009-agent-sessions-and-sync.md`): its settings, and the
-/// version of each of its collections, which the page reads again when it
-/// shows one whose version is newer than the one it holds. Only a page that
-/// shows the conversation hears of its changes, on the conversation's socket.
+/// What a page shows of an open conversation beside its sidebar entry, its
+/// agents and its transcripts: its settings, and each of its lists whole under
+/// its revision (`docs/decisions/0029-a-conversation-opens-whole.md`). The
+/// socket sends it before the open's handshake and again at each change, so
+/// the page reads none of them by a route. Only a page that shows the
+/// conversation hears of its changes, on the conversation's socket.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationMetadata {
@@ -227,31 +235,23 @@ pub struct ConversationMetadata {
     /// each agent's own is its entry's, and the conversation's is their sum.
     #[garde(dive)]
     pub other_cost: AgentCost,
-    /// How many messages the conversation keeps saved for later.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub saved: u64,
-    /// The revision of that list, 0 before its first change: a page that
-    /// shows the conversation reads the list again when this is higher than
-    /// the revision it holds.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub saved_revision: u64,
-    /// The revision of the conversation's work panel, 0 before its first
-    /// change, read the same way.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub panel_revision: u64,
-    /// The revision of the conversation's attached hosts, raised by an
-    /// attach, a detach or a rename, read the same way.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub hosts_revision: u64,
-    /// The revision of the workflows of its working directory as the backend
-    /// keeps them, 0 before it first read them: a page that holds an older
-    /// one reads them again (`GET /conversations/:id/workflows`).
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub workflows_revision: u64,
+    /// The messages the conversation keeps saved for later, as the composer
+    /// lists them, under the revision of the list.
+    pub saved: SavedListing,
+    /// The conversation's work panel: its tabs under the panel's revision, with
+    /// the states the plugins hold for it.
+    #[garde(dive)]
+    pub panel: PanelRead,
+    /// The conversation's attached hosts, under a revision an attach, a
+    /// detach or a rename raises.
+    pub hosts: ConversationHosts,
+    /// The workflows of its working directory as the backend keeps them,
+    /// under their revision, 0 before the backend first read them.
+    pub workflows: ConversationWorkflowList,
     /// The number of the conversation's latest attachment, 3 for `a3`, 0
     /// before its first (`crates/backend-host-access/src/attachment_commands.rs`): a message
-    /// that names a higher number names one still to come, which shows once
-    /// the metadata raises this to it.
+    /// that names a higher number names one still to come, whose description
+    /// the socket sends once it is uploaded.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub last_attachment: u64,
     /// The revision of each plugin's conversation state, in registration
@@ -259,11 +259,10 @@ pub struct ConversationMetadata {
     /// it holds, counted in memory.
     #[garde(dive)]
     pub plugin_revisions: Vec<PluginRevision>,
-    /// Rises with each change of the conversation's permission requests in
-    /// this run of the backend: a page reads them only when this is newer
-    /// than the revision it holds.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub permissions_revision: u64,
+    /// The conversation's undecided permission requests, under a revision
+    /// that rises with each change of them in this run of the backend.
+    #[garde(dive)]
+    pub permissions: ConversationPermissions,
     /// The conversation's shares, its own and its answers', so the header
     /// and an answer open the share dialog on the existing link.
     #[garde(skip)]
@@ -294,6 +293,12 @@ pub enum ConversationFrame {
     /// named at its open, and at each change of it; the page that wrote a
     /// change knows its revision from its save's answer.
     Draft { draft: ConversationDraft },
+    /// The attachments the agent `node` uploaded since the socket's last
+    /// metadata, which a reply of the node may already name.
+    Attachments {
+        node: NodeId,
+        attachments: Vec<ConversationAttachment>,
+    },
 }
 
 /// The latest ended turn of a conversation's root.
@@ -436,6 +441,9 @@ pub struct TranscriptPage {
     /// The versions of its blocks that have others; none in a share.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<BlockVersions>,
+    /// The attachments its blocks name that the agent's replies show.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<ConversationAttachment>,
 }
 
 /// A compaction marker of a page and its boundary's summary size.

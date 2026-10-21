@@ -833,7 +833,8 @@ pub struct ListedLogin {
     pub login: LoginState,
 }
 
-/// `GET /models`: the catalog of every entry the caller infers with.
+/// The catalog of every entry the caller infers with, as the product state
+/// carries it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {

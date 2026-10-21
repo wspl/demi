@@ -92,14 +92,15 @@ const savedRows = computed<SavedRow[]>(() => {
   const record = props.conversation.record
   const shown = record.shown.value?.saved ?? []
   const kept = new Set(record.read.value?.saved.map((message) => message.id))
-  const row = (message: { id: string; text: string; files: unknown[] }, state: SavedRow['state']): SavedRow => (
-    { id: message.id, preview: savedPreview(message.text), attachmentCount: message.files.length, state }
+  const row = (id: string, text: string, files: unknown[], state: SavedRow['state']): SavedRow => (
+    { id, preview: savedPreview(text), attachmentCount: files.length, state }
   )
   return [
     ...props.conversation.notSaved
       .filter((message) => !shown.some((each) => each.id === message.id))
-      .map((message) => row(message, 'notSaved')),
-    ...shown.map((message) => row(message, kept.has(message.id) ? 'saved' : 'saving')),
+      .map((message) => row(message.id, message.text, message.files, 'notSaved')),
+    // A saved message's row shows its first line, which its opening holds.
+    ...shown.map((message) => row(message.id, message.opening, message.files, kept.has(message.id) ? 'saved' : 'saving')),
   ]
 })
 /** The list stands open while this composer shows; another conversation's starts closed. */
@@ -244,7 +245,6 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     <SessionComposer
       ref="composer"
       :model-load="product.catalogLoad"
-      @retry-models="product.reloadModels"
       v-model:draft="conversation.draft"
       v-model:message-edit="conversation.messageEdit"
       :upload="uploadAttachment"

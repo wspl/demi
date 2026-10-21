@@ -448,7 +448,7 @@ async fn titles_are_written_by_the_small_model() {
     let other = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
     let small_model = |catalog: serde_json::Value| catalog["smallModel"].clone();
 
-    let catalog = backend.get("/api/models", Some(&master)).await.json::<serde_json::Value>();
+    let catalog = serde_json::to_value(backend.models(&master).await).unwrap();
     let shown = small_model(catalog);
     assert_eq!((shown["providerId"].as_str(), shown["model"]["id"].as_str()), (Some(other.as_str()), Some("claude-haiku-5-5")));
     first_message(&backend, &master, FIRST, &own).await;
@@ -494,7 +494,7 @@ async fn titles_are_written_by_the_small_model() {
     let saved = patched.json::<serde_json::Value>();
     assert!(saved["preferences"].get("smallModel").is_none(), "{saved}");
     assert_eq!(saved["preferences"]["smallModelSameProvider"], true);
-    let catalog = backend.get("/api/models", Some(&master)).await.json::<serde_json::Value>();
+    let catalog = serde_json::to_value(backend.models(&master).await).unwrap();
     assert_eq!(small_model(catalog), serde_json::Value::Null);
     first_message(&backend, &master, FOURTH, &own).await;
     assert_eq!(titled_with(&script, 4).await, ("m".into(), None));
