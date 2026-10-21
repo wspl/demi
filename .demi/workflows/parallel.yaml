@@ -35,7 +35,7 @@ profiles:
     effort: high
     context: 500K
     instructions: |
-      You are a software engineer.
+      You are a software engineer. You accept your own work.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
     model: claude-sonnet-5-5
