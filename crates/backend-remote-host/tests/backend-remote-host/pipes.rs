@@ -245,8 +245,8 @@ async fn handing_a_held_source_to_a_device_waits_for_that_device() {
 /// pipe says nothing: an idle frame after each 30 s without a frame, so an
 /// edge that ends a response silent for 100 s, as Cloudflare's does, keeps
 /// it; its end frame carries the cause the device reports. Before, the
-/// response sent nothing until the first byte, and Cloudflare ended a quiet
-/// `demi shell status --wait 5m` with `pipe refused (524)`.
+/// response sent nothing until the first byte, and Cloudflare ended a call
+/// that printed nothing for minutes with `pipe refused (524)`.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_quiet_sink_sends_an_idle_frame_every_30_seconds_and_ends_with_its_cause() {
     let pipes = Pipes::new(Duration::from_secs(600));

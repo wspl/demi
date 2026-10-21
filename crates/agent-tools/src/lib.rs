@@ -90,7 +90,7 @@ use demi_shared_types::{CommandId, NodeId, Sequence};
 use futures_util::{future::LocalBoxFuture, stream::FuturesUnordered};
 use tokio_util::sync::CancellationToken;
 
-pub use environments::{Environments, Looking, Stopper};
+pub use environments::{Environments, Stopper};
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
 pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};

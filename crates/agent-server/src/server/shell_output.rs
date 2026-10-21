@@ -1,7 +1,8 @@
 //! The `demi shell` command group.
 //!
 //! - `status` looks at commands of the conversation as a result shows them,
-//!   waits for their end and changes how often they report.
+//!   at once, and changes how often they report. It never waits for an end:
+//!   a command reports its end itself (`crates/agent-session/src/reports.rs`).
 //! - `input` writes to a command's input.
 //! - `output` prints a command's whole output.
 //! - `stop` stops a running command through the shell environment that runs it,
@@ -27,7 +28,7 @@
 //!   and last 8 MiB), so a command that prints without end costs 16 MiB on its
 //!   Host and in the backend alike.
 
-use std::{rc::Weak, sync::Arc, time::Duration};
+use std::{rc::Weak, sync::Arc};
 
 use bytes::Bytes;
 use demi_agent_store::{StoredCommand, StoredOutput};
@@ -40,7 +41,7 @@ use demi_host_interface::{
     ShellError, Streams, TypedRpc, WholeOutput,
 };
 use demi_shared_types::{CommandEnd, CommandId, NodeId, StreamKind, output::warning};
-use futures_util::{FutureExt, future::join_all};
+use futures_util::FutureExt;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -53,20 +54,17 @@ use crate::AgentServer;
 /// The characters of one line a page shows.
 const LINE_CHARS: usize = 2_000;
 
-/// The exit status of a call the runner cancelled; its relay ends it with the cause all the same.
-const CANCELLED: u8 = 130;
-
 /// The size of the writes `--raw` makes.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
 const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its prompt, read its whole output, or stop it.";
 
 /// The group's entry in the model's capability index.
-const GROUP_ENTRY: &str = "Works on the commands your shell calls ran, by their commandIds: status looks at a command again, waits for its end and changes how often it reports to you; input answers its prompt; output prints its whole output a page at a time, when a result was cut short in the middle; stop ends a dev server, a watcher or any command you no longer need.";
+const GROUP_ENTRY: &str = "Works on the commands your shell calls ran, by their commandIds: status shows a command's state and output now and changes how often it reports to you; input answers its prompt; output prints its whole output a page at a time, when a result was cut short in the middle; stop ends a dev server, a watcher or any command you no longer need.";
 
-const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them. --wait <duration>, such as 30s or 5m, waits up to that long for them to end first. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
+const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them, at once. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
 
-const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. Look at what the command did with it with demi shell status.";
+const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. The command reports what it does with the input as it reports anything else.";
 
 const STOP_SUMMARY: &str = "Stop running commands of this conversation by their commandIds, in order, whichever agent ran them, and wait until each has ended. Its next status shows it stopped, with its last output. Stopping a command that has ended already succeeds, so it is safe to repeat.";
 
@@ -99,8 +97,6 @@ struct StatusArgs {
     /// The commands' commandIds, as their results name them
     #[schemars(length(min = 1))]
     id: Vec<String>,
-    /// Wait up to this long for the commands to end first, such as 30s or 5m
-    wait: Option<String>,
     /// Report every so long from now on, such as 5m
     interval: Option<String>,
     /// Report only the commands' end from now on
@@ -167,9 +163,8 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
 /// or only its end when none.
 type IntervalChange = Option<u32>;
 
-/// Looks at each of the conversation's commands the call names, in order, once
-/// they ended or `--wait` passed; changes first how each reports when the call
-/// says so.
+/// Looks at each of the conversation's commands the call names, in order;
+/// changes first how each reports when the call says so.
 ///
 /// A command that cannot be looked at is told on stderr, and the next is looked
 /// at all the same.
@@ -198,27 +193,6 @@ async fn status<H: HostResolver>(
         (None, true) => Some(None),
         (None, false) => None,
     };
-    // The caller looks at the commands from now on: their end reports end
-    // no window of its calls, since this look shows their ends itself.
-    let looking = call.tree.node(&call.caller);
-    let _look = looking.as_ref().map(|node| {
-        node.look_at(args.id.iter().filter_map(|id| CommandId::try_from(id.as_str()).ok()).collect())
-    });
-    if let Some(text) = &args.wait {
-        let wait = match milliseconds(text) {
-            Ok(wait) => Duration::from_millis(wait),
-            Err(reason) => return refuse(&format!("--wait {text}: {reason}")),
-        };
-        // A stopped call stops waiting, and lets go of its look with it: nobody
-        // reads what it would show, and a handler left waiting would show the
-        // end to no one (`crates/agent-session/src/reports.rs`). A call stopped
-        // as the commands end is stopped all the same.
-        tokio::select! {
-            biased;
-            () = port.cancelled() => return Ok(CANCELLED),
-            () = wait_for_ends(&call.tree, &args.id, wait) => {}
-        }
-    }
     let mut failed = false;
     let mut shown = Vec::new();
     let mut moves = Vec::new();
@@ -260,7 +234,7 @@ async fn status<H: HostResolver>(
     // Only what reached the caller was seen: a look its call could not
     // print moves nothing, so an end it showed no one is reported as any
     // end is (`crates/agent-session/src/reports.rs`).
-    if let Some(looking) = &looking {
+    if let Some(looking) = call.tree.node(&call.caller) {
         for (command, moved) in moves {
             match moved {
                 Moved::End => looking.saw_end(&command).await,
@@ -353,7 +327,7 @@ enum Moved {
     Place(Seen),
 }
 
-/// A duration as `--wait` and `--interval` take it, such as `30s`, `5m`
+/// A duration as `--interval` takes it, such as `30s`, `5m`
 /// or `1h30m`, in whole milliseconds from 1.
 fn milliseconds(text: &str) -> Result<u64, String> {
     let parsed: jiff::SignedDuration = text
@@ -363,26 +337,6 @@ fn milliseconds(text: &str) -> Result<u64, String> {
         Ok(milliseconds) if milliseconds > 0 => Ok(milliseconds),
         _ => Err("a duration longer than none".to_owned()),
     }
-}
-
-/// Waits until each of the commands `ids` names that shells of the tree run
-/// has ended, or `wait` has passed.
-async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Duration) {
-    let environments: Vec<_> = ids
-        .iter()
-        .filter_map(|id| CommandId::try_from(id.as_str()).ok())
-        .filter_map(|command| {
-            let environment = tree.environment_of(&command)?;
-            Some((command, environment))
-        })
-        .collect();
-    let ends = join_all(
-        environments
-            .iter()
-            .map(|(command, environment)| environment.ended(command)),
-    );
-    // The time passing ends the wait as their ends do.
-    let _ = tokio::time::timeout(wait, ends).await;
 }
 
 /// What a look at the conversation's command `id` shows the node `caller`.

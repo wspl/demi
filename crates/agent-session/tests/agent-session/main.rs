@@ -1395,7 +1395,7 @@ async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() 
     // command reports to the node as one a call left running does.
     assert_eq!(
         tool_output(&checkpoint.transcript[1]).1,
-        texts(&["Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with demi shell status 254."])
+        texts(&["Tool call interrupted: the backend shut down while this call watched command 254, which keeps running and reports to you as before."])
     );
     // The call keeps naming its command, so that the command's later
     // report and notice find it.
