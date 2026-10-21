@@ -56,7 +56,7 @@ use std::{
     rc::Rc,
 };
 
-use demi_conversation_socket_protocol::{JobModel, JobPhase, Subagent, Versions};
+use demi_conversation_socket_protocol::{JobModel, JobPhase, Subagent, TurnSpeed, Versions};
 use demi_host_interface::{Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
@@ -588,6 +588,11 @@ pub struct CheckpointState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub account: Option<AgentAccount>,
+    /// The speed of the agent's last turn that streamed for a second or
+    /// more; absent before its first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub turn_speed: Option<TurnSpeed>,
 }
 
 /// A command a `shell` call left running, and how often it reports while

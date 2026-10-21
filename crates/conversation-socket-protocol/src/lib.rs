@@ -75,7 +75,7 @@ pub use cost::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
 pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,
-    RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome,
+    RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, TurnSpeed,
 };
 pub use transcript::{
     BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, SIZED_AT_ONCE, TranscriptPatch, Version, Versions,

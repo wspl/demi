@@ -1,6 +1,6 @@
 //! Conversations as the web app creates, lists and follows them.
 
-use demi_conversation_socket_protocol::{AgentCost, AgentEntry, BlockVersions, Failures, Version};
+use demi_conversation_socket_protocol::{AgentCost, AgentEntry, BlockVersions, Failures, TurnSpeed, Version};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
     WorkflowChoice,
@@ -213,6 +213,12 @@ pub struct ConversationMetadata {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<LastTurn>")]
     pub last_turn: Option<LastTurn>,
+    /// The speed of the root's last turn that streamed for a second or more,
+    /// which the chips row shows once the turn's own reading has gone; null
+    /// before the first (`docs/decisions/0012-live-output-tokens.md`).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<TurnSpeed>")]
+    pub turn_speed: Option<TurnSpeed>,
     /// Whether the conversation's tree is open with commands of plugins the
     /// user has since turned on or off, so a reload would change them
     /// (`crates/backend-plugins/src/lib.rs`).

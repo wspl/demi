@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef, watch, type ComputedRef, type Ref } from 'vue'
 import { defaultWindow, transition, tryOnScopeDispose } from '@vueuse/core'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
+import type { TurnSpeed } from '@demicodes/protocol'
 
 /** How long the count rolls to its next value within a request. */
 export const ROLL_MS = 500
@@ -19,6 +20,8 @@ export interface RequestOutputSources {
   output: () => RequestOutputReading | null
   /** The conversation the reading belongs to: another one's shows at once. */
   scope: () => string
+  /** The speed of the conversation's last turn, as the server keeps it; null before its first. */
+  turnSpeed: () => TurnSpeed | null
   /** The user asked for less motion: the count changes at once. */
   reducedMotion: () => boolean
   /** Where the roll's frames come from; none changes the count at once. */
@@ -32,13 +35,17 @@ export interface RequestOutputDisplay {
   count: Readonly<Ref<number>>
   /** Tokens a second once the request streamed for `SPEED_AFTER_MS`; null before. */
   speed: ComputedRef<number | null>
+  /** The last turn's tokens a second while no reading shows; null while one does, or with none kept. */
+  turnSpeed: ComputedRef<number | null>
 }
 
 /**
  * What the chips row shows of the request the root agent runs
  * (`docs/decisions/0012-live-output-tokens.md`): the server's reading,
  * with the count rolling within a request, at once for a new request or
- * another conversation, and the last reading kept a moment after the turn.
+ * another conversation, and the last reading kept a moment after the turn;
+ * once no reading shows, the speed of the last turn, until the next
+ * request's reading takes its place.
  *
  * While a request streams its speed follows a clock that ticks once a second
  * of its streaming, the first tick at its first second; the clock stops at
@@ -125,5 +132,10 @@ export function useRequestOutput(sources: RequestOutputSources): RequestOutputDi
     return streamed < SPEED_AFTER_MS ? null : reading.tokens / (streamed / 1_000)
   })
 
-  return { shown, count, speed }
+  const turnSpeed = computed(() => {
+    const kept = sources.turnSpeed()
+    return shown.value !== null || kept === null ? null : kept.tokens / (kept.streamedMs / 1_000)
+  })
+
+  return { shown, count, speed, turnSpeed }
 }

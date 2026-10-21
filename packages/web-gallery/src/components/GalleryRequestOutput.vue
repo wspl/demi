@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, reactive } from 'vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
+import type { TurnSpeed } from '@demicodes/protocol'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
@@ -14,7 +15,8 @@ import GallerySpecimen from './GallerySpecimen.vue'
 /**
  * The chips row's reading of the request the root agent runs, as the server
  * would send it: the buttons stand in for the server's frames, and a
- * streaming request grows twice a second, as the frames come.
+ * streaming request grows twice a second, as the frames come. The turn's
+ * end keeps its speed, as the server does in the conversation's metadata.
  */
 interface Specimen {
   variant: string
@@ -24,6 +26,10 @@ interface Specimen {
   output: RequestOutputReading | null
   /** The server sends no more of the streaming request for now. */
   paused: boolean
+  /** What the turn's requests before the current one streamed. */
+  turn: TurnSpeed
+  /** The speed of the last turn, as the metadata brings it. */
+  turnSpeed: TurnSpeed | null
   /** The row's width, for the narrow row. */
   width?: string
 }
@@ -47,14 +53,26 @@ function ended(tokens: number, seconds: number): RequestOutputReading {
   return { ...started(), tokens, firstTokenAt: at - seconds * 1_000, endedAt: at }
 }
 
+const NO_TURN: TurnSpeed = { tokens: 0, streamedMs: 0 }
+/** A turn's speed, as one kept before the specimen's own turns. */
+const KEPT: TurnSpeed = { tokens: 2_340, streamedMs: 45_000 }
+
+/** A specimen with no turn streamed yet and no speed kept, unless `parts` says so. */
+function specimen(parts: Omit<Specimen, 'paused' | 'turn' | 'turnSpeed'> & Partial<Specimen>): Specimen {
+  return { paused: false, turn: NO_TURN, turnSpeed: null, ...parts }
+}
+
 const specimens = reactive<Specimen[]>([
-  { variant: 'Streaming, With Chips', chips: true, away: true, output: streaming(1_240, 15), paused: false },
-  { variant: 'Streaming, No Chips', chips: false, away: true, output: streaming(318, 4), paused: false },
-  { variant: 'The Request’s Own Count', chips: true, away: false, output: ended(1_180, 15), paused: false },
-  { variant: 'The Next Request From Zero', chips: true, away: false, output: started(), paused: true },
-  { variant: 'The Turn’s End', chips: true, away: false, output: streaming(2_460, 31), paused: false },
-  { variant: 'Floating Scroll Control', chips: false, away: true, output: null, paused: false },
-  { variant: 'Narrow Row', chips: true, away: true, output: streaming(12_400, 140), paused: true, width: '22rem' },
+  specimen({ variant: 'Streaming, With Chips', chips: true, away: true, output: streaming(1_240, 15) }),
+  specimen({ variant: 'Streaming, No Chips', chips: false, away: true, output: streaming(318, 4) }),
+  specimen({ variant: 'The Request’s Own Count', chips: true, away: false, output: ended(1_180, 15) }),
+  specimen({ variant: 'The Next Request From Zero', chips: true, away: false, output: started(), paused: true }),
+  specimen({ variant: 'The Turn’s End', chips: true, away: false, output: streaming(2_460, 31) }),
+  specimen({ variant: 'The Last Turn’s Speed', chips: true, away: false, output: null, turnSpeed: KEPT }),
+  specimen({ variant: 'Floating Scroll Control', chips: false, away: true, output: null }),
+  specimen({
+    variant: 'Narrow Row', chips: true, away: true, output: streaming(12_400, 140), paused: true, turnSpeed: KEPT, width: '22rem',
+  }),
 ])
 
 const agents = reactive(gallerySubagents())
@@ -83,15 +101,39 @@ function endResponse(specimen: Specimen): void {
   specimen.output = { ...output, tokens: Math.round(output.tokens * 0.95), endedAt: Date.now() }
 }
 
+/** Adds what the current request streamed to the turn's, as the server counts it. */
+function addToTurn(specimen: Specimen): void {
+  const output = specimen.output
+  if (output === null || output.firstTokenAt === null)
+    return
+  const streamedMs = (output.endedAt ?? Date.now()) - output.firstTokenAt
+  specimen.turn = { tokens: specimen.turn.tokens + output.tokens, streamedMs: specimen.turn.streamedMs + streamedMs }
+}
+
+function startRequest(specimen: Specimen): void {
+  addToTurn(specimen)
+  specimen.output = started()
+  specimen.paused = false
+}
+
+/** The turn ends: the server keeps its speed when it streamed for a second or more. */
+function endTurn(specimen: Specimen): void {
+  addToTurn(specimen)
+  if (specimen.turn.streamedMs >= 1_000)
+    specimen.turnSpeed = specimen.turn
+  specimen.turn = NO_TURN
+  specimen.output = null
+}
+
 /** A message sent: the product would start a turn, whose first request counts from zero. */
 function send(specimen: Specimen): void {
   productWould('Send the Message')
-  specimen.output = started()
-  specimen.paused = false
+  specimen.turn = NO_TURN
+  startRequest(specimen)
   specimen.away = false
 }
 
-const WIDTHS = ['22rem', '27.5rem', '30rem']
+const WIDTHS = ['22rem', '27.5rem', '30rem', '17rem']
 </script>
 
 <template>
@@ -105,7 +147,7 @@ const WIDTHS = ['22rem', '27.5rem', '30rem']
       <div class="flex w-full max-w-[44rem] flex-col gap-3">
         <div class="flex flex-wrap items-center gap-2">
           <template v-if="specimen.output === null">
-            <Button size="sm" variant="ghost" @click="specimen.output = started()">Start a Turn</Button>
+            <Button size="sm" variant="ghost" @click="startRequest(specimen)">Start a Turn</Button>
           </template>
           <template v-else>
             <template v-if="specimen.output.endedAt === null">
@@ -114,8 +156,8 @@ const WIDTHS = ['22rem', '27.5rem', '30rem']
               </Button>
               <Button size="sm" variant="ghost" @click="endResponse(specimen)">End the Response</Button>
             </template>
-            <Button size="sm" variant="ghost" @click="specimen.output = started()">Start the Next Request</Button>
-            <Button size="sm" variant="ghost" @click="specimen.output = null">End the Turn</Button>
+            <Button size="sm" variant="ghost" @click="startRequest(specimen)">Start the Next Request</Button>
+            <Button size="sm" variant="ghost" @click="endTurn(specimen)">End the Turn</Button>
           </template>
           <Button v-if="!specimen.away" size="sm" variant="ghost" @click="specimen.away = true">Scroll Up</Button>
           <Button size="sm" variant="ghost" @click="specimen.chips = !specimen.chips">
@@ -135,6 +177,7 @@ const WIDTHS = ['22rem', '27.5rem', '30rem']
             :show-scroll-to-bottom="specimen.away"
             :output="() => specimen.output"
             :scope="specimen.variant"
+            :turn-speed="specimen.turnSpeed"
             @scroll-to-bottom="specimen.away = false"
           >
             <template v-if="specimen.chips" #chips>

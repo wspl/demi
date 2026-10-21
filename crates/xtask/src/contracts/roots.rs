@@ -81,6 +81,10 @@ pub fn protocol() -> Vec<Root> {
         // cache chart draws, and no frame carries
         // (`packages/web-ui/src/agent/context-cost.ts`).
         receives::<frames::CostCall>(),
+        // The speed of the root's last turn, which the conversation's
+        // metadata carries and web-ui's reading of the chips row shows
+        // (`packages/web-ui/src/agent/request-output.ts`).
+        receives::<frames::TurnSpeed>(),
         receives::<core::Block>(),
         receives::<core::ProviderModelList>(),
         receives::<core::AuthState>(),

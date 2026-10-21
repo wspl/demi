@@ -4,6 +4,7 @@ import { computed, inject, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ChevronDown } from '@lucide/vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
+import type { TurnSpeed } from '@demicodes/protocol'
 import IconButton from '../ui/IconButton.vue'
 import RequestOutputMeter from './RequestOutputMeter.vue'
 import { sessionComposerKey, sessionCoverKey } from './session-cover'
@@ -20,10 +21,13 @@ withDefaults(defineProps<{
   output?: () => RequestOutputReading | null
   /** The conversation the reading belongs to. */
   scope?: string
+  /** The speed of the conversation's last turn, which the row shows once no reading does. */
+  turnSpeed?: TurnSpeed | null
 }>(), {
   showScrollToBottom: false,
   output: () => null,
   scope: '',
+  turnSpeed: null,
 })
 
 const emit = defineEmits<{
@@ -155,7 +159,7 @@ const scrollLeft = computed(() => (chipsWidth.value > 0 ? `${chipsWidth.value + 
       </div>
       <span v-if="showScrollToBottom" class="w-hit shrink-0" />
       <div class="flex min-w-0 flex-1 justify-end pe-[var(--composer-inset)]">
-        <RequestOutputMeter :output="output" :scope="scope" />
+        <RequestOutputMeter :output="output" :scope="scope" :turn-speed="turnSpeed" />
       </div>
     </div>
     <div ref="composerRef" class="relative z-10">

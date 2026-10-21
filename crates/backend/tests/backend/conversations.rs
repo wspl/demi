@@ -27,7 +27,7 @@ use demi_backend_providers::llm::families::{
 use demi_conversation_socket_protocol::{
     ClientFrameKind,
     AgentEntry, AgentRole, ClientFrame, EditOutcome, JobPhase, Subagent, EditRequest, Failures, Refusal, RemoveOutcome, ServerFrame,
-    TranscriptPatch, Version,
+    TranscriptPatch, TurnSpeed, Version,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
@@ -51,6 +51,7 @@ use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{SinkExt as _, StreamExt as _, stream};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
+use jiff::SignedDuration;
 use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -2068,6 +2069,50 @@ async fn a_turn_of_two_requests_reads_each_from_zero_to_its_own_count_then_nothi
         [None, Some((0, false, 0)), Some((0, true, 1)), Some((1, false, 0)), Some((1, true, 3)), None],
         "{turn:?}"
     );
+    backend.close().await;
+}
+
+/// The speed of the root's last turn, which the chips row shows once the
+/// turn's reading has gone (`docs/decisions/0012-live-output-tokens.md`):
+/// the metadata's announcement brings it as the turn ends, and the backend
+/// keeps it with the conversation, so a page that opens after a restart
+/// finds it. The answer streams for two seconds of the backend's clock. Two
+/// backend starts and one request against the mock vendor, about a second.
+#[tokio::test]
+async fn the_metadata_carries_the_speed_of_the_roots_last_turn_after_a_restart() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    assert_eq!(socket.metadata_until(|_| true).await.turn_speed, None);
+    let (open, opened) = watch::channel(false);
+    let mut start = vec![message_start(json!({ "input_tokens": 1, "output_tokens": 0 }))];
+    start.extend(text_block(0, &["Counting ", "the files"]));
+    let end = [
+        json!({ "type": "content_block_stop", "index": 0 }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 120 } }),
+        json!({ "type": "message_stop" }),
+    ];
+    vendor.respond(MockResponse::event_stream(events(&start)).then_held(opened).chunk(events(&end)));
+    socket.send(&send("m1", "Count them")).await;
+    socket
+        .until(|frame| matches!(frame, ServerFrame::RequestOutput { output: Some(output) } if output.tokens > 0))
+        .await;
+    harness.clock.advance(SignedDuration::from_secs(2));
+    open.send_replace(true);
+    socket.until_idle().await;
+    let speed = Some(TurnSpeed { tokens: 120, streamed_ms: 2_000 });
+    let announced = socket.metadata_until(|metadata| metadata.turn_speed.is_some()).await;
+    assert_eq!(announced.turn_speed, speed);
+
+    backend.close().await;
+    let backend = harness.start().await;
+    let master = backend.login(MASTER_EMAIL, crate::support::MASTER_PASSWORD).await;
+    assert_eq!(metadata(&backend, &master, FIRST).await.turn_speed, speed);
     backend.close().await;
 }
 

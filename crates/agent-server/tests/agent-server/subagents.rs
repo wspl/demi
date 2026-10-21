@@ -1507,6 +1507,7 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             model: test_model(),
             edits: Vec::new(),
             account: None,
+            turn_speed: None,
         },
         block_count: blocks.len(),
         moved_from: None,

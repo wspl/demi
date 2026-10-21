@@ -118,6 +118,7 @@ impl Shard {
             workflow: record.workflow,
             cwd: resolved.path().to_owned(),
             last_turn: facts.last_turn.as_ref().map(last_turn),
+            turn_speed: facts.turn_speed,
             plugins_changed,
             only_waits_for_host,
             other_cost,

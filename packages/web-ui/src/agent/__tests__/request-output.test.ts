@@ -2,6 +2,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterAll, afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
+import type { TurnSpeed } from '@demicodes/protocol'
 import { LINGER_MS, ROLL_MS, SPEED_AFTER_MS, useRequestOutput, type RequestOutputDisplay } from '../request-output'
 
 // The roll's frames come from the window's animation frames.
@@ -25,6 +26,7 @@ afterEach(() => {
 const told = reactive({
   output: null as RequestOutputReading | null,
   scope: 'conversation-a',
+  turnSpeed: null as TurnSpeed | null,
   reducedMotion: false,
 })
 
@@ -34,6 +36,7 @@ function display(): RequestOutputDisplay & { stop: () => void } {
   const shown = scope.run(() => useRequestOutput({
     output: () => told.output,
     scope: () => told.scope,
+    turnSpeed: () => told.turnSpeed,
     reducedMotion: () => told.reducedMotion,
     window,
   }))!
@@ -64,6 +67,7 @@ function timersSet(): number {
 function reset(): void {
   told.output = null
   told.scope = 'conversation-a'
+  told.turnSpeed = null
   told.reducedMotion = false
 }
 
@@ -175,5 +179,42 @@ test('the last reading lingers after the turn and its timer is released', async 
   await after(0)
   expect(shown.shown.value).toBeNull()
   expect(timersSet()).toBe(0)
+  shown.stop()
+})
+
+// Once the turn's reading has lingered and gone, the speed the server kept
+// for the turn stays until the next request's reading takes its place; a
+// page that opens on the conversation, after a reload, shows it at once,
+// and a conversation without one shows none.
+test('the last turn\'s speed shows once no reading does, until the next request\'s reading', async () => {
+  reset()
+  told.turnSpeed = { tokens: 300, streamedMs: 6_000 }
+  const reloaded = display()
+  expect(reloaded.turnSpeed.value).toBe(50)
+  reloaded.stop()
+
+  told.turnSpeed = null
+  told.output = reading('r-1', 900, Date.now() - 5_000, Date.now())
+  const shown = display()
+  expect(shown.turnSpeed.value).toBeNull()
+
+  // The turn ends and the server keeps its speed.
+  told.output = null
+  told.turnSpeed = { tokens: 1_040, streamedMs: 20_000 }
+  await after(LINGER_MS - 1)
+  expect([shown.shown.value?.tokens, shown.turnSpeed.value]).toEqual([900, null])
+  await after(1)
+  expect([shown.shown.value, shown.turnSpeed.value]).toEqual([null, 52])
+
+  // The next request's reading takes its place.
+  told.output = reading('r-2', 0, null)
+  await after(0)
+  expect(shown.turnSpeed.value).toBeNull()
+
+  told.output = null
+  told.scope = 'conversation-b'
+  told.turnSpeed = null
+  await after(0)
+  expect([shown.shown.value, shown.turnSpeed.value]).toEqual([null, null])
   shown.stop()
 })

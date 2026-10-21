@@ -1166,6 +1166,7 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
                     model: demi_agent_store::testing::test_model(),
                     edits: Vec::new(),
                     account: None,
+                    turn_speed: None,
                 },
                 changed_blocks: Vec::new(),
                 block_count: 0,

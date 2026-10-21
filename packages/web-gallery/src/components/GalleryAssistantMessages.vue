@@ -14,7 +14,7 @@ const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
   id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running',
   load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], pendingCalls: [],
-  waitingSince: null, requestOutput: null,
+  waitingSince: null, requestOutput: null, turnSpeed: null,
   scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
   history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,

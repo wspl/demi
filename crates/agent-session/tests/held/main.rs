@@ -205,6 +205,7 @@ async fn a_restored_session_holds_only_the_window_after_its_last_boundary() {
                     model: test_model(),
                     edits: Vec::new(),
                     account: None,
+                    turn_speed: None,
                 },
                 block_count: path.len(),
                 changed_blocks: path.into_iter().enumerate().collect(),

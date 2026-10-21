@@ -738,6 +738,7 @@ fn idle_state(model: ModelSelection) -> CheckpointState {
         model,
         edits: Vec::new(),
         account: None,
+        turn_speed: None,
     }
 }
 

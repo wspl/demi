@@ -359,6 +359,7 @@ mod tests {
             model: test_model(),
             edits: Vec::new(),
             account: None,
+            turn_speed: None,
         };
         let initial = CheckpointUpdate {
             state,

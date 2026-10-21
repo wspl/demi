@@ -13,12 +13,16 @@
 //! - Each response of a run ends its request, and the next starts from zero.
 //! - A call's arguments that come whole count.
 //! - A response's own count goes out when it ends, before the turn's end.
+//! - The turn's end keeps its speed in the root's checkpoint: its requests'
+//!   output tokens over the time each streamed, so the time between them, a
+//!   tool's run and the wait for the next answer, does not count; a turn that
+//!   streamed for less than a second keeps the speed before it.
 //!
 //! The provider is scripted, on Tokio's paused clock.
 
 use std::time::Duration;
 
-use demi_conversation_socket_protocol::{ClientFrame, RequestOutput, ServerFrame, TranscriptPatch};
+use demi_conversation_socket_protocol::{ClientFrame, RequestOutput, ServerFrame, TranscriptPatch, TurnSpeed};
 use demi_shared_types::Block;
 use demi_provider_common::{
     CallEvent, ErrorCode, ProviderEvent,
@@ -29,7 +33,7 @@ use jiff::SignedDuration;
 use serde_json::json;
 use tokio::time::Instant;
 
-use crate::support::{Fixture, Gate, send, session_of, streamed_then_held, until};
+use crate::support::{Fixture, Gate, conversation, held, send, session_of, streamed_then_held, until};
 
 /// The readings among `frames`, in order.
 fn readings(frames: &[ServerFrame]) -> Vec<Option<RequestOutput>> {
@@ -294,4 +298,67 @@ async fn a_responses_own_count_goes_out_when_it_ends_before_the_turns_end() {
         })
         .expect("the response's block went out");
     assert!(ended < response, "{frames:?}");
+}
+
+/// The speed the root's checkpoint keeps.
+fn kept_speed(fixture: &Fixture) -> Option<TurnSpeed> {
+    fixture
+        .store
+        .checkpoint(&conversation())
+        .expect("the root is stored")
+        .state
+        .turn_speed
+}
+
+// Two requests with a call between them, then a turn that streams no time,
+// on the clock the test moves: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_turn_keeps_its_requests_tokens_over_their_streaming_time_and_a_short_one_the_speed_before() {
+    let first_end = Gate::new();
+    let second_start = Gate::new();
+    let second_end = Gate::new();
+    let Turn::Stream(second_rest) = held(&second_end, vec![event::response(1, 60)]) else {
+        unreachable!("a held run is a stream")
+    };
+    let Turn::Stream(second_start_run) = held(&second_start, vec![event::text("efgh")]) else {
+        unreachable!("a held run is a stream")
+    };
+    let script = ScriptedRuntime::new([
+        streamed_then_held(
+            &first_end,
+            vec![event::text("abcd")],
+            vec![
+                event::tool_call("call-1", "no_such_tool", json!({ "path": "notes.md" })),
+                event::response(1, 100),
+            ],
+        ),
+        Turn::Stream(Box::new(move |request| {
+            second_start_run(request).chain(second_rest(request)).boxed_local()
+        })),
+        Turn::Events(vec![event::text("Done."), event::response(1, 5)]),
+    ]);
+    let (fixture, clock) = Fixture::with_clock(&script);
+    let mut page = fixture.opened().await;
+    page.send(send("m1", "Look, then answer.")).await;
+    let session = session_of(&fixture);
+    until(|| session.request_output().is_some_and(|output| output.tokens == 1)).await;
+    let first = session.request_output().expect("the first request streams").request_id;
+    clock.advance(SignedDuration::from_secs(2));
+    first_end.open();
+    // The call fails at once; the time until the next answer's first token
+    // stands for a tool's run.
+    until(|| session.request_output().is_some_and(|output| output.request_id != first)).await;
+    clock.advance(SignedDuration::from_secs(10));
+    second_start.open();
+    until(|| session.request_output().is_some_and(|output| output.tokens == 1)).await;
+    clock.advance(SignedDuration::from_secs(2));
+    second_end.open();
+    page.until_idle().await;
+    let speed = Some(TurnSpeed { tokens: 160, streamed_ms: 4_000 });
+    assert_eq!(kept_speed(&fixture), speed);
+
+    // No time passes while the next turn streams.
+    page.send(send("m2", "Again.")).await;
+    page.until_idle().await;
+    assert_eq!(kept_speed(&fixture), speed);
 }
