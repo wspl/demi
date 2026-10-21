@@ -21,6 +21,7 @@ contributors start with CONTRIBUTING.md. -->
 - Tests follow [Testing](docs/delivery/testing.md).
 - The full typecheck and test suites run once, when a work package is delivered, never between edits. A small change the lead makes itself is checked once by what it changes: a test it changes runs alone, and the CI's checks cover the rest.
 - Every build shares one copy of the dependencies; no build compiles them again for another selection ([Testing](docs/delivery/testing.md) § Running).
+- Whoever builds runs `bun xtask sweep` in that checkout when the work is done, so old build products do not fill the disk.
 - Keep test binaries few, as `ARCHITECTURE.md` § Test binaries says.
 - A development build builds only the targets of the Hosts in use; all six targets are for a published release (`.github/workflows/release.yml`).
 - Do not run `cargo fmt` or `cargo clippy`, and do not add them to any check: neither is part of this project's validation.
