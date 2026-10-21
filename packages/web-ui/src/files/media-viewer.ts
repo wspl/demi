@@ -14,6 +14,13 @@ import type { FileContents } from './types'
 export interface MediumFile {
   path: string
   contents: FileContents
+  /**
+   * A copy of the file's bytes at `version` the page loaded already, as an
+   * attachment's is: while the kept files say the file has that version, it
+   * shows from the copy's address `src`, which the web browser holds, and
+   * any other version from the Host.
+   */
+  copy?: { version: string; src: string }
 }
 
 /**
@@ -63,7 +70,11 @@ export function mediumKey(medium: ShownMedium): string {
  * Host image the version of its file the page keeps.
  *
  * A Host image shows from the kept files while the viewer is open, so it is the
- * picture the message shows and the file's next version replaces it in place.
+ * picture the message shows and the file's next version replaces it in place;
+ * the version a copy the page holds has shows from the copy. Until a medium
+ * first shows, a description the Host reported changed is not shown: the
+ * viewer waits for its new reading, so an outdated picture or copy never
+ * shows first.
  * `gone` says a Host image's file is not there. Closed, the last stays for the
  * window's leave. `bytes` is the size of what shows: a Host image's file's, or
  * the one its reference knows.
@@ -87,14 +98,21 @@ export function useMediumSource(
   }, { immediate: true })
   watch(() => {
     const shownFile = medium()?.file
-    return shownFile && open() ? hostImage(file.entry.value, shownFile.contents, shownFile.path) : null
-  }, (image) => {
+    return shownFile && open()
+      ? { image: hostImage(file.entry.value, shownFile.contents, shownFile.path), outdated: file.entry.value?.outdated ?? false }
+      : null
+  }, (shown) => {
     // Closed, or a medium that is no file: what shows stays.
-    if (image === null)
+    if (shown === null)
       return
-    if (image.state === 'shown') {
-      src.value = image.src
-      bytes.value = file.entry.value?.value?.size ?? bytes.value
+    const { image, outdated } = shown
+    // Nothing shown yet of this medium: a description the Host reported
+    // changed waits for its new reading.
+    if (image.state === 'shown' && !(src.value === '' && outdated)) {
+      const description = file.entry.value?.value
+      const copy = medium()?.file?.copy
+      src.value = copy && description?.version === copy.version ? copy.src : image.src
+      bytes.value = description?.size ?? bytes.value
     }
     gone.value = image.state === 'none'
   }, { immediate: true })

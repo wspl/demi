@@ -226,3 +226,37 @@ async fn a_listing_says_where_each_link_points_and_never_fails_for_one() {
         ]
     );
 }
+
+// A few milliseconds: two small files.
+//
+// `fs_hashFile` answers the size and SHA-256 of a file within the limit, and
+// only the size of one over it, judged on the file it opened and read no
+// further, which is what lets the backend hash a Host's file to compare it
+// with an attachment. Planted defect it catches: a limit judged on another
+// size than the opened file's, which hashes a file over the limit.
+#[tokio::test]
+async fn a_file_over_the_hash_limit_answers_its_size_alone() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("fits.bin"), [7_u8; 16]).unwrap();
+    std::fs::write(root.path().join("over.bin"), [7_u8; 17]).unwrap();
+    let hash = async |name: &str| {
+        call::<wire::FileHash>(
+            Inbound::FsHashFile {
+                id: "test".to_owned(),
+                path: name.into(),
+                cwd: None,
+                limit: 16,
+            },
+            root.path(),
+        )
+        .await
+    };
+    match hash("fits.bin").await {
+        wire::FileHash::Hashed { size, sha256, .. } => {
+            assert_eq!(size, 16);
+            assert_eq!(sha256.as_str(), "d761d406af2a4a5a15f67c924378ed88d1f85c13f1a37fc7366f59789b3bcd65");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(hash("over.bin").await, wire::FileHash::TooLarge { size: 17 });
+}

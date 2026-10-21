@@ -1,4 +1,5 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
+import { Lexer } from 'marked'
 import type { Block, ToolResultContentBlock } from '@demicodes/protocol'
 import { transcriptPictures, type TranscriptPicturesContext } from '../transcript-pictures'
 import { mediumKey } from '../../files/media-viewer'
@@ -17,6 +18,7 @@ const contents: FileContents = {
   url: (path) => `/raw?path=${path}`,
   describe: () => new Promise(() => {}),
   showDescription: () => { throw new Error('Listing pictures shows no file') },
+  offerDescription: () => { throw new Error('Listing pictures shows no file') },
 }
 
 const files: MessageFiles = {
@@ -79,4 +81,32 @@ test('a user\'s attached picture carries the size of its file, as the agent\'s a
     ['mine.png', 1],
     ['login.png', 15822],
   ])
+})
+
+// The list reads its pictures again on any change around them while the viewer
+// is open, such as an attachment answered or the work panel opened, and a long
+// transcript holds hundreds of messages with pictures. Each message's text is
+// lexed once for each version of it: a read with the files answered anew lexes
+// none, and a reply whose text grew lexes that reply alone. Planted defect this
+// catches: every message lexed whole on every read, which made opening the
+// viewer in a 1,500-picture transcript take half a second. A few milliseconds.
+test('reading a transcript\'s pictures again lexes only the messages whose text changed', () => {
+  const replies: Block[] = Array.from({ length: 20 }, (_, index) =>
+    ({ ...base, type: 'text', id: `r${index}`, text: `Step ${index}:\n\n![Chart](out/chart-${index}.png)` }))
+  const transcript = [...blocks, ...replies]
+  const read = (shown: readonly Block[]) =>
+    transcriptPictures(shown, { ...context, files: () => ({ ...files }) }).map(mediumKey)
+  const before = read(transcript)
+  const lexed = spyOn(Lexer, 'lex')
+  try {
+    expect(read(transcript)).toEqual(before)
+    expect(lexed).toHaveBeenCalledTimes(0)
+
+    const grown = { ...replies[3]!, text: `${(replies[3] as { text: string }).text}\n\n![Table](out/table.png)` } as Block
+    const after = read(transcript.map((block) => (block.id === 'r3' ? grown : block)))
+    expect(lexed).toHaveBeenCalledTimes(1)
+    expect(after).toContain('file:/work/out/table.png')
+  } finally {
+    lexed.mockRestore()
+  }
 })

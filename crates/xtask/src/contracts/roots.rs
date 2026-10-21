@@ -237,6 +237,7 @@ pub fn web() -> Vec<Root> {
         receives::<attachments::AttachmentAnswer>(),
         receives::<attachments::AttachmentCheckAnswer>(),
         receives::<attachments::ConversationAttachment>(),
+        receives::<attachments::AttachmentFile>(),
         receives::<hosts::AttachedHosts>(),
         receives::<files::Directory>(),
         sends::<files::CreateDirectory>(),

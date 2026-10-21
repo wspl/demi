@@ -42,7 +42,7 @@ type Answered<T> = { -readonly [Field in keyof ShownEntry<T>]: ShownEntry<T>[Fie
 
 /** An entry a test answers by hand. */
 function shown<T>(retry: () => void = () => {}): { showing: Showing<T>; entry: Answered<T> } {
-  const entry = shallowReactive<Answered<T>>({ value: undefined, answer: null, failure: null, reading: false, unwatched: null })
+  const entry = shallowReactive<Answered<T>>({ value: undefined, answer: null, failure: null, reading: false, outdated: false, unwatched: null })
   const showing: Showing<T> = { entry, retry: async () => retry(), release: () => {}, away: () => {}, back: () => {} }
   return { showing, entry }
 }

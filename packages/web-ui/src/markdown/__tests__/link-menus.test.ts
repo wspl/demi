@@ -54,6 +54,7 @@ const files: MessageFiles = {
     url: (path, options) => `/raw?path=${encodeURIComponent(path)}${options?.download ? '&download' : ''}`,
     describe: () => new Promise(() => {}),
     showDescription: () => { throw new Error('No file is shown') },
+    offerDescription: () => { throw new Error('No file is shown') },
   },
   open: ({ path }) => void done.push(`open ${path}`),
   showInFiles: ({ path }) => void done.push(`show in files ${path}`),

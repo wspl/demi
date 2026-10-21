@@ -508,6 +508,10 @@ pub async fn open_read(
 /// read through and sent nowhere, with the full path of the file read; a file
 /// over `limit` bytes answers its size before it is opened.
 ///
+/// The opened file's size is judged again, and the read stops at it, so a
+/// file put in the path's place since, or one that grows, is never read past
+/// `limit`.
+///
 /// The path is the file's canonical name, as `fs_realpath` answers it: links
 /// and `..` resolved by the file system, which is what the read followed, and
 /// on Windows a drive path rather than the verbatim `\\?\` form. A path
@@ -528,7 +532,11 @@ pub async fn hash(
         return Ok(wire::FileHash::TooLarge { size });
     }
     let path = target.to_string_lossy().into_owned();
-    let (mut file, _) = open_range(Ok(target), 0, None, cancel).await?;
+    // The read is limited to the size the file had when it was opened.
+    let (mut file, stat) = open_range(Ok(target), 0, None, cancel).await?;
+    if stat.size > limit {
+        return Ok(wire::FileHash::TooLarge { size: stat.size });
+    }
     let mut hasher = Sha256::new();
     let mut size = 0_u64;
     let mut chunk = vec![0; CHUNK_BYTES];

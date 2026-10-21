@@ -131,6 +131,27 @@ pub struct ConversationAttachment {
     pub source: Option<AttachmentSourceDto>,
 }
 
+/// `GET /conversations/:id/attachments/:attachment/file`: the file the
+/// attachment was uploaded from, while it is there to open in the copy's
+/// place, described as a `HEAD` of the file's bytes describes it, at the
+/// Host's number its `x-demi-read-at` header carries. The page shows the file
+/// from this answer with no other request before the file's bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AttachmentFile {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub size: u64,
+    pub modified_at: Timestamp,
+    /// The version a request for the file's bytes names, as `fs/raw` answers
+    /// it in its `ETag`.
+    pub version: String,
+    /// Whether the file at `version` holds the attachment's own bytes, which
+    /// the page then shows from the copy it loaded already. The Host decides
+    /// it for an image alone: the same size, then the same SHA-256. A video
+    /// streams the file whatever it holds.
+    pub same_as_copy: bool,
+}
+
 /// The file of a Host an attachment was uploaded from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
