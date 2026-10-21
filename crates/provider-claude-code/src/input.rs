@@ -4,7 +4,8 @@
 //! It writes the `initialize` control request that declares the SDK MCP server,
 //! the user messages a kept process gains, and the answers to the CLI's control
 //! requests. Each is one JSON line. A user message is the same message in the
-//! session a new process resumes.
+//! session a new process resumes, with a client id the CLI names again in the
+//! `result` of the turn that consumes it.
 
 use std::borrow::Cow;
 
@@ -21,6 +22,8 @@ pub(crate) const MCP_SERVER: &str = "main";
 pub(crate) enum Input<'a> {
     User {
         message: Message<'a>,
+        /// The message's client id.
+        uuid: &'a str,
     },
     ControlRequest {
         request_id: &'a str,
@@ -129,14 +132,18 @@ pub(crate) fn line(input: &Input<'_>) -> Vec<u8> {
 }
 
 /// The user messages of `items` after the first `sent`, which a kept
-/// process has not received yet: new messages and steers.
-pub(crate) fn new_user_messages(items: &[InferenceItem], sent: usize) -> Vec<u8> {
+/// process has not received yet: new messages and steers. Answers their lines
+/// and the client id of the last one; none when there is no new message.
+pub(crate) fn new_user_messages(items: &[InferenceItem], sent: usize) -> (Vec<u8>, Option<String>) {
     let mut lines = Vec::new();
+    let mut last = None;
     for content in user_messages(items).skip(sent) {
+        let uuid = uuid::Uuid::new_v4().to_string();
         let message = Message::user(content);
-        lines.extend(line(&Input::User { message }));
+        lines.extend(line(&Input::User { message, uuid: &uuid }));
+        last = Some(uuid);
     }
-    lines
+    (lines, last)
 }
 
 /// The content of every user message and steer of `items`, in order.

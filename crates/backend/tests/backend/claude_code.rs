@@ -1223,11 +1223,12 @@ async fn the_installed_cli_starts_while_the_package_answers_nothing() {
 
 /// What the supplied CLI prints, started with the provider's flags that shape its
 /// input and output, against a scripted vendor that answers `answers`, when
-/// `messages` are written to it at once.
+/// `messages` are written to it at once, each with a client id.
 ///
-/// It returns each line's `type`, and `user:<text>` for a message it printed back,
-/// until it printed `results` results.
-async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<String> {
+/// It returns each line's `type`, and `result:<indexes>` for a result, the
+/// indexes in `messages` of the messages it names, until a result names the
+/// last message.
+async fn printed(messages: &[&str], answers: &[&str]) -> Vec<String> {
     use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
 
     let path = std::env::var_os("DEMI_TEST_CLAUDE_CODE")
@@ -1254,7 +1255,6 @@ async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<Str
             "--input-format",
             "stream-json",
             "--include-partial-messages",
-            "--replay-user-messages",
             "--safe-mode",
             "--disable-slash-commands",
             "--tools",
@@ -1278,8 +1278,9 @@ async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<Str
         .spawn()
         .expect("the CLI starts");
     let mut input = cli.stdin.take().unwrap();
-    for text in messages {
-        let line = json!({ "type": "user", "message": { "role": "user", "content": text } });
+    let ids: Vec<String> = messages.iter().map(|_| uuid::Uuid::new_v4().to_string()).collect();
+    for (text, id) in messages.iter().zip(&ids) {
+        let line = json!({ "type": "user", "message": { "role": "user", "content": text }, "uuid": id });
         input.write_all(format!("{line}\n").as_bytes()).await.unwrap();
     }
     input.flush().await.unwrap();
@@ -1289,16 +1290,21 @@ async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<Str
     let read = async {
         while let Some(line) = lines.next_line().await.unwrap() {
             let line: Value = serde_json::from_str(&line).unwrap();
+            let named: Vec<usize> = line["user_message_uuids"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|named| ids.iter().position(|id| Some(id.as_str()) == named.as_str()))
+                .collect();
             let kind = match line["type"].as_str() {
-                Some("user") if line["isReplay"] == true => {
-                    format!("user:{}", line["message"]["content"].as_str().unwrap_or_default())
+                Some("result") => {
+                    format!("result:{}", named.iter().map(usize::to_string).collect::<Vec<_>>().join(","))
                 }
                 Some("stream_event") => format!("stream_event:{}", line["event"]["type"].as_str().unwrap_or_default()),
                 Some(kind) => kind.to_owned(),
                 None => continue,
             };
-            let done = kind == "result"
-                && printed.iter().filter(|kind| *kind == "result").count() + 1 == results;
+            let done = kind.starts_with("result:") && named.contains(&(messages.len() - 1));
             printed.push(kind);
             if done {
                 return;
@@ -1308,62 +1314,56 @@ async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<Str
     };
     tokio::time::timeout(std::time::Duration::from_secs(60), read)
         .await
-        .unwrap_or_else(|_| panic!("the CLI printed {results} results within a minute: {printed:?}"));
+        .unwrap_or_else(|_| panic!("a result named the last message within a minute: {printed:?}"));
     drop(input);
     cli.kill().await.unwrap();
     printed
 }
 
-/// The CLI prints back each user message it takes into a turn, before the
-/// `result` of that turn, when it runs with `--replay-user-messages`: a run
-/// counts on it to know which `result` answers the last message it wrote
-/// (`crates/provider-claude-code/src/run.rs`).
+/// Each `result` names the client ids of the user messages its turn consumed,
+/// all of a batch the CLI merged into one turn among them: a run ends at the
+/// `result` that names the last message it wrote
+/// (`crates/provider-claude-code/src/run.rs`). Run it for each new version of
+/// the CLI before Demi installs it.
 ///
-/// Two messages are written at once, as a run writes two subagents' receipts.
-/// Whether the CLI answers them in one turn or in two, no `result` comes
-/// before the first is printed back, and the last comes after both.
-// One process of the supplied CLI and two answers of the scripted vendor: a
-// few seconds, most of it the CLI's start.
+/// Three messages are written at once, as a run writes three subagents'
+/// receipts. However the CLI groups them into turns, its results name each
+/// message once, in order.
+// One process of the supplied CLI and up to three answers of the scripted
+// vendor: a few seconds, most of it the CLI's start.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
-async fn the_cli_prints_back_each_user_message_it_takes_before_the_result_that_answers_it() {
-    let written = ["First receipt.", "Second receipt."];
-    let printed = printed(&written, &["First answer.", "Second answer."], 2).await;
-    let taken: Vec<&str> = printed
+async fn each_result_names_every_message_its_turn_consumed() {
+    let written = ["First receipt.", "Second receipt.", "Third receipt."];
+    let printed = printed(&written, &["First answer.", "Second answer.", "Third answer."]).await;
+    let named: Vec<&str> = printed
         .iter()
-        .filter_map(|kind| kind.strip_prefix("user:"))
+        .filter_map(|kind| kind.strip_prefix("result:"))
+        .flat_map(|names| names.split(',').filter(|name| !name.is_empty()))
         .collect();
-    assert_eq!(taken, written, "{printed:?}");
-    let first = printed.iter().position(|kind| kind.starts_with("user:")).unwrap();
-    let result = printed.iter().position(|kind| kind == "result").unwrap();
-    assert!(first < result, "{printed:?}");
+    assert_eq!(named, ["0", "1", "2"], "{printed:?}");
 }
 
 /// A message that starts with `/`, which the CLI takes for a command it does
 /// not offer, is answered by the CLI itself: it prints an answer and a `result`
-/// with no model call and never prints the message back, which the provider
-/// counts on to end the run (`crates/provider-claude-code/src/run.rs`).
+/// with no model call, which names the message, so it ends the run
+/// (`crates/provider-claude-code/src/run.rs`).
 ///
 /// A path such as `/Users/…` is a message like any other.
 // Two processes of the supplied CLI and one answer of the scripted vendor: a
 // few seconds.
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI"]
-async fn a_command_the_cli_does_not_offer_gets_a_result_with_no_model_call_and_is_never_printed_back() {
-    let printed_for_command = printed(&["/cost"], &[], 1).await;
+async fn a_command_the_cli_does_not_offer_gets_a_result_that_names_it_with_no_model_call() {
+    let printed_for_command = printed(&["/cost"], &[]).await;
     assert!(
-        !printed_for_command
-            .iter()
-            .any(|kind| kind.starts_with("user:") || kind.starts_with("stream_event:")),
+        !printed_for_command.iter().any(|kind| kind.starts_with("stream_event:")),
         "{printed_for_command:?}"
     );
-    assert_eq!(printed_for_command.last().map(String::as_str), Some("result"));
+    assert_eq!(printed_for_command.last().map(String::as_str), Some("result:0"));
 
     let path = "/Users/x/a.txt 是什么";
-    let printed_for_path = printed(&[path], &["A text file."], 1).await;
-    assert!(
-        printed_for_path.contains(&format!("user:{path}"))
-            && printed_for_path.contains(&"stream_event:message_start".to_owned()),
-        "{printed_for_path:?}"
-    );
+    let printed_for_path = printed(&[path], &["A text file."]).await;
+    assert!(printed_for_path.contains(&"stream_event:message_start".to_owned()), "{printed_for_path:?}");
+    assert_eq!(printed_for_path.last().map(String::as_str), Some("result:0"));
 }

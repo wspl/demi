@@ -496,6 +496,7 @@ fn scripted(start: CliStart, work: CliWork, site: CliSite) -> (Process, Cli) {
         work,
         state,
         inputs,
+        consumed: RefCell::default(),
     };
     (process, cli)
 }
@@ -563,6 +564,9 @@ pub struct Cli {
     pub work: CliWork,
     state: Rc<State>,
     inputs: mpsc::UnboundedReceiver<Value>,
+    /// The client ids of the user messages the turn running now consumed,
+    /// which its result names.
+    consumed: RefCell<Vec<String>>,
 }
 
 impl Cli {
@@ -573,16 +577,27 @@ impl Cli {
             .expect("the process's input stays open while the test reads it")
     }
 
-    /// The next line the provider writes, a user message, which the CLI
-    /// takes into a turn and prints back, as `--replay-user-messages` has it
-    /// do.
+    /// The next line the provider writes, a user message, which the turn
+    /// running now consumes: the turn's result names its client id, as the
+    /// CLI names every message of a batch it merges into one turn. Answers
+    /// the line without its id.
     pub async fn take(&mut self) -> Value {
-        let message = self.read().await;
+        let mut message = self.read().await;
         assert_eq!(message["type"], "user", "{message}");
-        let mut replay = message.clone();
-        replay["isReplay"] = json!(true);
-        self.say(replay);
+        let uuid = message
+            .as_object_mut()
+            .and_then(|line| line.remove("uuid"))
+            .and_then(|uuid| uuid.as_str().map(str::to_owned))
+            .unwrap_or_else(|| panic!("a user message carries a client id: {message}"));
+        self.consumed.borrow_mut().push(uuid);
         message
+    }
+
+    /// The turn running now consumes `message`, a user message read with
+    /// [`Cli::read`]: its result names the message's client id.
+    pub fn consume(&self, message: &Value) {
+        let uuid = message["uuid"].as_str().unwrap_or_else(|| panic!("a user message carries a client id: {message}"));
+        self.consumed.borrow_mut().push(uuid.to_owned());
     }
 
     /// Every line the provider wrote and the test did not read yet.
@@ -624,7 +639,15 @@ impl Cli {
     }
 
     /// Writes `line` to the process's standard output.
-    pub fn say(&self, line: Value) {
+    /// Prints `line`. A `result` that names no messages names those its turn
+    /// consumed, as the CLI's does, and starts the next turn.
+    pub fn say(&self, mut line: Value) {
+        if line["type"] == "result" {
+            let consumed = std::mem::take(&mut *self.consumed.borrow_mut());
+            if line.get("user_message_uuids").is_none() && !consumed.is_empty() {
+                line["user_message_uuids"] = json!(consumed);
+            }
+        }
         self.write(StreamKind::Stdout, format!("{line}\n"));
     }
 

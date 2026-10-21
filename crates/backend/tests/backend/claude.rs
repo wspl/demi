@@ -148,13 +148,18 @@ calls() {
   done
   # As Claude Code 2.1 prints it, after the call's message_stop.
   printf '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791882600,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.31,"resetsAt":1791882600},"seven_day":{"utilization":0.05,"resetsAt":1792447200}}}}\n'
-  printf '{"type":"result","usage":{"input_tokens":36,"output_tokens":6,"cache_read_input_tokens":600}}\n'
+  printf '{"type":"result"%s,"usage":{"input_tokens":36,"output_tokens":6,"cache_read_input_tokens":600}}\n' "$(names)"
+}
+# The client id of the message the turn consumed, which its result names, as
+# the CLI's does; none for a resumed session's input.
+names() {
+  [ -n "$consumed" ] && printf ',"user_message_uuids":["%s"]' "$consumed"
 }
 answer() {
   case "$token" in
     access-expired-state)
       printf '{"type":"assistant","error":"authentication_failed","is_api_error_message":true,"message":{"model":"<synthetic>","content":[{"type":"text","text":"Failed to authenticate"}]}}\n'
-      printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":null,"result":"Failed to authenticate","usage":{"input_tokens":0,"output_tokens":0}}\n'
+      printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":null,"result":"Failed to authenticate"%s,"usage":{"input_tokens":0,"output_tokens":0}}\n' "$(names)"
       return
       ;;
   esac
@@ -165,7 +170,7 @@ answer() {
   fi
   printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cli=%s token=%s environment=%s descriptor=%s cwd=%s config=%s mode=%s own=%s"}]}}\n' \
     "$0" "$token" "$(env | grep -c "$token")" "$( [ -e /dev/fd/3 ] && echo open || echo none)" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)" "$own"
-  printf '{"type":"result","usage":{"input_tokens":3,"output_tokens":2}}\n'
+  printf '{"type":"result"%s,"usage":{"input_tokens":3,"output_tokens":2}}\n' "$(names)"
 }
 # A session that ends with input is answered at once; one that ends with an
 # answer waits for its input, as the CLI does.
@@ -183,10 +188,8 @@ while IFS= read -r line; do
       id=$(printf '%s\n' "$line" | sed 's/^{"type":"control_request","request_id":"\([^"]*\)".*/\1/')
       printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"subscription_type":"max","rate_limits":{"five_hour":{"utilization":12,"resets_at":"2030-01-01T00:00:00Z"}}}}}\n' "$id"
       ;;
-    # Printed back as it is taken, as `--replay-user-messages` has the CLI
-    # do.
     '{"type":"user"'*)
-      printf '%s,"isReplay":true}\n' "${line%\}}"
+      consumed=$(printf '%s\n' "$line" | sed -n 's/.*"uuid":"\([^"]*\)".*/\1/p')
       answer "$line"
       ;;
   esac

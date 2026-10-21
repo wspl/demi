@@ -492,10 +492,9 @@ async fn a_batch_without_all_its_results_or_results_never_asked_for_fail_the_run
 /// A steer written with a batch's results, which the CLI answers in a turn of
 /// its own after the batch's turn ended, is answered in the run that wrote it.
 ///
-/// That run ends at the second `result`, the one after the CLI printed the
-/// steer back, and the next run starts clean in the same process. (The run
-/// ended at the first `result`, and the steer's answer was skipped as output of
-/// no request.)
+/// That run ends at the second `result`, the one that names the steer, and the
+/// next run starts clean in the same process. (The run ended at the first
+/// `result`, and the steer's answer was skipped as output of no request.)
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_steer_written_with_a_batchs_results_and_answered_in_a_turn_of_its_own_is_answered_in_its_run() {
@@ -525,9 +524,7 @@ async fn a_steer_written_with_a_batchs_results_and_answered_in_a_turn_of_its_own
         cli.mcp_reply("call-1").await;
         cli.text("done");
         cli.result(1, 1);
-        let mut replay = steer.clone();
-        replay["isReplay"] = json!(true);
-        cli.say(replay);
+        cli.consume(&steer);
         cli.text("listed it");
         cli.result(2, 2);
     });
@@ -552,6 +549,69 @@ async fn a_steer_written_with_a_batchs_results_and_answered_in_a_turn_of_its_own
         events,
         [ProviderEvent::TextDelta("next answer".into()), usage(3, 3)]
     );
+    assert_eq!(placement.starts(), 1);
+    assert!(cli.signals().is_empty());
+}
+
+/// The incident: three receipts written at once to an idle kept process. The
+/// CLI answers the first in a turn of its own and merges the other two into one
+/// turn, which calls a tool. The next run delivers the result, and the merged
+/// turn's `result` names both receipts, which ends that run; a further run goes
+/// on in the same process. (A run that counted the messages the CLI printed
+/// back waited for good after that `result`: the CLI printed the merged turn
+/// back once.)
+// Four runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_merged_turn_that_calls_a_tool_ends_the_run_that_delivers_its_result() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let first = vec![user("run the readers")];
+    let (_, mut cli) = tokio::join!(all_events(runtime.run(request(first.clone()))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.handshake().await;
+        cli.text("started");
+        cli.result(1, 1);
+        cli
+    });
+
+    let mut receipts = first.clone();
+    receipts.push(user("receipt A"));
+    receipts.push(user("receipt B"));
+    receipts.push(user("receipt C"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(receipts.clone()))), async {
+        cli.take().await;
+        cli.text("A is in");
+        cli.result(2, 2);
+        cli.take().await;
+        cli.take().await;
+        cli.message_start();
+        cli.tool_use("toolu_1", "pwd");
+        cli.call("call-1", 2, "toolu_1", "pwd");
+        cli.message_stop();
+    });
+    assert_eq!(events[..2], [ProviderEvent::TextDelta("A is in".into()), usage(2, 2)]);
+    assert!(events.iter().any(|event| matches!(event, ProviderEvent::ToolCall(call) if call.tool_use_id == "toolu_1")), "{events:?}");
+
+    let mut delivered = receipts.clone();
+    delivered.push(tool_use("toolu_1", "pwd"));
+    delivered.push(tool_result("toolu_1", "/tmp"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(delivered.clone()))), async {
+        cli.mcp_reply("call-1").await;
+        cli.text("B and C are in");
+        cli.result(3, 3);
+    });
+    assert_eq!(events, [ProviderEvent::TextDelta("B and C are in".into()), usage(3, 3)]);
+
+    let mut next = delivered.clone();
+    next.push(user("next"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(next))), async {
+        cli.take().await;
+        cli.text("next answer");
+        cli.result(4, 4);
+    });
+    assert_eq!(events, [ProviderEvent::TextDelta("next answer".into()), usage(4, 4)]);
     assert_eq!(placement.starts(), 1);
     assert!(cli.signals().is_empty());
 }

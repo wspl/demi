@@ -196,14 +196,10 @@ pub(crate) struct LiveCli {
     stderr: Rc<RefCell<Tail>>,
     _drain: AbortOnDropHandle<()>,
     sent: Sent,
-    /// The user messages written to the process that it has not printed
-    /// back yet: a `result` ends a run only once there are none
+    /// The client id of the last user message written to the process, until
+    /// a `result` names it: a `result` that does not is an earlier turn's
     /// (`crates/provider-claude-code/src/run.rs`).
-    pub(crate) unreplayed: usize,
-    /// Whether the CLI printed a message back or started a model call
-    /// since its last `result`: a turn that did neither was one it answered
-    /// itself, such as a `/cost` it does not offer.
-    pub(crate) turn_began: bool,
+    pub(crate) unanswered: Option<String>,
     /// The response being streamed, from its first stream event until its
     /// `message_stop`: its tool calls come in the batch that ends it. A
     /// response that comes whole hands its batch on at once.
@@ -327,8 +323,7 @@ impl LiveCli {
             stderr,
             _drain: AbortOnDropHandle::new(drain),
             sent: Sent::default(),
-            unreplayed: 0,
-            turn_began: false,
+            unanswered: None,
             streaming: None,
             collecting: Vec::new(),
             writing: HashMap::new(),
@@ -749,13 +744,13 @@ impl LiveCli {
         }
         let items = request.items.clone();
         let sent = self.sent.count;
-        let lines = encode_body(FAMILY, move || input::new_user_messages(&items, sent)).await?;
+        let (lines, last) = encode_body(FAMILY, move || input::new_user_messages(&items, sent)).await?;
         self.write(lines).await?;
         let given = input::user_message_items(&request.items)
             .skip(sent)
             .map(|(index, _)| index);
         self.mirror.gave(given);
-        self.unreplayed += count - sent;
+        self.unanswered = last;
         self.sent.count = count;
         if self.sent.first.is_none() {
             self.sent.first = first_user_message(&request.items).cloned();

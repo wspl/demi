@@ -22,17 +22,18 @@
 //!
 //! The CLI answers user messages that reach it at different times in turns of
 //! their own (two subagents' receipts, a steer written while it waits for a
-//! batch's results), each with a `result`. Ending the run at the first would
-//! leave the second answer to reach no request: the next run would take part of
-//! it for its own, and the answer to its own input would print after it ended,
-//! never shown.
+//! batch's results), each with a `result`, and merges the messages that queue
+//! while it is busy into one turn. Ending the run at the first `result` would
+//! leave the later answers to reach no request: the next run would take part
+//! of one for its own, and the answer to its own input would print after it
+//! ended, never shown.
 //!
-//! So the CLI prints each user message back as it takes it into a turn
-//! (`--replay-user-messages`), and a `result` ends the run only once every
-//! message the run wrote has been printed back before it. A message the CLI
-//! answers itself without the model, such as `/cost`, is never printed back.
-//! Its `result` stands for the oldest message not yet printed back, so a
-//! message starting with `/` never leaves a run waiting.
+//! So each user message carries a client id, and a `result` names the ids of
+//! every message its turn consumed. The run ends at the `result` that names
+//! the last message written to the process; any other is an earlier turn's
+//! (`docs/decisions/0022-a-claude-code-run-ends-at-the-result-that-names-its-last-message.md`).
+//! Which messages a turn consumed is the CLI's to say, never the run's to
+//! count.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -364,16 +365,8 @@ fn run(
                     Next::Line(text, line) => (text, line),
                 };
                 match line {
-                    None | Some(Line::ControlResponse(_)) => {}
-                    // A message the run wrote, taken into a turn; the
-                    // results of calls are printed too, and count for
-                    // nothing.
-                    Some(Line::User(line)) => {
-                        if line.is_replay {
-                            live.unreplayed = live.unreplayed.saturating_sub(1);
-                            live.turn_began = true;
-                        }
-                    }
+                    // The results of calls, printed as the CLI sends them.
+                    None | Some(Line::ControlResponse(_)) | Some(Line::User(_)) => {}
                     // The quota the vendor reported is the call's open now,
                     // or the one that ended last; the snapshot took it as
                     // the line was read.
@@ -498,7 +491,6 @@ fn run(
                         // one, and its message_stop ends it; a message that
                         // starts while another streams abandons that call.
                         if let StreamEvent::MessageStart(_) = &event {
-                            live.turn_began = true;
                             if live.streaming.is_some() {
                                 yield live.last_call.ended(CallOutcome::Refused(None));
                             }
@@ -569,19 +561,14 @@ fn run(
                         live.writing.clear();
                         live.streaming = None;
                         let usage = live.last_call.take();
-                        let end = line.end();
-                        // A turn the CLI answered itself, with no message
-                        // printed back and no model call, as for a `/cost` it
-                        // does not offer, took the oldest message not yet
-                        // printed back. A failed turn is never one: a call the
-                        // vendor refused starts no stream either.
-                        if !std::mem::take(&mut live.turn_began) && matches!(end, TurnEnd::Answered) {
-                            live.unreplayed = live.unreplayed.saturating_sub(1);
+                        // A result that does not name the last message
+                        // written to the process ends an earlier turn, and
+                        // the run reads on to the turn that consumes it.
+                        let earlier = live.unanswered.as_deref().is_some_and(|uuid| !line.names(uuid));
+                        if !earlier {
+                            live.unanswered = None;
                         }
-                        // The CLI has not taken every message the run wrote:
-                        // this result ends a turn of an earlier one, and the
-                        // run reads on to the turns of the rest.
-                        let earlier = live.unreplayed > 0;
+                        let end = line.end();
                         // The vendor refused the account's sign-in, which the
                         // CLI could not renew and emptied: the account waits
                         // for the user to sign in again, and rotation passes
