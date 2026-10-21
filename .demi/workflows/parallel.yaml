@@ -20,6 +20,7 @@ instructions: |
   4. Review when the change has logic a user would meet. Decide which findings to fix (what users will plausibly meet, data loss, security); the implementer reproduces each on the product, fixes it and shows it gone. Read the fixes yourself; a branch is reviewed once.
   5. Merge, then deploy. When you judge a branch ready, tell its implementer to merge it; it merges on origin's `feat/demi-next` in its slot and reports the merge commit. Then check the server's free disk (`demi host shell --host <server> 'df -h /'`) and deploy the merged batch by the steps of `docs/delivery/upgrades.md` § A development build on a server, in the user's checkout. One deploy at a time.
   A small change, one whose result the user's words settle with nothing to design, you make yourself, check once, and commit, with no subagent or review.
+  Keep `docs/internal/backlog.md`, which git ignores, true: update it whenever an item is agreed, starts, waits, lands or is dropped.
 
   Slots and git
   - Four slots, `../demi-slots/1` to `../demi-slots/4`, each a worktree with its own warm build; at most four items run at once. Slot n uses ports 33n0–33n9 and 189n0–189n9. Items that change the same files run one after another.
