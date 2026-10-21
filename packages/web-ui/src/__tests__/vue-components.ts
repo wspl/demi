@@ -43,8 +43,8 @@ export const withoutViteGlobs: BunPlugin = {
     build.onLoad({ filter: /[/\\]files[/\\]file-icon-theme\.ts$/ }, () => ({
       contents: `import { shallowRef } from 'vue'
 export const fileIconTheme = shallowRef(null)
-export const ensureFileIconTheme = () => {}
-export const fileIconUrl = async () => null`,
+export const ensureFileIconTheme = async () => {}
+export const iconPicture = () => null`,
       loader: 'ts',
     }))
   },
@@ -54,6 +54,6 @@ export const fileIconUrl = async () => null`,
 // which Bun lacks: in a test there is no theme, and a file shows no icon.
 void mock.module('@demicodes/web-ui/files/file-icon-theme', () => ({
   fileIconTheme: shallowRef(null),
-  ensureFileIconTheme: () => {},
-  fileIconUrl: async () => null,
+  ensureFileIconTheme: async () => {},
+  iconPicture: () => null,
 }))

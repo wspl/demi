@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, shallowRef, watchEffect } from 'vue'
+import { computed, onBeforeUnmount, shallowRef, watch, watchEffect } from 'vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
 import SharedLinkMissing from '@demicodes/web-ui/share/SharedLinkMissing.vue'
@@ -9,6 +9,7 @@ import { pageTitle } from '@demicodes/web-ui/sidebar/tab-attention'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { lookupAttachment } from '../api/attachments'
@@ -72,6 +73,12 @@ const listLoad = computed<ListLoad>(() => {
   }
   return history.value.windows.length > 0 ? 'ready' : 'loading'
 })
+// Once the shared conversation has shown, what its regions need loads in the
+// background (`docs/decisions/0033-a-region-draws-once.md`), as in the app.
+watch(listLoad, (load) => {
+  if (load === 'ready')
+    loadRegionRenderers()
+}, { immediate: true, flush: 'post' })
 const loadError = computed(() => share.value.state === 'failed' ? share.value.error : failed.value)
 
 function retry(): void {

@@ -13,7 +13,7 @@ import type { ThemeMode } from '../theme/appTheme'
 import { WEB_LINK_REL, decodedTarget } from './filePath'
 import { codeBlockHtml } from './highlight'
 import { escapeHtml } from './html'
-import { loadedKatex, mathExtensions, mathSourceHtml } from './math'
+import { loadedKatex, mathExtensions, mathForm, mathSourceHtml } from './math'
 import { markdownReader } from './reader'
 import { scrollingTable } from './table'
 
@@ -380,18 +380,28 @@ export function mediaForTheme(media: string, theme: ThemeMode): string | null {
 
 /**
  * Math and code, rendered from their text: nothing a document wrote reaches
- * their output. Until KaTeX is there, math stays as its source.
+ * their output. Until KaTeX and its fonts are there, math stays as its source,
+ * hidden for the first 300 ms.
  */
 function renderAfterSanitizing(fragment: DocumentFragment): void {
   const katex = loadedKatex()
-  if (katex) {
+  /** KaTeX when math draws as the equation, which is when its region is final. */
+  const drawing = katex && mathForm() === 'final' ? katex : null
+  if (drawing) {
     for (const element of fragment.querySelectorAll<HTMLElement>('.math')) {
       const rendered = document.createElement('template')
-      rendered.innerHTML = katex.renderToString(element.textContent ?? '', {
+      rendered.innerHTML = drawing.renderToString(element.textContent ?? '', {
         displayMode: element.classList.contains('math-display'),
         throwOnError: false,
       })
       element.replaceWith(rendered.content)
+    }
+  } else {
+    const placeholders = fragment.querySelectorAll<HTMLElement>('.math')
+    // Asked only where math stands, since the ask starts the 300 ms.
+    if (placeholders.length > 0 && mathForm() === 'held') {
+      for (const element of placeholders)
+        element.classList.add('math-waiting')
     }
   }
   for (const code of fragment.querySelectorAll<HTMLElement>('pre > code')) {
@@ -401,10 +411,10 @@ function renderAfterSanitizing(fragment: DocumentFragment): void {
     if (language === 'math') {
       // A `math` block is display math, as on GitHub.
       const block = document.createElement('div')
-      if (katex)
-        katex.render(text, block, { displayMode: true, throwOnError: false })
+      if (drawing)
+        drawing.render(text, block, { displayMode: true, throwOnError: false })
       else
-        block.innerHTML = mathSourceHtml(text, true)
+        block.innerHTML = mathSourceHtml(text, true, mathForm() === 'held')
       pre.replaceWith(block)
       continue
     }

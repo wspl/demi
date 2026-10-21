@@ -2200,6 +2200,26 @@ html[data-theme="light"] .file-pill {
   white-space: pre;
 }
 
+/* A formula's height is not known until KaTeX renders it, so while KaTeX loads
+   (for 300 ms at most, `infra/region-wait.ts`) the formula is hidden where its
+   source stands, and so is what has not shown yet after it, which would move
+   when the formula draws: of a message that has not shown yet (`data-shown`,
+   which `StreamedMarkdown` sets once it has shown with no formula waiting)
+   the rest of its text, its footer and the transcript's rows after it. What
+   already shows is never hidden again: a formula that streams into a shown
+   message hides only itself. */
+.markdown-body .math-waiting {
+  visibility: hidden;
+}
+
+.markdown-body:not([data-shown]) > .math-waiting,
+.markdown-body:not([data-shown]) > :has(.math-waiting),
+.markdown-body:not([data-shown]) > :is(.math-waiting, :has(.math-waiting)) ~ *,
+.markdown-body:not([data-shown]):has(.math-waiting) ~ *,
+[data-row-key]:has(.markdown-body:not([data-shown]) .math-waiting) ~ [data-row-key] {
+  visibility: hidden;
+}
+
 /* A code block, table or equation that scrolls sideways keeps its scrollbar out of
    the layout, so a code block's padding stays even whether or not its line
    overflows. `useContentScrollers` gives it an overlay scrollbar when the pointer

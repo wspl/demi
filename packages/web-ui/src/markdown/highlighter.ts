@@ -3,16 +3,18 @@ import type { Tree } from '@lezer/common'
 import { highlightCode, highlightTree } from '@lezer/highlight'
 import { StyleModule } from 'style-mod'
 import { appThemeStore } from '../theme/appTheme'
+import { regionsChanged } from '../infra/region-wait'
 import { fenceLanguage } from '../editor/language'
 import { reportSyntaxColorsUnavailable } from '../editor/load'
 import { codeHighlightStyle } from '../editor/theme/highlightStyle'
+import { COMMON_FENCES } from './code-labels'
 import type { CodeRun } from './highlight'
 import { escapeHtml } from './html'
 
 // The highlighter of code outside the editor, in the editor's highlighter and
-// theme: its languages' parsers, loaded as a fence first names each, and its
-// highlight style's classes. A chunk of its own, which `highlight.ts` loads as
-// the first code shows.
+// theme: its languages' parsers, loaded as a fence first names each (the common
+// ones in the background, once the first conversation has shown), and its
+// highlight style's classes. A chunk of its own, which `highlight.ts` loads.
 
 /**
  * The highlighter, which tells `languageArrived` each time a language it was
@@ -23,7 +25,20 @@ export function createHighlighter(languageArrived: () => void) {
    * The languages asked for, each loaded once; one that fails to load stays
    * plain text.
    */
-  const requested = new Set<LanguageDescription>()
+  const requested = new Map<LanguageDescription, Promise<void>>()
+
+  /** Starts a language's load once. */
+  function request(description: LanguageDescription): Promise<void> {
+    const loading = requested.get(description)
+    if (loading)
+      return loading
+    const load = description.load().then(() => {
+      regionsChanged()
+      languageArrived()
+    }, reportSyntaxColorsUnavailable)
+    requested.set(description, load)
+    return load
+  }
 
   /**
    * The loaded language a fence names; null until it has loaded, and for one
@@ -35,10 +50,7 @@ export function createHighlighter(languageArrived: () => void) {
       return null
     if (description.support)
       return description.support.language
-    if (!requested.has(description)) {
-      requested.add(description)
-      description.load().then(languageArrived, reportSyntaxColorsUnavailable)
-    }
+    void request(description)
     return null
   }
 
@@ -100,6 +112,21 @@ export function createHighlighter(languageArrived: () => void) {
     },
 
     /**
+     * Whether the code of a fence has all it needs of the highlighter: its
+     * language is in, or it names none the highlighter knows.
+     */
+    languageReady(fence: string): boolean {
+      const description = fenceLanguage(fence)
+      return description === null || description.support !== undefined
+    },
+
+    /** Loads the common languages, each once, and resolves when they are in. */
+    async loadCommonLanguages(): Promise<void> {
+      const descriptions = COMMON_FENCES.flatMap((fence) => fenceLanguage(fence) ?? [])
+      await Promise.all(descriptions.map((description) => description.support ? undefined : request(description)))
+    },
+
+    /**
      * Code's highlighted runs; none while its language loads, and for one the
      * highlighter does not know.
      */
@@ -112,14 +139,6 @@ export function createHighlighter(languageArrived: () => void) {
         runs.push({ from, to, classes })
       })
       return runs
-    },
-
-    /**
-     * A language's full name as the highlighter knows it (`ts` is TypeScript);
-     * one it does not know is the fence as written.
-     */
-    label(fence: string): string {
-      return fenceLanguage(fence)?.name ?? fence
     },
   }
 }

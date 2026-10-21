@@ -41,6 +41,10 @@ useContentScrollers(root)
 const codeBlocks = shallowRef<HTMLElement[]>([])
 watch(html, async () => {
   await nextTick()
+  // The document has shown once its text is on the page with no formula waiting (`base.css`).
+  const body = root.value?.querySelector('.markdown-body')
+  if (body && !body.hasAttribute('data-shown') && !body.querySelector('.math-waiting'))
+    body.setAttribute('data-shown', '')
   codeBlocks.value = [...root.value?.querySelectorAll<HTMLElement>('.code-block') ?? []]
 }, { immediate: true, flush: 'post' })
 

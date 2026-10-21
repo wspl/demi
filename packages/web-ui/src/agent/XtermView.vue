@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { terminalCodeRuns, terminalColors, useTerminalTheme } from '../composables/useTerminalTheme'
-import { codeRuns, codeTextColor } from '../markdown/highlight'
+import { codeForm, codeRuns, codeTextColor } from '../markdown/highlight'
 import { useMarkdownRenderVersion } from '../markdown/render-version'
 import { promptLine, terminalWrite, type PromptColors, type TerminalShown } from './terminals'
 import '@xterm/xterm/css/xterm.css'
@@ -93,9 +93,11 @@ function applyPrompt(): void {
   if (!host) {
     return
   }
-  // The script highlighted as Bash, in the colors all code shows in.
+  // The script highlighted as Bash, in the colors all code shows in, and
+  // blank, in its lines, while its region waits (`markdown/highlight.ts`).
+  const script = props.script !== undefined && codeForm('bash') === 'held' ? props.script.replace(/[^\n]/g, ' ') : props.script
   const runs = props.script ? terminalCodeRuns(host, codeRuns(props.script.replace(/(\r?\n)+$/, ''), 'bash')) : []
-  const next = promptLine(props.script, promptColors, runs)
+  const next = promptLine(script, promptColors, runs)
   if (next === prompt) {
     return
   }

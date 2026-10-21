@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAbortError } from '@demicodes/utils'
 import { coded } from '@demicodes/web-ui/infra/errors'
+import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { provideAutomationOpener } from '@demicodes/web-ui/agent/message-origins'
@@ -186,6 +187,18 @@ function readHistory(read: Promise<void>): void {
     }
   })
 }
+
+// Once the first conversation has shown, what its regions need, the highlighter,
+// KaTeX, the editor and the file icons' list, loads in the background
+// (`docs/decisions/0033-a-region-draws-once.md`).
+watch(
+  () => !!conversation.value && transcriptShown(conversation.value.load),
+  (shown) => {
+    if (shown)
+      loadRegionRenderers()
+  },
+  { immediate: true, flush: 'post' },
+)
 
 // A search result opens at its message, and a report's title at its
 // command's call: the page reads the window around it once the

@@ -9,6 +9,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import GalleryLoadingStates from '../components/GalleryLoadingStates.vue'
+import GalleryRegionForms from '../components/GalleryRegionForms.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { productWould } from '../product-would'
@@ -175,5 +176,6 @@ const surfaces = [
       </GallerySpecimen>
     </div>
     <GalleryLoadingStates />
+    <GalleryRegionForms />
   </GallerySection>
 </template>

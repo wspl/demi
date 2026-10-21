@@ -4,7 +4,8 @@ import { build } from 'vite'
 
 // What a cold start downloads: the files the page's `index.html` loads hold no
 // part of the code editor, its highlighter or its languages, nor KaTeX, its
-// stylesheet and fonts, nor the terminal's xterm.js, each loaded on first use.
+// stylesheet and fonts, nor the terminal's xterm.js, each loaded on first use
+// or, but xterm, in the background once the first conversation has shown.
 // A static import from anywhere the first screen reaches would put them back
 // silently, so the test builds the page as production does, without writing it,
 // and reads the result. Cost: one bundle of the app, about 5 s, which no

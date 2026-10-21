@@ -182,6 +182,11 @@ useMarkdownBlocks({
   render: renderBlock,
   describe: placesIn,
   rendered(found) {
+    // The message has shown once a render has put its text on the page with no
+    // formula waiting; from then on a formula hides only itself (`base.css`).
+    const body = root.value
+    if (body && !body.hasAttribute('data-shown') && !body.querySelector('.math-waiting'))
+      body.setAttribute('data-shown', '')
     codeBlocks.value = found.flatMap((places) => places.codeBlocks)
     linkIcons.value = found.flatMap((places) => places.linkIcons)
     agentLinks.value = found.flatMap((places) => places.agentLinks)
