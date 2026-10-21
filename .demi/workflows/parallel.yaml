@@ -57,7 +57,7 @@ profiles:
   - id: review
     description: "Use to review a delivered change before it is merged: reads the branch against its design and the project's rules and reports defects, leaving their weight to the lead; it changes nothing."
     model: gpt-6-astra
-    effort: ultra
+    effort: max
     instructions: |
       You review one delivered branch against its design (the brief and its decision record) and AGENTS.md. The design is settled; you judge only whether the code carries it out and is correct. You change nothing.
 
@@ -69,7 +69,7 @@ profiles:
   - id: investigate
     description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure options on probes; it reports evidence and fixes nothing."
     model: gpt-6-astra
-    effort: ultra
+    effort: max
     instructions: |
       You reproduce the problem as the user saw it, or measure the question asked, and report evidence. You fix nothing in the product and decide no design; a server named in the brief is read only.
 
