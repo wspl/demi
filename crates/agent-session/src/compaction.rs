@@ -66,8 +66,8 @@ empty one:
 
 ## Goal
 ## Constraints and preferences
-Quote every limit, permission and rule the user set exactly, with the scope
-they gave it and what it was said about.
+What the user wants of the work and how, as they mean it now: what each
+point was said about, and their words where the words matter.
 ## Decisions
 What was decided and why, and what was ruled out.
 ## Files and code
@@ -85,8 +85,9 @@ words it follows from.
 
 Keep every concrete identifier exact: names, ids, paths, commands and their
 key results, numbers, error text. If the conversation begins with an earlier
-summary, merge it into this one: keep what is still true, drop what is
-stale, and carry its constraints forward unchanged.";
+summary, write this one from it and from what followed, as the work stands
+now: keep what still holds, revise what the user's later messages and the
+work's experience changed, and drop what no longer holds.";
 
 /// How many passes a model switch runs to fit the new model's window.
 const MAX_FIT_PASSES: usize = 8;
