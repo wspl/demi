@@ -8,8 +8,10 @@
 //! - signed with the secret as GitHub signs;
 //! - signed as Stripe signs, with the signing secret the user pasted.
 //!
-//! Any other call is refused, and the caller cannot tell an unknown address
-//! from a wrong secret.
+//! Any other call is refused with the answer an unknown address gets. The
+//! answer is the same, but not in every case: an unknown address is refused
+//! before its body is read, so only a call to a known address meets the
+//! limit on the body's size and the wait for a body that does not finish.
 //!
 //! # Limits and bursts
 //!
@@ -32,7 +34,6 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_backend_database::StorageError;
 use demi_backend_database::automations::{NewCall, PendingCall, RunCause};
-use demi_backend_providers::vault::seal::{Row, VaultKey};
 use demi_host_interface::{FileContents, Host, WhenExists, WriteOptions};
 use demi_shared_types::{AutomationId, AutomationRunId, Timestamp};
 use demi_web_api_protocol::automations::{RunState, Trigger};
@@ -131,33 +132,6 @@ pub(crate) struct Burst {
     timer: AbortOnDropHandle<()>,
 }
 
-/// The id a call no automation takes is checked as, and the secrets its
-/// check opens: the same work as for a wrong secret, so the time of an
-/// answer does not tell an unknown address from a known one.
-const UNKNOWN: &str = "00000000000000000000000000000000";
-
-/// Does for a call no automation takes the work a call with a wrong secret
-/// costs: a sealed secret and a Stripe secret opened, and the call checked
-/// against them; it never passes.
-pub fn check_unknown(key: &VaultKey, call: &HookCall, now: Timestamp) {
-    static SEALED: std::sync::OnceLock<(Vec<u8>, Vec<u8>)> = std::sync::OnceLock::new();
-    let (secret, stripe) = SEALED.get_or_init(|| {
-        let mut random = [0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::rng(), &mut random);
-        let text = hex::encode(random);
-        (
-            key.seal(Row::AutomationSecret(UNKNOWN), text.as_bytes()),
-            key.seal(Row::AutomationStripeSecret(UNKNOWN), text.as_bytes()),
-        )
-    });
-    // Neither result matters: a secret no caller knows passes nothing.
-    let secret = key.open(Row::AutomationSecret(UNKNOWN), secret).unwrap_or_default();
-    let stripe = key.open(Row::AutomationStripeSecret(UNKNOWN), stripe).unwrap_or_default();
-    let secret = String::from_utf8_lossy(&secret);
-    let stripe = String::from_utf8_lossy(&stripe);
-    std::hint::black_box(verified(call, &secret, Some(&stripe), now));
-}
-
 /// The value of the header `name`, in lowercase, the first of them.
 fn header<'a>(call: &'a HookCall, name: &str) -> Option<&'a str> {
     call.headers
@@ -229,7 +203,6 @@ impl Shard {
             None => (None, None),
         };
         let (Some(automation), Some(secret)) = (automation, secret) else {
-            check_unknown(self.services().vault.key(), &call, now);
             return Ok(HookAnswer::Refused);
         };
         if !verified(&call, &secret, stripe.as_deref(), now) {

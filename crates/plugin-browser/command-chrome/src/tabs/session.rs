@@ -126,26 +126,10 @@ impl References {
             .or_insert_with(|| page.clone());
     }
 
-    /// Releases the command's objects in each session besides the tab's own
-    /// that may hold them, with `release`, and forgets a session once its
-    /// release succeeded. The first failure, such as a dialog that keeps a
-    /// frame from answering, ends the round and keeps that session and the
-    /// ones not yet released for the next command's cleanup.
-    pub async fn release_holders<F, R>(&mut self, mut release: F) -> Result<()>
-    where
-        F: FnMut(Page) -> R,
-        R: std::future::Future<Output = Result<()>>,
-    {
-        let holders: Vec<(TargetId, Page)> = self
-            .holders
-            .iter()
-            .map(|(id, page)| (id.clone(), page.clone()))
-            .collect();
-        for (id, page) in holders {
-            release(page).await?;
-            self.holders.remove(&id);
-        }
-        Ok(())
+    /// The sessions besides the tab's own that may hold the command's
+    /// objects, forgotten here: the caller releases them.
+    pub fn take_holders(&mut self) -> Vec<Page> {
+        self.holders.drain().map(|(_, page)| page).collect()
     }
 
     /// Forgets the references of the document the tab left; their numbers

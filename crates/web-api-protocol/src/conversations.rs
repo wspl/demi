@@ -1,7 +1,8 @@
 //! Conversations as the web app creates, lists and follows them.
 
 use demi_conversation_socket_protocol::{
-    AgentCost, AgentEntry, BlockVersions, ConversationAttachment, Failures, TurnSpeed, Version,
+    AgentCost, AgentEntry, BlockVersions, ConversationAttachment, Failures, Refusal,
+    SendMessage, TurnSpeed, Version,
 };
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
@@ -67,7 +68,10 @@ pub enum ConversationTarget {
 /// `POST /conversations`: the id the web app chose for a new conversation,
 /// and what it starts with, so creating it is one request: the fields
 /// [`ConversationPatch`] takes except `archived`. They apply as part of the
-/// creation, and one that is refused refuses it.
+/// creation, and one that is refused refuses it. Its first message, when it
+/// has one, is admitted as the same message sent on the conversation's
+/// socket would be, once the record exists
+/// (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
 #[derive(
     Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
@@ -136,15 +140,44 @@ pub struct CreateConversation {
     #[schemars(with = "WorkflowChoice")]
     #[garde(dive)]
     pub workflow: Option<WorkflowChoice>,
+    /// The message the conversation starts with, as the socket's `send`
+    /// frame carries it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "SendMessage")]
+    #[garde(dive)]
+    pub first_message: Option<SendMessage>,
+}
+
+/// What became of the first message of a creation, when the request had one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FirstMessageAnswer {
+    /// The session holds the message.
+    Taken,
+    /// The message was not taken, and why; the conversation exists.
+    Refused { refusal: Refusal },
 }
 
 /// What `POST /conversations` answers: the conversation as the list shows
-/// it, and its metadata.
+/// it, and its metadata, and what became of the first message the request
+/// carried.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatedConversation {
     pub conversation: ConversationSummary,
     pub metadata: ConversationMetadata,
+    /// Absent when the request carried no first message.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "FirstMessageAnswer")]
+    pub first_message: Option<FirstMessageAnswer>,
 }
 
 /// A conversation as the sidebar lists it: what the sidebar shows of it, and

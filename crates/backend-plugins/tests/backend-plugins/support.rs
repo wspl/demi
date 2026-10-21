@@ -480,11 +480,11 @@ pub fn conversation() -> NodeId {
 /// idle phase that ends its turn.
 pub async fn turn(client: &mut TestClient<DeviceHost>, id: &str, text: &str) -> Vec<ServerFrame> {
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: TurnId::try_from(id).unwrap(),
             content: client_text(text),
-        })
+        }))
         .await;
     client.until_idle().await
 }

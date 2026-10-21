@@ -105,11 +105,11 @@ fn naming(text: &str, uploads: &[(&AttachmentDto, &str)]) -> Vec<ClientContent> 
 }
 
 pub(crate) fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
-    ClientFrame::Send {
+    ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
         comments: Vec::new(),
         message_id: TurnId::try_from(id).unwrap(),
         content: naming(text, uploads),
-    }
+    })
 }
 
 #[tokio::test]
@@ -968,11 +968,11 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     let mut long = naming(&wide, &[(&old, "old.png")]);
     long.insert(1, ClientContent::Text { text: wide });
     socket
-        .send(&ClientFrame::Send {
+        .send(&ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: TurnId::try_from("m1").unwrap(),
             content: long,
-        })
+        }))
         .await;
     socket.until_idle().await;
     // The vendor refuses the nine shots' request, so the latest answered

@@ -60,17 +60,7 @@ pub enum ClientFrame {
         held: Version,
     },
     /// Submit a message; its id becomes its turn's id and its queue entry's.
-    Send {
-        #[garde(skip)]
-        message_id: TurnId,
-        #[garde(dive)]
-        content: Vec<ClientContent>,
-        /// The comments the message carries, which may make it without
-        /// content; omitted when there are none.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        #[garde(dive)]
-        comments: Vec<MessageComment>,
-    },
+    Send(#[garde(dive)] SendMessage),
     /// Continue from a new version of a user message.
     EditAndSend {
         #[garde(dive)]
@@ -216,7 +206,7 @@ impl ClientFrame {
             Self::Subscribe { .. } => ClientFrameKind::Subscribe,
             Self::Unsubscribe { .. } => ClientFrameKind::Unsubscribe,
             Self::AgentsSince { .. } => ClientFrameKind::AgentsSince,
-            Self::Send { .. } => ClientFrameKind::Send,
+            Self::Send(_) => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Regenerate { .. } => ClientFrameKind::Regenerate,
             Self::SwitchVersion { .. } => ClientFrameKind::SwitchVersion,
@@ -245,7 +235,7 @@ impl ClientFrame {
     pub(crate) fn check_content(&self) -> Result<(), garde::Report> {
         let mut report = garde::Report::new();
         match self {
-            Self::Send { content, .. } | Self::Steer { content, .. } => {
+            Self::Send(SendMessage { content, .. }) | Self::Steer { content, .. } => {
                 for (index, part) in content.iter().enumerate() {
                     if part.is_kept_file() {
                         report.append(
@@ -320,6 +310,23 @@ pub struct RegenerateRequest {
     /// The transcript version the page showed; a stale one is refused.
     #[garde(dive)]
     pub version: Version,
+}
+
+/// The message a `send` frame submits, and a conversation's creation carries
+/// as its first message (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SendMessage {
+    /// Its id becomes its turn's id and its queue entry's.
+    #[garde(skip)]
+    pub message_id: TurnId,
+    #[garde(dive)]
+    pub content: Vec<ClientContent>,
+    /// The comments the message carries, which may make it without content;
+    /// omitted when there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub comments: Vec<MessageComment>,
 }
 
 /// One part of the content the web app sends. Files are referred to, never

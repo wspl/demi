@@ -291,7 +291,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     client.open().await;
     client.next_until(is_request_output).await;
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: crate::support::turn("m1"),
             content: vec![
@@ -303,7 +303,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
                     file_name: "tiny.png".into(),
                 },
             ],
-        })
+        }))
         .await;
     let frames = client.until_idle().await;
 
@@ -422,14 +422,14 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     client.open().await;
     client.next_until(is_request_output).await;
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: crate::support::turn("m1"),
             content: vec![ClientContent::Upload {
                 r#ref: "upload-1".into(),
                 file_name: "tiny.png".into(),
             }],
-        })
+        }))
         .await;
     client.until_idle().await;
     // The open and the turn's end ready the next request, once or twice as
@@ -498,14 +498,14 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
     client.open().await;
     client.next_until(is_request_output).await;
     client
-        .send(ClientFrame::Send {
+        .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             comments: Vec::new(),
             message_id: crate::support::turn("m1"),
             content: vec![ClientContent::Upload {
                 r#ref: "upload-1".into(),
                 file_name: "tiny.png".into(),
             }],
-        })
+        }))
         .await;
     let turn = client.until_idle().await;
     assert!(turn.iter().any(|frame| root_context(frame).is_some()), "{turn:?}");

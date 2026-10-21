@@ -31,7 +31,7 @@ use demi_agent_session::{
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
     AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, HeldEdge, RegenerateRequest, Refusal,
-    RemoveOutcome, ServerFrame, SteerOutcome, Version,
+    RemoveOutcome, SendMessage, ServerFrame, SteerOutcome, Version,
 };
 use demi_provider_common::Ahead;
 use demi_shared_types::{BlockId, NodeId, QueuedMessage, SessionPhase, TurnId};
@@ -445,11 +445,19 @@ impl<H: HostResolver> Connection<H> {
         let session = tree.root().session();
         match frame {
             ClientFrame::AgentsSince { held } => self.send(tree.agents_since(Some(&held))),
-            ClientFrame::Send {
+            ClientFrame::Send(SendMessage {
                 message_id,
                 content,
                 comments,
-            } => {
+            }) => {
+                // A message the session holds already is acknowledged before
+                // its files are resolved, so a request sent again, after its
+                // answer was lost, writes nothing a second time.
+                if session.knows_turn(&message_id) {
+                    let at = Self::shown_at(tree, &session).await;
+                    self.send(ServerFrame::SendResult { message_id, at });
+                    return true;
+                }
                 let (content, media) = match resolve_message(&*self.resolver, content).await {
                     Ok(resolved) => resolved,
                     Err(error) => {

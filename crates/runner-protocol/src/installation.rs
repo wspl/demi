@@ -15,24 +15,17 @@
 //! The name is a safe file name on every system. In the readable part only
 //! ASCII letters and digits, `.`, `-` and `_` stay; every other character, such
 //! as the `:` of an IPv6 host or a percent-encoded byte's `%`, becomes `_`. The
-//! readable part is cut at [`READABLE_CHARS`], so that a long path never makes a
-//! name a file system refuses, or a path Windows cannot open; the hash still
-//! covers the whole URL. The hash also ends the name, so no name is a device
-//! name Windows reserves, and none ends in a dot.
+//! hash also ends the name, so no name is a device name Windows reserves, and
+//! none ends in a dot.
 //!
 //! Two backends whose names agree up to the hash would share a directory, one
-//! chance in 65,536 when their readable parts agree. The runner and the
-//! installers never act on an installation whose recorded backend is not the
-//! one they were given.
+//! chance in 65,536 when their readable parts agree.
 
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
 
 /// The directories under the user's home that hold every installation.
 pub const ROOT: [&str; 2] = [".demi", "runner"];
-
-/// The most characters of the readable part of a name.
-pub const READABLE_CHARS: usize = 96;
 
 /// The directory name of the installation of `backend`.
 pub fn installation_name(backend: &Url) -> String {
@@ -59,7 +52,6 @@ pub fn installation_name(backend: &Url) -> String {
                 '_'
             }
         })
-        .take(READABLE_CHARS)
         .collect();
     let digest = Sha256::digest(backend.as_str().as_bytes());
     format!("{readable}-{:02x}{:02x}", digest[0], digest[1])

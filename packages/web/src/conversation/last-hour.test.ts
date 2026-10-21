@@ -80,7 +80,7 @@ test('a watch reads when it starts, after a change of the cost and every minute,
 
   // What else of the conversation changes reads nothing.
   shown.subagents[0] = { ...shown.subagents[0]!, cost: { ...shown.subagents[0]!.cost } }
-  shown.metadata.shown.value = { otherCost: { ...NO_COST } } as never
+  ;(shown.metadata.shown as { value: unknown }).value = { otherCost: { ...NO_COST } }
   await settled()
   expect(kept.reads).toHaveLength(4)
 

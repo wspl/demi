@@ -1928,7 +1928,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Workflow Menu"
-        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice. Global Workflow follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read, or that is a symbolic link, stands in the menu with why, as its tip, and cannot be chosen; a .demi/workflows directory that is a link makes the menu say so in one row. A new conversation offers the menu before its first message and keeps the choice it was given. It starts with the model and the workflow last chosen in its project, or outside projects; a project never used starts as a conversation outside one does, and a remembered workflow the project no longer has starts as No Subagents. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
+        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice. Global Workflow follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read stands in the menu with why, as its tip, and cannot be chosen; a .demi/workflows directory the Host cannot read makes the menu say so in one row. A new conversation offers the menu before its first message and keeps the choice it was given. It starts with the model and the workflow last chosen in its project, or outside projects; a project never used starts as a conversation outside one does, and a remembered workflow the project no longer has starts as No Subagents. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="a new conversation starts with its project’s choices" wide>
@@ -1956,9 +1956,9 @@ onBeforeUnmount(() => {
               :workflow-choice="{ type: 'none' }"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="the workflows directory is a link" wide>
+          <GallerySpecimen variant="the workflows directory cannot be read" wide>
             <GalleryComposer
-              :workflows="{ state: 'unavailable', reason: 'Workflows are files of the project, not links.' }"
+              :workflows="{ state: 'unavailable', reason: 'the Host cannot read /Users/alex/app/.demi: Permission denied (os error 13)' }"
               :workflow-choice="{ type: 'workflow', id: 'review' }"
             />
           </GallerySpecimen>
@@ -3054,7 +3054,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its socket, never Connecting. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -3072,6 +3072,11 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('offline')"
           >Offline</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('first')"
+          >First Message</Button>
           <Button
             variant="ghost"
             size="sm"

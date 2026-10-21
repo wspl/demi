@@ -70,7 +70,7 @@ mod server;
 mod transcript;
 
 pub use client::{
-    ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery,
+    ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery, SendMessage,
 };
 pub use agents::{AgentEntry, AgentRole, HeldEdge, SideQuestion, Subagent};
 pub use cost::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};

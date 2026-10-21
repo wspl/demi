@@ -37,6 +37,18 @@
 //! it exists. Only a socket of the conversation hears of them; the sidebar's
 //! channel sends the conversation's entry alone.
 //!
+//! # A conversation's first message
+//!
+//! The request that creates a conversation may carry its first message
+//! (`admit_first_message`, `docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+//! A connection of its own then takes the frames a page's socket would send,
+//! an `open` and the `send`, through the same handling, so the message is
+//! admitted as any `send` is: its title, its files resolved in the
+//! conversation, its id checked against the messages already taken. The
+//! request answers from what the connection's outbox holds, and the
+//! connection goes; the page's socket opens afterwards and its handshake
+//! carries the reply so far.
+//!
 //! # Attachments
 //!
 //! A transcript frame carries the attachments its blocks and its appended
@@ -67,11 +79,11 @@ use demi_backend_database::conversation_attachments::uploaded_after;
 use demi_conversation_socket_protocol::{
     SteerOutcome,
     ClientContent, ClientFrame, ClientFrameKind, ConversationAttachment, EditOutcome, FrameError, Refusal,
-    RemoveOutcome, SavedDelivery, ServerFrame, TranscriptPatch, Version, decode_client_frame,
+    RemoveOutcome, SavedDelivery, SendMessage, ServerFrame, TranscriptPatch, Version, decode_client_frame,
 };
 use demi_shared_gates::Purpose;
 use demi_shared_types::{Block, BlockId, NodeId, TurnId, UserContentBlock};
-use demi_web_api_protocol::conversations::{ConversationFrame, ConversationMetadata};
+use demi_web_api_protocol::conversations::{ConversationFrame, ConversationMetadata, FirstMessageAnswer};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
 use demi_web_api_protocol::error::ErrorCode;
@@ -404,6 +416,58 @@ impl Shard {
             .map_err(|error| error.to_string())
     }
 
+    /// Admits the first message of a conversation just created, as the
+    /// socket would: a connection of its own opens the conversation's session
+    /// and hands it the `send` frame through the admission every `send`
+    /// takes, then goes. The page opens its socket afterwards, and that
+    /// opening carries the reply so far
+    /// (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+    ///
+    /// A message already taken under its id is taken again without a second
+    /// turn, as the session does for a repeated `send`.
+    pub(crate) async fn admit_first_message(
+        self: &Rc<Self>,
+        conversation: &ConversationId,
+        message: SendMessage,
+    ) -> FirstMessageAnswer {
+        let resolver = Rc::new(ConversationFiles {
+            shard: Rc::downgrade(self),
+            conversation: conversation.clone(),
+        });
+        let (connection, mut frames) = self.agent().connect(root_of(conversation), resolver);
+        let message_id = message.message_id.clone();
+        let steps = [ClientFrame::Open { agents: None, draft: None }, ClientFrame::Send(message)];
+        for frame in steps {
+            let sending = matches!(frame, ClientFrame::Send(_));
+            let replies = match self.handle_frame(conversation, &connection, frame).await {
+                Handled::Replies(replies) | Handled::Opened { replies } => replies,
+                Handled::Opening { .. } | Handled::NotJson => Vec::new(),
+            };
+            // What the backend refused before the session saw the frame, then
+            // what the session answered, which waits in the outbox.
+            let mut answered = replies;
+            while let Some(Outgoing::Frames(step)) = frames.try_recv() {
+                answered.extend(step);
+            }
+            for reply in answered {
+                match reply {
+                    ServerFrame::Rejected { refusal, .. } => return FirstMessageAnswer::Refused { refusal },
+                    ServerFrame::Error { message, code, .. } => {
+                        let code = code.unwrap_or_else(|| ErrorCode::SendFailed.to_string());
+                        return FirstMessageAnswer::Refused { refusal: Refusal::new(code, message) };
+                    }
+                    ServerFrame::SendResult { message_id: taken, .. } if sending && taken == message_id => {
+                        return FirstMessageAnswer::Taken;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        FirstMessageAnswer::Refused {
+            refusal: Refusal::new(ErrorCode::SendFailed, "The session did not answer the message"),
+        }
+    }
+
     /// Whether the backend would deliver the user's Resume of the
     /// conversation; it refuses it, for example, for an archived
     /// conversation.
@@ -607,7 +671,7 @@ impl Shard {
                     ));
                 }
             }
-            ClientFrame::Send { content, .. } => {
+            ClientFrame::Send(SendMessage { content, .. }) => {
                 self.title_first_message(&record, content).await?;
                 services
                     .control
@@ -1010,11 +1074,11 @@ fn saved_content(message: SavedMessage) -> Vec<ClientContent> {
 /// carries `turn`, the page's id for the send, as the turn's or the steer's.
 fn saved_frame(content: Vec<ClientContent>, turn: TurnId, delivery: SavedDelivery) -> ClientFrame {
     match delivery {
-        SavedDelivery::Message | SavedDelivery::Queue => ClientFrame::Send {
+        SavedDelivery::Message | SavedDelivery::Queue => ClientFrame::Send(SendMessage {
             message_id: turn,
             content,
             comments: Vec::new(),
-        },
+        }),
         SavedDelivery::Steer => ClientFrame::Steer {
             comments: Vec::new(),
             steer_id: BlockId::try_from(turn.into_string()).expect("a turn id is not empty"),

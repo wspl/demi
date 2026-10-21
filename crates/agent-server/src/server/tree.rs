@@ -478,7 +478,6 @@ impl<H: HostResolver> Tree<H> {
             // restored is not closing, so it takes the switch, which holds no
             // runtime to close either way.
             let _ = session.update_model(ModelSwitch {
-                compaction_blocked: None,
                 model: Box::new(model),
                 runtime: None,
             });

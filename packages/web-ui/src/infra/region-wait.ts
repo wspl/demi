@@ -40,7 +40,6 @@ const regions = new Map<string, Region>()
 const pinned = shallowRef<RegionForm | null>(null)
 /** The regions not final yet. */
 const pending = new Set<Region>()
-let settledWaiters: (() => void)[] = []
 
 /**
  * How the region `key` draws: `ready` says whether everything it needs is in,
@@ -78,7 +77,6 @@ export function regionForm(key: string, ready: () => boolean, redraw?: () => voi
     pending.delete(arrived)
     queueMicrotask(() => {
       arrived.version.value += 1
-      announceIfSettled()
     })
   }
   return region.form
@@ -93,35 +91,6 @@ export function regionsChanged(): void {
       region.version.value += 1
     }
   }
-  announceIfSettled()
-}
-
-function announceIfSettled(): void {
-  if (pending.size > 0)
-    return
-  const waiting = settledWaiters
-  settledWaiters = []
-  for (const resume of waiting)
-    resume()
-}
-
-/**
- * Resolves once no region is waiting for anything, or after `timeoutMs`, such
- * as for one that never arrives. What loads for no region yet waits until
- * then, so that it does not take the network from what a region shown waits
- * for; the caller reads it again, as it starts each load.
- */
-export function regionsSettled(timeoutMs: number): Promise<void> {
-  if (pending.size === 0)
-    return Promise.resolve()
-  return new Promise((resolve) => {
-    const timer = setTimeout(resume, timeoutMs)
-    function resume(): void {
-      clearTimeout(timer)
-      resolve()
-    }
-    settledWaiters.push(resume)
-  })
 }
 
 /**
@@ -133,14 +102,8 @@ export function pinRegionForms(form: RegionForm | null): void {
   pinned.value = form
 }
 
-/** Whether a region is waiting for something now. */
-export function regionsWaiting(): boolean {
-  return pending.size > 0
-}
-
 /** Forgets every region, for a test that starts from a page with nothing loaded. */
 export function resetRegionWaits(): void {
   regions.clear()
   pending.clear()
-  settledWaiters = []
 }

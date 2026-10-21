@@ -110,6 +110,8 @@ test('creating a project opens a new conversation draft in it, which only the fi
         target: { kind: 'workspace', workspaceId: PROJECT.id },
         // A project never used starts with No Subagents.
         workflow: { type: 'none' },
+        // The first message goes with it.
+        firstMessage: { messageId: conversation.pendingSends[0]!.id, content: [{ type: 'text', text: 'First message' }] },
       },
     },
   ])

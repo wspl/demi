@@ -529,11 +529,7 @@ impl<H: HostResolver> Tree<H> {
     ///
     /// The runtime serves `from` while the history may need compacting with it
     /// first, and the switch brings `to`'s when `to` belongs to another
-    /// provider entry. `from`'s entry is not a condition of going on, since
-    /// the child's work is on `to`: when it is gone, the child starts on `to`'s
-    /// runtime and the switch says why the history cannot be compacted first,
-    /// which fails the round only if the history needs it. `to`'s own entry
-    /// failing refuses the start.
+    /// provider entry. Either entry failing refuses the start.
     async fn runtime_for(
         &self,
         server: &AgentServer<H>,
@@ -544,27 +540,22 @@ impl<H: HostResolver> Tree<H> {
         if to == from {
             return Ok((self.child_runtime(server, owner, from).await?, None));
         }
-        let landing = |runtime, compaction_blocked| ModelSwitch {
+        let landing = |runtime| ModelSwitch {
             model: Box::new(to.clone()),
             runtime,
-            compaction_blocked,
         };
         if to.provider_id == from.provider_id {
             let runtime = self.child_runtime(server, owner, from).await?;
-            return Ok((runtime, Some(landing(None, None))));
+            return Ok((runtime, Some(landing(None))));
         }
         match self.child_runtime(server, owner, from).await {
             Ok(mut old) => match self.child_runtime(server, owner, to).await {
-                Ok(new) => Ok((old, Some(landing(Some(new), None)))),
+                Ok(new) => Ok((old, Some(landing(Some(new))))),
                 Err(error) => {
                     old.close().await;
                     Err(error)
                 }
             },
-            Err(RuntimeError::Unbuilt(reason)) => {
-                let new = self.child_runtime(server, owner, to).await?;
-                Ok((new, Some(landing(None, Some(reason)))))
-            }
             Err(error) => Err(error),
         }
     }

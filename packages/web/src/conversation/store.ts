@@ -81,6 +81,7 @@ import {
   type ConversationSummary,
   type CreateConversation,
   type DraftFile,
+  type SendMessage,
   type ProductState,
   type ReadRequest,
   type SidebarReorder,
@@ -2035,9 +2036,15 @@ export const useConversations = defineStore('conversations', () => {
    * target and its settings: for a part its model no longer offers, the model's first
    * effort and the vendor's default tier. The page shows what the answer says; a record
    * this request made is opened without reading it back.
+   *
+   * With `first`, the request carries the conversation's first message too, and
+   * resolves once the session took it; a refusal of the message rejects, with
+   * the conversation made all the same
+   * (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
    */
   async function persistConversation(
     conversation: Conversation,
+    first?: SendMessage,
   ): Promise<void> {
     if (conversation.persistence === 'synced') {
       return
@@ -2055,6 +2062,7 @@ export const useConversations = defineStore('conversations', () => {
       target: conversation.target,
       ...(settings ? settingsPatch(settings) : {}),
       ...(conversation.workflow.type === 'default' ? {} : { workflow: conversation.workflow }),
+      ...(first ? { firstMessage: first } : {}),
     }
     const response = await apiRequest('/conversations', {
       method: 'POST',
@@ -2064,20 +2072,27 @@ export const useConversations = defineStore('conversations', () => {
     const result = await readResponse(response, createdConversationSchema)
     signal.throwIfAborted()
     product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
-    // The choice the menu made while the record was on its way, which the
-    // request could not carry.
-    const chosen = conversation.workflow
     conversation.persistence = 'synced'
+    // A title the page shows stays shown: the answer is the record as the
+    // creation left it, which a title the channel brought since may be newer
+    // than.
+    const shownTitle = conversation.title
     Object.assign(conversation, listEntry(result.conversation))
+    if (result.conversation.title === null) {
+      conversation.title = shownTitle
+    }
     cache.delete(conversation.id)
     if (response.status === 201) {
       madeHere.add(conversation.id)
     }
     takeMetadata(conversation, result.metadata)
-    // It applies before the first message goes, so the first turn's spawns
-    // and instructions follow it (`crates/backend-user-shard/src/conversation/workflows.rs`).
-    if (!sameWorkflow(chosen, result.metadata.workflow)) {
-      await applyWorkflow(conversation.id, chosen)
+    if (result.firstMessage?.type === 'refused') {
+      const { refusal } = result.firstMessage
+      // A refusal's parameters are the strings and numbers its message names.
+      const params = refusal.params as Readonly<Record<string, string | number>> | undefined
+      throw Object.assign(coded(new Error(refusal.reason), refusal.code, params), {
+        requestId: response.headers.get(REQUEST_ID_HEADER),
+      })
     }
   }
 
@@ -2375,9 +2390,7 @@ export const useConversations = defineStore('conversations', () => {
    * Makes `workflow` the conversation's Workflow menu choice: it shows at
    * once, and a write that fails or is refused gives the stored choice
    * back; settles once it is written or refused. A conversation without a
-   * record keeps it in its draft, which its first send gives the record,
-   * and one whose record is on its way applies it as soon as the record is
-   * made, before its first message goes.
+   * record keeps it in its draft, which its first send gives the record.
    */
   async function applyWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
@@ -2853,6 +2866,20 @@ export const useConversations = defineStore('conversations', () => {
     try {
       if (pending.saved) {
         await deliverSaved(conversation, pending, pending.saved, way)
+        return
+      }
+      if (way === 'message' && conversation.persistence !== 'synced') {
+        // The conversation's first message goes with its creation, once its
+        // files are uploaded. It stays on its way until the session shows it,
+        // which the socket's opening brings, so the tail row says Requesting
+        // throughout.
+        const content = await sentContent(conversation, pending)
+        await persistConversation(conversation, {
+          messageId: pending.id,
+          content,
+          ...(pending.comments.length > 0 ? { comments: pending.comments } : {}),
+        })
+        void runtimeFor(conversation).catch(() => {})
         return
       }
       const [content] = await Promise.all([sentContent(conversation, pending), persistConversation(conversation)])
@@ -3415,7 +3442,10 @@ export const useConversations = defineStore('conversations', () => {
   async function stop(conversation: Conversation): Promise<boolean> {
     const starting = turnStartingMessage(conversation.phase, conversation.pendingSends)?.id
     await deliveries.run(conversation.id, async () => {})
-    if (starting !== undefined && conversation.pendingSends.some((pending) => pending.id === starting)) {
+    // One still listed after its delivery ended and failed started nothing;
+    // one listed without a failure is held by the session, whose opening has
+    // yet to show it, as the first message of a new conversation is.
+    if (starting !== undefined && conversation.pendingSends.some((pending) => pending.id === starting && pending.error !== null)) {
       return true
     }
     return attempt(conversation, (runtime) => runtime.abort())

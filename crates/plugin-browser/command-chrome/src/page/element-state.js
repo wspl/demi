@@ -5,8 +5,7 @@
 // 'end') that a retry tries in turn, so that an element under a sticky header
 // comes out from under it. `intercept` installs Playwright's hit-target
 // interceptor under the key `probe`; calling the function with `cancel` and
-// that key stops it and answers what it saw. `aria` is the shared role
-// resolution the caller composes in (`element.rs`, `ELEMENT_STATE`).
+// that key stops it and answers what it saw.
 async function(conditions, scroll, probe, cancel, point, intercept) {
   if (cancel) {
     return this[probe]?.() ?? null;
@@ -55,12 +54,42 @@ async function(conditions, scroll, probe, cancel, point, intercept) {
     const box = node.getBoundingClientRect();
     return box.width > 0 && box.height > 0;
   };
-  // The roles aria-disabled applies to; `aria` is the shared role
-  // resolution (`aria-role.js`).
+  // The roles aria-disabled applies to, and the implicit roles among them.
   const disabledRoles = ['application', 'button', 'composite', 'gridcell', 'group', 'input', 'link', 'menuitem', 'scrollbar', 'separator', 'tab', 'checkbox', 'columnheader', 'combobox', 'grid', 'listbox', 'menu', 'menubar', 'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'radiogroup', 'row', 'rowheader', 'searchbox', 'select', 'slider', 'spinbutton', 'switch', 'tablist', 'textbox', 'toolbar', 'tree', 'treegrid', 'treeitem'];
+  const implicitRole = node => {
+    switch (node.localName) {
+      case 'button': return 'button';
+      case 'a': case 'area': return node.hasAttribute('href') ? 'link' : '';
+      case 'select': return node.multiple || node.size > 1 ? 'listbox' : 'combobox';
+      case 'textarea': return 'textbox';
+      case 'option': return 'option';
+      case 'optgroup': case 'fieldset': case 'details': return 'group';
+      case 'tr': return 'row';
+      case 'input': {
+        const type = (node.getAttribute('type') || 'text').toLowerCase();
+        if (['button', 'submit', 'reset', 'image'].includes(type)) return 'button';
+        if (['checkbox', 'radio'].includes(type)) return type;
+        if (type === 'range') return 'slider';
+        if (type === 'number') return 'spinbutton';
+        if (node.hasAttribute('list')) return 'combobox';
+        if (type === 'search') return 'searchbox';
+        return ['text', 'email', 'tel', 'url'].includes(type) ? 'textbox' : '';
+      }
+      default: return '';
+    }
+  };
+  const roleOf = node => (node.getAttribute('role') || '').trim().split(/\s+/)[0] || implicitRole(node);
   const isDisabled = node => {
-    if (aria.nativelyDisabled(node)) return true;
-    if (!disabledRoles.includes(aria.role(node) || '')) return false;
+    if (['button', 'input', 'select', 'textarea', 'option', 'optgroup'].includes(node.localName)) {
+      if (node.hasAttribute('disabled')) return true;
+      if (node.localName === 'option' && node.closest('optgroup[disabled]')) return true;
+      const fieldset = node.closest('fieldset[disabled]');
+      if (fieldset) {
+        const legend = fieldset.querySelector(':scope > legend');
+        if (!legend || !legend.contains(node)) return true;
+      }
+    }
+    if (!disabledRoles.includes(roleOf(node))) return false;
     for (let ancestor = node; ancestor; ancestor = parent(ancestor)) {
       const disabled = (ancestor.getAttribute('aria-disabled') || '').toLowerCase();
       if (disabled === 'true') return true;

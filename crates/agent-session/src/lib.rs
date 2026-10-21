@@ -178,12 +178,6 @@ pub struct ModelSwitch {
     /// A new runtime when the model belongs to another provider than the
     /// selection before it.
     pub runtime: Option<Box<dyn ProviderRuntime>>,
-    /// Why the model the history was last requested with cannot compact it,
-    /// when the runtime that serves it could not be had: the session then
-    /// runs on the switch's runtime from the start, and a switch that needs
-    /// a compaction first fails with this instead of requesting from the
-    /// wrong provider. None when that model can be asked.
-    pub compaction_blocked: Option<String>,
 }
 
 impl std::fmt::Debug for ModelSwitch {
@@ -192,7 +186,6 @@ impl std::fmt::Debug for ModelSwitch {
             .debug_struct("ModelSwitch")
             .field("model", &self.model)
             .field("runtime", &self.runtime.is_some())
-            .field("compaction_blocked", &self.compaction_blocked)
             .finish()
     }
 }
@@ -1246,6 +1239,13 @@ impl AgentSession {
                 reason: report.message.clone(),
             }),
         }
+    }
+
+    /// Whether the message `id` is the running turn, a queued message or the
+    /// turn of a `user` block, which a message sent again under it does not
+    /// run twice.
+    pub fn knows_turn(&self, id: &TurnId) -> bool {
+        self.shared.read(|core| core.knows_turn(id))
     }
 
     /// Whether the tool call `id` is on the transcript's current path.

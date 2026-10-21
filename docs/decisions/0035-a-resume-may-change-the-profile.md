@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0043
 ---
 
 # A resume may change the profile

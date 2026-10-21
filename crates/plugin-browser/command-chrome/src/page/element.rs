@@ -40,16 +40,6 @@ pub(crate) struct TargetElement {
 
 pub(crate) const OBJECT_GROUP: &str = "demi-browser-command";
 
-/// The page function of the checks before an action (`element-state.js`),
-/// with the shared ARIA role resolution (`aria-role.js`) in its scope.
-pub(crate) static ELEMENT_STATE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    format!(
-        "async function(...args) {{ const aria = ({})(); return ({}).apply(this, args); }}",
-        include_str!("aria-role.js"),
-        include_str!("element-state.js"),
-    )
-});
-
 impl TargetElement {
     /// Resolve an observed browser node in one CDP request without another DOM scan.
     pub async fn resolve(page: &Page, backend_node_id: BackendNodeId) -> Result<Self> {
@@ -165,38 +155,24 @@ async fn call_with_gesture<T: DeserializeOwned>(
     args: Vec<Value>,
     user_gesture: bool,
 ) -> Result<T> {
-    let mut call = function_call(element, script, args)?;
-    call.user_gesture = Some(user_gesture);
-    evaluated(&element.page, call).await
-}
-
-/// The call of the page function `script` on `element` with `args`, awaiting
-/// its promise and answering its value as JSON.
-pub(crate) fn function_call(
-    element: &TargetElement,
-    script: &str,
-    args: Vec<Value>,
-) -> Result<CallFunctionOnParams> {
-    CallFunctionOnParams::builder()
-        .object_id(element.remote_object_id.clone())
-        .function_declaration(script)
-        .arguments(
-            args.into_iter()
-                .map(|value| CallArgument::builder().value(value).build())
-                .collect::<Vec<_>>(),
+    let result = element
+        .page
+        .evaluate_function(
+            CallFunctionOnParams::builder()
+                .object_id(element.remote_object_id.clone())
+                .function_declaration(script)
+                .arguments(
+                    args.into_iter()
+                        .map(|value| CallArgument::builder().value(value).build())
+                        .collect::<Vec<_>>(),
+                )
+                .await_promise(true)
+                .user_gesture(user_gesture)
+                .return_by_value(true)
+                .build()
+                .map_err(BrowserError::Configuration)?,
         )
-        .await_promise(true)
-        .return_by_value(true)
-        .build()
-        .map_err(BrowserError::Configuration)
-}
-
-/// Runs `call` in `page` and validates its returned payload at CDP entry.
-pub(crate) async fn evaluated<T: DeserializeOwned>(
-    page: &Page,
-    call: CallFunctionOnParams,
-) -> Result<T> {
-    let result = page.evaluate_function(call).await?;
+        .await?;
     let object = result.object();
     let value = match &object.value {
         Some(value) => value.clone(),
@@ -225,7 +201,7 @@ pub(crate) async fn state(
     let mut result: ElementState = call(
         page,
         element,
-        &ELEMENT_STATE,
+        include_str!("element-state.js"),
         vec![json!(conditions), json!(scroll)],
     )
     .await?;
@@ -234,7 +210,7 @@ pub(crate) async fn state(
         let state: ElementState = call(
             page,
             &frame,
-            &ELEMENT_STATE,
+            include_str!("element-state.js"),
             vec![json!([]), json!(false)],
         )
         .await?;
@@ -330,7 +306,7 @@ pub(crate) async fn prepared_state(
                 .run(call::<ElementState>(
                     &element.page,
                     element,
-                    &ELEMENT_STATE,
+                    include_str!("element-state.js"),
                     vec![json!([]), scroll.argument()],
                 ))
                 .await?;
@@ -365,7 +341,7 @@ pub(crate) async fn prepared_state(
                 .run(call(
                     &frame.page,
                     frame,
-                    &ELEMENT_STATE,
+                    include_str!("element-state.js"),
                     vec![
                         json!(["visible", "geometry", "hit"]),
                         json!(false),
@@ -395,7 +371,7 @@ async fn local_prepared_state(
         .run(call(
             page,
             target,
-            &ELEMENT_STATE,
+            include_str!("element-state.js"),
             vec![json!(conditions), json!(false), json!(probe), json!(false)],
         ))
         .await;
@@ -405,7 +381,7 @@ async fn local_prepared_state(
             call::<Option<Value>>(
                 page,
                 target,
-                &ELEMENT_STATE,
+                include_str!("element-state.js"),
                 vec![json!([]), json!(false), json!(probe), json!(true)],
             ),
         )
@@ -441,7 +417,8 @@ pub(crate) async fn call_with_states<T: DeserializeOwned>(
 ) -> Result<T> {
     let script = format!(
         "async function(...args) {{ const elementState = ({}); return ({}).apply(this, args); }}",
-        *ELEMENT_STATE, script
+        include_str!("element-state.js"),
+        script
     );
     call(page, target, &script, args).await
 }
@@ -459,31 +436,39 @@ pub(crate) async fn release_objects(tab: &BrowserTab, references: &mut Reference
     if tab.state().dialog.is_open() || tab.ended().is_cancelled() {
         return Ok(());
     }
-    tokio::time::timeout(CONTROL_TIMEOUT, async {
-        release_group(tab.page().clone()).await?;
-        references.release_holders(release_group).await
+    let pages: Vec<Page> = std::iter::once(tab.page().clone())
+        .chain(references.take_holders())
+        .collect();
+    let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
+        for page in pages {
+            let released = page
+                .execute(
+                    chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
+                        OBJECT_GROUP,
+                    ),
+                )
+                .await
+                .map_err(BrowserError::from);
+            match released {
+                // A frame's renderer that went away took its objects along.
+                Ok(_)
+                | Err(
+                    BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound,
+                ) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok::<_, BrowserError>(())
     })
     .await
     .map_err(|_| BrowserError::Timeout)
-    .and_then(std::convert::identity)
-}
-
-/// Releases the command's object group in `page`'s session.
-async fn release_group(page: Page) -> Result<()> {
-    let released = page
-        .execute(chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
-            OBJECT_GROUP,
-        ))
-        .await
-        .map_err(BrowserError::from);
-    match released {
-        // A tab or a frame's renderer that went away, or a lost connection,
-        // took its objects along.
-        Ok(_)
-        | Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
+    .and_then(std::convert::identity);
+    // A destroyed tab or connection no longer retains remote objects.
+    match cleanup {
+        Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
             Ok(())
         }
-        Err(error) => Err(error),
+        result => result,
     }
 }
 

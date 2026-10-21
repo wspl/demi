@@ -965,29 +965,4 @@ mod tests {
             );
         }
     }
-
-    /// Each installer decides whose installation it is before it changes
-    /// anything in the directory: the shell installer before it makes the
-    /// directory's `releases`, the PowerShell one before it makes it or opens
-    /// its lock, and comparing case-sensitively, since `-ne` ignores the case
-    /// of a path that can name another backend.
-    #[test]
-    fn each_installer_checks_whose_installation_it_is_before_it_changes_anything() {
-        let release = RunnerRelease {
-            release: "r1".into(),
-            wire: 1,
-            command_protocol: 1,
-            targets: Default::default(),
-        };
-        let backend = Url::parse("https://example.com/Team").unwrap();
-        let shell = shell_script(&backend, &release);
-        let checked = shell.find("\"$existing_backend\" != \"$backend\"").unwrap();
-        assert!(checked < shell.find("mkdir -p \"$state/releases\"").unwrap());
-        let powershell = powershell_script(&backend, &release);
-        let checked = powershell.find("-cne $demiBackend").unwrap();
-        assert!(!powershell.contains("-ne $demiBackend"));
-        for change in ["CreateDirectory($demiReleases)", "[IO.File]::Open($demiLockFile"] {
-            assert!(checked < powershell.find(change).unwrap(), "{change}");
-        }
-    }
 }

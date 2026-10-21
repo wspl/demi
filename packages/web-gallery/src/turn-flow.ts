@@ -25,6 +25,9 @@ import { printLive } from './live-command'
  *   again.
  * - `offline`: a message sent while the socket is lost, under Connecting, which
  *   goes once the socket is back.
+ * - `first`: a new conversation's first message, sent with its creation while
+ *   its socket opens, under Requesting, which goes on through the opening
+ *   until the answer begins.
  * - `resume` and `retry`: recover an aborted or failed tail.
  * - `connect`: opens over a dropped socket.
  * - `stream`: thinking then reply with nothing waited for.
@@ -35,7 +38,7 @@ import { printLive } from './live-command'
  * does: the transcript's tail row, its faces and the handoff into a block are
  * `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue'
+export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'first' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue'
 
 /**
  * A sent message as the composer showed it: what the page holds until the
@@ -93,6 +96,8 @@ const DELIVERY_ERROR = 'The message couldn’t be sent.'
 const DELIVERY_REQUEST = 'req_ffb05w4w6kxpdtz0'
 /** How long the simulated backend stays out of reach after an offline send. */
 const OFFLINE_MS = 2500
+/** How long the socket of a new conversation takes to open after its first message was sent. */
+const OPENING_MS = 1500
 const WAIT_MS = 80
 /**
  * How long the model takes to answer a step's result in the work replay: long
@@ -1434,6 +1439,18 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       state.load = 'reconnecting'
       holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
       at(run, OFFLINE_MS, () => {
+        state.load = 'ready'
+        deliver(run, false)
+      })
+      return
+    }
+    if (kind === 'first') {
+      // The message went with the conversation's creation, and the session
+      // shows it once the socket has opened: the tail row says Requesting
+      // meanwhile, never Connecting.
+      state.load = 'opening'
+      holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
+      at(run, OPENING_MS, () => {
         state.load = 'ready'
         deliver(run, false)
       })

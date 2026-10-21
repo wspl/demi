@@ -190,31 +190,6 @@ impl Drop for StateLease {
     }
 }
 
-/// The backends the installation in `root` records as its own: the
-/// `backend-url` an installer wrote and the `runner.json` of a runner that
-/// started there. Neither need exist, and one that is not a backend's URL is an
-/// error, never ignored.
-pub fn recorded_backends(root: &Path) -> io::Result<Vec<BackendUrl>> {
-    fn invalid(error: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
-        io::Error::new(io::ErrorKind::InvalidData, error)
-    }
-    let mut backends = Vec::new();
-    match std::fs::read_to_string(root.join("backend-url")) {
-        Ok(text) => backends.push(text.trim().parse().map_err(invalid)?),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    match std::fs::read(root.join("runner.json")) {
-        Ok(bytes) => {
-            let config: RunnerConfig = serde_json::from_slice(&bytes).map_err(invalid)?;
-            backends.push(config.backend_url);
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    Ok(backends)
-}
-
 async fn read_optional(path: &Path) -> io::Result<Option<Vec<u8>>> {
     match tokio::fs::read(path).await {
         Ok(bytes) => Ok(Some(bytes)),

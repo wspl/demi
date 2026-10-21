@@ -555,7 +555,6 @@ impl RemoteHost {
             .map(|wanted| wire::LookPath {
                 path: wanted.path.clone(),
                 limit: wanted.limit,
-                within: wanted.within.clone(),
             })
             .collect();
         let bound: u64 = paths.iter().map(|wanted| wanted.limit).sum();
@@ -612,7 +611,6 @@ impl RemoteHost {
                         Look::File { bytes: file, size }
                     }
                     wire::Looked::Other => Look::Other,
-                    wire::Looked::Link => Look::Link,
                     wire::Looked::Unreadable { code, message } => {
                         Look::Unreadable(HostError::failed(code, message))
                     }
@@ -941,9 +939,6 @@ pub struct DirectoryFile {
 pub struct LookAt {
     pub path: String,
     pub limit: u64,
-    /// A directory below which no link is followed, as
-    /// [`wire::LookPath::within`] says.
-    pub within: Option<String>,
 }
 
 /// What a look found at one path. A symbolic link at the path is followed;
@@ -956,8 +951,6 @@ pub enum Look {
     File { bytes: Bytes, size: u64 },
     /// Neither a file nor a directory.
     Other,
-    /// A link below the directory the look named, not followed.
-    Link,
     /// The Host could not read it.
     Unreadable(HostError),
 }

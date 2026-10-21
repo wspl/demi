@@ -527,11 +527,11 @@ async fn a_shared_message_keeps_the_comments_it_was_sent_with() {
     };
     vendor.respond(answer(&["Starting at 1 MB."], 10, 2));
     socket
-        .send(&ClientFrame::Send {
+        .send(&ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
             message_id: TurnId::try_from("m2").unwrap(),
             content: vec![ClientContent::Text { text: "Otherwise go ahead".into() }],
             comments: vec![comment.clone()],
-        })
+        }))
         .await;
     socket.until_idle().await;
     let own = transcript(&backend, &master, FIRST).await.blocks;

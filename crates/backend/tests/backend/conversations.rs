@@ -40,7 +40,7 @@ use demi_shared_types::{
 };
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationDetail, ConversationFrame, ConversationMetadata, ConversationStatus,
-    ConversationSummary, CreatedConversation, ConversationUpdate, Conversations, FieldResult, ModelSettings,
+    ConversationSummary, CreatedConversation, ConversationUpdate, Conversations, FieldResult, FirstMessageAnswer, ModelSettings,
     PatchField, TranscriptPage, TurnOutcome, WholeBlock,
 };
 use demi_web_api_protocol::drafts::ConversationDraft;
@@ -501,11 +501,11 @@ impl Socket {
 }
 
 pub(crate) fn send(id: &str, text: &str) -> ClientFrame {
-    ClientFrame::Send {
+    ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
         comments: Vec::new(),
         message_id: TurnId::try_from(id).unwrap(),
         content: client_text(text),
-    }
+    })
 }
 
 /// A Messages API stream that answers `deltas`, in that many pieces, and
@@ -1123,6 +1123,75 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
         .map(|summary| summary.id.as_str().to_owned())
         .collect();
     assert_eq!(ids, [FIRST]);
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_new_conversation_takes_its_first_message_with_its_creation_and_a_repeat_takes_it_once() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    let notes = crate::uploads::upload(&backend, &master, "notes.txt", "text/plain", b"Plans").await;
+    let model = json!({ "providerId": provider, "modelId": "claude-opus-4-8" });
+    let start = json!({
+        "id": FIRST, "model": model,
+        "firstMessage": { "messageId": "m1", "content": [
+            { "type": "text", "text": "Say hello" },
+            { "type": "upload", "ref": notes.id, "fileName": "notes.txt" },
+        ] }
+    });
+
+    // One request makes the conversation and has its session take the
+    // message, whose reply streams with no socket open.
+    vendor.respond(answer(&["Hello", " there."], 12, 3));
+    let created = backend.post("/api/conversations", Some(&master), start.clone()).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    assert_eq!(created.json::<CreatedConversation>().first_message, Some(FirstMessageAnswer::Taken));
+    eventually("the first message's turn ended", || async {
+        summary(&backend, &master, FIRST).await.status == ConversationStatus::Completed
+    })
+    .await;
+    // The message went through the admission a socket's send takes: it is
+    // the conversation's title and its file is the conversation's
+    // attachment.
+    let created = summary(&backend, &master, FIRST).await;
+    assert!(created.title.is_some(), "{created:?}");
+    assert_eq!(metadata(&backend, &master, FIRST).await.last_attachment, 1);
+
+    // The page opens its socket afterwards, and the opening carries the
+    // reply so far.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let live = socket.live().await;
+    assert_eq!(last_text(&live), "Hello there.");
+    let turns = kinds(&live);
+    assert_eq!(turns.iter().filter(|kind| *kind == "user").count(), 1, "{turns:?}");
+
+    // A request sent again after its answer was lost finds the conversation
+    // and the message, and takes nothing twice.
+    let again = backend.post("/api/conversations", Some(&master), start.clone()).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", String::from_utf8_lossy(&again.body));
+    assert_eq!(again.json::<CreatedConversation>().first_message, Some(FirstMessageAnswer::Taken));
+    assert_eq!(kinds(&socket.live().await), turns);
+    assert_eq!(metadata(&backend, &master, FIRST).await.last_attachment, 1);
+
+    // A message the session does not take, here for a conversation that has
+    // no model to open with, leaves the conversation made, and the answer
+    // says why.
+    let refused = backend
+        .post("/api/conversations", Some(&master), json!({
+            "id": SECOND,
+            "firstMessage": { "messageId": "m2", "content": [{ "type": "text", "text": "Hi" }] }
+        }))
+        .await;
+    assert_eq!(refused.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&refused.body));
+    let refused = refused.json::<CreatedConversation>();
+    let Some(FirstMessageAnswer::Refused { refusal }) = &refused.first_message else {
+        panic!("{refused:?}");
+    };
+    assert_eq!(refusal.code, "model_not_selected");
+    assert_eq!(summary(&backend, &master, SECOND).await.id, refused.conversation.id);
     backend.close().await;
 }
 
