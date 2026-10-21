@@ -639,8 +639,8 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
 
 // Under a second: one shell job and a look through the status command. The
 // end report is made while the model writes its next step, and the model's
-// `demi shell status --wait` shows the end before the report would join the
-// turn (`crates/agent-session/src/reports.rs`).
+// `demi shell status` shows the end before the report would join the turn
+// (`crates/agent-session/src/reports.rs`).
 #[tokio::test(flavor = "local")]
 async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
     within(async {
@@ -763,83 +763,10 @@ async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
     .await;
 }
 
-// About three seconds: three shell jobs, two of whose calls return after two
-// seconds of quiet, and a look through the status command. A look at two
-// commands waits for both; the first one's end report arrives meanwhile and
-// ends no window, since the look shows that end itself (`crates/agent-session/src/reports.rs`).
-#[tokio::test(flavor = "local")]
-async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
-    within(async {
-        let turns = [
-            // They report only their ends: a progress report would end the
-            // window of the call below, which this scenario keeps open.
-            Turn::Events(vec![
-                resident("serve", "until [ -e done ]; do sleep 0.05; done; echo finished"),
-                resident("other", "until [ -e other-done ]; do sleep 0.05; done"),
-            ]),
-            // A call whose window far outlasts the test, which ends when the
-            // test lets it.
-            Turn::Events(vec![exec("wait", "until [ -e let-go ]; do sleep 0.05; done; echo let go", 600_000)]),
-        ]
-        .into_iter()
-        .chain(replies(3));
-        let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start_with(&script, reporting()).await;
-        let mut client = fixture.opened().await;
-        client
-            .send(ClientFrame::Send {
-                comments: Vec::new(),
-                message_id: "message-1".try_into().unwrap(),
-                content: client_text("Serve, then wait."),
-            })
-            .await;
-        client.next_until(|frame| shows_call(frame, "wait")).await;
-        let [serve, other] = &fixture.shell_commands()[..2] else {
-            panic!("the two commands")
-        };
-        let root = fixture.server.node(&conversation(), &conversation()).unwrap();
-        // The model looks at both commands and waits for their ends: its
-        // first step takes them.
-        let ids = json!({ "id": [serve, other], "wait": "30s" });
-        let mut look = Box::pin(node_call(&root, &fixture.workspace, &["shell", "status"], ids));
-        assert!(futures_util::poll!(&mut look).is_pending());
-        assert!(root.looks_at(serve));
-        // The first command ends while the look waits: its end report waits
-        // for the turn's boundary. A report that ended the running call's
-        // window would be taken at once and end the turn instead.
-        std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
-        let mut status = root.session().status_watch();
-        tokio::select! {
-            waits = status.wait_for(|status| status.input) => {
-                waits.expect("the session lives while its call runs");
-            }
-            _ = client.until_idle() => panic!("the end report ended the running call's window"),
-        }
-        // The other command ends, and the look shows both ends; the running
-        // call was not cut short meanwhile, and ends once it is let go.
-        std::fs::write(format!("{}/other-done", fixture.workspace), "").unwrap();
-        let (code, looked, stderr) = look.await;
-        assert_eq!(code, 0, "{stderr}");
-        assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
-        std::fs::write(format!("{}/let-go", fixture.workspace), "").unwrap();
-        client.until_idle().await;
-        let results: Results = Rc::default();
-        for request in &script.requests() {
-            record(&results, request);
-        }
-        let results = results.borrow();
-        let waited = result(&results, "wait");
-        assert_eq!(field(waited, "status"), "exited", "{waited}");
-        assert_eq!(shown_output(waited), "let go\n", "{waited}");
-        fixture.stop().await;
-    })
-    .await;
-}
-
 /// The model's look at the command the turn's first call started: it ends
 /// the command, waits until the command's end report waits for the turn's
-/// boundary, looks at the command with `demi shell status --wait`, as the
-/// model's script would, and answers.
+/// boundary, looks at the command with `demi shell status`, as the model's
+/// script would, and answers.
 fn look_once_its_report_waits(
     server: Rc<std::cell::OnceCell<Rc<AgentServer<DeviceHost>>>>,
     workspace: Rc<std::cell::OnceCell<String>>,
@@ -872,7 +799,7 @@ fn look_once_its_report_waits(
             })
             .expect("the call that started the command");
         let (code, stdout, stderr) =
-            node_call(&node, workspace, &["shell", "status"], json!({ "id": [serve], "wait": "5s" })).await;
+            node_call(&node, workspace, &["shell", "status"], json!({ "id": [serve] })).await;
         assert_eq!(code, 0, "{stderr}");
         *looked.borrow_mut() = stdout;
         futures_util::stream::iter(reply("It ended."))

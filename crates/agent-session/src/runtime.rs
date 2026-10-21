@@ -248,16 +248,6 @@ pub trait SessionRuntime {
         None
     }
 
-    /// Whether a look of the node at `command` runs now, such as a `demi shell
-    /// status --wait` that waits for its end.
-    ///
-    /// The command's end report then ends no window, since the look shows the
-    /// end itself (`crates/agent-session/src/reports.rs`). None by default.
-    fn looks_at(&self, command: &CommandId) -> bool {
-        let _ = command;
-        false
-    }
-
     /// Readies `report` as it is written into the transcript.
     ///
     /// It reads the output the report carries, or marks the place what it read,

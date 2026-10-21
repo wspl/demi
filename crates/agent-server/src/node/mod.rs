@@ -62,7 +62,7 @@ use demi_agent_store::{
     media::store_result,
 };
 use demi_agent_tools::{
-    CallError, ContextSource, Directory, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
+    CallError, ContextSource, Directory, EndOf, Environments, HostResolver, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
     fill_output, interrupted_look, progress_report, report_media, runs_together, stored_running_commands,
     system_prompt, whole_status,
@@ -276,17 +276,6 @@ impl<H: HostResolver> Node<H> {
             // release.
             environment.release_command(command).await;
         }
-    }
-
-    /// The node looks at `commands` until the returned look is dropped: their
-    /// end reports end no window meanwhile (`crates/agent-session/src/reports.rs`).
-    pub(crate) fn look_at(&self, commands: Vec<CommandId>) -> Looking<'_> {
-        self.runtime.environments.look_at(commands)
-    }
-
-    /// Whether a look of the node at `command` runs now.
-    pub fn looks_at(&self, command: &CommandId) -> bool {
-        self.runtime.environments.looks_at(command)
     }
 
     /// Whether one of the node's environments holds `command`.
@@ -1019,10 +1008,6 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         let status = self.environments.owning(command)?.status(command).ok()?;
         let (output, view) = interrupted_look(&status, budget);
         Some(CommandLook { output, view })
-    }
-
-    fn looks_at(&self, command: &CommandId) -> bool {
-        self.environments.looks_at(command)
     }
 
     /// Reads the output of a command an environment holds now, which moves

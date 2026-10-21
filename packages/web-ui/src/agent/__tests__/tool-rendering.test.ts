@@ -19,7 +19,12 @@ test('only shell has its own rendering; a call of a removed or unknown tool is a
 
 test('a script that only runs demi shell status looks at the commands it names, each once', () => {
   expect(shellStatusLooks('demi shell status 17')).toEqual(['17'])
-  expect(shellStatusLooks('demi shell status 17 18 --wait 30s')).toEqual(['17', '18'])
+  expect(shellStatusLooks('demi shell status 17 18')).toEqual(['17', '18'])
+  // An option status no longer takes, as an earlier conversation's script
+  // holds it, draws the script as any other.
+  expect(shellStatusLooks('demi shell status 17 --wait 30s')).toBeNull()
+  expect(shellStatusLooks('demi shell status 17 --wait=30s')).toBeNull()
+  expect(shellStatusLooks('demi shell status 17 --interval=5m --json')).toEqual(['17'])
   expect(shellStatusLooks('demi shell status --interval 600000 17\ndemi shell status 17 && demi shell status 19')).toEqual(['17', '19'])
   expect(shellStatusLooks('# the suite\ndemi shell status 17 --resident')).toEqual(['17'])
   // Anything else the script does runs a command of its own.

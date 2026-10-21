@@ -20,15 +20,21 @@ export function shellTitle(input: Record<string, unknown>): string {
   return nonEmptyString(input.description) ?? nonEmptyString(input.script) ?? t('transcript.shellFallback')
 }
 
-/** The options of `demi shell status` that take a value as the next word. */
-const STATUS_VALUE_OPTIONS = new Set(['--wait', '--interval'])
+/**
+ * The options of `demi shell status` that take a value, as the next word or
+ * after `=`.
+ */
+const STATUS_VALUE_OPTIONS = new Set(['--interval'])
+/** The options of `demi shell status` that take no value. */
+const STATUS_FLAGS = new Set(['--resident', '--json'])
 
 /**
  * The commands a script looks at when all it runs is `demi shell status`,
  * by their numbers, each once; null for a script that does anything else,
  * which runs a command of its own. Commands joined by a new line, `;`,
  * `&&` or `||` are each a look; a pipe, a redirection or a substitution
- * makes the script more than a look.
+ * makes the script more than a look, and so does an option status does
+ * not take, such as one an earlier release took.
  */
 export function shellStatusLooks(script: string): string[] | null {
   const looked = new Set<string>()
@@ -52,7 +58,7 @@ export function shellStatusLooks(script: string): string[] | null {
         looked.add(word)
       else if (STATUS_VALUE_OPTIONS.has(word))
         at += 1
-      else if (!word.startsWith('--'))
+      else if (!STATUS_FLAGS.has(word) && !STATUS_VALUE_OPTIONS.has(word.split('=')[0]!))
         return null
     }
   }

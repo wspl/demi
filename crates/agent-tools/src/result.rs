@@ -379,8 +379,9 @@ fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budg
 }
 
 /// The next step for a command that runs: it reports to the node as its
-/// interval says, and the `demi shell` commands look at it, answer it and
-/// stop it.
+/// interval says, and the `demi shell` commands answer it and stop it. It
+/// offers no look: the command's report brings its output, so a look would
+/// only wait for it a second way (docs/decisions/0015-a-command-reports-itself.md).
 fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String {
     let reports = match interval_ms {
         Some(Some(interval)) => format!(
@@ -391,7 +392,7 @@ fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String
         None => String::new(),
     };
     format!(
-        "next: command {command} keeps running{reports}; look at it with demi shell status {command}, answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
+        "next: command {command} keeps running{reports}; answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
     )
 }
 
@@ -947,7 +948,7 @@ mod tests {
 
     /// The next step of a running command 17 that reports every five
     /// minutes.
-    const NEXT: &str = "next: command 17 keeps running and reports to you every 5m until it ends; look at it with demi shell status 17, answer a prompt with demi shell input 17, stop it with demi shell stop 17.";
+    const NEXT: &str = "next: command 17 keeps running and reports to you every 5m until it ends; answer a prompt with demi shell input 17, stop it with demi shell stop 17.";
 
     async fn result(status: &CommandStatus) -> String {
         let look = Look {

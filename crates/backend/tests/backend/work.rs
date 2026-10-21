@@ -814,7 +814,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
         .await;
     assert_eq!(
         after.received[0],
-        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running; look at it with demi shell status 2.\noutput: (empty)"
+        "Tool call interrupted: the backend shut down while this call watched command 2, which keeps running and reports to you as before.\noutput: (empty)"
     );
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(

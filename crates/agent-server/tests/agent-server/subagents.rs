@@ -1156,7 +1156,6 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     // exit 2: the error, then the leaf's usage, as clap tells one.
     let refusals = [
         ("status", json!({ "id": ["1"], "interval": "2s", "resident": true }), "--interval and --resident do not go together"),
-        ("status", json!({ "id": ["1"], "wait": "nonsense" }), "--wait nonsense: "),
         ("status", json!({ "id": ["1"], "interval": "nonsense" }), "--interval nonsense: "),
         ("output", json!({ "id": "1", "stdout": true, "stderr": true }), "--stdout and --stderr do not go together"),
         ("output", json!({ "id": "1", "lines": "2-1" }), "--lines 2-1: "),
@@ -1204,22 +1203,20 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     second.next_until(is_child_command(&child, false)).await;
 }
 
-// A child starts its tests, looks at them with `demi shell status 1 --wait
-// 10m`, and ends its turn to wait for their end. The look never reaches the
-// child, since its call was stopped or its stdout broke.
+// A child starts its tests and ends its turn to wait for their end. They end,
+// and the child's `demi shell status 1` shows the end, but the look never
+// reaches the child, since its call's stdout broke.
 //
-// When the tests end, the child is woken with their end report and answers
-// anew, rather than being closed with its old "waiting" answer as its result.
-// An end counts as seen only once a look showed it to the model
-// (`crates/agent-session/src/reports.rs`).
+// The child is woken with the tests' end report and answers anew, rather than
+// being closed with its old "waiting" answer as its result. An end counts as
+// seen only once a look showed it to the model
+// (`crates/agent-session/src/reports.rs`). The store holds the report's read of
+// the stored end until the look is over, so the report is made after the look
+// in every run.
 //
-// Once a stopped wait survived its call, showed the end to no one and marked it
-// seen before the end report, which reads the stored end, was made. The
-// supervisor then closed the idle child, and the work silently stopped. The
-// store holds that read here until the look is over.
-//
-// Under a second on the paused clock, each.
-async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) {
+// Under a second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_status_whose_stdout_broke_leaves_the_end_report() {
     let model = Model::default();
     model.child(
         "task test",
@@ -1246,27 +1243,10 @@ async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) 
     let child = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;
 
-    // The look waits for the tests' end. A stopped call is driven on, as
-    // the relay awaits a cancelled call's handler to its end, and its pipe
-    // is left readable, so that only its cancellation keeps it from
-    // showing the end; the other call's stdout broke.
     let reads = store.hold_command_ends();
-    let cancel = CancellationToken::new();
-    let mut look = Box::pin(shell_call(
-        &server,
-        &child,
-        "status",
-        json!({ "id": ["1"], "wait": "10m" }),
-        cancel.clone(),
-        stopped,
-    ));
-    assert!(futures_util::poll!(&mut look).is_pending());
-    if stopped {
-        cancel.cancel();
-    }
     shells.last().exit_with(Vec::new());
-    // Its result is the stopped or broken call's, which reaches no one.
-    let _ = look.await;
+    // Its result is the broken call's, which reaches no one.
+    let _ = shell_call(&server, &child, "status", json!({ "id": ["1"] }), CancellationToken::new(), false).await;
     reads.release();
     page.next_until(is_closed(&child)).await;
 
@@ -1282,18 +1262,8 @@ async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) 
     );
 }
 
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_stopped_status_wait_leaves_the_end_report() {
-    a_status_wait_that_reaches_no_one_leaves_the_end_report(true).await;
-}
-
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_status_whose_stdout_broke_leaves_the_end_report() {
-    a_status_wait_that_reaches_no_one_leaves_the_end_report(false).await;
-}
-
 // A child that ended its turn to wait for its tests looks at them with `demi
-// shell status 1 --wait 10m`, which shows their end. The end report that
+// shell status 1` once they ended, which shows their end. The end report that
 // follows tells it nothing more, so it wakes no turn and costs no request, and
 // the child closes with its answer (`crates/agent-session/src/reports.rs`).
 //
@@ -1302,7 +1272,7 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
 //
 // Under a second on the paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
+async fn a_status_that_shows_the_end_leaves_no_end_report() {
     let model = Model::default();
     model.child(
         "task test",
@@ -1331,17 +1301,8 @@ async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
     wait_for_execution(&server, "waiting").await;
 
     let reads = store.hold_command_ends();
-    let mut look = Box::pin(shell_call(
-        &server,
-        &child,
-        "status",
-        json!({ "id": ["1"], "wait": "10m" }),
-        CancellationToken::new(),
-        true,
-    ));
-    assert!(futures_util::poll!(&mut look).is_pending());
     shells.last().exit_with(Vec::new());
-    let looked = look.await.expect("the call is dispatched");
+    let looked = shell_command(&server, &child, "status", json!({ "id": ["1"] })).await;
     assert!(looked.stdout.contains("status: exited\nexitCode: 0"), "{looked:?}");
     reads.release();
     page.next_until(is_closed(&child)).await;

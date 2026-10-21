@@ -262,7 +262,7 @@ pub(crate) fn interrupted_text(end: &CallEnd<'_>, command: Option<&CommandId>) -
     match end {
         CallEnd::Stopped | CallEnd::Held(_) => format!("{reason}; command {command} was stopped."),
         CallEnd::Shutdown => format!(
-            "{reason} while this call watched command {command}, which keeps running; look at it with demi shell status {command}."
+            "{reason} while this call watched command {command}, which keeps running and reports to you as before."
         ),
         CallEnd::Crashed => format!("{reason}; command {command} keeps running if its Host kept it."),
         CallEnd::Failed(_) => unreachable!("answered above"),
@@ -1492,13 +1492,7 @@ impl SessionCore {
         if self.disposing || end_seen(self.runtime.as_ref(), &report) {
             return;
         }
-        // The end report of a command a running call looks at ends no
-        // window: the call shows the end itself (`crates/agent-session/src/reports.rs`).
-        if is_end(&report) && self.runtime.looks_at(&report.command_id) {
-            self.inputs.add_quiet(report, opens);
-        } else {
-            self.inputs.add(Input::Report(report, opens));
-        }
+        self.inputs.add(Input::Report(report, opens));
         self.wake();
     }
 
@@ -2568,8 +2562,8 @@ fn replace_switch(
 /// Whether `report` tells an end a look showed the node since the report was
 /// made.
 ///
-/// A look is a `demi shell status`, with or without `--wait`, or a `shell`
-/// result. Such an end tells nothing more
+/// A look is a `demi shell status` or a `shell` result. Such an end tells
+/// nothing more
 /// (`crates/agent-session/src/reports.rs`).
 ///
 /// A report never marks its own end seen, so a mark is always a look's.

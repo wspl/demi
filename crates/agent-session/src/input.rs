@@ -130,13 +130,6 @@ impl InputQueue {
         self.arrivals += 1;
     }
 
-    /// Adds a command report that ends no window: the end report of a
-    /// command a running call looks at, whose end the call shows itself.
-    pub(super) fn add_quiet(&mut self, report: CommandReport, opens: Opens) {
-        self.entries.push(Input::Report(report, opens));
-        self.arrivals += 1;
-    }
-
     pub(super) fn arrivals(&self) -> u64 {
         self.arrivals
     }
