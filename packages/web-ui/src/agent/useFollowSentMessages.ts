@@ -1,17 +1,6 @@
 import { computed, nextTick, watch } from 'vue'
+import { sentMessage } from './message-delivery'
 import type { MessageListBlock } from './pending-steers'
-
-/**
- * Blocks the reader authored, at every stage: delivered, queued, steering,
- * still on its way.
- */
-const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
-  'user',
-  'steer',
-  'queued_message',
-  'pending_steer',
-  'pending_submission',
-])
 
 /**
  * A message the reader just sent scrolls the transcript to the bottom, even
@@ -28,8 +17,9 @@ const READER_BLOCK_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
  *   holds that place is read, and was on its way, a row already, when it was
  *   sent
  *
- * A message is named by `keyOf` across its stages, so the server confirming a
- * message sent is not another send.
+ * A message is any row that shows one at any stage of its delivery
+ * (`sentMessage`), named by `keyOf` across its stages, so the server confirming
+ * or starting a message sent is not another send.
  */
 export function useFollowSentMessages(
   blocks: () => readonly MessageListBlock[],
@@ -37,7 +27,7 @@ export function useFollowSentMessages(
   scrollToBottom: () => void,
 ): void {
   const readerKeys = computed(() => new Set(blocks()
-    .filter((block) => READER_BLOCK_TYPES.has(block.type) && !('light' in block && block.light) && !undelivered(block))
+    .filter((block) => sentMessage(block) !== undefined && !('light' in block && block.light) && !undelivered(block))
     .map(keyOf)))
   watch(readerKeys, (keys, previous) => {
     for (const key of keys) {

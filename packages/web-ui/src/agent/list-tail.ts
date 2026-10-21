@@ -149,29 +149,6 @@ export function submissionRows(submission: PendingSubmissionState, startsTurn = 
 }
 
 /**
- * The message a row shows, by the id it was sent with; none for a row of
- * another kind.
- */
-export function rowMessageId(row: MessageListBlock): string | undefined {
-  switch (row.type) {
-    case 'user':
-      return row.turnId
-    case 'steer':
-      return row.id
-    case 'pending_steer':
-      return row.pendingSteerId
-    case 'queued_message':
-      return row.queueId
-    case 'pending_submission':
-      return row.submission.id
-    case 'starting_message':
-      return row.message.id
-    default:
-      return undefined
-  }
-}
-
-/**
  * Where a message not delivered stands: where it was sent, before the first
  * message sent after it that has a row, in the transcript, among the steers, in
  * the queue or on its way.

@@ -1,13 +1,14 @@
 import type { MessageListBlock } from './pending-steers'
+import { sentMessage } from './message-delivery'
 import { isWorkStep, workRowId } from './work-groups'
 
 /**
  * What names a row of the list across the forms it takes.
  *
- * - The message being sent and the message the server confirmed are one row,
- *   named by the message's id, which the confirmed message keeps as its turn's
- *   id. A steer waiting for the turn and the steer written, and a queued
- *   message and the message it becomes, likewise.
+ * - A message is one row through its whole delivery (`sentMessage`), named by
+ *   the id it was sent with, which the message written keeps as its turn's id:
+ *   on its way, waiting as a steer or in the queue, starting its turn, and
+ *   written.
  * - A run is named after the run the backend stored, and a step that runs after
  *   itself. The row a lone step ran in becomes its run's row by taking its
  *   place (`succeedKeys`).
@@ -21,41 +22,26 @@ export function rowKey(block: MessageListBlock): string {
   if (isWorkStep(block)) {
     return workRowId(block)
   }
-  switch (block.type) {
-    case 'user':
-      return `message:${block.turnId}`
-    case 'pending_submission':
-      return `message:${block.submission.id}`
-    case 'queued_message':
-      return `message:${block.queueId}`
-    case 'steer':
-      return `message:${block.id}`
-    case 'pending_steer':
-      return `message:${block.pendingSteerId}`
-    default:
-      return block.id
-  }
+  const message = sentMessage(block)
+  return message ? `message:${message.id}` : block.id
 }
 
 /**
  * What a row shows, as far as a change of it is a new face: a row whose face
  * changes under the key it keeps rolls the new face over the old one
  * (`RowRoll`), as the Stopped row rolls into Requesting and Requesting into
- * the step it waited for. A message is one face from its send to the
- * message written, and a run one face from its first step, while it runs,
+ * the step it waited for. A message is one face through its whole delivery
+ * (`sentMessage`), and a run one face from its first step, while it runs,
  * on: a step that ends becomes its run's row without a roll.
  */
 export function rowFace(row: MessageListBlock): string {
   if (isWorkStep(row) || row.type === 'work_group') {
     return 'work'
   }
+  if (sentMessage(row)) {
+    return 'message'
+  }
   switch (row.type) {
-    case 'user':
-    case 'steer':
-    case 'pending_steer':
-    case 'queued_message':
-    case 'pending_submission':
-      return 'message'
     case 'compaction_marker':
     case 'compaction_boundary':
       return 'compaction'
