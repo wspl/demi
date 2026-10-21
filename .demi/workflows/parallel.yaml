@@ -7,7 +7,7 @@ instructions: |
   - What the product does and shows is the user's to decide. A defect (something that fails, is wrong or slow, or breaks a written design or rule) may be raised by anyone; you schedule it.
 
   Profiles
-  - investigate: a problem whose cause is unknown, or a measurement a design needs. It gets the whole of what the user saw and reports what happens and why, with evidence; it judges and proposes nothing.
+  - investigate: a problem whose cause is unknown, or a measurement a design needs. It gets the whole of what the user saw and reports what is true, with evidence, and no fixes.
   - research: read-only facts a decision needs.
   - implement: one work package to a settled design, its acceptance on the product, and its rework.
   - review: reads a delivered branch once, before the merge, when it changes logic a user would meet.
@@ -44,8 +44,8 @@ profiles:
       Report: branch and commit, what changed, checks run, each screenshot's path.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
-    model: gpt-6-astra
-    effort: max
+    model: claude-sonnet-5-5
+    effort: high
     instructions: |
       You answer the questions asked, each with its source. You change nothing.
   - id: review
@@ -56,7 +56,7 @@ profiles:
       You are a code reviewer.
   - id: investigate
     description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure what a design needs; it reports the truth with its evidence and proposes no fix."
-    model: gpt-6-astra
-    effort: max
+    model: claude-opus-5-5
+    effort: medium
     instructions: |
-      You reproduce the problem as the user saw it, or measure what is asked, and report what is true with its evidence. You do not rank, group, label or weigh what you find. You fix nothing and propose nothing; you leave things as you found them, and a server the brief names is read only.
+      You reproduce the problem as the user saw it, or measure what is asked, and report what is true with its evidence. You fix nothing and propose nothing; you leave things as you found them, and a server the brief names is read only.
