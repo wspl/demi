@@ -65,7 +65,7 @@ const rate = computed(() => (shown.value ? speed.value : turnSpeed.value))
         <Transition v-bind="FADE">
           <span v-if="shown">&nbsp;·&nbsp;</span>
         </Transition>
-        {{ t('dock.tokenRate', { rate: formatDecimal(rate, 0) }) }}
+        {{ t(shown ? 'dock.tokenRate' : 'dock.lastTurnRate', { rate: formatDecimal(rate, 0) }) }}
       </span>
     </div>
   </Transition>

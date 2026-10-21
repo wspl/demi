@@ -243,7 +243,8 @@
     "openProviders": "Open Providers",
     "exposePort": "Expose Port",
     "outputTokens": "{tokens} token | {tokens} tokens",
-    "tokenRate": "{rate} tok/s"
+    "tokenRate": "{rate} tok/s",
+    "lastTurnRate": "Last turn: {rate} tok/s"
   },
   "notices": {
     "hostOffline": "{name} is offline.",

@@ -243,7 +243,8 @@
     "openProviders": "打开供应商",
     "exposePort": "公开端口",
     "outputTokens": "{tokens} token",
-    "tokenRate": "{rate} token/秒"
+    "tokenRate": "{rate} token/秒",
+    "lastTurnRate": "上一轮速度：{rate} token/秒"
   },
   "notices": {
     "hostOffline": "{name} 已离线。",

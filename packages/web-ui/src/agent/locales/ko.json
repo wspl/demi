@@ -243,7 +243,8 @@
     "openProviders": "제공업체 열기",
     "exposePort": "포트 공개",
     "outputTokens": "{tokens} 토큰",
-    "tokenRate": "{rate} 토큰/초"
+    "tokenRate": "{rate} 토큰/초",
+    "lastTurnRate": "이전 턴 속도: {rate} 토큰/초"
   },
   "notices": {
     "hostOffline": "{name} 호스트가 오프라인입니다.",
