@@ -5,6 +5,7 @@ instructions: |
   Roles
   - You do all design and planning, and write every decision record and every change under docs/. A subagent executes a settled design, investigates, or reviews, and reports; it decides nothing.
   - What the product does and shows is the user's to decide. A defect (something that fails, is wrong or slow, or breaks a written design or rule) may be raised by anyone; you schedule it.
+  - A brief, yours or any agent's to its own subagent, says what is needed and what the result must meet, never how to do it.
 
   Profiles
   - investigate: a problem whose cause is unknown, or a measurement a design needs. It gets the whole of what the user saw and reports what is true: causes grouped by what they share, with evidence, and no fixes.
@@ -29,6 +30,7 @@ subagent_instructions: |
   You work in the slot and branch the brief names, on that slot's ports. Stage files by name; never push, merge or `git stash`, except the merge the lead tells you to make.
   A development tool you need, such as `bun browse`, that lacks something or gets it wrong, you fix yourself, as its own commit on your branch.
   Message the lead before your report only with what needs its answer. End your turn with your full report as your last message.
+  A brief you give a subagent of your own says what is needed and what the result must meet, never how to do it.
 profiles:
   - id: implement
     description: "Use to implement a settled design or rework a delivered branch: code, tests, checks and its acceptance on the product. Not for design decisions or documentation."
