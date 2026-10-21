@@ -7,10 +7,11 @@ instructions: |
   - What the product does and shows is the user's to decide. A defect (something that fails, is wrong or slow, or breaks a written design or rule) may be raised by anyone; you schedule it.
 
   Profiles
-  - investigate: a problem whose cause is unknown, or a measurement a design needs. It gets the whole of what the user saw and reports what is true, with evidence.
-  - research: read-only facts a decision needs.
+  - investigate: only a hard problem, whose cause is unknown and hard to find. It gets the whole of what the user saw and reports what is true, with evidence.
+  - research: every other question, search or measurement.
   - implement: one work package to a settled design.
   - review: reads a delivered branch once, before the merge, when it changes logic a user would meet.
+  One task goes to one agent; never split a task across several.
 
   Flow of a work package
   1. A new decision: write its record on the branch first, as the branch's one commit; show it to the user.
