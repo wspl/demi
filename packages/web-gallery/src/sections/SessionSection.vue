@@ -1423,18 +1423,6 @@ function holdComposer(): void {
   composerHoldTimer = setTimeout(() => { composerHeld.value = false }, 4000)
 }
 onBeforeUnmount(() => clearTimeout(composerHoldTimer))
-// The model catalog failed to load; Retry reloads it the way the product revalidates.
-const composerModelLoad = ref<'loading' | 'ready' | 'failed'>('failed')
-const composerModelRestore = new RestoreSweep()
-function retryModels(): void {
-  composerModelRestore.start((phase) => {
-    composerModelLoad.value = phase
-  })
-}
-function breakModels(): void {
-  composerModelRestore.stop()
-  composerModelLoad.value = 'failed'
-}
 const liveLoad = ref<SessionLoad>('failed')
 const liveHasTranscript = computed(() => liveLoad.value === 'ready')
 const livePane = computed(() =>
@@ -1461,7 +1449,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   sessionRestore.stop()
-  composerModelRestore.stop()
   stopStreamingThinking()
 })
 </script>
@@ -1819,23 +1806,6 @@ onBeforeUnmount(() => {
           >
             <GalleryComposer
               :providers="offlineProviders"
-            />
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="models failed · live"
-            wide
-          >
-            <div class="mb-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                :disabled="composerModelLoad === 'failed'"
-                @click="breakModels"
-              >Break</Button>
-            </div>
-            <GalleryComposer
-              :model-load="composerModelLoad"
-              @retry-models="retryModels"
             />
           </GallerySpecimen>
           <GallerySpecimen

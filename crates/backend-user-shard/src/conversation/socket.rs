@@ -25,12 +25,24 @@
 //! # The conversation's own frames
 //!
 //! Beside the agents' frames, the socket sends what the backend keeps of the
-//! conversation itself (`ConversationFrame`): its metadata once the page
-//! sent its `open`, refused or not, as one of a conversation with no model
-//! yet, and at each change of it, and its draft when the draft is newer than
-//! the revision the page named at its open, and at each change of it.
-//! Only a socket of the conversation hears of them; the sidebar's channel
-//! sends the conversation's entry alone.
+//! conversation itself (`ConversationFrame`): its metadata, which carries
+//! each list its view shows, and its draft when the draft is newer than the
+//! revision the page named at its open, in one message. An `open` the backend
+//! delivers sends them before the agent sees the open, so they reach the page
+//! ahead of the handshake and the page shows the conversation whole in one
+//! step (`docs/decisions/0029-a-conversation-opens-whole.md`); a refused one,
+//! as of a conversation with no model yet, sends them with its refusal. Each
+//! change of either sends it again, and an attachment an agent uploaded since
+//! the last metadata goes with its description, as a reply may name it before
+//! it exists. Only a socket of the conversation hears of them; the sidebar's
+//! channel sends the conversation's entry alone.
+//!
+//! # Attachments
+//!
+//! A transcript frame carries the attachments its blocks and its appended
+//! text name that the node's replies show (`attachment_facts`), read as it is
+//! sent, as its failure facts are. A reply streams in pieces, so a frame that
+//! completes a tag in the text so far names it, whichever piece it ends in.
 //!
 //! # Frames the socket rewrites
 //!
@@ -51,13 +63,14 @@ use demi_agent_store::media::HeldMedia;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
+use demi_backend_database::conversation_attachments::uploaded_after;
 use demi_conversation_socket_protocol::{
     SteerOutcome,
-    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal, RemoveOutcome,
-    SavedDelivery, ServerFrame, TranscriptPatch, Version, decode_client_frame,
+    ClientContent, ClientFrame, ClientFrameKind, ConversationAttachment, EditOutcome, FrameError, Refusal,
+    RemoveOutcome, SavedDelivery, ServerFrame, TranscriptPatch, Version, decode_client_frame,
 };
 use demi_shared_gates::Purpose;
-use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
+use demi_shared_types::{Block, BlockId, NodeId, TurnId, UserContentBlock};
 use demi_web_api_protocol::conversations::{ConversationFrame, ConversationMetadata};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
@@ -65,7 +78,8 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use futures_util::future::LocalBoxFuture;
 
-use super::failure_facts;
+use super::attachment_facts::StreamedText;
+use super::{attachment_facts, failure_facts, reply_texts};
 use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
 use crate::sync::ChannelSession;
 use crate::shard::{PageEnd, PageSocket, Shard};
@@ -125,10 +139,14 @@ enum Handled {
     /// The frame reached its session, or the backend refused it with these
     /// frames.
     Replies(Vec<ServerFrame>),
+    /// An `open`: the page holds the draft at `draft`, and is shown the
+    /// conversation before `frame` is handled. It is shown before the open
+    /// takes its gates, since what it shows may wait on what they hold out,
+    /// such as the Cloud's takeover at a start.
+    Opening { draft: u64, frame: ClientFrame },
     /// An `open` reached the tree, or the backend refused it with these
-    /// frames: the page holds the draft at `draft`, and follows the
-    /// conversation from now on.
-    Opened { draft: u64, replies: Vec<ServerFrame> },
+    /// frames: the page follows the conversation from now on.
+    Opened { replies: Vec<ServerFrame> },
     /// The message is not JSON: the socket closes.
     NotJson,
 }
@@ -140,6 +158,15 @@ struct Shown {
     metadata: Option<ConversationMetadata>,
     /// The revision of the draft the page holds; none before its open.
     draft: Option<u64>,
+}
+
+impl Shown {
+    /// The number of the latest attachment the page was shown, whose
+    /// uploads since go to it with their descriptions; none before its first
+    /// metadata.
+    fn last_attachment(&self) -> Option<u64> {
+        self.metadata.as_ref().map(|metadata| metadata.last_attachment)
+    }
 }
 
 /// An `error` frame the backend answers a refused frame with.
@@ -190,6 +217,7 @@ impl Shard {
         let (mut page, mut stream) = open_page_socket(socket, self.services().pages, origin);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let mut shown = Shown::default();
+        let mut streamed = StreamedText::default();
         let relay = async {
             'relay: loop {
                 let busy = handling.is_some();
@@ -200,8 +228,21 @@ impl Shard {
                         handling = None;
                         let replies = match handled {
                             Handled::Replies(replies) => replies,
-                            Handled::Opened { draft, replies } => {
+                            Handled::Opening { draft, frame } => {
                                 shown.draft = Some(draft);
+                                if !self.show_conversation(&id, &mut page, &mut shown).await {
+                                    break 'relay Ending::Gone;
+                                }
+                                let shard = self.clone();
+                                let connection = &connection;
+                                let id = id.clone();
+                                handling = Some(Box::pin(async move {
+                                    shard.handle_frame(&id, connection, frame).await
+                                }));
+                                continue 'relay;
+                            }
+                            Handled::Opened { replies } => {
+                                // What changed while the open was handled.
                                 if !self.show_conversation(&id, &mut page, &mut shown).await {
                                     break 'relay Ending::Gone;
                                 }
@@ -210,7 +251,7 @@ impl Shard {
                             Handled::NotJson => break Ending::NotJson,
                         };
                         for reply in replies {
-                            if !self.send_frame(&id, &mut page, reply).await {
+                            if !self.send_frame(&id, &mut page, &mut streamed, reply).await {
                                 break 'relay Ending::Gone;
                             }
                         }
@@ -251,7 +292,7 @@ impl Shard {
                                     }
                                 }
                             }
-                            if !self.send_frames(&id, &mut page, batch).await {
+                            if !self.send_frames(&id, &mut page, &mut streamed, batch).await {
                                 break Ending::Gone;
                             }
                             if let Some(ending) = after {
@@ -390,16 +431,28 @@ impl Shard {
         connection: &demi_agent_server::Connection<super::ShardHosts>,
         text: &str,
     ) -> Handled {
-        let frame = match decode_client_frame(text) {
-            Ok(frame) => frame,
-            Err(FrameError::NotJson(_)) => return Handled::NotJson,
-            Err(FrameError::Invalid(error)) => {
-                return Handled::Replies(vec![refusal(
-                    ErrorCode::InvalidFrame,
-                    format!("Invalid client frame: {error}"),
-                )]);
-            }
-        };
+        match decode_client_frame(text) {
+            Ok(ClientFrame::Open { agents, draft }) => Handled::Opening {
+                draft: draft.unwrap_or(0),
+                frame: ClientFrame::Open { agents, draft },
+            },
+            Ok(frame) => self.handle_frame(conversation, connection, frame).await,
+            Err(FrameError::NotJson(_)) => Handled::NotJson,
+            Err(FrameError::Invalid(error)) => Handled::Replies(vec![refusal(
+                ErrorCode::InvalidFrame,
+                format!("Invalid client frame: {error}"),
+            )]),
+        }
+    }
+
+    /// Handles `frame` to its end: an `open` once the page was shown the
+    /// conversation (`Handled::Opening`), any other at once.
+    async fn handle_frame(
+        &self,
+        conversation: &ConversationId,
+        connection: &demi_agent_server::Connection<super::ShardHosts>,
+        frame: ClientFrame,
+    ) -> Handled {
         // A message saved for later goes as the frame the composer would send, as
         // the turn the page named, one at a time. It leaves the list once the
         // session takes it, and stays when the session refuses it.
@@ -444,7 +497,7 @@ impl Shard {
         // transition holding the conversation makes it wait for, never refuse
         // (`crates/backend-cloud/src/uses.rs`). Its uploads go to no Host
         // (`crates/backend-host-access/src/uploads.rs`).
-        let _files = self
+        let files = self
             .conversations()
             .slot(conversation)
             .file_gate()
@@ -452,8 +505,9 @@ impl Shard {
             .await;
         // An open takes its turn among the changes of the model settings: the
         // tree opens with the selection the record holds, never with one a
-        // change is about to replace.
-        let _settings = match &frame {
+        // change is about to replace. A delivered open keeps both gates until
+        // the tree took it.
+        let settings = match &frame {
             ClientFrame::Open { .. } => Some(
                 self.conversations()
                     .slot(conversation)
@@ -466,16 +520,15 @@ impl Shard {
         // A refusal names the command the page sent: a saved message's is
         // its `send_saved`'s, whatever frame it became.
         let command = if from_list { ClientFrameKind::SendSaved } else { frame.kind() };
-        let opened = match &frame {
-            ClientFrame::Open { draft, .. } => Some(draft.unwrap_or(0)),
-            _ => None,
-        };
+        let opening = matches!(frame, ClientFrame::Open { .. });
         let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
-                let taken = connection.handle_as(frame, command).await;
-                if let Some(draft) = opened {
-                    return Handled::Opened { draft, replies: Vec::new() };
+                if opening {
+                    connection.handle_as(frame, command).await;
+                    drop((files, settings));
+                    return Handled::Opened { replies: Vec::new() };
                 }
+                let taken = connection.handle_as(frame, command).await;
                 if let (true, Some((id, turn))) = (taken, saved) {
                     self.take_saved(conversation, id, turn).await;
                 }
@@ -484,10 +537,11 @@ impl Shard {
             Ok(Prepared::Refused(code, message)) => {
                 let replies = vec![refused_frame(frame, command, code, message)];
                 // A conversation whose tree cannot open, as one with no model
-                // yet, is still shown: its metadata and its draft follow.
-                match opened {
-                    Some(draft) => Handled::Opened { draft, replies },
-                    None => Handled::Replies(replies),
+                // yet, is still shown, and follows its changes.
+                if opening {
+                    Handled::Opened { replies }
+                } else {
+                    Handled::Replies(replies)
                 }
             }
             Err(error) => {
@@ -588,15 +642,21 @@ impl Shard {
 
     /// Sends one server frame, presented as the page receives it; false when
     /// the socket is gone.
-    async fn send_frame(&self, conversation: &ConversationId, page: &mut PageSocket, frame: ServerFrame) -> bool {
-        self.send_frames(conversation, page, vec![frame]).await
+    async fn send_frame(&self, conversation: &ConversationId, page: &mut PageSocket, streamed: &mut StreamedText, frame: ServerFrame) -> bool {
+        self.send_frames(conversation, page, streamed, vec![frame]).await
     }
 
     /// Sends `frames` as one message: a frame alone as itself, several as
     /// a JSON array of them in order, which the page applies as one change. Every `error`
     /// and `rejected` frame carries the request ID of the socket's upgrade, and every
     /// refused send of `conversation` is logged.
-    async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
+    async fn send_frames(
+        &self,
+        conversation: &ConversationId,
+        page: &mut PageSocket,
+        streamed: &mut StreamedText,
+        frames: Vec<ServerFrame>,
+    ) -> bool {
         // An open's handshake starts with `opened`; its size and how long it
         // takes to write are logged, as what a page waits for to open.
         let handshake = matches!(frames.first(), Some(ServerFrame::Opened));
@@ -604,7 +664,7 @@ impl Shard {
         let building = std::time::Instant::now();
         let mut texts = Vec::with_capacity(frames.len());
         for frame in frames {
-            let mut frame = self.present(frame).await;
+            let mut frame = self.present(conversation, streamed, frame).await;
             if let ServerFrame::Error { request_id, .. } | ServerFrame::Rejected { request_id, .. } = &mut frame {
                 *request_id = Some(page.request().clone());
             }
@@ -653,9 +713,11 @@ impl Shard {
     }
 
     /// A server frame as the page receives it: a transcript frame carries
-    /// the failure facts of the error blocks it brings. Its blocks hold
-    /// their media by reference already (§ Media by reference).
-    async fn present(&self, frame: ServerFrame) -> ServerFrame {
+    /// the failure facts of the error blocks it brings, and the attachments
+    /// its blocks and its appended text name that the node's replies show.
+    /// Its blocks hold their media by reference already (§ Media by
+    /// reference).
+    async fn present(&self, conversation: &ConversationId, streamed: &mut StreamedText, frame: ServerFrame) -> ServerFrame {
         let services = self.services();
         let assembly = &services.assembly;
         match frame {
@@ -669,6 +731,9 @@ impl Shard {
                 ..
             } => {
                 let failures = failure_facts(assembly, self.user(), &blocks).await;
+                let attachments = self.named_attachments(conversation, &node, reply_texts(&blocks)).await;
+                streamed.reset(&node, start, &blocks);
+                streamed.sent(&node, &attachments);
                 ServerFrame::TranscriptReset {
                     node,
                     start,
@@ -677,27 +742,63 @@ impl Shard {
                     version,
                     failures,
                     versions,
+                    attachments,
                 }
             }
             ServerFrame::TranscriptPatch {
                 node, patches, revision, ..
             } => {
-                let failures = failure_facts(assembly, self.user(), &blocks_added(&patches)).await;
+                let added = blocks_added(&patches);
+                let failures = failure_facts(assembly, self.user(), &added).await;
+                let attachments = streamed
+                    .named(&services.conversations, conversation, &node, &patches)
+                    .await
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(
+                            %conversation,
+                            error = &error as &dyn std::error::Error,
+                            "the attachments a transcript frame names were not read"
+                        );
+                        Vec::new()
+                    });
                 ServerFrame::TranscriptPatch {
                     node,
                     patches,
                     revision,
                     failures,
+                    attachments,
                 }
             }
             other => other,
         }
     }
 
-    /// Sends the page what changed of the conversation itself since `shown`:
-    /// its metadata, and its draft when newer than the page's. A failed read
-    /// is logged and sends nothing, as the next change sends what it read;
-    /// false when the socket is gone.
+    /// The attachments `texts` name that the replies of `node` show. A
+    /// failed read is logged and carries none: the reply shows the tag's
+    /// place as missing, as for a number the conversation does not have.
+    async fn named_attachments<'a>(
+        &self,
+        conversation: &ConversationId,
+        node: &NodeId,
+        texts: impl IntoIterator<Item = &'a str>,
+    ) -> Vec<ConversationAttachment> {
+        attachment_facts(&self.services().conversations, conversation, node, texts)
+            .await
+            .unwrap_or_else(|error| {
+                tracing::warn!(
+                    %conversation,
+                    error = &error as &dyn std::error::Error,
+                    "the attachments a transcript frame names were not read"
+                );
+                Vec::new()
+            })
+    }
+
+    /// Sends the page what changed of the conversation itself since `shown`,
+    /// in one message: its metadata, its draft when newer than the page's,
+    /// and the attachments agents uploaded since the metadata it was shown.
+    /// A failed read is logged and sends nothing, as the next change sends
+    /// what it read; false when the socket is gone.
     async fn show_conversation(&self, conversation: &ConversationId, page: &mut PageSocket, shown: &mut Shown) -> bool {
         let services = self.services();
         let read = async {
@@ -716,9 +817,17 @@ impl Shard {
             } else {
                 None
             };
-            Ok::<_, StorageError>(Some((metadata, draft)))
+            let uploaded = match shown.last_attachment() {
+                Some(held) if metadata.last_attachment > held => services
+                    .conversations
+                    .read(conversation, move |connection| uploaded_after(connection, held))
+                    .await?
+                    .unwrap_or_default(),
+                _ => Vec::new(),
+            };
+            Ok::<_, StorageError>(Some((metadata, draft, uploaded)))
         };
-        let (metadata, draft) = match read.await {
+        let (metadata, draft, uploaded) = match read.await {
             Ok(Some(read)) => read,
             Ok(None) => return true,
             Err(error) => {
@@ -741,15 +850,25 @@ impl Shard {
             shown.draft = Some(draft.revision);
             frames.push(ConversationFrame::Draft { draft });
         }
-        for frame in frames {
-            // The frames' types serialize as JSON objects, which serde_json
-            // never refuses.
-            let text = serde_json::to_string(&frame).expect("a conversation frame serializes to JSON");
-            if page.send(text).await.is_err() {
-                return false;
+        let mut by_node: Vec<(NodeId, Vec<ConversationAttachment>)> = Vec::new();
+        for (node, row) in uploaded {
+            match by_node.iter_mut().find(|(each, _)| *each == node) {
+                Some((_, attachments)) => attachments.push(row.description()),
+                None => by_node.push((node, vec![row.description()])),
             }
         }
-        true
+        frames.extend(
+            by_node
+                .into_iter()
+                .map(|(node, attachments)| ConversationFrame::Attachments { node, attachments }),
+        );
+        if frames.is_empty() {
+            return true;
+        }
+        // The frames' types serialize as JSON objects, which serde_json
+        // never refuses.
+        let text = serde_json::to_string(&frames).expect("a conversation frame serializes to JSON");
+        page.send(text).await.is_ok()
     }
 }
 

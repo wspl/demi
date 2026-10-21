@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   agentEntrySchema,
   blockSchema,
+  conversationAttachmentSchema,
   instructionEntrySchema,
   providerFailureFactsSchema,
   schemaRefusal,
@@ -32,7 +33,9 @@ import { t } from './locales/text'
  * - The account's record: the product state, with the conversation list,
  *   and the account the session names.
  * - Each conversation's record: its metadata and its agents at their
- *   version.
+ *   version, and the descriptions of the attachments its replies name, so
+ *   an opening from the copy shows the whole conversation at once
+ *   (`docs/decisions/0029-a-conversation-opens-whole.md`).
  * - Each node's record and blocks: the runs of its transcript the page knows
  *   to be whole, its length, and the version its latest run is current at;
  *   each block by node and index, read one window at a time.
@@ -104,6 +107,8 @@ const conversationRecordSchema = z.object({
   userId: z.string(),
   metadata: conversationMetadataSchema,
   agents: z.object({ version: versionSchema, entries: z.array(agentEntrySchema) }),
+  /** The descriptions of the attachments its replies name, by node and id. */
+  attachments: z.record(z.string(), z.record(z.string(), conversationAttachmentSchema)),
 })
 
 /** A run of blocks the disk holds whole, from `start` to before `end`. */

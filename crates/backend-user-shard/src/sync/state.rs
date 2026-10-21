@@ -16,6 +16,7 @@ use demi_web_api_protocol::providers::{ProviderReading, ProviderState};
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use futures_util::future::join_all;
 
+use crate::provider_settings::CatalogError;
 use crate::shard::Shard;
 
 /// Why a part of the product state could not be read.
@@ -26,6 +27,9 @@ pub(crate) enum StateError {
     /// A plugin could not answer its page state.
     #[error("a plugin's page state could not be read: {0}")]
     Plugin(#[from] PluginError),
+    /// The model catalog could not be read.
+    #[error("the model catalog could not be read: {0}")]
+    Catalog(#[from] CatalogError),
 }
 
 impl Shard {
@@ -43,6 +47,7 @@ impl Shard {
         let logins = services.logins.listed(self.user());
         let preferences = services.control.preferences(self.user().clone()).await?;
         let providers = self.provider_states(&user).await?;
+        let models = services.known_model_catalog(self.user()).await?;
         let workspaces = services.control.workspaces(self.user().clone()).await?;
         let devices = self.device_list().await?;
         let mut conversations = self.conversation_summaries(false).await?;
@@ -86,6 +91,7 @@ impl Shard {
             mode: services.mode,
             preferences,
             providers,
+            models,
             workspaces: workspaces
                 .into_iter()
                 .map(|workspace| workspace.dto())
@@ -214,6 +220,9 @@ impl Shard {
             }
             Part::Providers => SyncEvent::Providers {
                 providers: self.provider_states(user).await?,
+            },
+            Part::Models => SyncEvent::Models {
+                models: self.services().known_model_catalog(self.user()).await?,
             },
             Part::Logins => SyncEvent::Logins {
                 logins: self.services().logins.listed(self.user()),

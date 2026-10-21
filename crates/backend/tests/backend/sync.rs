@@ -24,7 +24,7 @@ use demi_web_api_protocol::cloud::{CloudState, CloudStatus};
 use demi_web_api_protocol::conversations::{ConversationStatus, ConversationSummary};
 use demi_web_api_protocol::devices::InstallCommands;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::providers::{ProviderDetails, ProviderReading, ProviderState};
+use demi_web_api_protocol::providers::{ModelCatalog, ProviderDetails, ProviderReading, ProviderState};
 use demi_web_api_protocol::settings::{InstanceMode, Preferences, Theme};
 use demi_web_api_protocol::passkeys::PasskeyList;
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
@@ -159,6 +159,8 @@ async fn the_snapshot_is_the_users_product_state() {
             mode: InstanceMode::Shared,
             preferences: Preferences::default(),
             providers: Vec::new(),
+            // No entry lists a model.
+            models: ModelCatalog { providers: Vec::new(), small_model: None },
             workspaces: Vec::new(),
             devices: Vec::new(),
             port_forwards: Vec::new(),
@@ -462,13 +464,15 @@ async fn a_page_that_falls_behind_receives_each_changed_part_once_as_it_is_when_
     theme(&backend, &laptop, "dark").await;
     held.until_arrived(1).await;
     held.release();
-    // It receives the conversation once, as it is now, then the preference.
+    // It receives the conversation once, as it is now, then the preference
+    // and the model catalog, which reads the preferences.
     let latest = page.next().await;
     assert_eq!(
         summary(&latest, FIRST).and_then(|conversation| conversation.title.as_deref()),
         Some("Title 50")
     );
     assert!(themed(&page.next().await, Theme::Dark));
+    assert!(matches!(page.next().await, SyncEvent::Models { .. }));
     // It was not closed for falling behind.
     rename(&backend, &laptop, FIRST, "Caught up").await;
     let renamed = page.next().await;

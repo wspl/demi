@@ -9,7 +9,9 @@
 use demi_shared_types::{Timestamp, TurnId};
 use demi_web_api_protocol::drafts::{DraftWritten, Revisions};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId, SavedMessageId, UserId};
-use demi_web_api_protocol::saved::{FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedList, SavedMessage};
+use demi_web_api_protocol::saved::{
+    FromDraftAnswer, ListedSavedMessage, SAVED_MAX, SAVED_OPENING_CHARS, SavedAnswer, SavedListing, SavedMessage,
+};
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -19,6 +21,9 @@ use super::control::ControlService;
 use super::drafts::{StagedFile, Stored, Version, archived, staged_version, stored, write};
 
 const TABLE: &str = "saved_messages";
+
+/// [`SAVED_OPENING_CHARS`] as the query's parameter.
+const OPENING_CHARS: i64 = SAVED_OPENING_CHARS as i64;
 
 /// How long a send of a saved message is kept, for a request sent again.
 const KEPT: SignedDuration = SignedDuration::from_hours(24);
@@ -42,25 +47,28 @@ pub enum SavedRefusal {
 }
 
 impl ControlService {
-    /// The conversation's messages saved for later, newest first, with the
-    /// list's revision.
-    pub async fn saved_messages(
-        &self,
-        conversation: ConversationId,
-    ) -> Result<SavedList, StorageError> {
+    /// The conversation's messages saved for later as the composer lists
+    /// them, newest first, with the list's revision: each with its text's
+    /// opening and length, which the database cuts, so a long text never
+    /// leaves it whole.
+    pub async fn saved_listing(&self, conversation: ConversationId) -> Result<SavedListing, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let revision = stored(&transaction, &conversation)?
                 .map_or(0, |draft| draft.saved_revision);
-            let mut statement = transaction.prepare(
-                "SELECT id, saved_at, document FROM saved_messages WHERE conversation_id = ?1
+            let mut statement = transaction.prepare_cached(
+                "SELECT id, saved_at,
+                   substr(json_extract(document, '$.text'), 1, ?2) AS opening,
+                   length(json_extract(document, '$.text')) AS length,
+                   json_extract(document, '$.files') AS files
+                 FROM saved_messages WHERE conversation_id = ?1
                  ORDER BY saved_at DESC, rowid DESC",
             )?;
             let messages = statement
-                .query_map([conversation.as_str()], |row| Ok(saved_row(row)))?
+                .query_map(params![conversation.as_str(), OPENING_CHARS], |row| Ok(listed_row(row)))?
                 .map(|row| row?)
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(SavedList { revision, messages })
+            Ok(SavedListing { revision, messages })
         })
         .await
     }
@@ -204,23 +212,25 @@ impl ControlService {
     }
 
     /// Removes the saved message `id`; one already gone, as another page
-    /// deleted or sent it, answers the same. Answers the revisions after it.
+    /// deleted or sent it, answers the same. Answers the revisions after it
+    /// and the message as it was, whole, `None` when it was gone.
     pub async fn delete_saved(
         &self,
         conversation: ConversationId,
         id: String,
-    ) -> Result<Result<Revisions, SavedRefusal>, StorageError> {
+    ) -> Result<Result<(Revisions, Option<SavedMessage>), SavedRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             if archived(&transaction, &conversation)? {
                 return Ok(Err(SavedRefusal::Archived));
             }
-            if remove(&transaction, &conversation, &id)?.is_some() {
+            let removed = remove(&transaction, &conversation, &id)?;
+            if removed.is_some() {
                 raise(&transaction, &conversation, now)?;
             }
             let revisions = revisions(&transaction, &conversation)?;
             transaction.commit()?;
-            Ok(Ok(revisions))
+            Ok(Ok((revisions, removed)))
         })
         .await
     }
@@ -392,6 +402,16 @@ fn sent(
         .transpose()
 }
 
+fn listed_row(row: &Row<'_>) -> Result<ListedSavedMessage, StorageError> {
+    Ok(ListedSavedMessage {
+        id: row.get("id")?,
+        opening: row.get("opening")?,
+        length: decode(TABLE, "document", u64::try_from(row.get::<_, i64>("length")?))?,
+        files: decode(TABLE, "document", serde_json::from_str(&row.get::<_, String>("files")?))?,
+        saved_at: instant(row, TABLE, "saved_at")?,
+    })
+}
+
 fn saved_row(row: &Row<'_>) -> Result<SavedMessage, StorageError> {
     let version: Version = json(TABLE, "document", &row.get::<_, String>("document")?)?;
     Ok(SavedMessage {
@@ -422,21 +442,21 @@ fn insert(
     })
 }
 
-/// Removes the conversation's saved message `id`; its text and files when
+/// Removes the conversation's saved message `id`; the message as it was when
 /// the conversation kept it.
 fn remove(
     connection: &Connection,
     conversation: &ConversationId,
     id: &str,
-) -> Result<Option<Version>, StorageError> {
+) -> Result<Option<SavedMessage>, StorageError> {
     connection
         .query_row(
-            "DELETE FROM saved_messages WHERE conversation_id = ?1 AND id = ?2 RETURNING document",
+            "DELETE FROM saved_messages WHERE conversation_id = ?1 AND id = ?2
+             RETURNING id, saved_at, document",
             [conversation.as_str(), id],
-            |row| row.get::<_, String>(0),
+            |row| Ok(saved_row(row)),
         )
         .optional()?
-        .map(|document| json(TABLE, "document", &document))
         .transpose()
 }
 

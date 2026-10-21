@@ -2,7 +2,8 @@
 //!
 //! - The backend changes a request of changes at a time, all or none, and
 //!   never interprets them.
-//! - A revision the summary carries counts the changes.
+//! - The conversation's metadata carries the tabs under the revision that
+//!   counts the changes, and a page that shows it hears of each change.
 //! - Each tab's id is used once.
 //! - Turning a plugin off closes its kinds' tabs in every panel, an archived
 //!   conversation's included.
@@ -36,11 +37,14 @@ struct Panel<'a> {
 }
 
 impl Panel<'_> {
+    /// The panel as the conversation's metadata carries it.
     async fn read(&self) -> Value {
-        let path = format!("/api/conversations/{}/panel", self.id);
-        let read = self.backend.get(&path, Some(self.master)).await;
-        assert_eq!(read.status, StatusCode::OK);
-        read.json()
+        let detail: Value = self
+            .backend
+            .get(&format!("/api/conversations/{}", self.id), Some(self.master))
+            .await
+            .json();
+        detail["metadata"]["panel"].clone()
     }
 
     /// The ids of the tabs, in order.
@@ -81,7 +85,7 @@ impl Panel<'_> {
     }
 
     async fn summary_revision(&self) -> u64 {
-        crate::conversations::metadata(self.backend, self.master, &self.id).await.panel_revision
+        self.read().await["revision"].as_u64().unwrap()
     }
 }
 
@@ -112,13 +116,17 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
         id: conversation(&backend, &master).await,
     };
     assert_eq!(panel.read().await, json!({ "revision": 0, "tabs": [], "states": [] }));
-    assert_eq!(panel.summary_revision().await, 0);
+    let (mut shown, _) = crate::conversations::Socket::shown(&backend, &master, &panel.id, 0).await;
 
     let created = panel.create(page("p1", "https://a.test/")).await;
     assert_eq!(
         created.json::<Value>(),
         json!({ "revision": 1, "changed": true })
     );
+    // A page that shows the conversation hears of the change with its tabs.
+    let heard = shown.metadata_until(|metadata| metadata.panel.revision == 1).await.panel;
+    assert_eq!(serde_json::to_value(&heard).unwrap(), json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")], "states": [] }));
+    drop(shown);
     assert_eq!(
         panel.read().await,
         json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")], "states": [] })
@@ -272,9 +280,12 @@ async fn a_work_panel_holds_64_tabs_and_64_kib_and_an_archived_conversation_take
     assert_eq!(panel.remove("t1").await.refusal(), conversation_archived);
 
     let missing = uuid::Uuid::new_v4().to_string();
-    let path = format!("/api/conversations/{missing}/panel");
+    let path = format!("/api/conversations/{missing}/panel/changes");
     assert_eq!(
-        backend.get(&path, Some(&master)).await.refusal(),
+        backend
+            .post(&path, Some(&master), json!({ "changes": [{ "op": "delete", "id": "t1" }] }))
+            .await
+            .refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
     );
     backend.close().await;
@@ -287,7 +298,8 @@ async fn a_work_panel_holds_64_tabs_and_64_kib_and_an_archived_conversation_take
 // a card's click opens nothing. One backend, a few requests.
 #[tokio::test]
 async fn an_attachments_tab_is_kept_until_the_user_closes_it() {
-    let (backend, master) = Harness::new().start_set_up().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
     let panel = Panel {
         backend: &backend,
         master: &master,
@@ -315,7 +327,8 @@ async fn an_attachments_tab_is_kept_until_the_user_closes_it() {
 // a picture's click opens nothing. One backend, a few requests.
 #[tokio::test]
 async fn a_media_tab_is_kept_with_its_place_until_the_user_closes_it() {
-    let (backend, master) = Harness::new().start_set_up().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
     let panel = Panel {
         backend: &backend,
         master: &master,

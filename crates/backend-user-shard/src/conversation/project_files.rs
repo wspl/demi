@@ -24,7 +24,7 @@ use demi_plugin_interface::{PluginId, WatchSubject};
 use demi_runner_protocol::files::Subject;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
-use demi_web_api_protocol::workflows::KeptWorkflowList;
+use demi_web_api_protocol::workflows::{ConversationWorkflowList, KeptWorkflowList};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
@@ -236,35 +236,51 @@ impl Shard {
 }
 
 impl Shard {
-    /// The Workflow menu's list for the conversation `id` as the backend
-    /// stored it, at once (`GET /conversations/:id/workflows`): unknown
-    /// before its first read; the refusal when the last search was refused
-    /// or failed and nothing was ever stored. A loaded conversation keeps it
-    /// current, which announces each change in its metadata.
-    pub async fn shown_workflows(&self, id: &ConversationId) -> Result<KeptWorkflowList, Rc<HostAccessError>> {
-        let at = self.kept_at(id).await.map_err(Rc::new)?;
+    /// The Workflow menu's list for the conversation `id` as its metadata
+    /// carries it, as the backend stored it, at once, under its revision:
+    /// unknown before its first read; the refusal when the last search was
+    /// refused or failed and nothing was ever stored. A loaded conversation
+    /// keeps it current, which announces each change in its metadata.
+    pub(crate) async fn conversation_workflows(&self, id: &ConversationId) -> ConversationWorkflowList {
+        let refused = |error: &HostAccessError| {
+            let (code, status) = error.code();
+            ConversationWorkflowList {
+                revision: 0,
+                list: KeptWorkflowList::Refused {
+                    code,
+                    status,
+                    message: error.to_string(),
+                },
+            }
+        };
+        let at = match self.kept_at(id).await {
+            Ok(at) => at,
+            Err(error) => return refused(&error),
+        };
+        let unknown = ConversationWorkflowList {
+            revision: 0,
+            list: KeptWorkflowList::Unknown,
+        };
         let Some(device) = at.device else {
-            return Ok(KeptWorkflowList::Unknown);
+            return unknown;
         };
         let kept = &self.project_files().workflows;
         if at.loaded {
             kept.keep(id, &device, at.directory.clone());
         }
-        let stored = self
-            .services()
-            .control
-            .host_workflows(device.clone(), at.directory.clone())
-            .await
-            .map_err(|error| Rc::new(HostAccessError::from(error)))?;
-        match stored {
-            Some(stored) => Ok(KeptWorkflowList::Read {
-                list: stored.list,
-                read_at: stored.read_at,
-            }),
-            None => match kept.refused(&device, at.directory) {
-                Some(refused) => Err(refused),
-                None => Ok(KeptWorkflowList::Unknown),
+        match self.services().control.host_workflows(device.clone(), at.directory.clone()).await {
+            Ok(Some(stored)) => ConversationWorkflowList {
+                revision: stored.revision,
+                list: KeptWorkflowList::Read {
+                    list: stored.list,
+                    read_at: stored.read_at,
+                },
             },
+            Ok(None) => match kept.refused(&device, at.directory) {
+                Some(error) => refused(&*error),
+                None => unknown,
+            },
+            Err(error) => refused(&HostAccessError::from(error)),
         }
     }
 }

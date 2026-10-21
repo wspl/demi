@@ -813,10 +813,19 @@ async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none()
 /// Follows `page` until it learns that login `login` ended, and answers how,
 /// asserting that no message tells it a completion before it has the
 /// account: in the same snapshot, or in a message it received earlier.
+///
+/// It returns once the channel has read what that change marked, the models
+/// after the logins (`Part::Models` is read last), so that the next change
+/// finds the channel waiting for it, as the steps a test holds assume.
 async fn learned_end(page: &mut SyncChannel, login: &str) -> LoginState {
     let mut providers = Vec::new();
+    let mut ended_as: Option<LoginState> = None;
     loop {
-        let logins = match page.next().await {
+        let event = page.next().await;
+        if let (Some(state), SyncEvent::Models { .. }) = (&ended_as, &event) {
+            return state.clone();
+        }
+        let logins = match event {
             SyncEvent::Snapshot { state } => {
                 providers = state.providers;
                 state.logins
@@ -844,7 +853,7 @@ async fn learned_end(page: &mut SyncChannel, login: &str) -> LoginState {
             assert!(listed, "the page learned the completion before its account: {providers:?}");
         }
         if ended(&state) {
-            return state;
+            ended_as = Some(state);
         }
     }
 }

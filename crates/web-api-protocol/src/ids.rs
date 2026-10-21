@@ -44,11 +44,8 @@ demi_shared_types::id!(
     LoginId
 );
 
-demi_shared_types::id!(
-    /// A device's id, which the backend assigns when the device is paired or
-    /// its Cloud is first used.
-    DeviceId
-);
+/// A device's id, declared where the socket's frames can name it too.
+pub use demi_shared_types::DeviceId;
 
 demi_shared_types::id!(
     /// A workspace's id, which the backend assigns.

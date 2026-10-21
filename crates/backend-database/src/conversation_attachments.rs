@@ -24,8 +24,11 @@
 //! forked from for the history it copied. The page asks for each as
 //! [`read_shown`] reads it, and a share keeps each as [`SHOWN`] pairs it.
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
+
+use demi_conversation_socket_protocol::{AttachmentSourceDto, ConversationAttachment};
 
 use demi_shared_types::{BlobRef, NodeId, PixelSize};
 use demi_web_api_protocol::ids::DeviceId;
@@ -85,6 +88,25 @@ pub struct AttachmentRow {
     /// The file it was copied from; none for a file the user sent, for an
     /// upload stored before uploads kept it, and in a share's snapshot.
     pub source: Option<AttachmentSource>,
+}
+
+impl AttachmentRow {
+    /// The attachment as a reply shows it.
+    pub fn description(self) -> ConversationAttachment {
+        ConversationAttachment {
+            id: self.number.to_string(),
+            name: self.name,
+            media_type: self.media_type,
+            size: self.size,
+            width: self.pixels.map(|pixels| pixels.width),
+            height: self.pixels.map(|pixels| pixels.height),
+            blob: self.blob,
+            source: self.source.map(|source| AttachmentSourceDto {
+                host: source.host,
+                path: source.path,
+            }),
+        }
+    }
 }
 
 /// The file of a Host an attachment was copied from.
@@ -179,6 +201,40 @@ pub fn read_shown(
         .query_row(params![column(number.0), node.as_str()], |row| Ok(decode_row(row)))
         .optional()?
         .transpose()
+}
+
+/// The attachments of `numbers` as a reply of the node `node` shows them,
+/// each that the conversation has and [`SHOWN`] pairs with the node, in
+/// their order.
+pub fn read_all_shown(
+    connection: &Connection,
+    numbers: &BTreeSet<AttachmentNumber>,
+    node: &NodeId,
+) -> Result<Vec<AttachmentRow>, StorageError> {
+    let mut rows = Vec::new();
+    for number in numbers {
+        rows.extend(read_shown(connection, *number, node)?);
+    }
+    Ok(rows)
+}
+
+/// The attachments agents uploaded with a number above `after`, each with
+/// the node of the agent that uploaded it, in their order; none a user sent.
+pub fn uploaded_after(connection: &Connection, after: u64) -> Result<Vec<(NodeId, AttachmentRow)>, StorageError> {
+    connection
+        .prepare_cached(
+            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path, node_id
+             FROM attachments WHERE number > ?1 AND node_id IS NOT NULL ORDER BY number",
+        )?
+        .query_map([column(after)], |row| {
+            Ok((row.get::<_, String>("node_id")?, decode_row(row)))
+        })?
+        .map(|row| {
+            let (node, row) = row?;
+            let node = decode(TABLE, "node_id", NodeId::try_from(node))?;
+            Ok((node, row?))
+        })
+        .collect()
 }
 
 /// The attachment `number` as the snapshot of the share `token` keeps it;

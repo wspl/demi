@@ -317,7 +317,6 @@
       "max": "最大"
     },
     "loading": "正在加载模型…",
-    "loadFailed": "无法加载模型。",
     "unavailable": "此模型不可用。请选择其他模型后再发送。"
   },
   "workflows": {

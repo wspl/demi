@@ -273,6 +273,16 @@ impl Socket {
         }
     }
 
+    /// The next attachments the socket sends as they are stored, with the
+    /// node that uploaded them.
+    pub(crate) async fn attachments_until(&mut self) -> (NodeId, Vec<demi_web_api_protocol::attachments::ConversationAttachment>) {
+        loop {
+            if let ConversationFrame::Attachments { node, attachments } = self.conversation_frame().await {
+                return (node, attachments);
+            }
+        }
+    }
+
     /// The draft as the socket sends it, from the first that `done`
     /// accepts.
     pub(crate) async fn draft_until(&mut self, done: impl Fn(&ConversationDraft) -> bool) -> ConversationDraft {
@@ -312,6 +322,27 @@ impl Socket {
                 }
                 Some(Ok(_)) => {}
                 Some(Err(_)) | None => return Err(None),
+            }
+        }
+    }
+
+    /// The frames of the next message as their JSON, for a test of what one
+    /// message carries, before anything else was read from the socket.
+    pub(crate) async fn raw_message(&mut self) -> Vec<Value> {
+        assert!(self.unread.is_empty() && self.conversation.is_empty(), "nothing was read before");
+        loop {
+            let message = tokio::time::timeout(self.patience, self.socket.next())
+                .await
+                .unwrap_or_else(|_| panic!("the socket delivers within {:?}", self.patience));
+            match message {
+                Some(Ok(Message::Text(text))) => {
+                    return match serde_json::from_str(text.as_str()).unwrap() {
+                        Value::Array(frames) => frames,
+                        frame => vec![frame],
+                    };
+                }
+                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                other => panic!("the socket ended: {other:?}"),
             }
         }
     }
@@ -751,6 +782,26 @@ pub(crate) async fn detail(backend: &TestBackend, session: &Session, id: &str) -
     read_ok(backend, session, &format!("/api/conversations/{id}")).await.json()
 }
 
+/// `text` with a line after it for each attachment of `numbers`, such as
+/// `a3`, as a reply delivers them.
+pub(crate) fn delivering(text: &str, numbers: &[&str]) -> String {
+    numbers.iter().fold(text.to_owned(), |text, number| format!("{text}\n\n<attachment id=\"{number}\" />"))
+}
+
+/// The attachments the latest page of the agent `node`'s transcript carries:
+/// those its replies name that they show.
+pub(crate) async fn named_attachments(
+    backend: &TestBackend,
+    session: &Session,
+    conversation: &str,
+    node: &str,
+) -> Vec<demi_web_api_protocol::attachments::ConversationAttachment> {
+    read_ok(backend, session, &format!("/api/conversations/{conversation}/agents/{node}/transcript"))
+        .await
+        .json::<TranscriptPage>()
+        .attachments
+}
+
 /// The conversation `id`'s metadata.
 pub(crate) async fn metadata(backend: &TestBackend, session: &Session, id: &str) -> ConversationMetadata {
     detail(backend, session, id).await.metadata
@@ -1072,6 +1123,62 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
         .map(|summary| summary.id.as_str().to_owned())
         .collect();
     assert_eq!(ids, [FIRST]);
+    backend.close().await;
+}
+
+// About 300 ms: a backend and two raw openings, no request to the model.
+//
+// Planted defects it catches: the metadata sent after the handshake, which a
+// page applies as a second step, and lists carried as their revisions alone,
+// which a page reads by routes after the opening.
+#[tokio::test]
+async fn an_open_sends_every_fact_the_view_shows_before_its_handshake_in_one_message() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_panel_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let saved = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/saved"),
+            Some(&master),
+            json!({ "id": uuid::Uuid::new_v4().to_string(), "text": "Check the DNS next", "files": [] }),
+        )
+        .await;
+    assert_eq!(saved.status, StatusCode::CREATED);
+    let tab = json!({ "op": "create", "id": "p1", "kind": "page", "data": { "url": "https://example.test/" } });
+    let changed = backend
+        .post(&format!("/api/conversations/{FIRST}/panel/changes"), Some(&master), json!({ "changes": [tab] }))
+        .await;
+    assert_eq!(changed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&changed.body));
+
+    // Cold, and again as a reconnect that holds the draft.
+    for draft in [None, Some(0)] {
+        let mut socket = Socket::connect(&backend, &master, FIRST).await;
+        socket.send(&ClientFrame::Subscribe { node: NodeId::try_from(FIRST).unwrap(), held: None }).await;
+        socket.send(&ClientFrame::Open { agents: None, draft }).await;
+        let first = socket.raw_message().await;
+        // The metadata, with the draft beside it, and no part of the handshake.
+        let kinds: Vec<&str> = first.iter().map(|frame| frame["type"].as_str().unwrap()).collect();
+        assert!(matches!(kinds.as_slice(), ["conversation"] | ["conversation", "draft"]), "{kinds:?}");
+        let shown = &first[0];
+        let metadata: ConversationMetadata = serde_json::from_value(shown["metadata"].clone()).unwrap();
+        assert_eq!(metadata.model.map(|model| model.model_id), Some("claude-opus-4-8".to_owned()));
+        assert_eq!(
+            metadata.saved.messages.iter().map(|message| message.opening.as_str()).collect::<Vec<_>>(),
+            ["Check the DNS next"]
+        );
+        assert_eq!(
+            (metadata.panel.revision, metadata.panel.tabs.iter().map(|tab| tab.id.as_str()).collect::<Vec<_>>()),
+            (1, vec!["p1"])
+        );
+        assert_eq!((metadata.hosts.hosts.len(), metadata.permissions.requests.len()), (0, 0));
+        // The handshake follows, in a message of its own.
+        let handshake = socket.raw_message().await;
+        assert_eq!(handshake.first().map(|frame| &frame["type"]), Some(&json!("opened")), "{handshake:?}");
+        drop(socket);
+    }
     backend.close().await;
 }
 

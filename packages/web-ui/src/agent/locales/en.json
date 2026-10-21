@@ -317,7 +317,6 @@
       "max": "Max"
     },
     "loading": "Loading models…",
-    "loadFailed": "Couldn’t load models.",
     "unavailable": "This model is unavailable. Choose another to send."
   },
   "workflows": {

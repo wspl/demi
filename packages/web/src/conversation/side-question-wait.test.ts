@@ -171,7 +171,7 @@ test('a side question whose whole turn ran while the socket was away shows no Re
   const blocks = sideTranscript({ type: 'text', id: 'a-1', createdAt: question.askedAt, model, text: 'The cache keeps it a day.' })
   applyConversationEvent(shown, {
     type: 'transcript_reset', node: SIDE, start: 0, length: blocks.length, blocks, version: { epoch: 'e', revision: 3 },
-    versions: [], failures: {}, asked: undefined, receivedAt: Date.now(),
+    versions: [], failures: {}, attachments: [], asked: undefined, receivedAt: Date.now(),
   } as Parameters<typeof applyConversationEvent>[1])
   expect(await window.row()).toBeNull()
 })
@@ -187,7 +187,7 @@ test('a side question\'s call being written shows in its window', async () => {
   const blocks = sideTranscript()
   applyConversationEvent(shown, {
     type: 'transcript_reset', node: SIDE, start: 0, length: blocks.length, blocks, version: { epoch: 'e', revision: 1 },
-    versions: [], failures: {}, asked: undefined, receivedAt: Date.now(),
+    versions: [], failures: {}, attachments: [], asked: undefined, receivedAt: Date.now(),
   } as Parameters<typeof applyConversationEvent>[1])
   takeAgents(shown, [entry({
     phase: 'running',

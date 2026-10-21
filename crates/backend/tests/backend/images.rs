@@ -25,7 +25,7 @@ use std::sync::Arc;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::B64Bytes;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::providers::{Accounts, LoginState, ModelCatalog, ProviderAnswer, ProviderDto, Providers};
+use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer, ProviderDto, Providers};
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -454,7 +454,7 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
 
     // Settings › Providers still lists each entry's image models, greyed by
     // its switch, and none for an entry that makes no images.
-    let catalog = backend.get("/api/models", Some(&master)).await.json::<ModelCatalog>();
+    let catalog = backend.models(&master).await;
     let listed = |id: &str| {
         let provider = catalog.providers.iter().find(|provider| provider.provider_id.as_str() == id);
         serde_json::to_value(&provider.expect("the entry is in the catalog").image_models).unwrap()
@@ -770,7 +770,7 @@ async fn a_compatible_api_with_the_openai_images_shape_makes_the_images_of_the_m
     assert_eq!(added.status, StatusCode::OK, "{}", String::from_utf8_lossy(&added.body));
     // Its image model is no model of the menu, so the menu has no group
     // for it.
-    let catalog = backend.get("/api/models", Some(&master)).await.json::<ModelCatalog>();
+    let catalog = backend.models(&master).await;
     let menu = catalog.providers.iter().find(|provider| provider.provider_id == proxy.id).unwrap();
     assert!(menu.models.is_empty(), "{:?}", menu.models);
 
@@ -811,12 +811,12 @@ async fn a_compatible_api_with_the_openai_images_shape_makes_the_images_of_the_m
         .patch(&path, &master, json!({ "models": [image_model("gpt-image-2"), image_model("other"), text_model] }))
         .await;
     assert_eq!(added.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
-    let catalog = backend.get("/api/models", Some(&master)).await.json::<ModelCatalog>();
+    let catalog = backend.models(&master).await;
     let hidden = catalog.providers.iter().find(|provider| provider.provider_id == proxy.id).unwrap();
     assert!(hidden.image_models.is_empty(), "{:?}", hidden.image_models);
     let back = backend.patch(&path, &master, json!({ "media": { "image": { "shape": "openai-images" } } })).await;
     assert_eq!(back.status, StatusCode::OK, "{}", String::from_utf8_lossy(&back.body));
-    let catalog = backend.get("/api/models", Some(&master)).await.json::<ModelCatalog>();
+    let catalog = backend.models(&master).await;
     let shown = catalog.providers.iter().find(|provider| provider.provider_id == proxy.id).unwrap();
     assert_eq!(shown.image_models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), ["gpt-image-2"]);
     backend.close().await;

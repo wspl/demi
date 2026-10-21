@@ -7,7 +7,8 @@
 //! - An edit's Save writes a saved message's new content in its place and
 //!   leaves the draft alone, as Undo's save does.
 //! - A removal and a send take one off the list.
-//! - The conversation's summary counts them with the list's revision.
+//! - The conversation's metadata lists them under the list's revision, each
+//!   with its text's opening alone, and a read of one answers it whole.
 //! - Every write answers the revisions after it, and a write sent again
 //!   answers as it first did: a save by its id, an edit's Save by its content,
 //!   a removal of a message gone already.
@@ -28,11 +29,13 @@ use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, BlockId, MediaSource, TurnId, UserContentBlock};
 use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, Revisions};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::saved::{FromDraftAnswer, SavedAnswer, SavedList, SavedMessage, SavedRemoved};
+use demi_web_api_protocol::saved::{
+    FromDraftAnswer, ListedSavedMessage, SAVED_OPENING_CHARS, SavedAnswer, SavedListing, SavedMessage, SavedRemoved,
+};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::{FIRST, SECOND, Socket, anthropic, answer, choose, create, send, transcript};
+use crate::conversations::{FIRST, SECOND, Socket, anthropic, answer, choose, create, metadata, send, transcript};
 use crate::support::{
     Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend,
 };
@@ -41,12 +44,9 @@ use crate::uploads::{png, upload};
 /// The mark a message's text holds where a file's capsule stands.
 const MARK: char = '\u{FFFC}';
 
-async fn list(backend: &TestBackend, session: &Session) -> SavedList {
-    let read = backend
-        .get(&format!("/api/conversations/{FIRST}/saved"), Some(session))
-        .await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-    read.json()
+/// The list as the conversation's metadata carries it.
+async fn list(backend: &TestBackend, session: &Session) -> SavedListing {
+    metadata(backend, session, FIRST).await.saved
 }
 
 /// The id a page gives a message it saves.
@@ -138,13 +138,13 @@ async fn draft(backend: &TestBackend, session: &Session) -> ConversationDraft {
 /// Waits until the page's conversation socket brings the conversation's
 /// metadata with `saved` messages at the list's revision `revision`.
 async fn until_saved(page: &mut Socket, saved: u64, revision: u64) {
-    page.metadata_until(|metadata| (metadata.saved, metadata.saved_revision) == (saved, revision))
+    page.metadata_until(|metadata| (metadata.saved.messages.len() as u64, metadata.saved.revision) == (saved, revision))
         .await;
 }
 
 /// The texts of a list, newest first.
-fn texts(list: &SavedList) -> Vec<&str> {
-    list.messages.iter().map(|message| message.text.as_str()).collect()
+fn texts(list: &SavedListing) -> Vec<&str> {
+    list.messages.iter().map(|message| message.opening.as_str()).collect()
 }
 
 // About 300 ms: two hundred saves on a local backend.
@@ -155,7 +155,7 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     let phone = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     create(&backend, &laptop, FIRST).await;
     let (mut phone_page, first) = Socket::shown(&backend, &phone, FIRST, 0).await;
-    assert_eq!((first.saved, first.saved_revision), (0, 0));
+    assert_eq!((first.saved.messages.len(), first.saved.revision), (0, 0));
 
     // Ana saves the composer's message with a file for later: the draft
     // that held it is empty, in the same answer.
@@ -199,7 +199,7 @@ async fn saving_the_composers_message_empties_the_draft_and_undo_leaves_it() {
     assert_eq!(delete(&backend, &laptop, &dns.id).await, removed);
     put_draft(&backend, &laptop, 4, "Then the IPv6", &json!([])).await;
     let typed = draft(&backend, &laptop).await;
-    let undone = add(&backend, &laptop, &dns.text, &json!([])).await;
+    let undone = add(&backend, &laptop, &dns.opening, &json!([])).await;
     assert_eq!(undone.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&undone.body));
     assert_eq!(draft(&backend, &laptop).await, typed);
     until_saved(&mut phone_page, 2, 4).await;
@@ -320,7 +320,16 @@ async fn an_edits_save_writes_the_message_in_its_place_and_leaves_the_draft() {
     until_saved(&mut phone_page, 2, 3).await;
     let read = list(&backend, &laptop).await;
     assert_eq!(texts(&read), vec!["Then the IPv6", text.as_str()]);
-    assert_eq!(read.messages[1], message);
+    assert_eq!(
+        read.messages[1],
+        ListedSavedMessage {
+            id: message.id.clone(),
+            opening: text.clone(),
+            length: text.chars().count() as u64,
+            files: message.files.clone(),
+            saved_at: message.saved_at.clone(),
+        }
+    );
     assert_eq!(draft(&backend, &laptop).await, typed);
 
     // The same Save sent again, as after a lost answer, changes nothing.
@@ -347,6 +356,64 @@ async fn an_edits_save_writes_the_message_in_its_place_and_leaves_the_draft() {
 }
 
 // About a second: two turns against a scripted endpoint.
+// About 100 ms: two saves and three reads on a local backend.
+#[tokio::test]
+async fn a_long_message_is_listed_by_its_opening_and_read_whole_when_used() {
+    let harness = Harness::new();
+    let (backend, laptop) = harness.start_set_up().await;
+    create(&backend, &laptop, FIRST).await;
+    let (mut page, _) = Socket::shown(&backend, &laptop, FIRST, 0).await;
+
+    // A message of a thousand characters, with a file: an open page hears of
+    // it with its value, its opening and its length, never its whole text.
+    let text = format!("{MARK} {}", "é".repeat(998));
+    let shot = upload(&backend, &laptop, "notes.png", "image/png", &png(4)).await;
+    let files = json!([{ "type": "upload", "ref": shot.id, "fileName": "notes.png" }]);
+    let long = save(&backend, &laptop, &text, &files).await;
+    let short = save(&backend, &laptop, "Check the DNS", &json!([])).await;
+    let shown = page
+        .metadata_until(|metadata| metadata.saved.messages.len() == 2)
+        .await
+        .saved;
+    let listed = &shown.messages[1];
+    assert_eq!(listed.id, long.id);
+    assert_eq!(listed.opening, text.chars().take(SAVED_OPENING_CHARS).collect::<String>());
+    assert_eq!((listed.length, listed.files.len()), (1000, 1));
+    assert_eq!(
+        shown.messages[0],
+        ListedSavedMessage {
+            id: short.id.clone(),
+            opening: "Check the DNS".to_owned(),
+            length: 13,
+            files: Vec::new(),
+            saved_at: short.saved_at.clone(),
+        }
+    );
+
+    // Used, it is read whole.
+    let read = backend
+        .get(&format!("/api/conversations/{FIRST}/saved/{}", long.id), Some(&laptop))
+        .await;
+    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
+    assert_eq!(read.json::<SavedMessage>(), long);
+    let missing = backend
+        .get(&format!("/api/conversations/{FIRST}/saved/{}", fresh()), Some(&laptop))
+        .await;
+    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::SavedNotFound));
+
+    // Deleted, it is answered whole, so the page's Undo needs no read; one
+    // already gone answers without it.
+    let path = format!("/api/conversations/{FIRST}/saved/{}", long.id);
+    let removed = backend.delete(&path, &laptop).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&removed.body));
+    assert_eq!(removed.json::<SavedRemoved>().message, Some(long));
+    let again = backend.delete(&path, &laptop).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", String::from_utf8_lossy(&again.body));
+    assert_eq!(again.json::<SavedRemoved>().message, None);
+    drop(page);
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list() {
     let vendor = MockVendor::start().await;

@@ -18,12 +18,8 @@ beforeEach(() => {
   requests = []
   globalThis.fetch = (async (input): Promise<Response> => {
     const path = String(input)
-    if (path === '/api/models') {
-      // The page reads the model catalog as it starts.
-      return Response.json({ providers: [], smallModel: null })
-    }
     if (path === '/api/providers/catalog') {
-      // And the vendor catalog.
+      // The vendor catalog, which the page reads as it starts.
       return Response.json({ subscriptions: [], vendors: [] })
     }
     requests.push(path)

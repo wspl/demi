@@ -1,8 +1,8 @@
-//! The work panel's routes: the read of a conversation's tabs, and a request of
-//! changes, which the user's shard applies whole or not at all and answers with
-//! the panel's revision.
+//! The work panel's route: a request of changes, which the user's shard applies
+//! whole or not at all and answers with the panel's revision; the
+//! conversation's metadata carries the tabs.
 //!
-//! An archived conversation reads its tabs and refuses every change.
+//! An archived conversation refuses every change.
 //!
 //! The backend applies a conversation's panel changes one at a time, the page's
 //! and the plugin's alike. A plugin whose work on one conversation's tabs takes
@@ -14,35 +14,20 @@
 //! The user creates a tab of a plugin's kind only through an intent the kind
 //! opens; otherwise the plugin creates them.
 
+
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_plugins::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges, PanelRead};
+use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges};
 
 use super::AppState;
 use super::body::JsonBody;
 use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
-
-/// `GET /conversations/:id/panel`: the tabs, with the conversation states
-/// the user's plugins hold, which read no Host.
-pub(super) async fn read(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<PanelRead>, ApiError> {
-    let record = owned(&state.services, &user.id, &id).await?;
-    let panel = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, cancel| async move { shard.plugins().panel_read(record.id, cancel).await })
-        .await??;
-    Ok(Json(panel))
-}
 
 /// `POST /conversations/:id/panel/changes { changes }`: applied in order,
 /// all or none, as one change of the panel.

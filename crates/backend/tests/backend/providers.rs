@@ -28,6 +28,7 @@ use demi_web_api_protocol::providers::{
     VendorCatalog,
 };
 use demi_web_api_protocol::settings::InstanceMode;
+use demi_web_api_protocol::state::SyncEvent;
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
@@ -59,17 +60,19 @@ async fn create(backend: &TestBackend, session: &Session, body: Value) -> Provid
     answer.json::<ProviderAnswer>().provider
 }
 
+/// The catalog as a page's product state carries it, after the user's
+/// Refresh when `query` asks for one, as `?refresh=true`.
 async fn catalog_of(backend: &TestBackend, session: &Session, query: &str) -> ModelCatalog {
-    let answer = backend
-        .get(&format!("/api/models{query}"), Some(session))
-        .await;
-    assert_eq!(
-        answer.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&answer.body)
-    );
-    answer.json()
+    if query == "?refresh=true" {
+        let refreshed = backend.post("/api/models/refresh", Some(session), json!({})).await;
+        assert_eq!(
+            refreshed.status,
+            StatusCode::NO_CONTENT,
+            "{}",
+            String::from_utf8_lossy(&refreshed.body)
+        );
+    }
+    backend.models(session).await
 }
 
 fn scripted(directory: &Arc<Directory>) -> FamilyRegistry {
@@ -501,7 +504,7 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
     // The entry's catalog is the vendor's live list, read again from
     // models.dev with the copy's validator.
     vendor.respond(MockResponse::status(304));
-    let live = catalog_of(&backend, &master, "").await;
+    let live = backend.models_after_read(&master).await;
     assert_eq!(
         vendor.requests()[1].header("if-none-match"),
         Some("\"fixture\"")
@@ -555,8 +558,48 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         .patch(&path, &master, json!({ "models": null }))
         .await;
     vendor.respond(MockResponse::status(304));
-    let again = catalog_of(&backend, &master, "").await;
+    let again = backend.models_after_read(&master).await;
     assert_eq!(again.providers[0].models.len(), 2);
+    backend.close().await;
+}
+
+/// A model source with no record that answers slowly holds nothing: the
+/// page's first snapshot comes at once, the entry listing no models, and its
+/// models follow as an event when the read ends.
+#[tokio::test]
+async fn a_slow_model_source_without_a_record_holds_no_snapshot_and_its_models_follow() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_models_dev(vendor.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    vendor.respond(served(&models_dev_document()));
+    let deepseek = create(
+        &backend,
+        &master,
+        json!({ "source": "vendor", "vendorId": "deepseek", "label": "DeepSeek", "apiKey": "sk-1" }),
+    )
+    .await;
+    let (release, open) = tokio::sync::watch::channel(false);
+    vendor.respond(MockResponse::status(304).held(open));
+    let mut page = backend.sync(&master).await;
+    let snapshot = tokio::time::timeout(Duration::from_secs(3), page.snapshot())
+        .await
+        .expect("the first snapshot does not wait for the source");
+    let listed = |catalog: &ModelCatalog| -> Vec<String> {
+        catalog
+            .providers
+            .iter()
+            .filter(|provider| provider.provider_id == deepseek.id)
+            .flat_map(|provider| provider.models.iter().map(|model| model.model.id.clone()))
+            .collect()
+    };
+    assert!(listed(&snapshot.models).is_empty());
+    assert!(snapshot.models.providers.iter().all(|provider| provider.warnings.is_empty()));
+
+    release.send(true).unwrap();
+    let events = page
+        .until(|event| matches!(event, SyncEvent::Models { models } if !listed(models).is_empty()))
+        .await;
+    assert!(matches!(events.last(), Some(SyncEvent::Models { .. })));
     backend.close().await;
 }
 
@@ -621,16 +664,6 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         "a fresh record answers without the source"
     );
 
-    for query in ["?refresh=1", "?refresh=TRUE", "?refresh="] {
-        let refused = backend
-            .get(&format!("/api/models{query}"), Some(&master))
-            .await;
-        assert_eq!(
-            refused.refusal(),
-            (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery),
-            "{query}"
-        );
-    }
     directory.answer(Ok(catalog(&["a", "b", "c"])));
     assert_eq!(
         ids(&catalog_of(&backend, &master, "?refresh=true").await).len(),
@@ -1023,7 +1056,7 @@ fn unchanged() -> MockResponse {
     MockResponse::status(304)
 }
 
-/// The availability `GET /api/models` gives the entry `id`.
+/// The availability the catalog gives the entry `id`.
 async fn availability_of(backend: &TestBackend, session: &Session, id: &ProviderId) -> Value {
     let catalog = catalog_of(backend, session, "").await;
     let entry = catalog
@@ -1099,7 +1132,7 @@ async fn a_vendor_entry_offers_the_models_an_agent_can_work_with_and_the_page_ad
 
     // The windowless, video and speech models stay out, and an output limit
     // above the window states none.
-    let catalog = catalog_of(&backend, &master, "").await;
+    let catalog = backend.models_after_read(&master).await;
     let offered: Vec<(&str, Option<u32>, Option<u32>)> = catalog.providers[0]
         .models
         .iter()

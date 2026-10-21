@@ -10,8 +10,8 @@ import type { MessageEditContent } from '@demicodes/web-ui/agent/message-editing
 import { splitMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { ApiError } from '../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../api/drafts'
-import { deleteSaved, loadSaved, postSaved, putSaved, saveFromDraft } from '../api/saved'
-import type { ConversationDraft, DraftFile, ReplacedAction, Revisions, SavedMessage } from '../api/generated/web-api'
+import { deleteSaved, postSaved, putSaved, saveFromDraft } from '../api/saved'
+import type { ConversationDraft, DraftFile, ListedSavedMessage, ReplacedAction, Revisions, SavedListing } from '../api/generated/web-api'
 import type { Conversation, ProductAttachment } from '../state/types'
 import { t } from './locales/text'
 
@@ -26,6 +26,10 @@ import { t } from './locales/text'
 //   unless its user has a change the backend has not confirmed.
 // - Text the user wrote is never only in a change: a refused one goes back to
 //   the composer or stands in the list as Not Saved.
+// - The list holds each saved message as the composer lists it, its text's
+//   opening and length; the page's own change lists the text it wrote whole.
+//   The conversation's metadata brings the list under its revision
+//   (`docs/decisions/0029-a-conversation-opens-whole.md`).
 
 /** How long typing pauses before the page saves the draft. */
 export const DRAFT_SAVE_DELAY_MS = 500
@@ -36,7 +40,7 @@ export const DRAFT_RETRY_MS = 3_000
 /** The draft and the saved messages as the page holds them. */
 export interface ConversationRecord {
   draft: ConversationDraft
-  saved: SavedMessage[]
+  saved: ListedSavedMessage[]
 }
 
 /** A message's text and files, as a saved message holds them. */
@@ -125,6 +129,27 @@ function sameMessage(a: Message, b: Message): boolean {
   return a.text === b.text && JSON.stringify(a.files.map(namedFile)) === JSON.stringify(b.files.map(namedFile))
 }
 
+/** How many characters `text` holds, as a listing counts them: by code point. */
+function characters(text: string): number {
+  return [...text].length
+}
+
+/** The message `id` as the list shows it while the page's write of it is on its way: its whole text. */
+function listedAs(id: string, message: Message): ListedSavedMessage {
+  return { id, opening: message.text, length: characters(message.text), files: message.files, savedAt: new Date().toISOString() }
+}
+
+/** Whether `listed` lists `message`: the same opening of a text as long, and the same files. */
+function lists(listed: ListedSavedMessage, message: Message): boolean {
+  return listed.length === characters(message.text) && message.text.startsWith(listed.opening)
+    && JSON.stringify(listed.files.map(namedFile)) === JSON.stringify(message.files.map(namedFile))
+}
+
+/** The whole text of `listed` when its listing holds it whole; null when it holds only the opening. */
+export function wholeListed(listed: ListedSavedMessage): Message | null {
+  return characters(listed.opening) === listed.length ? { text: listed.opening, files: listed.files } : null
+}
+
 /** Whether `a` and `b` hold the same text, files and comments. */
 function sameWriting(a: Writing, b: Writing): boolean {
   return sameMessage(a, b) && JSON.stringify(a.comments) === JSON.stringify(b.comments)
@@ -185,7 +210,7 @@ export function draftFile(file: ProductAttachment): DraftFile | null {
 }
 
 /** `list` with `message` at the top, unless the list holds one of its id. */
-function withSaved(list: SavedMessage[], message: SavedMessage): SavedMessage[] {
+function withSaved(list: ListedSavedMessage[], message: ListedSavedMessage): ListedSavedMessage[] {
   return list.some((each) => each.id === message.id) ? list : [message, ...list]
 }
 
@@ -447,7 +472,7 @@ export function createRecordSync(options: {
     }
     if (carried && !isBlank(carried)) {
       const shown = record.shown.value!
-      const listed = shown.saved.some((message) => sameMessage(message, carried))
+      const listed = shown.saved.some((message) => lists(message, carried))
       if (!listed && carried.into === 'draft') {
         if (!sameWriting(shown.draft, carried) && !typing.has(conversation.id)) {
           if (record.pending('draft').length === 0) {
@@ -543,7 +568,7 @@ export function createRecordSync(options: {
       typing.delete(conversation.id)
       clearTimer(conversation.id)
     }
-    const message: SavedMessage = { id, text: writing.text, files: writing.files, savedAt: new Date().toISOString() }
+    const message = listedAs(id, writing)
     // The draft's comments stay waiting there, as the backend keeps them.
     const change = record.change(
       (value) => ({ draft: { ...value.draft, text: '', files: [] }, saved: withSaved(value.saved, message) }),
@@ -601,7 +626,7 @@ export function createRecordSync(options: {
     const change = conversation.record.change(
       (value) => ({
         ...value,
-        saved: value.saved.map((each) => each.id === id ? { ...each, text: message.text, files: message.files } : each),
+        saved: value.saved.map((each) => each.id === id ? { ...listedAs(id, message), savedAt: each.savedAt } : each),
       }),
       {
         parts: ['saved'],
@@ -614,15 +639,22 @@ export function createRecordSync(options: {
     })
   }
 
-  /** Delete on the saved message `id`: it leaves the list at once. */
-  function remove(conversation: Conversation, id: string): Promise<'landed' | 'waiting' | 'refused'> {
+  /**
+   * Delete on the saved message `id`: it leaves the list at once. Answers how
+   * the write ended and the message as the backend removed it, whole, which
+   * Undo saves again; null when the write was refused or the message was gone.
+   */
+  function remove(conversation: Conversation, id: string): Promise<{ ended: 'landed' | 'waiting' | 'refused'; message: Message | null }> {
     const change = conversation.record.change((value) => withoutSaved(value, id), {
       parts: ['saved'],
       meta: { kind: 'delete', base: null, answered: null, carries: null },
     })
-    return write(conversation, change, t('failures.deleteMessage'), async (signal) => ({
-      revisions: await deleteSaved(conversation.id, id, signal),
-    }))
+    let removed: Message | null = null
+    return write(conversation, change, t('failures.deleteMessage'), async (signal) => {
+      const answer = await deleteSaved(conversation.id, id, signal)
+      removed = answer.message ? { text: answer.message.text, files: answer.message.files } : null
+      return { revisions: answer.revisions }
+    }).then((ended) => ({ ended, message: removed }))
   }
 
   /**
@@ -631,7 +663,7 @@ export function createRecordSync(options: {
    * its own. It stands at the top of the list at once.
    */
   function resave(conversation: Conversation, id: string, writing: Message): Promise<'landed' | 'waiting' | 'refused'> {
-    const message: SavedMessage = { id, text: writing.text, files: writing.files, savedAt: new Date().toISOString() }
+    const message = listedAs(id, writing)
     const change = conversation.record.change((value) => ({ ...value, saved: withSaved(value.saved, message) }), {
       parts: ['saved'],
       meta: { kind: 'resave', base: null, answered: null, carries: { id, text: writing.text, files: writing.files, comments: [], into: 'list' } },
@@ -697,13 +729,12 @@ export function createRecordSync(options: {
   }
 
   /**
-   * Reads the saved messages; a message not saved that the list holds now
-   * was saved after all, and is listed as saved.
+   * Takes the saved messages as the conversation's metadata lists them; one
+   * no newer than the list held changes nothing. A message not saved that
+   * the list holds now was saved after all, and is listed as saved.
    */
-  async function readSaved(conversation: Conversation): Promise<void> {
-    const since = conversation.record.now()
-    const list = await loadSaved(conversation.id, lifetime.signal)
-    conversation.record.receive('saved', (value) => ({ ...value, saved: list.messages }), { revision: list.revision, since })
+  function receiveSaved(conversation: Conversation, list: SavedListing): void {
+    conversation.record.receive('saved', (value) => ({ ...value, saved: list.messages }), { revision: list.revision })
     if (conversation.notSaved.some((row) => list.messages.some((message) => message.id === row.id))) {
       conversation.notSaved = conversation.notSaved.filter((row) => !list.messages.some((message) => message.id === row.id))
     }
@@ -782,7 +813,7 @@ export function createRecordSync(options: {
     base,
     restore,
     receiveDraft,
-    readSaved,
+    receiveSaved,
     act,
     saveForLater,
     rewrite,

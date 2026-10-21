@@ -624,7 +624,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   function refresh(provider: SettingsProviderEntry): void {
     perform(provider.id, { kind: 'refreshing' }, async () => {
-      await product.loadModels(true)
+      await product.reloadModels()
     })
   }
 

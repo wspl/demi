@@ -19,16 +19,14 @@ const props = withDefaults(defineProps<{
   filterPlaceholder?: string
   /** Shown in place of the rows when none shows; null while some do. */
   empty: string | null
-  /** Whether the rows are loaded; a failure offers Retry. */
-  state?: 'loading' | 'ready' | 'failed'
+  /** Whether the rows are loaded. */
+  state?: 'loading' | 'ready'
   loadingLabel?: SentenceText
 }>(), {
   filterPlaceholder: undefined,
   state: 'ready',
   loadingLabel: undefined,
 })
-
-const emit = defineEmits<{ retry: [] }>()
 
 const filter = defineModel<string>('filter', { default: '' })
 </script>
@@ -48,7 +46,7 @@ const filter = defineModel<string>('filter', { default: '' })
     </TextInput>
     <slot name="actions" />
   </div>
-  <AsyncRegion :state="props.state" :label="props.loadingLabel" @retry="emit('retry')">
+  <AsyncRegion :state="props.state" :label="props.loadingLabel">
     <slot />
     <div
       v-if="props.empty !== null"

@@ -211,7 +211,7 @@ const activeId = computed(() =>
 )
 // The panel opens per conversation; the frame shows the open conversation's.
 const work = useWorkPanel()
-// Before its panel is read: what the panel held when the conversation came on screen decides what opens it on a phone.
+// Before its panel arrives: what the panel held when the conversation came on screen decides what opens it on a phone.
 watch(activeId, (conversationId) => work.shown(conversationId), { immediate: true })
 // What the viewer shows is the open conversation's: another's Media tab
 // shows the medium it showed, found again in its own transcript.

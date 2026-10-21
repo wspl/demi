@@ -3,7 +3,8 @@
 //! The routes read, each of one agent, the root, a subagent or a side question,
 //! named by its node (`docs/decisions/0009-agent-sessions-and-sync.md`):
 //!
-//! - one page of its transcript at a time, in light form;
+//! - one page of its transcript at a time, in light form, with the failure
+//!   facts of its error blocks and the attachments its replies name;
 //! - a block whole;
 //!
 //! and where the call that started a command lies.
@@ -16,7 +17,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
-use demi_backend_user_shard::conversation::failure_facts;
+use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_texts};
 use demi_conversation_socket_protocol::{index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
@@ -42,7 +43,7 @@ pub(super) async fn transcript(
     // The root is the conversation's from its start: before its first turn
     // stored it, its transcript is empty.
     let root = node.as_str() == record.id.as_str();
-    let transcript = Transcript::Agent(node);
+    let transcript = Transcript::Agent(node.clone());
     let read = services
         .conversations
         .read(&record.id, move |connection| {
@@ -54,6 +55,9 @@ pub(super) async fn transcript(
     let mut page = page_answer(read, no_node, no_block, outside, changed)?;
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
+    page.attachments = attachment_facts(&services.conversations, &record.id, &node, reply_texts(&page.blocks))
+        .await
+        .map_err(ApiError::conversation_unreadable)?;
     Ok(Json(page))
 }
 
@@ -71,7 +75,8 @@ fn changed() -> ApiError {
     )
 }
 
-/// A page read as its route answers it, without failure facts.
+/// A page read as its route answers it, without failure facts or
+/// attachments.
 ///
 /// - A conversation without a database yet has an empty transcript.
 /// - A node or a block the transcript lacks, an index it does not reach, or an
@@ -93,6 +98,7 @@ pub(super) fn page_answer(
             instructions: Vec::new(),
             summaries: Vec::new(),
             versions: Vec::new(),
+            attachments: Vec::new(),
         }),
         Some(PageRead::Page {
             start,
@@ -121,6 +127,7 @@ pub(super) fn page_answer(
                 instructions,
                 summaries,
                 versions,
+                attachments: Vec::new(),
             })
         }
         Some(PageRead::NoNode) => Err(no_node()),

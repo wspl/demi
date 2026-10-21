@@ -24,7 +24,6 @@ let skills: SkillsState
 /** Each call the backend received: its path and body. */
 let calls: [string, unknown][]
 /** The tabs the backend's work panel holds, as a read of it answers them. */
-let panelTabs: unknown[]
 /** Whether the page cannot reach the backend, as while it restarts: every call fails without an answer. */
 let away: boolean
 /** The calls the page tried while it could not reach the backend. */
@@ -48,17 +47,10 @@ beforeEach(() => {
     ],
   }
   calls = []
-  panelTabs = []
   away = false
   unanswered = 0
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
-    }
-    if (path === `/api/conversations/${CONVERSATION}/panel`) {
-      return Response.json({ revision: 1, tabs: panelTabs, states: [] })
-    }
     if (path === `/api/conversations/${CONVERSATION}/panel/changes`) {
       return Response.json({ revision: 2, changed: true })
     }

@@ -554,7 +554,6 @@ async fn a_runner_asks_for_its_devices_revocation_and_hears_which_projects_went(
     assert_eq!(workspace.status, StatusCode::CREATED);
     let conversation = uuid::Uuid::new_v4().to_string();
     create(&backend, &master, &conversation).await;
-    let hosts = format!("/api/conversations/{conversation}/hosts");
     harness.attach(&conversation, laptop.id());
     laptop.runner.stop().await;
     backend.until_online(&master, laptop.id(), false).await;
@@ -566,8 +565,7 @@ async fn a_runner_asks_for_its_devices_revocation_and_hears_which_projects_went(
     assert_eq!(runner.revoked().await, ["proj"]);
     assert_eq!(runner.next().await, None);
     assert!(backend.devices(&master).await.is_empty());
-    let attached: serde_json::Value = backend.get(&hosts, Some(&master)).await.json();
-    assert_eq!(attached["hosts"], json!([]));
+    assert!(crate::conversations::metadata(&backend, &master, &conversation).await.hosts.hosts.is_empty());
     backend.close().await;
 }
 

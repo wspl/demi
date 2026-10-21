@@ -76,10 +76,9 @@ const selected = ref<string | null>('loading-provider')
           <p class="p-4 text-chrome text-fg-muted">Previously loaded content</p>
         </AsyncRegion>
         <ModelSelector
-          :load="state"
+          :load="state === 'loading' ? 'loading' : 'ready'"
           :providers="[]"
           :models="{}"
-          @retry="state = 'loading'"
         />
       </GallerySpecimen>
     </div>
@@ -91,14 +90,13 @@ const selected = ref<string | null>('loading-provider')
           v-model:selected-id="selected"
           :providers="providers"
           :vendors="mockVendors"
-          :model-load="state"
+          :model-load="state === 'loading' ? 'loading' : 'ready'"
           :vendor-load="state"
           :operations="saving ? { 'loading-provider': { kind: 'saving' } } : {}"
           :overlay-store="appOverlayStore"
           :save-model="async () => {}"
           @refresh="state = 'loading'"
           @retry-vendors="state = 'loading'"
-          @retry-models="state = 'loading'"
         />
       </div>
     </GallerySpecimen>

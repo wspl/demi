@@ -120,7 +120,6 @@
     "upload_cancelled": "The upload was canceled.",
     "restore_before_sending": "Restore this conversation before sending.",
     "no_model_available": "No available model for this conversation.",
-    "models_not_loaded": "Couldn’t load the models. {failure}",
     "source_conversation_unavailable": "The source conversation is unavailable.",
     "file_not_owned": "It isn’t among this account’s files.",
     "no_passkey": "The browser didn’t give a passkey.",

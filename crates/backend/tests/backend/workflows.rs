@@ -20,7 +20,7 @@
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, INSTRUCTIONS_SOURCE, InstructionEntry, WorkflowChoice};
 use demi_web_api_protocol::conversations::ConversationUpdate;
-use demi_web_api_protocol::workflows::KeptWorkflowList;
+use demi_web_api_protocol::workflows::{ConversationWorkflowList, KeptWorkflowList};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::auth::Role;
 use reqwest::StatusCode;
@@ -213,25 +213,21 @@ instructions: |
 profiles: []
 ";
 
-/// The Workflow menu's list of the conversation `FIRST` as the backend
-/// stored it; none while it is unknown.
-async fn stored_menu(backend: &TestBackend, master: &Session) -> Option<serde_json::Value> {
-    let listed = backend
-        .get(&format!("/api/conversations/{FIRST}/workflows"), Some(master))
-        .await;
-    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
-    match listed.json::<KeptWorkflowList>() {
-        KeptWorkflowList::Unknown => None,
+/// The Workflow menu's list as the backend stored it; none while it is
+/// unknown or its first read was refused.
+fn stored_menu(kept: &KeptWorkflowList) -> Option<serde_json::Value> {
+    match kept {
+        KeptWorkflowList::Unknown | KeptWorkflowList::Refused { .. } => None,
         KeptWorkflowList::Read { list, .. } => Some(serde_json::to_value(list).unwrap()),
     }
 }
 
-/// A page that shows the conversation `FIRST` and its Workflow menu: it
-/// reads the list again at each workflows revision its metadata brings.
+/// A page that shows the conversation `FIRST` and its Workflow menu, as
+/// each metadata its socket brings carries the list.
 struct MenuPage {
     socket: Socket,
-    /// The latest workflows revision the page heard of.
-    seen: u64,
+    /// The latest list the page was sent.
+    shown: ConversationWorkflowList,
 }
 
 impl MenuPage {
@@ -239,27 +235,27 @@ impl MenuPage {
         let (socket, metadata) = Socket::shown(backend, master, FIRST, 0).await;
         Self {
             socket,
-            seen: metadata.workflows_revision,
+            shown: metadata.workflows,
         }
     }
 
-    /// The list once it holds what `holds` asks, as the page reads it now and
-    /// at each later revision; a change made on the Host reaches it through
-    /// the runner's file watch.
+    /// The list once it holds what `holds` asks, as the page was sent it at
+    /// the open and at each change; a change made on the Host reaches it
+    /// through the runner's file watch.
     async fn when(
         &mut self,
-        backend: &TestBackend,
-        master: &Session,
+        _backend: &TestBackend,
+        _master: &Session,
         holds: impl Fn(&serde_json::Value) -> bool,
     ) -> serde_json::Value {
         loop {
-            if let Some(listed) = stored_menu(backend, master).await
+            if let Some(listed) = stored_menu(&self.shown.list)
                 && holds(&listed)
             {
                 return listed;
             }
-            let seen = self.seen;
-            self.seen = self.socket.metadata_until(|metadata| metadata.workflows_revision > seen).await.workflows_revision;
+            let seen = self.shown.clone();
+            self.shown = self.socket.metadata_until(|metadata| metadata.workflows != seen).await.workflows;
         }
     }
 }
@@ -600,7 +596,7 @@ async fn the_menu_answers_what_was_read_at_once_unknown_before_and_after_a_resta
 
     // On the Cloud, which is not made yet: never read.
     create(&backend, &master, FIRST).await;
-    assert_eq!(stored_menu(&backend, &master).await, None);
+    assert_eq!(stored_menu(&crate::conversations::metadata(&backend, &master, FIRST).await.workflows.list), None);
 
     // On a paired device, read while the conversation shows.
     let mut alpha = backend.pair(&master, "alpha").await;
@@ -621,9 +617,9 @@ async fn the_menu_answers_what_was_read_at_once_unknown_before_and_after_a_resta
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
-    let answer = backend.get(&format!("/api/conversations/{FIRST}/workflows"), Some(&master)).await;
-    let KeptWorkflowList::Read { list, .. } = answer.json::<KeptWorkflowList>() else {
-        panic!("the list read before the restart: {}", String::from_utf8_lossy(&answer.body));
+    let kept = crate::conversations::metadata(&backend, &master, FIRST).await.workflows.list;
+    let KeptWorkflowList::Read { list, .. } = kept else {
+        panic!("the list read before the restart: {kept:?}");
     };
     assert_eq!(list.workflows[0].name.as_deref(), Some("Review Team"));
     backend.close().await;

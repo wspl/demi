@@ -136,7 +136,7 @@ const props = defineProps<{
   vendors: SettingsVendor[]
   load?: 'loading' | 'ready' | 'failed'
   vendorLoad?: 'loading' | 'ready' | 'failed'
-  modelLoad?: 'loading' | 'ready' | 'failed'
+  modelLoad?: 'loading' | 'ready'
   overlayStore: OverlayStore
   /** The accounts whose usage the vendor is asked for again, by provider. */
   refreshingUsage?: Record<string, Record<string, true>>
@@ -169,8 +169,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   retry: []
   retryVendors: []
-  /** The model list's Retry: the catalog loads again, outside the provider's writes. */
-  retryModels: []
   change: [
     provider: SettingsProviderEntry,
     patch: Partial<SettingsProviderEntry>,
@@ -1396,7 +1394,6 @@ function endpointCheck(value: string) {
                         ? t('providers.models.signInToSee')
                         : t('providers.models.none')
                 "
-                @retry="emit('retryModels')"
               >
                 <template #actions>
                 <Tooltip :content="t('providers.models.add')"

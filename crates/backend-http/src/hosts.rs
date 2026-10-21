@@ -1,30 +1,19 @@
 //! A conversation's attached hosts
 //! (`crates/backend-database/src/conversation_index.rs`).
 //!
-//! The routes are the list, with each device's connection, and a detach. A
-//! detach is a transition and reaches the conversation's nodes at their next
-//! context block. The conversation's agents attach the devices.
+//! The route is a detach; the conversation's metadata lists the hosts. A detach
+//! is a transition and reaches the conversation's nodes at their next context
+//! block. The conversation's agents attach the devices.
 
-use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::conversation_index::{ConversationChange, RecordChange};
-use demi_web_api_protocol::hosts::{AttachedHost, AttachedHosts};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 
 use super::AppState;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use demi_backend_host_access::transition::ChangeRefusal;
-
-pub(super) async fn list(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<Json<AttachedHosts>, ApiError> {
-    let id = conversation_id(&id)?;
-    Ok(Json(hosts(&state, &user.id, id).await?))
-}
 
 /// Detaches a device, which hears the conversation release; a device that
 /// is not attached detaches as nothing.
@@ -55,37 +44,6 @@ async fn change(
         .call(move |shard, _| async move { shard.transition(&id, change).await })
         .await?
         .map_err(refused)
-}
-
-/// The conversation's attached hosts, each with its device's connection.
-pub(super) async fn hosts(
-    state: &AppState,
-    user: &UserId,
-    id: ConversationId,
-) -> Result<AttachedHosts, ApiError> {
-    state
-        .shards
-        .of(user)
-        .call(move |shard, _| async move {
-            let record = shard.host_shard().owned_conversation(&id).await?;
-            let listed = shard
-                .services()
-                .control
-                .attached_host_listing(record.id)
-                .await?;
-            let hosts = listed
-                .into_iter()
-                .map(|(host, attached_at)| AttachedHost {
-                    state: shard.devices().state(&host.device),
-                    device_id: host.device,
-                    name: host.name,
-                    cwd: host.cwd,
-                    attached_at,
-                })
-                .collect();
-            Ok::<_, ApiError>(AttachedHosts { hosts })
-        })
-        .await?
 }
 
 fn conversation_id(id: &str) -> Result<ConversationId, ApiError> {

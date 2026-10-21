@@ -108,7 +108,7 @@ const props = withDefaults(
     focusOnShow?: boolean
     attachOpen?: boolean
     dropping?: boolean
-    modelLoad?: 'loading' | 'ready' | 'failed'
+    modelLoad?: 'loading' | 'ready'
     providers: ProviderInfo[]
     models: Record<string, ModelInfo[]>
     /** The conversation's model settings; none while nothing is chosen. */
@@ -216,7 +216,6 @@ const draft = defineModel<string>('draft', { default: '' })
 /** The list of messages saved for later stands open under the composer. */
 const savedOpen = defineModel<boolean>('savedOpen', { default: false })
 const emit = defineEmits<{
-  retryModels: []
   /**
    * The draft goes: at once while nothing runs, otherwise as a steer or to the
    * queue.
@@ -898,7 +897,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           <div class="min-w-0" :inert="!!shownEdit && !edit.editable.value">
             <ModelSelector
               :load="modelLoad"
-              @retry="emit('retryModels')"
               :providers="providers"
               :models="models"
               :settings="modelSettings"

@@ -6,7 +6,6 @@ import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
-import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 import { productWould } from '../product-would'
@@ -147,7 +146,7 @@ const usageLimitPayload = JSON.stringify({
     </GallerySection>
     <GallerySection
       title="Composer Notices · a State, Not a Failure"
-      note="SessionNoticeBar replaces the composer input for a state the reader chose or can leave. The model catalog failing to load is the one composer failure, told beside the model chip."
+      note="SessionNoticeBar replaces the composer input for a state the reader chose or can leave."
     >
       <div class="grid gap-6 lg:grid-cols-2">
         <GallerySpecimen wide variant="Archived">
@@ -159,11 +158,6 @@ const usageLimitPayload = JSON.stringify({
               @action="productWould('Restore the Conversation')"
             />
           </div>
-        </GallerySpecimen>
-        <GallerySpecimen wide variant="Model catalog failed · beside the chip">
-          <GalleryComposer
-            model-load="failed"
-          />
         </GallerySpecimen>
       </div>
     </GallerySection>

@@ -9,15 +9,11 @@ import { connectionProblem } from '@demicodes/web-ui/transport/connection'
 import { t } from './locales/text'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
-  modelCatalogSchema,
   productStateSchema,
   syncEventSchema,
   vendorCatalogSchema,
-  type CatalogProvider,
   type ConversationSummary,
-  type ModelCatalog,
   type PageShowing,
-  type Preferences,
   type ProductState,
   type SyncEvent,
   type VendorCatalog,
@@ -151,6 +147,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'port_forwards', portForwards: state.portForwards }
     case 'exposed_ports':
       return { type: 'exposed_ports', exposedPorts: state.exposedPorts }
+    case 'models':
+      return { type: 'models', models: state.models }
   }
   if (part.startsWith('plugin:')) {
     const plugin = part.slice('plugin:'.length)
@@ -206,6 +204,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, portForwards: event.portForwards }
     case 'exposed_ports':
       return { ...state, exposedPorts: event.exposedPorts }
+    case 'models':
+      return { ...state, models: event.models }
   }
 }
 
@@ -268,46 +268,9 @@ function parse(data: unknown): unknown {
   }
 }
 
-/**
- * What of entry `provider` the model catalog answers for: its configuration
- * and active account, not what the backend read of its state, such as its
- * usage or a Claude Code install under way.
- */
-function catalogInputs(provider: ProductState['providers'][number]) {
-  const { details, cliInstall: _install, ...config } = provider
-  return { ...config, account: details.type === 'read' ? details.active : null }
-}
-
-/**
- * Whether the providers `after` differ from `before` only in an install's
- * state. Equal parts are not: a new API key, which no field shows, arrives as
- * an equal part.
- */
-function onlyInstallsChanged(before: ProductState['providers'] | undefined, after: ProductState['providers']): boolean {
-  if (!before || before.length !== after.length) {
-    return false
-  }
-  const installs = (providers: ProductState['providers']) => JSON.stringify(providers.map((provider) => provider.cliInstall))
-  const rest = (providers: ProductState['providers']) => JSON.stringify(providers.map(({ cliInstall: _install, ...provider }) => provider))
-  return installs(before) !== installs(after) && rest(before) === rest(after)
-}
-
 /** What a write's answer says of its part, as the slot takes it. */
 function answerOf(answer: Answer): SlotAnswer<ProductState> & { value: (read: ProductState) => ProductState } {
   return { value: (state) => withPart(state, typeof answer === 'function' ? answer(state) : answer) }
-}
-
-/**
- * The preferences the small model's Automatic is resolved with besides the
- * catalog (`crates/backend-providers/src/llm/small_model.rs`): the entries and models the user hid,
- * and whether small requests stay on the conversation's provider.
- */
-function smallModelInputs(preferences: Preferences | undefined): string {
-  return JSON.stringify([
-    preferences?.hiddenProviders ?? [],
-    preferences?.hiddenModels ?? [],
-    preferences?.smallModelSameProvider ?? false,
-  ])
 }
 
 /**
@@ -331,30 +294,22 @@ export const useProduct = defineStore('product', () => {
   /** What the page shows: the state it last read with its own changes not landed yet applied on top. */
   const snapshot = slot.shown
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
-  const modelSnapshot = ref<{
-    key: string
-    providers: CatalogProvider[]
-    /** What the small model's Automatic resolves to, as the backend answered with the catalog. */
-    smallModel: ModelCatalog['smallModel']
-    /** The preferences Automatic was resolved with, by `smallModelInputs`. */
-    smallModelInputs: string
-    checkedAt: number
-  } | null>(null)
   /**
    * What the page can add, read once in the background as the page starts
    * unless this browser kept it for this build, so Settings › Providers
    * never waits for it.
    */
   const vendors = ref<VendorCatalog | null>(keptVendors())
-  const modelError = ref<{ key: string; retryAt: number; message: string } | null>(null)
   const vendorError = ref<string | null>(null)
   const vendorLoad = computed(() =>
     vendors.value !== null ? 'ready' : vendorError.value ? 'failed' : 'loading',
   )
-  const catalogLoad = computed(() => modelSnapshot.value?.key === catalogKey.value
-    ? 'ready' : modelError.value?.key === catalogKey.value ? 'failed' : 'loading')
-  /** Why the model list failed to load for the providers the page holds; null unless it failed. */
-  const catalogFailure = computed(() => catalogLoad.value === 'failed' ? modelError.value?.message ?? null : null)
+  /**
+   * Whether the page holds the catalog of the entries' models, which comes
+   * with the product state and its owner announces anew
+   * (`docs/decisions/0029-a-conversation-opens-whole.md`).
+   */
+  const catalogLoad = computed(() => snapshot.value === null ? 'loading' : 'ready')
   const activeConversationId = ref<string | null>(null)
   /**
    * The backend closed the channel because it shuts down, and has not
@@ -390,18 +345,14 @@ export const useProduct = defineStore('product', () => {
     const served = servedBuild.value
     return page !== null && served !== null && served !== page ? served : null
   })
-  const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(catalogInputs)))
-  const catalog = computed(() => modelSnapshot.value?.key === catalogKey.value
-    ? modelSnapshot.value.providers : [])
+  const catalog = computed(() => snapshot.value?.models.providers ?? [])
   /**
    * The selection the small model's Automatic resolves to, which Settings ›
    * Agent shows beside it (`crates/backend-providers/src/llm/small_model.rs`);
-   * null when the backend
-   * resolves none for the page, or before the catalog is read.
+   * null when the backend resolves none for the page, or before the state
+   * is read.
    */
-  const automaticSmallModel = computed(() => modelSnapshot.value?.key === catalogKey.value
-    ? modelSnapshot.value.smallModel : null)
-  let modelRequest: { key: string; promise: Promise<void>; controller: AbortController } | null = null
+  const automaticSmallModel = computed(() => snapshot.value?.models.smallModel ?? null)
   let vendorRequest: Promise<void> | null = null
   /** Set while the page is signed in and follows the state. */
   let controller: AbortController | null = null
@@ -572,43 +523,13 @@ export const useProduct = defineStore('product', () => {
       // The snapshot is the next value of every part.
       slot.replace(event.state)
       load.value = 'ready'
-      // Model discovery never holds the page; it records its own failure.
-      void loadModels().catch(() => {})
       return
     }
-    const providersBefore = read.value?.providers
     if (!slot.receive(partOf(event), (state) => withPart(state, event)) && event.type === 'user') {
       // The channel of an account still to choose its password carries the
       // account alone, until the choice, on this page or another.
       firstUser.value = event.user
     }
-    // An install that started or ended changes nothing the catalog answers.
-    if (event.type === 'providers' && !onlyInstallsChanged(providersBefore, event.providers)) {
-      providersChanged()
-    }
-    // The preferences Automatic is resolved with changed, on this page or
-    // another: the catalog answers what it resolves to now. A read on its
-    // way drops its answer by itself when its inputs are no longer these.
-    if (event.type === 'preferences' && !modelRequest && modelSnapshot.value
-      && smallModelInputs(event.preferences) !== modelSnapshot.value.smallModelInputs) {
-      providersChanged()
-    }
-  }
-
-  /**
-   * The channel brought the providers part: the catalog is loaded again,
-   * whatever changed, an API key no view shows included. A load on its way may
-   * predate the change, so it gives way; the catalog shown stays until the new
-   * one arrives.
-   */
-  function providersChanged(): void {
-    modelRequest?.controller.abort()
-    modelRequest = null
-    modelError.value = null
-    if (modelSnapshot.value) {
-      modelSnapshot.value = { ...modelSnapshot.value, checkedAt: 0 }
-    }
-    void loadModels().catch(() => {})
   }
 
   /** Where the channel stands as a write is sent, which its answer is measured against. */
@@ -652,16 +573,6 @@ export const useProduct = defineStore('product', () => {
    */
   function until(check: (state: ProductState) => boolean, signal: AbortSignal): Promise<void> {
     return holds(() => snapshot.value !== null && check(snapshot.value), signal)
-  }
-
-  /**
-   * Resolves once the model catalog has answered for the providers the page
-   * holds, loaded or failed. A change of the providers meanwhile loads the
-   * catalog again (`providersChanged`), and this waits for that load, not
-   * the one it replaced. Rejects when `signal` aborts first.
-   */
-  function catalogAnswered(signal: AbortSignal): Promise<void> {
-    return holds(() => catalogLoad.value !== 'loading', signal)
   }
 
   /** Resolves once `condition` holds, as the state it reads changes; rejects when `signal` aborts first. */
@@ -734,80 +645,13 @@ export const useProduct = defineStore('product', () => {
     })
   }
 
-  function clearModels(): void {
-    modelRequest?.controller.abort()
-    modelRequest = null
-    modelSnapshot.value = null
-    modelError.value = null
-  }
-
-  async function loadModels(force = false): Promise<void> {
-    const current = controller
-    if (!current)
-      return
-    const key = catalogKey.value
-    if (modelRequest?.key === key)
-      return modelRequest.promise
-    if (!force && modelSnapshot.value?.key === key && Date.now() - modelSnapshot.value.checkedAt < 60_000)
-      return
-    if (!force && modelError.value?.key === key && Date.now() < modelError.value.retryAt)
-      return
-    modelRequest?.controller.abort()
-    const requestController = new AbortController()
-    const signal = AbortSignal.any([current.signal, requestController.signal])
-    modelError.value = null
-    const request = (async () => {
-      try {
-        // An answer asked under preferences Automatic no longer depends on
-        // is dropped, and the catalog read again for the current ones.
-        for (;;) {
-          const inputs = smallModelInputs(read.value?.preferences)
-          const response = await apiRequest(force ? '/models?refresh=true' : '/models', {
-            signal,
-          })
-          const next = await readResponse(response, modelCatalogSchema)
-          signal.throwIfAborted()
-          if (inputs !== smallModelInputs(read.value?.preferences)) {
-            continue
-          }
-          if (key === catalogKey.value) {
-            modelSnapshot.value = {
-              key,
-              providers: next.providers,
-              smallModel: next.smallModel,
-              smallModelInputs: inputs,
-              checkedAt: Date.now(),
-            }
-          }
-          return
-        }
-      } catch (cause) {
-        if (!signal.aborted && key === catalogKey.value) {
-          modelError.value = {
-            key,
-            retryAt: Date.now() + 60_000,
-            message: errorMessage(cause),
-          }
-        }
-        throw cause
-      }
-    })()
-    modelRequest = { key, promise: request, controller: requestController }
-    try {
-      await request
-    } finally {
-      if (modelRequest?.promise === request)
-        modelRequest = null
-    }
-  }
-
   /**
-   * Loads the catalog again, asking the backend to refresh it, as the
-   * user's explicit refresh does; the catalog records a failure itself.
+   * Asks the backend to read the entries' models again, as the user's
+   * explicit refresh does; the new catalog comes on the channel, and an
+   * entry's failure with its health.
    */
   async function reloadModels(): Promise<void> {
-    clearModels()
-    await loadModels(true).catch(() => {})
+    await apiRequest('/models/refresh', { method: 'POST' })
   }
 
   async function loadVendors(): Promise<void> {
@@ -902,7 +746,6 @@ export const useProduct = defineStore('product', () => {
     servedBuild.value = null
     slot.clear()
     firstUser.value = null
-    clearModels()
     vendors.value = keptVendors()
     vendorRequest = null
     vendorError.value = null
@@ -926,16 +769,13 @@ export const useProduct = defineStore('product', () => {
     vendors,
     vendorLoad,
     catalogLoad,
-    catalogFailure,
     activeConversationId,
     show,
     sent,
     answered,
     change,
     until,
-    catalogAnswered,
     connecting,
-    loadModels,
     reloadModels,
     loadVendors,
     start,

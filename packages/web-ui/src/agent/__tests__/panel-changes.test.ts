@@ -6,21 +6,16 @@ import type { PanelTab } from '../panel-tabs'
 const page = (id: string, url = `https://${id}.test/`): PanelTab => ({ id, kind: 'page', data: { url } })
 
 /**
- * A backend whose reads answer what the test says and whose requests wait
- * for the test's answer, so the test decides in what order things arrive.
+ * A backend whose panel the page holds as `first`, which announces the
+ * panels the test says, and whose requests wait for the test's answer, so
+ * the test decides in what order things arrive.
  */
 function backend(first: PanelRead) {
-  let panel = first
-  let reads = 0
   const sent: PanelChange[][] = []
   const answers: ReturnType<typeof deferred<PanelAnswer>>[] = []
   const refused: unknown[] = []
   const tabs = new PanelTabs(
     {
-      read: async () => {
-        reads += 1
-        return panel
-      },
       send: (changes) => {
         sent.push([...changes])
         const answer = deferred<PanelAnswer>()
@@ -30,14 +25,14 @@ function backend(first: PanelRead) {
     },
     (error) => void refused.push(error),
   )
+  tabs.receive(first)
   return {
     tabs,
     /** Each request, as the changes it carried. */
     sent,
     refused,
-    reads: () => reads,
-    /** The backend's panel from now on. */
-    set: (next: PanelRead) => void (panel = next),
+    /** The backend announces its panel, as the conversation's metadata brings it. */
+    announce: (next: PanelRead) => tabs.receive(next),
     /**
      * Answers the oldest request still waiting: changed, unless the test says
      * not.
@@ -80,62 +75,53 @@ test('a change shows at once, and those made while one is on its way go together
   expect(ids(world.tabs)).toEqual(['b', 'a'])
 })
 
-test('closing several tabs is one request, and an answer one past the panel held is the panel with it, unread', async () => {
+test('closing several tabs is one request, and an answer one past the panel held is the panel with it', async () => {
   const world = backend({ revision: 4, tabs: [page('a'), page('b'), page('c')] })
   world.tabs.start()
   await settled()
-  const read = world.reads()
   world.tabs.change({ type: 'remove', id: 'a' }, { type: 'remove', id: 'c' })
   expect(ops(world.sent)).toEqual([['remove', 'remove']])
   await world.answer(5)
-  expect(world.reads()).toBe(read)
   expect(world.tabs.revision).toBe(5)
   expect(ids(world.tabs)).toEqual(['b'])
 })
 
-test('an answer that shows another change came in between is followed by a read', async () => {
+test('an answer that shows another change came in between waits for the panel the backend announces', async () => {
   const world = backend({ revision: 1, tabs: [page('a')] })
   world.tabs.start()
   await settled()
-  const read = world.reads()
   world.tabs.change({ type: 'create', tab: page('b') })
   // Another page's change came first.
-  world.set({ revision: 3, tabs: [page('a'), page('x'), page('b')] })
   await world.answer(3)
-  expect(world.reads()).toBe(read + 1)
+  expect(world.tabs.revision).toBe(1)
+  expect(ids(world.tabs)).toEqual(['a', 'b'])
+  world.announce({ revision: 3, tabs: [page('a'), page('x'), page('b')] })
   expect(ids(world.tabs)).toEqual(['a', 'x', 'b'])
 })
 
-test('a request that changed nothing while another change landed reads the panel, though its answer is one past the panel held', async () => {
+test('a request that changed nothing while another change landed shows the panel announced, though its answer is one past the panel held', async () => {
   const world = backend({ revision: 1, tabs: [page('a'), page('b')] })
   world.tabs.start()
   await settled()
-  const read = world.reads()
   world.tabs.change({ type: 'update', id: 'b', data: { title: 'B' } })
   // Another page removed the tab first: the update had nothing to do.
-  world.set({ revision: 2, tabs: [page('a')] })
+  world.announce({ revision: 2, tabs: [page('a')] })
   await world.answer(2, false)
-  expect(world.reads()).toBe(read + 1)
   expect(ids(world.tabs)).toEqual(['a'])
 })
 
-test('a summary that names the revision of a request on its way reads nothing; one past every answer reads the panel', async () => {
+test('a panel announced before the answer of the page\'s own change holds it, and a later one shows a plugin\'s change', async () => {
   const world = backend({ revision: 1, tabs: [page('a')] })
   world.tabs.start()
   await settled()
-  const read = world.reads()
   world.tabs.change({ type: 'create', tab: page('b') })
-  // The summary of the page's own change comes before its answer.
-  world.tabs.noticed(2)
+  // The metadata of the page's own change comes before its answer.
+  world.announce({ revision: 2, tabs: [page('a'), page('b')] })
   await world.answer(2)
-  expect(world.reads()).toBe(read)
   expect(ids(world.tabs)).toEqual(['a', 'b'])
 
   // A plugin's change of the tab after it.
-  world.set({ revision: 3, tabs: [page('a'), { ...page('b'), data: { url: 'https://b.test/', tab: 't3' } }] })
-  world.tabs.noticed(3)
-  await settled()
-  expect(world.reads()).toBe(read + 1)
+  world.announce({ revision: 3, tabs: [page('a'), { ...page('b'), data: { url: 'https://b.test/', tab: 't3' } }] })
   expect(world.tabs.tabs.value[1]!.data).toEqual({ url: 'https://b.test/', tab: 't3' })
 })
 
@@ -153,7 +139,7 @@ test('a removed tab never comes back from a panel read before its removal reache
   // The removal is answered at 3, the panel held with it.
   await world.answer(3)
   expect(ids(world.tabs)).toEqual(['b', 'c'])
-  // A read older than the panel the page holds changes nothing.
+  // A panel older than the one the page holds changes nothing.
   world.tabs.receive({ revision: 2, tabs: [page('a'), page('b'), page('c')] })
   expect(ids(world.tabs)).toEqual(['b', 'c'])
 })

@@ -95,17 +95,9 @@ async fn opened_on(scripts: &Arc<Scripts>, harness: Harness) -> World {
     }
 }
 
+/// The conversation's undecided requests, as its metadata carries them.
 pub(crate) async fn permissions(backend: &TestBackend, session: &Session, id: &str) -> ConversationPermissions {
-    let read = backend
-        .get(&format!("/api/conversations/{id}/permissions"), Some(session))
-        .await;
-    assert_eq!(
-        read.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&read.body)
-    );
-    read.json()
+    crate::conversations::metadata(backend, session, id).await.permissions
 }
 
 /// The categories of a permission request.

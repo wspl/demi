@@ -1,14 +1,14 @@
 //! A conversation's attached hosts as the web app lists them; the user detaches
 //! one, and the conversation's agents attach them.
 
-use demi_shared_types::{Nullable, Timestamp};
+use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::devices::DeviceState;
 use crate::ids::DeviceId;
 
-/// A device attached to a conversation.
+/// A device attached to a conversation. Whether its runner serves it is the
+/// device list's, which the page holds already.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachedHost {
@@ -21,13 +21,14 @@ pub struct AttachedHost {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cwd: Option<String>,
-    /// Whether the device's runner serves it, as the device list says.
-    pub state: DeviceState,
     pub attached_at: Timestamp,
 }
 
-/// `{ hosts }`: the conversation's attached hosts, first attached first.
+/// The conversation's attached hosts, first attached first, under the
+/// revision an attach, a detach or a rename raises, 0 before the first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct AttachedHosts {
+pub struct ConversationHosts {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub revision: u64,
     pub hosts: Vec<AttachedHost>,
 }

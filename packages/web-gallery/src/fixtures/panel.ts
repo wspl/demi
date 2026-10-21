@@ -28,11 +28,11 @@ export class GalleryPanel implements PanelBackend {
    * plugin is; a tab the user created is none of the plugin's business.
    */
   removed: ((tab: PanelTab) => void) | null = null
-  /** Each change, the plugin's included, with the panel's revision, as the page's summary carries it. */
-  changed: ((revision: number) => void) | null = null
+  /** Each change, the plugin's included, with the panel as it is then, as the conversation's metadata brings it. */
+  changed: ((panel: PanelRead) => void) | null = null
 
-  async read(): Promise<PanelRead> {
-    await beat()
+  /** The panel as it is now, as the conversation's metadata carries it. */
+  current(): PanelRead {
     return { revision: this.revision, tabs: this.tabs.map((tab) => ({ ...tab })) }
   }
 
@@ -47,8 +47,8 @@ export class GalleryPanel implements PanelBackend {
     if (this.revision > before) {
       // The request counts as one change, however many it made.
       this.revision = before + 1
-      const revision = this.revision
-      queueMicrotask(() => this.changed?.(revision))
+      const panel = this.current()
+      queueMicrotask(() => this.changed?.(panel))
     }
     for (const tab of removed) {
       queueMicrotask(() => this.removed?.(tab))
@@ -61,8 +61,8 @@ export class GalleryPanel implements PanelBackend {
     const before = this.revision
     this.change(change)
     if (this.revision > before) {
-      const revision = this.revision
-      queueMicrotask(() => this.changed?.(revision))
+      const panel = this.current()
+      queueMicrotask(() => this.changed?.(panel))
     }
   }
 

@@ -30,7 +30,6 @@ import {
   conversationFrameSchema,
   conversationUpdateSchema,
   devicesSchema,
-  modelCatalogSchema,
   providerAnswerSchema,
   transcriptPageSchema,
   wholeBlockSchema,
@@ -110,14 +109,21 @@ function scriptedModel(): Promise<ModelSelection> {
       }],
     }
     const { provider } = await readResponse(await apiRequest('/providers', { method: 'POST', ...jsonBody(entry) }), providerAnswerSchema)
-    const catalog = await readResponse(await apiRequest('/models'), modelCatalogSchema)
-    const model = catalog.providers
+    // The catalog comes with the product state, as the page holds it.
+    const product = useProduct()
+    const startedHere = product.load !== 'ready'
+    product.start()
+    const found = () => product.catalog
       .find((candidate) => candidate.providerId === provider.id)
       ?.models.find((candidate) => candidate.id === MODEL_ID)
-    if (!model) {
-      throw new Error(`The catalog has no ${MODEL_ID}: ${JSON.stringify(catalog)}`)
+    try {
+      await waitFor(() => found() !== undefined, () => `the catalog has no ${MODEL_ID}: ${JSON.stringify(product.catalog)}`, { timeoutMs: SETTLE_MS })
+      return found()!.selection
+    } finally {
+      if (startedHere) {
+        product.stop()
+      }
     }
-    return model.selection
   })()
 }
 

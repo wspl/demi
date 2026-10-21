@@ -187,7 +187,6 @@ const WIDTHS = ['22rem', '27.5rem', '30rem', '17rem']
             <GalleryComposer
               @send="send(specimen)"
               @configure="productWould('Configure Models')"
-              @retry-models="productWould('Load the Models Again')"
             />
           </SessionDock>
         </div>

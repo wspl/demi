@@ -1,8 +1,6 @@
-import { apiRequest, jsonBody, readResponse } from './client'
+import { apiRequest, jsonBody } from './client'
 import {
-  conversationPermissionsSchema,
   decidePermissionSchema,
-  type ConversationPermissions,
   type PermissionDecision,
   type RequestedValues,
 } from './generated/web-api'
@@ -10,11 +8,6 @@ import {
 /** A conversation's permission routes. */
 function permissionsPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/permissions`
-}
-
-export async function readPermissions(conversationId: string): Promise<ConversationPermissions> {
-  const response = await apiRequest(permissionsPath(conversationId))
-  return readResponse(response, conversationPermissionsSchema)
 }
 
 /**

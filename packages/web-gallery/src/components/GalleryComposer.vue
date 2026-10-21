@@ -64,8 +64,8 @@ const props = withDefaults(
     /** What Enter does while the agent works; the gallery's preference, which Settings › General sets, without it. */
     sendWhileRunning?: SendWhileRunning
     disabled?: boolean
-    /** The model catalog: `failed` tells it beside the model chip with Retry, as the product does. */
-    modelLoad?: 'loading' | 'ready' | 'failed'
+    /** Whether the model catalog has come with the product's state. */
+    modelLoad?: 'loading' | 'ready'
     /** The draft's Markdown, an attachment mark where each capsule stands; files without one follow the text. */
     draft?: string
     attachments?: ComposerAttachmentInput[]
@@ -135,7 +135,6 @@ const emit = defineEmits<{
   stop: []
   configure: []
   restore: []
-  retryModels: []
   'update:messageEdit': [state: MessageEditState | null]
   submitEdit: []
   /** The user chose model settings or a workflow, as the product remembers them where the conversation belongs. */
@@ -849,7 +848,6 @@ onBeforeUnmount(() => {
     @submit="submit"
     @configure="emit('configure')"
     @restore="emit('restore')"
-    @retry-models="emit('retryModels')"
     @add-files="addFiles"
     @attach-remote="remotePicker?.open()"
     @arrange-attachments="arrange"

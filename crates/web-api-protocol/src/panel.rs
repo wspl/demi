@@ -17,8 +17,8 @@ pub const PANEL_BYTES_MAX: usize = 64 * 1024;
 /// The most characters of a tab's id.
 pub const PANEL_TAB_ID_MAX: usize = 64;
 
-/// `GET /conversations/:id/panel`: the tabs in order, and how many changes
-/// made them.
+/// A conversation's panel as the database keeps it: the tabs in order, and
+/// how many changes made them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct WorkPanel {
@@ -38,10 +38,10 @@ impl WorkPanel {
     }
 }
 
-/// `GET /conversations/:id/panel`: the panel, and the conversation states that
-/// plugins hold (a manifest state that declares itself held) as of their revision,
-/// which the page takes as it would read them, so a kind's content has them
-/// when its tab appears.
+/// What a conversation's metadata carries of its panel: the tabs, and the
+/// conversation states that plugins hold (a manifest state that declares itself
+/// held) as of their revision, which the page takes as it would read them, so a
+/// kind's content has them when its tab appears.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PanelRead {

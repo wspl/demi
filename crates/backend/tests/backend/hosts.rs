@@ -72,20 +72,9 @@ async fn switch(backend: &TestBackend, session: &Session, target: Value) -> Answ
         .await
 }
 
+/// The conversation's attached hosts, as its metadata lists them.
 async fn hosts(backend: &TestBackend, session: &Session) -> Vec<Value> {
-    let listed = backend
-        .get(
-            &format!("/api/conversations/{CONVERSATION}/hosts"),
-            Some(session),
-        )
-        .await;
-    assert_eq!(
-        listed.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&listed.body)
-    );
-    listed.json::<Value>()["hosts"].as_array().unwrap().clone()
+    summary(backend, session).await["hosts"]["hosts"].as_array().unwrap().clone()
 }
 
 /// The version of what the agent was told of where the conversation
@@ -162,13 +151,11 @@ async fn a_switch_moves_the_work_and_attaches_the_device_it_leaves() {
             &attached[0]["deviceId"],
             &attached[0]["name"],
             &attached[0]["cwd"],
-            &attached[0]["state"]
         ),
         (
             &json!(laptop.id()),
             &json!("laptop"),
             &json!(on_laptop.to_str().unwrap()),
-            &json!("online")
         )
     );
     let left: Value = backend
@@ -321,8 +308,8 @@ async fn a_detach_takes_the_host_from_the_conversation_and_a_device_not_attached
     harness.attach(CONVERSATION, spare.id());
     let listed = hosts(&backend, &master).await;
     assert_eq!(
-        (&listed[0]["name"], &listed[0]["cwd"], &listed[0]["state"]),
-        (&json!("ci"), &Value::Null, &json!("online"))
+        (&listed[0]["name"], &listed[0]["cwd"]),
+        (&json!("ci"), &Value::Null)
     );
     let route = format!("/api/conversations/{CONVERSATION}/hosts");
 
@@ -356,10 +343,10 @@ async fn a_detach_takes_the_host_from_the_conversation_and_a_device_not_attached
     backend.close().await;
 }
 
-/// Waits until the page receives the conversation's metadata at the hosts
-/// revision `revision`.
-async fn until_hosts_revision(page: &mut Socket, revision: u64) {
-    page.metadata_until(|metadata| metadata.hosts_revision == revision).await;
+/// The conversation's attached hosts as the page receives them in its
+/// metadata, once at the hosts revision `revision`.
+async fn until_hosts_revision(page: &mut Socket, revision: u64) -> Vec<demi_web_api_protocol::hosts::AttachedHost> {
+    page.metadata_until(|metadata| metadata.hosts.revision == revision).await.hosts.hosts
 }
 
 // About a second: two real devices install the builtin package, and a turn
@@ -379,7 +366,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
         StatusCode::OK
     );
     harness.attach(CONVERSATION, ci.id());
-    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(1));
+    assert_eq!(summary(&backend, &master).await["hosts"]["revision"], json!(1));
     let route = format!("/api/conversations/{CONVERSATION}/hosts");
 
     // A device attached by name runs every command in its home: a `cd` in
@@ -401,7 +388,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
     );
     assert!(!ran.received[0].contains("/sub"), "{}", ran.received[0]);
     assert_eq!(hosts(&backend, &master).await[0]["cwd"], Value::Null);
-    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(1));
+    assert_eq!(summary(&backend, &master).await["hosts"]["revision"], json!(1));
 
     // The attached host goes by its device's name: renamed in Settings, the
     // conversation's page reads it again under the new one.
@@ -409,12 +396,12 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
         .patch(&format!("/api/devices/{}", ci.id()), &master, json!({ "name": "Build Box" }))
         .await;
     assert_eq!(renamed.status, StatusCode::OK);
-    until_hosts_revision(&mut driven.socket, 2).await;
-    assert_eq!(hosts(&backend, &master).await[0]["name"], json!("Build Box"));
+    let shown = until_hosts_revision(&mut driven.socket, 2).await;
+    assert_eq!(shown[0].name, "Build Box");
 
     let detached = backend.delete(&format!("{route}/{}", ci.id()), &master).await;
     assert_eq!(detached.status, StatusCode::NO_CONTENT);
-    until_hosts_revision(&mut driven.socket, 3).await;
+    assert!(until_hosts_revision(&mut driven.socket, 3).await.is_empty());
     backend.close().await;
 }
 

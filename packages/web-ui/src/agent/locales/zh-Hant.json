@@ -317,7 +317,6 @@
       "max": "最高"
     },
     "loading": "正在載入模型…",
-    "loadFailed": "無法載入模型。",
     "unavailable": "此模型無法使用。請選擇其他模型後再傳送。"
   },
   "workflows": {

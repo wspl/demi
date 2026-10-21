@@ -139,10 +139,6 @@ impl Shard {
     pub fn permission_shard(&self) -> &(dyn PermissionShard + 'static) {
         self
     }
-
-    pub(crate) fn permission_revisions(&self) -> &Revisions {
-        &self.permission_revisions
-    }
 }
 
 /// Delivers at start each decision whose message a restart cut off: each

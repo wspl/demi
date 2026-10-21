@@ -3,7 +3,7 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
-import type { ListedLogin, ProductState } from '../api/generated/web-api'
+import { modelCatalogSchema, type ListedLogin, type ProductState } from '../api/generated/web-api'
 import type { LoginStage } from '@demicodes/protocol'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
@@ -96,8 +96,9 @@ beforeEach(async () => {
       })
     }
     if (path.startsWith('/api/models')) {
+      // The catalog comes on the channel (`announceCatalog`): a read of it is counted and refused.
       catalogReads.push(path)
-      return Response.json({ providers: catalogProviders, smallModel: null })
+      return Response.json({ code: 'not_found', message: 'No such route' }, { status: 404 })
     }
     if (path === '/api/providers' && init?.method === 'POST') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
@@ -168,6 +169,11 @@ beforeEach(async () => {
   channels.last().connect(state)
   await useProduct().loadVendors()
 })
+/** The backend announces the catalog of `catalogProviders` on the channel, as its owner does after a change. */
+function announceCatalog(): void {
+  channels.last().send({ type: 'models', models: modelCatalogSchema.parse({ providers: catalogProviders, smallModel: null }) })
+}
+
 afterEach(() => {
   useProduct().stop()
   disposePinia(pinia)
@@ -243,6 +249,8 @@ test('a model Custom adds is saved at once without a context window, and a reloa
         },
       })),
     }]
+    // The product state a later snapshot brings holds that catalog.
+    state.models = modelCatalogSchema.parse({ providers: catalogProviders, smallModel: null })
     return Response.json({})
   }
   const settings = useProviderSettings()
@@ -330,7 +338,7 @@ test('an incomplete entry is in the setup state, from its availability; a comple
     availability: { type: 'unavailable', reason: 'setup', message: 'Finish setting up this provider in Settings', missing: ['apiKey', 'models'] },
     models: [],
   }]
-  await useProduct().loadModels(true)
+  announceCatalog()
   await waitFor(() => settings.providers.find((entry) => entry.id === 'configured')?.state === 'setup')
   const entry = settings.providers.find((candidate) => candidate.id === 'configured')!
   expect(entry.state).toBe('setup')
@@ -340,7 +348,7 @@ test('an incomplete entry is in the setup state, from its availability; a comple
   ])
 
   catalogProviders = [{ ...(catalogProviders[0] as object), availability: { type: 'available' } }]
-  await useProduct().loadModels(true)
+  announceCatalog()
   await waitFor(() => settings.providers.find((candidate) => candidate.id === 'configured')?.state !== 'setup')
 })
 
@@ -643,50 +651,33 @@ test('a new order of the entries shows at once, is sent whole, and a refusal put
   expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Reorder the Providers', tone: 'danger' })
 })
 
-test('a saved change is not read back: the catalog follows the channel\'s entry, read once', async () => {
+test('a saved change is not read back, and the catalog is not read', async () => {
   const settings = useProviderSettings()
-  await useProduct().loadModels()
-  catalogReads = []
   settings.change(settings.providers.find((entry) => entry.id === 'configured')!, { name: 'Renamed' })
   await idle()
   expect(settings.providers.find((entry) => entry.id === 'configured')?.name).toBe('Renamed')
-  expect(catalogReads).toEqual(['/api/models'])
+  expect(catalogReads).toEqual([])
 })
 
-// A newer media catalog changes each entry's catalog time on the channel:
-// the page reads the catalog again and its Images section shows the new
-// models, with no change of the entry itself. Planted defect: a providers
-// message not followed by a read of the catalog, so the old models stay.
-// Cost: a stubbed backend, a few milliseconds.
-test('a newer media catalog on the channel reads the catalog again, and the Images section shows its models', async () => {
+// A newer media catalog reaches the page as the catalog's owner announces
+// it, and the Images section shows the new models, with no change of the
+// entry itself and no read. Planted defect: the catalog read by a route,
+// which the stub refuses. Cost: a stubbed backend, a few milliseconds.
+test('a newer media catalog on the channel shows its models in the Images section, with no read', async () => {
   const settings = useProviderSettings()
   const entry = () => settings.providers.find((candidate) => candidate.id === 'configured')!
-  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-10-01T00:00:00.000Z' }
   channels.last().send({ type: 'providers', providers: state.providers })
-  await useProduct().loadModels()
-  catalogReads = []
   catalogProviders = [{
     providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [],
     imageModels: [{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30', kinds: [] }], videoModels: [], audioModels: [],
   }]
-  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-10-01T00:00:00.000Z' }
-  channels.last().send({ type: 'providers', providers: state.providers })
+  announceCatalog()
   await waitFor(() => entry().media.image.models?.length === 1)
   expect(entry().media.image.models).toEqual([{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30', kinds: [] }])
-  expect(catalogReads).toEqual(['/api/models'])
-})
-
-test('an API key change, which no view shows, still loads the catalog once the channel brings the providers', async () => {
-  const settings = useProviderSettings()
-  await useProduct().loadModels()
-  catalogReads = []
-  write = async () => Response.json({})
-  settings.change(settings.providers.find((entry) => entry.id === 'configured')!, { apiKey: 'sk-new-test-key' })
-  await idle()
-  await new Promise<void>((resolve) => setImmediate(resolve))
-  expect(catalogReads).toEqual(['/api/models'])
+  expect(catalogReads).toEqual([])
 })
 
 // An install's progress and end are the backend's to announce: the page reads
@@ -1067,7 +1058,7 @@ test('an entry of media alone tests its key with no model, and a compatible audi
     audioModels: [{ id: 'qwen3-tts', name: 'Qwen3 TTS', released: null, kinds: ['speech'] }],
   }]
   channels.last().send({ type: 'providers', providers: state.providers })
-  await useProduct().loadModels()
+  announceCatalog()
   const shown = (id: string) => settings.providers.find((candidate) => candidate.id === id)!
   await waitFor(() => shown('local').models.length === 1)
   expect(shown('local').models[0]!.kinds).toEqual(['speech'])

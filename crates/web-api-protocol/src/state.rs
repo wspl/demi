@@ -15,7 +15,7 @@ use crate::devices::{DeviceDto, InstallCommands, StunUrl};
 use crate::ids::ConversationId;
 use crate::passkeys::{PasskeyDto, PasskeyList};
 use crate::plugins::PluginEntry;
-use crate::providers::{ListedLogin, ProviderState};
+use crate::providers::{ListedLogin, ModelCatalog, ProviderState};
 use crate::sessions::SessionDto;
 use crate::settings::{InstanceMode, Preferences};
 use crate::subagents::SubagentSettings;
@@ -23,7 +23,8 @@ use crate::users::ListedUser;
 use crate::workspaces::WorkspaceDto;
 
 /// The product state: the signed-in user, the instance mode, the user's
-/// preferences, the provider entries the user infers with, the user's
+/// preferences, the provider entries the user infers with and the catalog of
+/// their models, the user's
 /// workspaces in their order, the user's devices, the paired ones and the
 /// Cloud, the backend's public URL, the summaries of the user's
 /// conversations, the active ones first, then the archived, the Cloud's
@@ -39,6 +40,10 @@ pub struct ProductState {
     pub mode: InstanceMode,
     pub preferences: Preferences,
     pub providers: Vec<ProviderState>,
+    /// The models of the entries the user infers with, as the model menu
+    /// lists them, so the model a conversation names is known before it
+    /// opens (`docs/decisions/0029-a-conversation-opens-whole.md`).
+    pub models: ModelCatalog,
     pub workspaces: Vec<WorkspaceDto>,
     pub devices: Vec<DeviceDto>,
     /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`).
@@ -99,8 +104,8 @@ pub struct ProductState {
     /// needs for its code; without it the page offers no email change.
     pub mail: bool,
     /// This run of the backend, an id it chooses when it starts. The
-    /// revisions it counts in memory, such as a summary's
-    /// `permissionsRevision`, compare only within one run: a page holding
+    /// revisions it counts in memory, such as a conversation's list of
+    /// permission requests, compare only within one run: a page holding
     /// one of another run reads again.
     pub run: String,
 }
@@ -171,6 +176,11 @@ pub enum SyncEvent {
     /// The entries the user infers with, each with what its provider says.
     Providers {
         providers: Vec<ProviderState>,
+    },
+    /// The catalog of the entries' models changed: an entry, the
+    /// preferences Automatic reads or a source's list did.
+    Models {
+        models: ModelCatalog,
     },
     Cloud {
         cloud: CloudStatus,

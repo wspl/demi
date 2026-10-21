@@ -1,23 +1,16 @@
-//! `GET /api/models` (`crates/backend-providers/src/llm/catalog.rs`): the
-//! catalog of every entry the caller infers with.
-//!
-//! The answer holds:
-//!
-//! - each model with the selection the backend builds from it;
-//! - each entry with its health;
-//! - what the small model's Automatic resolves to.
-//!
-//! It wakes no Cloud and runs no model. `refresh=true` waits for a shared
-//! forced refresh.
+//! The model routes (`crates/backend-providers/src/llm/catalog.rs`): the
+//! search of models.dev, and the user's Refresh of the catalog, which the
+//! product state carries (`docs/decisions/0029-a-conversation-opens-whole.md`).
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
-use demi_backend_providers::llm::small_model::automatic_small_model;
-use demi_shared_types::MediaKind;
-use demi_web_api_protocol::providers::{ModelCatalog, ModelSearchResults};
-use demi_web_api_protocol::query::{ModelSearch, Refresh};
+use axum::http::StatusCode;
+use demi_backend_page_sync::Part;
+use demi_backend_user_shard::provider_settings::CatalogError;
+use demi_web_api_protocol::providers::ModelSearchResults;
+use demi_web_api_protocol::query::ModelSearch;
 
 use super::error::ApiError;
 use super::gate::AuthUser;
@@ -39,26 +32,18 @@ pub(super) async fn search(
     Ok(Json(ModelSearchResults { results }))
 }
 
-pub(super) async fn models(
+/// `POST /api/models/refresh`: refreshes the source of every entry the
+/// caller infers with, as the user's Refresh asks, and announces the catalog
+/// on the caller's channels once it answered, whether it changed or not, so
+/// a page shows what the refresh found.
+pub(super) async fn refresh(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
-    QueryParams(Refresh { refresh }): QueryParams<Refresh>,
-) -> Result<Json<ModelCatalog>, ApiError> {
-    let owner = services.vault.owner_for(&user.id).await?;
-    let entries = services.vault.entries(owner).await?;
-    let preferences = services.control.preferences(user.id.clone()).await?;
-    let mut providers = services.assembly.model_catalog(&entries, refresh.0).await;
-    let mut images = services.entry_media_models(&user.id, MediaKind::Image).await?;
-    let mut videos = services.entry_media_models(&user.id, MediaKind::Video).await?;
-    let mut audio = services.entry_media_models(&user.id, MediaKind::Audio).await?;
-    for provider in &mut providers {
-        provider.image_models = images.remove(provider.provider_id.as_str()).unwrap_or_default();
-        provider.video_models = videos.remove(provider.provider_id.as_str()).unwrap_or_default();
-        provider.audio_models = audio.remove(provider.provider_id.as_str()).unwrap_or_default();
-    }
-    let small_model = automatic_small_model(&providers, &preferences);
-    Ok(Json(ModelCatalog {
-        providers,
-        small_model,
-    }))
+) -> Result<StatusCode, ApiError> {
+    services.model_catalog(&user.id, true).await.map_err(|error| match error {
+        CatalogError::Storage(error) => ApiError::from(error),
+        CatalogError::Assembly(error) => ApiError::from(error),
+    })?;
+    services.sync.mark(&user.id, Part::Models);
+    Ok(StatusCode::NO_CONTENT)
 }

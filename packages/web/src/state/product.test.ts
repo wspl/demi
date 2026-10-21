@@ -13,7 +13,8 @@ const FIRST = '00000000-0000-4000-8000-000000000001'
 const SECOND = '00000000-0000-4000-8000-000000000002'
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
-let modelResponse: () => Promise<Response>
+/** The requests to the models' routes, as `METHOD path`. */
+let modelRequests: string[]
 let vendorResponse: () => Promise<Response>
 let vendorReads: number
 let sessionReads: number
@@ -22,14 +23,15 @@ beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   channels = playChannels()
-  modelResponse = async () => Response.json({ providers: [], smallModel: null })
+  modelRequests = []
   vendorResponse = async () => Response.json({ subscriptions: [], vendors: [] })
   vendorReads = 0
   sessionReads = 0
-  globalThis.fetch = (async (input) => {
+  globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
-      return modelResponse()
+      modelRequests.push(`${init?.method ?? 'GET'} ${path}`)
+      return new Response(null, { status: 204 })
     }
     if (path === '/api/providers/catalog') {
       vendorReads++
@@ -670,28 +672,6 @@ test('a vendor catalog that failed to load as the page started loads on Retry', 
   expect(product.vendorLoad).toBe('ready')
 })
 
-test('a failed model list read can retry, and a held list survives a failed refresh', async () => {
-  modelResponse = async () => {
-    throw new Error('offline')
-  }
-  const product = started()
-  expect(product.load).toBe('ready')
-  await product.loadModels().catch(() => {})
-  expect(product.catalogLoad).toBe('failed')
-  const deferred = Promise.withResolvers<Response>()
-  modelResponse = () => deferred.promise
-  const retry = product.loadModels(true)
-  expect(product.catalogLoad).toBe('loading')
-  deferred.resolve(Response.json({ providers: [], smallModel: null }))
-  await retry
-  expect(product.catalogLoad).toBe('ready')
-  modelResponse = async () => {
-    throw new Error('offline')
-  }
-  await expect(product.loadModels(true)).rejects.toThrow('offline')
-  expect(product.catalogLoad).toBe('ready')
-})
-
 test('a stopped page drops its late vendor response', async () => {
   const deferred = Promise.withResolvers<Response>()
   vendorResponse = () => deferred.promise
@@ -705,164 +685,33 @@ test('a stopped page drops its late vendor response', async () => {
   expect(product.vendors?.subscriptions).toEqual([])
 })
 
-// An install's state rides on the entry in the providers part, but it is no
-// part of what the catalog answers for: the catalog shown stays, and is not
-// read again, as an install starts and ends. Planted defect: the install in
-// the catalog's key, which empties the catalog and reads it again. Cost: a
-// played channel and a stubbed fetch, a few milliseconds.
-test('a Claude Code install starting and ending leaves the catalog shown and reads it no more', async () => {
-  let calls = 0
-  const listed = [{ providerId: 'claude', displayName: 'Claude', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
-    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: '@anthropic-ai/claude-code',
-    availability: { type: 'available' }, models: [], imageModels: [], videoModels: [], audioModels: [] }]
-  modelResponse = async () => {
-    calls++
-    return Response.json({ providers: listed, smallModel: null })
-  }
-  const entry = (cliInstall: ProductState['providers'][number]['cliInstall']): ProductState['providers'][number] => ({
-    id: 'claude', kind: 'subscription', providerType: 'claude-code', label: 'Claude', wireApi: null, vendorId: null,
-    compatible: false, endpoint: null, hasApiKey: false, rotation: 'manual',
-    media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
-    models: null, createdAt: '2026-09-10T00:00:00.000Z',
-    details: { type: 'failed', message: 'Not read in this test' }, cliInstall,
-  })
-  const product = started(productState({ providers: [entry(null)] }))
-  await waitFor(() => product.catalogLoad === 'ready')
-  expect(calls).toBe(1)
-  for (const install of [{ state: 'installing' as const }, { state: 'installed' as const, path: '/home/alex/.local/bin/claude' }]) {
-    channels.last().send({ type: 'providers', providers: [entry(install)] })
-    expect(product.catalogLoad).toBe('ready')
-    expect(product.catalog.map((provider) => provider.providerId)).toEqual(['claude'])
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
-  expect(calls).toBe(1)
-})
-
-test('conversations and the channel\'s messages reuse one catalog until it is a minute old; concurrent reads share one request', async () => {
-  const clock = spyOn(Date, 'now').mockReturnValue(1000)
-  let calls = 0
-  modelResponse = async () => {
-    calls++
-    return Response.json({ providers: [], smallModel: null })
-  }
-  try {
-    const product = started()
-    await product.loadModels()
-    expect(calls).toBe(1)
-    for (const id of ['first', 'second', 'new-conversation']) {
-      product.activeConversationId = id
-      channels.last().send({ type: 'providers', providers: [] })
-      await product.loadModels()
-    }
-    expect(calls).toBe(1)
-    clock.mockReturnValue(61_000)
-    const pending = Promise.withResolvers<Response>()
-    modelResponse = () => {
-      calls++
-      return pending.promise
-    }
-    const first = product.loadModels()
-    const second = product.loadModels()
-    expect(calls).toBe(2)
-    expect(product.catalogLoad).toBe('ready')
-    pending.resolve(Response.json({ providers: [], smallModel: null }))
-    await Promise.all([first, second])
-    await product.loadModels()
-    expect(calls).toBe(2)
-  } finally {
-    clock.mockRestore()
-  }
-})
-
-test('the first snapshot does not wait for the catalog; a sign-out leaves a late catalog to nobody', async () => {
-  const pending = Promise.withResolvers<Response>()
-  modelResponse = () => pending.promise
-  const product = started()
-  expect(product.load).toBe('ready')
-  expect(product.catalogLoad).toBe('loading')
-  const old = product.loadModels().catch(error => error)
-  product.stop()
-  modelResponse = async () => Response.json({ providers: [], smallModel: null })
-  started()
-  await product.loadModels()
-  pending.resolve(Response.json({ providers: [], smallModel: null }))
-  expect(await old).toBeInstanceOf(Error)
-  expect(product.catalogLoad).toBe('ready')
-})
-
-test('a change of an entry loads the catalog again with a refresh, dropping a read under way whose configuration looks the same', async () => {
-  const pending = Promise.withResolvers<Response>()
-  const paths: string[] = []
-  modelResponse = () => pending.promise
-  const fetch = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    paths.push(String(input))
-    return fetch(input, init)
-  }) as typeof fetch
-  const product = started()
-  const old = product.loadModels().catch(error => error)
-  modelResponse = async () => Response.json({ providers: [], smallModel: null })
-  await product.reloadModels()
-  expect(paths.filter((path) => path.startsWith('/api/models'))).toEqual(['/api/models', '/api/models?refresh=true'])
-  pending.resolve(Response.json({ providers: [], smallModel: null }))
-  expect(await old).toBeInstanceOf(Error)
-  expect(product.catalogLoad).toBe('ready')
-})
-
-/** What Automatic resolves to in a catalog answer: the model `name`, or none. */
-function smallModelAnswer(name: string | null): Response {
-  const smallModel = name && {
+/** What Automatic resolves to: the model `name`, or none. */
+function smallModel(name: string | null) {
+  return name === null ? null : {
     providerId: 'p1',
     model: { id: name, name, contextWindow: 200_000, outputLimit: null, thinking: [], acceptedExtensions: null },
     thinking: null,
     serviceTierId: null,
   }
-  return Response.json({ providers: [], smallModel })
 }
 
-/** Catalog reads that each wait for the test to answer them, in order. */
-function heldCatalogReads() {
-  const reads: PromiseWithResolvers<Response>[] = []
-  modelResponse = () => {
-    const read = Promise.withResolvers<Response>()
-    reads.push(read)
-    return read.promise
-  }
-  return reads
-}
-
-const sameProvider = (on: boolean) =>
-  ({ type: 'preferences', preferences: { appearance: {}, shortcuts: {}, smallModelSameProvider: on } }) as const
-
-test('Only the Conversation’s Provider turned on and off again before the catalog answers shows what Automatic resolves to for off', async () => {
-  const reads = heldCatalogReads()
-  const product = started()
-  await waitFor(() => reads.length === 1)
-  reads[0]!.resolve(smallModelAnswer('Claude Haiku'))
-  await waitFor(() => product.automaticSmallModel?.model.name === 'Claude Haiku')
-
-  channels.last().send(sameProvider(true))
-  await waitFor(() => reads.length === 2)
-  channels.last().send(sameProvider(false))
-  // Asked while the switch was on, so no longer the answer.
-  reads[1]!.resolve(smallModelAnswer(null))
-  await waitFor(() => reads.length === 3)
+// Planted defect: the catalog read by its own route after the snapshot,
+// which leaves the model's name unknown while a conversation opens.
+test('the catalog comes with the first snapshot, and a newer one on the channel shows with no read', () => {
+  const product = started(productState({ models: { providers: [], smallModel: smallModel('Claude Haiku') } }))
+  expect(product.catalogLoad).toBe('ready')
   expect(product.automaticSmallModel?.model.name).toBe('Claude Haiku')
-  reads[2]!.resolve(smallModelAnswer('Claude Haiku'))
-  await waitFor(() => product.catalogLoad === 'ready' && reads.length === 3)
-  expect(product.automaticSmallModel?.model.name).toBe('Claude Haiku')
+
+  // Only the Conversation's Provider turned on: the catalog's owner announces what Automatic resolves to now.
+  channels.last().send({ type: 'models', models: { providers: [], smallModel: null } })
+  expect(product.automaticSmallModel).toBeNull()
+  expect(modelRequests).toEqual([])
 })
 
-test('Only the Conversation’s Provider turned on during the first catalog read shows Automatic alone', async () => {
-  const reads = heldCatalogReads()
+test('a refresh asks the backend to read the models again, and the catalog comes on the channel', async () => {
   const product = started()
-  await waitFor(() => reads.length === 1)
-  channels.last().send(sameProvider(true))
-  // Asked while the switch was off.
-  reads[0]!.resolve(smallModelAnswer('Claude Haiku'))
-  await waitFor(() => reads.length === 2)
-  expect(product.automaticSmallModel).toBeNull()
-  reads[1]!.resolve(smallModelAnswer(null))
-  await waitFor(() => product.catalogLoad === 'ready')
-  expect(product.automaticSmallModel).toBeNull()
+  await product.reloadModels()
+  expect(modelRequests).toEqual(['POST /api/models/refresh'])
+  channels.last().send({ type: 'models', models: { providers: [], smallModel: smallModel('Claude Haiku') } })
+  expect(product.automaticSmallModel?.model.name).toBe('Claude Haiku')
 })

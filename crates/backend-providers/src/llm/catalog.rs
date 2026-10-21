@@ -104,6 +104,18 @@ fn unfetched(models: Vec<ProviderModel>, warnings: Vec<String>) -> ProviderModel
     }
 }
 
+/// How a read of an entry's catalog treats its source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reading {
+    /// Waits for the source when the entry has no record, or for a forced
+    /// refresh when `refresh` is set.
+    Waits { refresh: bool },
+    /// Answers what is known now and waits for no source: an entry with no
+    /// record shows no models until its source is read, whose end the
+    /// cache announces.
+    Known,
+}
+
 impl ProviderAssembly {
     /// The entry's catalog, from the first source it has. A failed read of
     /// the source is the catalog's warning: the last good copy stays, and
@@ -114,6 +126,15 @@ impl ProviderAssembly {
         entry: &ProviderEntry,
         provider: &Result<Arc<dyn Provider>, AssemblyError>,
         refresh: bool,
+    ) -> ProviderModelList {
+        self.read_entry_catalog(entry, provider, Reading::Waits { refresh }).await
+    }
+
+    async fn read_entry_catalog(
+        &self,
+        entry: &ProviderEntry,
+        provider: &Result<Arc<dyn Provider>, AssemblyError>,
+        reading: Reading,
     ) -> ProviderModelList {
         // An entry of media alone has no text models to list.
         if !self.makes_text(entry) {
@@ -159,12 +180,18 @@ impl ProviderAssembly {
             (None, Err(AssemblyError::Incomplete)) => return unfetched(Vec::new(), Vec::new()),
             (None, Err(error)) => return unfetched(Vec::new(), vec![error.to_string()]),
         };
-        match self
-            .catalogs()
-            .read(&entry.id, catalog_key(entry), revision, fetch, refresh)
-            .await
-        {
-            Ok(catalog) => catalog,
+        let key = catalog_key(entry);
+        let answer = match reading {
+            Reading::Waits { refresh } => self
+                .catalogs()
+                .read(&entry.id, key, revision, fetch, refresh)
+                .await
+                .map(Some),
+            Reading::Known => self.catalogs().known(&entry.id, key, revision, fetch).await,
+        };
+        match answer {
+            Ok(Some(catalog)) => catalog,
+            Ok(None) => unfetched(Vec::new(), Vec::new()),
             Err(failure) => unfetched(Vec::new(), vec![failure]),
         }
     }
@@ -204,17 +231,23 @@ impl ProviderAssembly {
         entries: &[ProviderEntry],
         refresh: bool,
     ) -> Vec<CatalogProvider> {
-        join_all(
-            entries
-                .iter()
-                .map(|entry| self.catalog_provider(entry, refresh)),
-        )
-        .await
+        self.catalog_providers(entries, Reading::Waits { refresh }).await
     }
 
-    async fn catalog_provider(&self, entry: &ProviderEntry, refresh: bool) -> CatalogProvider {
+    /// [`model_catalog`](Self::model_catalog) as a page shows it, which waits
+    /// for no source: an entry whose source was never read lists no models
+    /// until the cache announces its read.
+    pub async fn known_model_catalog(&self, entries: &[ProviderEntry]) -> Vec<CatalogProvider> {
+        self.catalog_providers(entries, Reading::Known).await
+    }
+
+    async fn catalog_providers(&self, entries: &[ProviderEntry], reading: Reading) -> Vec<CatalogProvider> {
+        join_all(entries.iter().map(|entry| self.catalog_provider(entry, reading))).await
+    }
+
+    async fn catalog_provider(&self, entry: &ProviderEntry, reading: Reading) -> CatalogProvider {
         let provider = self.provider_for(entry).await;
-        let catalog = self.entry_catalog(entry, &provider, refresh).await;
+        let catalog = self.read_entry_catalog(entry, &provider, reading).await;
         let (auth, runtime) = self.health(entry, &provider).await;
         let models = catalog
             .models

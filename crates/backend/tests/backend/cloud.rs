@@ -37,7 +37,6 @@ use demi_web_api_protocol::cloud::{CloudResetAnswer, CloudState, CloudStatus, Re
 use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{Directory, FileText};
-use demi_web_api_protocol::hosts::AttachedHosts;
 use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Notify;
@@ -473,10 +472,7 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
 
     // Leaving the Cloud keeps it attached where the conversation worked.
     crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
-    let hosts: AttachedHosts = backend
-        .get(&format!("/api/conversations/{FIRST}/hosts"), Some(&master))
-        .await
-        .json();
+    let hosts = crate::conversations::metadata(&backend, &master, FIRST).await.hosts;
     let cloud = hosts
         .hosts
         .iter()
@@ -797,10 +793,7 @@ async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_on
     // The second conversation leaves the Cloud for alpha, which keeps the
     // Cloud attached.
     crate::work::switch(&backend, &master, SECOND, &alpha, alpha.runner.home_dir()).await;
-    let hosts: AttachedHosts = backend
-        .get(&format!("/api/conversations/{SECOND}/hosts"), Some(&master))
-        .await
-        .json();
+    let hosts = crate::conversations::metadata(&backend, &master, SECOND).await.hosts;
     assert_eq!(
         hosts
             .hosts

@@ -823,6 +823,7 @@ export class ConversationClient {
           version: frame.version,
           versions: frame.versions ?? [],
           failures: frame.failures ?? {},
+          attachments: frame.attachments ?? [],
           asked: subscription.asked,
         })
         if (root) {
@@ -1043,6 +1044,7 @@ export class ConversationClient {
       patches: frame.patches,
       version: { ...subscription.state.version },
       failures: frame.failures ?? {},
+      attachments: frame.attachments ?? [],
     })
     if (root) {
       this.followSends()

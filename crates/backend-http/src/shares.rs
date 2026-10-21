@@ -33,7 +33,6 @@ use demi_backend_database::conversation_attachments::AttachmentNumber;
 
 use super::AppState;
 use super::blobs::blob_answer;
-use super::conversations::attachment_answer;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
@@ -172,7 +171,7 @@ pub(super) async fn attachment(
         .await?
         .map_err(ApiError::conversation_unreadable)?
         .ok_or_else(not_found)?;
-    Ok(Json(attachment_answer(row)))
+    Ok(Json(row.description()))
 }
 
 /// `GET /shares/:token/transcript`: a page of what the share holds, as a
