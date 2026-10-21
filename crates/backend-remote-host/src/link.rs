@@ -9,9 +9,8 @@
 //! a burst of replies never waits for the work they wake.
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     collections::{HashMap, HashSet, VecDeque},
-    fmt::Display,
     rc::{Rc, Weak},
     time::Duration,
 };
@@ -30,7 +29,8 @@ use demi_runner_protocol::wire::{
 };
 use demi_shared_gates::GateLease;
 use demi_shared_types::{BlobRef, StreamKind};
-use futures_util::{Sink, SinkExt, Stream, StreamExt, future::LocalBoxFuture};
+use demi_shared_link::{Health, Outgoing, SocketEnd};
+use futures_util::{Stream, StreamExt, future::LocalBoxFuture};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -42,12 +42,6 @@ use crate::{
     pipes::Pipes,
     relay::{CallEntry, Stop},
 };
-
-/// How often the backend asks a runner whether it is there.
-pub const PING_INTERVAL: Duration = Duration::from_secs(30);
-
-/// The frames the backend queues for a runner before a sender waits.
-pub const OUTBOUND_FRAMES: usize = 64;
 
 /// The artifact requests a connection answers at a time.
 const ARTIFACT_REQUESTS: usize = 32;
@@ -211,8 +205,11 @@ pub struct LinkOptions {
     pub shell: Option<String>,
     pub pipes: Pipes,
     pub policy: Rc<dyn LinkPolicy>,
-    /// How often to ping; none turns liveness off.
-    pub ping: Option<Duration>,
+    /// What the connection sends on, which the Hosts of its device share.
+    pub outgoing: Outgoing,
+    /// The connection's liveness: a ping on demand, and the pause while a
+    /// checkpoint copies the machine.
+    pub health: Health,
     /// The device's jobs, which outlive the connection.
     pub jobs: DeviceJobs,
     /// What the runner's hello says of its jobs, which the connection takes
@@ -250,15 +247,6 @@ impl LinkEnd {
     }
 }
 
-/// Why a runner's socket carries no more frames, as the driver reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SocketEnd {
-    /// The transport failed, or the runner broke the WebSocket protocol.
-    Broken(String),
-    /// The runner closed it over a message of the backend's that it cannot
-    /// decode, and its close frame says which and why.
-    Refused(String),
-}
 
 /// One runner connection, as the Hosts on its device reach it. Cloning it is
 /// cheap; two handles are equal when they are the same connection.
@@ -295,7 +283,8 @@ pub(crate) struct Inner {
     shell: Option<String>,
     /// The device's jobs, which outlive the connection.
     device_jobs: DeviceJobs,
-    outbound: mpsc::Sender<Vec<u8>>,
+    outbound: Outgoing,
+    health: Health,
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     state: RefCell<State>,
@@ -313,9 +302,6 @@ pub(crate) struct Inner {
     end: RefCell<Option<String>>,
     /// Why the backend ends it; the driver returns with this.
     disconnect: RefCell<Option<String>>,
-    liveness: Cell<Liveness>,
-    /// Changes with each pong, which a probe of the connection waits for.
-    pongs: watch::Sender<()>,
     /// What the runner last reported its artifact cache holds; none until
     /// it reports.
     installed: watch::Sender<Option<Vec<HostArtifact>>>,
@@ -330,10 +316,12 @@ struct State {
     calls: HashMap<String, Rc<CallEntry>>,
     artifact_requests: HashSet<String>,
     numbers_requests: HashSet<String>,
-    /// The manifest this connection last carried, which later jobs share.
-    manifest: Option<String>,
-    /// The runner's own count of its jobs, from its last pong.
-    pong_jobs: u64,
+    /// The manifests this connection carried, by hash, each with the
+    /// runner's answer once it gave one: the jobs that name a manifest start
+    /// after it.
+    manifests: HashMap<String, watch::Sender<Option<Result<(), String>>>>,
+    /// The runner's own count of its jobs, from its last report.
+    job_count: u64,
     /// The subscriptions the connection's pages hold.
     subscriptions: LinkSubscriptions,
     /// The direct streams open on the device, by the id the runner gave
@@ -362,16 +350,6 @@ enum Admitted {
     Waiting,
     Yes(Grant),
     No,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-enum Liveness {
-    #[default]
-    Idle,
-    /// A ping is unanswered.
-    Waiting,
-    /// A checkpoint copies the machine: silence is no death.
-    Paused,
 }
 
 /// The id a prefetch of `release` waits for its answer under, apart from
@@ -693,7 +671,6 @@ impl Link {
     /// jobs its runner's hello lists go on over it, are stopped when the
     /// backend has no command for them, or are lost (`crates/runner/src/connection/kept.rs`).
     pub fn new(options: LinkOptions) -> (Link, LinkDriver) {
-        let (outbound, frames) = mpsc::channel(OUTBOUND_FRAMES);
         let (package_events, mut events) = mpsc::channel(PACKAGE_EVENTS);
         let link = Link(Rc::new(Inner {
             device: options.device,
@@ -702,7 +679,8 @@ impl Link {
             kernel: options.kernel,
             shell: options.shell,
             device_jobs: options.jobs.clone(),
-            outbound,
+            outbound: options.outgoing,
+            health: options.health,
             pipes: options.pipes,
             policy: options.policy,
             state: RefCell::default(),
@@ -712,9 +690,7 @@ impl Link {
             closed: CancellationToken::new(),
             end: RefCell::new(None),
             disconnect: RefCell::new(None),
-            liveness: Cell::new(Liveness::Idle),
             installed: watch::Sender::new(None),
-            pongs: watch::Sender::new(()),
         }));
         let adoption = options.jobs.adopt(&link, options.hello);
         for job in adoption.stop {
@@ -751,8 +727,6 @@ impl Link {
         });
         let driver = LinkDriver {
             link: link.clone(),
-            frames,
-            ping: options.ping,
             tap: None,
         };
         (link, driver)
@@ -854,33 +828,21 @@ impl Link {
 
     /// Stops liveness while a checkpoint copies the machine.
     pub fn pause_liveness(&self) {
-        self.0.liveness.set(Liveness::Paused);
+        self.0.health.pause();
     }
 
     /// Starts liveness again, with no ping outstanding.
     pub fn resume_liveness(&self) {
-        self.0.liveness.set(Liveness::Idle);
+        self.0.health.resume();
     }
 
     /// Whether the runner answers a ping within `within`, as a new hello for
-    /// the device asks of the connection that holds it (`crates/runner-protocol/src/wire/mod.rs`): any pong that arrives meanwhile is an
-    /// answer. A connection that is closing does not answer; one whose
-    /// liveness is paused does, since its silence is no death.
+    /// the device asks of the connection that holds it (`crates/runner-protocol/src/wire/mod.rs`). A connection that is closing does not
+    /// answer; one whose liveness is paused does, since its silence is no
+    /// death.
     pub async fn answers(&self, within: Duration) -> bool {
-        if self.0.liveness.get() == Liveness::Paused {
-            return true;
-        }
-        // Subscribing marks the pongs so far as seen.
-        let mut pongs = self.0.pongs.subscribe();
-        let asked = async {
-            if self.send(&Inbound::Ping {}).await.is_err() {
-                return false;
-            }
-            // The connection holds the sender, so the watch never closes.
-            pongs.changed().await.is_ok()
-        };
         tokio::select! {
-            answered = tokio::time::timeout(within, asked) => answered.unwrap_or(false),
+            answered = self.0.health.answers(within) => answered,
             () = self.ended() => false,
         }
     }
@@ -896,7 +858,7 @@ impl Link {
                 .values()
                 .filter(|spawn| !spawn.retained)
                 .count();
-        state.pong_jobs.max(dispatched as u64)
+        state.job_count.max(dispatched as u64)
     }
 
     /// Asks a managed guest to flush its writable filesystems.
@@ -1143,40 +1105,115 @@ impl Link {
         self.0.instance
     }
 
-    /// Sends a job's `start`, after the manifest of its `commands` when the
-    /// connection did not carry that one last.
+    /// Sends a job's `start`, after the runner reported the manifest of its
+    /// `commands` installed.
     ///
-    /// The runner keeps every manifest the connection carried and the start
-    /// names the one it pins, so jobs starting at once need not take turns. A
-    /// manifest counts as carried only once it is in the connection's queue:
-    ///
-    /// - A job that finds it carried queues its start behind it.
-    /// - A job that starts while another's manifest still waits for room sends
-    ///   it again, which the runner takes as the same manifest.
+    /// The manifest and the start travel on streams the link does not order,
+    /// so the start waits for the runner's answer (`manifest_installed`), and
+    /// the runner never sees a start before the manifest it names. The first
+    /// job of a manifest sends it; the jobs that name it meanwhile wait for
+    /// the same answer, and the later ones find it answered.
     pub(crate) async fn send_job_start(
         &self,
         commands: Option<&CommandSelection>,
         start: &Inbound,
     ) -> Result<(), HostError> {
-        let sent = async {
-            if let Some(commands) = commands
-                && self.sent_manifest().as_deref() != Some(commands.hash())
-            {
+        if let Some(commands) = commands {
+            self.manifest_installed(commands).await?;
+        }
+        self.send(start).await
+    }
+
+    /// Resolves once the runner has the manifest of `commands` installed,
+    /// sending it when no job of this connection has. A job that gives up
+    /// before its manifest is queued leaves it unsent, and a job that waits
+    /// for it sends it instead.
+    async fn manifest_installed(&self, commands: &CommandSelection) -> Result<(), HostError> {
+        let hash = commands.hash();
+        loop {
+            let (mut answered, sends) = {
+                let mut state = self.0.state.borrow_mut();
+                match state.manifests.get(hash) {
+                    Some(entry) => (entry.subscribe(), false),
+                    None => {
+                        let (entry, answered) = watch::channel(None);
+                        state.manifests.insert(hash.to_owned(), entry);
+                        (answered, true)
+                    }
+                }
+            };
+            if sends {
+                let mut carrying = Carrying {
+                    link: self,
+                    hash,
+                    mine: answered.clone(),
+                    carried: false,
+                };
+                // A manifest that cannot go, or whose send is given up,
+                // leaves the selection unknown: the next job sends it.
                 self.send(&Inbound::Manifest {
+                    hash: hash.to_owned(),
                     manifest: commands.wire().clone(),
                 })
                 .await?;
-                self.set_sent_manifest(Some(commands.hash().to_owned()));
+                carrying.carried = true;
             }
-            self.send(start).await
-        };
-        let sent = sent.await;
-        if sent.is_err() {
-            // What the runner received is uncertain: the next job sends its
-            // manifest again.
-            self.set_sent_manifest(None);
+            let own = answered.clone();
+            let answer = tokio::select! {
+                answer = answered.wait_for(Option::is_some) => answer
+                    .ok()
+                    .and_then(|answer| answer.clone()),
+                () = self.ended() => return Err(self.offline()),
+                () = tokio::time::sleep(MANIFEST_ANSWER) => {
+                    // A runner that does not answer is not told again: the
+                    // next job sends the manifest anew.
+                    self.forget_manifest(hash, &own);
+                    return Err(HostError::failed(
+                        None,
+                        "the runner did not answer for the job's commands",
+                    ));
+                }
+            };
+            match answer {
+                Some(Ok(())) => return Ok(()),
+                Some(Err(reason)) => {
+                    return Err(HostError::failed(
+                        None,
+                        format!("the runner did not install the job's commands: {reason}"),
+                    ));
+                }
+                // The job that was to send the manifest gave up.
+                None if self.is_closed() => return Err(self.offline()),
+                None => {}
+            }
         }
-        sent
+    }
+
+    /// Forgets the manifest `hash` if its entry is the one `mine` waits on:
+    /// a job whose wait ended must not forget the entry a later job made.
+    fn forget_manifest(&self, hash: &str, mine: &watch::Receiver<Option<Result<(), String>>>) {
+        let mut state = self.0.state.borrow_mut();
+        if state
+            .manifests
+            .get(hash)
+            .is_some_and(|entry| mine.same_channel(&entry.subscribe()))
+        {
+            state.manifests.remove(hash);
+        }
+    }
+
+    /// The runner's answer to a manifest it was sent. One that failed is
+    /// forgotten, so the next job sends it again.
+    fn manifest_answered(&self, hash: &str, error: Option<String>) {
+        let mut state = self.0.state.borrow_mut();
+        let Some(entry) = state.manifests.get(hash) else {
+            return;
+        };
+        let failed = error.is_some();
+        entry.send_replace(Some(error.map_or(Ok(()), Err)));
+        if failed {
+            state.manifests.remove(hash);
+        }
     }
 
     /// The device's jobs, which outlive the connection.
@@ -1233,10 +1270,10 @@ impl Link {
     /// runner cannot decode.
     #[cfg(feature = "testing")]
     pub async fn send_raw(&self, frame: Vec<u8>) -> Result<(), HostError> {
-        self.send_frame(frame).await
+        self.send_frame(wire::Frame::raw(frame)).await
     }
 
-    async fn send_frame(&self, frame: Vec<u8>) -> Result<(), HostError> {
+    async fn send_frame(&self, frame: wire::Frame) -> Result<(), HostError> {
         tokio::select! {
             biased;
             _ = self.0.closed.cancelled() => Err(self.offline()),
@@ -1287,15 +1324,6 @@ impl Link {
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut StateView<'_>) -> T) -> T {
         let mut state = self.0.state.borrow_mut();
         f(&mut StateView(&mut state))
-    }
-
-    /// The manifest hash this connection last carried.
-    pub(crate) fn sent_manifest(&self) -> Option<String> {
-        self.0.state.borrow().manifest.clone()
-    }
-
-    pub(crate) fn set_sent_manifest(&self, hash: Option<String>) {
-        self.0.state.borrow_mut().manifest = hash;
     }
 
     /// Routes one message from the runner.
@@ -1362,12 +1390,9 @@ impl Link {
             Outbound::Installed { artifacts } => {
                 self.0.installed.send_replace(Some(artifacts));
             }
-            Outbound::Pong { jobs } => {
-                self.0.state.borrow_mut().pong_jobs = jobs;
-                if self.0.liveness.get() == Liveness::Waiting {
-                    self.0.liveness.set(Liveness::Idle);
-                }
-                self.0.pongs.send_replace(());
+            Outbound::ManifestInstalled { hash, error } => self.manifest_answered(&hash, error),
+            Outbound::JobCount { jobs } => {
+                self.0.state.borrow_mut().job_count = jobs;
             }
             Outbound::Revoke {} => self.revoke(),
             Outbound::DirectAnswer { id, sdp } => {
@@ -1486,7 +1511,10 @@ impl Link {
                 signal,
                 spawn_error,
             } => {
-                let spawn = self.0.state.borrow_mut().spawns.remove(&spawn_id);
+                let spawn = {
+                    let mut state = self.0.state.borrow_mut();
+                    state.spawns.remove(&spawn_id)
+                };
                 if let Some(spawn) = spawn {
                     spawn
                         .shared
@@ -1532,24 +1560,6 @@ impl Link {
                 path_changes,
                 files_truncated,
             } => {
-                // A start that failed before its script ran may have named a
-                // manifest the runner does not hold: the next job sends it
-                // again. Any failed start counts, at the cost of one
-                // manifest sent again.
-                if spawn_error.is_some() {
-                    let pinned = self
-                        .0
-                        .device_jobs
-                        .with(&job_id, |job| {
-                            job.commands
-                                .as_ref()
-                                .map(|commands| commands.hash().to_owned())
-                        })
-                        .flatten();
-                    if pinned.is_some() && self.sent_manifest() == pinned {
-                        self.set_sent_manifest(None);
-                    }
-                }
                 let calls: Vec<_> = self
                     .0
                     .state
@@ -2128,11 +2138,9 @@ impl Drop for Registration {
     }
 }
 
-/// The connection's driver: serves the socket its owner hands over.
+/// The connection's driver: serves the messages its owner receives.
 pub struct LinkDriver {
     link: Link,
-    frames: mpsc::Receiver<Vec<u8>>,
-    ping: Option<Duration>,
     tap: Option<mpsc::Sender<Outbound>>,
 }
 
@@ -2144,23 +2152,15 @@ impl LinkDriver {
         self
     }
 
-    /// Serves the connection: routes every frame from `incoming`, writes the
-    /// frames the Hosts queue to `outgoing`, and pings, until either side
-    /// ends it. Everything in flight then ends with the reason, and the
-    /// backend's work for the connection gets [`END_GRACE`] to finish
+    /// Serves the connection: routes every message from `incoming` until
+    /// either side ends it. Everything in flight then ends with the reason,
+    /// and the backend's work for the connection gets [`END_GRACE`] to finish
     /// before it is aborted.
-    pub async fn serve<I, O>(self, incoming: I, outgoing: O) -> LinkEnd
+    pub async fn serve<I>(self, incoming: I) -> LinkEnd
     where
         I: Stream<Item = Result<Vec<u8>, SocketEnd>>,
-        O: Sink<Vec<u8>>,
-        O::Error: Display,
     {
-        let LinkDriver {
-            link,
-            mut frames,
-            ping,
-            tap,
-        } = self;
+        let LinkDriver { link, tap } = self;
         let reading = async {
             tokio::pin!(incoming);
             loop {
@@ -2171,6 +2171,9 @@ impl LinkDriver {
                     }
                     Some(Err(SocketEnd::Refused(refusal))) => {
                         return LinkEnd::RunnerRefused(refusal);
+                    }
+                    Some(Err(SocketEnd::Unresponsive)) => {
+                        return LinkEnd::Disconnected("liveness: ping unanswered".into());
                     }
                     Some(Ok(frame)) => frame,
                 };
@@ -2186,40 +2189,8 @@ impl LinkDriver {
                 }
             }
         };
-        let writing = async {
-            tokio::pin!(outgoing);
-            while let Some(frame) = frames.recv().await {
-                if let Err(error) = outgoing.send(frame).await {
-                    return LinkEnd::Closed(format!("runner disconnected: {error}"));
-                }
-            }
-            LinkEnd::Closed("runner disconnected".into())
-        };
-        let liveness = async {
-            let Some(every) = ping else {
-                return std::future::pending().await;
-            };
-            let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
-            loop {
-                ticks.tick().await;
-                match link.0.liveness.get() {
-                    Liveness::Paused => continue,
-                    Liveness::Waiting => {
-                        return LinkEnd::Disconnected("liveness: ping unanswered".into());
-                    }
-                    Liveness::Idle => {
-                        link.0.liveness.set(Liveness::Waiting);
-                        if link.send(&Inbound::Ping {}).await.is_err() {
-                            return LinkEnd::Closed("runner disconnected".into());
-                        }
-                    }
-                }
-            }
-        };
         let end = tokio::select! {
             end = reading => end,
-            end = writing => end,
-            end = liveness => end,
             () = link.0.closed.cancelled() => {
                 let reason = link.0.disconnect.borrow().clone().unwrap_or_else(|| "runner disconnected".into());
                 LinkEnd::Disconnected(reason)
@@ -2237,7 +2208,7 @@ impl LinkDriver {
 
 /// `message` as the frame the connection sends; a message over the wire's
 /// limit cannot be one.
-fn frame(message: &Inbound) -> Result<Vec<u8>, HostError> {
+fn frame(message: &Inbound) -> Result<wire::Frame, HostError> {
     let frame = wire::encode(message)
         .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
     if frame.encoded_len() > wire::MAX_MESSAGE_BYTES {
@@ -2250,7 +2221,7 @@ fn frame(message: &Inbound) -> Result<Vec<u8>, HostError> {
             ),
         ));
     }
-    Ok(frame.into_bytes())
+    Ok(frame)
 }
 
 /// A process's end as the runner reports it.
@@ -2286,5 +2257,26 @@ pub(crate) fn fs_error(code: Option<String>, message: String) -> HostError {
     match code.as_deref() {
         Some("too_large") => HostError::new(HostErrorKind::TooLarge, message),
         _ => HostError::failed(code, message),
+    }
+}
+
+/// How long a job waits for the runner to report its manifest installed.
+const MANIFEST_ANSWER: Duration = Duration::from_secs(30);
+
+/// Forgets a manifest that was to be sent when the job sending it gives up
+/// before it is queued.
+struct Carrying<'a> {
+    link: &'a Link,
+    hash: &'a str,
+    /// A receiver of the entry this job made.
+    mine: watch::Receiver<Option<Result<(), String>>>,
+    carried: bool,
+}
+
+impl Drop for Carrying<'_> {
+    fn drop(&mut self) {
+        if !self.carried {
+            self.link.forget_manifest(self.hash, &self.mine);
+        }
     }
 }

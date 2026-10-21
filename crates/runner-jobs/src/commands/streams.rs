@@ -39,6 +39,7 @@
 //! the bounded standard output as well as the standard error, so a package
 //! whose error document is on stdout reports its cause.
 
+use demi_shared_link::Outgoing;
 use std::{
     collections::HashMap,
     io,
@@ -70,7 +71,7 @@ const OUTPUT_QUEUE: usize = 4;
 pub struct ServiceStreams {
     connection: ConnectionHandle,
     /// The connection's messages to the backend, which answer its streams.
-    control: mpsc::Sender<wire::Frame>,
+    control: Outgoing,
     pipes: PipeClient,
     services: ServiceHandle,
     bindings: Bindings,
@@ -84,7 +85,7 @@ pub struct ServiceStreams {
 impl ServiceStreams {
     pub fn new(
         connection: ConnectionHandle,
-        control: mpsc::Sender<wire::Frame>,
+        control: Outgoing,
         pipes: PipeClient,
         services: ServiceHandle,
         draining: CancellationToken,
@@ -644,7 +645,7 @@ impl OutputSink for StreamSink {
 }
 
 async fn send_error(
-    output: &mpsc::Sender<wire::Frame>,
+    output: &Outgoing,
     stream_id: String,
     code: ServiceErrorCode,
     message: String,

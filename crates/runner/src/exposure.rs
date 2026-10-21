@@ -17,6 +17,7 @@
 //! the runner abandons the request and closes its connection to the port,
 //! before the answer's head or after.
 
+use demi_shared_link::Outgoing;
 use std::collections::HashSet;
 use std::error::Error as _;
 use std::io;
@@ -51,7 +52,7 @@ const HOP_BY_HOP: [&str; 9] = [
 pub struct Exposure {
     http: reqwest::Client,
     pipes: PipeClient,
-    control: mpsc::Sender<wire::Frame>,
+    control: Outgoing,
     closed: CancellationToken,
     /// Each request's task: dropped with the connection, which aborts them.
     requests: JoinSet<()>,
@@ -68,7 +69,7 @@ struct Request {
 }
 
 impl Exposure {
-    pub fn new(pipes: PipeClient, control: mpsc::Sender<wire::Frame>, closed: CancellationToken) -> io::Result<Self> {
+    pub fn new(pipes: PipeClient, control: Outgoing, closed: CancellationToken) -> io::Result<Self> {
         // A port of this device is reached as it is: no proxy, `localhost`
         // is 127.0.0.1 whatever the device resolves it to, and a redirect
         // is the answer, which the backend's client follows or not.
@@ -135,7 +136,7 @@ impl Exposure {
 struct Serving {
     http: reqwest::Client,
     pipes: PipeClient,
-    control: mpsc::Sender<wire::Frame>,
+    control: Outgoing,
     closed: CancellationToken,
 }
 

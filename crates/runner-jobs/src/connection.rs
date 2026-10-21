@@ -12,6 +12,7 @@
 //! it takes, and fails only once the runner ends. The registration's owner
 //! serves the requests and routes the backend's answers through a [`Relay`].
 
+use demi_shared_link::Outgoing;
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
 use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
@@ -58,7 +59,7 @@ pub enum Reach {
 #[derive(Clone)]
 pub struct Live {
     /// Replies and requests to the backend.
-    pub control: mpsc::Sender<wire::Frame>,
+    pub control: Outgoing,
     /// Cancelled when the connection ends; cancelling it ends the
     /// connection.
     pub closed: CancellationToken,

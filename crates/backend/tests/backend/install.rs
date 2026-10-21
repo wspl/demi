@@ -1091,10 +1091,9 @@ async fn ask_socket(
     token: Option<&str>,
 ) -> (
     StatusCode,
-    Option<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+    Option<crate::runners::RawRunner>,
 ) {
-    use futures_util::{SinkExt as _, StreamExt as _};
-    use tokio_tungstenite::tungstenite::{Error, Message, client::IntoClientRequest as _};
+    use tokio_tungstenite::tungstenite::{Error, client::IntoClientRequest as _};
     let mut request = backend.ws_url("/api/runner").into_client_request().unwrap();
     let headers = request.headers_mut();
     headers.insert(RELEASE_HEADER, release.parse().unwrap());
@@ -1103,7 +1102,7 @@ async fn ask_socket(
         headers.insert(TOKEN_HEADER, token.parse().unwrap());
     }
     let mut socket = match tokio_tungstenite::connect_async(request).await {
-        Ok((socket, _)) => socket,
+        Ok((socket, _)) => crate::runners::RawRunner::over(socket),
         Err(Error::Http(response)) => {
             return (StatusCode::from_u16(response.status().as_u16()).unwrap(), None);
         }
@@ -1138,22 +1137,10 @@ async fn ask_socket(
         instance: 1,
         jobs: Vec::new(),
     };
-    let frame = wire::encode(&hello).unwrap().into_bytes();
-    socket.send(Message::Binary(frame.into())).await.unwrap();
-    loop {
-        match socket.next().await {
-            Some(Ok(Message::Binary(frame))) => {
-                let welcomed = matches!(
-                    wire::decode::<wire::Inbound>(&frame).unwrap(),
-                    wire::Inbound::HelloOk { .. }
-                );
-                assert!(welcomed);
-                return (StatusCode::SWITCHING_PROTOCOLS, Some(socket));
-            }
-            Some(Ok(_)) => {}
-            other => panic!("the socket closed before its hello was answered: {other:?}"),
-        }
-    }
+    socket.send(&hello).await;
+    let welcomed = matches!(socket.next().await, Some(wire::Inbound::HelloOk { .. }));
+    assert!(welcomed, "the socket closed before its hello was answered");
+    (StatusCode::SWITCHING_PROTOCOLS, Some(socket))
 }
 
 /// A runner the backend sends to an update names its device with its token, and

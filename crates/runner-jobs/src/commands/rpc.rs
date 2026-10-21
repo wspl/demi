@@ -3,6 +3,7 @@
 //! output on pipes. The connection's owner routes the call's inbound events
 //! to it; the call itself sends its requests.
 
+use demi_shared_link::Outgoing;
 use crate::{
     commands::command_output::CommandOutput,
     commands::contexts::ExecutionContext,
@@ -45,13 +46,16 @@ pub enum CallEvent {
 
 struct CallTransport<'a> {
     id: &'a str,
-    output: &'a mpsc::Sender<wire::Frame>,
+    /// The job whose lane the call's messages travel on.
+    job: &'a str,
+    output: &'a Outgoing,
     stop: &'a CancellationToken,
 }
 
 /// Ends a call that did not complete: the backend is told to cancel it.
 struct Pending<'a> {
     id: String,
+    job: String,
     connection: &'a Live,
     ended: CancellationToken,
     completed: bool,
@@ -66,11 +70,9 @@ impl Drop for Pending<'_> {
         match wire::encode(&wire::Outbound::RpcCancel {
             call_id: self.id.clone(),
         }) {
-            Ok(message) => {
-                if self.connection.control.try_send(message).is_err() {
-                    self.connection.closed.cancel();
-                }
-            }
+            // A full lane holds the message until it has room; the call's
+            // cancellation is queued after what the job sent before it.
+            Ok(message) => self.connection.control.post(message.in_command(&self.job)),
             // A dropped cancellation message could leave callback work live.
             // Closing the transport makes backend teardown authoritative.
             _ => self.connection.closed.cancel(),
@@ -86,11 +88,10 @@ pub struct RunningHint {
 
 impl Drop for RunningHint {
     fn drop(&mut self) {
-        if let Some(message) = self.clear.take()
-            && self.connection.control.try_send(message).is_err()
-        {
-            // Backend disconnection clears job hints if a clear cannot be queued.
-            self.connection.closed.cancel();
+        // A full lane holds the clear until it has room, and a connection
+        // that ends clears the job's hints on the backend.
+        if let Some(message) = self.clear.take() {
+            self.connection.control.post(message);
         }
     }
 }
@@ -160,6 +161,7 @@ pub async fn invoke(
     }
     let mut pending = Pending {
         id: id.clone(),
+        job: request.context.job_id.clone(),
         connection: &connection,
         ended: stop.clone(),
         completed: false,
@@ -186,12 +188,13 @@ pub async fn invoke(
         if !request.live {
             connection
                 .control
-                .send(stdin_end(&id)?)
+                .send(stdin_end(&id, &request.context.job_id)?)
                 .await
                 .map_err(|_| ServiceError::Cancelled)?;
         }
         let transport = CallTransport {
             id: &id,
+            job: &request.context.job_id,
             output: &connection.control,
             stop: &stop,
         };
@@ -220,6 +223,7 @@ async fn exchange(
     let errors = output.errors();
     let &CallTransport {
         id,
+        job,
         output: connection,
         stop,
     } = transport;
@@ -249,7 +253,7 @@ async fn exchange(
                     .try_send(())
                     .map_err(|_| ServiceError::failed(RpcError::OverlappingDemands))?,
                 CallEvent::Pull => connection
-                    .send(stdin_end(id)?)
+                    .send(stdin_end(id, job)?)
                     .await
                     .map_err(|_| ServiceError::Cancelled)?,
                 CallEvent::Exit(code) => {
@@ -310,7 +314,7 @@ async fn exchange(
 /// a failure to write the output ends it here.
 async fn download(
     pipes: &PipeClient,
-    connection: &mpsc::Sender<wire::Frame>,
+    connection: &Outgoing,
     stop: &CancellationToken,
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
@@ -345,6 +349,7 @@ async fn send_input(
 ) -> Result<(), ServiceError> {
     let &CallTransport {
         id,
+        job,
         output: connection,
         stop,
     } = transport;
@@ -355,10 +360,11 @@ async fn send_input(
                 Some(bytes) => wire::encode(&wire::Outbound::RpcStdin {
                     call_id: id.into(),
                     bytes: wire::WireBytes(bytes.to_vec()),
-                }),
+                })
+                .map(|message| message.in_command(job)),
                 None => {
                     connection
-                        .send(stdin_end(id)?)
+                        .send(stdin_end(id, job)?)
                         .await
                         .map_err(|_| ServiceError::Cancelled)?;
                     return Ok(());
@@ -397,7 +403,7 @@ async fn send_input(
 }
 
 async fn report(
-    output: &mpsc::Sender<wire::Frame>,
+    output: &Outgoing,
     reference: &PipeRef,
     result: &io::Result<()>,
     stop: &CancellationToken,
@@ -426,10 +432,11 @@ enum RpcError {
     SuccessBeforePipes,
 }
 
-/// The frame that ends a call's standard input.
-fn stdin_end(call_id: &str) -> Result<wire::Frame, ServiceError> {
+/// The frame that ends a call's standard input, on its job's lane.
+fn stdin_end(call_id: &str, job: &str) -> Result<wire::Frame, ServiceError> {
     wire::encode(&wire::Outbound::RpcStdinEnd {
         call_id: call_id.into(),
     })
+    .map(|message| message.in_command(job))
     .map_err(ServiceError::failed)
 }

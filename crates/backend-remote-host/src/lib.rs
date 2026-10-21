@@ -41,9 +41,10 @@ pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER
 pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, ForwardEvent, HttpHead, HttpRequest, PackageEvent, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
-    LinkPolicy, SocketEnd,
-    END_GRACE, OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
+    LinkPolicy,
+    END_GRACE, WeakLink,
 };
+pub use demi_shared_link::{Connection, Handshake, Health, Incoming, Liveness, Outgoing, SocketEnd};
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
 pub use offers::{FileOffers, Offer};
 #[cfg(feature = "edge")]
@@ -58,7 +59,7 @@ pub use remote_host::{
     ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity, host_paths,
 };
 #[cfg(feature = "edge")]
-pub use runner_socket::{close_frame, socket_frame};
+pub use runner_socket::{open_link, refusal};
 #[cfg(feature = "edge")]
 pub use stream_pipe::accept_stream_pipe;
 pub use shell_environment::{

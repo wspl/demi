@@ -2,9 +2,10 @@
 //! a managed guest's writable filesystems, or every filesystem where none is
 //! named, before the guest is saved.
 
+use demi_shared_link::Outgoing;
 use demi_runner_protocol::wire;
 use std::{io, path::PathBuf, sync::Arc};
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::Semaphore;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 /// A connection's flushes of the filesystems mounted at `mounts`.
@@ -13,13 +14,13 @@ pub struct Volumes {
     syncs: TaskTracker,
     sync_capacity: Arc<Semaphore>,
     stop: CancellationToken,
-    output: mpsc::Sender<wire::Frame>,
+    output: Outgoing,
 }
 
 impl Volumes {
     pub fn new(
         mounts: Vec<PathBuf>,
-        output: mpsc::Sender<wire::Frame>,
+        output: Outgoing,
         stop: CancellationToken,
     ) -> Self {
         Self {
@@ -70,7 +71,7 @@ impl Drop for Volumes {
 }
 
 async fn send(
-    output: &mpsc::Sender<wire::Frame>,
+    output: &Outgoing,
     message: Result<wire::Frame, wire::WireError>,
     stop: &CancellationToken,
 ) {

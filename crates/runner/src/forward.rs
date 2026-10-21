@@ -15,6 +15,7 @@
 //! forward turned off, removed, or changed where it listens or connects ends
 //! its generation. Its open connections end, and new ones follow the change.
 
+use demi_shared_link::Outgoing;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
@@ -88,7 +89,7 @@ impl Replies {
 /// The connection's way to the backend.
 #[derive(Clone)]
 struct Backend {
-    control: mpsc::Sender<wire::Frame>,
+    control: Outgoing,
     closed: CancellationToken,
 }
 
@@ -140,7 +141,7 @@ impl Forwarding {
         listed: watch::Sender<Arc<Vec<Listed>>>,
         direct: Direct,
         pipes: PipeClient,
-        control: mpsc::Sender<wire::Frame>,
+        control: Outgoing,
         closed: CancellationToken,
     ) -> Self {
         let (events, received) = mpsc::unbounded_channel();

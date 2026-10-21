@@ -656,7 +656,7 @@ async fn speak(backend: &TestBackend, token: &str) -> RawRunner {
 }
 
 /// Whether the peer of forward `id` is there, as the next list of forwards
-/// the backend sends `raw` says; pings answered.
+/// the backend sends `raw` says.
 async fn peer_online(raw: &mut RawRunner, id: &str) -> bool {
     loop {
         match raw.next().await {
@@ -665,7 +665,6 @@ async fn peer_online(raw: &mut RawRunner, id: &str) -> bool {
                     return forward.peer_online;
                 }
             }
-            Some(Inbound::Ping {}) => raw.send(&Outbound::Pong { jobs: 0 }).await,
             Some(_) => {}
             None => panic!("the backend closed the socket"),
         }
@@ -673,7 +672,7 @@ async fn peer_online(raw: &mut RawRunner, id: &str) -> bool {
 }
 
 /// What the backend sends `raw` until it answered a request sent now,
-/// which it answers after everything it was told before; pings answered.
+/// which it answers after everything it was told before.
 async fn settled(raw: &mut RawRunner, id: &str) -> Vec<Inbound> {
     raw.send(&Outbound::ArtifactResolve {
         id: id.into(),
@@ -688,7 +687,6 @@ async fn settled(raw: &mut RawRunner, id: &str) -> Vec<Inbound> {
     loop {
         match raw.next().await {
             Some(Inbound::ArtifactLocation { id: answered, .. }) if answered == id => return heard,
-            Some(Inbound::Ping {}) => raw.send(&Outbound::Pong { jobs: 0 }).await,
             Some(other) => heard.push(other),
             None => panic!("the backend closed the socket"),
         }
@@ -745,7 +743,6 @@ async fn a_forwards_state_comes_only_from_its_listen_on_and_a_peer_closes_only_f
     let (request, peer, sdp) = loop {
         match connecting.next().await {
             Some(Inbound::DirectOffer { id, peer, sdp, .. }) => break (id, peer, sdp),
-            Some(Inbound::Ping {}) => connecting.send(&Outbound::Pong { jobs: 0 }).await,
             Some(_) => {}
             None => panic!("the backend closed the socket"),
         }

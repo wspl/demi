@@ -284,6 +284,7 @@ The following table shows where each wire or data family is defined:
 | The web app's HTTP routes | `web-api-protocol` |
 | Conversation socket frames, blocks, patches | `conversation-socket-protocol`, `shared-types` |
 | Runner wire, its manifests and the managed boot record | `runner-protocol` |
+| The runner link: yamux streams, lanes and liveness over the runner socket | `shared-link` |
 | Command invocations | `command-protocol` |
 | One command package's operations | its `command-package-<name>-protocol` |
 | Live view frames and input | `live-view-protocol` |
@@ -391,6 +392,7 @@ command-package-mobile-protocol -> shared-types, live-view-protocol, shared-reco
 live-view-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
+shared-link -> runner-protocol
 machine-manager-protocol -> command-protocol, runner-protocol
 web-api-protocol -> conversation-socket-protocol, command-protocol, shared-types, runner-protocol
 shared-gates -> none
@@ -428,13 +430,13 @@ plugin-video -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-audio -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
-backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
-runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
-runner-host -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
+backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, shared-link, host-interface
+runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol, shared-link
+runner-host -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol, shared-link
 runner-direct -> live-view-protocol, runner-protocol
 runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
-runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
+runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, shared-link, runner-command-packages
 live-view -> command-sdk, live-view-protocol, shared-types
 command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-recording, shared-recording-protocol, shared-types
 backend-page-sync -> backend-database, web-api-protocol
@@ -453,7 +455,7 @@ backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, bac
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-bytedance, provider-common, provider-elevenlabs, provider-minimax, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video, plugin-audio
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
-runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
+runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, shared-link, runner-command-packages, runner-shell, shared-artifacts, shared-cli
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
 command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types, shared-artifacts
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli, shared-openh264, shared-recording, shared-recording-protocol

@@ -12,6 +12,7 @@
 
 #[cfg(unix)]
 mod detached;
+mod network;
 mod process;
 mod runner;
 #[cfg(unix)]
@@ -20,12 +21,12 @@ mod terminal;
 #[cfg(unix)]
 pub use detached::DetachedRunners;
 pub use process::{
-    PAIRING_CODE, RunnerProcess, RunnerProcessOptions, SERVICE_MANAGER_CALLS, native_fixture_binary,
-    runner_binary, service_manager_stand_in,
+    PAIRING_CODE, RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary,
+    service_manager_stand_in,
 };
 #[cfg(unix)]
 pub use process::{executable, login_shell_stand_in};
-pub use runner::{FixtureOptions, HeldSink, RunnerFixture};
+pub use runner::{FixtureOptions, RunnerFixture};
 #[cfg(unix)]
 pub use terminal::Terminal;
 
@@ -34,7 +35,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::PathBuf,
     rc::Rc,
-    time::Duration,
 };
 
 use bytes::Bytes;
@@ -48,10 +48,10 @@ use demi_shared_types::BlobRef;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
-use tokio_util::sync::{CancellationToken, PollSender};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
-    Admission, ArtifactResolver, DeviceJobs, DeviceLink, Hello, JobOrigin, Link, LinkEnd,
+    Admission, ArtifactResolver, Health, Outgoing, DeviceJobs, DeviceLink, Hello, JobOrigin, Link, LinkEnd,
     LinkOptions, LinkPolicy, Pipes, RemoteHost,
 };
 
@@ -76,16 +76,17 @@ pub fn answered_requests(tap: &mut mpsc::Receiver<Outbound>) -> usize {
     answered
 }
 
+/// The frames a test connection queues for its runner before a sender waits.
+pub const OUTBOUND_FRAMES: usize = 64;
+
 /// The device a test connection serves.
 pub const TEST_DEVICE: &str = "test-device";
 
-/// A policy for tests: every call runs, in one command set, and the
-/// blobs its handlers return as media are held in memory.
+/// A policy for tests: every call runs, in one command set.
 pub struct CommandPolicy {
     commands: Rc<CommandSet>,
     /// The next number of each conversation's sequence.
     sequences: RefCell<HashMap<(String, ServiceSequence), u64>>,
-    blobs: Rc<RefCell<HashMap<BlobRef, Bytes>>>,
     /// The package events the connection handed on, in order.
     package_events: watch::Sender<Vec<crate::PackageEvent>>,
 }
@@ -95,7 +96,6 @@ impl CommandPolicy {
         Rc::new(Self {
             commands: Rc::new(commands),
             sequences: RefCell::default(),
-            blobs: Rc::default(),
             package_events: watch::Sender::new(Vec::new()),
         })
     }
@@ -103,14 +103,6 @@ impl CommandPolicy {
     /// The package events the connection hands on, in order, as they come.
     pub fn package_events(&self) -> watch::Receiver<Vec<crate::PackageEvent>> {
         self.package_events.subscribe()
-    }
-
-    /// Holds `bytes` as the blob that names them, as a handler puts a
-    /// medium before it returns it.
-    pub fn put_blob(&self, bytes: Bytes) -> BlobRef {
-        let blob = BlobRef::of(&bytes);
-        self.blobs.borrow_mut().insert(blob.clone(), bytes);
-        blob
     }
 }
 
@@ -129,9 +121,9 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async move { commands.dispatch(invocation, port).await })
     }
 
-    fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
-        let bytes = self.blobs.borrow().get(&blob).cloned();
-        Box::pin(async move { Ok(bytes) })
+    // No test handler returns a medium.
+    fn read_blob(&self, _: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
+        Box::pin(async { Ok(None) })
     }
 
 
@@ -206,13 +198,6 @@ impl TestDevice {
         }
     }
 
-    /// The device with the account its runner reports as `identity`, such
-    /// as a Windows Host's.
-    pub fn with_identity(mut self, identity: HostIdentity) -> Self {
-        self.identity = identity;
-        self
-    }
-
     pub fn pipes(&self) -> &Pipes {
         &self.pipes
     }
@@ -228,22 +213,15 @@ impl TestDevice {
         )
     }
 
-    /// Connects the device's runner, which keeps no jobs; `ping` turns
-    /// liveness on.
-    pub fn connect(&self, ping: Option<Duration>) -> TestLink {
-        self.connect_with(ping, 1, Vec::new())
+    /// Connects the device's runner, which keeps no jobs.
+    pub fn connect(&self) -> TestLink {
+        self.connect_with(1, Vec::new())
     }
 
     /// Connects the device's runner of instance `instance`, which keeps
-    /// `jobs`; `ping` turns liveness on.
-    pub fn connect_with(
-        &self,
-        ping: Option<Duration>,
-        instance: u64,
-        jobs: Vec<wire::KeptJob>,
-    ) -> TestLink {
+    /// `jobs`.
+    pub fn connect_with(&self, instance: u64, jobs: Vec<wire::KeptJob>) -> TestLink {
         self.connect_hello(
-            ping,
             Hello {
                 instance,
                 release: "0".into(),
@@ -257,8 +235,10 @@ impl TestDevice {
     }
 
     /// Connects the device's runner, whose hello and what the backend
-    /// knows of the device are `hello`; `ping` turns liveness on.
-    pub fn connect_hello(&self, ping: Option<Duration>, hello: Hello) -> TestLink {
+    /// knows of the device are `hello`. Everything the backend sends is one
+    /// queue the test reads, whatever the lane of a frame.
+    pub fn connect_hello(&self, hello: Hello) -> TestLink {
+        let (outgoing, sent) = Outgoing::plain(OUTBOUND_FRAMES);
         let (link, driver) = Link::new(LinkOptions {
             device: TEST_DEVICE.into(),
             identity: self.identity.clone(),
@@ -266,12 +246,12 @@ impl TestDevice {
             shell: None,
             pipes: self.pipes.clone(),
             policy: self.policy.clone(),
-            ping,
+            outgoing,
+            health: Health::inert(),
             jobs: self.jobs.clone(),
             hello,
         });
         let (runner, incoming) = mpsc::channel::<Result<Vec<u8>, crate::SocketEnd>>(8);
-        let (outgoing, sent) = mpsc::channel::<Vec<u8>>(crate::OUTBOUND_FRAMES);
         let incoming = futures_util::stream::unfold(incoming, |mut incoming| async move {
             incoming.recv().await.map(|frame| (frame, incoming))
         });
@@ -281,7 +261,7 @@ impl TestDevice {
         let served = {
             let link = link.clone();
             tokio::task::spawn_local(async move {
-                let end = driver.serve(incoming, PollSender::new(outgoing)).await;
+                let end = driver.serve(incoming).await;
                 went_offline(&device, &link, identity);
                 end
             })
@@ -313,7 +293,7 @@ fn went_offline(device: &watch::Sender<DeviceLink>, link: &Link, identity: HostI
 /// sends and sends what a runner would.
 pub struct TestLink {
     link: Link,
-    sent: mpsc::Receiver<Vec<u8>>,
+    sent: mpsc::Receiver<wire::Frame>,
     runner: Option<mpsc::Sender<Result<Vec<u8>, crate::SocketEnd>>>,
     served: tokio::task::JoinHandle<LinkEnd>,
 }
@@ -326,13 +306,13 @@ impl TestLink {
     /// The next message the backend sent.
     pub async fn next(&mut self) -> Inbound {
         let frame = self.sent.recv().await.expect("the connection is served");
-        wire::decode(&frame).expect("the backend sends valid messages")
+        wire::decode(&frame.into_bytes()).expect("the backend sends valid messages")
     }
 
     /// The next message the backend sent, when it sent one already.
     pub fn try_next(&mut self) -> Option<Inbound> {
         let frame = self.sent.try_recv().ok()?;
-        Some(wire::decode(&frame).expect("the backend sends valid messages"))
+        Some(wire::decode(&frame.into_bytes()).expect("the backend sends valid messages"))
     }
 
     /// Sends `message` as the runner, through the wire's encoding.

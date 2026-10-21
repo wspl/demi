@@ -83,7 +83,6 @@ pub enum Inbound {
     Revoked {
         projects: Vec<String>,
     },
-    Ping {},
     /// The runner release the backend moves to next, and its executable
     /// for the runner's target as a 409 would name it: a paired device's
     /// runner downloads it into its installation while it serves, and
@@ -318,9 +317,12 @@ pub enum Inbound {
         #[garde(inner(length(min = 1)))]
         source: Option<String>,
     },
-    /// The command manifest for the runner's cache, carried opaque; the
-    /// runner verifies it as a [`crate::manifest::Manifest`].
+    /// The command manifest of `hash` for the runner's cache, carried opaque;
+    /// the runner verifies it as a [`crate::manifest::Manifest`] of that hash
+    /// and answers with `manifest_installed`.
     Manifest {
+        #[garde(custom(digest))]
+        hash: String,
         manifest: serde_json::Value,
     },
     ArtifactLocation {
@@ -1016,9 +1018,23 @@ pub enum Outbound {
         #[garde(dive)]
         jobs: Vec<KeptJob>,
     },
-    /// Liveness, with the count of running jobs the idle rule reads.
-    Pong {
+    /// How many jobs the runner runs, which the idle rule reads: sent once
+    /// the connection is online and every `JOB_COUNT_INTERVAL` after.
+    JobCount {
         jobs: u64,
+    },
+    /// The manifest of `hash` is installed, or could not be, for `error`:
+    /// the backend starts the jobs that name it only after this, so a start
+    /// never arrives before the manifest it names.
+    ManifestInstalled {
+        #[garde(custom(digest))]
+        hash: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        error: Option<String>,
     },
     /// The executable of the runner release a `prefetch` named is in
     /// place in the installation.

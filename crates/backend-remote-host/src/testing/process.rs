@@ -34,18 +34,13 @@ pub fn native_fixture_binary() -> PathBuf {
     built_program("demi-native-fixture")
 }
 
-/// The file beside the stand-in in which it records the service-manager
-/// commands it was given, one line each.
-pub const SERVICE_MANAGER_CALLS: &str = "service-manager-calls";
-
 /// Writes in `directory` the program that stands in for the service manager's
 /// commands of the runners a test starts
 /// ([`demi_runner_protocol::SERVICE_MANAGER_STAND_IN`]) and returns its path.
 ///
 /// On Unix the program behaves as follows:
 ///
-/// - It records each command line in [`SERVICE_MANAGER_CALLS`] beside it, and
-///   keeps whether a LaunchAgent is loaded as launchd would.
+/// - It keeps whether a LaunchAgent is loaded as launchd would.
 /// - Asked to start the runner, by `launchctl kickstart` of a loaded agent or
 ///   `systemctl --user restart`, it starts the launcher of the installation
 ///   `DEMI_HOME` names, when there is one, in the background, as the manager's
@@ -64,7 +59,6 @@ pub fn service_manager_stand_in(directory: &Path) -> PathBuf {
     {
         const SCRIPT: &str = r#"#!/bin/sh
 here=$(dirname "$0")
-printf '%s\n' "$*" >> "$here/service-manager-calls"
 # A test names a manager that refuses to start the runner: launchd's
 # loading starts the agent's runner, as its kickstart does.
 refuses() { [ -n "$DEMI_TEST_MANAGER_REFUSES" ] && exit 1; }
@@ -173,7 +167,8 @@ impl Default for RunnerProcessOptions {
 pub struct RunnerProcess {
     /// The runner executable it starts, again after each stop.
     program: PathBuf,
-    home: tempfile::TempDir,
+    /// Held so the home is removed when the process is dropped.
+    _home: tempfile::TempDir,
     home_path: String,
     state: tempfile::TempDir,
     backend: String,
@@ -229,7 +224,7 @@ impl RunnerProcess {
         }
         let mut process = Self {
             program,
-            home,
+            _home: home,
             home_path,
             state,
             backend: backend.to_owned(),
@@ -257,11 +252,6 @@ impl RunnerProcess {
     /// The runner's installation state, which holds its device token.
     pub fn state_dir(&self) -> &Path {
         self.state.path()
-    }
-
-    /// The service-manager commands the runner gave, one line each.
-    pub fn service_manager_calls(&self) -> String {
-        std::fs::read_to_string(self.home.path().join(SERVICE_MANAGER_CALLS)).unwrap_or_default()
     }
 
     /// How the runner process ended, once it has.

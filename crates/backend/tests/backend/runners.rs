@@ -161,22 +161,96 @@ async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() 
     backend.close().await;
 }
 
-/// A runner's side of the socket, spoken by the test.
-pub(crate) struct RawRunner(
-    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-);
+/// A runner's side of the socket, spoken by the test: the hello and the
+/// backend's answer as messages of the socket, then the link over the
+/// WebSocket once the backend accepted the hello, and a way to put a raw
+/// WebSocket message beside it.
+pub(crate) struct RawRunner {
+    phase: Option<Phase>,
+    raw: tokio::sync::mpsc::Sender<Message>,
+    silent: tokio::sync::watch::Sender<bool>,
+}
+
+enum Phase {
+    /// The socket's own messages; the session starts on the welcome.
+    Handshake(demi_shared_link::Handshake),
+    Link {
+        outgoing: demi_shared_link::Outgoing,
+        incoming: demi_shared_link::Incoming,
+    },
+}
 
 impl RawRunner {
     pub(crate) async fn connect(backend: &TestBackend) -> Self {
         let (socket, _) = tokio_tungstenite::connect_async(backend.ws_url("/api/runner"))
             .await
             .unwrap();
-        Self(socket)
+        Self::over(socket)
+    }
+
+    /// The runner's end of the link over a connected `socket`.
+    pub(crate) fn over<S>(socket: tokio_tungstenite::WebSocketStream<S>) -> Self
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        use demi_shared_link::{Handshake, Received, Refusal, Side, Wire};
+        use futures_util::future::ready;
+        use tokio_tungstenite::tungstenite::protocol::{CloseFrame, frame::coding::CloseCode};
+
+        let (mut writer, reader) = socket.split();
+        let (raw, mut queued) = tokio::sync::mpsc::channel::<Message>(16);
+        let (silent, silenced) = tokio::sync::watch::channel(false);
+        // The writer ends with the link, once nothing holds its queue.
+        tokio::spawn(async move {
+            while let Some(message) = queued.recv().await {
+                // A silent runner takes what its link writes and sends none.
+                if *silenced.borrow() {
+                    continue;
+                }
+                if writer.send(message).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let incoming = reader.map(|message| match message {
+            Ok(Message::Binary(bytes)) => Ok(Received::Binary(bytes.to_vec())),
+            Ok(Message::Close(Some(frame))) if frame.code == CloseCode::Invalid => {
+                Ok(Received::Close(Some(Refusal(frame.reason.to_string()))))
+            }
+            Ok(Message::Close(_)) => Ok(Received::Close(None)),
+            Ok(Message::Ping(_) | Message::Pong(_)) => Ok(Received::Nothing),
+            Ok(other) => Err(format!("the backend sent {other:?}")),
+            Err(error) => Err(error.to_string()),
+        });
+        let outgoing = tokio_util::sync::PollSender::new(raw.clone()).with(|wire| {
+            ready(Ok::<_, tokio_util::sync::PollSendError<Message>>(match wire {
+                Wire::Binary(bytes) => Message::Binary(bytes.into()),
+                Wire::Close(Some(reason)) => Message::Close(Some(CloseFrame {
+                    code: CloseCode::Invalid,
+                    reason: wire::close_reason(&reason).to_owned().into(),
+                })),
+                Wire::Close(None) => Message::Close(None),
+            }))
+        });
+        let handshake = Handshake::open(incoming, outgoing, Side::Runner, None);
+        Self {
+            phase: Some(Phase::Handshake(handshake)),
+            raw,
+            silent,
+        }
     }
 
     pub(crate) async fn send(&mut self, message: &Outbound) {
-        let frame = wire::encode(message).unwrap().into_bytes();
-        self.0.send(Message::Binary(frame.into())).await.unwrap();
+        let frame = wire::encode(message).unwrap();
+        match self.phase.as_mut().expect("the socket is open") {
+            Phase::Handshake(handshake) => handshake.write(frame.into_bytes()).await.unwrap(),
+            Phase::Link { outgoing, .. } => outgoing.send(frame).await.unwrap(),
+        }
+    }
+
+    /// Puts `message` on the WebSocket as it is, beside the link.
+    pub(crate) async fn send_raw(&mut self, message: Message) {
+        self.raw.send(message).await.unwrap();
     }
 
     /// The projects a `revoked` names, once the backend sends it. What the
@@ -191,17 +265,22 @@ impl RawRunner {
         }
     }
 
-    /// Answers the backend's next ping; what the backend sent the device
-    /// before is passed over.
-    async fn answer_ping(&mut self) {
-        loop {
-            match self.next().await {
-                Some(Inbound::Ping {}) => break,
-                Some(_) => {}
-                None => panic!("the connection closed before a ping"),
+    /// Sends nothing more, not even the answers the link gives by itself, as
+    /// a runner whose network dropped it without a close.
+    pub(crate) fn go_silent(&self) {
+        self.silent.send_replace(true);
+    }
+
+    /// Ends the link from the runner's end, as a runner going away does.
+    pub(crate) async fn close(&mut self) {
+        match self.phase.take() {
+            Some(Phase::Handshake(handshake)) => handshake.close(None).await,
+            Some(Phase::Link { outgoing, incoming }) => {
+                outgoing.close(None).await;
+                self.phase = Some(Phase::Link { outgoing, incoming });
             }
+            None => {}
         }
-        self.send(&Outbound::Pong { jobs: 0 }).await;
     }
 
     /// Reads until the backend closed the socket.
@@ -211,17 +290,34 @@ impl RawRunner {
 
     /// The next message the backend sends; none once it closed the socket.
     pub(crate) async fn next(&mut self) -> Option<Inbound> {
-        loop {
-            match tokio::time::timeout(Duration::from_secs(10), self.0.next())
-                .await
-                .unwrap()
-            {
-                Some(Ok(Message::Binary(frame))) => return Some(wire::decode(&frame).unwrap()),
-                Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                Some(Ok(Message::Close(_)) | Err(_)) | None => return None,
-                Some(Ok(other)) => panic!("the backend sent {other:?}"),
+        let next = match self.phase.as_mut()? {
+            Phase::Handshake(handshake) => {
+                tokio::time::timeout(Duration::from_secs(10), handshake.read())
+                    .await
+                    .unwrap()
             }
+            Phase::Link { incoming, .. } => {
+                tokio::time::timeout(Duration::from_secs(10), incoming.next())
+                    .await
+                    .unwrap()
+                    .map(|frame| frame.map_err(|_| demi_shared_link::SocketEnd::Unresponsive))
+            }
+        };
+        let message = match next {
+            Some(Ok(frame)) => wire::decode::<Inbound>(&frame).unwrap(),
+            Some(Err(_)) | None => return None,
+        };
+        // The session starts on the welcome, or on the claim's token.
+        if matches!(message, Inbound::HelloOk { .. } | Inbound::Claimed { .. })
+            && let Some(Phase::Handshake(handshake)) = self.phase.take()
+        {
+            let connection = handshake.start();
+            self.phase = Some(Phase::Link {
+                outgoing: connection.outgoing,
+                incoming: connection.incoming,
+            });
         }
+        Some(message)
     }
 }
 
@@ -264,18 +360,14 @@ async fn a_runner_that_breaks_the_protocol_or_names_no_device_is_refused() {
     let backend = harness.start().await;
 
     let mut text = RawRunner::connect(&backend).await;
-    text.0
-        .send(Message::Text("{\"type\":\"not-a-runner-frame\"}".into()))
-        .await
-        .unwrap();
+    text.send_raw(Message::Text("{\"type\":\"not-a-runner-frame\"}".into()))
+        .await;
     assert_eq!(text.next().await, None);
 
     let mut garbage = RawRunner::connect(&backend).await;
     garbage
-        .0
-        .send(Message::Binary(vec![0xc1, 0x00].into()))
-        .await
-        .unwrap();
+        .send_raw(Message::Binary(vec![0xc1, 0x00].into()))
+        .await;
     assert_eq!(garbage.next().await, None);
 
     let refused = [
@@ -372,19 +464,14 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
         tokio::join!(RawRunner::connect(&backend), RawRunner::connect(&backend));
     let message = hello(wire::VERSION, Some(&token), None);
     tokio::join!(one.send(&message), other.send(&message));
-    // The waiting one hears nothing until the bound one answers its ping.
-    let (mut bound, mut waiting) = tokio::select! {
-        answer = one.next() => match answer {
-            Some(Inbound::HelloOk { .. }) => (one, other),
-            answer => panic!("expected a welcome, got {answer:?}"),
-        },
-        answer = other.next() => match answer {
-            Some(Inbound::HelloOk { .. }) => (other, one),
-            answer => panic!("expected a welcome, got {answer:?}"),
-        },
+    // One is welcomed; the other is refused once the bound one answers the
+    // backend's ping, which its link does by itself.
+    let (first, second) = tokio::join!(one.next(), other.next());
+    let (mut bound, refused) = match (first, second) {
+        (Some(Inbound::HelloOk { .. }), refused) => (one, refused),
+        (refused, Some(Inbound::HelloOk { .. })) => (other, refused),
+        answers => panic!("expected a welcome, got {answers:?}"),
     };
-    bound.answer_ping().await;
-    let refused = waiting.next().await;
     assert!(
         matches!(
             &refused,
@@ -401,7 +488,7 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     // handles a runner's messages in order, so the refusal of a request sent
     // after the hello is the first answer that arrives.
     bound.send(&message).await;
-    bound.send(&Outbound::Pong { jobs: 0 }).await;
+    bound.send(&Outbound::JobCount { jobs: 0 }).await;
     let after = Outbound::ArtifactResolve {
         id: "after-hello".into(),
         owner: ArtifactOwner::Stream(StreamArtifactOwner {
@@ -438,11 +525,12 @@ async fn a_held_connection_that_does_not_answer_its_ping_gives_way_to_the_device
     backend.until_online(&master, laptop.id(), false).await;
     let message = hello(wire::VERSION, Some(&token), None);
 
-    // The held socket reads nothing more after its welcome, as one whose
-    // network dropped it.
+    // The held socket answers nothing more after its welcome, its pings
+    // included, as one whose network dropped it.
     let mut held = RawRunner::connect(&backend).await;
     held.send(&message).await;
     assert!(matches!(held.next().await, Some(Inbound::HelloOk { .. })));
+    held.go_silent();
 
     let mut returning = RawRunner::connect(&backend).await;
     let asked = tokio::time::Instant::now();
@@ -657,7 +745,7 @@ async fn a_runner_that_goes_away_while_its_token_is_looked_up_is_let_go_and_neve
     runner.send(&hello(wire::VERSION, Some(&token), None)).await;
     lookups.until_arrived(1).await;
     // The backend ends the connection while the lookup still waits.
-    runner.0.close(None).await.unwrap();
+    runner.close().await;
     assert_eq!(runner.next().await, None);
     lookups.release();
     backend.close().await;
@@ -711,7 +799,7 @@ async fn a_claim_whose_runner_went_away_makes_no_device() {
     let Some(Inbound::ClaimPending { claim_token }) = runner.next().await else {
         panic!("the runner was given no code");
     };
-    runner.0.close(None).await.unwrap();
+    runner.close().await;
     drop(runner);
     let claimed = backend
         .post(
@@ -1222,7 +1310,7 @@ async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo()
         (second, &second_token, "second", darwin, system("macOS 27.0", None)),
     ] {
         let mut runner = runner;
-        runner.0.close(None).await.unwrap();
+        runner.close().await;
         runner.closed().await;
         let mut again = RawRunner::connect(&backend).await;
         again.send(&hello_as(Some(token), name, platform, os)).await;
@@ -1259,24 +1347,17 @@ async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
     let backend = harness.start().await;
     let through = Backend::through(backend.url.parse().unwrap(), path);
 
-    let (mut socket, _) = through
+    let (socket, _) = through
         .websocket(
             backend.ws_url("/api/runner"),
             tokio_tungstenite::tungstenite::protocol::WebSocketConfig::default(),
         )
         .await
         .unwrap();
-    let hello = wire::encode(&hello(wire::VERSION, None, None)).unwrap();
-    socket
-        .send(Message::Binary(hello.into_bytes().into()))
-        .await
-        .unwrap();
-    let answer = loop {
-        if let Message::Binary(frame) = socket.next().await.unwrap().unwrap() {
-            break wire::decode::<Inbound>(&frame).unwrap();
-        }
-    };
-    assert!(matches!(answer, Inbound::ClaimPending { .. }), "{answer:?}");
+    let mut runner = RawRunner::over(socket);
+    runner.send(&hello(wire::VERSION, None, None)).await;
+    let answer = runner.next().await;
+    assert!(matches!(answer, Some(Inbound::ClaimPending { .. })), "{answer:?}");
 
     let http = through.http(reqwest::Client::builder()).build().unwrap();
     let origin = through.origin().unwrap();

@@ -13,14 +13,55 @@
 //!     | ==================== WebSocket ====================== |
 //!     | hello ---------------------------------------------> |  token lookup
 //!     | <------------------------- hello_ok or hello_error    |
+//!     | ================= yamux session (the link) ============ |
 //! ```
+//!
+//! The hello and its answer are ordinary WebSocket messages, one message
+//! each, as before the link: a runner of an earlier version is answered
+//! `unsupported_protocol` the way it always was. The yamux session starts on
+//! the same socket once the backend accepted the hello (`hello_ok`, or
+//! `claimed` for a runner just paired); a runner that waits for its user to
+//! claim it is told `claim_pending` meanwhile.
+//!
+//! # The link
+//!
+//! The WebSocket carries one yamux session, the link
+//! (`crates/shared-link/src/lib.rs`), and the messages keep their encoding.
+//! A message names its stream, its [`Lane`], by its type ([`Routed`]):
+//!
+//! - A command is a stream, named by its job, raw process, rpc call or service
+//!   stream. The backend opens it with the command's start, and the command's
+//!   input follows on it; the runner sends the command's output, its rpc calls
+//!   and its exit back on it. A stop, a follow or a release is a request on a
+//!   stream of its own, so none waits behind input nobody reads.
+//! - A request is a stream too: the request one way, its reply the other.
+//! - Each end has one stream for what belongs to no command or request: the
+//!   notices, the subscriptions, and the signaling of direct channels and
+//!   forwards.
+//!
+//! A stream has a window of its own, so a stream that is full holds only its
+//! own sender; a command's starts large, so its first output crosses in a
+//! round trip.
+//! The order of one stream's messages is the order they were sent, and the
+//! link promises none between streams. What must follow another message is
+//! sent after it was answered: the backend starts a job that names a manifest
+//! after the runner reported that manifest installed (`manifest_installed`).
+//!
+//! A command's input is flow-controlled by the stream's window alone: a command
+//! that reads no input fills the window of its own stream, which stalls its
+//! writer and nothing else, since a stop is a request on a stream of its own.
+//!
+//! The link also tells whether the other end is there, with a heartbeat on a
+//! stream of its own and any byte heard counting as the peer's presence: an
+//! end that hears nothing for [`RUNNER_PING_TIMEOUT`] has lost its connection.
 //!
 //! # A second hello
 //!
 //! A hello for a device that already has a connection is more often the same
 //! runner coming back than a second one, since a network that drops a
 //! connection without closing it leaves the backend holding a socket nobody
-//! answers. So the backend pings the held connection and waits up to 5 seconds:
+//! answers. So the backend pings the held connection's link and waits up to 5
+//! seconds:
 //!
 //! - A connection that answers keeps the device, and the new hello is refused
 //!   with `already_connected`. A connection whose liveness checks are paused,
@@ -48,17 +89,19 @@
 //! message (a 5,000-file working tree list, a shell command as long as a model
 //! can write, about 0.5 MiB each).
 //!
-//! One connection carries everything, so a message in flight holds up the rest.
-//! At 4 MiB a message still leaves within the 30-second write deadline on an
-//! uplink of a little over 1 Mbit/s, and a full inbound queue of eight stays
-//! within 32 MiB.
+//! A message larger than a stream's window crosses in pieces, and a stream
+//! that waits for room holds only its own sender. A receiver holds at most
+//! 32 MiB of messages the application has not taken, however many streams
+//! carry them; a peer that opens more streams than a link has, or sends a
+//! frame longer than a message may be, loses its link.
 //!
-//! Bulk bytes therefore never travel in a message: file contents and command IO
-//! go through pipes ([`PipeFrame`]). A full queue never closes the connection,
+//! Bulk bytes still never travel in a message: file contents and command IO go
+//! through pipes ([`PipeFrame`]). A full stream never closes the connection,
 //! only a message that breaks the protocol does.
 
 mod encoding;
 mod kept;
+mod lanes;
 mod messages;
 mod pipe_frames;
 mod replies;
@@ -68,6 +111,7 @@ pub use kept::{
     JOB_KEPT_BYTES, JOB_KEPT_PART_BYTES, JOB_KEPT_READ_BYTES, KeptRecord, decode_records,
     encode_record,
 };
+pub use lanes::{Lane, LaneKind, Mode, Route, Routed};
 pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
@@ -94,10 +138,14 @@ pub const VERSION: u32 = 56;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
-/// How often a runner asks its connection whether the backend is there, and
-/// how long one unanswered counts as lost (`crates/runner/src/connection/kept.rs`).
+/// How often each end of the link pings the other, and how long a link that
+/// is heard from at all counts as lost
+/// (`crates/shared-link/src/lib.rs`).
 pub const RUNNER_PING_INTERVAL: Duration = Duration::from_secs(30);
 pub const RUNNER_PING_TIMEOUT: Duration = Duration::from_secs(60);
+/// How often a runner reports how many jobs it runs, besides when it comes
+/// online (`crates/runner/src/connection/owner.rs`).
+pub const JOB_COUNT_INTERVAL: Duration = Duration::from_secs(30);
 /// The most background tasks a `job_outliving` names, and the most bytes of
 /// each one's command line: enough to tell a model what keeps its command
 /// running without crowding its output out of the result.
@@ -154,30 +202,73 @@ pub enum WireError {
     Invalid(String),
 }
 
-/// An encoded message.
+/// An encoded message, with the stream of the link it travels on.
 #[derive(Clone)]
-pub struct Frame(Vec<u8>);
+pub struct Frame {
+    bytes: Vec<u8>,
+    route: Route,
+}
 
 impl Frame {
+    /// Bytes that are no message, for a test of a peer that refuses them;
+    /// they travel on the connection's lane.
+    pub fn raw(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes,
+            route: Route {
+                lane: Lane::connection(),
+                last: false,
+                mode: Mode::Stream,
+            },
+        }
+    }
+
     pub fn into_bytes(self) -> Vec<u8> {
-        self.0
+        self.bytes
     }
 
     /// The encoded size, which [`MAX_MESSAGE_BYTES`] bounds.
     pub fn encoded_len(&self) -> usize {
-        self.0.len()
+        self.bytes.len()
+    }
+
+    /// Where the message goes.
+    pub fn route(&self) -> &Route {
+        &self.route
+    }
+
+    /// The same message on the lane of the command `id`, for a message whose
+    /// sender knows an owner the message does not name: an rpc call's
+    /// messages travel on their job's lane, after the job's output and
+    /// before its exit.
+    pub fn in_command(mut self, id: &str) -> Self {
+        self.route.lane = Lane::command(id);
+        self
+    }
+
+    /// A frame of an encoded message and its route, which `into_parts` took.
+    pub fn from_parts(bytes: Vec<u8>, route: Route) -> Self {
+        Self { bytes, route }
+    }
+
+    /// The encoded message and its route.
+    pub fn into_parts(self) -> (Vec<u8>, Route) {
+        (self.bytes, self.route)
     }
 }
 
 /// Validates and encodes a message. The size limit is the sender's to apply
 /// ([`within_limit`]), because an oversized reply fails its own request.
-pub fn encode<M: Serialize + garde::Validate<Context = ()>>(
+pub fn encode<M: Serialize + Routed + garde::Validate<Context = ()>>(
     message: &M,
 ) -> Result<Frame, WireError> {
     message
         .validate()
         .map_err(|report| WireError::Invalid(report.to_string()))?;
-    Ok(Frame(rmp_serde::to_vec_named(message)?))
+    Ok(Frame {
+        bytes: rmp_serde::to_vec_named(message)?,
+        route: message.route(),
+    })
 }
 
 /// Decodes and validates one message; bytes after it are refused.

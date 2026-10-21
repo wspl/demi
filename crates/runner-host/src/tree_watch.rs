@@ -585,7 +585,7 @@ mod platform {
     /// A stream over trees, or a kqueue of one node, each held for its
     /// drop, which stops it.
     pub(super) enum Watch {
-        Stream(#[cfg_attr(not(feature = "testing"), allow(dead_code, reason = "held for its drop"))] super::fsevents::Stream),
+        Stream(#[allow(dead_code, reason = "held for its drop")] super::fsevents::Stream),
         Node(#[allow(dead_code, reason = "held for its drop")] super::kqueue::Node),
     }
 
@@ -643,9 +643,6 @@ mod fsevents {
     pub(crate) struct Stream {
         run_loop: RunLoop,
         thread: Option<thread::JoinHandle<()>>,
-        /// The stream's thread holds it too, each callback for its events.
-        #[cfg_attr(not(feature = "testing"), allow(dead_code, reason = "only a test speaks for FSEvents"))]
-        listener: Arc<Mutex<Listener>>,
     }
 
     impl Stream {
@@ -654,18 +651,14 @@ mod fsevents {
             let trees = trees.to_vec();
             let left_out = left_out.to_vec();
             let listener = Arc::new(Mutex::new(listener));
-            let thread = {
-                let listener = listener.clone();
-                thread::Builder::new()
-                    .name("fsevents".into())
-                    .spawn(move || run(&trees, &left_out, listener, &sender))
-                    .map_err(|error| error.to_string())?
-            };
+            let thread = thread::Builder::new()
+                .name("fsevents".into())
+                .spawn(move || run(&trees, &left_out, listener, &sender))
+                .map_err(|error| error.to_string())?;
             match receiver.recv() {
                 Ok(Some(run_loop)) => Ok(Stream {
                     run_loop,
                     thread: Some(thread),
-                    listener,
                 }),
                 _ => {
                     // The thread has ended or is about to, having sent that
@@ -843,14 +836,6 @@ mod fsevents {
         listener.lock().expect("the stream's listener is intact")
     }
 
-    #[cfg(feature = "testing")]
-    impl Stream {
-        /// What FSEvents would say of `path` with `flags`, through the way
-        /// the stream's own events take.
-        pub(crate) fn said(&self, path: PathBuf, flags: fs::FSEventStreamEventFlags) {
-            lock(&self.listener).deliver(vec![from_flags(path, flags)]);
-        }
-    }
 }
 
 /// A kqueue of one file or folder, run by a thread of its own.
@@ -1038,18 +1023,3 @@ mod kqueue {
     }
 }
 
-#[cfg(all(feature = "testing", target_os = "macos"))]
-impl TreeWatch {
-    /// What FSEvents would say of `path` with `flags`, a stream's lost
-    /// events among them, which nothing else can make it say; false for a
-    /// watch that is no stream.
-    pub(crate) fn said(&self, path: PathBuf, flags: u32) -> bool {
-        match &self._watch {
-            platform::Watch::Stream(stream) => {
-                stream.said(path, flags);
-                true
-            }
-            platform::Watch::Node(_) => false,
-        }
-    }
-}

@@ -121,9 +121,9 @@ pub struct RunnerTuning {
     pub claim_lifetime: Duration,
     /// How many pairing codes one user may try within a minute.
     pub claims_per_minute: usize,
-    /// How often a connected runner is asked whether it is there; none turns
-    /// liveness off.
-    pub ping: Option<Duration>,
+    /// How often a connected runner is pinged and how long its answer may
+    /// take; none turns liveness off.
+    pub ping: Option<demi_backend_remote_host::Liveness>,
     /// How long the connection that holds a device has to answer a ping
     /// when a new hello for the device arrives, before it gives way.
     pub probe: Duration,
@@ -142,7 +142,7 @@ impl Default for RunnerTuning {
             hello_deadline: Duration::from_secs(30),
             claim_lifetime: Duration::from_secs(10 * 60),
             claims_per_minute: 10,
-            ping: Some(demi_backend_remote_host::PING_INTERVAL),
+            ping: Some(demi_backend_remote_host::Liveness::default()),
             probe: Duration::from_secs(5),
             updating: Duration::from_secs(2 * 60),
             returning: Duration::from_secs(10),

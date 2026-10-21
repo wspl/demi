@@ -17,6 +17,7 @@
 //!
 //! Every peer closes when the connection to the backend ends.
 
+use demi_shared_link::Outgoing;
 use std::{
     collections::HashMap,
     io,
@@ -66,7 +67,7 @@ pub struct HostOperations {
     pub control: Handle,
     /// The connection's messages to the backend, which also carry its
     /// streams' artifact requests.
-    pub backend: mpsc::Sender<wire::Frame>,
+    pub backend: Outgoing,
     /// The connection's end, which ends every operation.
     pub closed: CancellationToken,
     /// The forwards this runner is an end of, as the backend last said.
@@ -76,7 +77,7 @@ pub struct HostOperations {
 /// An open direct stream as the backend knows it: reported open before it
 /// is made, and closed as it is dropped.
 struct ReportedStream {
-    backend: mpsc::Sender<wire::Frame>,
+    backend: Outgoing,
     control: Handle,
     closed: CancellationToken,
     stream: String,
@@ -129,7 +130,7 @@ impl ReportedStream {
 /// Sends `report` to the backend, unless the connection ended first.
 fn send_report(
     report: Outbound,
-    backend: mpsc::Sender<wire::Frame>,
+    backend: Outgoing,
     closed: CancellationToken,
 ) -> impl Future<Output = ()> + Send + 'static {
     async move {

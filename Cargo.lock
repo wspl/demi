@@ -2010,6 +2010,7 @@ dependencies = [
  "demi-shared-artifacts",
  "demi-shared-cli",
  "demi-shared-gates",
+ "demi-shared-link",
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
@@ -2378,11 +2379,11 @@ dependencies = [
  "demi-host-interface",
  "demi-runner-protocol",
  "demi-shared-gates",
+ "demi-shared-link",
  "demi-shared-types",
  "futures-util",
  "garde",
  "rustix",
- "schemars",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2405,7 +2406,6 @@ dependencies = [
  "demi-backend-database",
  "demi-backend-page-sync",
  "demi-backend-remote-host",
- "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-host-interface",
  "demi-runner-protocol",
@@ -2424,7 +2424,6 @@ dependencies = [
  "serde_json_canonicalizer",
  "sha2 0.10.9",
  "shlex",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -3305,6 +3304,7 @@ dependencies = [
  "demi-runner-shell",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-shared-link",
  "dunce",
  "futures-util",
  "hostname",
@@ -3318,7 +3318,6 @@ dependencies = [
  "shlex",
  "subtle",
  "sysinfo",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
@@ -3382,6 +3381,7 @@ dependencies = [
  "demi-runner-process",
  "demi-runner-protocol",
  "demi-shared-artifacts",
+ "demi-shared-link",
  "dunce",
  "filetime",
  "fsevent-sys",
@@ -3389,12 +3389,8 @@ dependencies = [
  "gix",
  "libc",
  "notify",
- "rmp-serde",
  "rustix",
- "serde",
- "serde_json",
  "sha2 0.10.9",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -3411,12 +3407,10 @@ dependencies = [
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-runner-command-packages",
- "demi-runner-jobs",
  "demi-runner-process",
  "demi-runner-protocol",
+ "demi-shared-link",
  "futures-util",
- "rmp-serde",
- "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
@@ -3438,6 +3432,7 @@ dependencies = [
  "demi-command-sdk",
  "demi-runner-protocol",
  "demi-shared-artifacts",
+ "demi-shared-link",
  "futures-util",
  "libc",
  "mach2",
@@ -3448,7 +3443,6 @@ dependencies = [
  "rustix",
  "serde",
  "sysinfo",
- "tempfile",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
@@ -3620,6 +3614,21 @@ dependencies = [
  "tracing",
  "windows 0.62.2",
  "yuv",
+]
+
+[[package]]
+name = "demi-shared-link"
+version = "0.1.62"
+dependencies = [
+ "demi-runner-protocol",
+ "demi-shared-link",
+ "futures-util",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "yamux",
 ]
 
 [[package]]
@@ -11007,6 +11016,7 @@ checksum = "494815d09bf52b5548659851081238f0ca39ff638363907596da739561c62c52"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "futures-util",
  "libc",
@@ -12880,6 +12890,19 @@ dependencies = [
  "tokio",
  "tokio-util",
  "zstd 0.13.3",
+]
+
+[[package]]
+name = "yamux"
+version = "0.14.1"
+dependencies = [
+ "futures",
+ "log",
+ "nohash-hasher",
+ "parking_lot",
+ "pin-project",
+ "static_assertions",
+ "web-time",
 ]
 
 [[package]]

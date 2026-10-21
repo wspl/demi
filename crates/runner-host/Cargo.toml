@@ -16,6 +16,7 @@ demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
 demi-runner-process = { path = "../runner-process" }
+demi-shared-link = { path = "../shared-link" }
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
 # A canonical path without Windows' verbatim prefix, as a Host names a directory.
@@ -42,14 +43,3 @@ fsevent-sys = "4.1"
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 notify = "8.2"
 
-[features]
-# What a test makes a watch hear that the platform cannot be made to say,
-# such as FSEvents dropping events.
-testing = []
-
-[dev-dependencies]
-rmp-serde = "1.3"
-serde.workspace = true
-serde_json.workspace = true
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

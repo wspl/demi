@@ -1,5 +1,6 @@
 //! Filesystem and working-tree requests for one backend connection.
 
+use demi_shared_link::Outgoing;
 use std::{
     future::Future,
     io,
@@ -27,7 +28,7 @@ pub struct HostServer {
     /// The connection's file system watches, which a direct channel's
     /// watches share (`crates/runner-host/src/subscriptions.rs`).
     shared_watches: Watches,
-    output: mpsc::Sender<wire::Frame>,
+    output: Outgoing,
     filesystem: TaskTracker,
     filesystem_capacity: Arc<Semaphore>,
     git: GitService,
@@ -48,7 +49,7 @@ impl Drop for HostServer {
 }
 
 impl HostServer {
-    pub fn new(output: mpsc::Sender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient) -> Self {
+    pub fn new(output: Outgoing, default_cwd: PathBuf, pipes: PipeClient) -> Self {
         let cancel = CancellationToken::new();
         // The working tree's changes and the backend's subscriptions share
         // one watch per tree (`crates/runner-host/src/subscriptions.rs`).
@@ -216,7 +217,7 @@ impl HostServer {
 
 /// Sends the backend's subscriptions' reports as messages, until the
 /// connection closes.
-async fn report(mut reports: mpsc::Receiver<Report>, output: mpsc::Sender<wire::Frame>, cancel: CancellationToken) {
+async fn report(mut reports: mpsc::Receiver<Report>, output: Outgoing, cancel: CancellationToken) {
     loop {
         let report = tokio::select! {
             () = cancel.cancelled() => return,

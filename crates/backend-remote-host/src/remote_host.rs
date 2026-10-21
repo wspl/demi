@@ -1101,7 +1101,7 @@ impl RemoteJob {
             return Ok(());
         }
         let link = self.connected()?;
-        send_stdin(&link, &bytes, |bytes| Inbound::JobStdin {
+        send_stdin(&link, &self.shared, &bytes, |bytes| Inbound::JobStdin {
             job_id: self.id.clone(),
             bytes,
         })
@@ -1266,16 +1266,29 @@ pub(crate) async fn filled_job_read(link: &Link, job: &str) -> Result<PipeReader
 }
 
 /// Sends `bytes` as ordered frames of at most [`STDIN_CHUNK_BYTES`], each in
-/// the message `frame` makes of it.
-async fn send_stdin(
+/// the message `frame` makes of it, for the command `id`. The frames wait for
+/// room in the command's stream, whose window the runner's reading of it
+/// opens, so a command that reads nothing holds this writer and nothing else:
+/// the command's stop is a request on a stream of its own, and passes.
+async fn send_stdin<E: Clone, C>(
     link: &Link,
+    shared: &Shared<E, C>,
     bytes: &[u8],
     frame: impl Fn(WireBytes) -> Inbound,
 ) -> Result<(), HostError> {
-    for chunk in bytes.chunks(STDIN_CHUNK_BYTES) {
-        link.send(&frame(WireBytes(chunk.to_vec()))).await?;
+    let sending = async {
+        for chunk in bytes.chunks(STDIN_CHUNK_BYTES) {
+            link.send(&frame(WireBytes(chunk.to_vec()))).await?;
+        }
+        Ok(())
+    };
+    tokio::select! {
+        sent = sending => sent,
+        // A command that ended reads no more: the writer, waiting for room,
+        // is let go with it.
+        _ = shared.end() => if link.is_closed() { Err(link.offline()) } else { Ok(()) },
+        () = link.ended() => Err(link.offline()),
     }
-    Ok(())
 }
 
 /// A page of the Host's log.
@@ -1802,7 +1815,7 @@ impl ProcessControl for SpawnControl {
         Box::pin(async move {
             match live(&self.link, &self.shared) {
                 Some(link) => {
-                    send_stdin(link, &bytes, |bytes| Inbound::SpawnStdin {
+                    send_stdin(link, &self.shared, &bytes, |bytes| Inbound::SpawnStdin {
                         spawn_id: self.id.clone(),
                         bytes,
                     })

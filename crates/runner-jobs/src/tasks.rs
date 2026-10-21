@@ -25,10 +25,14 @@
 //!
 //! # Input
 //!
-//! A job or process whose live stdin the runner has not taken, `INPUT_QUEUE`
-//! frames deep, is cancelled, because routing a message never waits for work
-//! that does not read its input.
+//! A job or process whose program reads no stdin holds only its own input:
+//! the connection's link keeps the input's messages and reads no more of that
+//! command's stream, whose window then fills and holds the backend's writer
+//! of that input and nothing else, while a stop, the task's other messages
+//! and every other command go on. Whoever feeds a task its input
+//! ([`InputSender`]) waits for the room its queue has.
 
+use demi_shared_link::Outgoing;
 use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
 use crate::kept_output::KeptOutput;
@@ -70,9 +74,9 @@ pub enum WorkId {
     Spawn(String),
 }
 
-/// Live stdin chunks a task has not read yet; past them the task is
-/// cancelled rather than holding up the connection.
-const INPUT_QUEUE: usize = 64;
+/// Live stdin chunks a task has not read yet; past them whoever feeds it
+/// waits.
+const INPUT_QUEUE: usize = 8;
 /// Signals a task has not taken yet.
 const SIGNAL_QUEUE: usize = 16;
 /// How long a task's pipe transfers may run on after its process ended.
@@ -95,7 +99,7 @@ pub struct JobTable {
 pub struct JobConfig {
     /// Where the tasks' messages go: to the connection that serves, and
     /// nowhere while none does.
-    pub output: mpsc::Sender<wire::Frame>,
+    pub output: Outgoing,
     /// Where each job gets its own directory.
     pub directories: Arc<JobDirectories>,
     /// Where each conversation has its scratch directory.
@@ -133,6 +137,29 @@ struct Entry {
 enum TaskInput {
     Bytes(Bytes),
     End,
+}
+
+/// Feeds a task's live standard input, waiting for room in its queue.
+#[derive(Clone)]
+pub struct InputSender(mpsc::Sender<TaskInput>);
+
+impl InputSender {
+    /// Gives the task `bytes`, at most [`wire::STDIN_CHUNK_BYTES`]; false once
+    /// the task ended.
+    pub async fn bytes(&self, bytes: Bytes) -> bool {
+        self.0.send(TaskInput::Bytes(bytes)).await.is_ok()
+    }
+
+    /// Closes the task's standard input after what was given; false once the
+    /// task ended.
+    pub async fn end(&self) -> bool {
+        self.0.send(TaskInput::End).await.is_ok()
+    }
+
+    /// Resolves once the task ended.
+    pub async fn closed(&self) {
+        self.0.closed().await;
+    }
 }
 
 /// What reaches a task from the backend while it runs.
@@ -203,6 +230,11 @@ impl JobTable {
     /// again, or the first one arriving after it, runs nothing twice.
     pub fn started(&self, job: &str) -> bool {
         self.started.contains(job)
+    }
+
+    /// Whether the task `id` runs.
+    pub fn has(&self, id: &WorkId) -> bool {
+        self.entries.contains_key(id)
     }
 
     /// Whether the job `job` runs.
@@ -286,16 +318,11 @@ impl JobTable {
         Ok(())
     }
 
-    /// Live stdin is bounded; bulk streams use the independently flowing HTTP pipe.
-    pub fn input(&self, id: &WorkId, bytes: Bytes) -> io::Result<()> {
-        if bytes.len() > wire::STDIN_CHUNK_BYTES {
-            return Err(io::Error::other("live stdin chunk exceeds 64 KiB"));
-        }
-        self.send(id, TaskInput::Bytes(bytes))
-    }
-
-    pub fn end_input(&self, id: &WorkId) -> io::Result<()> {
-        self.send(id, TaskInput::End)
+    /// Where the live input of the task `id` goes; none once it ended.
+    pub fn input_sender(&self, id: &WorkId) -> Option<InputSender> {
+        self.entries
+            .get(id)
+            .map(|entry| InputSender(entry.input.clone()))
     }
 
     /// Starts or stops following a job's output beyond each stream's first
@@ -318,20 +345,6 @@ impl JobTable {
             .signals
             .try_send(signal)
             .map_err(|error| io::Error::other(format!("signal queue unavailable: {error}")))
-    }
-
-    fn send(&self, id: &WorkId, input: TaskInput) -> io::Result<()> {
-        let Some(entry) = self.entries.get(id) else {
-            return Ok(());
-        };
-        match entry.input.try_send(input) {
-            Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => Ok(()),
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                // Never block connection processing behind a task that is not reading.
-                entry.cancel.cancel();
-                Err(io::Error::other("live stdin buffer is full"))
-            }
-        }
     }
 
     /// The next task that ended, after it sent its result; its entry is gone.
@@ -1006,7 +1019,7 @@ async fn take_chunk(
     chunk: OutputChunk,
     logs: Option<&mut Logs>,
     id: &str,
-    output: &mpsc::Sender<wire::Frame>,
+    output: &Outgoing,
     pipe: Option<&mpsc::Sender<Bytes>>,
     cancel: &CancellationToken,
     stdout_line_start: &mut bool,
@@ -1276,7 +1289,7 @@ impl Log {
         job: &str,
         followed: bool,
         due: Due,
-        output: &mpsc::Sender<wire::Frame>,
+        output: &Outgoing,
     ) -> io::Result<()> {
         let Some(at) = self.due(followed) else {
             return Ok(());
@@ -1390,7 +1403,7 @@ impl Logs {
         job: &str,
         followed: bool,
         due: Due,
-        output: &mpsc::Sender<wire::Frame>,
+        output: &Outgoing,
     ) -> io::Result<()> {
         self.stdout.send_beyond(job, followed, due, output)?;
         self.stderr.send_beyond(job, followed, due, output)
@@ -1402,7 +1415,7 @@ impl Logs {
         &mut self,
         job: &str,
         followed: bool,
-        output: &mpsc::Sender<wire::Frame>,
+        output: &Outgoing,
         closed: &CancellationToken,
     ) -> io::Result<()> {
         for log in [&mut self.stdout, &mut self.stderr] {

@@ -1,7 +1,9 @@
 //! A runner's socket at the edge (`crates/runner-protocol/src/wire/mod.rs`).
 //!
 //! The runner's first message is its hello, which must come within the hello
-//! deadline.
+//! deadline. The hello and what answers it are messages of the socket, and
+//! the link's session starts on it once the hello is accepted, in the shard
+//! that takes the runner (`crates/shared-link/src/handshake.rs`).
 //!
 //! - A known token moves the socket into the shard of the device's owner.
 //! - A runner without one waits here for its user to claim the code it printed,
@@ -9,22 +11,24 @@
 
 use std::sync::Arc;
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::WebSocket;
 use demi_backend_database::accounts::TokenHash;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, Outbound, RunnerInfo};
 
 use demi_backend_runners::claims::ClaimGrant;
 use demi_backend_runners::codes::ClaimCode;
+use demi_backend_remote_host::{Handshake, open_link};
 use demi_backend_runners::devices::send;
 
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::{KeptJobs, Shards};
 
 /// Serves a runner's socket until it is handed to a shard or closes.
-pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: WebSocket) {
+pub(crate) async fn accept(services: Arc<Services>, shards: Shards, socket: WebSocket) {
+    let mut connection = open_link(socket, services.runners.ping);
     let deadline = services.runners.hello_deadline;
-    let hello = match tokio::time::timeout(deadline, hello(&mut socket)).await {
+    let hello = match tokio::time::timeout(deadline, hello(&mut connection)).await {
         Ok(Some(hello)) => hello,
         Ok(None) => return,
         Err(_) => {
@@ -44,7 +48,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
             wire::VERSION
         );
         refuse(
-            socket,
+            connection,
             &runner,
             HelloErrorCode::UnsupportedProtocol,
             &reason,
@@ -57,9 +61,9 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         // misbooted, never a device waiting to be paired.
         if runner.managed == Some(true) {
             let reason = "a managed host presents its device token; it is never paired";
-            refuse(socket, &runner, HelloErrorCode::UnknownDevice, reason).await;
+            refuse(connection, &runner, HelloErrorCode::UnknownDevice, reason).await;
         } else {
-            await_claim(&services, &shards, socket, runner, kept.instance).await;
+            await_claim(&services, &shards, connection, runner, kept.instance).await;
         }
         return;
     };
@@ -78,13 +82,13 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         device = lookup => device,
         // The runner went away during the lookup: its socket never becomes
         // online. A repeated hello says nothing new.
-        () = closed(&mut socket) => return,
+        () = closed(&mut connection) => return,
     };
     let device = match device {
         Ok(Some(device)) => device,
         Ok(None) => {
             refuse(
-                socket,
+                connection,
                 &runner,
                 HelloErrorCode::UnknownDevice,
                 "unknown device",
@@ -98,7 +102,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
                 "a runner's device could not be read"
             );
             refuse(
-                socket,
+                connection,
                 &runner,
                 HelloErrorCode::Internal,
                 "the device could not be read",
@@ -122,13 +126,13 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
                 error = &error as &dyn std::error::Error,
                 "a runner's owner could not be read"
             );
-            refuse(socket, &runner, HelloErrorCode::Internal, "the device could not be read").await;
+            refuse(connection, &runner, HelloErrorCode::Internal, "the device could not be read").await;
             return;
         }
     }
     let adopted = shards
         .of(&owner)
-        .adopt(move |shard| async move { shard.adopt_runner(device, runner, kept, socket).await })
+        .adopt(move |shard| async move { shard.adopt_runner(device, runner, kept, connection).await })
         .await;
     // A shard that is closing takes no runner: dropping the socket closes it
     // without a word, as shutdown does to every runner.
@@ -145,56 +149,44 @@ struct Hello {
     kept: KeptJobs,
 }
 
-/// The first message, which must be a hello; none when the socket closed or
+/// The first message, which must be a hello; none when the link closed or
 /// sent something else, which breaks the protocol.
-async fn hello(socket: &mut WebSocket) -> Option<Hello> {
-    loop {
-        let frame = match socket.recv().await? {
-            Ok(Message::Binary(frame)) => frame,
-            Ok(Message::Ping(_) | Message::Pong(_)) => continue,
-            Ok(Message::Text(_)) => {
-                tracing::info!("closing a runner connection that sent a text frame");
-                return None;
-            }
-            Ok(Message::Close(_)) | Err(_) => return None,
-        };
-        return match wire::decode::<Outbound>(&frame) {
-            Ok(Outbound::Hello {
-                protocol,
-                device_token,
-                runner,
-                instance,
-                jobs,
-            }) => Some(Hello {
-                protocol,
-                token: device_token,
-                runner,
-                kept: KeptJobs { instance, jobs },
-            }),
-            Ok(_) => {
-                tracing::info!("closing a runner connection whose first message is not a hello");
-                None
-            }
-            Err(error) => {
-                tracing::info!("closing a runner connection over a malformed frame: {error}");
-                None
-            }
-        };
-    }
-}
-
-/// Resolves once the socket closed; the messages before that are dropped,
-/// since a runner sends nothing but its hello before it is answered.
-async fn closed(socket: &mut WebSocket) {
-    while let Some(Ok(message)) = socket.recv().await {
-        if matches!(message, Message::Close(_)) {
-            return;
+async fn hello(socket: &mut Handshake) -> Option<Hello> {
+    let Some(Ok(frame)) = socket.read().await else {
+        return None;
+    };
+    match wire::decode::<Outbound>(&frame) {
+        Ok(Outbound::Hello {
+            protocol,
+            device_token,
+            runner,
+            instance,
+            jobs,
+        }) => Some(Hello {
+            protocol,
+            token: device_token,
+            runner,
+            kept: KeptJobs { instance, jobs },
+        }),
+        Ok(_) => {
+            tracing::info!("closing a runner connection whose first message is not a hello");
+            None
+        }
+        Err(error) => {
+            tracing::info!("closing a runner connection over a malformed frame: {error}");
+            None
         }
     }
 }
 
-/// Answers the hello with a refusal and closes the socket.
-async fn refuse(mut socket: WebSocket, runner: &RunnerInfo, code: HelloErrorCode, reason: &str) {
+/// Resolves once the socket ended; the messages before that are dropped, since
+/// a runner sends nothing but its hello before it is answered.
+async fn closed(socket: &mut Handshake) {
+    while let Some(Ok(_)) = socket.read().await {}
+}
+
+/// Answers the hello with a refusal and closes the link.
+async fn refuse(mut connection: Handshake, runner: &RunnerInfo, code: HelloErrorCode, reason: &str) {
     tracing::warn!(
         "runner hello refused ({code}): {reason} [{}, {}]",
         runner.name,
@@ -205,8 +197,8 @@ async fn refuse(mut socket: WebSocket, runner: &RunnerInfo, code: HelloErrorCode
         reason: reason.into(),
     };
     // A runner that went away hears nothing, and there is nothing to close.
-    if send(&mut socket, &refusal).await.is_ok() {
-        let _ = socket.send(Message::Close(None)).await;
+    if send(&mut connection, &refusal).await.is_ok() {
+        connection.close(None).await;
     }
 }
 
@@ -216,7 +208,7 @@ async fn refuse(mut socket: WebSocket, runner: &RunnerInfo, code: HelloErrorCode
 async fn await_claim(
     services: &Services,
     shards: &Shards,
-    mut socket: WebSocket,
+    mut connection: Handshake,
     runner: RunnerInfo,
     instance: u64,
 ) {
@@ -228,7 +220,7 @@ async fn await_claim(
         let pending = Inbound::ClaimPending {
             claim_token: code.printed(),
         };
-        if send(&mut socket, &pending).await.is_err() {
+        if send(&mut connection, &pending).await.is_err() {
             services.claims.withdraw(&code);
             return;
         }
@@ -243,8 +235,8 @@ async fn await_claim(
                     // runners go.
                     Err(_) => return,
                 },
-                message = socket.recv() => match message {
-                    Some(Ok(Message::Close(_)) | Err(_)) | None => {
+                message = connection.read() => match message {
+                    Some(Err(_)) | None => {
                         services.claims.withdraw(&code);
                         return;
                     }
@@ -256,7 +248,7 @@ async fn await_claim(
             // The code expired: it is dead, and a new one goes out.
             None => services.claims.withdraw(&code),
             Some(grant) => {
-                hand_over(shards, socket, runner, instance, grant).await;
+                hand_over(shards, connection, runner, instance, grant).await;
                 return;
             }
         }
@@ -268,7 +260,7 @@ async fn await_claim(
 /// unanswered, and the claim then deletes the device it made.
 async fn hand_over(
     shards: &Shards,
-    mut socket: WebSocket,
+    mut connection: Handshake,
     runner: RunnerInfo,
     instance: u64,
     grant: ClaimGrant,
@@ -282,14 +274,14 @@ async fn hand_over(
         device_token: token,
         device_name: device.name.clone(),
     };
-    if send(&mut socket, &claimed).await.is_err() {
+    if send(&mut connection, &claimed).await.is_err() {
         return;
     }
     let owner = device.user.clone();
     let adopted = shards
         .of(&owner)
         .adopt(move |shard| async move {
-            shard.adopt_claimed(device, runner, instance, socket, bound).await
+            shard.adopt_claimed(device, runner, instance, connection, bound).await
         })
         .await;
     if adopted.is_err() {

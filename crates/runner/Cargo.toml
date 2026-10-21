@@ -7,11 +7,8 @@ publish.workspace = true
 
 [features]
 # The test support of the runner libraries, which the one test selection
-# turns on: the native fixture program, the registry's decisions, a job's
-# activity and a dispatcher on channels.
+# turns on: the native fixture program and the registry's decisions.
 test-fixtures = [
-  "demi-runner-host/testing",
-  "demi-runner-jobs/testing",
   "demi-runner-command-packages/testing",
   "demi-runner-shell/testing",
 ]
@@ -24,6 +21,7 @@ demi-runner-direct = { path = "../runner-direct" }
 demi-runner-host = { path = "../runner-host" }
 demi-runner-jobs = { path = "../runner-jobs" }
 demi-runner-process = { path = "../runner-process" }
+demi-shared-link = { path = "../shared-link" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-runner-command-packages = { path = "../runner-command-packages" }
 demi-runner-shell = { path = "../runner-shell" }
@@ -73,11 +71,9 @@ sha2 = { version = "0.10", features = ["asm"] }
 
 [dev-dependencies]
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
-demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 # The built runner with a home and state of its own (`RunnerProcess`).
 demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
 demi-host-interface = { path = "../host-interface" }
-tempfile = "3"
 
 [[bin]]
 name = "demi-runner"

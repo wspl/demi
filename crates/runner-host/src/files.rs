@@ -35,6 +35,7 @@
 //! night; the deadline turns such a stall into one failed start and a retry.
 //! The pipe itself keeps no deadline.
 
+use demi_shared_link::Outgoing;
 use std::{
     io::{self, SeekFrom},
     path::{Path, PathBuf},
@@ -47,7 +48,7 @@ use futures_util::StreamExt;
 use tokio::{
     fs,
     io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
-    sync::{Semaphore, mpsc},
+    sync::Semaphore,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -65,7 +66,7 @@ use crate::{fs::error_code, git::GitService};
 const CHUNK_BYTES: usize = 64 * 1024;
 
 pub struct FileTransfers {
-    output: mpsc::Sender<wire::Frame>,
+    output: Outgoing,
     pipes: PipeClient,
     transfers: TaskTracker,
     /// Ends every transfer: cancelled by `close` and by the host connection's
@@ -75,7 +76,7 @@ pub struct FileTransfers {
 
 impl FileTransfers {
     pub fn new(
-        output: mpsc::Sender<wire::Frame>,
+        output: Outgoing,
         pipes: PipeClient,
         cancel: CancellationToken,
     ) -> Self {
@@ -1027,7 +1028,7 @@ fn fs_error(id: String, read_at: ReadAt, error: &io::Error) -> Result<wire::Fram
 /// Sends one reply unless the connection is shutting down; false when it
 /// could not be sent.
 async fn send(
-    output: &mpsc::Sender<wire::Frame>,
+    output: &Outgoing,
     message: Result<wire::Frame, wire::WireError>,
     shutdown: &CancellationToken,
 ) -> bool {

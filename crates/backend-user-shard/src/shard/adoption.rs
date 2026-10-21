@@ -10,12 +10,11 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
-use demi_backend_remote_host::{Hello, Link, LinkOptions, RemoteHost, host_identity};
+use demi_backend_remote_host::{Handshake, Health, Hello, Link, LinkOptions, Outgoing, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
@@ -56,7 +55,7 @@ impl Shard {
         device: DeviceRecord,
         runner: RunnerInfo,
         kept: KeptJobs,
-        mut socket: WebSocket,
+        mut connection: Handshake,
     ) {
         #[cfg(feature = "testing")]
         self.services()
@@ -127,8 +126,8 @@ impl Shard {
                     reason: format!("device {} already has a live connection", device.id),
                 };
                 // A runner that went away needs no refusal.
-                if send(&mut socket, &refusal).await.is_ok() {
-                    let _ = socket.send(Message::Close(None)).await;
+                if send(&mut connection, &refusal).await.is_ok() {
+                    connection.close(None).await;
                 }
                 return;
             }
@@ -166,8 +165,17 @@ impl Shard {
                 .map(|recorded| recorded.job.clone())
                 .collect(),
         };
+        // What the connection queues from here on waits for the link's
+        // session, which starts after the welcome, as the runner takes no work
+        // before it.
         // A closing shard takes no runner; dropping the socket closes it.
-        let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
+        let Some((serving, reported)) = self.bind(
+            &device.id,
+            runner,
+            hello,
+            connection.outgoing(),
+            connection.health(),
+        ) else {
             return;
         };
         self.take_up(recorded.into_iter().map(|recorded| recorded.conversation));
@@ -185,12 +193,15 @@ impl Shard {
         if let Some(settle) = reported.await {
             self.tasks().spawn_local(settle);
         }
-        // A runner that went away before its welcome ends its connection at
-        // once, as the connection reads its socket. What the connection
-        // queued meanwhile leaves after the welcome.
-        let _ = send(&mut socket, &welcome).await;
+        // A runner that went away before its welcome hears nothing, and its
+        // session never starts. What the connection queued meanwhile leaves
+        // after the welcome.
+        if send(&mut connection, &welcome).await.is_err() {
+            return;
+        }
+        let connection = connection.start();
         self.forwards_presence(&device.id, true).await;
-        serving.serve(socket).await;
+        serving.serve(connection).await;
         self.forwards_presence(&device.id, false).await;
     }
 
@@ -201,7 +212,7 @@ impl Shard {
         device: DeviceRecord,
         runner: RunnerInfo,
         instance: u64,
-        socket: WebSocket,
+        connection: Handshake,
         bound: oneshot::Sender<DeviceDto>,
     ) {
         // A closing shard takes no runner, and the claim that waits for the
@@ -216,7 +227,13 @@ impl Shard {
             managed: false,
             recorded: Default::default(),
         };
-        let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
+        let Some((serving, reported)) = self.bind(
+            &device.id,
+            runner,
+            hello,
+            connection.outgoing(),
+            connection.health(),
+        ) else {
             return;
         };
         // A device just paired has nothing an earlier release left.
@@ -230,8 +247,10 @@ impl Shard {
             self.devices()
                 .dto(device, self.services().public_url.get()),
         );
+        // The runner started its session when it read the claim.
+        let connection = connection.start();
         self.forwards_presence(&id, true).await;
-        serving.serve(socket).await;
+        serving.serve(connection).await;
         self.forwards_presence(&id, false).await;
     }
 
@@ -251,6 +270,8 @@ impl Shard {
         device: &DeviceId,
         runner: RunnerInfo,
         hello: Hello,
+        outgoing: Outgoing,
+        health: Health,
     ) -> Option<(Serving, impl Future<Output = Option<impl Future<Output = ()> + 'static>> + 'static)> {
         if self.is_closing() {
             return None;
@@ -271,7 +292,8 @@ impl Shard {
             shell: runner.shell.clone(),
             pipes: self.pipes().clone(),
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
-            ping: self.services().runners.ping,
+            outgoing,
+            health,
             jobs: self.devices().jobs(device),
             hello,
         });
@@ -598,8 +620,12 @@ impl Shard {
         device: &DeviceId,
         home: &str,
     ) -> demi_backend_remote_host::LinkDriver {
-        self.connect_on_for_tests(device, demi_runner_protocol::wire::RunnerPlatform::Darwin, home)
-            .await
+        let (driver, mut sent) = self
+            .connect_on_for_tests(device, demi_runner_protocol::wire::RunnerPlatform::Darwin, home)
+            .await;
+        // Nobody reads what the backend sends, and nothing waits for it.
+        tokio::task::spawn_local(async move { while sent.recv().await.is_some() {} });
+        driver
     }
 
     /// [`Shard::connect_for_tests`] for a runner on `platform`.
@@ -608,7 +634,10 @@ impl Shard {
         device: &DeviceId,
         platform: demi_runner_protocol::wire::RunnerPlatform,
         home: &str,
-    ) -> demi_backend_remote_host::LinkDriver {
+    ) -> (
+        demi_backend_remote_host::LinkDriver,
+        tokio::sync::mpsc::Receiver<demi_runner_protocol::wire::Frame>,
+    ) {
         use demi_runner_protocol::wire::{HostIdentity, OperatingSystem};
         let runner = RunnerInfo {
             name: "test".into(),
@@ -642,7 +671,10 @@ impl Shard {
             managed: false,
             recorded: Default::default(),
         };
-        let (serving, reported) = self.bind(device, runner, hello).expect("an open shard binds");
+        let (outgoing, sent) = Outgoing::plain(64);
+        let (serving, reported) = self
+            .bind(device, runner, hello, outgoing, Health::inert())
+            .expect("an open shard binds");
         // Recorded before the test goes on, as a real hello is before its
         // welcome: the device's home is known from then on, unless an
         // earlier release left directories on it, which the runner the test
@@ -650,14 +682,14 @@ impl Shard {
         if let Some(settle) = reported.await {
             self.tasks().spawn_local(settle);
         }
-        serving.into_driver()
+        (serving.into_driver(), sent)
     }
 
     /// Connects `device` through a runner the test plays, working in `home`.
     ///
-    /// It answers each ping, and each conversation release once `on_release` ran
-    /// for the released conversation and whether it is over, so what that reads
-    /// is the state before the release was answered. The answer says what the runner says of its own
+    /// It answers each conversation release once `on_release` ran for the
+    /// released conversation and whether it is over, so what that reads is the
+    /// state before the release was answered. The answer says what the runner says of its own
     /// accord.
     pub(crate) async fn play_runner_for_tests(
         self: &Rc<Self>,
@@ -693,25 +725,16 @@ impl Shard {
         + 'static,
     ) -> PlayedRunner {
         use demi_runner_protocol::wire::{self, FsOk, FsResult, Outbound};
-        let driver = self.connect_on_for_tests(device, host.platform, &host.home).await;
+        let (driver, mut sent) = self.connect_on_for_tests(device, host.platform, &host.home).await;
         let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, demi_backend_remote_host::SocketEnd>>(8);
-        let (frames, mut sent) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
         let incoming = futures_util::stream::unfold(answered, |mut answered| async move {
             answered.recv().await.map(|frame| (frame, answered))
         });
-        let outgoing = futures_util::sink::unfold(frames, |frames, frame: Vec<u8>| async move {
-            frames
-                .send(frame)
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok::<_, String>(frames)
-        });
-        tokio::task::spawn_local(driver.serve(incoming, outgoing));
+        tokio::task::spawn_local(driver.serve(incoming));
         let played = PlayedRunner(answers.clone());
         tokio::task::spawn_local(async move {
             while let Some(frame) = sent.recv().await {
-                let answer = match wire::decode::<Inbound>(&frame) {
-                    Ok(Inbound::Ping {}) => Outbound::Pong { jobs: 0 },
+                let answer = match wire::decode::<Inbound>(&frame.into_bytes()) {
                     Ok(Inbound::ConversationRelease {
                         id,
                         conversation_id,

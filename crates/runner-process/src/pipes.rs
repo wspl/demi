@@ -8,12 +8,13 @@
 //!   hold a request's body until it ends
 //!   (`crates/runner-protocol/src/wire/pipe_frames.rs`).
 
+use demi_shared_link::Outgoing;
 use bytes::Bytes;
 use crate::backend::Backend;
 use demi_runner_protocol::{values::DeviceToken, wire};
 use futures_util::{SinkExt, Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc, time::Duration};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use tokio_tungstenite::tungstenite::{
     self, Message,
     client::IntoClientRequest,
@@ -603,7 +604,7 @@ impl<S: Stream<Item = io::Result<Bytes>>> Stream for BodyAttempt<S> {
 /// Reports a pipe end's outcome to the backend; `shutdown` stops reporting
 /// without a backend to receive it.
 pub async fn report_pipe(
-    output: &mpsc::Sender<wire::Frame>,
+    output: &Outgoing,
     id: String,
     result: io::Result<()>,
     shutdown: &CancellationToken,

@@ -12,7 +12,7 @@ use axum::{
     body::Body,
     extract::{
         Path as UrlPath, State,
-        ws::{Message, WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection},
+        ws::{WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection},
     },
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
@@ -21,15 +21,16 @@ use axum::{
 };
 use demi_host_interface::{CommandSet, HostKey, SpawnEnv};
 use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, MAX_MESSAGE_BYTES, Outbound};
-use futures_util::{SinkExt, StreamExt, future::ready};
+use futures_util::StreamExt;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+use super::network::Network;
 use super::process::{RunnerProcess, RunnerProcessOptions};
 use super::{CommandPolicy, TEST_DEVICE};
 use crate::{
-    Admission, DeviceJobs, DeviceLink, DeviceSink, DeviceSource, Hello, Link, LinkOptions,
-    PipeRefusal, Pipes,
+    Admission, Connection, DeviceJobs, DeviceLink, DeviceSink, DeviceSource, Hello, Link, LinkOptions,
+    Liveness, PipeRefusal, Pipes,
     RemoteHost, accept_stream_pipe, host_identity,
 };
 
@@ -50,23 +51,12 @@ pub struct FixtureOptions {
     pub tap: Option<mpsc::Sender<Outbound>>,
     /// How long a pipe waits for its ends, rather than [`crate::ARRIVAL`].
     pub arrival: Option<Duration>,
-    /// The first answer to a download of an offered file breaks off after
-    /// this many bytes, as on a flaky link.
-    pub offer_breaks_after: Option<usize>,
-    /// Receives each sink's `GET` once the backend claimed the sink, and
-    /// holds its response head until the test releases it.
-    pub held_sinks: Option<mpsc::Sender<HeldSink>>,
-}
-
-/// A device's sink `GET` whose sink the backend claimed and whose response
-/// waits.
-pub struct HeldSink {
-    pub pipe_id: String,
-    /// Sends the response head.
-    pub release: oneshot::Sender<()>,
-    /// Cancelled when the request went away while held: the device dropped
-    /// its read before it was answered.
-    pub abandoned: CancellationToken,
+    /// Puts a network between the runner and the backend end that
+    /// [`RunnerFixture::stall_network`] stalls.
+    pub stallable: bool,
+    /// How often the backend pings the runner, and how long it waits for the
+    /// answer; none turns the ping off.
+    pub ping: Option<Duration>,
 }
 
 /// A real runner connected to a backend end of its own.
@@ -80,6 +70,7 @@ pub struct RunnerFixture {
     stop: CancellationToken,
     tasks: TaskTracker,
     server: tokio::task::JoinHandle<()>,
+    network: Option<Network>,
 }
 
 /// What the edge hands the device's local task.
@@ -103,10 +94,6 @@ enum Request {
 struct Edge {
     requests: mpsc::Sender<Request>,
     token: Arc<str>,
-    /// Where the next answer to an offer's download from its start breaks
-    /// off, until one has.
-    offer_breaks_after: Arc<std::sync::Mutex<Option<usize>>>,
-    held_sinks: Option<mpsc::Sender<HeldSink>>,
 }
 
 impl RunnerFixture {
@@ -127,8 +114,6 @@ impl RunnerFixture {
         let edge = Edge {
             requests,
             token: TOKEN.into(),
-            offer_breaks_after: Arc::new(std::sync::Mutex::new(options.offer_breaks_after)),
-            held_sinks: options.held_sinks,
         };
         let router = Router::new()
             .route("/api/runner", get(runner_socket))
@@ -157,10 +142,17 @@ impl RunnerFixture {
             pipes.clone(),
             policy.clone(),
             options.tap,
+            options.ping,
             tasks.clone(),
         ));
+        let network = if options.stallable {
+            Some(Network::start(address).await.expect("a local port"))
+        } else {
+            None
+        };
+        let runner_address = network.as_ref().map_or(address, Network::address);
         let process = RunnerProcess::start(
-            &format!("http://{address}"),
+            &format!("http://{runner_address}"),
             RunnerProcessOptions {
                 name: "fixture".into(),
                 env: SpawnEnv::Overlay(
@@ -184,6 +176,7 @@ impl RunnerFixture {
             stop,
             tasks,
             server,
+            network,
         };
         if tokio::time::timeout(ONLINE, fixture.link()).await.is_err() {
             panic!("the runner did not come online:\n{}", fixture.log());
@@ -198,24 +191,6 @@ impl RunnerFixture {
 
     pub fn home_dir(&self) -> &Path {
         self.process.home_dir()
-    }
-
-    /// The runner's job root, where each job's directory lives until the
-    /// backend has what it needs of the job.
-    pub fn job_root(&self) -> std::path::PathBuf {
-        self.process.state_dir().join("jobs")
-    }
-
-    /// The job directories the runner holds now.
-    pub fn job_directories(&self) -> Vec<std::path::PathBuf> {
-        std::fs::read_dir(self.job_root())
-            .map(|entries| {
-                entries
-                    .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-                    .filter(|path| path.is_dir())
-                    .collect()
-            })
-            .unwrap_or_default()
     }
 
     /// The device's Host, starting work in its home.
@@ -253,6 +228,15 @@ impl RunnerFixture {
             DeviceLink::Online(link) => link.clone(),
             DeviceLink::Offline { .. } => unreachable!("waited for a connection"),
         }
+    }
+
+    /// Stops the network between the runner and the backend end from passing
+    /// data, keeping its sockets open.
+    pub fn stall_network(&self) {
+        self.network
+            .as_ref()
+            .expect("the fixture was started with a stallable network")
+            .stall();
     }
 
     /// Waits until no runner is connected.
@@ -307,6 +291,7 @@ async fn serve_device(
     pipes: Pipes,
     policy: Rc<CommandPolicy>,
     tap: Option<mpsc::Sender<Outbound>>,
+    ping: Option<Duration>,
     tasks: TaskTracker,
 ) {
     while let Some(request) = requests.recv().await {
@@ -319,6 +304,7 @@ async fn serve_device(
                     pipes.clone(),
                     policy.clone(),
                     tap.clone(),
+                    ping,
                 ));
             }
             Request::Source { id, claimed } => {
@@ -344,14 +330,18 @@ async fn adopt(
     pipes: Pipes,
     policy: Rc<CommandPolicy>,
     tap: Option<mpsc::Sender<Outbound>>,
+    ping: Option<Duration>,
 ) {
-    let (mut outgoing, mut incoming) = socket.split();
-    let hello = loop {
-        match incoming.next().await {
-            Some(Ok(Message::Binary(frame))) => break wire::decode::<Outbound>(&frame),
-            Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
-            _ => return,
-        }
+    let liveness = ping.map(|ping| Liveness {
+        interval: ping,
+        timeout: ping,
+    });
+    let mut handshake = crate::open_link(socket, liveness);
+    let outgoing = handshake.outgoing();
+    let health = handshake.health();
+    let hello = match handshake.read().await {
+        Some(Ok(frame)) => wire::decode::<Outbound>(&frame),
+        _ => return,
     };
     let refusal = |code: HelloErrorCode, reason: &str| Inbound::HelloError {
         code,
@@ -404,11 +394,11 @@ async fn adopt(
     let (identity, (kernel, shell), said) = match answer {
         Ok(answer) => answer,
         Err(refusal) => {
-            let frame = wire::encode(&refusal)
-                .expect("a valid refusal")
-                .into_bytes();
+            let frame = wire::encode(&refusal).expect("a valid refusal");
             // A runner that went away hears nothing.
-            let _ = outgoing.send(Message::Binary(frame.into())).await;
+            if handshake.write(frame.into_bytes()).await.is_ok() {
+                handshake.close(None).await;
+            }
             return;
         }
     };
@@ -418,12 +408,11 @@ async fn adopt(
         conversations: Vec::new(),
         archived: Vec::new(),
     };
-    let frame = wire::encode(&welcome)
-        .expect("a valid welcome")
-        .into_bytes();
-    if outgoing.send(Message::Binary(frame.into())).await.is_err() {
+    let frame = wire::encode(&welcome).expect("a valid welcome");
+    if handshake.write(frame.into_bytes()).await.is_err() {
         return;
     }
+    let Connection { incoming, .. } = handshake.start();
     let (link, driver) = Link::new(LinkOptions {
         device: TEST_DEVICE.into(),
         identity: identity.clone(),
@@ -431,22 +420,20 @@ async fn adopt(
         shell,
         pipes,
         policy,
-        ping: None,
+        outgoing: outgoing.clone(),
+        health,
         jobs,
         hello: said,
     });
     device.send_replace(DeviceLink::Online(link.clone()));
-    let incoming = incoming.filter_map(|message| ready(crate::socket_frame(message)));
-    let frames = (&mut outgoing)
-        .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into()))));
     let driver = match tap {
         Some(tap) => driver.tap(tap),
         None => driver,
     };
-    let end = driver.serve(incoming, frames).await;
+    let end = driver.serve(incoming).await;
     // As the backend's edge ends it: a refusal names the runner's message.
     // A runner that went away hears nothing.
-    let _ = outgoing.send(Message::Close(crate::close_frame(&end))).await;
+    outgoing.close(crate::refusal(&end)).await;
     super::went_offline(&device, &link, identity);
 }
 
@@ -495,8 +482,7 @@ async fn pipe_source(
 }
 
 /// An offered file's bytes from the byte a Range request names on, as the
-/// backend's route answers; the first answer from the start breaks off
-/// where the fixture's options say.
+/// backend's route answers.
 async fn offer(
     State(edge): State<Edge>,
     UrlPath(id): UrlPath<String>,
@@ -520,22 +506,7 @@ async fn offer(
         .and_then(|value| value.strip_suffix('-'))
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
-    let breaks = if from == 0 {
-        edge.offer_breaks_after.lock().expect("the break is intact").take()
-    } else {
-        None
-    };
-    match breaks {
-        Some(after) => {
-            let sent = bytes.slice(..after.min(bytes.len()));
-            let body = futures_util::stream::iter([
-                Ok(sent),
-                Err(std::io::Error::other("the link broke off")),
-            ]);
-            Body::from_stream(body).into_response()
-        }
-        None => crate::offer_response(bytes, from),
-    }
+    crate::offer_response(bytes, from)
 }
 
 /// A stream pipe's source, relayed as the backend's route relays it.
@@ -598,23 +569,6 @@ async fn pipe_sink(
         Ok(Err(refusal)) => return refused(refusal),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    if let Some(held) = &edge.held_sinks {
-        let (release, released) = oneshot::channel();
-        let abandoned = CancellationToken::new();
-        let guard = abandoned.clone().drop_guard();
-        let sent = held
-            .send(HeldSink {
-                pipe_id: id,
-                release,
-                abandoned,
-            })
-            .await;
-        // A test that no longer holds sinks lets the response go.
-        if sent.is_ok() {
-            let _released = released.await;
-        }
-        guard.disarm();
-    }
     // As the backend's edge answers (`crates/runner-protocol/src/wire/pipe_frames.rs`).
     let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     Response::builder()

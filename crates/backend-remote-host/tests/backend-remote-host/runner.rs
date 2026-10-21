@@ -1,42 +1,30 @@
-//! A Host, its jobs, file contents, callbacks, native commands, and service
-//! streams over a real runner.
+//! A Host over a real runner: its commands' input and the link's liveness and
+//! reconnects.
 
 use std::{
-    cell::Cell,
     collections::BTreeMap,
-    path::Path,
-    process::{Output, Stdio},
     rc::Rc,
     time::Duration,
 };
 
 use bytes::Bytes;
 use demi_backend_remote_host::{
-    CommandCatalog, CommandSelection, ContextSource, EnvironmentOptions, JobStart, LogPage, Pipe,
-    PipeFailure, PipeReader, RemoteHost, RemoteShellEnvironment, ServiceCallError, ServiceRequest,
-    ServiceStream,
+    CommandSelection, ContextSource, EnvironmentOptions, JobStart, RemoteHost, RemoteShellEnvironment,
     testing::{
-        FixtureOptions, NativeFixture, RunnerFixture, TEST_DEVICE, native_fixture_binary,
-        runner_binary,
+        FixtureOptions, RunnerFixture,
     },
 };
-use demi_command_declarations::NativeOperation;
-use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_interface::{
-    ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents, FileKind,
-    GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder,
-    Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellError,
-    Signal, SpawnEnv, SpawnRequest, Streams, TypedRpc, WriteOptions,
-    testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
+    CommandState, CommandStatus, ExecRequest, Host, JobCaller,
+    Process, ProcessEnd, ProcessOutput, Seen, ShellEnvironment, ShellError,
+    Signal, SpawnEnv, SpawnRequest, Streams,
+    testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, Outbound, PipeRef, STDIN_CHUNK_BYTES,
+    self, Outbound, STDIN_CHUNK_BYTES,
 };
 use demi_shared_types::{NodeId, StreamKind};
 use futures_util::{Stream, StreamExt};
-use schemars::JsonSchema;
-use serde::Deserialize;
-use serde_json::{Map, Value, json};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -146,14 +134,6 @@ pub(crate) fn exited(status: &CommandStatus) -> i32 {
     }
 }
 
-/// The hint of a running command.
-fn hint(status: &CommandStatus) -> Option<String> {
-    match &status.state {
-        CommandState::Running { hint, .. } => hint.clone(),
-        other => panic!("expected a running command, got {other:?}"),
-    }
-}
-
 /// Polls `probe` every 20 ms until it yields, at most ten seconds.
 pub(crate) async fn until<T>(what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
     for _ in 0..500 {
@@ -172,21 +152,6 @@ async fn settled(shell: &RemoteShellEnvironment, status: &CommandStatus) -> Comm
         (!matches!(status.state, CommandState::Running { .. })).then_some(status)
     })
     .await
-}
-
-/// Bytes that differ at every position, so a misplaced range shows.
-fn pattern(size: usize) -> Vec<u8> {
-    (0..size)
-        .map(|index| ((index * 31 + (index >> 8)) % 251) as u8)
-        .collect()
-}
-
-async fn collect(mut reader: PipeReader) -> Result<Vec<u8>, PipeFailure> {
-    let mut read = Vec::new();
-    while let Some(chunk) = reader.next().await {
-        read.extend_from_slice(&chunk?);
-    }
-    Ok(read)
 }
 
 /// What the runner sent, as its connection read it.
@@ -225,29 +190,6 @@ impl Tap {
         }
     }
 
-    /// How the runner reported the end of pipe `id`: whether it was whole,
-    /// and why not.
-    async fn pipe_done(&mut self, id: &str) -> (bool, Option<String>) {
-        let what = format!("pipe_done for {id}");
-        let done = self
-            .find(
-                &what,
-                |message| matches!(message, Outbound::PipeDone { pipe_id, .. } if pipe_id == id),
-            )
-            .await;
-        match done {
-            Outbound::PipeDone { ok, error, .. } => (ok, error),
-            _ => unreachable!("found a pipe_done"),
-        }
-    }
-
-    /// Everything that arrived so far.
-    fn drain(&mut self) -> &[Outbound] {
-        while let Ok(message) = self.receiver.try_recv() {
-            self.seen.push(message);
-        }
-        &self.seen
-    }
 }
 
 fn spawn(command: &str, args: &[&str]) -> SpawnRequest {
@@ -285,24 +227,6 @@ async fn finish(process: Process) -> (Vec<u8>, ProcessEnd) {
         }
     }
     (stdout, exit.await)
-}
-
-#[tokio::test(flavor = "local")]
-async fn the_runner_passes_the_host_conformance_cases_over_its_wire() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let root = format!("{}/conformance", fixture.home());
-    std::fs::create_dir(&root).unwrap();
-    let host: Rc<dyn Host> = Rc::new(fixture.host_at(&root));
-    let mut failures = Vec::new();
-    for case in host_conformance_cases(host, &root, "/usr/bin:/bin") {
-        let name = case.name;
-        if let Err(error) = case.run().await {
-            failures.push(format!("{name}: {error}"));
-        }
-    }
-    assert!(failures.is_empty(), "{failures:#?}");
-    assert!(fixture.host().online());
-    fixture.stop().await;
 }
 
 #[tokio::test(flavor = "local")]
@@ -415,100 +339,141 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
     fixture.stop().await;
 }
 
-/// About 1.4 s here: three jobs, each a login shell that reads the machine's
-/// profile (about 0.4 s in the Linux container).
+/// Starts a job that prints `ready`, waits for it, and never reads its input.
+async fn job_that_reads_nothing(host: &RemoteHost, cwd: &str) -> demi_backend_remote_host::RemoteJob {
+    let job = host
+        .start_job(JobStart {
+            id: RemoteHost::job_id(),
+            script: "printf ready; sleep 600".into(),
+            cwd: cwd.into(),
+            env: BTreeMap::new(),
+            context: test_command_context(),
+            viewable: None,
+            caller: None,
+            commands: None,
+            stdin: None,
+            stdout: None,
+            stop: CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+    let output = futures_util::stream::unfold(&job, |job| async move {
+        job.next_output().await.map(|chunk| {
+            let chunk = ProcessOutput {
+                stream: chunk.stream,
+                bytes: chunk.bytes,
+            };
+            (chunk, job)
+        })
+    });
+    until_stdout(output, "ready").await;
+    job
+}
+
+/// How long a test waits for what must happen, which only guards against a
+/// hang.
+const HANG_GUARD: Duration = Duration::from_secs(30);
+
+/// Input that no program reads fills the Host's queue for the runner. When
+/// the network also stops passing data while its sockets stay open, the
+/// backend's ping waited behind that input, never left, and so never timed
+/// out: the device stayed online while its commands hung.
 #[tokio::test(flavor = "local")]
-async fn a_job_runs_on_the_runner_with_its_streams_its_files_and_the_device_environment() {
-    let env = BTreeMap::from([
-        ("DEVICE_FACT".to_owned(), "from the device".to_owned()),
-        ("SHARED".to_owned(), "device".to_owned()),
-    ]);
+async fn a_network_that_passes_no_data_loses_the_device_within_the_ping_deadline() {
     let fixture = RunnerFixture::start(FixtureOptions {
-        env,
+        stallable: true,
+        ping: Some(Duration::from_millis(500)),
         ..FixtureOptions::default()
     })
     .await;
-    let shell = shell_on(fixture.host(), &[], None);
-    let result = run(&shell, "echo hello; echo oops >&2; exit 4").await;
-    assert_eq!(exited(&result), 4);
-    assert_eq!(result.stdout.delta, "hello\n");
-    assert_eq!(result.stderr.delta, "oops\n");
-    // Each stream keeps its bytes, not their order between the streams.
-    for (stream, text) in [
-        (StreamKind::Stdout, "hello\n"),
-        (StreamKind::Stderr, "oops\n"),
-    ] {
-        let merged: String = result
-            .output
-            .chunks
-            .iter()
-            .filter(|chunk| chunk.stream == stream)
-            .map(|chunk| chunk.text.as_str())
-            .collect();
-        assert_eq!(merged, text);
+    let host = fixture.host();
+    let sleeper = host
+        .process()
+        .spawn(spawn("/bin/sleep", &["600"]))
+        .await
+        .unwrap();
+    fixture.stall_network();
+    // Far more than the sockets and the connection's queue hold.
+    let flood = sleeper.control.write_stdin(Bytes::from(vec![0; 64 * MIB]));
+    tokio::pin!(flood);
+    // The write fails once the device is offline; it never succeeds, as the
+    // stopped network takes none of it.
+    let offline = async {
+        tokio::time::timeout(HANG_GUARD, fixture.offline())
+            .await
+            .expect("the device is offline once its ping went unanswered");
+    };
+    tokio::select! {
+        written = &mut flood => {
+            assert!(written.is_err(), "the input was taken by a stopped network: {written:?}");
+            tokio::time::timeout(HANG_GUARD, fixture.offline())
+                .await
+                .expect("the device is offline once its ping went unanswered");
+        }
+        () = offline => {}
     }
-    assert_eq!(fixture.link().await.running_jobs(), 0);
-
-    // The device's variables are beneath the shell's; no identity rides in
-    // them.
-    let facts = run(
-        &shell,
-        "echo \"$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}|${DEMI_SHELL_ID:-none}|${DEMI_CONVERSATION_ID:-none}|${DEMI_AGENT_NODE_ID:-none}\"; echo \"$PATH\"",
-    )
-    .await;
-    let (facts, path) = facts.stdout.delta.split_once('\n').unwrap();
-    assert_eq!(facts, "from the device|device|none|none|none|none");
-    assert!(
-        path.trim_end().split(':').any(|entry| entry == "/usr/bin"),
-        "{path}"
-    );
-    let overriding = shell_on(fixture.host(), &[("SHARED", "backend")], None);
-    assert_eq!(
-        run(&overriding, "echo \"$SHARED\"").await.stdout.delta,
-        "backend\n"
-    );
     fixture.stop().await;
 }
 
-/// About 1 s here: two login shells one after another (about 0.4 s each in
-/// the Linux container). Before the fix, the second job started in `sub`
-/// with the first one's directory.
+/// A command whose input nobody reads held its input back until the
+/// runner's queue for it was full, and then ended the whole connection
+/// with every other command on it.
 #[tokio::test(flavor = "local")]
-async fn every_command_starts_in_the_conversations_directory_and_nothing_carries_over() {
+async fn a_command_whose_input_nobody_reads_stalls_only_itself() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let home = fixture.home().to_owned();
-    std::fs::create_dir(format!("{home}/sub")).unwrap();
+    let host = fixture.host();
+    let job = job_that_reads_nothing(&host, fixture.home()).await;
+    let link = fixture.link().await;
     let shell = shell_on(fixture.host(), &[], None);
-    assert_eq!(
-        run(&shell, "cd sub && export FOO=1 && pwd")
-            .await
-            .stdout
-            .delta,
-        format!("{home}/sub\n")
-    );
-    assert_eq!(
-        run(&shell, "pwd; echo \"${FOO:-unset}\"")
-            .await
-            .stdout
-            .delta,
-        format!("{home}\nunset\n")
-    );
+    let writing = job.write_stdin(Bytes::from(vec![0; 48 * MIB]));
+    tokio::pin!(writing);
+    let others = async {
+        let status = run(&shell, "echo other").await;
+        assert_eq!(exited(&status), 0);
+        assert_eq!(status.stdout.tail, "other\n");
+        assert!(host.fs().exists(fixture.home()).await.unwrap());
+    };
+    tokio::select! {
+        written = &mut writing => panic!("the input of a command that reads none was taken: {written:?}"),
+        () = others => {}
+    }
+    // The connection is the one it was, and the command still runs.
+    assert!(!link.is_closed());
+    assert!(fixture.link().await == link);
+    assert!(job.ended().is_none());
+    job.stop().await;
+    tokio::time::timeout(HANG_GUARD, &mut writing)
+        .await
+        .expect("the write ends with the command")
+        .ok();
     fixture.stop().await;
 }
 
-/// About 0.5 s here: one job that fails before its login shell starts.
-/// Before the fix, the job failed with the runner's own `i/o error`.
+/// A stop, and a small request, queued behind the input a command does not
+/// read, and the input then ended the connection.
 #[tokio::test(flavor = "local")]
-async fn a_job_whose_directory_does_not_exist_fails_before_its_script_runs() {
+async fn a_stop_and_a_small_request_do_not_wait_behind_a_commands_input() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let gone = format!("{}/deleted", fixture.home());
-    let shell = shell_on(fixture.host_at(&gone), &[], None);
-    let failed = run(&shell, "echo ran").await;
-    assert_eq!(exited(&failed), 1, "{}", failed.stderr.delta);
-    assert_eq!(failed.stdout.delta, "");
-    assert_eq!(
-        failed.stderr.delta,
-        format!("demi: cannot start in {gone}: No such file or directory\n")
+    let host = fixture.host();
+    let job = job_that_reads_nothing(&host, fixture.home()).await;
+    let writing = job.write_stdin(Bytes::from(vec![0; 48 * MIB]));
+    tokio::pin!(writing);
+    let stopped = async {
+        // Requests go first, while the input is stuck, then the stop.
+        assert!(host.fs().exists(fixture.home()).await.unwrap());
+        job.stop().await
+    };
+    // The write ends with the command, so the stop is looked at first: only a
+    // write that ends before it was taken by a command that reads none.
+    let end = tokio::select! {
+        biased;
+        end = tokio::time::timeout(HANG_GUARD, stopped) => end.expect("the stop ends the command"),
+        written = &mut writing => panic!("the input of a command that reads none was taken: {written:?}"),
+    };
+    assert!(
+        matches!(end.status, ProcessEnd::Signalled(_) | ProcessEnd::Exited(_)),
+        "{:?}",
+        end.status
     );
     fixture.stop().await;
 }
@@ -532,20 +497,20 @@ async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_pro
         .spawn(spawn("/bin/sleep", &["30"]))
         .await
         .unwrap();
-    // A newer backend's ping, with a field this runner does not know: the
-    // MessagePack map of one field gains a second, `shell: 1`.
-    let mut newer = wire::encode(&wire::Inbound::Ping {})
+    // A newer backend's sync request, with a field this runner does not
+    // know: the MessagePack map of two fields gains a third, `shell: 1`.
+    let mut newer = wire::encode(&wire::Inbound::Sync { id: "x".into() })
         .unwrap()
         .into_bytes();
-    assert_eq!(newer[0], 0x81, "a map of one field");
-    newer[0] = 0x82;
+    assert_eq!(newer[0], 0x82, "a map of two fields");
+    newer[0] = 0x83;
     newer.extend(b"\xa5shell\x01");
     fixture.link().await.send_raw(newer).await.unwrap();
     let ProcessEnd::Lost(reason) = process.exit.await else {
         panic!("the process was not lost with the connection");
     };
     assert!(
-        reason.starts_with("runner disconnected: the runner cannot decode ping: unknown field `shell`"),
+        reason.starts_with("runner disconnected: the runner cannot decode sync: unknown field `shell`"),
         "{reason}"
     );
     fixture.link().await;
@@ -553,135 +518,6 @@ async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_pro
         shell.status(&running.command_id).unwrap().state,
         CommandState::Running { .. }
     ));
-    shell.abort(&running.command_id).await.unwrap();
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let shell = shell_on(fixture.host(), &[], None);
-    let running = shell
-        .exec(
-            exec("echo ready; head -n1; sleep 30", 200),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(running.state, CommandState::Running { .. }));
-    until("the head of the view", || {
-        (shell.status(&running.command_id).unwrap().stdout.tail == "ready\n").then_some(())
-    })
-    .await;
-    let link = fixture.link().await;
-    assert_eq!(link.running_jobs(), 1);
-    shell
-        .write(&running.command_id, Bytes::from_static(b"typed\n"))
-        .await
-        .unwrap();
-    let written = shell.status(&running.command_id).unwrap();
-    assert!(matches!(written.state, CommandState::Running { .. }));
-    shell.abort(&running.command_id).await.unwrap();
-    shell.ended(&running.command_id).await.unwrap();
-    let aborted = shell.status(&running.command_id).unwrap();
-    assert!(
-        matches!(aborted.state, CommandState::Aborted),
-        "{:?}",
-        aborted.state
-    );
-    assert_eq!(link.running_jobs(), 0);
-    assert!(matches!(
-        shell.status(&running.command_id).unwrap().state,
-        CommandState::Aborted
-    ));
-    fixture.stop().await;
-}
-
-/// A stop sends `TERM` first: a program that traps it ends cleanly, and
-/// what it prints then is the command's last output. Before, the runner
-/// killed the job's programs at once, so no trap ran. About 0.5 s: the
-/// job is a login shell.
-#[cfg(unix)]
-#[tokio::test(flavor = "local")]
-async fn a_stopped_command_lets_its_programs_end_cleanly() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let shell = shell_on(fixture.host(), &[], None);
-    let running = shell
-        .exec(
-            exec(
-                "sh -c 'trap \"echo got TERM; exit 0\" TERM; sleep 30 & echo ready; wait'",
-                200,
-            ),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    until("the program's trap", || {
-        (shell.status(&running.command_id).unwrap().stdout.tail == "ready\n").then_some(())
-    })
-    .await;
-    shell.abort(&running.command_id).await.unwrap();
-    shell.ended(&running.command_id).await.unwrap();
-    let aborted = shell.status(&running.command_id).unwrap();
-    assert!(
-        matches!(aborted.state, CommandState::Aborted),
-        "{:?}",
-        aborted.state
-    );
-    assert_eq!(aborted.stdout.tail, "ready\ngot TERM\n");
-    fixture.stop().await;
-}
-
-/// A command whose stream goes beyond what the backend receives while it
-/// runs ends with its whole output, which the backend reads once from the
-/// Host, and the Host then keeps nothing of it; while it runs, its output
-/// reads as the Host keeps it so far (`crates/agent-server/src/server/shell_output.rs`).
-/// About a second: two jobs, each a login shell.
-#[tokio::test(flavor = "local")]
-async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothing_on_its_host() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let shell = shell_on(fixture.host(), &[], None);
-    let total = 100_000;
-    let last = total / 10 - 1;
-    let printed: String = (0..=last).map(|number| format!("{number:09}\n")).collect();
-    let stream = |status: &CommandStatus, stream| {
-        let whole = status.whole.as_ref().expect("the whole output");
-        whole
-            .output
-            .text(Streams::Only(stream), None, Seen::default())
-            .bytes()
-            .to_vec()
-    };
-
-    let result = run(&shell, &format!("seq -f '%09g' 0 {last}; echo done >&2")).await;
-    assert_eq!(exited(&result), 0);
-    assert_eq!(result.stdout.bytes, total as u64);
-    assert_eq!(stream(&result, StreamKind::Stdout), printed.as_bytes());
-    assert_eq!(stream(&result, StreamKind::Stderr), b"done\n");
-    until("the job's directory to go", || {
-        fixture.job_directories().is_empty().then_some(())
-    })
-    .await;
-
-    let running = shell
-        .exec(
-            exec(&format!("seq -f '%09g' 0 {last}; sleep 30"), 200),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    let kept = loop {
-        let output = shell.read_output(&running.command_id).await.unwrap();
-        let stdout = output
-            .text(Streams::Only(StreamKind::Stdout), None, Seen::default())
-            .bytes()
-            .to_vec();
-        if stdout.len() == total {
-            break stdout;
-        }
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    };
-    assert_eq!(kept, printed.as_bytes());
     shell.abort(&running.command_id).await.unwrap();
     fixture.stop().await;
 }
@@ -701,9 +537,13 @@ async fn a_lost_connection_keeps_the_job_and_its_output_and_the_command_ends_as_
         .unwrap();
     assert!(matches!(running.state, CommandState::Running { .. }));
     let home = std::path::PathBuf::from(fixture.home());
-    fixture.link().await.disconnect("the connection was lost");
-    fixture.offline().await;
-    // The job prints while its runner is away.
+    // The connection ends; the runner connects again as soon as the backend
+    // lets go of the old one, so the end is the old link's, not the device's
+    // being offline, which a reconnect may already have undone.
+    let lost = fixture.link().await;
+    lost.disconnect("the connection was lost");
+    lost.ended().await;
+    // The job prints while its runner is away or on its way back.
     std::fs::write(home.join("go"), "").unwrap();
     until("the job printed while away", || home.join("printed").exists().then_some(())).await;
     // The runner is back, and the command goes on there.
@@ -718,1560 +558,6 @@ async fn a_lost_connection_keeps_the_job_and_its_output_and_the_command_ends_as_
     assert_eq!(
         String::from_utf8_lossy(stdout.bytes()),
         "before\nduring\nafter\n"
-    );
-    fixture.stop().await;
-}
-
-/// The names in `directory`, sorted: a download leaves its file and no
-/// staging copy beside it.
-fn names_in(directory: &str) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(directory)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    names.sort();
-    names
-}
-
-/// A file the backend offers reaches the Host whole though the link breaks
-/// off partway through the first answer: the runner asks again from the byte
-/// it has (`crates/shared-artifacts/src/download.rs`). Planted defect this catches: a
-/// download that starts over, or fails, at a break. A real runner, about a
-/// second.
-#[tokio::test(flavor = "local")]
-async fn a_download_whose_link_breaks_partway_resumes_and_lands_whole() {
-    let fixture = RunnerFixture::start(FixtureOptions {
-        offer_breaks_after: Some(64 * 1024),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let home = fixture.home().to_owned();
-    std::fs::create_dir_all(format!("{home}/in")).unwrap();
-    let bytes = pattern(3 * MIB);
-    let sha256 = demi_shared_types::BlobRef::of(&bytes).to_string();
-    let name = fixture
-        .host()
-        .download_file(&format!("{home}/in/notes.bin"), Bytes::from(bytes.clone()), sha256, WriteOptions::default())
-        .await
-        .unwrap();
-    assert_eq!(name, "notes.bin");
-    assert!(std::fs::read(format!("{home}/in/notes.bin")).unwrap() == bytes);
-    assert_eq!(names_in(&format!("{home}/in")), ["notes.bin"]);
-    fixture.stop().await;
-}
-
-/// Bytes that are not the file the backend named fail the download with the
-/// cause and put nothing in place, not even a staging copy. Planted defect
-/// this catches: a download put in place before its hash is checked. A real
-/// runner, about a second.
-#[tokio::test(flavor = "local")]
-async fn a_download_whose_bytes_are_not_the_named_file_fails_and_leaves_nothing() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let home = fixture.home().to_owned();
-    std::fs::create_dir_all(format!("{home}/in")).unwrap();
-    let other = demi_shared_types::BlobRef::of(b"another file").to_string();
-    let failed = fixture
-        .host()
-        .download_file(&format!("{home}/in/notes.bin"), Bytes::from(pattern(4096)), other, WriteOptions::default())
-        .await
-        .expect_err("the hash differs");
-    assert!(failed.message.to_lowercase().contains("sha-256") || failed.message.to_lowercase().contains("sha256"), "{failed:?}");
-    assert!(names_in(&format!("{home}/in")).is_empty());
-    fixture.stop().await;
-}
-
-/// About 2 s here: the listing over the message limit needs some 17,000
-/// files.
-#[tokio::test(flavor = "local")]
-async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let host = fixture.host();
-    let home = fixture.home().to_owned();
-    let link = fixture.link().await;
-    // Over the message limit, both ways.
-    let large = pattern(MAX_MESSAGE_BYTES + 3);
-    std::fs::write(format!("{home}/large.bin"), &large).unwrap();
-    assert!(
-        host.fs()
-            .read_file(&format!("{home}/large.bin"))
-            .await
-            .unwrap()
-            == large
-    );
-    host.fs()
-        .write_file(
-            &format!("{home}/copy/large.bin"),
-            FileContents::Bytes(large.clone().into()),
-            WriteOptions::default(),
-        )
-        .await
-        .unwrap();
-    assert!(std::fs::read(format!("{home}/copy/large.bin")).unwrap() == large);
-    let copied: Vec<_> = std::fs::read_dir(format!("{home}/copy"))
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name())
-        .collect();
-    assert_eq!(copied, ["large.bin"]);
-
-    // One range at a time; a file that cannot be read fails before any byte.
-    let video = pattern(3 * MIB);
-    std::fs::write(format!("{home}/video.bin"), &video).unwrap();
-    let range = |offset: usize, length: Option<usize>| {
-        let (host, path) = (host.clone(), format!("{home}/video.bin"));
-        async move {
-            let range = ByteRange {
-                offset: offset as u64,
-                length: length.map(|length| length as u64),
-            };
-            let mut stream = host.fs().read_stream(&path, range).await.unwrap();
-            let mut read = Vec::new();
-            while let Some(chunk) = stream.next().await {
-                read.extend_from_slice(&chunk.unwrap());
-            }
-            read
-        }
-    };
-    assert!(range(MIB + 7, Some(4096)).await == video[MIB + 7..MIB + 7 + 4096]);
-    assert!(range(video.len() - 10, None).await == video[video.len() - 10..]);
-    assert!(range(0, Some(0)).await.is_empty());
-    let refusal = |path: String| {
-        let host = host.clone();
-        async move {
-            host.fs()
-                .read_stream(&path, ByteRange::default())
-                .await
-                .err()
-                .expect("a refusal")
-        }
-    };
-    assert_eq!(
-        refusal(format!("{home}/missing.bin")).await.code(),
-        Some("ENOENT")
-    );
-    assert_eq!(refusal(home.clone()).await.code(), Some("EISDIR"));
-
-    // A write that cannot land leaves the destination as it was, and no
-    // temporary copy, whatever the runner names it.
-    let entries = || {
-        let mut names: Vec<_> = std::fs::read_dir(&home)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name())
-            .collect();
-        names.sort();
-        names
-    };
-    let before = entries();
-    // A file where a directory above the path should be stops the write,
-    // which names the cause as the system does.
-    std::fs::write(format!("{home}/plain"), "plain").unwrap();
-    let under_file = host
-        .fs()
-        .write_file(
-            &format!("{home}/plain/file"),
-            FileContents::Bytes(pattern(10).into()),
-            WriteOptions::default(),
-        )
-        .await;
-    assert!(under_file.is_err());
-    assert_eq!(std::fs::read_to_string(format!("{home}/plain")).unwrap(), "plain");
-    std::fs::remove_file(format!("{home}/plain")).unwrap();
-    std::fs::create_dir(format!("{home}/target")).unwrap();
-    std::fs::write(format!("{home}/target/kept"), "kept").unwrap();
-    let over_directory = host
-        .fs()
-        .write_file(
-            &format!("{home}/target"),
-            FileContents::Bytes(pattern(2 * MIB).into()),
-            WriteOptions::default(),
-        )
-        .await;
-    assert!(over_directory.is_err());
-    assert_eq!(
-        std::fs::read_to_string(format!("{home}/target/kept")).unwrap(),
-        "kept"
-    );
-    let mut expected = before;
-    expected.push("target".into());
-    expected.sort();
-    assert_eq!(entries(), expected);
-    std::fs::write(format!("{home}/replaced"), "old").unwrap();
-    host.fs()
-        .write_file(
-            &format!("{home}/replaced"),
-            FileContents::Bytes(Bytes::from_static(b"new")),
-            WriteOptions::default(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(
-        std::fs::read_to_string(format!("{home}/replaced")).unwrap(),
-        "new"
-    );
-
-    // An empty directory lists as no entries.
-    std::fs::create_dir(format!("{home}/empty")).unwrap();
-    assert_eq!(
-        host.fs().read_dir(&format!("{home}/empty")).await.unwrap(),
-        []
-    );
-
-    // A message over the limit fails its own request, in either direction.
-    let request = host
-        .fs()
-        .stat(&format!("{home}/{}", "x".repeat(MAX_MESSAGE_BYTES)))
-        .await
-        .unwrap_err();
-    assert_eq!(request.kind, HostErrorKind::TooLarge);
-    // Names near the longest a file system allows (255 bytes with the
-    // index) make the listing outgrow the limit with the fewest entries.
-    std::fs::create_dir(format!("{home}/listing")).unwrap();
-    let name = "n".repeat(250);
-    for index in 0..=MAX_MESSAGE_BYTES / name.len() {
-        std::fs::write(format!("{home}/listing/{name}{index}"), "").unwrap();
-    }
-    let reply = host
-        .fs()
-        .read_dir(&format!("{home}/listing"))
-        .await
-        .unwrap_err();
-    assert_eq!(reply.kind, HostErrorKind::TooLarge);
-    assert!(host.fs().exists(&format!("{home}/listing")).await.unwrap());
-    assert!(!link.is_closed(), "the connection stays");
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_reader_that_leaves_stops_the_runners_read_and_the_host_keeps_serving() {
-    let (sender, mut tap) = Tap::new();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        tap: Some(sender),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let host = fixture.host();
-    // Far more than the pipes between the runner and the reader hold, so
-    // the runner still reads when the reader leaves; its bytes do not matter.
-    let long = format!("{}/long.bin", fixture.home());
-    std::fs::File::create(&long)
-        .unwrap()
-        .set_len(64 * MIB as u64)
-        .unwrap();
-    let opened = host.read_pipe(&long, ByteRange::default()).await.unwrap();
-    let (stat, mut reader) = (opened.stat, opened.body);
-    // The read answers the file's metadata, so no stat precedes it.
-    assert_eq!(
-        (stat.kind, stat.size),
-        (FileKind::File, std::fs::metadata(&long).unwrap().len())
-    );
-    let mut received = 0;
-    while received <= MIB {
-        received += reader.next().await.unwrap().unwrap().len();
-    }
-    reader.fail("the preview moved on");
-    // The runner's upload failed with the pipe, and it says so.
-    tap.find("a failed pipe_done", |message| {
-        matches!(message, Outbound::PipeDone { ok: false, .. })
-    })
-    .await;
-    // A stream dropped early is a reader that had enough.
-    let mut early = host
-        .fs()
-        .read_stream(&long, ByteRange::default())
-        .await
-        .unwrap();
-    early.next().await.unwrap().unwrap();
-    drop(early);
-    assert!(host.fs().exists(&long).await.unwrap());
-    fixture.stop().await;
-}
-
-/// About 1.5 s here: four jobs, each a login shell that reads the machine's
-/// profile (about 0.4 s in the Linux container).
-#[tokio::test(flavor = "local")]
-async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing() {
-    let (sender, mut tap) = Tap::new();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        tap: Some(sender),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let host = fixture.host();
-    let job = |script: &str, stdin: Option<PipeRef>, stdout: Option<PipeRef>| JobStart {
-        id: RemoteHost::job_id(),
-        script: script.into(),
-        cwd: fixture.home().into(),
-        env: BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),
-        context: test_command_context(),
-        viewable: None,
-        caller: None,
-        commands: None,
-        stdin,
-        stdout,
-        stop: tokio_util::sync::CancellationToken::new(),
-    };
-    // In through the job's standard input, out through its standard output:
-    // well past the view, so only the pipes carry it whole.
-    let payload: Vec<u8> = (0..3 * MIB)
-        .map(|index| b'a' + (index * 7 % 26) as u8)
-        .collect();
-    let input = fixture.pipes().to_device(TEST_DEVICE);
-    let output = fixture.pipes().from_device(TEST_DEVICE);
-    let mut writer = input.writer().unwrap();
-    let reader = output.reader().unwrap();
-    let upper = host
-        .start_job(job(
-            "tr a-z A-Z",
-            Some(input.wire_ref()),
-            Some(output.wire_ref()),
-        ))
-        .await
-        .unwrap();
-    let feed = async {
-        writer.write(Bytes::from(payload.clone())).await.unwrap();
-        writer.end();
-    };
-    let ((), uploaded) = tokio::join!(feed, collect(reader));
-    let expected: Vec<u8> = payload.iter().map(u8::to_ascii_uppercase).collect();
-    assert!(uploaded.unwrap() == expected, "the upper-cased stream");
-    let end = upper.end().await;
-    assert_eq!(end.status, ProcessEnd::Exited(0));
-    assert_eq!(
-        end.output.map(|output| output.stdout_bytes),
-        Some(payload.len() as u64)
-    );
-    assert_eq!(tap.pipe_done(input.id()).await, (true, None));
-    assert_eq!(tap.pipe_done(output.id()).await, (true, None));
-    // The views stay bounded: the stream's first bytes, then its newest,
-    // each message at most `JOB_VIEW_BYTES`.
-    let views: Vec<(u64, usize)> = tap
-        .drain()
-        .iter()
-        .filter_map(|message| match message {
-            Outbound::JobOutput {
-                job_id,
-                offset,
-                bytes,
-                ..
-            } if job_id == upper.id() => Some((*offset, bytes.0.len())),
-            _ => None,
-        })
-        .collect();
-    let first: usize = views
-        .iter()
-        .filter(|(offset, _)| *offset < JOB_VIEW_BYTES as u64)
-        .map(|(_, bytes)| bytes)
-        .sum();
-    assert!(
-        first <= JOB_VIEW_BYTES,
-        "the first bytes stay bounded: {first}"
-    );
-    assert!(
-        views.iter().all(|(_, bytes)| *bytes <= JOB_VIEW_BYTES),
-        "each view stays bounded: {views:?}"
-    );
-
-    // A refused standard output is reported, and the job runs to its end
-    // rather than wait for a reader that is not there.
-    let gone = PipeRef {
-        id: "gone".into(),
-        url: "/api/pipes/gone".into(),
-    };
-    let head = host
-        .start_job(job(
-            "head -c 2000000 /dev/zero; echo done >&2",
-            None,
-            Some(gone),
-        ))
-        .await
-        .unwrap();
-    let end = head.end().await;
-    assert_eq!(end.status, ProcessEnd::Exited(0));
-    assert_eq!(
-        end.output.map(|output| output.stdout_bytes),
-        Some(2_000_000)
-    );
-    let (ok, error) = tap.pipe_done("gone").await;
-    assert!(
-        !ok && error.as_deref().is_some_and(|error| error.contains("404")),
-        "{error:?}"
-    );
-
-    // A refused standard input closes it: a reader of it ends.
-    let missing = PipeRef {
-        id: "missing".into(),
-        url: "/api/pipes/missing".into(),
-    };
-    let count = host
-        .start_job(job("wc -c", Some(missing), None))
-        .await
-        .unwrap();
-    let mut counted = Vec::new();
-    while let Some(chunk) = count.next_output().await {
-        counted.extend_from_slice(&chunk.bytes);
-    }
-    count.end().await;
-    assert_eq!(String::from_utf8_lossy(&counted).trim(), "0");
-    assert!(!tap.pipe_done("missing").await.0);
-    fixture.stop().await;
-}
-
-/// A job that ends while its read of its standard input is still waiting for
-/// the backend's answer, as a far command that ends at once without reading
-/// does, stopped reading on purpose: its runner reports so while it still
-/// holds the read, and the pipe drains rather than fails, so its writer, the
-/// calling command, ends quietly. Before, the runner dropped the waiting
-/// read, which failed the pipe as a cut response before its report came.
-/// The job waits on a FIFO the test opens only once the sink's read is
-/// claimed and held, so the job ends while its read waits for an answer.
-// About 0.5 s here: one job, a login shell.
-#[tokio::test(flavor = "local")]
-async fn a_job_that_ends_before_its_input_is_answered_drains_the_input_pipe() {
-    let (sender, mut tap) = Tap::new();
-    let (held, mut holding) = mpsc::channel(1);
-    let fixture = RunnerFixture::start(FixtureOptions {
-        tap: Some(sender),
-        held_sinks: Some(held),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let gate = fixture.home_dir().join("gate");
-    let made = std::process::Command::new("mkfifo").arg(&gate).status().unwrap();
-    assert!(made.success());
-    let input = fixture.pipes().to_device(TEST_DEVICE);
-    // The caller's input stays open and says nothing.
-    let _writer = input.writer().unwrap();
-    let job = fixture
-        .host()
-        .start_job(JobStart {
-            id: RemoteHost::job_id(),
-            // Ends without reading its standard input once the gate opens.
-            script: "read -r line < gate; exit 0".into(),
-            cwd: fixture.home().into(),
-            env: BTreeMap::from([("PATH".to_owned(), "/usr/bin:/bin".to_owned())]),
-            context: test_command_context(),
-            viewable: None,
-            caller: None,
-            commands: None,
-            stdin: Some(input.wire_ref()),
-            stdout: None,
-            stop: tokio_util::sync::CancellationToken::new(),
-        })
-        .await
-        .unwrap();
-    let sink = holding.recv().await.expect("the runner reads its input");
-    assert_eq!(sink.pipe_id, input.id());
-    // Opening the FIFO waits for the job's open of it, off the runtime.
-    tokio::task::spawn_blocking(move || std::fs::write(gate, "go\n"))
-        .await
-        .unwrap()
-        .unwrap();
-    tokio::select! {
-        biased;
-        () = sink.abandoned.cancelled() => panic!("the runner dropped its read before it reported"),
-        done = tap.pipe_done(input.id()) => assert_eq!(done, (true, None)),
-    }
-    sink.release.send(()).unwrap();
-    assert_eq!(input.done().await, Ok(()));
-    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
-    assert!(!sink.abandoned.is_cancelled());
-    fixture.stop().await;
-}
-
-/// The input of `note add` and `note take`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct NoteArgs {
-    /// Note text
-    text: String,
-}
-
-/// The input of `probe hold`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct HoldArgs {
-    /// Milliseconds to wait
-    ms: u64,
-}
-
-async fn add(call: Call<NoteArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    port.stdout(format!("added {}\n", call.args.text)).await?;
-    Ok(0)
-}
-
-async fn take(call: Call<NoteArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    port.stdout(format!("noted: {}", call.args.text)).await?;
-    Ok(0)
-}
-
-/// Reads live input up to its first line, and answers the line with the
-/// call's conversation.
-async fn first_line(call: Call<Map<String, Value>>, port: RpcPort) -> Result<u8, RpcError> {
-    let mut line = Vec::new();
-    while let Some(chunk) = port.read_live_stdin().await? {
-        line.extend_from_slice(&chunk);
-        if line.contains(&b'\n') {
-            break;
-        }
-    }
-    let line = String::from_utf8_lossy(&line);
-    port.stdout(format!(
-        "{}|{}",
-        line.trim_end(),
-        call.invocation.context.conversation
-    ))
-    .await?;
-    Ok(0)
-}
-
-/// Prints 100,000 numbered lines, more than a pipe holds.
-async fn spew(_: Call<Map<String, Value>>, port: RpcPort) -> Result<u8, RpcError> {
-    for block in 0..100 {
-        let lines: String = (1..=1000)
-            .map(|line| format!("line {}\n", block * 1000 + line))
-            .collect();
-        port.stdout(lines).await?;
-    }
-    Ok(0)
-}
-
-/// About 3 s here: six jobs one after another on one shell, each a login
-/// shell that reads the machine's profile (about 0.4 s in the Linux container).
-#[tokio::test(flavor = "local")]
-async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
-    let started = Rc::new(Cell::new(false));
-    let stopped = Rc::new(Cell::new(false));
-    let hold = {
-        let started = started.clone();
-        let stopped = stopped.clone();
-        TypedRpc::new(move |call: Call<HoldArgs>, port: RpcPort| {
-            let stopped = stopped.clone();
-            started.set(true);
-            async move {
-                tokio::select! {
-                    () = tokio::time::sleep(Duration::from_millis(call.args.ms)) => Ok(0),
-                    () = port.cancelled() => {
-                        stopped.set(true);
-                        Ok(130)
-                    }
-                }
-            }
-        })
-    };
-    let mut commands = CommandSet::new();
-    commands
-        .register(
-            GroupBuilder::new("note", "Notes.").index_entry("Keeps notes.")
-                .leaf(
-                    LeafBuilder::rpc("add", "Add a note.")
-                        .input::<NoteArgs>()
-                        .positionals(["text"])
-                        .bind(TypedRpc::new(add)),
-                )
-                .leaf(
-                    LeafBuilder::rpc("take", "Take a note from stdin.")
-                        .input::<NoteArgs>()
-                        .stdin_field("text")
-                        .bind(TypedRpc::new(take)),
-                )
-                .leaf(
-                    LeafBuilder::rpc("jot", "Take a note inline or from stdin.")
-                        .input::<NoteArgs>()
-                        .positionals(["text"])
-                        .stdin_field("text")
-                        .bind(TypedRpc::new(take)),
-                ),
-        )
-        .unwrap();
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(
-                    LeafBuilder::rpc("hold", "Wait.")
-                        .input::<HoldArgs>()
-                        .positionals(["ms"])
-                        .bind(hold),
-                )
-                .leaf(
-                    LeafBuilder::rpc("line", "Answer the first line typed.")
-                        .bind(TypedRpc::new(first_line)),
-                )
-                .leaf(LeafBuilder::rpc("spew", "Print many lines.").bind(TypedRpc::new(spew))),
-        )
-        .unwrap();
-    let native = NativeFixture::load();
-    let selection = CommandCatalog::new(Vec::new(), native.resolver())
-        .unwrap()
-        .select(&commands)
-        .unwrap();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        commands,
-        ..FixtureOptions::default()
-    })
-    .await;
-    let shell = shell_on(fixture.host(), &[], Some(selection));
-    // Positional arguments.
-    let added = run(&shell, "note add first && note add second").await;
-    assert_eq!(exited(&added), 0, "{}", added.stderr.tail);
-    assert_eq!(added.stdout.delta, "added first\nadded second\n");
-    // A body from finite standard input.
-    let noted = run(&shell, "printf 'from stdin' | note take").await;
-    assert_eq!(noted.stdout.delta, "noted: from stdin");
-    // A stdin field given as its positional leaves stdin unread, so the
-    // input of a loop around it reaches the next reader whole.
-    let jotted = run(
-        &shell,
-        "printf 'first\\nsecond\\n' | { note jot inline; read line; echo \" next=$line\"; }; printf 'piped' | note jot",
-    )
-    .await;
-    assert_eq!(exited(&jotted), 0, "{}", jotted.stderr.tail);
-    assert_eq!(jotted.stdout.delta, "noted: inline next=first\nnoted: piped");
-    // A reader that stops early ends the call as a closed pipe ends a
-    // program: 141, and nothing on stderr, whether the job's shell runs it
-    // or another program does through its alias.
-    let script = "probe spew | head -n 1; echo \"status=${PIPESTATUS[0]}\"";
-    let headed = run(&shell, &format!("{script}; bash -c '{script}'")).await;
-    assert_eq!(exited(&headed), 0);
-    assert_eq!(
-        headed.stdout.delta,
-        "line 1\nstatus=141\nline 1\nstatus=141\n"
-    );
-    assert_eq!(headed.stderr.delta, "");
-    // Live input reaches the handler as it is written, with the job's
-    // context.
-    let typing = shell
-        .exec(exec("probe line", 300), CancellationToken::new())
-        .await
-        .unwrap();
-    assert!(matches!(typing.state, CommandState::Running { .. }));
-    shell
-        .write(&typing.command_id, Bytes::from_static(b"typed\n"))
-        .await
-        .unwrap();
-    let typed = settled(&shell, &typing).await;
-    assert_eq!(exited(&typed), 0);
-    assert_eq!(typed.output.tail, "typed|test-conversation");
-    // A call its input refuses fails as a usage error.
-    let usage = run(&shell, "note add").await;
-    assert_ne!(exited(&usage), 0);
-    assert!(!usage.stderr.tail.is_empty());
-    // Stopping the job stops its call.
-    let holding = shell
-        .exec(exec("probe hold 30000", 300), CancellationToken::new())
-        .await
-        .unwrap();
-    assert!(matches!(holding.state, CommandState::Running { .. }));
-    // A job still starting has no call to stop yet: the stop is observed
-    // once the call runs.
-    until("the call's start", || started.get().then_some(())).await;
-    shell.abort(&holding.command_id).await.unwrap();
-    shell.ended(&holding.command_id).await.unwrap();
-    let aborted = shell.status(&holding.command_id).unwrap();
-    assert!(
-        matches!(aborted.state, CommandState::Aborted),
-        "{:?}",
-        aborted.state
-    );
-    until("the call's stop", || stopped.get().then_some(())).await;
-    fixture.stop().await;
-}
-
-/// The input of `probe json emit`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct EmitArgs {
-    /// The text to print
-    text: String,
-}
-
-/// What `probe json emit --json` declares it prints.
-#[derive(JsonSchema)]
-struct Emitted {
-    #[expect(dead_code, reason = "the declaration needs only the schema")]
-    ok: bool,
-}
-
-/// Prints its text as the command's output, whatever the caller asked for.
-async fn emit(call: Call<EmitArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    port.stdout(call.args.text).await?;
-    Ok(0)
-}
-
-/// About 3 s here: six jobs one after another on one shell, each a login shell
-/// that reads the machine's profile (about 0.4 s in the Linux container).
-#[tokio::test(flavor = "local")]
-async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_matches() {
-    let mut commands = CommandSet::new();
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.").group(
-                GroupBuilder::new("json", "Output probes.").leaf(
-                    LeafBuilder::rpc("emit", "Print a text.")
-                        .input::<EmitArgs>()
-                        .positionals(["text"])
-                        .json_output::<Emitted>()
-                        .bind(TypedRpc::new(emit)),
-                ),
-            ),
-        )
-        .unwrap();
-    let native = NativeFixture::load();
-    let selection = CommandCatalog::new(Vec::new(), native.resolver())
-        .unwrap()
-        .select(&commands)
-        .unwrap();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        commands,
-        ..FixtureOptions::default()
-    })
-    .await;
-    let shell = shell_on(fixture.host(), &[], Some(selection));
-    // A group below the root prints its help under its full path, listing
-    // its commands; a command's help gives its usage.
-    let help = run(&shell, "probe json --help && probe json emit --help").await;
-    assert_eq!(exited(&help), 0, "{}", help.stderr.tail);
-    let printed = &help.stdout.delta;
-    assert!(
-        printed.starts_with("Usage: probe json <command>\n\nOutput probes.\n\nCommands:\n  emit  Print a text.\n"),
-        "{printed}"
-    );
-    assert!(
-        printed.contains("Usage: probe json emit <text> [--json]\n"),
-        "{printed}"
-    );
-    // Without --json the output passes as it is; with it, the output reaches
-    // stdout only as JSON that matches the declared schema.
-    let raw = run(&shell, "probe json emit 'not json'").await;
-    assert_eq!((exited(&raw), raw.stdout.delta.as_str()), (0, "not json"));
-    let valid = run(&shell, r#"probe json emit '{"ok":true}' --json"#).await;
-    assert_eq!(
-        (exited(&valid), valid.stdout.delta.as_str()),
-        (0, r#"{"ok":true}"#)
-    );
-    let not_json = run(&shell, "probe json emit 'not json' --json").await;
-    let mismatch = run(&shell, r#"probe json emit '{"ok":1}' --json"#).await;
-    for refused in [&not_json, &mismatch] {
-        assert_eq!(exited(refused), 1, "{}", refused.stderr.tail);
-        assert_eq!(refused.stdout.delta, "");
-    }
-    // Each refusal says that the command's --json output failed, and how,
-    // after the command's path.
-    assert!(
-        not_json
-            .stderr
-            .delta
-            .starts_with("probe json emit: --json output is not JSON: "),
-        "{}",
-        not_json.stderr.delta
-    );
-    assert_eq!(
-        mismatch.stderr.delta,
-        "probe json emit: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n"
-    );
-    // A usage error is clap's, with the command's usage, and exits 2.
-    let usage = run(&shell, "probe json emit").await;
-    assert_eq!(
-        (exited(&usage), usage.stderr.delta.as_str()),
-        (
-            2,
-            "error: the following required arguments were not provided: <text>\nUsage: probe json emit <text> [--json]; more with --help\n"
-        )
-    );
-    fixture.stop().await;
-}
-
-/// The input of the fixture's `where`, which only its schema declares: the
-/// native operation reads it.
-#[derive(JsonSchema)]
-#[schemars(deny_unknown_fields)]
-struct WhereArgs {
-    /// A label the operation reports
-    #[expect(dead_code, reason = "the declaration needs only the schema")]
-    label: Option<String>,
-}
-
-pub(crate) fn catalog(native: &NativeFixture) -> CommandCatalog {
-    CommandCatalog::new(vec![native.descriptor.clone()], native.resolver()).unwrap()
-}
-
-pub(crate) fn native_leaf(native: &NativeFixture, name: &str, operation: &str) -> LeafBuilder {
-    let operation = NativeOperation {
-        package: native.descriptor.id.clone(),
-        operation: operation.into(),
-    };
-    LeafBuilder::native(
-        name,
-        format!("The fixture's {}.", operation.operation),
-        operation,
-    )
-}
-
-/// A root `name` over the native fixture's operations.
-fn native_root(native: &NativeFixture, name: &str) -> CommandSet {
-    let mut root = GroupBuilder::new(name, "The native fixture.").index_entry("Runs the native fixture.")
-        .leaf(native_leaf(native, "where", "where").input::<WhereArgs>());
-    for operation in ["echo", "spin", "result", "number"] {
-        root = root.leaf(native_leaf(native, operation, operation));
-    }
-    let mut commands = CommandSet::new();
-    commands.register(root).unwrap();
-    commands
-}
-
-/// The runner as the root `demi`'s command client, calling `where`.
-async fn client(cwd: &str, env: &[(&str, &str)]) -> Output {
-    let mut command = tokio::process::Command::new(runner_binary());
-    command
-        .arg0("demi")
-        .arg("where")
-        .current_dir(cwd)
-        .envs(env.iter().copied())
-        .stdin(Stdio::null())
-        .kill_on_drop(true);
-    tokio::time::timeout(Duration::from_secs(10), command.output())
-        .await
-        .expect("the client ends")
-        .unwrap()
-}
-
-/// About 3.5 s here: two runners, and eight jobs one after another, each a
-/// login shell that reads the machine's profile (about 0.4 s in the Linux
-/// container).
-#[tokio::test(flavor = "local")]
-async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_runner() {
-    let native = NativeFixture::load();
-    let selection = catalog(&native)
-        .select(&native_root(&native, "demi"))
-        .unwrap();
-    let a = RunnerFixture::start(FixtureOptions::default()).await;
-    let b = RunnerFixture::start(FixtureOptions::default()).await;
-    let on_a = shell_on(a.host(), &[], Some(selection.clone()));
-    let on_b = shell_on(b.host(), &[], Some(selection));
-    let (from_a, from_b) = tokio::join!(
-        run(
-            &on_a,
-            "DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A"
-        ),
-        run(&on_b, "PROBE=beta demi where --label B"),
-    );
-    let context = serde_json::to_value(test_command_context()).unwrap();
-    let reported = |status: &CommandStatus| -> Value {
-        serde_json::from_str(&status.stdout.delta)
-            .unwrap_or_else(|_| panic!("{}", status.stderr.tail))
-    };
-    assert_eq!(
-        reported(&from_a),
-        json!({"context": context, "label": "A", "cwd": a.home(), "value": "alpha"})
-    );
-    assert_eq!(
-        reported(&from_b),
-        json!({"context": context, "label": "B", "cwd": b.home(), "value": "beta"})
-    );
-    // Binary input and output stream through the service whole.
-    let bytes: Vec<u8> = (0..3 * MIB).map(|index| (index % 256) as u8).collect();
-    std::fs::write(format!("{}/input", a.home()), &bytes).unwrap();
-    let echoed = run(&on_a, "cat input | demi echo > output").await;
-    assert_eq!(exited(&echoed), 0, "{}", echoed.stderr.tail);
-    assert!(std::fs::read(format!("{}/output", a.home())).unwrap() == bytes);
-    // An operation's exit code and both its streams; a failure's words.
-    let completed = run(&on_a, "demi result").await;
-    assert_eq!(exited(&completed), 17);
-    assert_eq!(completed.stdout.delta, "command output");
-    assert_eq!(completed.stderr.delta, "command diagnostic");
-    let failed = run(&on_a, "RESULT=error demi result").await;
-    assert_eq!(exited(&failed), 1);
-    assert!(
-        failed.stderr.delta.contains("command failed"),
-        "{}",
-        failed.stderr.delta
-    );
-    // The service draws its conversation's numbers through its runner from
-    // the backend, which gives each out once (`crates/command-protocol/src/numbers.rs`).
-    let numbered = run(&on_a, "demi number && demi number").await;
-    assert_eq!(exited(&numbered), 0, "{}", numbered.stderr.tail);
-    assert_eq!(numbered.stdout.delta, r#"{"first":1}{"first":2}"#);
-
-    // A job's execution context lives on its own runner, and only while the
-    // job runs.
-    let capture = on_a
-        .exec(
-            exec("printf '%s\\n%s\\n' \"$DEMI_RUNNER_ENDPOINT\" \"$DEMI_CONTEXT_ID\" > context; sleep 30", 50),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    let context_file = format!("{}/context", a.home());
-    let written = until("the job's context", || {
-        std::fs::read_to_string(&context_file)
-            .ok()
-            .filter(|text| text.lines().count() == 2)
-    })
-    .await;
-    let (endpoint, context_id) = written.trim_end().split_once('\n').unwrap();
-    let other = run(&on_b, "printf '%s' \"$DEMI_RUNNER_ENDPOINT\"")
-        .await
-        .stdout
-        .delta;
-    assert_ne!(endpoint, other);
-    let wrong = client(
-        a.home(),
-        &[
-            ("DEMI_RUNNER_ENDPOINT", &other),
-            ("DEMI_CONTEXT_ID", context_id),
-        ],
-    )
-    .await;
-    assert_eq!(wrong.status.code(), Some(1));
-    assert!(
-        String::from_utf8_lossy(&wrong.stderr).contains("not live on this runner"),
-        "{wrong:?}"
-    );
-    on_a.abort(&capture.command_id).await.unwrap();
-    let stale = client(
-        a.home(),
-        &[
-            ("DEMI_RUNNER_ENDPOINT", endpoint),
-            ("DEMI_CONTEXT_ID", context_id),
-        ],
-    )
-    .await;
-    assert_eq!(stale.status.code(), Some(1));
-    a.stop().await;
-    b.stop().await;
-}
-
-/// About 3.5 s here: its jobs run one after another, one for each hint it waits
-/// for; each is a login shell that reads the machine's profile (about 0.4 s in
-/// the Linux container).
-#[tokio::test(flavor = "local")]
-async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
-    let native = NativeFixture::load();
-    let mut commands = CommandSet::new();
-    commands
-        .register(
-            GroupBuilder::new("attend", "Hint probes.").index_entry("Probes running hints.")
-                .leaf(native_leaf(&native, "native", "first").running_hint("native: do not poll"))
-                .leaf(native_leaf(&native, "plain", "first"))
-                .leaf(
-                    LeafBuilder::rpc("rpc", "Wait for a line on the backend.")
-                        .running_hint("rpc: do not poll")
-                        .bind(TypedRpc::new(first_line)),
-                ),
-        )
-        .unwrap();
-    let selection = catalog(&native).select(&commands).unwrap();
-    let (sender, mut tap) = Tap::new();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        commands,
-        tap: Some(sender),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let shell = shell_on(fixture.host(), &[], Some(selection));
-    let shows = |status: &CommandStatus, expected: Option<&str>| {
-        let hint = hint(&shell.status(&status.command_id).unwrap());
-        (hint.as_deref() == expected).then_some(())
-    };
-    for leaf in ["native", "rpc"] {
-        let expected = format!("{leaf}: do not poll");
-        let started = shell
-            .exec(
-                exec(&format!("attend {leaf}; sleep 30"), 100),
-                CancellationToken::new(),
-            )
-            .await
-            .unwrap();
-        until(&expected, || shows(&started, Some(&expected))).await;
-        shell
-            .write(&started.command_id, Bytes::from_static(b"finish\n"))
-            .await
-            .unwrap();
-        until("the hint's end", || shows(&started, None)).await;
-        shell.abort(&started.command_id).await.unwrap();
-        shell.ended(&started.command_id).await.unwrap();
-        let stopped = shell.status(&started.command_id).unwrap();
-        assert!(
-            matches!(stopped.state, CommandState::Aborted),
-            "{:?}",
-            stopped.state
-        );
-    }
-
-    // A client that dies ends its hint; the shell goes on.
-    let child = shell
-        .exec(
-            exec(
-                "exec 9<&0; sh -c 'echo $$ > child.pid; exec attend native' <&9 & wait; sleep 30",
-                100,
-            ),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    until("the child's hint", || {
-        shows(&child, Some("native: do not poll"))
-    })
-    .await;
-    let pid_file = format!("{}/child.pid", fixture.home());
-    let pid = until("the child's pid", || {
-        std::fs::read_to_string(&pid_file)
-            .ok()
-            .filter(|pid| pid.ends_with('\n'))
-    })
-    .await;
-    let kill = fixture
-        .host()
-        .process()
-        .spawn(spawn("/bin/kill", &["-KILL", pid.trim()]))
-        .await
-        .unwrap();
-    assert_eq!(finish(kill).await.1, ProcessEnd::Exited(0));
-    until("the child's hint to end", || shows(&child, None)).await;
-    shell.abort(&child.command_id).await.unwrap();
-    shell.ended(&child.command_id).await.unwrap();
-    let stopped = shell.status(&child.command_id).unwrap();
-    assert!(
-        matches!(stopped.state, CommandState::Aborted),
-        "{:?}",
-        stopped.state
-    );
-
-    // Help, a usage error, a group, and a leaf without a hint show none.
-    let before = tap.drain().len();
-    for script in ["attend native --help", "attend native --unknown", "attend"] {
-        let status = run(&shell, script).await;
-        assert!(
-            !matches!(status.state, CommandState::Running { .. }),
-            "{script}"
-        );
-    }
-    let plain = shell
-        .exec(exec("attend plain", 100), CancellationToken::new())
-        .await
-        .unwrap();
-    assert_eq!(hint(&plain), None);
-    shell
-        .write(&plain.command_id, Bytes::from_static(b"done\n"))
-        .await
-        .unwrap();
-    assert_eq!(exited(&settled(&shell, &plain).await), 0);
-    let hinted = tap.drain()[before..]
-        .iter()
-        .any(|message| matches!(message, Outbound::JobRunningHint { hint: Some(_), .. }));
-    assert!(!hinted, "a hint from a leaf without one");
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_busy_native_command_blocks_neither_the_runner_nor_its_abort_and_a_second_runner_is_refused()
- {
-    let native = NativeFixture::load();
-    let selection = catalog(&native)
-        .select(&native_root(&native, "demi"))
-        .unwrap();
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let shell = shell_on(fixture.host(), &[], Some(selection));
-    let spinning = shell
-        .exec(exec("demi spin", 100), CancellationToken::new())
-        .await
-        .unwrap();
-    assert!(matches!(spinning.state, CommandState::Running { .. }));
-    assert!(fixture.host().fs().exists(fixture.home()).await.unwrap());
-    let second = tokio::time::timeout(Duration::from_secs(10), fixture.command().output())
-        .await
-        .expect("a second runner ends")
-        .unwrap();
-    // Nothing comes of starting it again, so a service manager does not
-    // (`crates/runner/src/autostart.rs`).
-    assert_eq!(second.status.code(), Some(0));
-    assert!(
-        String::from_utf8_lossy(&second.stderr).contains("another runner of this installation is running"),
-        "{second:?}"
-    );
-    shell.abort(&spinning.command_id).await.unwrap();
-    shell.ended(&spinning.command_id).await.unwrap();
-    let aborted = shell.status(&spinning.command_id).unwrap();
-    assert!(
-        matches!(aborted.state, CommandState::Aborted),
-        "{:?}",
-        aborted.state
-    );
-    assert_eq!(exited(&run(&shell, "demi --help").await), 0);
-    fixture.stop().await;
-}
-
-/// About 1.3 s here: three jobs, each with a manifest of its own and each a
-/// login shell that reads the machine's profile (about 0.4 s in the Linux
-/// container).
-#[tokio::test(flavor = "local")]
-async fn a_running_job_keeps_its_manifest_while_the_next_job_installs_another() {
-    let native = NativeFixture::load();
-    let catalog = catalog(&native);
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let old = shell_on(
-        fixture.host(),
-        &[],
-        Some(catalog.select(&native_root(&native, "demi")).unwrap()),
-    );
-    let new = shell_on(
-        fixture.host(),
-        &[],
-        Some(
-            catalog
-                .select(&native_root(&native, "replacement"))
-                .unwrap(),
-        ),
-    );
-    let home = fixture.home().to_owned();
-    let started = old
-        .exec(
-            exec("touch ready; while [ ! -f proceed ]; do sleep 0.01; done; PROBE=old demi where > result", 50),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    assert!(matches!(started.state, CommandState::Running { .. }));
-    until("the job to start", || {
-        Path::new(&format!("{home}/ready")).exists().then_some(())
-    })
-    .await;
-    let next = run(&new, "PROBE=new replacement where").await;
-    let reported: Value =
-        serde_json::from_str(&next.stdout.delta).unwrap_or_else(|_| panic!("{}", next.stderr.tail));
-    assert_eq!(reported["value"], "new");
-    std::fs::write(format!("{home}/proceed"), "").unwrap();
-    let finished = settled(&old, &started).await;
-    assert_eq!(exited(&finished), 0, "{}", finished.stderr.tail);
-    let result: Value =
-        serde_json::from_str(&std::fs::read_to_string(format!("{home}/result")).unwrap()).unwrap();
-    assert_eq!(result["value"], "old");
-    fixture.stop().await;
-}
-
-/// The conversation's user, as a live view calls a service.
-fn user_context() -> CommandContext {
-    CommandContext {
-        color_scheme: demi_command_protocol::ColorScheme::Light,
-        caller: CommandCaller::User {},
-        ..test_command_context()
-    }
-}
-
-fn service(
-    fixture: &RunnerFixture,
-    native: &NativeFixture,
-    operation: &str,
-    args: Option<Value>,
-) -> ServiceRequest {
-    let args = args.map(|args| match args {
-        Value::Object(args) => args,
-        other => panic!("arguments are an object, not {other}"),
-    });
-    ServiceRequest {
-        context: user_context(),
-        package: native.descriptor.clone(),
-        operation: operation.into(),
-        json: args.is_some().then_some(true),
-        args,
-        cwd: fixture.home().into(),
-        resolver: native.resolver(),
-        attached: Vec::new(),
-    }
-}
-
-/// Opens a service stream with an input and an output pipe.
-async fn open(
-    fixture: &RunnerFixture,
-    request: ServiceRequest,
-) -> Result<(Pipe, Pipe, ServiceStream), HostError> {
-    let input = fixture.pipes().to_device(TEST_DEVICE);
-    let output = fixture.pipes().from_device(TEST_DEVICE);
-    let stream = fixture
-        .host()
-        .open_service(request, input.wire_ref(), output.wire_ref())
-        .await?;
-    Ok((input, output, stream))
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_service_stream_carries_bytes_both_ways_and_ends_with_its_invocation() {
-    let native = NativeFixture::load();
-    let (sender, mut tap) = Tap::new();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        tap: Some(sender),
-        ..FixtureOptions::default()
-    })
-    .await;
-    // The context and the directory reach the invocation; its environment
-    // is empty. Its completion ends the output.
-    let (input, output, mut stream) = open(&fixture, service(&fixture, &native, "where", None))
-        .await
-        .unwrap();
-    input.writer().unwrap().end();
-    let answer = collect(output.reader().unwrap()).await.unwrap();
-    let context = serde_json::to_value(user_context()).unwrap();
-    assert_eq!(
-        serde_json::from_slice::<Value>(&answer).unwrap(),
-        json!({"label": null, "context": context, "cwd": fixture.home(), "value": null})
-    );
-    assert_eq!(stream.done().await.unwrap().exit_code, 0);
-    drop(stream);
-    // The stream installed the fixture through an artifact request of its
-    // own.
-    tap.find("a stream's artifact request", |message| {
-        matches!(
-            message,
-            Outbound::ArtifactResolve {
-                owner: ArtifactOwner::Stream(_),
-                ..
-            }
-        )
-    })
-    .await;
-
-    // The page's bytes come back byte-equal; the input's end completes it.
-    let (input, output, mut stream) = open(&fixture, service(&fixture, &native, "echo", None))
-        .await
-        .unwrap();
-    let payload = pattern(MIB);
-    let mut writer = input.writer().unwrap();
-    let feed = async {
-        writer.write(Bytes::from(payload.clone())).await.unwrap();
-        writer.end();
-    };
-    let ((), echoed) = tokio::join!(feed, collect(output.reader().unwrap()));
-    assert!(echoed.unwrap() == payload, "the echo");
-    output.done().await.unwrap();
-    assert_eq!(stream.done().await.unwrap().exit_code, 0);
-    drop(stream);
-
-    // A package without the operation refuses the stream before any byte.
-    let refused = open(&fixture, service(&fixture, &native, "missing", None))
-        .await
-        .err()
-        .unwrap();
-    assert_eq!(refused.code(), Some("unknown_operation"));
-
-    // The page going away cancels the invocation, and the runner reports
-    // both its pipes.
-    let (input, output, stream) = open(&fixture, service(&fixture, &native, "echo", None))
-        .await
-        .unwrap();
-    let mut writer = input.writer().unwrap();
-    writer
-        .write(Bytes::from_static(b"before the page left"))
-        .await
-        .unwrap();
-    let reader = output.reader().unwrap();
-    fixture.pipes().fail(input.id(), "page closed");
-    assert!(collect(reader).await.is_err());
-    assert!(!tap.pipe_done(input.id()).await.0);
-    assert!(!tap.pipe_done(output.id()).await.0);
-    drop(stream);
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_words() {
-    let native = NativeFixture::load();
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let host = fixture.host();
-    let call = |operation: &str, args: Option<Value>| {
-        host.call_service(
-            service(&fixture, &native, operation, args),
-            Bytes::new(),
-            64 * 1024,
-        )
-    };
-    let answer = call("where", Some(json!({"label": "from the user"})))
-        .await
-        .unwrap();
-    let answer: Value = serde_json::from_slice(&answer).unwrap();
-    assert_eq!(answer["label"], "from the user");
-    assert_eq!(
-        answer["context"]["caller"],
-        serde_json::to_value(CommandCaller::User {}).unwrap()
-    );
-    // `result` writes to both outputs and exits 17: the call fails with what
-    // it said on standard error.
-    match call("result", None).await {
-        Err(ServiceCallError::Exited {
-            exit_code,
-            stderr,
-            stdout,
-        }) => {
-            assert_eq!((exit_code, stderr.as_str()), (17, "command diagnostic"));
-            assert_eq!(stdout, "command output");
-        }
-        other => panic!("expected a failed call, got {other:?}"),
-    }
-    // What a service holds for a conversation goes when it is released.
-    call("retain", None).await.unwrap();
-    host.release_conversation(&user_context().conversation, false)
-        .await
-        .unwrap();
-    assert!(
-        open(&fixture, service(&fixture, &native, "missing", None))
-            .await
-            .is_err()
-    );
-
-    let page = log_until(&host, |page| said(page, "stream:result ended") > 0).await;
-    let conversation = Some(user_context().conversation);
-    let told: Vec<_> = page
-        .lines
-        .iter()
-        .map(|line| {
-            (
-                line.source.as_str(),
-                line.conversation_id.clone(),
-                line.text.as_str(),
-            )
-        })
-        .collect();
-    for (source, text) in [
-        ("stream:result", "command diagnostic"),
-        ("runner", "stream:result opened"),
-        ("runner", "stream:result ended"),
-        (
-            "runner",
-            "stream:missing refused (unknown_operation): demicodes.runner-test has no operation missing",
-        ),
-    ] {
-        assert!(
-            told.contains(&(source, conversation.clone(), text)),
-            "{source}: {text} in {told:#?}"
-        );
-    }
-    let started = told.iter().any(|(source, _, text)| {
-        *source == "runner"
-            && text
-                .strip_prefix("service demicodes.runner-test started (pid ")
-                .and_then(|rest| rest.strip_suffix(')'))
-                .is_some_and(|pid| pid.parse::<u32>().is_ok())
-    });
-    assert!(started, "{told:#?}");
-    fixture.stop().await;
-}
-
-/// A call whose runner goes away while it runs fails because the device is
-/// offline, not because a pipe broke: the runner's leaving fails every pipe
-/// it held, and the caller says what happened.
-#[tokio::test(flavor = "local")]
-async fn a_call_whose_runner_goes_away_fails_as_the_device_offline() {
-    let native = NativeFixture::load();
-    let (sender, mut tap) = Tap::new();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        tap: Some(sender),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let host = fixture.host();
-    // `stalled` answers only once released, so the call is still running.
-    let call = host.call_service(
-        service(&fixture, &native, "stalled", None),
-        Bytes::new(),
-        64 * 1024,
-    );
-    let leave = async {
-        tap.find("the stream opened", |message| {
-            matches!(message, Outbound::ServiceOpened { .. })
-        })
-        .await;
-        fixture.link().await.disconnect("runner went away");
-    };
-    let (called, ()) = tokio::join!(call, leave);
-    match called {
-        Err(ServiceCallError::Host(error)) => assert_eq!(error.kind, HostErrorKind::Offline, "{error}"),
-        other => panic!("expected the device offline, got {other:?}"),
-    }
-    fixture.stop().await;
-}
-
-/// The Host log from its start, once `done` holds for it: a read waits for
-/// no queued line, so it asks until the writer has put the lines `done`
-/// looks for in the files, and with them every line written before.
-async fn log_until(host: &RemoteHost, done: impl Fn(&LogPage) -> bool) -> LogPage {
-    let mut page = host.read_log(Some(0), 1000, None).await.unwrap();
-    for _ in 0..500 {
-        if done(&page) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        page = host.read_log(Some(0), 1000, None).await.unwrap();
-    }
-    page
-}
-
-/// How many lines of `page` say `text`.
-fn said(page: &LogPage, text: &str) -> usize {
-    page.lines.iter().filter(|line| line.text == text).count()
-}
-
-/// A user stream's service stays for as long as the stream is open, and for
-/// the connection's next streams while the connection binds that release
-/// (`crates/runner-command-packages/src/registry.rs`): consecutive one-shot
-/// calls reuse it, and binding another release of the package lets it go
-/// once no stream of it is open.
-#[tokio::test(flavor = "local")]
-async fn user_calls_reuse_the_service_of_the_release_the_connection_bound_last() {
-    let first = NativeFixture::load();
-    // The same package with another executable: another release.
-    let releases = tempfile::tempdir().unwrap();
-    let mut executable = std::fs::read(native_fixture_binary()).unwrap();
-    executable.push(0);
-    let path = releases.path().join("fixture");
-    std::fs::write(&path, executable).unwrap();
-    let operations = first.descriptor.operations.iter().map(String::as_str);
-    let second = NativeFixture::package(&first.descriptor.id, path, operations);
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let host = fixture.host();
-    let call = |native: &NativeFixture| {
-        host.call_service(
-            service(&fixture, native, "where", None),
-            Bytes::new(),
-            64 * 1024,
-        )
-    };
-    // Consecutive calls, and a stream after them, reach one service.
-    call(&first).await.unwrap();
-    call(&first).await.unwrap();
-    let (input, output, mut stream) = open(&fixture, service(&fixture, &first, "echo", None))
-        .await
-        .unwrap();
-    // The connection binds the second release now; the open stream still
-    // holds the first one's service. Were it not, the registry would stop
-    // that service as soon as it had said that it holds no conversation: a
-    // round trip to a running service, while this call first starts the
-    // second release's service. The log's order below shows which came
-    // first.
-    call(&second).await.unwrap();
-    input.writer().unwrap().end();
-    assert_eq!(collect(output.reader().unwrap()).await.unwrap(), b"");
-    assert_eq!(stream.done().await.unwrap().exit_code, 0);
-    // With the stream gone, nothing holds the first release's service; the
-    // second one's stays for the next call.
-    call(&second).await.unwrap();
-    let stops = "service demicodes.runner-test holds no lease or conversation and stops";
-    let stopped = "service demicodes.runner-test stopped";
-    let page = log_until(&host, |page| {
-        said(page, "stream:where ended") == 4 && said(page, stopped) == 1
-    })
-    .await;
-    let texts: Vec<_> = page.lines.iter().map(|line| line.text.as_str()).collect();
-    let starts = texts
-        .iter()
-        .filter(|text| text.starts_with("service demicodes.runner-test started "))
-        .count();
-    assert_eq!((starts, said(&page, stopped)), (2, 1), "{texts:#?}");
-    let position = |text: &str| texts.iter().position(|line| *line == text);
-    assert!(
-        position(stops) > position("stream:echo ended"),
-        "the first release's service stops only once its stream has ended: {texts:#?}"
-    );
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn the_log_facet_reads_the_newest_lines_then_what_came_after() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let host = fixture.host();
-    // The runner writes its start before it connects; the writer puts it in
-    // the files a moment later.
-    let mut page = host.read_log(None, 50, Some("runner")).await.unwrap();
-    for _ in 0..500 {
-        if page.lines.iter().any(|line| line.text == "online") {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        page = host.read_log(None, 50, Some("runner")).await.unwrap();
-    }
-    assert!(page.lines.iter().any(|line| line.text == "online"));
-    assert!(page.lines.iter().all(|line| line.source == "runner"));
-    let started = |text: &str| {
-        text.strip_prefix("runner ")
-            .and_then(|rest| rest.strip_suffix(" started"))
-            .is_some_and(|version| !version.is_empty() && !version.contains(' '))
-    };
-    assert!(
-        page.lines.iter().any(|line| started(&line.text)),
-        "{:#?}",
-        page.lines
-    );
-    assert!(page.next > 0);
-    let after = host.read_log(Some(page.next), 50, None).await.unwrap();
-    assert_eq!((after.lines.len(), after.next), (0, page.next));
-    let one = host.read_log(Some(0), 1, None).await.unwrap();
-    assert_eq!(one.lines.len(), 1);
-    assert!(one.next < page.next);
-    let other = host
-        .read_log(Some(0), 50, Some("service:none"))
-        .await
-        .unwrap();
-    assert_eq!((other.lines.len(), other.next), (0, page.next));
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn the_working_tree_facet_lists_changes_and_shows_the_last_commit() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let host = fixture.host();
-    let home = fixture.home().to_owned();
-    let git = |args: &[&str]| {
-        let status = std::process::Command::new("git")
-            .args(args)
-            .current_dir(&home)
-            .env("GIT_AUTHOR_NAME", "Test")
-            .env("GIT_AUTHOR_EMAIL", "test@example.com")
-            .env("GIT_COMMITTER_NAME", "Test")
-            .env("GIT_COMMITTER_EMAIL", "test@example.com")
-            .status()
-            .expect("git on PATH");
-        assert!(status.success(), "git {args:?}");
-    };
-    let (outside, _) = host.git_changes(&home).await.unwrap();
-    assert!(
-        !outside.repository
-            && outside.head.is_none()
-            && outside.files.is_empty()
-            && !outside.truncated
-    );
-    git(&["init", "-q", "-b", "main"]);
-    std::fs::write(format!("{home}/a.txt"), "1\n2\n").unwrap();
-    git(&["add", "."]);
-    git(&["commit", "-q", "-m", "first"]);
-    std::fs::write(format!("{home}/a.txt"), "1\n2\n3\n").unwrap();
-    std::fs::write(format!("{home}/b.txt"), "new\n").unwrap();
-    let (changes, _) = host.git_changes(&home).await.unwrap();
-    assert!(changes.repository);
-    let head = changes.head.clone().unwrap();
-    assert!(
-        head.len() == 40 && head.chars().all(|digit| digit.is_ascii_hexdigit()),
-        "{head}"
-    );
-    let files: Vec<_> = changes
-        .files
-        .iter()
-        .map(|file| {
-            (
-                file.path.as_str(),
-                file.status.as_str(),
-                file.kind,
-                file.added,
-                file.removed,
-            )
-        })
-        .collect();
-    assert_eq!(
-        files,
-        [
-            ("a.txt", " M", wire::ChangeKind::Modified, 1, 0),
-            ("b.txt", "??", wire::ChangeKind::Added, 1, 0),
-        ]
-    );
-    assert_eq!(host.git_show(&home, "a.txt", None).await.unwrap().0, "1\n2\n");
-    assert_eq!(
-        host.git_show(&home, "b.txt", None).await.unwrap_err().code(),
-        Some("ENOENT")
     );
     fixture.stop().await;
 }

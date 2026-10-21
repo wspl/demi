@@ -17,6 +17,7 @@ demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
 demi-shared-types = { path = "../shared-types" }
 demi-shared-gates = { path = "../shared-gates" }
+demi-shared-link = { path = "../shared-link" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 futures-util = { workspace = true, features = ["sink"] }
@@ -39,10 +40,8 @@ tempfile = { version = "3", optional = true }
 rustix = { version = "1", features = ["process", "pty"], optional = true }
 
 [dev-dependencies]
-# The crate's own tests use its test support and the Host conformance cases.
+# The crate's own tests use its test support.
 demi-backend-remote-host = { path = ".", features = ["testing"] }
-demi-host-interface = { path = "../host-interface", features = ["testing"] }
-schemars.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
 [features]

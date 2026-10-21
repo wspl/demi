@@ -6,9 +6,8 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the pending claims' window, the codes' alphabet and the
-# publication's object layout, so they are unit tests and the crate has no
-# integration tests (`ARCHITECTURE.md`). It has no doc examples.
+# The crate has no tests and no doc examples.
+test = false
 doctest = false
 bench = false
 
@@ -49,10 +48,3 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 url = { version = "2", features = ["serde"] }
-
-[dev-dependencies]
-demi-backend-blobs = { path = "../backend-blobs", features = ["testing"] }
-demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-command-package-browser-protocol = { path = "../plugin-browser/protocol" }
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

@@ -1,7 +1,6 @@
 //! The connection engine with the test as the runner.
 
 use std::{
-    cell::{Cell, RefCell},
     collections::BTreeMap,
     rc::Rc,
     time::Duration,
@@ -9,36 +8,31 @@ use std::{
 
 use bytes::Bytes;
 use demi_backend_remote_host::{
-    Admission, ArtifactResolver, CommandCatalog, CommandKeeper, END_GRACE, EnvironmentOptions, JobOrigin,
-    JobStart, KeptStart, LinkEnd, LinkPolicy, RemoteHost, RemoteShellEnvironment,
+    Admission, ArtifactResolver, CommandCatalog, EnvironmentOptions,
+    JobStart, LinkEnd, RemoteHost, RemoteShellEnvironment,
     testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
 };
-use demi_command_declarations::NativeOperation;
 use demi_command_protocol::{
-    ArtifactLocation, ArtifactUrl, EditCopies, EditKind as FileEditKind, PackageArtifact,
-    PackageDescriptor, ServiceSequence, host_target,
+    ArtifactLocation, PackageArtifact,
 };
 use demi_host_interface::{
-    Call, CommandSet, CommandState, GroupBuilder, HostError, HostErrorKind,
-    HostProcess, JobCaller, LeafBuilder, OutputRecord, PageState, Process,
-    ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, SpawnEnv, UnsentStart,
-    SpawnRequest, Streams, TypedRpc, WholeOutput,
+    Call, CommandSet, CommandState, HostErrorKind,
+    HostProcess, JobCaller, LeafBuilder, OutputRecord, PageState,
+    ProcessEnd, RpcError, RpcPort, ShellEnvironment, SpawnEnv,
+    SpawnRequest, TypedRpc, WholeOutput,
     testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
-    ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES, StreamArtifactOwner,
-    JobArtifactOwner, JobFileChange, KeptRecord, Outbound, OutputLengths, OutputStream,
+    FsOk, FsResult, Inbound, KeptRecord, Outbound, OutputLengths, OutputStream,
     STDIN_CHUNK_BYTES, Signal, WireBytes, encode_record,
 };
-use demi_shared_gates::{ActivityGate, Purpose};
 use demi_shared_types::{
-    BlobRef, CommandId, EditKind, EditSegment, EditedFile, NodeId, StreamKind,
+    CommandId, NodeId,
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
-use crate::Framed;
 use crate::runner::Watched;
 
 fn device() -> TestDevice {
@@ -144,160 +138,19 @@ fn job_exit(job_id: &str, exit_code: Option<i32>, signal: Option<&str>) -> Outbo
     }
 }
 
-#[tokio::test(flavor = "local")]
-async fn an_fs_reply_is_read_as_the_operation_the_caller_asked_for() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let stat = tokio::task::spawn_local(async move {
-        demi_host_interface::Host::fs(&host)
-            .stat("/work/file")
-            .await
-    });
-    let Inbound::FsStat { id, .. } = link.next().await else {
-        panic!("expected a stat request")
-    };
-    // A readlink result is well formed for the op the reply names, and is not
-    // the stat this caller waits for.
-    link.send(Outbound::FsOk(FsOk {
-        id,
-        read_at: read_at(),
-        result: FsResult::Readlink("/work/elsewhere".into()),
-    }))
-    .await;
-    assert_eq!(
-        stat.await.unwrap().unwrap_err().kind,
-        HostErrorKind::Protocol
-    );
-}
-
 // A paused clock stands in for the minute the reply may take.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_write_whose_reply_is_overdue_once_its_bytes_left_fails_and_closes_their_connection() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let write = tokio::task::spawn_local(async move {
-        demi_host_interface::Host::fs(&host)
-            .write_file(
-                "/work/file",
-                demi_host_interface::FileContents::Bytes(Bytes::from_static(b"contents")),
-                demi_host_interface::WriteOptions::default(),
-            )
-            .await
-    });
-    let Inbound::FsWriteFile { input, .. } = link.next().await else {
-        panic!("expected a write request")
-    };
-    let sink = device.pipes().claim_sink(&input.id, TEST_DEVICE).unwrap();
-    let connection = CancellationToken::new();
-    sink.closes_with(connection.clone());
-    // The runner reads every byte and the end, and never answers, as when
-    // its read of the connection stalled before the end reached its file.
-    assert_eq!(Framed::new(sink).read().await, (b"contents".to_vec(), Ok(())));
-
-    tokio::time::sleep(Duration::from_secs(59)).await;
-    assert!(!write.is_finished(), "the reply may still come");
-    assert!(!connection.is_cancelled());
-    let failed = tokio::time::timeout(Duration::from_secs(2), write)
-        .await
-        .expect("the overdue write ends")
-        .unwrap()
-        .unwrap_err();
-    assert_eq!(failed.kind, HostErrorKind::Interrupted, "{failed:?}");
-    assert!(connection.is_cancelled(), "the runner's read ends with the connection");
-}
-
-#[tokio::test(flavor = "local")]
-async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing() {
-    let device = device();
-    let mut link = device.connect(None);
-    let gate = ActivityGate::new();
-    let blocked = Rc::new(Cell::new(false));
-    let admission = {
-        let (gate, blocked) = (gate.clone(), blocked.clone());
-        Admission::Leased(Rc::new(move || {
-            if blocked.get() {
-                return Err(HostError::new(
-                    HostErrorKind::Unavailable,
-                    "machine transition",
-                ));
-            }
-            gate.try_enter(Purpose::Demand)
-                .ok_or_else(|| HostError::new(HostErrorKind::Unavailable, "machine transition"))
-        }))
-    };
-    let host = device.host("/work", admission);
-    let exists = {
-        let host = host.clone();
-        tokio::task::spawn_local(async move {
-            demi_host_interface::Host::fs(&host)
-                .exists("/work/file")
-                .await
-        })
-    };
-    let Inbound::FsExists { id, .. } = link.next().await else {
-        panic!("expected an exists request")
-    };
-    assert_eq!(gate.state().demand, 1);
-    link.send(Outbound::FsOk(FsOk {
-        id,
-        read_at: read_at(),
-        result: FsResult::Exists(true),
-    }))
-    .await;
-    assert!(exists.await.unwrap().unwrap());
-    assert_eq!(gate.state().demand, 0);
-    let process = host.spawn(spawn("sleep", false)).await.unwrap();
-    let job = host.start_job(job_start("sleep 10")).await.unwrap();
-    assert_eq!(gate.state().demand, 2);
-    drain(&mut link).await;
-    blocked.set(true);
-    let refused = demi_host_interface::Host::fs(&host)
-        .read_file("/work/next")
-        .await
-        .unwrap_err();
-    assert_eq!(refused.message, "machine transition");
-    assert!(host.spawn(spawn("true", false)).await.is_err());
-    assert!(host.start_job(job_start("true")).await.is_err());
-    assert!(
-        drain(&mut link).await.is_empty(),
-        "a refused operation sends nothing"
-    );
-    assert_eq!(
-        link.close().await,
-        LinkEnd::Closed("runner disconnected".into())
-    );
-    assert!(matches!(process.exit.await, ProcessEnd::Lost(_)));
-    // The job waits for the runner's next connection, holding the Host's
-    // admission: the same runner, which lists nothing, never received it,
-    // so it goes again and holds the admission until its end.
-    assert!(job.ended().is_none());
-    assert_eq!(gate.state().demand, 1);
-    let mut next = device.connect(None);
-    assert!(
-        drain(&mut next).await.iter().any(|message| matches!(message,
-            Inbound::JobStart { job_id, .. } if job_id == job.id())),
-        "the job's start goes again"
-    );
-    assert_eq!(gate.state().demand, 1);
-    next.send(job_exit(job.id(), Some(0), None)).await;
-    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
-    assert_eq!(gate.state().demand, 0);
-}
-
 /// A stop issued while a job's start waits to go again over the new
 /// connection reaches the job after its start, so the runner stops it at
 /// once instead of starting it unstopped. A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_stop_while_a_jobs_start_waits_to_go_again_follows_the_start() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let job = host.start_job(job_start("sleep 60")).await.unwrap();
     drain(&mut link).await;
     link.close().await;
-    let mut again = device.connect(None);
+    let mut again = device.connect();
     // The stop runs its first step before the start that goes again is
     // queued: the connection already serves the device.
     let mut stopping = {
@@ -339,16 +192,16 @@ async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receiv
     };
     // The same runner lists nothing: the start goes again, once.
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let job = host.start_job(job_start("true")).await.unwrap();
     assert_eq!(starts(&drain(&mut link).await, job.id()), 1);
     link.close().await;
-    let mut again = device.connect(None);
+    let mut again = device.connect();
     assert_eq!(starts(&drain(&mut again).await, job.id()), 1);
     assert!(job.ended().is_none());
     again.close().await;
-    let mut third = device.connect(None);
+    let mut third = device.connect();
     assert_eq!(starts(&drain(&mut third).await, job.id()), 0, "a start goes again once");
     assert_eq!(
         job.end().await.status,
@@ -357,19 +210,19 @@ async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receiv
 
     // The same runner lists it: it has it, and nothing goes again.
     let device = self::device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let job = host.start_job(job_start("sleep 1")).await.unwrap();
     drain(&mut link).await;
     link.close().await;
-    let mut again = device.connect_with(None, 1, vec![kept_job(job.id(), 0, false)]);
+    let mut again = device.connect_with(1, vec![kept_job(job.id(), 0, false)]);
     assert_eq!(starts(&drain(&mut again).await, job.id()), 0);
     again.send(job_exit(job.id(), Some(0), None)).await;
     assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
 
     // A start that carries pipes is lost with them, by the same runner too.
     let device = self::device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let piped = JobStart {
         stdout: Some(demi_runner_protocol::wire::PipeRef {
@@ -381,7 +234,7 @@ async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receiv
     let job = host.start_job(piped).await.unwrap();
     drain(&mut link).await;
     link.close().await;
-    let mut again = device.connect(None);
+    let mut again = device.connect();
     assert_eq!(starts(&drain(&mut again).await, job.id()), 0);
     assert_eq!(
         job.end().await.status,
@@ -390,12 +243,12 @@ async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receiv
 
     // Another runner lists nothing: the job is lost, and nothing goes again.
     let device = self::device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let job = host.start_job(job_start("true")).await.unwrap();
     drain(&mut link).await;
     link.close().await;
-    let mut other = device.connect_with(None, 2, Vec::new());
+    let mut other = device.connect_with(2, Vec::new());
     assert_eq!(starts(&drain(&mut other).await, job.id()), 0);
     assert_eq!(
         job.end().await.status,
@@ -404,72 +257,9 @@ async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receiv
 }
 
 #[tokio::test(flavor = "local")]
-async fn dropping_a_running_process_kills_it_and_an_ended_one_is_left_alone() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let running = host.spawn(spawn("sleep", false)).await.unwrap();
-    let ended = host.spawn(spawn("true", false)).await.unwrap();
-    let spawned: Vec<String> = drain(&mut link)
-        .await
-        .into_iter()
-        .filter_map(|message| match message {
-            Inbound::Spawn { spawn_id, .. } => Some(spawn_id),
-            _ => None,
-        })
-        .collect();
-    let [running_id, ended_id] = &spawned[..] else {
-        panic!("expected two spawns, got {spawned:?}")
-    };
-    link.send(Outbound::SpawnExit {
-        spawn_id: ended_id.clone(),
-        exit_code: Some(0),
-        signal: None,
-        spawn_error: None,
-    })
-    .await;
-    let Process { exit, control, .. } = ended;
-    assert_eq!(exit.await, ProcessEnd::Exited(0));
-    drop(control);
-    drop(running);
-    assert_eq!(
-        drain(&mut link).await,
-        [Inbound::SpawnKill {
-            spawn_id: running_id.clone(),
-            signal: Some(Signal::Kill),
-        }]
-    );
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_retained_process_holds_no_admission_and_is_not_counted() {
-    let device = device();
-    let link = device.connect(None);
-    let gate = ActivityGate::new();
-    let admission = {
-        let gate = gate.clone();
-        Admission::Leased(Rc::new(move || {
-            gate.try_enter(Purpose::Demand)
-                .ok_or_else(|| HostError::new(HostErrorKind::Unavailable, "busy"))
-        }))
-    };
-    let host = device.host("/work", admission);
-    let retained = host.spawn(spawn("provider", true)).await.unwrap();
-    assert_eq!(gate.state().demand, 0);
-    assert_eq!(link.link().running_jobs(), 0);
-    let work = host.spawn(spawn("sleep", false)).await.unwrap();
-    assert_eq!(gate.state().demand, 1);
-    assert_eq!(link.link().running_jobs(), 1);
-    link.close().await;
-    retained.exit.await;
-    work.exit.await;
-    assert_eq!(gate.state().demand, 0);
-}
-
-#[tokio::test(flavor = "local")]
 async fn stdin_travels_in_bounded_frames_in_order_before_its_end() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let process = host.spawn(spawn("cat", false)).await.unwrap();
     let job = host.start_job(job_start("cat")).await.unwrap();
@@ -517,7 +307,7 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
     // account from its hello, and keeps it while the runner is away.
     let host = device.host("/work", Admission::Free);
     assert_eq!(demi_host_interface::Host::identity(&host).hostname, "");
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let identity = demi_host_interface::Host::identity(&host);
     assert_eq!((identity.uid, identity.hostname.as_str()), (501, "test"));
     let pending = {
@@ -581,7 +371,7 @@ async fn a_lost_connection_fails_what_it_carried_and_the_next_one_serves_the_sam
         media: 0,
         outliving: Vec::new(),
     };
-    let mut link = device.connect_with(None, 1, vec![kept]);
+    let mut link = device.connect_with(1, vec![kept]);
     link.send(job_exit(job.id(), Some(0), None)).await;
     assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
     let exists = {
@@ -619,10 +409,60 @@ async fn ok(_: Call<Map<String, Value>>, _: RpcPort) -> Result<u8, RpcError> {
     Ok(0)
 }
 
+/// Reads what the backend sends until the start of `job`, answering each
+/// manifest as the runner does once it is installed: with `error` when there
+/// is one. Returns the frames up to and including the start, or up to the
+/// manifest that was refused.
+async fn answer_until_start(
+    link: &mut TestLink,
+    job: Option<&str>,
+    error: Option<&str>,
+) -> Vec<Inbound> {
+    let mut frames = Vec::new();
+    loop {
+        let frame = link.next().await;
+        let hash = match &frame {
+            Inbound::Manifest { hash, .. } => Some(hash.clone()),
+            _ => None,
+        };
+        let start = matches!(&frame, Inbound::JobStart { job_id, .. } if Some(job_id.as_str()) == job || job.is_none());
+        frames.push(frame);
+        if let Some(hash) = hash {
+            link.send(Outbound::ManifestInstalled {
+                hash,
+                error: error.map(str::to_owned),
+            })
+            .await;
+            if error.is_some() {
+                return frames;
+            }
+        }
+        if start {
+            return frames;
+        }
+    }
+}
+
+fn kinds(frames: &[Inbound]) -> Vec<&'static str> {
+    frames
+        .iter()
+        .map(|frame| match frame {
+            Inbound::Manifest { .. } => "manifest",
+            Inbound::JobStart { .. } => "job_start",
+            _ => "other",
+        })
+        .collect()
+}
+
+/// The manifests a connection carried are its own: a job whose manifest the
+/// runner reported installed starts after it, jobs that name one the
+/// connection carried send nothing more, and a new connection carries its
+/// first again.
+/// Cost: in process, no runner, a few milliseconds.
 #[tokio::test(flavor = "local")]
-async fn jobs_share_the_selected_manifest_only_within_one_connection() {
+async fn jobs_start_after_the_manifest_they_name_is_installed_once_per_connection() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
     let first = catalog.select(&CommandSet::new()).unwrap();
@@ -635,97 +475,143 @@ async fn jobs_share_the_selected_manifest_only_within_one_connection() {
         let host = host.clone();
         let mut start = job_start("true");
         start.commands = Some(selection.clone());
-        async move { host.start_job(start).await }
+        let id = start.id.clone();
+        (id, tokio::task::spawn_local(async move { host.start_job(start).await }))
     };
-    let kinds = |frames: &[Inbound]| -> Vec<&'static str> {
-        frames
-            .iter()
-            .map(|frame| match frame {
-                Inbound::Manifest { .. } => "manifest",
-                Inbound::JobStart { .. } => "job_start",
-                _ => "other",
-            })
-            .collect()
-    };
+    let mut frames = Vec::new();
     for selection in [&first, &first, &second, &first] {
-        start(selection).await.unwrap();
+        let (id, started) = start(selection);
+        frames.extend(answer_until_start(&mut link, Some(&id), None).await);
+        started.await.unwrap().unwrap();
     }
-    let frames = drain(&mut link).await;
     assert_eq!(
         kinds(&frames),
-        [
-            "manifest",
-            "job_start",
-            "job_start",
-            "manifest",
-            "job_start",
-            "manifest",
-            "job_start"
-        ]
+        ["manifest", "job_start", "job_start", "manifest", "job_start", "job_start"]
     );
     let hashes: Vec<_> = frames
         .iter()
         .filter_map(|frame| match frame {
-            Inbound::Manifest { manifest } => manifest["hash"].as_str().map(str::to_owned),
+            Inbound::Manifest { hash, manifest } => {
+                assert_eq!(manifest["hash"].as_str(), Some(hash.as_str()));
+                Some(hash.clone())
+            }
             _ => None,
         })
         .collect();
-    assert_eq!(hashes, [first.hash(), second.hash(), first.hash()]);
+    assert_eq!(hashes, [first.hash(), second.hash()]);
     // A new connection carries its first manifest again. Its runner is
     // another one, so the jobs above are lost rather than sent again.
     link.close().await;
-    let mut link = device.connect_with(None, 2, Vec::new());
-    start(&first).await.unwrap();
-    assert_eq!(kinds(&drain(&mut link).await), ["manifest", "job_start"]);
-    // A manifest that cannot go leaves the selection unknown: the next job
-    // sends its own again.
+    let mut link = device.connect_with(2, Vec::new());
+    let (id, started) = start(&first);
+    assert_eq!(
+        kinds(&answer_until_start(&mut link, Some(&id), None).await),
+        ["manifest", "job_start"]
+    );
+    started.await.unwrap().unwrap();
+    // A manifest that cannot go leaves the selection unknown.
     let mut huge = CommandSet::new();
     huge.register(LeafBuilder::rpc("huge", "x".repeat(5 * 1024 * 1024)).bind(TypedRpc::new(ok)))
         .unwrap();
     let huge = catalog.select(&huge).unwrap();
     assert_eq!(
-        start(&huge).await.err().map(|error| error.kind),
+        start(&huge).1.await.unwrap().err().map(|error| error.kind),
         Some(HostErrorKind::TooLarge)
     );
-    start(&first).await.unwrap();
-    assert_eq!(kinds(&drain(&mut link).await), ["manifest", "job_start"]);
 }
 
-/// A start that fails before its script runs, as one naming a manifest its
-/// runner does not hold does, makes the next job send its manifest again,
-/// though it was the last one the connection carried.
+/// A start waits for the answer to its manifest: no start goes before the
+/// runner reported the manifest installed, and the jobs that name the same
+/// manifest meanwhile wait for the one answer and send no manifest of their
+/// own.
+/// Cost: in process, no runner, a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn no_start_goes_before_its_manifest_is_installed() {
+    let device = device();
+    let mut link = device.connect();
+    let host = device.host("/work", Admission::Free);
+    let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
+    let selection = catalog.select(&CommandSet::new()).unwrap();
+    let starts: Vec<_> = (0..3)
+        .map(|_| {
+            let host = host.clone();
+            let mut start = job_start("true");
+            start.commands = Some(selection.clone());
+            tokio::task::spawn_local(async move { host.start_job(start).await.map(drop) })
+        })
+        .collect();
+    let frames = drain(&mut link).await;
+    assert_eq!(kinds(&frames), ["manifest"]);
+    link.send(Outbound::ManifestInstalled {
+        hash: selection.hash().to_owned(),
+        error: None,
+    })
+    .await;
+    for start in starts {
+        start.await.unwrap().unwrap();
+    }
+    assert_eq!(kinds(&drain(&mut link).await), ["job_start", "job_start", "job_start"]);
+}
+
+/// A manifest the runner could not install fails the jobs waiting for it,
+/// with the runner's reason, and the next job sends it again.
 /// Cost: in process, no runner, under a millisecond.
 #[tokio::test(flavor = "local")]
-async fn a_failed_start_makes_the_next_job_send_its_manifest_again() {
+async fn a_manifest_the_runner_could_not_install_fails_the_start_and_goes_again() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
     let selection = catalog.select(&CommandSet::new()).unwrap();
     let start = || {
+        let host = host.clone();
         let mut start = job_start("true");
         start.commands = Some(selection.clone());
-        host.start_job(start)
+        let id = start.id.clone();
+        (id, tokio::task::spawn_local(async move { host.start_job(start).await }))
     };
-    let manifests = |frames: &[Inbound]| {
-        frames
-            .iter()
-            .filter(|frame| matches!(frame, Inbound::Manifest { .. }))
-            .count()
-    };
-    let job = start().await.unwrap();
-    assert_eq!(manifests(&drain(&mut link).await), 1);
-    let mut exit = job_exit(job.id(), None, None);
-    if let Outbound::JobExit { spawn_error, .. } = &mut exit {
-        *spawn_error = Some(demi_runner_protocol::wire::SpawnError {
-            kind: demi_runner_protocol::wire::SpawnErrorKind::Other,
-            detail: Some("job manifest is not installed".into()),
-        });
-    }
-    link.send(exit).await;
-    assert!(matches!(job.end().await.status, ProcessEnd::NotStarted(_)));
-    start().await.unwrap();
-    assert_eq!(manifests(&drain(&mut link).await), 1);
+    let (_, started) = start();
+    let frames = answer_until_start(&mut link, None, Some("unsupported manifest")).await;
+    assert_eq!(kinds(&frames), ["manifest"]);
+    let error = started.await.unwrap().err().expect("the start fails");
+    assert!(error.message.contains("unsupported manifest"), "{}", error.message);
+    assert!(drain(&mut link).await.is_empty());
+    let (id, started) = start();
+    assert_eq!(
+        kinds(&answer_until_start(&mut link, Some(&id), None).await),
+        ["manifest", "job_start"]
+    );
+    started.await.unwrap().unwrap();
+}
+
+/// A runner that never answers for a manifest does not hold its jobs for
+/// ever: their starts fail once the wait is over, and the next job sends the
+/// manifest anew.
+/// Cost: in process, no runner, virtual time.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_runner_that_does_not_answer_for_a_manifest_fails_the_start_in_time() {
+    let device = device();
+    let mut link = device.connect();
+    let host = device.host("/work", Admission::Free);
+    let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
+    let selection = catalog.select(&CommandSet::new()).unwrap();
+    let mut start = job_start("true");
+    start.commands = Some(selection.clone());
+    let error = host.start_job(start).await.err().expect("the start fails");
+    assert!(error.message.contains("did not answer"), "{}", error.message);
+    assert_eq!(kinds(&drain(&mut link).await), ["manifest"]);
+    let mut start = job_start("true");
+    start.commands = Some(selection);
+    let next = start.id.clone();
+    let starting = tokio::task::spawn_local({
+        let host = host.clone();
+        async move { host.start_job(start).await }
+    });
+    assert_eq!(
+        kinds(&answer_until_start(&mut link, Some(&next), None).await),
+        ["manifest", "job_start"]
+    );
+    starting.await.unwrap().unwrap();
 }
 
 /// A job whose manifest waits for room in the connection's queue and is
@@ -735,7 +621,7 @@ async fn a_failed_start_makes_the_next_job_send_its_manifest_again() {
 #[tokio::test(flavor = "local")]
 async fn a_manifest_given_up_before_it_was_queued_goes_with_the_next_job() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
     let selection = catalog.select(&CommandSet::new()).unwrap();
@@ -749,7 +635,7 @@ async fn a_manifest_given_up_before_it_was_queued_goes_with_the_next_job() {
     };
     // Starts without commands fill the queue and the test's end of it, so
     // the next send waits for room.
-    let fillers: Vec<_> = (0..4 * demi_backend_remote_host::OUTBOUND_FRAMES)
+    let fillers: Vec<_> = (0..4 * demi_backend_remote_host::testing::OUTBOUND_FRAMES)
         .map(|_| start(None))
         .collect();
     for _ in 0..20 {
@@ -765,7 +651,10 @@ async fn a_manifest_given_up_before_it_was_queued_goes_with_the_next_job() {
     let mut manifests = 0;
     loop {
         match link.next().await {
-            Inbound::Manifest { .. } => manifests += 1,
+            Inbound::Manifest { hash, .. } => {
+                manifests += 1;
+                link.send(Outbound::ManifestInstalled { hash, error: None }).await;
+            }
             Inbound::JobStart { job_id, .. } if job_id == next => break,
             _ => {}
         }
@@ -777,1436 +666,6 @@ async fn a_manifest_given_up_before_it_was_queued_goes_with_the_next_job() {
     }
 }
 
-/// A resolver that answers from a script of its own.
-struct Scripted {
-    calls: Cell<usize>,
-    waits: bool,
-    observed: RefCell<Option<CancellationToken>>,
-}
-
-impl ArtifactResolver for Scripted {
-    fn resolve(
-        &self,
-        _: &PackageArtifact,
-        _: &str,
-        cancel: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
-        self.calls.set(self.calls.get() + 1);
-        *self.observed.borrow_mut() = Some(cancel.clone());
-        let waits = self.waits;
-        Box::pin(async move {
-            if waits {
-                cancel.cancelled().await;
-                return Err("cancelled".into());
-            }
-            Ok(ArtifactLocation::Url(ArtifactUrl {
-                url: "https://artifacts.example.test/exact".into(),
-                expires_at: None,
-            }))
-        })
-    }
-}
-
-fn native_catalog(resolver: Rc<Scripted>) -> (CommandCatalog, PackageDescriptor) {
-    let descriptor = PackageDescriptor {
-        id: "demicodes.fixture".into(),
-        version: "1.0.0".into(),
-        protocol_version: 1,
-        operations: vec!["file.read".into()],
-        targets: BTreeMap::from([(
-            host_target().to_owned(),
-            PackageArtifact {
-                sha256: "a".repeat(64),
-                size: 1,
-            },
-        )]),
-    };
-    (
-        CommandCatalog::new(vec![descriptor.clone()], resolver).unwrap(),
-        descriptor,
-    )
-}
-
-fn native_commands() -> CommandSet {
-    let mut commands = CommandSet::new();
-    commands
-        .register(LeafBuilder::native(
-            "native",
-            "Native",
-            NativeOperation {
-                package: "demicodes.fixture".into(),
-                operation: "file.read".into(),
-            },
-        ))
-        .unwrap();
-    commands
-}
-
-fn artifact_answer(frame: &Inbound) -> Option<(Option<String>, Option<String>)> {
-    match frame {
-        Inbound::ArtifactLocation {
-            location, error, ..
-        } => Some((
-            location.as_ref().map(|location| match location {
-                ArtifactLocation::Url(url) => url.url.clone(),
-                ArtifactLocation::Path(path) => path.path.clone(),
-            }),
-            error.clone(),
-        )),
-        _ => None,
-    }
-}
-
-#[tokio::test(flavor = "local")]
-async fn an_artifact_request_needs_the_live_job_and_an_artifact_of_its_manifest() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let resolver = Rc::new(Scripted {
-        calls: Cell::new(0),
-        waits: false,
-        observed: RefCell::new(None),
-    });
-    let (catalog, descriptor) = native_catalog(resolver.clone());
-    let selection = catalog.select(&native_commands()).unwrap();
-    let mut start = job_start("native");
-    start.commands = Some(selection.clone());
-    let job = host.start_job(start).await.unwrap();
-    drain(&mut link).await;
-    let request = |sha256: String| Outbound::ArtifactResolve {
-        id: "request".into(),
-        owner: ArtifactOwner::Job(JobArtifactOwner {
-            job_id: job.id().into(),
-            manifest_hash: selection.hash().into(),
-        }),
-        sha256,
-        target: host_target().into(),
-    };
-    link.send(request("f".repeat(64))).await;
-    let answer = link.next().await;
-    assert_eq!(
-        artifact_answer(&answer),
-        Some((
-            None,
-            Some("Artifact does not belong to the live work's packages".into())
-        ))
-    );
-    assert_eq!(resolver.calls.get(), 0);
-    let sha256 = descriptor.targets[host_target()].sha256.clone();
-    link.send(request(sha256.clone())).await;
-    assert_eq!(
-        artifact_answer(&link.next().await),
-        Some((Some("https://artifacts.example.test/exact".into()), None))
-    );
-    assert_eq!(resolver.calls.get(), 1);
-    link.send(job_exit(job.id(), Some(0), None)).await;
-    link.send(request(sha256)).await;
-    assert_eq!(
-        artifact_answer(&link.next().await),
-        Some((None, Some("No matching live job or stream".into())))
-    );
-    assert_eq!(resolver.calls.get(), 1);
-}
-
-/// A policy that admits each direct stream once the test says so, with a
-/// demand lease of `gate` and, for its one user stream `live`, the native
-/// catalog's package; a stream of another name installs nothing.
-struct AdmitsDirectStreams {
-    gate: ActivityGate,
-    package: PackageDescriptor,
-    resolver: Rc<Scripted>,
-    admit: tokio::sync::watch::Receiver<bool>,
-}
-
-impl LinkPolicy for AdmitsDirectStreams {
-    fn admit_call(&self, _: &JobOrigin) -> Result<(), String> {
-        Err("no calls".into())
-    }
-
-    fn dispatch(
-        &self,
-        _: Rc<JobOrigin>,
-        _: RpcInvocation,
-        _: RpcPort,
-    ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
-        panic!("no call reaches a handler")
-    }
-
-    fn read_blob(&self, _: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
-        Box::pin(async { Ok(None) })
-    }
-
-
-    fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("no".into()) })
-    }
-
-    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("no agent takes jobs up here".into()) })
-    }
-
-    fn reserve_numbers(
-        &self,
-        _: String,
-        _: ServiceSequence,
-        _: u32,
-    ) -> LocalBoxFuture<'static, Result<u64, String>> {
-        Box::pin(async { Err("no".into()) })
-    }
-
-    fn direct_stream(
-        &self,
-        _: String,
-        name: String,
-    ) -> LocalBoxFuture<'static, Result<demi_backend_remote_host::DirectAdmission, String>> {
-        let gate = self.gate.clone();
-        let package = self.package.clone();
-        let resolver: Rc<dyn ArtifactResolver> = self.resolver.clone();
-        let mut admit = self.admit.clone();
-        Box::pin(async move {
-            admit.wait_for(|admit| *admit).await.unwrap();
-            Ok(demi_backend_remote_host::DirectAdmission {
-                lease: gate.enter(Purpose::Demand).await,
-                package: (name == "live").then_some(package),
-                resolver,
-            })
-        })
-    }
-
-    fn watch_stream(&self, _: String) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
-        let gate = self.gate.clone();
-        Box::pin(async move { Ok(gate.enter(Purpose::Demand).await) })
-    }
-
-    fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
-        Box::pin(async {})
-    }
-
-    // This runner forwards no port.
-    fn forward_event(&self, _: demi_backend_remote_host::ForwardEvent) {}
-}
-
-/// A direct stream the runner reports is known as a stream the backend
-/// opened (`crates/runner-protocol/src/direct.rs`): its artifact
-/// request, made before the policy admitted it, is answered once it is,
-/// while it holds its conversation active; once it closed, the lease is
-/// gone and a request naming it is refused. A stream of another name may
-/// not install that package.
-#[tokio::test(flavor = "local")]
-async fn a_direct_streams_artifact_requests_are_answered_once_admitted_and_refused_once_closed() {
-    let resolver = Rc::new(Scripted {
-        calls: Cell::new(0),
-        waits: false,
-        observed: RefCell::new(None),
-    });
-    let (_, package) = native_catalog(resolver.clone());
-    let (admit, admitting) = tokio::sync::watch::channel(false);
-    let gate = ActivityGate::new();
-    let device = TestDevice::new(Rc::new(AdmitsDirectStreams {
-        gate: gate.clone(),
-        package: package.clone(),
-        resolver: resolver.clone(),
-        admit: admitting,
-    }));
-    let mut link = device.connect(None);
-    let stream = |id: &str, name: &str, open| Outbound::DirectStream {
-        stream: id.into(),
-        name: name.into(),
-        conversation: "c1".into(),
-        open,
-    };
-    let request = |id: &str| Outbound::ArtifactResolve {
-        id: "request".into(),
-        owner: ArtifactOwner::Stream(StreamArtifactOwner {
-            stream_id: id.into(),
-        }),
-        sha256: package.targets[host_target()].sha256.clone(),
-        target: host_target().into(),
-    };
-    link.send(stream("direct-1", "live", true)).await;
-    link.send(request("direct-1")).await;
-    assert!(drain(&mut link).await.is_empty(), "the request waits for the admission");
-    admit.send_replace(true);
-    assert_eq!(
-        artifact_answer(&link.next().await),
-        Some((Some("https://artifacts.example.test/exact".into()), None))
-    );
-    assert_eq!(gate.state().demand, 1, "the open stream is its conversation's activity");
-
-    link.send(stream("direct-1", "live", false)).await;
-    link.send(request("direct-1")).await;
-    let refused = Some((None, Some("No matching live job or stream".into())));
-    assert_eq!(artifact_answer(&link.next().await), refused);
-    assert_eq!(gate.state().demand, 0);
-
-    link.send(stream("direct-2", "other", true)).await;
-    link.send(request("direct-2")).await;
-    assert_eq!(
-        artifact_answer(&link.next().await),
-        Some((
-            None,
-            Some("Artifact does not belong to the live work's packages".into())
-        ))
-    );
-    assert_eq!(resolver.calls.get(), 1);
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_job_that_ends_cancels_its_pending_artifact_requests_without_an_answer() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let resolver = Rc::new(Scripted {
-        calls: Cell::new(0),
-        waits: true,
-        observed: RefCell::new(None),
-    });
-    let (catalog, descriptor) = native_catalog(resolver.clone());
-    let selection = catalog.select(&native_commands()).unwrap();
-    let mut start = job_start("native");
-    start.commands = Some(selection.clone());
-    let job = host.start_job(start).await.unwrap();
-    drain(&mut link).await;
-    let request = |id: &str| Outbound::ArtifactResolve {
-        id: id.into(),
-        owner: ArtifactOwner::Job(JobArtifactOwner {
-            job_id: job.id().into(),
-            manifest_hash: selection.hash().into(),
-        }),
-        sha256: descriptor.targets[host_target()].sha256.clone(),
-        target: host_target().into(),
-    };
-    link.send(request("request")).await;
-    drain(&mut link).await;
-    // A request under an id still in flight is refused.
-    link.send(request("request")).await;
-    assert_eq!(
-        artifact_answer(&link.next().await),
-        Some((
-            None,
-            Some("Artifact resolution request limit or duplicate id".into())
-        ))
-    );
-    let observed = resolver.observed.borrow().clone().unwrap();
-    assert!(!observed.is_cancelled());
-    link.send(job_exit(job.id(), Some(0), None)).await;
-    assert!(drain(&mut link).await.is_empty(), "no stale answer");
-    assert!(observed.is_cancelled());
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_ends() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let shell = environment(host.clone());
-    let started = shell
-        .exec(
-            exec("attend first | attend second"),
-            CancellationToken::new(),
-        )
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    let hint = |invocation: &str, hint: Option<&str>, job: &str| Outbound::JobRunningHint {
-        job_id: job.into(),
-        invocation_id: invocation.into(),
-        hint: hint.map(str::to_owned),
-    };
-    let shown =
-        |shell: &RemoteShellEnvironment| match shell.status(&started.command_id).unwrap().state {
-            CommandState::Running { hint, .. } => hint,
-            other => panic!("expected a running command, got {other:?}"),
-        };
-    link.send(hint("foreign", Some("another job"), "not-this-job"))
-        .await;
-    drain(&mut link).await;
-    assert_eq!(shown(&shell), None);
-    link.send(hint("first", Some("first hint"), &job_id)).await;
-    link.send(hint("second", Some("second hint"), &job_id))
-        .await;
-    drain(&mut link).await;
-    assert_eq!(shown(&shell).as_deref(), Some("second hint"));
-    link.send(hint("second", None, &job_id)).await;
-    drain(&mut link).await;
-    assert_eq!(shown(&shell).as_deref(), Some("first hint"));
-    link.send(hint("first", None, &job_id)).await;
-    link.send(hint("third", Some("hint before abort"), &job_id))
-        .await;
-    drain(&mut link).await;
-    let aborting = {
-        let shell = shell.clone();
-        let command = started.command_id.clone();
-        tokio::task::spawn_local(async move { shell.abort(&command).await })
-    };
-    let Inbound::JobKill { signal, .. } = link.next().await else {
-        panic!("expected the job to be stopped")
-    };
-    assert_eq!(signal, Some(demi_runner_protocol::wire::Signal::Terminate));
-    link.send(job_exit(&job_id, None, Some("SIGTERM"))).await;
-    aborting.await.unwrap().unwrap();
-    shell.ended(&started.command_id).await.unwrap();
-    assert!(matches!(
-        shell.status(&started.command_id).unwrap().state,
-        CommandState::Aborted
-    ));
-    link.send(hint("late", Some("arrived after the end"), &job_id))
-        .await;
-    drain(&mut link).await;
-    assert!(matches!(
-        shell.status(&started.command_id).unwrap().state,
-        CommandState::Aborted
-    ));
-
-    // A job its runner lost ends, and its hint with it.
-    let job = host.start_job(job_start("attend")).await.unwrap();
-    drain(&mut link).await;
-    link.send(hint("i1", Some("attending"), job.id())).await;
-    drain(&mut link).await;
-    assert_eq!(job.running_hint().as_deref(), Some("attending"));
-    link.close().await;
-    let _next = device.connect_with(None, 2, Vec::new());
-    assert!(matches!(job.end().await.status, ProcessEnd::Lost(_)));
-    assert_eq!(job.running_hint(), None);
-}
-
-/// While a page watches, a command's job is followed, and the pages' view
-/// holds its output in the order it came: each stream's first bytes, the
-/// newest bytes beyond them with a note where the runner left some out, and
-/// at the end the rest of each stream from its tail; the model's view holds
-/// only the first bytes (`crates/agent-server/src/server/tree/live.rs`).
-#[tokio::test(flavor = "local")]
-async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_sent() {
-    let device = device();
-    let mut link = device.connect(None);
-    let pages = TestPages::new(false);
-    let shell = watched_environment(device.host("/work", Admission::Free), pages.clone());
-    let started = shell
-        .exec(exec("build"), CancellationToken::new())
-        .await
-        .unwrap();
-    // The pages learn of the command before its first output.
-    let view = pages.next().await;
-    assert_eq!(view.command_id, started.command_id);
-    assert_eq!(
-        (
-            view.tool_use_id.as_str(),
-            view.state,
-            view.tail.as_str(),
-            view.chars
-        ),
-        ("call", PageState::Running, "", 0)
-    );
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    // What the backend sends the runner next, within a hang guard.
-    let next = async |link: &mut TestLink| {
-        tokio::time::timeout(Duration::from_secs(10), link.next())
-            .await
-            .expect("a message within the hang guard")
-    };
-
-    // A job starts unfollowed; a page that comes makes it followed.
-    pages.watch(true);
-    assert!(matches!(
-        next(&mut link).await,
-        Inbound::JobFollow { follow: true, .. }
-    ));
-    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
-        job_id: job_id.clone(),
-        stream: OutputStream::Stdout,
-        offset,
-        bytes: WireBytes(bytes.to_vec()),
-    };
-    let view_end = JOB_VIEW_BYTES as u64;
-    link.send(output(0, b"first\n")).await;
-    assert_eq!(pages.next().await.tail, "first\n");
-    link.send(output(6, &vec![b'x'; JOB_VIEW_BYTES - 6])).await;
-    pages.next().await;
-    // The runner left ten bytes out before its newest ones.
-    link.send(output(view_end + 10, b"newest\n")).await;
-    let view = pages.next().await;
-    let note = "\n[... 10 bytes of stdout not shown ...]\n";
-    assert!(
-        view.tail.ends_with(&format!("x{note}newest\n")),
-        "{:?}",
-        &view.tail[view.tail.len() - 60..]
-    );
-    assert_eq!(view.chars, view_end + note.len() as u64 + 7);
-    // The model's view holds only the stream's first bytes.
-    let status = shell.status(&started.command_id).unwrap();
-    assert!(status.stdout.tail.ends_with('x'));
-    assert_eq!(
-        (status.stdout.bytes, status.unreceived),
-        (view_end + 17, 17)
-    );
-
-    // A page that leaves makes the job unfollowed.
-    pages.watch(false);
-    assert!(matches!(
-        next(&mut link).await,
-        Inbound::JobFollow { follow: false, .. }
-    ));
-
-    // The stream went beyond what the backend received: the end reads the
-    // Host's kept output once, shows its end anew, and lets the job go.
-    let mut stream = b"first\n".to_vec();
-    stream.extend(vec![b'x'; JOB_VIEW_BYTES - 6]);
-    stream.extend(b"yyyyyyyyyynewest\nlast\n");
-    link.send(Outbound::JobExit {
-        job_id: job_id.clone(),
-        exit_code: Some(0),
-        signal: None,
-        spawn_error: None,
-        output: Some(OutputLengths {
-            stdout_bytes: stream.len() as u64,
-            stderr_bytes: 0,
-        }),
-        files: Vec::new(),
-        path_changes: Vec::new(),
-        files_truncated: false,
-    })
-    .await;
-    let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(stream.clone()));
-    answer_read(&device, &mut link, &job_id, encode_record(&record).unwrap()).await;
-    let end = pages.next().await;
-    assert_eq!(end.state, PageState::Exited { exit_code: 0 });
-    assert!(end.tail.ends_with("newest\nlast\n"), "{:?}", end.tail);
-    let status = shell.status(&started.command_id).unwrap();
-    let whole = status.whole.expect("the whole output");
-    assert_eq!(
-        whole.output.records(),
-        [OutputRecord::Output(StreamKind::Stdout, stream.into())]
-    );
-    assert!(
-        drain(&mut link)
-            .await
-            .iter()
-            .any(|message| matches!(message, Inbound::JobRelease { job_id: released } if *released == job_id)),
-        "the job is released once its output is read"
-    );
-    assert_eq!(pages.drain(), []);
-
-    // A command that starts while a page watches is followed at once.
-    pages.watch(true);
-    shell
-        .exec(exec("again"), CancellationToken::new())
-        .await
-        .unwrap();
-    assert!(matches!(next(&mut link).await, Inbound::JobStart { .. }));
-    assert!(matches!(
-        next(&mut link).await,
-        Inbound::JobFollow { follow: true, .. }
-    ));
-}
-
-/// A character the runner's messages split shows once, whole, in both views,
-/// and a byte that is not text shows as U+FFFD
-/// (`crates/agent-server/src/server/tree/live.rs`).
-#[tokio::test(flavor = "local")]
-async fn a_character_split_across_messages_shows_once_whole() {
-    let device = device();
-    let mut link = device.connect(None);
-    let pages = TestPages::new(false);
-    let shell = watched_environment(device.host("/work", Admission::Free), pages.clone());
-    let started = shell
-        .exec(exec("print"), CancellationToken::new())
-        .await
-        .unwrap();
-    pages.next().await;
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    let text = "aé€😀".as_bytes();
-    for (offset, byte) in text.iter().enumerate() {
-        link.send(Outbound::JobOutput {
-            job_id: job_id.clone(),
-            stream: OutputStream::Stdout,
-            offset: offset as u64,
-            bytes: WireBytes(vec![*byte]),
-        })
-        .await;
-    }
-    link.send(Outbound::JobOutput {
-        job_id: job_id.clone(),
-        stream: OutputStream::Stdout,
-        offset: text.len() as u64,
-        bytes: WireBytes(b"\xff!".to_vec()),
-    })
-    .await;
-    let shown = tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            let view = pages.next().await;
-            if view.tail.ends_with('!') {
-                break view.tail;
-            }
-        }
-    })
-    .await
-    .expect("the pages see the output");
-    assert_eq!(shown, "aé€😀\u{fffd}!");
-    let status = shell.status(&started.command_id).unwrap();
-    assert_eq!(status.stdout.tail, "aé€😀\u{fffd}!");
-}
-
-/// The model's idle time counts from the latest growth of a command's
-/// output, also beyond the runner's view of a stream, which the model's view
-/// does not hold (`crates/agent-tools/src/result.rs`).
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
-    let device = device();
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let started = shell
-        .exec(exec("build"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    let output = |offset: u64, bytes: Vec<u8>| Outbound::JobOutput {
-        job_id: job_id.clone(),
-        stream: OutputStream::Stdout,
-        offset,
-        bytes: WireBytes(bytes),
-    };
-    link.send(output(0, vec![b'x'; JOB_VIEW_BYTES])).await;
-    drain(&mut link).await;
-    tokio::time::advance(Duration::from_secs(5)).await;
-    let status = shell.status(&started.command_id).unwrap();
-    assert_eq!(status.idle_ms, 5000);
-
-    // The runner says the stream grew beyond its view: the command is not
-    // idle, and the model's view still holds the stream's first bytes.
-    link.send(output(JOB_VIEW_BYTES as u64 + 100, Vec::new()))
-        .await;
-    drain(&mut link).await;
-    let status = shell.status(&started.command_id).unwrap();
-    assert_eq!(status.idle_ms, 0);
-    assert_eq!(status.stdout.tail.len(), 4096);
-    assert_eq!(
-        (status.stdout.bytes, status.unreceived),
-        (JOB_VIEW_BYTES as u64 + 100, 100)
-    );
-}
-
-/// While nobody follows a job, the runner sends each stream's newest bytes
-/// beyond its view, again with every message; the model's view of the
-/// running command holds the newest `JOB_VIEW_BYTES`, which continue,
-/// overlap or replace the ones before (`crates/runner-jobs/src/tasks.rs`).
-#[tokio::test(flavor = "local")]
-async fn a_running_command_holds_each_streams_newest_bytes_beyond_its_view() {
-    let device = device();
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let started = shell
-        .exec(exec("build"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
-        job_id: job_id.clone(),
-        stream: OutputStream::Stdout,
-        offset,
-        bytes: WireBytes(bytes.to_vec()),
-    };
-    let view = JOB_VIEW_BYTES as u64;
-    let newest = |shell: &RemoteShellEnvironment| {
-        let status = shell.status(&started.command_id).unwrap();
-        let [newest] = status.newest.as_slice() else {
-            panic!("{:?}", status.newest)
-        };
-        (newest.offset, newest.left_out, newest.text.clone())
-    };
-    link.send(output(0, &vec![b'x'; JOB_VIEW_BYTES])).await;
-    link.send(output(view + 100, b"one\ntw")).await;
-    drain(&mut link).await;
-    assert_eq!(newest(&shell), (view + 100, 100, "one\ntw".into()));
-
-    // The next message repeats what the last one held and continues it.
-    link.send(output(view + 104, b"two\nthree\n")).await;
-    drain(&mut link).await;
-    assert_eq!(
-        newest(&shell),
-        (view + 100, 100, "one\ntwo\nthree\n".into())
-    );
-
-    // One beyond them replaces them, and the newest `JOB_VIEW_BYTES` stay.
-    let far = view * 10;
-    let mut bytes = vec![b'y'; JOB_VIEW_BYTES];
-    bytes.extend_from_slice(b"end\n");
-    link.send(output(far, &bytes)).await;
-    drain(&mut link).await;
-    let (offset, left_out, text) = newest(&shell);
-    assert_eq!((offset, left_out), (far + 4, far + 4 - view));
-    assert_eq!(text.len(), JOB_VIEW_BYTES);
-    assert!(text.ends_with("yend\n"));
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
-    let device = device();
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let started = shell
-        .exec(exec("true"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    link.send(Outbound::JobExit {
-        job_id,
-        exit_code: None,
-        signal: None,
-        spawn_error: Some(demi_runner_protocol::wire::SpawnError {
-            kind: demi_runner_protocol::wire::SpawnErrorKind::Other,
-            detail: Some("the job was cancelled before it started".into()),
-        }),
-        output: None,
-        files: Vec::new(),
-        path_changes: Vec::new(),
-        files_truncated: false,
-    })
-    .await;
-    let mut status = shell.status(&started.command_id).unwrap();
-    for _ in 0..100 {
-        if !matches!(status.state, CommandState::Running { .. }) {
-            break;
-        }
-        tokio::task::yield_now().await;
-        status = shell.status(&started.command_id).unwrap();
-    }
-    assert!(
-        matches!(status.state, CommandState::Exited { exit_code: 127, .. }),
-        "{:?}",
-        status.state
-    );
-    let whole = status.whole.expect("the whole output");
-    let stderr = whole
-        .output
-        .text(Streams::Only(StreamKind::Stderr), None, Seen::default());
-    assert_eq!(stderr.bytes(), b"the job was cancelled before it started\n");
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_conversation_release_waits_for_the_runner_and_admits_no_work() {
-    let device = device();
-    let refusing = Admission::Leased(Rc::new(|| panic!("a release must not admit work")));
-    let host = device.host("/work", refusing);
-    // Without a runner there is nothing to release.
-    host.release_conversation("conversation", false).await.unwrap();
-    let mut link = device.connect(None);
-    let release = |host: &RemoteHost| {
-        let host = host.clone();
-        tokio::task::spawn_local(async move { host.release_conversation("conversation", false).await })
-    };
-    let released = release(&host);
-    let Inbound::ConversationRelease {
-        id,
-        conversation_id,
-        over,
-    } = link.next().await
-    else {
-        panic!("expected a release")
-    };
-    assert_eq!(conversation_id, "conversation");
-    assert!(!over, "a release that does not say the conversation is over keeps its recordings");
-    assert!(!released.is_finished());
-    link.send(Outbound::ConversationReleased { id, error: None })
-        .await;
-    released.await.unwrap().unwrap();
-    for error in ["cleanup failed", ""] {
-        let failed = release(&host);
-        let Inbound::ConversationRelease { id, .. } = link.next().await else {
-            panic!("expected a release")
-        };
-        link.send(Outbound::ConversationReleased {
-            id,
-            error: Some(error.into()),
-        })
-        .await;
-        assert_eq!(failed.await.unwrap().unwrap_err().message, error);
-    }
-    let lost = release(&host);
-    link.next().await;
-    link.close().await;
-    assert_eq!(
-        lost.await.unwrap().unwrap_err().kind,
-        HostErrorKind::Offline
-    );
-}
-
-/// Publishes a job's edits once the test lets it.
-struct Publisher {
-    barrier: RefCell<Option<tokio::sync::oneshot::Receiver<()>>>,
-    file: EditedFile,
-}
-
-impl CommandKeeper for Publisher {
-    fn started<'a>(&'a self, _: &'a CommandId, _: &'a str, _: &'a KeptStart) -> LocalBoxFuture<'a, ()> {
-        Box::pin(async {})
-    }
-
-    fn waiting<'a>(
-        &'a self,
-        _: &'a CommandId,
-        _: &'a str,
-        _: &'a KeptStart,
-        _: &'a UnsentStart,
-    ) -> LocalBoxFuture<'a, ()> {
-        Box::pin(async {})
-    }
-
-    fn retain<'a>(
-        &'a self,
-        _: &'a CommandId,
-        _: &'a [JobFileChange],
-    ) -> LocalBoxFuture<'a, Vec<EditedFile>> {
-        let barrier = self.barrier.borrow_mut().take();
-        Box::pin(async move {
-            if let Some(barrier) = barrier {
-                let _ = barrier.await;
-            }
-            vec![self.file.clone()]
-        })
-    }
-
-    fn stored_blob<'a>(&'a self, _: &'a BlobRef) -> LocalBoxFuture<'a, Option<Bytes>> {
-        Box::pin(async { None })
-    }
-
-    fn looked<'a>(&'a self, _: &'a CommandId, _: demi_host_interface::Seen) -> LocalBoxFuture<'a, ()> {
-        Box::pin(async {})
-    }
-
-    fn keep_output<'a>(
-        &'a self,
-        _: &'a CommandId,
-        _: &'a str,
-        _: demi_shared_types::CommandEnd,
-        _: &'a WholeOutput,
-    ) -> LocalBoxFuture<'a, ()> {
-        Box::pin(async {})
-    }
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let file = EditedFile {
-        from: None,
-        path: "/work/file".into(),
-        kind: EditKind::Modified,
-        added: 1,
-        removed: 1,
-        outside: false,
-        edits: vec![EditSegment {
-            copies: Some(demi_shared_types::EditCopies {
-                original: BlobRef::of(b"before\n"),
-                modified: BlobRef::of(b"after\n"),
-            }),
-            binary: false,
-        }],
-    };
-    let (publish, barrier) = tokio::sync::oneshot::channel();
-    let context: demi_backend_remote_host::ContextSource =
-        Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(
-        host,
-        context,
-        TestPages::new(false),
-        Rc::new(CountingNumbers::default()),
-    );
-    options.keeper = Some(Rc::new(Publisher {
-        barrier: RefCell::new(Some(barrier)),
-        file: file.clone(),
-    }));
-    let shell = RemoteShellEnvironment::new(options);
-    let started = shell
-        .exec(exec("echo new > file"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    link.send(Outbound::JobExit {
-        job_id,
-        exit_code: Some(7),
-        signal: None,
-        spawn_error: None,
-        output: None,
-        files: vec![JobFileChange {
-            path: "/work/file".into(),
-            kind: FileEditKind::Modified,
-            edits: vec![EditCopies {
-                original: Some("/copies/before".into()),
-                modified: Some("/copies/after".into()),
-                binary: false,
-            }],
-            added: 1,
-            removed: 1,
-        }],
-        path_changes: Vec::new(),
-        files_truncated: true,
-    })
-    .await;
-    drain(&mut link).await;
-    assert!(matches!(
-        shell.status(&started.command_id).unwrap().state,
-        CommandState::Running { .. }
-    ));
-    publish.send(()).unwrap();
-    let mut status = shell.status(&started.command_id).unwrap();
-    for _ in 0..100 {
-        if !matches!(status.state, CommandState::Running { .. }) {
-            break;
-        }
-        tokio::task::yield_now().await;
-        status = shell.status(&started.command_id).unwrap();
-    }
-    assert!(matches!(
-        status.state,
-        CommandState::Exited { exit_code: 7, .. }
-    ));
-    let files = status.files.unwrap();
-    assert_eq!((files.files, files.truncated), (vec![file.clone()], true));
-    assert_eq!(
-        shell
-            .status(&started.command_id)
-            .unwrap()
-            .files
-            .unwrap()
-            .files,
-        vec![file]
-    );
-}
-
-/// A handler that follows the call's live input to its end, then its stop.
-fn live_commands(ended: Rc<Cell<bool>>, context: Rc<RefCell<Option<Value>>>) -> CommandSet {
-    let mut commands = CommandSet::new();
-    let handler = TypedRpc::new(move |call: Call<Map<String, Value>>, port: RpcPort| {
-        let ended = ended.clone();
-        let context = context.clone();
-        async move {
-            *context.borrow_mut() = Some(serde_json::json!({
-                "conversation": call.invocation.context.conversation,
-                "caller": call.invocation.caller,
-            }));
-            while let Ok(Some(_)) = port.read_live_stdin().await {}
-            port.cancelled().await;
-            ended.set(true);
-            Ok(0)
-        }
-    });
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(LeafBuilder::rpc("live", "Live input.").bind(handler)),
-        )
-        .unwrap();
-    commands
-}
-
-fn rpc_call(job_id: &str, call_id: &str) -> Outbound {
-    Outbound::RpcCall {
-        job_id: job_id.into(),
-        call_id: call_id.into(),
-        root: "probe".into(),
-        path: vec!["probe".into(), "live".into()],
-        argv: vec!["live".into()],
-        args: Map::new(),
-        json: false,
-        cwd: "/work".into(),
-        env: BTreeMap::new(),
-        stdin: true,
-    }
-}
-
-/// What a call answered: its standard error and exit code.
-async fn call_outcome(link: &mut TestLink) -> (String, u8) {
-    let mut stderr = String::new();
-    loop {
-        match link.next().await {
-            Inbound::RpcOutput { bytes, .. } => stderr.push_str(&String::from_utf8_lossy(&bytes.0)),
-            Inbound::RpcExit { exit_code, .. } => return (stderr, exit_code),
-            _ => {}
-        }
-    }
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after_it() {
-    for event in [
-        "cancel",
-        "job",
-        "report",
-        "stdout",
-        "stdin",
-        "chunk",
-        "unasked",
-        "disconnect",
-        "shutdown",
-    ] {
-        let ended = Rc::new(Cell::new(false));
-        let context = Rc::new(RefCell::new(None));
-        let device = TestDevice::new(CommandPolicy::new(live_commands(
-            ended.clone(),
-            context.clone(),
-        )));
-        let mut link = device.connect(None);
-        let host = device.host("/work", Admission::Free);
-        let job = host.start_job(job_start("probe live")).await.unwrap();
-        drain(&mut link).await;
-        link.send(rpc_call(job.id(), "call")).await;
-        let Inbound::RpcPipes { stdin, stdout, .. } = link.next().await else {
-            panic!("the call's pipes come first")
-        };
-        let stdin = stdin.expect("the process has a pipe on its stdin");
-        assert!(matches!(link.next().await, Inbound::RpcStdinPull { .. }));
-        let expected = match event {
-            "cancel" => {
-                link.send(Outbound::RpcCancel {
-                    call_id: "call".into(),
-                })
-                .await;
-                "command cancelled".to_owned()
-            }
-            "job" => {
-                link.send(job_exit(job.id(), Some(7), None)).await;
-                format!("calling job {} exited before its RPC completed", job.id())
-            }
-            "report" => {
-                link.send(Outbound::PipeDone {
-                    pipe_id: stdout.id.clone(),
-                    ok: false,
-                    error: Some("upload failed".into()),
-                })
-                .await;
-                "upload failed".into()
-            }
-            "stdout" | "stdin" => {
-                let pipe = if event == "stdout" {
-                    &stdout.id
-                } else {
-                    &stdin.id
-                };
-                device.pipes().fail(pipe, "HTTP connection lost");
-                "HTTP connection lost".into()
-            }
-            "chunk" => {
-                link.send(Outbound::RpcStdin {
-                    call_id: "call".into(),
-                    bytes: WireBytes(vec![0; STDIN_CHUNK_BYTES + 1]),
-                })
-                .await;
-                "Unrequested or oversized RPC stdin chunk".into()
-            }
-            "unasked" => {
-                // The first answers the read; the second arrives before the
-                // handler asks again.
-                for _ in 0..2 {
-                    link.send(Outbound::RpcStdin {
-                        call_id: "call".into(),
-                        bytes: WireBytes(b"typed".to_vec()),
-                    })
-                    .await;
-                }
-                "Unrequested or oversized RPC stdin chunk".into()
-            }
-            "disconnect" => {
-                link.close().await;
-                for _ in 0..20 {
-                    tokio::task::yield_now().await;
-                }
-                assert!(ended.get(), "{event}: the handler ends with the connection");
-                continue;
-            }
-            _ => {
-                link.link().disconnect("backend shutting down");
-                assert_eq!(
-                    link.ended().await,
-                    LinkEnd::Disconnected("backend shutting down".into())
-                );
-                assert!(ended.get(), "{event}: the handler ends with the connection");
-                continue;
-            }
-        };
-        // A later end of the job does not replace the first cause.
-        link.send(job_exit(job.id(), Some(7), None)).await;
-        let (stderr, exit_code) = call_outcome(&mut link).await;
-        assert!(ended.get(), "{event}: the handler was released");
-        assert_eq!(stderr, format!("probe live: {expected}\n"), "{event}");
-        assert_eq!(
-            exit_code,
-            if event == "cancel" { 130 } else { 1 },
-            "{event}"
-        );
-        assert_eq!(
-            context.borrow().as_ref().unwrap()["conversation"],
-            test_command_context().conversation.as_str()
-        );
-        // The handler knows the agent node the invoking job runs for.
-        assert_eq!(
-            context.borrow().as_ref().unwrap()["caller"],
-            serde_json::to_value(caller()).unwrap()
-        );
-    }
-}
-
-/// Marks its flag when dropped: the handler holding it was aborted or ended.
-struct DropFlag(Rc<Cell<bool>>);
-
-impl Drop for DropFlag {
-    fn drop(&mut self) {
-        self.0.set(true);
-    }
-}
-
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_connections_end_waits_for_its_calls_up_to_its_grace_then_aborts_them() {
-    // A handler that ignores the call's stop, as one committing does,
-    // finishing after the delay or never.
-    for delay in [Some(Duration::from_secs(3)), None] {
-        let finished = Rc::new(Cell::new(false));
-        let dropped = Rc::new(Cell::new(false));
-        let mut commands = CommandSet::new();
-        let handler = {
-            let finished = finished.clone();
-            let dropped = dropped.clone();
-            TypedRpc::new(move |_: Call<Map<String, Value>>, _: RpcPort| {
-                let finished = finished.clone();
-                let held = DropFlag(dropped.clone());
-                async move {
-                    let _held = held;
-                    match delay {
-                        Some(delay) => tokio::time::sleep(delay).await,
-                        None => std::future::pending().await,
-                    }
-                    finished.set(true);
-                    Ok(0)
-                }
-            })
-        };
-        commands
-            .register(
-                GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                    .leaf(LeafBuilder::rpc("live", "Live input.").bind(handler)),
-            )
-            .unwrap();
-        let device = TestDevice::new(CommandPolicy::new(commands));
-        let mut link = device.connect(None);
-        let job = device
-            .host("/work", Admission::Free)
-            .start_job(job_start("probe live"))
-            .await
-            .unwrap();
-        drain(&mut link).await;
-        link.send(rpc_call(job.id(), "call")).await;
-        assert!(matches!(link.next().await, Inbound::RpcPipes { .. }));
-        let closed = tokio::time::Instant::now();
-        let end = tokio::time::timeout(Duration::from_secs(60), link.close())
-            .await
-            .expect("the connection's end waits no longer than its grace");
-        assert_eq!(end, LinkEnd::Closed("runner disconnected".into()));
-        let waited = closed.elapsed();
-        match delay {
-            Some(delay) => {
-                assert!(finished.get(), "a handler that finishes within the grace finishes");
-                assert!(waited >= delay && waited < END_GRACE, "{waited:?}");
-            }
-            None => {
-                assert!(!finished.get());
-                assert!(dropped.get(), "the handler still running is aborted");
-                assert!(waited >= END_GRACE && waited < END_GRACE * 2, "{waited:?}");
-            }
-        }
-    }
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_call_exits_after_its_standard_output_drained() {
-    let mut commands = CommandSet::new();
-    let handler = TypedRpc::new(|_: Call<Map<String, Value>>, port: RpcPort| async move {
-        port.stdout("hello").await?;
-        Ok(3)
-    });
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(LeafBuilder::rpc("live", "Speaks.").bind(handler)),
-        )
-        .unwrap();
-    let device = TestDevice::new(CommandPolicy::new(commands));
-    let mut link = device.connect(None);
-    let job = device
-        .host("/work", Admission::Free)
-        .start_job(job_start("probe live"))
-        .await
-        .unwrap();
-    drain(&mut link).await;
-    let mut call = rpc_call(job.id(), "call");
-    if let Outbound::RpcCall { stdin, .. } = &mut call {
-        *stdin = false;
-    }
-    link.send(call).await;
-    let Inbound::RpcPipes {
-        stdin: None,
-        stdout,
-        ..
-    } = link.next().await
-    else {
-        panic!("a process without a stdin pipe gets only stdout")
-    };
-    assert!(
-        drain(&mut link).await.is_empty(),
-        "the exit waits for the drain"
-    );
-    let sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
-    assert_eq!(Framed::new(sink).read().await, (b"hello".to_vec(), Ok(())));
-    assert_eq!(call_outcome(&mut link).await, (String::new(), 3));
-}
-
-/// A call whose handler returns without reading its finite input answers
-/// the process's upload of it as a whole one, so the runner does not take
-/// the call for a failed one while its stdout still travels (`crates/host-interface/src/rpc.rs`). Before, the call's end failed the upload with
-/// `rpc call ended`, and the runner cut a large stdout short 15 seconds
-/// later.
-#[tokio::test(flavor = "local")]
-async fn a_calls_unread_input_ends_as_finished_with_the_call() {
-    let mut commands = CommandSet::new();
-    let handler = TypedRpc::new(|_: Call<Map<String, Value>>, port: RpcPort| async move {
-        port.stdout("hello").await?;
-        Ok(0)
-    });
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(LeafBuilder::rpc("live", "Speaks.").bind(handler)),
-        )
-        .unwrap();
-    let device = TestDevice::new(CommandPolicy::new(commands));
-    let mut link = device.connect(None);
-    let job = device
-        .host("/work", Admission::Free)
-        .start_job(job_start("probe live"))
-        .await
-        .unwrap();
-    drain(&mut link).await;
-    link.send(rpc_call(job.id(), "call")).await;
-    let Inbound::RpcPipes {
-        stdin: Some(stdin),
-        stdout,
-        ..
-    } = link.next().await
-    else {
-        panic!("a process with a finite stdin gets its pipe")
-    };
-    let source = device.pipes().claim_source(&stdin.id, TEST_DEVICE).unwrap();
-    let upload = tokio::task::spawn_local(
-        source.pump(futures_util::stream::empty::<Result<Bytes, std::io::Error>>()),
-    );
-    let sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
-    assert_eq!(Framed::new(sink).read().await, (b"hello".to_vec(), Ok(())));
-    assert_eq!(call_outcome(&mut link).await, (String::new(), 0));
-    assert_eq!(upload.await.unwrap(), Ok(()));
-}
-
-// A call refused before its handler runs, as the permission check refuses
-// one, fails at once: the process it was handed the stdout pipe for still
-// finds the pipe, ended, and reads the refusal on stderr.
-#[tokio::test(flavor = "local")]
-async fn a_call_that_fails_at_once_keeps_its_standard_output_until_drained() {
-    let mut commands = CommandSet::new();
-    let handler = TypedRpc::new(|_: Call<Map<String, Value>>, _: RpcPort| async move {
-        Err::<u8, _>(RpcError::Failed("refused".into()))
-    });
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(LeafBuilder::rpc("live", "Refuses.").bind(handler)),
-        )
-        .unwrap();
-    let device = TestDevice::new(CommandPolicy::new(commands));
-    let mut link = device.connect(None);
-    let job = device
-        .host("/work", Admission::Free)
-        .start_job(job_start("probe live"))
-        .await
-        .unwrap();
-    drain(&mut link).await;
-    let mut call = rpc_call(job.id(), "call");
-    if let Outbound::RpcCall { stdin, .. } = &mut call {
-        *stdin = false;
-    }
-    link.send(call).await;
-    let Inbound::RpcPipes { stdout, .. } = link.next().await else {
-        panic!("the call is handed its stdout pipe")
-    };
-    assert!(
-        drain(&mut link).await.is_empty(),
-        "the exit waits for the drain"
-    );
-    let sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
-    assert_eq!(Framed::new(sink).read().await, (Vec::new(), Ok(())));
-    assert_eq!(
-        call_outcome(&mut link).await,
-        ("probe live: refused\n".to_owned(), 1)
-    );
-}
-
-/// A policy that refuses every call.
-struct Refusing;
-
-impl LinkPolicy for Refusing {
-    fn admit_call(&self, _: &JobOrigin) -> Result<(), String> {
-        Err("rpc job belongs to another conversation".into())
-    }
-
-    fn dispatch(
-        &self,
-        _: Rc<JobOrigin>,
-        _: RpcInvocation,
-        _: RpcPort,
-    ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
-        panic!("a refused call reaches no handler")
-    }
-
-    fn read_blob(&self, _: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>> {
-        Box::pin(async { Ok(None) })
-    }
-
-
-    fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("no".into()) })
-    }
-
-    fn take_up_job(&self, _: String) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("no agent takes jobs up here".into()) })
-    }
-
-    fn reserve_numbers(
-        &self,
-        _: String,
-        _: ServiceSequence,
-        _: u32,
-    ) -> LocalBoxFuture<'static, Result<u64, String>> {
-        Box::pin(async { Err("no".into()) })
-    }
-    fn direct_stream(
-        &self,
-        _: String,
-        _: String,
-    ) -> LocalBoxFuture<'static, Result<demi_backend_remote_host::DirectAdmission, String>> {
-        Box::pin(async { Err("no".into()) })
-    }
-
-    fn watch_stream(&self, _: String) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
-        Box::pin(async { Err("no".into()) })
-    }
-
-    fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
-        Box::pin(async {})
-    }
-
-    // This runner forwards no port.
-    fn forward_event(&self, _: demi_backend_remote_host::ForwardEvent) {}
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_call_runs_only_for_a_live_job_the_policy_admits_and_a_refusal_mints_no_pipe() {
-    let device = TestDevice::new(Rc::new(Refusing));
-    let mut link = device.connect(None);
-    let job = device
-        .host("/work", Admission::Free)
-        .start_job(job_start("probe live"))
-        .await
-        .unwrap();
-    drain(&mut link).await;
-    link.send(rpc_call("invented", "unknown")).await;
-    let outcome = call_outcome(&mut link).await;
-    assert_eq!(
-        outcome,
-        (
-            "probe live: rpc requires a live job dispatched to this device\n".into(),
-            1
-        )
-    );
-    link.send(rpc_call(job.id(), "refused")).await;
-    let frames = drain(&mut link).await;
-    assert!(
-        !frames
-            .iter()
-            .any(|frame| matches!(frame, Inbound::RpcPipes { .. }))
-    );
-    let stderr: String = frames
-        .iter()
-        .filter_map(|frame| match frame {
-            Inbound::RpcOutput { bytes, .. } => {
-                Some(String::from_utf8_lossy(&bytes.0).into_owned())
-            }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(stderr, "probe live: rpc job belongs to another conversation\n");
-    assert!(
-        frames
-            .iter()
-            .any(|frame| matches!(frame, Inbound::RpcExit { exit_code: 1, .. }))
-    );
-    // A second call under a live call's id breaks the protocol.
-    let device = TestDevice::new(CommandPolicy::new(live_commands(
-        Rc::default(),
-        Rc::default(),
-    )));
-    let mut link = device.connect(None);
-    let job = device
-        .host("/work", Admission::Free)
-        .start_job(job_start("probe live"))
-        .await
-        .unwrap();
-    drain(&mut link).await;
-    link.send(rpc_call(job.id(), "twice")).await;
-    link.send(rpc_call(job.id(), "twice")).await;
-    assert_eq!(
-        link.ended().await,
-        LinkEnd::Disconnected("duplicate rpc call twice".into())
-    );
-}
-
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn an_unanswered_ping_ends_the_connection_unless_liveness_is_paused() {
-    let device = device();
-    let mut link = device.connect(Some(Duration::from_secs(30)));
-    tokio::time::sleep(Duration::from_millis(30_001)).await;
-    assert!(matches!(link.next().await, Inbound::Ping {}));
-    link.send(Outbound::Pong { jobs: 2 }).await;
-    drain(&mut link).await;
-    assert_eq!(link.link().running_jobs(), 2);
-    tokio::time::sleep(Duration::from_secs(30)).await;
-    assert!(matches!(link.next().await, Inbound::Ping {}));
-    // A checkpoint copies the machine: silence is no death, and resuming
-    // forgets the ping it missed.
-    link.link().pause_liveness();
-    tokio::time::sleep(Duration::from_secs(90)).await;
-    assert!(drain(&mut link).await.is_empty());
-    link.link().resume_liveness();
-    tokio::time::sleep(Duration::from_secs(30)).await;
-    assert!(matches!(link.next().await, Inbound::Ping {}));
-    tokio::time::sleep(Duration::from_secs(30)).await;
-    assert_eq!(
-        link.ended().await,
-        LinkEnd::Disconnected("liveness: ping unanswered".into())
-    );
-}
-
 // A message the backend cannot decode ends the connection, and the
 // refusal names its type and the decoding error, which the work lost with
 // the connection says (`crates/runner-protocol/src/wire/mod.rs`). A few
@@ -2214,13 +673,13 @@ async fn an_unanswered_ping_ends_the_connection_unless_liveness_is_paused() {
 #[tokio::test(flavor = "local")]
 async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let process = host.spawn(spawn("sleep", false)).await.unwrap();
     drain(&mut link).await;
-    // A newer runner's pong, with a field this backend does not know: the
+    // A newer runner's job count, with a field this backend does not know: the
     // MessagePack map of two fields gains a third, `load: 1`.
-    let mut newer = demi_runner_protocol::wire::encode(&Outbound::Pong { jobs: 0 })
+    let mut newer = demi_runner_protocol::wire::encode(&Outbound::JobCount { jobs: 0 })
         .unwrap()
         .into_bytes();
     assert_eq!(newer[0], 0x82, "a map of two fields");
@@ -2231,7 +690,7 @@ async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
         panic!("the connection did not end with a refusal");
     };
     assert!(
-        refusal.starts_with("cannot decode pong: unknown field `load`"),
+        refusal.starts_with("cannot decode job_count: unknown field `load`"),
         "{refusal}"
     );
     assert_eq!(
@@ -2239,217 +698,12 @@ async fn a_message_the_backend_cannot_decode_ends_the_connection_naming_it() {
         ProcessEnd::Lost(format!("runner disconnected: the backend {refusal}"))
     );
     // Bytes that are no message at all are named as a message.
-    let link = device.connect(None);
+    let link = device.connect();
     link.send_frame(b"not a message".to_vec()).await;
     let LinkEnd::Refused(refusal) = link.ended().await else {
         panic!("the connection did not end with a refusal");
     };
     assert!(refusal.starts_with("cannot decode a message: "), "{refusal}");
-}
-
-/// When the kept output cannot be read once the job ended, the command's
-/// whole output is what the backend received: each stream's first bytes,
-/// then, beyond what was left out, its newest bytes, which the runner sent
-/// before the job's end; so the output's end, where a build says what
-/// failed, still shows (`crates/runner-jobs/src/tasks.rs`).
-#[tokio::test(flavor = "local")]
-async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
-    let device = device();
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let started = shell
-        .exec(exec("build"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
-        job_id: job_id.clone(),
-        stream: OutputStream::Stdout,
-        offset,
-        bytes: WireBytes(bytes.to_vec()),
-    };
-    let head = vec![b'x'; JOB_VIEW_BYTES];
-    let length = JOB_VIEW_BYTES as u64 * 4;
-    let newest = b"error: the build failed\n";
-    link.send(output(0, &head)).await;
-    link.send(output(length - newest.len() as u64, newest))
-        .await;
-    link.send(Outbound::JobExit {
-        job_id: job_id.clone(),
-        exit_code: Some(1),
-        signal: None,
-        spawn_error: None,
-        output: Some(OutputLengths {
-            stdout_bytes: length,
-            stderr_bytes: 0,
-        }),
-        files: Vec::new(),
-        path_changes: Vec::new(),
-        files_truncated: false,
-    })
-    .await;
-    let id = loop {
-        let message = tokio::time::timeout(Duration::from_secs(10), link.next())
-            .await
-            .expect("a read within the hang guard");
-        if let Inbound::JobRead { id, .. } = message {
-            break id;
-        }
-    };
-    link.send(Outbound::JobRead {
-        id,
-        error: Some("the job's output is gone".into()),
-    })
-    .await;
-    let whole = whole_once_ended(&shell, &started.command_id).await;
-    assert_eq!(
-        whole.output.records(),
-        [
-            OutputRecord::Output(StreamKind::Stdout, head.into()),
-            OutputRecord::LeftOut(length - JOB_VIEW_BYTES as u64 - newest.len() as u64),
-            OutputRecord::Output(StreamKind::Stdout, newest.to_vec().into()),
-        ]
-    );
-    assert_eq!(whole.output.missing(), None);
-}
-
-/// Input typed while a command still acquires its Host, as while a Cloud
-/// wakes, waits and reaches the command once it starts; the page shows the
-/// command running all along.
-#[tokio::test(flavor = "local")]
-async fn input_written_while_a_command_acquires_its_host_reaches_it_once_it_starts() {
-    let device = device();
-    let mut link = device.connect(None);
-    let acquired = Rc::new(tokio::sync::Notify::new());
-    let context: demi_backend_remote_host::ContextSource = {
-        let acquired = acquired.clone();
-        Rc::new(move || {
-            let acquired = acquired.clone();
-            Box::pin(async move {
-                acquired.notified().await;
-                Ok(test_command_context())
-            })
-        })
-    };
-    let shell = RemoteShellEnvironment::new(EnvironmentOptions::new(
-        device.host("/work", Admission::Free),
-        context,
-        TestPages::new(false),
-        Rc::new(CountingNumbers::default()),
-    ));
-    let started = shell
-        .exec(exec("read name; echo $name"), CancellationToken::new())
-        .await
-        .unwrap();
-    let command = started.command_id;
-    let written = shell.write(&command, Bytes::from_static(b"Ana\n"));
-    let (written, ()) = tokio::join!(written, async {
-        acquired.notify_one();
-        let Inbound::JobStart { .. } = link.next().await else {
-            panic!("expected the job's start")
-        };
-    });
-    written.unwrap();
-    let frames = drain(&mut link).await;
-    assert!(
-        frames
-            .iter()
-            .any(|frame| matches!(frame, Inbound::JobStdin { bytes, .. } if bytes.0 == b"Ana\n")),
-        "{frames:?}"
-    );
-}
-
-/// Pages that hold one subject share one subscription on the runner:
-///
-/// - The first page subscribes.
-/// - A later one hears `live` at once.
-/// - A page's renew renews it.
-/// - A batch reaches each page that holds what changed, with what it holds.
-/// - The last page to let go ends it.
-///
-/// The connection's end ends every holder.
-#[tokio::test(flavor = "local")]
-async fn pages_that_hold_one_subject_share_its_subscription_which_the_last_one_ends() {
-    use demi_backend_remote_host::HostEvent;
-    use demi_runner_protocol::files::{Subject, SubscriptionKind};
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let file = Subject {
-        kind: SubscriptionKind::File,
-        path: "/work/a.txt".into(),
-        suffix: None,
-    };
-    let folder = Subject {
-        kind: SubscriptionKind::FolderNames,
-        path: "/work".into(),
-        suffix: None,
-    };
-    let mut first = host.subscriber().unwrap();
-    let mut second = host.subscriber().unwrap();
-    first.hold(file.clone());
-    second.hold(file.clone());
-    let id = match link.next().await {
-        Inbound::FsSubscribe { id, kind, path, .. } => {
-            assert_eq!((kind, path.as_str()), (SubscriptionKind::File, "/work/a.txt"));
-            id
-        }
-        other => panic!("expected the subscription, got {other:?}"),
-    };
-    // One subscription on the runner for both.
-    assert!(link.try_next().is_none());
-
-    link.send(Outbound::FsLive {
-        id: id.clone(),
-        since: 4,
-        epoch: "e".into(),
-    })
-    .await;
-    let live = HostEvent::Live {
-        subject: file.clone(),
-        since: 4,
-        epoch: "e".into(),
-    };
-    assert_eq!(first.next().await, live);
-    assert_eq!(second.next().await, live);
-    second.renew(std::slice::from_ref(&file));
-    assert_eq!(link.next().await, Inbound::FsRenew { ids: vec![id.clone()] });
-
-    first.hold(folder.clone());
-    let folder_id = match link.next().await {
-        Inbound::FsSubscribe { id, .. } => id,
-        other => panic!("expected the subscription, got {other:?}"),
-    };
-    link.send(Outbound::FsChanged {
-        changes: vec![(id.clone(), 7), (folder_id.clone(), 8)],
-    })
-    .await;
-    assert_eq!(
-        first.next().await,
-        HostEvent::Changed(vec![(file.clone(), 7), (folder.clone(), 8)])
-    );
-    assert_eq!(second.next().await, HostEvent::Changed(vec![(file.clone(), 7)]));
-
-    // A page that comes later hears that the subscription runs, without
-    // asking the runner again.
-    let mut third = host.subscriber().unwrap();
-    third.hold(file.clone());
-    assert_eq!(third.next().await, live);
-    drop(first);
-    assert_eq!(link.next().await, Inbound::FsUnsubscribe { id: folder_id });
-    drop(third);
-    assert!(link.try_next().is_none());
-    second.release(&file);
-    assert_eq!(link.next().await, Inbound::FsUnsubscribe { id });
-
-    // The connection's end ends a holder.
-    let mut last = host.subscriber().unwrap();
-    last.hold(folder);
-    assert!(matches!(link.next().await, Inbound::FsSubscribe { .. }));
-    link.close().await;
-    assert_eq!(last.next().await, HostEvent::Ended);
 }
 
 /// A Host's number, as every fs reply carries one.
@@ -2563,7 +817,7 @@ async fn away_twice(
     shell: &RemoteShellEnvironment,
     ended: bool,
 ) -> (CommandId, String) {
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let started = shell
         .exec(exec("print"), CancellationToken::new())
         .await
@@ -2575,7 +829,7 @@ async fn away_twice(
     drain(&mut link).await;
     link.close().await;
 
-    let mut link = device.connect_with(None, 1, vec![kept_job(&job_id, 3, false)]);
+    let mut link = device.connect_with(1, vec![kept_job(&job_id, 3, false)]);
     requested_read(&mut link, &job_id).await;
     link.send(stdout(&job_id, 3, b"d")).await;
     if ended {
@@ -2597,14 +851,14 @@ async fn away_twice(
 #[tokio::test(flavor = "local")]
 async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhile() {
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let host = device.host("/work", Admission::Free);
     let job = host.start_job(job_start("print")).await.unwrap();
     drain(&mut link).await;
     link.send(stdout(job.id(), 0, b"a")).await;
     link.close().await;
 
-    let mut link = device.connect_with(None, 1, vec![kept_job(job.id(), 3, false)]);
+    let mut link = device.connect_with(1, vec![kept_job(job.id(), 3, false)]);
     // Output and the end that arrive during the read wait for it.
     link.send(stdout(job.id(), 3, b"d")).await;
     link.send(exited_after(job.id(), 4)).await;
@@ -2621,57 +875,6 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
     assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
 }
 
-/// While a read of the kept output stalls, a job that goes on printing
-/// has only its first bytes and its newest ones held for after the read,
-/// at their offsets, as a job nobody follows sends them; its end gives the
-/// lengths that tell the rest is on the Host (`crates/backend-remote-host/src/device_jobs.rs`). A few milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_stalled_read_holds_only_the_first_and_the_newest_output() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let job = host.start_job(job_start("print")).await.unwrap();
-    drain(&mut link).await;
-    link.close().await;
-
-    // The runner printed a byte while no connection served; the rest of
-    // the first bytes comes after the hello.
-    let view = JOB_VIEW_BYTES as u64;
-    let mut link = device.connect_with(None, 1, vec![kept_job(job.id(), 1, false)]);
-    let (id, _) = requested_read(&mut link, job.id()).await;
-    link.send(stdout(job.id(), 1, &vec![b'f'; JOB_VIEW_BYTES - 1])).await;
-    // A megabyte beyond the first bytes, a kilobyte at a time, its last
-    // kilobyte a different letter.
-    let kilobyte = 1024;
-    for at in 0..1024u64 {
-        let letter = if at == 1023 { b'n' } else { b'x' };
-        link.send(stdout(job.id(), view + at * kilobyte, &vec![letter; 1024]))
-            .await;
-    }
-    let length = view + 1024 * kilobyte;
-    link.send(exited_after(job.id(), length)).await;
-    // The read answers at last, with nothing it could read.
-    link.send(Outbound::JobRead {
-        id,
-        error: Some("the kept output is gone".into()),
-    })
-    .await;
-
-    let mut received = Vec::new();
-    while let Some(chunk) = job.next_output().await {
-        received.push((chunk.offset, chunk.bytes.len(), chunk.bytes.last().copied()));
-    }
-    assert_eq!(
-        received,
-        [
-            (1, JOB_VIEW_BYTES - 1, Some(b'f')),
-            (length - view, JOB_VIEW_BYTES, Some(b'n')),
-        ]
-    );
-    let end = job.end().await;
-    assert_eq!(end.output.map(|lengths| lengths.stdout_bytes), Some(length));
-}
-
 /// A connection lost again while the read after a reconnect is under way,
 /// with output and the job's end waiting behind it, leaves the command
 /// running; the next connection's read completes it, and the end stores
@@ -2683,7 +886,7 @@ async fn an_end_that_waited_through_another_loss_completes_with_the_next_connect
     let (command, job) = away_twice(&device, &shell, true).await;
 
     // The runner lists the job as ended and sends its exit again.
-    let mut link = device.connect_with(None, 1, vec![kept_job(&job, 4, true)]);
+    let mut link = device.connect_with(1, vec![kept_job(&job, 4, true)]);
     link.send(exited_after(&job, 4)).await;
     answer_read(&device, &mut link, &job, kept_stdout(b"abcd")).await;
     let whole = whole_once_ended(&shell, &command).await;
@@ -2700,7 +903,7 @@ async fn a_job_that_runs_through_another_loss_gets_all_its_output_with_the_next_
     let shell = environment(device.host("/work", Admission::Free));
     let (command, job) = away_twice(&device, &shell, false).await;
 
-    let mut link = device.connect_with(None, 1, vec![kept_job(&job, 5, false)]);
+    let mut link = device.connect_with(1, vec![kept_job(&job, 5, false)]);
     answer_read(&device, &mut link, &job, kept_stdout(b"abcde")).await;
     link.send(stdout(&job, 5, b"f")).await;
     link.send(exited_after(&job, 6)).await;
@@ -2719,7 +922,7 @@ async fn a_job_whose_runner_comes_back_without_it_keeps_what_arrived_and_says_th
     let shell = environment(device.host("/work", Admission::Free));
     let (command, _) = away_twice(&device, &shell, true).await;
 
-    let _link = device.connect_with(None, 2, Vec::new());
+    let _link = device.connect_with(2, Vec::new());
     let whole = whole_once_ended(&shell, &command).await;
     assert_eq!(printed(&whole.output), "a");
     let missing = whole.output.missing().expect("the rest is missing");
@@ -2728,132 +931,6 @@ async fn a_job_whose_runner_comes_back_without_it_keeps_what_arrived_and_says_th
         panic!("the command is lost")
     };
     assert_eq!(reason, demi_backend_remote_host::RUNNER_RESTARTED);
-}
-
-/// Output its runner printed while no connection served, which the read
-/// after the new connection did not deliver, is not counted as received
-/// although later output was: the command's end reads the kept output, and
-/// its whole output holds it (`crates/runner-jobs/src/tasks.rs`). A few
-/// milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_command_whose_output_the_backend_missed_ends_with_it_read_from_its_host() {
-    let device = device();
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let started = shell
-        .exec(exec("print"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    link.send(stdout(&job_id, 0, b"a")).await;
-    drain(&mut link).await;
-    link.close().await;
-
-    let mut link = device.connect_with(None, 1, vec![kept_job(&job_id, 3, false)]);
-    let (id, _) = requested_read(&mut link, &job_id).await;
-    link.send(Outbound::JobRead {
-        id,
-        error: Some("the read failed".into()),
-    })
-    .await;
-    link.send(stdout(&job_id, 3, b"d")).await;
-    link.send(exited_after(&job_id, 4)).await;
-    answer_read(&device, &mut link, &job_id, kept_stdout(b"abcd")).await;
-    let whole = whole_once_ended(&shell, &started.command_id).await;
-    assert_eq!(printed(&whole.output), "abcd");
-}
-
-/// A command stopped with the call that watches it, as a Stop of the action
-/// stops it, ends as stopped, not as the exit its signal makes
-/// (`crates/agent-server/src/server/tree/live.rs`). A few milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_command_stopped_with_its_call_ends_as_stopped() {
-    let device = device();
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let call = CancellationToken::new();
-    let started = shell.exec(exec("sleep 30"), call.clone()).await.unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-
-    call.cancel();
-
-    let Inbound::JobKill { signal, .. } = link.next().await else {
-        panic!("expected the job to be stopped")
-    };
-    assert_eq!(signal, Some(demi_runner_protocol::wire::Signal::Terminate));
-    link.send(job_exit(&job_id, None, Some("SIGTERM"))).await;
-    shell.ended(&started.command_id).await.unwrap();
-    assert!(matches!(
-        shell.status(&started.command_id).unwrap().state,
-        CommandState::Aborted
-    ));
-}
-
-/// A Stop of a command stops its waiting rpc calls at once, before its
-/// runner hears of the stop: an answer that arrives in that round trip,
-/// such as the user's Allow of a call held for permission, finds the call
-/// stopped, and the call never acts. The handler here holds as the
-/// permission check does: it waits for its release, then acts only when
-/// its call still goes on. Before, the call stopped only when the runner
-/// answered the kill, and the call acted. A few milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_call_waiting_when_its_command_is_stopped_never_acts_on_a_later_release() {
-    let waiting = Rc::new(tokio::sync::Notify::new());
-    let release = Rc::new(tokio::sync::Notify::new());
-    // Whether the call acted, once its handler decided.
-    let (decided, acted) = tokio::sync::oneshot::channel();
-    let decided = Rc::new(RefCell::new(Some(decided)));
-    let mut commands = CommandSet::new();
-    let handler = TypedRpc::new({
-        let (waiting, release) = (waiting.clone(), release.clone());
-        move |_: Call<Map<String, Value>>, port: RpcPort| {
-            let (waiting, release, decided) = (waiting.clone(), release.clone(), decided.clone());
-            async move {
-                waiting.notify_one();
-                release.notified().await;
-                let acts = !port.is_cancelled();
-                if let Some(decided) = decided.borrow_mut().take() {
-                    // The test reads it before it ends.
-                    let _ = decided.send(acts);
-                }
-                Ok(u8::from(!acts))
-            }
-        }
-    });
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(LeafBuilder::rpc("live", "Live input.").bind(handler)),
-        )
-        .unwrap();
-    let device = TestDevice::new(CommandPolicy::new(commands));
-    let mut link = device.connect(None);
-    let shell = environment(device.host("/work", Admission::Free));
-    let started = shell
-        .exec(exec("probe live"), CancellationToken::new())
-        .await
-        .unwrap();
-    let Inbound::JobStart { job_id, .. } = link.next().await else {
-        panic!("expected a job")
-    };
-    link.send(rpc_call(&job_id, "call")).await;
-    tokio::time::timeout(Duration::from_secs(10), waiting.notified())
-        .await
-        .expect("the call waits within the hang guard");
-
-    // The runner answers neither the kill nor with a cancel of the call.
-    shell.abort(&started.command_id).await.unwrap();
-    release.notify_one();
-
-    let acted = tokio::time::timeout(Duration::from_secs(10), acted)
-        .await
-        .expect("the handler decides within the hang guard")
-        .unwrap();
-    assert!(!acted, "a stopped call acted on its release");
 }
 
 /// A stop while the runner's connection is away reaches the job once the
@@ -2867,7 +944,7 @@ async fn a_call_waiting_when_its_command_is_stopped_never_acts_on_a_later_releas
 async fn a_stop_while_the_runner_is_away_reaches_the_job_when_it_is_back() {
     use demi_runner_protocol::wire::Signal;
     let device = device();
-    let mut link = device.connect(None);
+    let mut link = device.connect();
     let shell = environment(device.host("/work", Admission::Free));
     let started = shell
         .exec(exec("sleep 30"), CancellationToken::new())
@@ -2905,7 +982,7 @@ async fn a_stop_while_the_runner_is_away_reaches_the_job_when_it_is_back() {
         media: 0,
         outliving: Vec::new(),
     };
-    let mut link = device.connect_with(None, 1, vec![kept]);
+    let mut link = device.connect_with(1, vec![kept]);
     let mut signals = Vec::new();
     while signals.len() < 2 {
         if let Inbound::JobKill { job_id, signal } = link.next().await {
@@ -2924,104 +1001,11 @@ async fn a_stop_while_the_runner_is_away_reaches_the_job_when_it_is_back() {
     assert!(matches!(state(&shell), (PageState::Aborted, CommandState::Aborted)));
 }
 
-/// After a backend restart, a recorded job the device's runner does not
-/// list is lost for the reason the device's record tells: the runner, still
-/// the same instance, never received it; one of another instance started
-/// anew (`crates/backend-remote-host/src/device_jobs.rs`). A few
-/// milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_recorded_job_not_listed_after_a_restart_is_lost_for_what_the_record_tells() {
-    for (instance, reason) in [
-        (5, demi_backend_remote_host::NEVER_RECEIVED),
-        (6, demi_backend_remote_host::RUNNER_RESTARTED),
-    ] {
-        let device = device();
-        let job = format!("job-{instance}");
-        let _link = device.connect_hello(
-            None,
-            demi_backend_remote_host::Hello {
-                instance,
-                release: "0".into(),
-                jobs: Vec::new(),
-                last_release: Some("0".into()),
-                last_instance: Some(5),
-                managed: false,
-                recorded: [job.clone()].into(),
-            },
-        );
-        let host = device.host("/work", Admission::Free);
-        let adopted = host.adopt_job(job, Some(test_command_context()), Some(caller()), None, CancellationToken::new());
-        assert_eq!(adopted.end().await.status, ProcessEnd::Lost(reason.into()));
-    }
-}
-
-/// A job the runner lists that the backend has no command for is stopped
-/// with `TERM`, and its exit releases its directory; one that ended
-/// already is released at once (`crates/runner/src/connection/kept.rs`). A few
-/// milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_job_the_backend_has_no_command_for_is_stopped_and_released() {
-    let device = device();
-    let kept = |job_id: &str, ended: Option<demi_runner_protocol::wire::KeptEnd>| {
-        demi_runner_protocol::wire::KeptJob {
-            job_id: job_id.into(),
-            ended,
-            output: OutputLengths {
-                stdout_bytes: 0,
-                stderr_bytes: 0,
-            },
-            media: 0,
-            outliving: Vec::new(),
-        }
-    };
-    let ended = demi_runner_protocol::wire::KeptEnd {
-        exit_code: Some(0),
-        signal: None,
-    };
-    let mut link = device.connect_hello(
-        None,
-        demi_backend_remote_host::Hello {
-            instance: 1,
-            release: "0".into(),
-            jobs: vec![kept("stray-running", None), kept("stray-ended", Some(ended))],
-            last_release: Some("0".into()),
-            last_instance: Some(1),
-            managed: false,
-            recorded: Default::default(),
-        },
-    );
-    let sent = drain(&mut link).await;
-    assert!(
-        sent.iter().any(|message| matches!(message,
-            Inbound::JobKill { job_id, signal: Some(demi_runner_protocol::wire::Signal::Terminate) }
-                if job_id == "stray-running")),
-        "{sent:?}"
-    );
-    assert!(
-        sent.iter().any(|message| matches!(message,
-            Inbound::JobRelease { job_id } if job_id == "stray-ended")),
-        "{sent:?}"
-    );
-    assert!(
-        !sent.iter().any(|message| matches!(message,
-            Inbound::JobRelease { job_id } if job_id == "stray-running")),
-        "{sent:?}"
-    );
-
-    link.send(job_exit("stray-running", None, Some("TERM"))).await;
-    let sent = drain(&mut link).await;
-    assert!(
-        sent.iter().any(|message| matches!(message,
-            Inbound::JobRelease { job_id } if job_id == "stray-running")),
-        "{sent:?}"
-    );
-}
-
 #[tokio::test(flavor = "local")]
 async fn a_services_messages_and_its_loss_reach_the_policy_in_the_order_the_runner_sent_them() {
     let policy = CommandPolicy::new(CommandSet::new());
     let device = TestDevice::new(policy.clone());
-    let link = device.connect(None);
+    let link = device.connect();
     let mut events = policy.package_events();
     for message in [serde_json::json!({ "tabs": "changed" }), serde_json::json!(2)] {
         link.send(Outbound::PackageMessage {
