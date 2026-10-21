@@ -52,6 +52,6 @@ profiles:
   - id: investigate
     description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure what a design needs; it reports the truth with its evidence."
     model: claude-opus-5-5
-    effort: medium
+    effort: high
     instructions: |
       You reproduce the problem as the user saw it, or measure what is asked, and report what is true with its evidence. You leave things as you found them, and a server the brief names is read only.
