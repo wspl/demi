@@ -296,8 +296,11 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
             vec![exec("later", "read go; echo later; read line", 300)],
             reply("started"),
         ]);
+        // The call returns at its window with the command still waiting for
+        // the page's write.
         let config = ServerConfig {
             interval_floor_ms: 100,
+            call_window_ms: 300,
             ..ServerConfig::default()
         };
         let fixture = Fixture::start_with(&script, config).await;
