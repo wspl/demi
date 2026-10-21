@@ -87,6 +87,8 @@ impl Server {
                         "/submitted-state" => ("200 OK", "", submitted.as_str()),
                         "/frame-child" => ("200 OK", "", "<!doctype html><label>Cross frame input<input id='cross-input'></label><button id='cross-button' onclick='this.textContent=\"Cross clicked\";this.dataset.clicks=String(Number(this.dataset.clicks||0)+1);console.info(\"cross-frame console\")'>Cross button</button><iframe id='nested' srcdoc=\"<label>Nested input<input id='nested-input'></label>\"></iframe><script>window.pointerEvents=[]; for(const type of ['pointerdown','mousedown','pointerup','mouseup','click','mousemove','scroll','focusin']) document.addEventListener(type,event=>pointerEvents.push({type,target:event.target.id,x:event.clientX,y:event.clientY,scrollY,top:document.querySelector('#cross-button').getBoundingClientRect().top,at:Date.now()}),true);</script>"),
                         "/500" => ("500 Internal Server Error", "", "<!doctype html><title>HTTP error document</title><h1>Received 500</h1>"),
+                        // A navigation to it ends without a document.
+                        "/no-content" => ("204 No Content", "", ""),
                         "/redirect" => ("302 Found", "Location: /destination\r\n", ""),
                         "/destination" => ("200 OK", "", "<!doctype html><title>Destination</title><h1>Arrived</h1>"),
                         // A cookie whose Max-Age reaches below the earliest

@@ -7,8 +7,9 @@
 //!   matters.
 //! - There is no generic `--page-changed` wait: an animation or a clock update
 //!   cannot show that pagination finished.
-//! - A click that starts a load waits for it, but not observing one is not a
-//!   failure.
+//! - A click or a key press waits for a navigation only when the browser
+//!   announced one its input started (`tabs/navigation.rs`), and then until its DOMContentLoaded;
+//!   a navigation that ends without a document is not the action's failure.
 //! - A command blocked by a JavaScript dialog reports it and releases the
 //!   operation lock, so a dialog command can run; it never waits holding the
 //!   lock the dismissal needs.
@@ -41,7 +42,7 @@ use crate::page::{
         ActionResult, BrowserOperation, BrowserTarget, BrowserViewport, Capability,
         ContentReadResult, DEFAULT_NODES, Dialog, DialogInspectResult, DialogOutcome, DialogResult,
         ElementState, EvalResult, FindResult, HistoryEntry, HistoryResult, INLINE_BYTES,
-        InfoResult, InspectResult, Load, LogsResult, MAX_NODES, NavigationResult, ProbeResult,
+        InfoResult, InspectResult, LogsResult, MAX_NODES, NavigationResult, ProbeResult,
         ReadProperty, ReadResult, ViewportMode, ViewportResult, WaitResult,
     },
 };
@@ -161,7 +162,9 @@ pub async fn command_admitted(
         return Err(operation.failure(BrowserError::DialogBlocked, tab.id().as_str(), None));
     }
     let mut navigation =
-        if command.wait_url().is_some() || matches!(command, BrowserOperation::Click(_)) {
+        if command.wait_url().is_some()
+            || matches!(command, BrowserOperation::Click(_) | BrowserOperation::Key(_))
+        {
             Some(
                 operation
                     .run(NavigationObservation::subscribe(tab.page()))
@@ -504,29 +507,35 @@ pub async fn command_admitted(
                     crate::page::protocol::MouseButton::Right => MouseButton::Right,
                 };
                 let modifiers = keyboard::modifiers(input.modifier.as_deref());
-                let (point, named) = match &input.xy {
-                    Some(xy) => (operation.run(coordinates(tab, xy)).await?, None),
+                let count = i64::from(input.count.unwrap_or(1));
+                let named = match &input.xy {
+                    Some(xy) => {
+                        let point = operation.run(coordinates(tab, xy)).await?;
+                        if let Some(navigation) = navigation.as_mut() {
+                            navigation.input_begins()?;
+                        }
+                        crate::page::pointer::click_at(
+                            tab, point, button, count, modifiers, &operation,
+                        )
+                        .await?;
+                        None
+                    }
                     None => {
-                        let ready = crate::page::element::ready(
+                        let (ready, _) = crate::page::pointer::click_target(
                             tab,
                             required_target(&target)?,
                             references,
-                            element::CLICK,
+                            button,
+                            count,
+                            modifiers,
                             &operation,
+                            |_| Ok(true),
+                            navigation.as_mut(),
                         )
                         .await?;
-                        (ready.state.point(), Some(ready.named))
+                        Some(ready.named)
                     }
                 };
-                crate::page::pointer::click_at(
-                    tab,
-                    point,
-                    button,
-                    i64::from(input.count.unwrap_or(1)),
-                    modifiers,
-                    &operation,
-                )
-                .await?;
                 let mut result = action_result(
                     tab,
                     &operation,
@@ -670,12 +679,20 @@ pub async fn command_admitted(
                         &operation,
                     )
                     .await?;
+                    // Playwright's press opens its window before the focus.
+                    if let Some(navigation) = navigation.as_mut() {
+                        navigation.input_begins()?;
+                    }
                     crate::page::keyboard::focus(tab, &ready.element, &operation).await?;
                     Some(ready.named)
                 } else {
-                    crate::page::keyboard::current_focus(tab, references, &operation)
+                    let named = crate::page::keyboard::current_focus(tab, references, &operation)
                         .await?
-                        .1
+                        .1;
+                    if let Some(navigation) = navigation.as_mut() {
+                        navigation.input_begins()?;
+                    }
+                    named
                 };
                 crate::page::keyboard::press(tab, &keys, &operation).await?;
                 let mut result = action_result(
@@ -699,25 +716,19 @@ pub async fn command_admitted(
                 )
                 .await?;
                 if checkable.state.needs_check(input.checked())? {
-                    let element::Ready { element, state, .. } = crate::page::element::ready(
-                        tab,
-                        required_target(&target)?,
-                        references,
-                        element::CLICK,
-                        &operation,
-                    )
-                    .await?;
-                    if state.needs_check(input.checked())? {
-                        crate::page::pointer::click_at(
+                    let (element::Ready { element, .. }, _) =
+                        crate::page::pointer::click_target(
                             tab,
-                            state.point(),
+                            required_target(&target)?,
+                            references,
                             MouseButton::Left,
                             1,
                             0,
                             &operation,
+                            |state| state.needs_check(input.checked()),
+                            None,
                         )
                         .await?;
-                    }
                     let state = operation
                         .run(element::state(tab.page(), &element, &[], false))
                         .await?;
@@ -803,7 +814,7 @@ pub async fn command_admitted(
                 } else if let Some(load) = input.load {
                     crate::tabs::navigation::wait_current_load(tab.page(), load).await?;
                 } else {
-                    let mut pauses = element::CheckPauses::default();
+                    let mut pauses = element::CheckPauses::wait();
                     loop {
                         let observation = Observation::capture(tab.page(), references).await?;
                         let target = required_target(&target)?;
@@ -817,7 +828,7 @@ pub async fn command_admitted(
                             {
                                 // A locator can find a node inserted after the DOM snapshot.
                                 // Resample it without treating the race as disappearance.
-                                pauses.wait().await;
+                                pauses.wait_next().await;
                                 continue;
                             }
                             Err(error) => return Err(error),
@@ -845,7 +856,7 @@ pub async fn command_admitted(
                                 .transpose()?;
                             break;
                         }
-                        pauses.wait().await;
+                        pauses.wait_next().await;
                     }
                 }
                 Ok(TabResult::Wait(result))
@@ -940,7 +951,7 @@ pub async fn command_admitted(
     ) {
         Ok(())
     } else {
-        crate::page::element::release_objects(tab).await
+        crate::page::element::release_objects(tab, references).await
     };
     let result = crate::driver::operation::after_cleanup(result, cleanup);
     let result = match (result, opened_before) {
@@ -1017,10 +1028,10 @@ async fn action_result(
             .run(async {
                 if let Some(pattern) = wait_url {
                     observation.wait_url(tab.page(), pattern).await?;
-                } else if operation == "click" {
-                    observation
-                        .wait_load(Load::DomContentLoaded, true, deadline)
-                        .await?;
+                } else if matches!(operation, "click" | "key") {
+                    // Playwright's click and press wait for the navigation
+                    // their input starts; its fill, type and check do not.
+                    observation.wait_started(tab, deadline).await?;
                 }
                 Ok(())
             })

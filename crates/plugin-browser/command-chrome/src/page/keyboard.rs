@@ -423,6 +423,7 @@ pub(crate) async fn current_focus(
                         ))
                         .await?
                     {
+                        references.hold(&related);
                         page = related;
                     }
                     context = Some(
@@ -442,6 +443,11 @@ pub(crate) async fn current_focus(
             };
             if matches!(node.local_name.as_str(), "body" | "html") {
                 return Ok((target, None));
+            }
+            if context.is_none() {
+                let named =
+                    crate::page::locate::named_in_main(tab.page(), &target, references).await?;
+                return Ok((target, named));
             }
             let observation =
                 crate::page::observation::Observation::capture(tab.page(), references).await?;

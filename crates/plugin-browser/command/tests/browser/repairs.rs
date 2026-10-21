@@ -929,6 +929,253 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
     .await;
 }
 
+/// A click or a key press waits for the navigation it starts, as Playwright's
+/// click and press do, and for no clock: a page that navigates once its click
+/// handler was told to, after it told the test the click arrived, is the
+/// next command's to wait for.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn a_click_or_a_key_waits_for_the_navigation_it_starts_and_no_other() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        let clicked = command(&tab, "click", json!({"css": "#go-destination"})).await?;
+        assert_eq!(clicked["url"], format!("{base}/destination"));
+        assert_eq!(
+            command(&tab, "read", json!({"css": "h1", "property": "text"})).await?["value"],
+            "Arrived"
+        );
+        command(&tab, "goto", json!({"url": base})).await?;
+        let pressed = command(
+            &tab,
+            "key",
+            json!({"css": "#go-destination", "key": "Enter"}),
+        )
+        .await?;
+        assert_eq!(pressed["url"], format!("{base}/destination"));
+        assert_eq!(
+            command(&tab, "read", json!({"css": "h1", "property": "text"})).await?["value"],
+            "Arrived"
+        );
+        command(&tab, "goto", json!({"url": base})).await?;
+        let (clicked, ()) = tokio::join!(
+            command(&tab, "click", json!({"css": "#later-hash"})),
+            async {
+                reqwest::get(format!("{base}/wait-typing")).await.unwrap();
+                reqwest::get(format!("{base}/release-load")).await.unwrap();
+            }
+        );
+        assert_eq!(clicked?["url"], format!("{base}/"));
+        command(&tab, "wait", json!({"url": "**#later"})).await?;
+        Ok(())
+    })
+    .await;
+}
+
+/// A navigation the page starts while a click locates and checks its
+/// element, here as the click scrolls the element into view, is not the
+/// click's: its end without a document does not end the click's wait for the
+/// navigation the click itself starts.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn a_click_waits_for_its_navigation_not_one_started_before_its_input() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(
+                &format!("{base}/navigate-on-scroll"),
+                &CancellationToken::new(),
+                TIMEOUT,
+            )
+            .await?;
+        let clicked = command(&tab, "click", json!({"css": "#far"})).await?;
+        assert_eq!(clicked["url"], format!("{base}/destination"));
+        assert_eq!(
+            command(&tab, "read", json!({"css": "h1", "property": "text"})).await?["value"],
+            "Arrived"
+        );
+        Ok(())
+    })
+    .await;
+}
+
+/// A dialog that opens after a click's interceptor is installed and before
+/// its press, with the press then landing elsewhere, leaves no interceptor
+/// behind: once the dialog is closed a click on another element reaches it.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn an_interceptor_a_dialog_held_is_stopped_once_it_closes() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        assert_eq!(
+            command(&tab, "click", json!({"css": "#move-alert"}))
+                .await
+                .unwrap_err()
+                .code()
+                .to_string(),
+            "dialog_blocked"
+        );
+        command(&tab, "dialog.dismiss", json!({})).await?;
+        click(&tab, "#no-nav").await?;
+        assert_eq!(
+            evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT).await?,
+            1
+        );
+        Ok(())
+    })
+    .await;
+}
+
+/// The locators an action resolves in the main document alone mean what
+/// they mean on the whole page: a role in any case, `--nth` on a reference,
+/// and Playwright's disabled rule, which takes the first valid token of
+/// `role` and the roles elements imply.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn main_document_targets_keep_the_whole_pages_meaning() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&format!("{base}/frameless"), &CancellationToken::new(), TIMEOUT)
+            .await?;
+        command(&tab, "wait", json!({"load": "load"})).await?;
+        let clicked = command(&tab, "click", json!({"role": "descriptionlist"})).await?;
+        assert_eq!(clicked["target"]["role"], "DescriptionList");
+        let reference =
+            command(&tab, "find", json!({"css": "#no-nav"})).await?["matches"][0]["ref"].clone();
+        error(
+            command(
+                &tab,
+                "click",
+                json!({"ref": reference, "nth": 1, "timeout": 500}),
+            )
+            .await,
+            "target_not_found",
+            "not_started",
+        );
+        for css in ["#role-token-disabled", "#separator-disabled"] {
+            assert_eq!(
+                command(&tab, "read", json!({"css": css, "property": "enabled"})).await?["value"],
+                false,
+                "{css}"
+            );
+        }
+        Ok(())
+    })
+    .await;
+}
+
+/// A command's cleanup that fails partway, as when a dialog keeps a frame's
+/// renderer from answering, forgets only the sessions it released: the
+/// others stay for the next command's cleanup.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn a_cleanup_that_fails_keeps_the_sessions_it_did_not_release() {
+    with_fixture(|browser, base| async move {
+        let first = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        let second = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        let blocked = second.page().target_id().clone();
+        let mut session = first.state().gate.try_checkout().unwrap();
+        session.references.hold(first.page());
+        session.references.hold(second.page());
+        let mut released = Vec::new();
+        let failed = session
+            .references
+            .release_holders(|page| {
+                let ok = *page.target_id() != blocked;
+                if ok {
+                    released.push(page.target_id().clone());
+                }
+                async move {
+                    if ok {
+                        Ok(())
+                    } else {
+                        Err(demi_command_package_browser_chrome::driver::operation::BrowserError::Timeout)
+                    }
+                }
+            })
+            .await;
+        assert!(failed.is_err());
+        let mut kept = Vec::new();
+        session
+            .references
+            .release_holders(|page| {
+                kept.push(page.target_id().clone());
+                async { Ok(()) }
+            })
+            .await?;
+        assert!(kept.contains(&blocked));
+        assert!(released.iter().all(|id| !kept.contains(id)));
+        Ok(())
+    })
+    .await;
+}
+
+/// A cover that appears over a button as the pointer reaches it, the way a
+/// layout shift between the checks and the input does, takes none of the
+/// click: the click's events are stopped before the page sees them, and the
+/// click checks the button again and lands on it once the cover is gone.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn a_click_diverted_after_its_checks_is_checked_and_sent_again() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        click(&tab, "#shifting").await?;
+        assert_eq!(
+            command(&tab, "read", json!({"css": "#shifting", "attribute": "data-clicks"})).await?
+                ["value"],
+            "1"
+        );
+        assert_eq!(
+            evaluation::evaluate(&tab, "coverClicks", &CancellationToken::new(), TIMEOUT).await?,
+            0
+        );
+        Ok(())
+    })
+    .await;
+}
+
+/// A dialog the press opens holds the click's release, which went out with
+/// the press; once the dialog is closed the page receives that release and
+/// no second one.
+#[tokio::test]
+#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
+async fn a_dialog_opened_by_a_press_gets_the_click_released_once() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(&base, &CancellationToken::new(), TIMEOUT)
+            .await?;
+        assert_eq!(
+            command(&tab, "click", json!({"css": "#press-alert"}))
+                .await
+                .unwrap_err()
+                .code()
+                .to_string(),
+            "dialog_blocked"
+        );
+        command(&tab, "dialog.dismiss", json!({})).await?;
+        command(
+            &tab,
+            "wait",
+            json!({"css": "#press-alert[data-clicked]", "state": "attached"}),
+        )
+        .await?;
+        assert_eq!(
+            evaluation::evaluate(&tab, "pressEvents", &CancellationToken::new(), TIMEOUT).await?,
+            json!(["mousedown", "mouseup", "click"])
+        );
+        Ok(())
+    })
+    .await;
+}
+
 #[tokio::test]
 #[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
 async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() {

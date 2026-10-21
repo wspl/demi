@@ -37,6 +37,11 @@ async fn clipboard_roundtrips_raw_text_html_png_and_page_api() {
         fixture
             .call("browser.click", json!({"tab":tab,"css":"#read"}))
             .await;
+        // The page's clipboard call settles after the click, which waits
+        // for no promise of the page's.
+        fixture
+            .call("browser.wait", json!({"tab":tab,"css":"#read[data-done]","state":"attached"}))
+            .await;
         assert_eq!(
             fixture
                 .call(
@@ -127,6 +132,11 @@ async fn clipboard_roundtrips_raw_text_html_png_and_page_api() {
         assert_eq!(code, 2, "{error}");
         fixture
             .call("browser.click", json!({"tab":tab,"css":"#write"}))
+            .await;
+        // The page's clipboard call settles after the click, which waits
+        // for no promise of the page's.
+        fixture
+            .call("browser.wait", json!({"tab":tab,"css":"#write[data-done]","state":"attached"}))
             .await;
         assert_eq!(
             fixture

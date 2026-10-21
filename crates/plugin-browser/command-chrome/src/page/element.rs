@@ -40,6 +40,16 @@ pub(crate) struct TargetElement {
 
 pub(crate) const OBJECT_GROUP: &str = "demi-browser-command";
 
+/// The page function of the checks before an action (`element-state.js`),
+/// with the shared ARIA role resolution (`aria-role.js`) in its scope.
+pub(crate) static ELEMENT_STATE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    format!(
+        "async function(...args) {{ const aria = ({})(); return ({}).apply(this, args); }}",
+        include_str!("aria-role.js"),
+        include_str!("element-state.js"),
+    )
+});
+
 impl TargetElement {
     /// Resolve an observed browser node in one CDP request without another DOM scan.
     pub async fn resolve(page: &Page, backend_node_id: BackendNodeId) -> Result<Self> {
@@ -155,24 +165,38 @@ async fn call_with_gesture<T: DeserializeOwned>(
     args: Vec<Value>,
     user_gesture: bool,
 ) -> Result<T> {
-    let result = element
-        .page
-        .evaluate_function(
-            CallFunctionOnParams::builder()
-                .object_id(element.remote_object_id.clone())
-                .function_declaration(script)
-                .arguments(
-                    args.into_iter()
-                        .map(|value| CallArgument::builder().value(value).build())
-                        .collect::<Vec<_>>(),
-                )
-                .await_promise(true)
-                .user_gesture(user_gesture)
-                .return_by_value(true)
-                .build()
-                .map_err(BrowserError::Configuration)?,
+    let mut call = function_call(element, script, args)?;
+    call.user_gesture = Some(user_gesture);
+    evaluated(&element.page, call).await
+}
+
+/// The call of the page function `script` on `element` with `args`, awaiting
+/// its promise and answering its value as JSON.
+pub(crate) fn function_call(
+    element: &TargetElement,
+    script: &str,
+    args: Vec<Value>,
+) -> Result<CallFunctionOnParams> {
+    CallFunctionOnParams::builder()
+        .object_id(element.remote_object_id.clone())
+        .function_declaration(script)
+        .arguments(
+            args.into_iter()
+                .map(|value| CallArgument::builder().value(value).build())
+                .collect::<Vec<_>>(),
         )
-        .await?;
+        .await_promise(true)
+        .return_by_value(true)
+        .build()
+        .map_err(BrowserError::Configuration)
+}
+
+/// Runs `call` in `page` and validates its returned payload at CDP entry.
+pub(crate) async fn evaluated<T: DeserializeOwned>(
+    page: &Page,
+    call: CallFunctionOnParams,
+) -> Result<T> {
+    let result = page.evaluate_function(call).await?;
     let object = result.object();
     let value = match &object.value {
         Some(value) => value.clone(),
@@ -201,7 +225,7 @@ pub(crate) async fn state(
     let mut result: ElementState = call(
         page,
         element,
-        include_str!("element-state.js"),
+        &ELEMENT_STATE,
         vec![json!(conditions), json!(scroll)],
     )
     .await?;
@@ -210,7 +234,7 @@ pub(crate) async fn state(
         let state: ElementState = call(
             page,
             &frame,
-            include_str!("element-state.js"),
+            &ELEMENT_STATE,
             vec![json!([]), json!(false)],
         )
         .await?;
@@ -249,14 +273,46 @@ pub(crate) async fn single(
     }
 }
 
+/// How an action brings its element into view, as Playwright does: only when
+/// it is out of view on the first check, and on each retry aligned in turn to
+/// the end, the center and the start, so that an element a sticky header or
+/// footer covers comes out from under it.
+#[derive(Clone, Copy)]
+pub(crate) enum Scroll {
+    None,
+    IfNeeded,
+    Align(&'static str),
+}
+
+impl Scroll {
+    /// The scroll of an action's check number `attempt`, the first being 0.
+    pub(crate) fn attempt(attempt: usize) -> Self {
+        match attempt % 4 {
+            0 => Self::IfNeeded,
+            1 => Self::Align("end"),
+            2 => Self::Align("center"),
+            _ => Self::Align("start"),
+        }
+    }
+
+    fn argument(self) -> Value {
+        match self {
+            Self::None => json!(false),
+            Self::IfNeeded => json!(true),
+            Self::Align(alignment) => json!(alignment),
+        }
+    }
+}
+
 /// Scroll and hit-test each browser frame boundary using its own CDP session.
 pub(crate) async fn prepared_state(
     page: &Page,
     target: &TargetElement,
     conditions: &[&str],
-    scroll: bool,
+    scroll: Scroll,
     operation: &crate::driver::operation::Operation<'_>,
 ) -> Result<ElementState> {
+    let scrolls = !matches!(scroll, Scroll::None);
     let mut frames = Vec::new();
     for (page, backend) in &target.frame_chain {
         frames.push(
@@ -268,19 +324,19 @@ pub(crate) async fn prepared_state(
     // Scrolling the target can scroll its ancestors, including an OOPIF's
     // embedding document. Finish every scroll before observing stability in
     // those documents; otherwise input can race the parent's compositor update.
-    if scroll {
+    if scrolls {
         for element in frames.iter().rev().chain(std::iter::once(target)) {
             operation
                 .run(call::<ElementState>(
                     &element.page,
                     element,
-                    include_str!("element-state.js"),
-                    vec![json!([]), json!(true)],
+                    &ELEMENT_STATE,
+                    vec![json!([]), scroll.argument()],
                 ))
                 .await?;
         }
     }
-    if scroll && !frames.is_empty() && conditions.contains(&"geometry") {
+    if scrolls && !frames.is_empty() && conditions.contains(&"geometry") {
         // DOM animation frames do not flush the browser process's OOPIF transform.
         operation.run(crate::tabs::viewport::paint(page)).await?;
     }
@@ -309,7 +365,7 @@ pub(crate) async fn prepared_state(
                 .run(call(
                     &frame.page,
                     frame,
-                    include_str!("element-state.js"),
+                    &ELEMENT_STATE,
                     vec![
                         json!(["visible", "geometry", "hit"]),
                         json!(false),
@@ -339,7 +395,7 @@ async fn local_prepared_state(
         .run(call(
             page,
             target,
-            include_str!("element-state.js"),
+            &ELEMENT_STATE,
             vec![json!(conditions), json!(false), json!(probe), json!(false)],
         ))
         .await;
@@ -349,7 +405,7 @@ async fn local_prepared_state(
             call::<Option<Value>>(
                 page,
                 target,
-                include_str!("element-state.js"),
+                &ELEMENT_STATE,
                 vec![json!([]), json!(false), json!(probe), json!(true)],
             ),
         )
@@ -385,8 +441,7 @@ pub(crate) async fn call_with_states<T: DeserializeOwned>(
 ) -> Result<T> {
     let script = format!(
         "async function(...args) {{ const elementState = ({}); return ({}).apply(this, args); }}",
-        include_str!("element-state.js"),
-        script
+        *ELEMENT_STATE, script
     );
     call(page, target, &script, args).await
 }
@@ -396,39 +451,39 @@ pub(crate) async fn frame_offset(frame: &TargetElement) -> Result<[f64; 2]> {
     call(&frame.page, frame, "function() { const box = this.getBoundingClientRect(); return [box.left + this.clientLeft, box.top + this.clientTop]; }", vec![]).await
 }
 
-/// Release command-owned browser objects without blocking on an open dialog.
-pub(crate) async fn release_objects(tab: &BrowserTab) -> Result<()> {
+/// Release command-owned browser objects without blocking on an open dialog,
+/// in the tab's own session and in the frame sessions the command read.
+pub(crate) async fn release_objects(tab: &BrowserTab, references: &mut References) -> Result<()> {
     // Chrome cannot answer Runtime commands while a dialog is open. The next
     // ordinary command releases the group; context destruction also releases it.
     if tab.state().dialog.is_open() || tab.ended().is_cancelled() {
         return Ok(());
     }
-    let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
-        let snapshot = crate::driver::frames::capture(tab.page()).await?;
-        let mut released = std::collections::HashSet::new();
-        for document in snapshot.frames {
-            if released.insert(document.page.target_id().clone()) {
-                document
-                    .page
-                    .execute(
-                        chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
-                            OBJECT_GROUP,
-                        ),
-                    )
-                    .await?;
-            }
-        }
-        Ok::<_, BrowserError>(())
+    tokio::time::timeout(CONTROL_TIMEOUT, async {
+        release_group(tab.page().clone()).await?;
+        references.release_holders(release_group).await
     })
     .await
     .map_err(|_| BrowserError::Timeout)
-    .and_then(std::convert::identity);
-    // A destroyed tab or connection no longer retains remote objects.
-    match cleanup {
-        Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
+    .and_then(std::convert::identity)
+}
+
+/// Releases the command's object group in `page`'s session.
+async fn release_group(page: Page) -> Result<()> {
+    let released = page
+        .execute(chromiumoxide::cdp::js_protocol::runtime::ReleaseObjectGroupParams::new(
+            OBJECT_GROUP,
+        ))
+        .await
+        .map_err(BrowserError::from);
+    match released {
+        // A tab or a frame's renderer that went away, or a lost connection,
+        // took its objects along.
+        Ok(_)
+        | Err(BrowserError::Closed | BrowserError::Connection(_) | BrowserError::TabNotFound) => {
             Ok(())
         }
-        result => result,
+        Err(error) => Err(error),
     }
 }
 
@@ -440,28 +495,54 @@ pub(crate) struct Ready {
     pub named: ResolvedElement,
 }
 
-/// The pauses between a wait's checks of its condition: after the first check,
-/// 20, 50, 100 and 100 ms, then 500 ms each, so that a long wait costs the page
-/// almost nothing.
-#[derive(Default)]
+/// The pauses between checks of a condition, Playwright's two schedules: an
+/// action checks again at once after its first failed check, then after 20,
+/// 100 and 100 ms, then every 500 ms (its `_retryAction`); a wait checks again
+/// after 20, 50, 100 and 100 ms, then every 500 ms (its `waitFor`'s backoff).
+/// Either way a long wait costs the page almost nothing.
 pub(crate) struct CheckPauses {
+    first: &'static [Duration],
     taken: usize,
 }
 
 impl CheckPauses {
-    const FIRST: [Duration; 4] = [
+    const THEN: Duration = Duration::from_millis(500);
+    const ACTION: [Duration; 4] = [
+        Duration::ZERO,
+        Duration::from_millis(20),
+        Duration::from_millis(100),
+        Duration::from_millis(100),
+    ];
+    const WAIT: [Duration; 4] = [
         Duration::from_millis(20),
         Duration::from_millis(50),
         Duration::from_millis(100),
         Duration::from_millis(100),
     ];
-    const THEN: Duration = Duration::from_millis(500);
+
+    /// An action's pauses before it checks its element again.
+    pub(crate) fn action() -> Self {
+        Self {
+            first: &Self::ACTION,
+            taken: 0,
+        }
+    }
+
+    /// A wait's pauses before it checks its condition again.
+    pub(crate) fn wait() -> Self {
+        Self {
+            first: &Self::WAIT,
+            taken: 0,
+        }
+    }
 
     /// Waits out the pause before the next check.
-    pub(crate) async fn wait(&mut self) {
-        let pause = Self::FIRST.get(self.taken).copied().unwrap_or(Self::THEN);
+    pub(crate) async fn wait_next(&mut self) {
+        let pause = self.first.get(self.taken).copied().unwrap_or(Self::THEN);
         self.taken += 1;
-        tokio::time::sleep(pause).await;
+        if !pause.is_zero() {
+            tokio::time::sleep(pause).await;
+        }
     }
 }
 
@@ -485,24 +566,29 @@ pub(crate) async fn ready_with_failure(
     operation: &Operation<'_>,
     last_failure: &mut Option<BrowserError>,
 ) -> Result<Ready> {
-    let mut pauses = CheckPauses::default();
+    let mut pauses = CheckPauses::action();
+    let mut attempt = 0;
     loop {
-        let attempt = async {
-            let observation = operation
-                .run(Observation::capture(tab.page(), references))
-                .await?;
-            let matches = match operation
-                .run(observation.resolve(tab.page(), target, references))
+        let scroll = if conditions.contains(&"visible") || conditions.contains(&"geometry") {
+            Scroll::attempt(attempt)
+        } else {
+            Scroll::None
+        };
+        attempt += 1;
+        let check = async {
+            let located = match operation
+                .run(Located::resolve(tab.page(), target, references))
                 .await
             {
-                Ok(matches) => matches,
+                Ok(located) => Some(located),
                 // The locator can see an insertion after its DOM snapshot.
                 // No input has been delivered; the readiness loop resamples.
-                Err(BrowserError::StaleReference) if can_resample(target) => Vec::new(),
+                Err(BrowserError::StaleReference) if can_resample(target) => None,
                 Err(error) => return Err(error),
             };
-            let selected = operation.run(single(tab.page(), matches)).await?;
-            if let Some(element) = selected {
+            if let Some((located, matches)) = located
+                && let Some(element) = operation.run(single(tab.page(), matches)).await?
+            {
                 last_failure.get_or_insert_with(|| BrowserError::NotActionable {
                     condition: if conditions.contains(&"stable") {
                         "stable"
@@ -512,16 +598,12 @@ pub(crate) async fn ready_with_failure(
                     .into(),
                     interceptor: None,
                 });
-                let state = prepared_state(
-                    tab.page(),
-                    &element,
-                    conditions,
-                    conditions.contains(&"visible") || conditions.contains(&"geometry"),
-                    operation,
-                )
-                .await?;
+                let state =
+                    prepared_state(tab.page(), &element, conditions, scroll, operation).await?;
                 if state.failed.is_none() {
-                    let named = observation.named(&element, references)?;
+                    let named = operation
+                        .run(located.named(tab.page(), &element, references))
+                        .await?;
                     return Ok(Some(Ready {
                         element,
                         state,
@@ -535,14 +617,14 @@ pub(crate) async fn ready_with_failure(
             }
             operation
                 .run(async {
-                    pauses.wait().await;
+                    pauses.wait_next().await;
                     Ok(())
                 })
                 .await?;
             Ok(None)
         }
         .await;
-        match attempt {
+        match check {
             Ok(Some(element)) => return Ok(element),
             Ok(None) => {}
             Err(error) if error.is_deadline() => {
@@ -555,9 +637,57 @@ pub(crate) async fn ready_with_failure(
     }
 }
 
+/// Where a target's matches came from, which names the one an action takes.
+enum Located {
+    Direct(crate::page::locate::Direct),
+    Observed(Observation),
+}
+
+impl Located {
+    /// The target's matches: in the main document when it alone answers
+    /// them, otherwise from the whole page.
+    async fn resolve(
+        page: &Page,
+        target: &BrowserTarget,
+        references: &mut References,
+    ) -> Result<(Self, Vec<TargetElement>)> {
+        if let Some((direct, matches)) =
+            crate::page::locate::resolve(page, target, references).await?
+        {
+            return Ok((Self::Direct(direct), matches));
+        }
+        let observation = Observation::capture(page, references).await?;
+        let matches = observation.resolve(page, target, references).await?;
+        Ok((Self::Observed(observation), matches))
+    }
+
+    async fn named(
+        &self,
+        page: &Page,
+        element: &TargetElement,
+        references: &mut References,
+    ) -> Result<ResolvedElement> {
+        match self {
+            Self::Direct(direct) => direct.named(page, element, references).await,
+            Self::Observed(observation) => observation.named(element, references),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The check times of a pause schedule over a quiet minute.
+    async fn checks(mut pauses: CheckPauses) -> Vec<u128> {
+        let start = tokio::time::Instant::now();
+        let mut checks = Vec::new();
+        while start.elapsed() < Duration::from_secs(60) {
+            checks.push(start.elapsed().as_millis());
+            pauses.wait_next().await;
+        }
+        checks
+    }
 
     /// A wait checks its condition at once, then after 20, 50, 100 and 100
     /// ms, then every 500 ms: a quiet minute's wait
@@ -565,14 +695,16 @@ mod tests {
     /// times, which kept the browser busy for as long as it waited.
     #[tokio::test(start_paused = true)]
     async fn a_wait_checks_quickly_at_first_and_then_every_half_second() {
-        let start = tokio::time::Instant::now();
-        let mut pauses = CheckPauses::default();
-        let mut checks = Vec::new();
-        while start.elapsed() < Duration::from_secs(60) {
-            checks.push(start.elapsed().as_millis());
-            pauses.wait().await;
-        }
+        let checks = checks(CheckPauses::wait()).await;
         assert_eq!(checks[..7], [0, 20, 70, 170, 270, 770, 1270]);
         assert_eq!(checks.len(), 124);
+    }
+
+    /// An action checks its element again at once, as Playwright retries an
+    /// action, then after 20, 100 and 100 ms, then every 500 ms.
+    #[tokio::test(start_paused = true)]
+    async fn an_action_checks_again_at_once_then_as_playwright_retries() {
+        let checks = checks(CheckPauses::action()).await;
+        assert_eq!(checks[..7], [0, 0, 20, 120, 220, 720, 1220]);
     }
 }
