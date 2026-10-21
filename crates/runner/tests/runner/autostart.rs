@@ -146,6 +146,7 @@ async fn a_runner_keeps_its_installations_registration_with_the_service_manager(
         } else {
             for expected in [
                 format!("ExecStart=\"{}\" run --log\nEnvironment=DEMI_SUPERVISED=1\n", launcher.display()),
+                format!("WorkingDirectory={}\n", home.display()),
                 "Restart=on-failure\nRestartSec=10\n".into(),
                 "WantedBy=default.target\n".into(),
             ] {

@@ -303,6 +303,14 @@ fn word(value: &str) -> String {
     format!("\"{escaped}\"")
 }
 
+/// `value` as a unit setting's path, which systemd takes whole: unquoted,
+/// since an older systemd, such as Debian 10's 241, refuses a quoted
+/// `WorkingDirectory` as not absolute; only its specifiers' `%` is escaped.
+#[cfg(target_os = "linux")]
+fn path(value: &str) -> String {
+    value.replace('%', "%%")
+}
+
 /// The unit: the launcher with `run --log`, named the manager's runner by
 /// [`SUPERVISED`], at boot with lingering or at the user's first login,
 /// again 10 s after a failure; its output goes nowhere, since the runner
@@ -326,7 +334,7 @@ fn unit(launcher: &str, home: &str, directory: &str) -> String {
          WantedBy=default.target\n",
         directory = directory.replace('%', "%%"),
         launcher = word(launcher),
-        home = word(home),
+        home = path(home),
     )
 }
 
