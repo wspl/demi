@@ -163,7 +163,8 @@
     "readAgainFailed": "The read failed.",
     "notInWorkspaceTitle": "Not in This Workspace",
     "notInWorkspace": "The tree shows {name} only.",
-    "imageFailed": "Couldn’t show this image."
+    "imageFailed": "Couldn’t show this image.",
+    "videoFailed": "Couldn’t show this video."
   },
   "changes": {
     "commits": "Commits",

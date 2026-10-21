@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
+import { t as files } from '../files/locales/text'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ImageOff } from '@lucide/vue'
 import { transcriptRowOf, useMediaViewer } from '../files/media-viewer'
@@ -66,13 +67,13 @@ onBeforeUnmount(() => {
 <template>
   <Tooltip
     v-if="failed"
-    :content="`Could not show this ${picture.kind}.`"
+    :content="picture.kind === 'image' ? files('view.imageFailed') : files('view.videoFailed')"
     class="flex shrink-0 items-center"
   >
     <span
       class="flex items-center justify-center rounded border border-line-subtle text-fg-faint"
       :style="{ width: `${box.width}px`, height: `${box.height}px` }"
-      :aria-label="`Could not show this ${picture.kind}.`"
+      :aria-label="picture.kind === 'image' ? files('view.imageFailed') : files('view.videoFailed')"
       role="img"
     >
       <ImageOff :size="12" />

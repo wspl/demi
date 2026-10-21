@@ -163,7 +163,8 @@
     "readAgainFailed": "读取失败。",
     "notInWorkspaceTitle": "不在此工作空间",
     "notInWorkspace": "文件树仅显示 {name}。",
-    "imageFailed": "无法显示此图像。"
+    "imageFailed": "无法显示此图像。",
+    "videoFailed": "无法显示此视频。"
   },
   "changes": {
     "commits": "提交",

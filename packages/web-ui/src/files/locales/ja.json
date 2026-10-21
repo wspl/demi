@@ -163,7 +163,8 @@
     "readAgainFailed": "読み取りに失敗しました。",
     "notInWorkspaceTitle": "このワークスペースにありません",
     "notInWorkspace": "ツリーには {name} のみが表示されます。",
-    "imageFailed": "この画像を表示できませんでした。"
+    "imageFailed": "この画像を表示できませんでした。",
+    "videoFailed": "この動画を表示できませんでした。"
   },
   "changes": {
     "commits": "コミット",

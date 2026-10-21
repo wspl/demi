@@ -119,7 +119,7 @@ test('a video whose source arrives while its tab is hidden does not start, and w
 })
 
 // Planted defect this catches: the player made before the file has an
-// address, which a web browser fails, so the user returns to "Could not show
+// address, which a web browser fails, so the user returns to "Couldn’t show
 // this video" until the file's description arrives.
 test('a tab hidden while its video\'s file is asked for shows no failure once shown again, then the file', async () => {
   const { root, viewer, shown } = mountTab()
@@ -135,9 +135,9 @@ test('a tab hidden while its video\'s file is asked for shows no failure once sh
 
   shown.value = true
   await settle()
-  expect(root.textContent).not.toContain('Could not show this video.')
+  expect(root.textContent).not.toContain('Couldn’t show this video.')
   host.describe()
   await settle()
-  expect(root.textContent).not.toContain('Could not show this video.')
+  expect(root.textContent).not.toContain('Couldn’t show this video.')
   expect(root.querySelector('video')?.getAttribute('src')).toBe('/raw?path=/work/clip.webm')
 })

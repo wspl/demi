@@ -163,7 +163,8 @@
     "readAgainFailed": "읽기에 실패했습니다.",
     "notInWorkspaceTitle": "이 워크스페이스에 없음",
     "notInWorkspace": "트리에는 {name}만 표시됩니다.",
-    "imageFailed": "이 이미지를 표시할 수 없습니다."
+    "imageFailed": "이 이미지를 표시할 수 없습니다.",
+    "videoFailed": "이 동영상을 표시할 수 없습니다."
   },
   "changes": {
     "commits": "커밋",

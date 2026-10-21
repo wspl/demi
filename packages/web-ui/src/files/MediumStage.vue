@@ -2,6 +2,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
 import { mediumKey, useMediumSource, type ShownMedium } from './media-viewer'
@@ -129,7 +130,7 @@ function onSize(width: number, height: number): void {
 
 <template>
   <div class="relative h-full w-full">
-    <RegionStatus v-if="failed || gone" class="h-full" status="failed" :label="`Could not show this ${medium.kind}.`" />
+    <RegionStatus v-if="failed || gone" class="h-full" status="failed" :label="medium.kind === 'image' ? t('view.imageFailed') : t('view.videoFailed')" />
     <ImagePreview
       v-else-if="resolved !== null && medium.kind === 'image' && src"
       :key="mediumKey(medium)"
