@@ -9,8 +9,8 @@ import FunctionalBlock from './FunctionalBlock.vue'
 
 /**
  * The transcript's tail row while it waits: a FunctionalBlock face with the
- * wait mark and why. What follows the wait, a step, the answer or a Stop,
- * takes the row's place and rolls over it (`RowRoll`).
+ * wait mark and why. A step or a Stop that follows the wait takes the row's
+ * place and rolls over it (`RowRoll`); the answer or a failure appears in it.
  */
 const props = defineProps<{
   kind: ActivityKind

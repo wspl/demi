@@ -5,7 +5,7 @@ import { addPage, EMPTY_TRANSCRIPT, heldBlocks } from '@demicodes/conversation-c
 import { useMessageRows as rowsOf, type MessageRows, type MessageRowsSource as ListSource } from '../message-rows'
 import { useOpenRuns } from '../open-runs'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
-import { rowKey } from '../row-key'
+import { rowFace, rowKey } from '../row-key'
 import type { TerminalPhase, TerminalRecord } from '../terminals'
 import { createdAt, model, userBlock } from './agent-harness'
 
@@ -117,22 +117,22 @@ function answered(): MessageRowsSource {
 
 /**
  * Follows the rows the list draws over the changes the page receives, in
- * the order it receives them. Whatever replaces a row takes its key, so a
- * row drawn before is drawn still after any change the user did not make, and
- * no key is drawn twice. `gives` names the keys a change the user asked for
- * lets go, as the Requesting row of a Continue gives way to a step that joins
- * the run above it.
+ * the order it receives them. A row goes only in the change that draws a new
+ * one, so the list is never a row shorter for a frame, and no key is drawn
+ * twice.
  */
 function follow(state: MessageRowsSource) {
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   let previous = drawnRows(list)
-  const step = async (name: string, change: () => void, gives: string[] = []): Promise<string[]> => {
+  const step = async (name: string, change: () => void): Promise<string[]> => {
     change()
     await nextTick()
     const now = drawnRows(list)
     expect({ name, twice: now.filter((key, index) => now.indexOf(key) !== index) }).toEqual({ name, twice: [] })
-    expect({ name, lost: previous.filter((key) => !now.includes(key)) }).toEqual({ name, lost: gives })
+    const lost = previous.filter((key) => !now.includes(key))
+    const added = now.filter((key) => !previous.includes(key))
+    expect({ name, lost: lost.slice(added.length) }).toEqual({ name, lost: [] })
     previous = now
     return now
   }
@@ -282,15 +282,16 @@ const sentAndWritten: Change[] = [
 const workedOn = (...end: Block[]): Block[] => [userBlock('u-1', 'm-1', 'Fix the login test.'), call('c-1', 'completed'), ...end]
 
 // Each way a row gives way to the next state without the user removing it, as
-// the events reach the page: the row that showed the old state stays drawn,
-// under its key, and the row at the end keeps its key from `from` on.
+// the events reach the page. A FunctionalBlock row that follows another at the
+// end takes its key, and rolls over it; any other row that comes there is
+// drawn under its own key, and no row goes before the one that follows it
+// comes (`follow`).
 const transitions: {
   name: string
   blocks: Block[]
   phase?: MessageRowsSource['phase']
   /** The server says the agent waits for the model from the start. */
   waiting?: true
-  from: string
   changes: Change[]
 }[] = [
   {
@@ -298,7 +299,6 @@ const transitions: {
     blocks: workedOn(),
     phase: 'running',
     waiting: true,
-    from: 'stopped',
     changes: [
       ['stopped', shows(abort('x-1'))],
       ['idle', phase('idle')],
@@ -311,7 +311,6 @@ const transitions: {
   {
     name: 'an error at the end, then Resume',
     blocks: workedOn(failure('e-1')),
-    from: 'start',
     changes: [
       recover,
       acknowledged,
@@ -322,7 +321,6 @@ const transitions: {
   {
     name: 'Stop after the agent\'s words, then Continue, then the next step',
     blocks: [userBlock('u-1', 'm-1', 'Fix the login test.'), text('a-1', 'Looking.'), abort('x-1')],
-    from: 'start',
     changes: [
       recover,
       acknowledged,
@@ -334,7 +332,6 @@ const transitions: {
   {
     name: 'a turn that failed before any output, then Resume, which runs it again',
     blocks: [userBlock('u-1', 'm-1', 'Fix the login test.'), failure('e-1')],
-    from: 'start',
     changes: [
       recover,
       acknowledged,
@@ -345,7 +342,6 @@ const transitions: {
   {
     name: 'a refused Continue',
     blocks: workedOn(abort('x-1')),
-    from: 'start',
     changes: [
       recover,
       ['refused', (state) => {
@@ -356,7 +352,6 @@ const transitions: {
   {
     name: 'a refused Resume',
     blocks: workedOn(failure('e-1')),
-    from: 'start',
     changes: [
       recover,
       ['refused', (state) => {
@@ -369,7 +364,6 @@ const transitions: {
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
     waiting: true,
-    from: 'start',
     changes: [['answer', shows(text('a-1', 'Hi.'))]],
   },
   {
@@ -377,7 +371,6 @@ const transitions: {
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
     waiting: true,
-    from: 'start',
     changes: [
       ['failed', shows(failure('e-1'))],
       ['idle', phase('idle')],
@@ -388,7 +381,6 @@ const transitions: {
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
     waiting: true,
-    from: 'start',
     changes: [
       ['stopped', shows(abort('x-1'))],
       ['idle', phase('idle')],
@@ -398,13 +390,11 @@ const transitions: {
     name: 'thinking without text, then the answer',
     blocks: [userBlock('u-1', 'm-1', 'Hello.'), thinking('k-1')],
     phase: 'running',
-    from: 'start',
     changes: [['answer', append(text('a-1', 'Hi.'))]],
   },
   {
     name: 'Compacting, then the divider',
     blocks: [userBlock('u-1', 'm-1', 'Hello.'), text('a-1', 'Hi.')],
-    from: 'compacting',
     changes: [
       ['compacting', phase('compacting')],
       ['divider', (state) => {
@@ -420,7 +410,6 @@ const transitions: {
   {
     name: 'a send whose delivery fails, then Retry',
     blocks: [userBlock('u-1', 'm-1', 'Hello.'), text('a-1', 'Hi.')],
-    from: 'sent',
     changes: [
       sent,
       ['not delivered', (state) => {
@@ -437,7 +426,6 @@ const transitions: {
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
     waiting: true,
-    from: 'failed',
     changes: [
       ['failed', (state) => {
         state.failure = { label: 'The conversation could not be opened.', retry: true, requestId: null }
@@ -451,43 +439,50 @@ const transitions: {
   },
 ]
 
-test.each(transitions)('$name: no row goes while another takes its place, and the row at the end keeps its key', async ({ blocks, phase: initial, waiting, from, changes }) => {
+test.each(transitions)('$name: no row goes while another takes its place, and only a FunctionalBlock row takes the key of one at the end', async ({ blocks, phase: initial, waiting, changes }) => {
   const state = answered()
   state.blocks = blocks
   state.phase = initial ?? 'idle'
   state.waitingSince = waiting ? Date.now() : null
   const { list, step, stop } = follow(state)
-  const tail = () => list.keyOf(list.rows.value.at(-1)!)
-  let kept = from === 'start' ? tail() : null
+  const named = () => list.rows.value.map(rowKey)
+  let before = list.rows.value.at(-1)!
+  let drawn = list.keyOf(before)
+  let shown = named()
   for (const [name, change] of changes) {
     await step(name, () => change(state))
-    if (name === from) {
-      kept = tail()
-    } else if (kept !== null) {
-      expect({ name, tail: tail() }).toEqual({ name, tail: kept })
+    const after = list.rows.value.at(-1)!
+    // A new row at the end in the place of the one that ended the list.
+    if (!shown.includes(rowKey(after)) && !named().includes(rowKey(before))) {
+      const rolls = rowFace(before) !== null && rowFace(after) !== null
+      expect({ name, kept: list.keyOf(after) === drawn }).toEqual({ name, kept: rolls })
     }
+    before = after
+    drawn = list.keyOf(after)
+    shown = named()
   }
   stop()
 })
 
-// Continue after a Stop and Resume after an error. The Stopped row or the error
-// record rolls into Requesting. The turn's first step belongs to the run above,
-// as the backend stores it. It runs in the Requesting row's place, under the
-// run, whose row keeps its key. Once it ended, it joins the run and its row
-// goes, the answer taking its place.
+// Continue after a Stop and Resume after an error. The Stopped row rolls into
+// Requesting; the error record gives way to it. The turn's first step belongs
+// to the run above, as the backend stores it. It runs in the Requesting row's
+// place, under the run, whose row keeps its key. Once it ended, it joins the
+// run and its row goes, the answer taking its place.
 test.each([
-  { name: 'Continue after a Stop', record: abort('x-1'), unwind: replace('x-1', abort('x-1', true)) },
-  { name: 'Resume after an error', record: failure('e-1'), unwind: drop('e-1') },
-])('$name: the next step runs in the Requesting row\'s place and joins the run above once it ended', async ({ record, unwind }) => {
+  { name: 'Continue after a Stop', record: abort('x-1'), unwind: replace('x-1', abort('x-1', true)), rolls: true },
+  { name: 'Resume after an error', record: failure('e-1'), unwind: drop('e-1'), rolls: false },
+])('$name: the next step runs in the Requesting row\'s place and joins the run above once it ended', async ({ record, unwind, rolls }) => {
   const state = answered()
   state.blocks = workedOn(record)
   const { list, step, stop } = follow(state)
   const runRow = () => list.rows.value.filter((row) => row.type === 'work_group')
   const run = list.keyOf(runRow()[0]!)
-  const tail = list.keyOf(list.rows.value.at(-1)!)
+  const ended = list.keyOf(list.rows.value.at(-1)!)
   await step('pressed', recover[1].bind(null, state))
   expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
-  expect(list.keyOf(list.rows.value.at(-1)!)).toBe(tail)
+  const tail = list.keyOf(list.rows.value.at(-1)!)
+  expect(tail === ended).toBe(rolls)
   await step('acknowledged', acknowledged[1].bind(null, state))
   await step('unwound', () => unwind(state))
   await step('resume written', () => append(resumed('r-1'))(state))
@@ -608,7 +603,7 @@ test.each([
     asked.blocks = [...asked.blocks, text('a-2', 'Sorted.')]
   })
   expect(list.rows.value.some((each) => each.type === 'work_group')).toBe(false)
-  expect(list.keyOf(list.rows.value.at(-1)!)).toBe(requesting)
+  expect(list.keyOf(list.rows.value.at(-1)!)).toBe('a-2')
   stop()
 })
 

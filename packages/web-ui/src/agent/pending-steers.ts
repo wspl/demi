@@ -40,7 +40,7 @@ export interface ActivitySlotRow {
 /**
  * A message whose delivery failed, told under it with Retry: for a message
  * sent to start a turn, in the place of the Requesting row it replaces, which
- * Retry rolls it back into.
+ * Retry brings back.
  */
 export interface DeliveryFailureRow {
   type: 'delivery_failure'

@@ -5,7 +5,7 @@ import type { PendingAction } from './activity-slot'
 import { listTailBlocks, submissionRows, undeliveredPlaces } from './list-tail'
 import { sentMessage } from './message-delivery'
 import type { ActivitySlotRow, MessageListBlock, StepsNotSharedRow } from './pending-steers'
-import { rowKey, succeedKeys, type DrawnRow } from './row-key'
+import { rowFace, rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import { AT_REST, type AgentActivity } from './agent-activity'
@@ -122,7 +122,10 @@ export function useMessageRows(
 
   // A recovery this page asked for lasts from the press until the session
   // is idle again with nothing pending: the turn it ran ended, or the server
-  // refused it, and the record shows again.
+  // refused it, and the record shows again. It is taken as the press is told
+  // (`flush: 'sync'`): a list that reads the rows before a later watcher took
+  // it would key a list with both the record and the Requesting row, which no
+  // frame draws, and Requesting would not succeed the record.
   const recovery = ref<Recovery | null>(null)
   watch(
     [() => source().pendingAction, () => source().phase, () => source().conversationId],
@@ -136,7 +139,7 @@ export function useMessageRows(
         recovery.value = null
       }
     },
-    { immediate: true },
+    { immediate: true, flush: 'sync' },
   )
   // Where each message not delivered stands: before the first message sent
   // after it that shows, by the messages each row shows.
@@ -303,7 +306,7 @@ export function useMessageRows(
       drawn = []
       drawnScope = scope
     }
-    const next = rows.value.map((row) => ({ natural: rowKey(row), fixed: row.type === 'history_edge' }))
+    const next = rows.value.map((row) => ({ natural: rowKey(row), rolls: rowFace(row) !== null }))
     const assigned = succeedKeys(drawn, next)
     drawn = next.map((row, index) => ({ ...row, drawn: assigned[index]! }))
     return new Map(rows.value.map((row, index) => [row, assigned[index]!]))

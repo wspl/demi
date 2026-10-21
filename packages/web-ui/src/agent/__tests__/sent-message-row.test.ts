@@ -44,7 +44,7 @@ function messageRows(host: HTMLElement): { keys: string[]; leaving: number } {
     .filter((row) => row.textContent?.includes('Rename the folder'))
   return {
     keys: rows.map((row) => row.dataset.rowKey!),
-    leaving: rows.reduce((count, row) => count + row.querySelectorAll('[inert]').length, 0),
+    leaving: rows.reduce((count, row) => count + row.querySelectorAll('[data-roll-leaving]').length, 0),
   }
 }
 

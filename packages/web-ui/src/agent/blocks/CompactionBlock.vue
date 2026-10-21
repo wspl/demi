@@ -6,7 +6,7 @@ import { formatTokens } from '../../ui/token-count'
 /**
  * Where the context was compacted: a rule with what happened in it. While
  * the pass runs it says so, its words shimmering as a running row's do, at
- * the place the finished rule takes, which rolls in over it; a failed pass is
+ * the place the finished rule takes, which then appears there; a failed pass is
  * its error record instead.
  */
 defineProps<{
