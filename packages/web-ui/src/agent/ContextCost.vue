@@ -4,10 +4,11 @@ import { pageLanguage } from '../i18n/text'
 import Fold from '../ui/Fold.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import SectionRow from '../ui/SectionRow.vue'
 import { formatDollars } from '../ui/numbers'
 import CacheHitChart from './CacheHitChart.vue'
-import { type CostShown, profileRows } from './context-cost'
+import { type CostRange, type CostShown, lastHourOffered, profileRows } from './context-cost'
 import { t } from './locales/text'
 
 /**
@@ -28,6 +29,14 @@ import { t } from './locales/text'
  * section opens with them. A figure the section does not have is left out
  * with its label: the rate of an agent that sent no prompt yet, and the
  * chart before its fourth call.
+ *
+ * Once the conversation's first call is more than an hour old, a switch in
+ * the caption, before its chevron, counts the last hour instead of the whole
+ * conversation: the prices, the profiles' shares, the rate and the closed
+ * section's two figures; the chart stays, with the rate's label alone when
+ * the hour has no rate
+ * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`). The last hour's
+ * figures are left out until the backend's first count of them arrives.
  */
 const props = defineProps<{
   state: CostShown
@@ -51,11 +60,31 @@ const emit = defineEmits<{
   toggle: []
 }>()
 
-const cost = computed(() => props.state.cost)
+/** The range the section counts; the whole conversation unless the parent says. */
+const range = defineModel<CostRange>('range', { default: 'all' })
+const rangeOptions = computed<readonly SegmentedOption<CostRange>[]>(() => [
+  { value: 'lastHour', label: t('context.cost.range.lastHour') },
+  { value: 'all', label: t('context.cost.range.all') },
+])
+const offered = computed(() => lastHourOffered(props.state.firstCallAt))
+const counting = computed(() => offered.value && range.value === 'lastHour')
+
+/** What the section counts now: null while the last hour's count is awaited. */
+const counted = computed(() => (counting.value
+  ? props.state.lastHour
+  : { cost: props.state.cost, rate: props.state.chart?.rate ?? null }))
+const cost = computed(() => counted.value?.cost ?? null)
 const chart = computed(() => props.state.chart)
 
-const price = computed(() => cost.value?.totals.price.total ?? null)
-const rate = computed(() => chart.value?.rate ?? null)
+// An hour without a priced call costs nothing, where the whole conversation
+// that has no priced call has no price.
+const price = computed(() => cost.value?.totals.price.total
+  ?? (counting.value && cost.value && props.state.cost.totals.price.total !== null ? 0 : null))
+const rate = computed(() => counted.value?.rate ?? null)
+// The chart is the agent's latest calls whatever the range counts, so it
+// shows when the last hour has no rate: an hour of no call of the agent's, or
+// a count still awaited.
+const charted = computed(() => (chart.value?.points.length ?? 0) > 0)
 const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 0 })
 
 /** The two figures of the closed section, each that can be computed. */
@@ -65,6 +94,8 @@ const figures = computed(() => [
 ])
 
 const kinds = computed(() => {
+  if (!cost.value)
+    return []
   const { price: prices } = cost.value.totals
   // Row by row: input and output, then the cache's write and read; a kind
   // with no price is left out with its label.
@@ -76,7 +107,7 @@ const kinds = computed(() => {
   ].flatMap(({ price, ...kind }) => (price === null ? [] : [{ ...kind, price }]))
 })
 
-const rows = computed(() => profileRows(cost.value.agents, props.profiles ?? []))
+const rows = computed(() => profileRows(cost.value?.agents ?? [], props.profiles ?? []))
 const largest = computed(() => Math.max(0, ...rows.value.map((row) => row.price)))
 function share(price: number): string {
   return `${largest.value > 0 ? (price / largest.value) * 100 : 0}%`
@@ -87,22 +118,24 @@ function share(price: number): string {
   <div :class="[first ? 'pt-1' : 'border-t border-line', open ? 'pb-2' : 'pb-1']">
     <!--
       The caption is the section's disclosure, as the context window's header
-      is.
+      is: the whole row opens and closes it, the switch apart, and its title
+      is the button a keyboard reaches.
     -->
-    <button
-      type="button"
-      :aria-expanded="open"
-      class="block w-full cursor-default text-left"
-      @click="emit('toggle')"
-    >
-      <SectionRow class="text-caption font-medium text-fg-subtle">
+    <SectionRow class="cursor-default text-caption font-medium text-fg-subtle" @click="emit('toggle')">
+      <button
+        type="button"
+        :aria-expanded="open"
+        class="flex min-w-0 flex-1 cursor-default items-center text-left"
+        @click.stop="emit('toggle')"
+      >
         <span class="shrink-0">{{ t('context.cost.title') }}</span>
         <span v-if="open && price !== null" class="ml-1.5 truncate tabular-nums text-fg-emphasis">{{ formatDollars(price) }}</span>
-        <template #end>
-          <FoldChevron :open="open" :size="ICON_PX.in20" />
-        </template>
-      </SectionRow>
-    </button>
+      </button>
+      <template #end>
+        <span v-if="offered" class="mr-1" @click.stop><Segmented v-model="range" :options="rangeOptions" size="sm" /></span>
+        <FoldChevron :open="open" :size="ICON_PX.in20" />
+      </template>
+    </SectionRow>
     <!--
       Closed, two figures side by side: the price at the text's left edge, the
       rate at the middle.
@@ -138,14 +171,14 @@ function share(price: number): string {
           </li>
         </ul>
       </template>
-      <template v-if="rate !== null">
+      <template v-if="rate !== null || charted">
         <div class="cost-caption px-3">
           <span class="text-caption font-medium">
             <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
-            <span class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
+            <span v-if="rate !== null" class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
           </span>
         </div>
-        <div v-if="chart && chart.points.length > 0" class="px-3">
+        <div v-if="chart && charted" class="px-3">
           <CacheHitChart :chart="chart" :pinned-tip="pinnedTip" />
         </div>
       </template>

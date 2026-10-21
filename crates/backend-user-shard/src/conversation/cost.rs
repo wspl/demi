@@ -7,7 +7,8 @@
 //! 3. The shard tells the conversation's live tree, whose agent entry of that
 //!    agent changes, with its cache chart for a turn call
 //!    (`crates/agent-server/src/server/tree/agents.rs`); a row of no agent,
-//!    such as a title's, changes the conversation's metadata.
+//!    such as a title's, changes the conversation's metadata, as does the
+//!    conversation's first row, which gives it its first call's time.
 //!
 //! Nothing reads the ledger again to announce a row: the chart is counted in
 //! the row's write. A conversation whose tree is not live is told nothing:
@@ -26,13 +27,13 @@ use crate::shard::{Shard, Shards};
 impl Shard {
     /// Tells the conversation of the row `written` what its agent costs now.
     pub(crate) async fn announce_cost(self: Rc<Self>, written: UsageWritten) {
-        match written.agent {
-            Some(agent) => {
-                if let Some(tree) = self.agent().tree(&root_of(&written.conversation)) {
-                    tree.cost_changed(agent, written.cost, written.chart);
-                }
-            }
-            None => self.mark(Part::Metadata(written.conversation)),
+        if written.agent.is_none() || written.first {
+            self.mark(Part::Metadata(written.conversation.clone()));
+        }
+        if let Some(agent) = written.agent
+            && let Some(tree) = self.agent().tree(&root_of(&written.conversation))
+        {
+            tree.cost_changed(agent, written.cost, written.chart);
         }
     }
 }

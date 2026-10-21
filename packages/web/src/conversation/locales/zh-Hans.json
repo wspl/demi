@@ -12,6 +12,7 @@
     "restoreStoredDraft": "无法恢复草稿",
     "readDraft": "无法读取草稿",
     "readSaved": "无法读取已保存的消息",
+    "readLastHour": "无法读取过去 1 小时的费用",
     "readAgents": "无法读取智能体",
     "updateConversations": "无法更新对话",
     "deleteConversations": "无法删除对话",

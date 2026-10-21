@@ -6,6 +6,7 @@ import { coded } from '@demicodes/web-ui/infra/errors'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import { provideCostWatch } from '@demicodes/web-ui/agent/context-cost'
 import { provideAutomationOpener } from '@demicodes/web-ui/agent/message-origins'
 import AutomationRunBar from '@demicodes/web-ui/automations/AutomationRunBar.vue'
 import { useAutomations } from '../automations/store'
@@ -88,6 +89,11 @@ function openAutomation(id: string): void {
 }
 // An automation's message names it in the transcript and leads to it.
 provideAutomationOpener(openAutomation)
+// The cards of the open conversation, the composer's and its subagents' windows', keep its last hour current while they show it.
+provideCostWatch(() => {
+  const current = conversation.value
+  return current ? store.watchLastHour(current) : () => {}
+})
 /** The automation and run the conversation is filed under, whose bar shows under the header. */
 const filedRun = computed(() => {
   const filed = conversation.value?.filed

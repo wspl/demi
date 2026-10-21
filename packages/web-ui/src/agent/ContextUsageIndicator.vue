@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
@@ -37,7 +37,7 @@ import {
 } from './context-usage'
 import { instructionRows } from './instructions'
 import ContextCost from './ContextCost.vue'
-import { type CostShown, hasCost } from './context-cost'
+import { type CostRange, type CostShown, hasCost, lastHourOffered, useCostRange, useCostWatch } from './context-cost'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as the
@@ -56,6 +56,8 @@ import { type CostShown, hasCost } from './context-cost'
  * 4. the rows, largest first, while the list is open
  * 5. the room before compaction, with Compact
  * 6. what the conversation cost, whose caption opens and closes its details
+ *    and, once the conversation is more than an hour old, switches between
+ *    the last hour and the whole conversation
  * 7. the usage limits of the conversation's account
  * 8. last, the instructions the model holds, each of which opens where it is
  *    written
@@ -106,6 +108,11 @@ const props = defineProps<{
    * gallery specimen pins it.
    */
   expanded?: ContextCardSection | null
+  /**
+   * The range the Cost section counts, whatever the browser keeps, as a
+   * gallery specimen pins it.
+   */
+  costRange?: CostRange
   /**
    * The cost chart's call, by its place among the conversation's, whose tip
    * shows without the pointer, as a gallery specimen pins it.
@@ -183,6 +190,24 @@ const elevation = useLayerElevation()
  * context's part or without it.
  */
 const costShown = computed(() => hasCost(props.cost?.cost ?? null))
+
+/** The range the Cost section counts: the browser keeps the user's choice for every conversation. */
+const costRange = props.costRange === undefined ? useCostRange() : ref(props.costRange)
+/**
+ * While the card shows the last hour the page keeps it current: a watch
+ * stands from the card's opening to its closing, or until the range changes.
+ */
+const startWatch = useCostWatch()
+let stopWatch: (() => void) | null = null
+watch(
+  () => open.value && costShown.value && costRange.value === 'lastHour' && lastHourOffered(props.cost?.firstCallAt ?? null),
+  (watching) => {
+    stopWatch?.()
+    stopWatch = watching ? (startWatch?.() ?? null) : null
+  },
+  { immediate: true },
+)
+onScopeDispose(() => stopWatch?.())
 
 /**
  * Compact is an action of the card, which closes it as a menu's action does.
@@ -385,6 +410,7 @@ const ringColor = computed(() => {
                   :state="cost"
                   :open="expanded === 'cost'"
                   :first="!parts.context"
+                  v-model:range="costRange"
                   :pinned-tip="costTip"
                   :profiles="costProfiles"
                   @toggle="toggle('cost')"

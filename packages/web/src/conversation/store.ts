@@ -5,7 +5,7 @@ import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { NO_COST, agentCost, conversationCost, type CostShown } from '@demicodes/web-ui/agent/context-cost'
+import { NO_COST, agentCost, conversationCost, lastHourOf, type CostShown } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -29,7 +29,9 @@ import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
+import { readLastHourCost } from '../api/cost'
 import { forkConversation } from '../api/message-fork'
+import { createLastHourWatch } from './last-hour'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
   applyModelChange,
@@ -461,6 +463,7 @@ export const useConversations = defineStore('conversations', () => {
       contextUsage: null,
       cost: NO_COST,
       charts: {},
+      lastHour: null,
     }
   }
 
@@ -1445,6 +1448,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.lastError = null
     conversation.cost = NO_COST
     conversation.charts = {}
+    conversation.lastHour = null
     clearSession(conversation)
   }
 
@@ -1589,17 +1593,30 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * What the context card of the conversation, `node` null, or of its
    * agent `node`, shows of their cost: from their agents' metadata, with
-   * the cache chart of the node it shows.
+   * the cache chart of the node it shows, and the last hour's cost while a
+   * card shows it (`watchLastHour`).
    */
   function costShown(conversation: Conversation, node: string | null = null): CostShown | null {
     const chart = conversation.charts[node ?? conversation.id] ?? null
+    const firstCallAt = conversation.metadata.shown.value?.firstCallAt ?? null
+    const lastHour = (number: number | null) =>
+      conversation.lastHour ? lastHourOf(conversation.lastHour.agents, conversation.subagents, number) : null
     if (node === null) {
       const other = conversation.metadata.shown.value?.otherCost ?? NO_COST
-      return { cost: conversationCost(conversation.cost, conversation.subagents, other), chart }
+      return { cost: conversationCost(conversation.cost, conversation.subagents, other), chart, lastHour: lastHour(null), firstCallAt }
     }
     const agent = conversation.subagents.find((each) => each.id === node)
-    return agent ? { cost: agentCost(agent.cost), chart } : null
+    return agent ? { cost: agentCost(agent.cost), chart, lastHour: lastHour(agent.number), firstCallAt } : null
   }
+
+  /**
+   * Starts keeping the conversation's last hour of cost current, for a card
+   * that shows it; the function it answers ends that.
+   */
+  const watchLastHour = createLastHourWatch({
+    read: (conversationId, signal) => readLastHourCost(conversationId, signal),
+    failed: (error) => report(t('failures.readLastHour'), error),
+  })
 
   async function runtimeFor(
     conversation: Conversation,
@@ -3526,6 +3543,7 @@ export const useConversations = defineStore('conversations', () => {
     metadataOf: (id: string): ConversationMetadata | null =>
       items.value.find((item) => item.id === id)?.metadata.shown.value ?? null,
     costShown,
+    watchLastHour,
     /**
      * Whether the page has, or is opening, a session of the conversation,
      * which sends a live child's transcript once the page shows it

@@ -347,6 +347,10 @@
       "title": "비용",
       "price": "API 환산 가격",
       "hitRate": "캐시 적중률",
+      "range": {
+        "lastHour": "지난 1시간",
+        "all": "전체"
+      },
       "kind": {
         "input": "입력",
         "cacheWrite": "캐시 쓰기",

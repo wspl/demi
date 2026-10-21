@@ -212,6 +212,7 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::TranscriptPage>(),
         receives::<conversations::WholeBlock>(),
         receives::<conversations::ConversationDetail>(),
+        receives::<conversations::LastHourCost>(),
         receives::<conversations::ConversationFrame>(),
         receives::<conversations::CommandCall>(),
         sends::<conversations::ConversationPatch>(),

@@ -89,7 +89,7 @@ const NO_COST = {
 export function conversationMetadata(id: string, parts: Partial<ConversationMetadata> = {}): ConversationMetadata {
   return {
     id, model: null, workflow: { type: 'default' }, cwd: '/home/demi', lastTurn: null, turnSpeed: null, pluginsChanged: false,
-    otherCost: NO_COST, saved: { revision: 0, messages: [] }, panel: { revision: 0, tabs: [], states: [] },
+    otherCost: NO_COST, firstCallAt: null, saved: { revision: 0, messages: [] }, panel: { revision: 0, tabs: [], states: [] },
     hosts: { revision: 0, hosts: [] }, workflows: { revision: 0, list: { state: 'unknown' } }, lastAttachment: 0, pluginRevisions: [],
     permissions: { revision: 0, requests: [] }, shares: [], ...parts,
   }

@@ -1,3 +1,5 @@
+import { useLocalStorage } from '@vueuse/core'
+import { inject, provide, type InjectionKey, type Ref } from 'vue'
 import type { AgentCost, CacheChart, CostPrice, CostTotals } from '@demicodes/protocol'
 import { t } from './locales/text'
 
@@ -25,12 +27,76 @@ export interface AgentPrice {
 /**
  * What a card's Cost section shows: the cost, and the cache chart of the
  * agent it shows, which the backend counts and sends with the agent's node
- * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
+ * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`), and what the
+ * same agents cost in the last hour, which the backend counts when a card
+ * that shows it asks
+ * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
  */
 export interface CostShown {
   cost: ConversationCostView
   /** Null until the agent's node first brought it. */
   chart: CacheChart | null
+  /** What the last read of the last hour answered; null until the first read of it answers. */
+  lastHour: LastHourShown | null
+  /** When the conversation's first call ended, as an ISO time; null before it made one. */
+  firstCallAt: string | null
+}
+
+/** What the card's agents cost in the last hour, and the cache's share of the shown agent's prompts. */
+export interface LastHourShown {
+  cost: ConversationCostView
+  /** Null without a turn call that sent a prompt. */
+  rate: number | null
+}
+
+/** How far back the Cost section counts: the last 60 minutes, or the whole conversation. */
+export type CostRange = 'lastHour' | 'all'
+
+/** What the backend counts of one agent's last hour; null for the rows of no agent. */
+export interface LastHourEntry {
+  agent: number | null
+  cost: AgentCost
+  rate: number | null
+}
+
+const HOUR_MS = 60 * 60 * 1000
+
+/**
+ * Whether the card offers the last hour: from the time the conversation's
+ * first call is more than an hour old, before which both ranges would show
+ * the same.
+ */
+export function lastHourOffered(firstCallAt: string | null, now: number = Date.now()): boolean {
+  return firstCallAt !== null && now - Date.parse(firstCallAt) > HOUR_MS
+}
+
+/** Where the browser keeps the range the Cost section counts, for every conversation. */
+const COST_RANGE_KEY = 'demi-cost-range'
+
+/** The range the Cost section counts, All until the user chooses. */
+export function useCostRange(): Ref<CostRange> {
+  return useLocalStorage<CostRange>(COST_RANGE_KEY, 'all', {
+    serializer: { read: (raw) => (raw === 'lastHour' ? 'lastHour' : 'all'), write: (range) => range },
+  })
+}
+
+/**
+ * Starts a watch of the conversation's last hour, which the page keeps
+ * current while it runs, and answers the function that ends it. A card that
+ * shows the last hour holds one for as long as it shows it.
+ */
+export type CostWatch = () => () => void
+
+const costWatchKey: InjectionKey<CostWatch> = Symbol('cost-watch')
+
+/** Gives the cards below the page's way of keeping the last hour current. */
+export function provideCostWatch(watch: CostWatch): void {
+  provide(costWatchKey, watch)
+}
+
+/** The watch a card starts while it shows the last hour; none where nothing counts it. */
+export function useCostWatch(): CostWatch | undefined {
+  return inject(costWatchKey, undefined)
 }
 
 const NO_PRICE: CostPrice = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
@@ -96,6 +162,28 @@ export function conversationCost(
 /** One agent's own cost, as its window's card shows it. */
 export function agentCost(cost: AgentCost): ConversationCostView {
   return { totals: cost.totals, calls: cost.calls, agents: [] }
+}
+
+/**
+ * What the last hour's `entries` come to for the conversation's card, `node`
+ * null, or for the agent numbered `node`: an agent without an entry made no
+ * call in the hour.
+ */
+export function lastHourOf(
+  entries: readonly LastHourEntry[],
+  subagents: readonly { number: number, profile: string | null }[],
+  node: number | null,
+): LastHourShown {
+  const of = (agent: number | null) => entries.find((entry) => entry.agent === agent)
+  const costOf = (agent: number | null) => of(agent)?.cost ?? NO_COST
+  if (node !== null)
+    return { cost: agentCost(costOf(node)), rate: of(node)?.rate ?? null }
+  const view = conversationCost(
+    costOf(0),
+    subagents.map((agent) => ({ number: agent.number, profile: agent.profile, cost: costOf(agent.number) })),
+    costOf(null),
+  )
+  return { cost: view, rate: of(0)?.rate ?? null }
 }
 
 /**

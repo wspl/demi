@@ -12,6 +12,7 @@
     "restoreStoredDraft": "Could Not Restore a Draft",
     "readDraft": "Could Not Read the Draft",
     "readSaved": "Could Not Read the Saved Messages",
+    "readLastHour": "Could Not Read the Last Hour’s Cost",
     "readAgents": "Could Not Read the Agents",
     "updateConversations": "Could Not Update Conversations",
     "deleteConversations": "Could Not Delete Conversations",

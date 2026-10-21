@@ -37,6 +37,7 @@ mod cloud;
 mod content;
 mod conversations;
 mod cookies;
+mod cost;
 mod credentials;
 mod devices;
 mod diagnostics;
@@ -434,6 +435,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/fs/watch", get(file_watch::open))
+        .route("/conversations/{id}/cost/last-hour", get(cost::last_hour))
         .route("/conversations/{id}/panel/changes", post(panel::change))
         .route(
             "/conversations/{id}/draft",

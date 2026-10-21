@@ -12,6 +12,7 @@
     "restoreStoredDraft": "下書きを復元できませんでした",
     "readDraft": "下書きを読み取れませんでした",
     "readSaved": "保存したメッセージを読み取れませんでした",
+    "readLastHour": "過去 1 時間のコストを読み取れませんでした",
     "readAgents": "エージェントを読み取れませんでした",
     "updateConversations": "チャットを更新できませんでした",
     "deleteConversations": "チャットを削除できませんでした",

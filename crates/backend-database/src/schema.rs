@@ -117,6 +117,8 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.44's, which 0.1.39 to 0.1.43 shipped too, before a move applied at
 ///   once instead of waiting, as an agent's did, for its conversation's work to
 ///   end.
+/// - 0.1.48's, which 0.1.46 and 0.1.47 shipped too, before a conversation's
+///   ledger rows were found by their end.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -284,8 +286,30 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.44.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_44),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.48.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_48),
+        },
     ],
 };
+
+/// From 0.1.48's control schema, which 0.1.46 and 0.1.47 shipped too, to the
+/// current one.
+///
+/// - A conversation's ledger rows are found by their end, for the cost of its
+///   last hour (`crates/backend-database/src/usage.rs` § The last hour); the
+///   index by conversation alone, which that one serves too, goes. The ledger's
+///   later indexes are made again after it, so the database lists its indexes
+///   in the order a new one does.
+const CONTROL_FROM_0_1_48: &str = "
+DROP INDEX usage_ledger_conversation;
+DROP INDEX usage_ledger_agent;
+DROP INDEX usage_ledger_cache_writes;
+CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id, ended_at);
+CREATE INDEX usage_ledger_agent ON usage_ledger (conversation_id, agent);
+CREATE INDEX usage_ledger_cache_writes ON usage_ledger (conversation_id, agent, model_id)
+  WHERE call_number IS NOT NULL AND cache_write_tokens > 0;
+";
 
 /// From 0.1.37's control schema to 0.1.44's.
 ///
@@ -394,8 +418,8 @@ const CONTROL_FROM_0_1_36: &str = "
 DROP TABLE saved_edits;
 ";
 
-/// From 0.1.44's control schema, which 0.1.39 to 0.1.43 shipped too, to the
-/// current one.
+/// From 0.1.44's control schema, which 0.1.39 to 0.1.43 shipped too, to
+/// 0.1.48's.
 ///
 /// - A move applies at once, so no conversation keeps a move that waits for
 ///   its work to end; one an agent asked for before the upgrade is not made.
@@ -4861,7 +4885,8 @@ CREATE TABLE usage_ledger (
   CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
-CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id);
+-- A conversation's rows by their end: its first call and its last hour.
+CREATE INDEX usage_ledger_conversation ON usage_ledger (conversation_id, ended_at);
 -- An agent's rows, newest last: its previous call and its recent calls.
 CREATE INDEX usage_ledger_agent ON usage_ledger (conversation_id, agent);
 -- An agent's turn calls that wrote the cache, newest last by model: the
