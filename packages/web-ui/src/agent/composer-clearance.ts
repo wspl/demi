@@ -1,8 +1,9 @@
 /**
  * The dock veil's fade over the composer's top: the chips row, a chip and the
- * row's step under it (`SessionDock`), a CSS length.
+ * row's step under it (`SessionDock`), a CSS length in parentheses, so it
+ * subtracts whole inside a `calc()`.
  */
-export const COMPOSER_VEIL_FADE = 'var(--spacing-chip) + 0.5rem'
+export const COMPOSER_VEIL_FADE = '(var(--spacing-chip) + 0.5rem)'
 
 /**
  * Scroll padding above the floating dock: the last block ends clear of the
