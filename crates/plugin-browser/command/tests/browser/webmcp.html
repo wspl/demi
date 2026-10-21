@@ -34,6 +34,7 @@ document.querySelector('#replace').onclick = async () => {
   owner.abort();
   owner = new AbortController();
   await register('Replacement echo declaration');
+  document.querySelector('#replace').dataset.replaced = 'true';
 };
 document.querySelector('#remove').onclick = () => owner.abort();
 </script>

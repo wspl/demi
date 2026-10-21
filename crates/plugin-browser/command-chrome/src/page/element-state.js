@@ -1,7 +1,15 @@
-async function(conditions, scroll, probe, cancel, point) {
+// The checks before an action, as Playwright makes them
+// (packages/injected/src/injectedScript.ts): visible, enabled, editable,
+// stable and receiving the pointer. `scroll` is false, true to scroll the
+// element into view only when it is not, or an alignment ('start', 'center',
+// 'end') that a retry tries in turn, so that an element under a sticky header
+// comes out from under it. `intercept` installs Playwright's hit-target
+// interceptor under the key `probe`; calling the function with `cancel` and
+// that key stops it and answers what it saw. `aria` is the shared role
+// resolution the caller composes in (`element.rs`, `ELEMENT_STATE`).
+async function(conditions, scroll, probe, cancel, point, intercept) {
   if (cancel) {
-    this[probe]?.();
-    return null;
+    return this[probe]?.() ?? null;
   }
   const element = this;
   const view = element.ownerDocument.defaultView;
@@ -10,6 +18,89 @@ async function(conditions, scroll, probe, cancel, point) {
   const describe = node => node
     ? `<${node.localName}${node.id ? ` id="${node.id}"` : ''}${node.className && typeof node.className === 'string' ? ` class="${node.className}"` : ''}>`
     : 'no element at the pointer point';
+  // A state of a control's inner part is the control's: 'button-link' for
+  // the pointer, 'follow-label' for enabled and editable, as Playwright
+  // retargets.
+  const retarget = behavior => {
+    let node = element;
+    if (!node.matches('input, textarea, select') && !node.isContentEditable) {
+      node = node.closest(behavior === 'button-link'
+        ? 'button, [role=button], a, [role=link]'
+        : 'button, [role=button], [role=checkbox], [role=radio]') || node;
+    }
+    if (behavior === 'follow-label' &&
+        !node.matches('a, input, textarea, button, select, [role=link], [role=button], [role=checkbox], [role=radio]') &&
+        !node.isContentEditable) {
+      const label = node.closest('label');
+      if (label && label.control) node = label.control;
+    }
+    return node;
+  };
+  const visibleText = node => {
+    const range = node.ownerDocument.createRange();
+    range.selectNode(node);
+    const box = range.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
+  };
+  const isVisible = node => {
+    const style = view.getComputedStyle(node);
+    if (style.display === 'contents') {
+      for (let child = node.firstChild; child; child = child.nextSibling) {
+        if ((child.nodeType === 1 && isVisible(child)) || (child.nodeType === 3 && visibleText(child))) return true;
+      }
+      return false;
+    }
+    if (node.checkVisibility && !node.checkVisibility()) return false;
+    if (style.visibility !== 'visible') return false;
+    const box = node.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
+  };
+  // The roles aria-disabled applies to; `aria` is the shared role
+  // resolution (`aria-role.js`).
+  const disabledRoles = ['application', 'button', 'composite', 'gridcell', 'group', 'input', 'link', 'menuitem', 'scrollbar', 'separator', 'tab', 'checkbox', 'columnheader', 'combobox', 'grid', 'listbox', 'menu', 'menubar', 'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'radiogroup', 'row', 'rowheader', 'searchbox', 'select', 'slider', 'spinbutton', 'switch', 'tablist', 'textbox', 'toolbar', 'tree', 'treegrid', 'treeitem'];
+  const isDisabled = node => {
+    if (aria.nativelyDisabled(node)) return true;
+    if (!disabledRoles.includes(aria.role(node) || '')) return false;
+    for (let ancestor = node; ancestor; ancestor = parent(ancestor)) {
+      const disabled = (ancestor.getAttribute('aria-disabled') || '').toLowerCase();
+      if (disabled === 'true') return true;
+      if (disabled === 'false') return false;
+    }
+    return false;
+  };
+  // Null when the pointer at (x, y) lands on the element, or what it lands on
+  // instead.
+  const hitTarget = (x, y) => {
+    const target = retarget('button-link');
+    const roots = [];
+    for (let node = target; node;) {
+      const root = node.getRootNode();
+      if (root.nodeType !== 9 && root.nodeType !== 11) break;
+      roots.push(root);
+      if (root.nodeType === 9) break;
+      node = root.host;
+    }
+    let hit;
+    for (let index = roots.length - 1; index >= 0; index--) {
+      const root = roots[index];
+      const elements = root.elementsFromPoint(x, y);
+      const single = root.elementFromPoint(x, y);
+      if (single && elements[0] && parent(single) === elements[0] && view.getComputedStyle(single).display === 'contents') {
+        elements.unshift(single);
+      }
+      if (elements[0] && elements[0].shadowRoot === root && elements[1] === single) elements.shift();
+      if (!elements[0]) break;
+      hit = elements[0];
+      if (index && hit !== roots[index - 1].host) break;
+    }
+    const passed = [];
+    while (hit && hit !== target) {
+      passed.push(hit);
+      hit = hit.assignedSlot ?? parent(hit);
+    }
+    return hit === target ? null : describe(passed[0] || null);
+  };
+
   const input = element.localName === 'input';
   const nativeCheck = input && ['checkbox', 'radio'].includes(element.type);
   const role = element.getAttribute('role');
@@ -34,20 +125,26 @@ async function(conditions, scroll, probe, cancel, point) {
   }
   if (!element.isConnected) return {...result, failed: 'attached'};
   if (scroll) {
-    element.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+    const reveal = node => scroll === true
+      ? node.scrollIntoViewIfNeeded(true)
+      : node.scrollIntoView({block: scroll, inline: scroll, behavior: 'instant'});
+    reveal(element);
     for (let frame = view.frameElement; frame; frame = frame.ownerDocument.defaultView.frameElement) {
-      frame.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+      reveal(frame);
     }
   }
   let box = element.getBoundingClientRect();
   let stable = !conditions.includes('stable');
   if (!stable) {
-    // Chromiumoxide cannot cancel an awaited page function. The caller owns
-    // this temporary cancellation callback and invokes it on every failed wait.
-    let previousFrame = null;
-    let unchangedIntervals = 0;
+    // Chromium's rule: the box is the same in two consecutive animation
+    // frames; a box that moved fails the check at once, and the action checks
+    // again after a pause. Chromiumoxide cannot cancel an awaited page
+    // function, so the caller owns this temporary cancellation callback and
+    // invokes it on every failed wait.
+    const target = retarget('no-follow-label');
+    let previous = null;
     try {
-      for (let count = 0; count < 10; count++) {
+      while (true) {
         const observed = await new Promise(resolve => {
           const frame = view.requestAnimationFrame(() => resolve(true));
           Object.defineProperty(element, probe, {configurable: true, value: () => {
@@ -55,20 +152,18 @@ async function(conditions, scroll, probe, cancel, point) {
             resolve(false);
           }});
         });
-        if (!observed) break;
-        const next = element.getBoundingClientRect();
-        const unchanged = previousFrame !== null && ['x', 'y', 'width', 'height'].every(key => previousFrame[key] === next[key]);
-        // The frames on either side of an animation's turn can show the same
-        // box, so one unchanged interval does not prove the element stopped.
-        unchangedIntervals = unchanged ? unchangedIntervals + 1 : 0;
-        stable = unchangedIntervals >= 2;
-        previousFrame = next;
-        box = next;
-        if (stable) break;
+        if (!observed || !target.isConnected) break;
+        const next = target.getBoundingClientRect();
+        if (previous !== null) {
+          stable = ['top', 'left', 'width', 'height'].every(key => previous[key] === next[key]);
+          break;
+        }
+        previous = next;
       }
     } finally {
       delete element[probe];
     }
+    box = element.getBoundingClientRect();
   }
 
   // Recompute all conditions after scrolling and the animation-frame observation.
@@ -76,15 +171,9 @@ async function(conditions, scroll, probe, cancel, point) {
   result.checked = checkable ? (nativeCheck ? element.checked : element.getAttribute('aria-checked') === 'true') : null;
   result.radio = nativeCheck ? element.type === 'radio' : role === 'radio';
   const style = view.getComputedStyle(element);
-  result.visible = result.attached && box.width > 0 && box.height > 0 && style.visibility === 'visible';
-  result.enabled = result.attached;
-  for (let node = element; node; node = parent(node)) {
-    if (node.matches(':disabled') || node.getAttribute('aria-disabled') === 'true') {
-      result.enabled = false;
-      break;
-    }
-  }
-  const editable = editType && !element.readOnly && element.getAttribute('aria-readonly') !== 'true';
+  result.visible = result.attached && isVisible(element);
+  result.enabled = result.attached && !isDisabled(retarget('follow-label'));
+  const editable = editType && result.enabled && !element.readOnly && element.getAttribute('aria-readonly') !== 'true';
   const left = Math.max(0, box.left);
   const right = Math.min(view.innerWidth, box.right);
   const top = Math.max(0, box.top);
@@ -98,22 +187,42 @@ async function(conditions, scroll, probe, cancel, point) {
   }
   if (conditions.includes('hit')) {
     if (style.pointerEvents === 'none') return {...result, failed: 'pointer-events', interceptor: describe(element)};
-    // Verify each root from the target outwards. Accessing getRootNode() on the
-    // target also exposes its closed/native root, unlike host.shadowRoot.
-    let target = element;
-    let x = point ? point[0] : result.x;
-    let y = point ? point[1] : result.y;
-    while (target) {
-      const root = target.getRootNode();
-      const hit = root.elementFromPoint(x, y);
-      let ancestor = hit;
-      while (ancestor && ancestor !== target) ancestor = parent(ancestor);
-      if (!ancestor) return {...result, failed: 'hit', interceptor: describe(hit)};
-      if (root.host) {
-        target = root.host;
-      } else {
-        break;
-      }
+    const [x, y] = point ?? [result.x, result.y];
+    const interceptor = hitTarget(x, y);
+    if (interceptor !== null) return {...result, failed: 'hit', interceptor};
+    if (intercept) {
+      // The input's first event decides, as in Playwright: when it lands
+      // elsewhere, which a layout shift between this check and the input can
+      // cause, every event of the input is stopped before the page sees it and
+      // the action checks again. When it lands on the element, nothing more is
+      // checked, so the listener leaves at once and stays behind in no case,
+      // a dialog the click opened included.
+      const types = ['mousedown', 'mouseup', 'pointerdown', 'pointerup', 'click', 'auxclick', 'dblclick', 'contextmenu'];
+      let outcome;
+      const remove = () => {
+        for (const type of types) view.removeEventListener(type, listener, {capture: true});
+      };
+      const listener = event => {
+        if (!event.isTrusted) return;
+        if (outcome === undefined) {
+          outcome = hitTarget(event.clientX, event.clientY);
+          if (outcome === null) {
+            remove();
+            delete element[probe];
+          }
+        }
+        if (outcome !== null) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+        }
+      };
+      for (const type of types) view.addEventListener(type, listener, {capture: true, passive: false});
+      Object.defineProperty(element, probe, {configurable: true, value: () => {
+        remove();
+        delete element[probe];
+        return outcome ?? null;
+      }});
     }
   }
   return result;

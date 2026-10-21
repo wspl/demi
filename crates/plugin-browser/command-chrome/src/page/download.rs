@@ -91,11 +91,14 @@ pub async fn execute(
             }).await?;
             let media_page = &frames.iter().find(|document| document.frame.id == hit.frame_id)
                 .ok_or(BrowserError::TargetNotFound)?.page;
+            if media_page.target_id() != tab.page().target_id() {
+                references.hold(media_page);
+            }
             let media = operation.run(element::TargetElement::resolve(media_page, hit.backend_node_id)).await?;
             let source: Option<String> = operation.run(element::call(tab.page(), &media,
                 "function() { return ['img','video','audio'].includes(this.localName) ? (this.currentSrc || this.src || null) : null; }", vec![])).await?;
             if let Some(source) = source {
-                let conditions = element::prepared_state(tab.page(), &media, element::CLICK, true, &operation).await?;
+                let conditions = element::prepared_state(tab.page(), &media, element::CLICK, element::Scroll::IfNeeded, &operation).await?;
                 if conditions.failed.is_some() { return Err(conditions.failure()); }
                 let tree = operation.run(async { Ok(media_page.execute(GetResourceTreeParams {}).await?.result.frame_tree) }).await?;
                 let mut pending = vec![tree];
@@ -232,7 +235,7 @@ pub async fn execute(
     .await;
     let cleanup = after_cleanup(
         file_cleanup,
-        crate::page::element::release_objects(tab).await,
+        crate::page::element::release_objects(tab, references).await,
     );
     drop(beginnings);
     drop(progress);

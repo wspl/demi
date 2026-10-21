@@ -17,6 +17,9 @@ async fn native_webmcp_validates_calls_and_invalidates_changed_declarations() {
         assert_eq!(code, 2, "{error}");
         assert_eq!(fixture.call("browser.read", json!({"tab":tab,"css":"#calls","property":"text"})).await["value"], "1");
         fixture.call("browser.click", json!({"tab":tab,"css":"#replace"})).await;
+        // The page declares the replacement after the click, as a promise
+        // settles; the click does not wait for what a page does later.
+        fixture.call("browser.wait", json!({"tab":tab,"css":"#replace[data-replaced]","state":"attached"})).await;
         let (_, error) = fixture.result("browser.webmcp.call", json!({"tab":tab,"tools":tools,"tool":"echo","arguments":"{\"text\":\"again\"}"}), CancellationToken::new()).await;
         assert_eq!(error["error"]["code"], "stale_tools", "{error}");
         let list = fixture.call("browser.webmcp.list", json!({"tab":tab})).await;

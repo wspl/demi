@@ -62,6 +62,27 @@ impl<T: Command> CommandFuture<T> {
     }
 }
 
+impl<T: Command> CommandFuture<T> {
+    /// Hands the command to the connection without waiting for its response,
+    /// so that commands sent one after another reach Chrome in that order
+    /// while their responses are awaited together. Awaiting the future
+    /// afterwards waits for the response only.
+    pub fn poll_send(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        let mut this = self.project();
+        if this.message.is_none() {
+            return Poll::Ready(Ok(()));
+        }
+        match this.target_sender.as_mut().poll_ready(cx) {
+            Poll::Ready(Ok(())) => {
+                let message = this.message.take().expect("existence checked above");
+                Poll::Ready(this.target_sender.start_send(message).map_err(Into::into))
+            }
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error.into())),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
 impl<T> Future for CommandFuture<T>
 where
     T: Command,

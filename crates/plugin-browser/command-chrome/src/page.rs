@@ -42,6 +42,7 @@ mod element;
 pub mod evaluation;
 pub mod fetch;
 pub mod keyboard;
+mod locate;
 mod observation;
 mod pointer;
 pub mod probe;

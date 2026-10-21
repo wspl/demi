@@ -9,7 +9,7 @@ use demi_command_package_browser_protocol::browser::*;
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's summary.
-const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Use inspect to obtain node references; never guess them.";
+const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Use inspect to obtain node references; never guess them. Run a sequence of steps as one script: chain the commands in one shell call and read each result with --json to decide the next.";
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "Drives a real browser on the Host: opens pages, reads their text and structure, clicks, types, fills forms, uploads and downloads files, takes screenshots, reads values with read-only scripts (demi browser eval t1 'document.title'), and keeps tabs and sign-ins for the whole conversation. Use it when a task needs a live page: checking a site the user is building, using a site that needs JavaScript or a sign-in, or showing the user a page in their work panel. Not for fetching a static URL or an API, where curl is enough.";
 
@@ -49,13 +49,13 @@ operations! {
     "read" => ReadInput, ReadResult, "Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.";
     "screenshot" => ScreenshotInput, ScreenshotResult, "Capture a tab: its PNG's bytes on stdout, so demi browser screenshot t1 | demi file view shows it to you and > shot.png saves it; or save a new PNG file with --output. Several tabs: a loop in one shell call.";
     "probe" => ProbeInput, ProbeResult, "Find elements at viewport coordinates and optionally save an annotated screenshot.";
-    "click" => ClickInput, ActionResult, "Click one actionable element or an explicit viewport coordinate.";
+    "click" => ClickInput, ActionResult, "Click one actionable element or an explicit viewport coordinate. Waits for a navigation the click starts, not for one the page starts later, which wait --url or --wait-url waits for.";
     "move" => MoveInput, ActionResult, "Move the pointer to an element or viewport coordinate.";
     "drag" => DragInput, ActionResult, "Drag through ordered viewport points, releasing input on every exit.";
     "scroll" => ScrollInput, ActionResult, "Scroll at an element or viewport coordinate.";
     "fill" => FillInput, ActionResult, "Replace an editable element’s contents with text.";
     "type" => TypeInput, ActionResult, "Type characters into a target or the current focus, preserving selection.";
-    "key" => KeyInput, ActionResult, "Press a key at the current focus, or focus a target first: key t1 Enter, key t1 e1 Enter; a key name or a + joined combination, such as Space, Enter or ControlOrMeta+A.";
+    "key" => KeyInput, ActionResult, "Press a key at the current focus, or focus a target first: key t1 Enter, key t1 e1 Enter; a key name or a + joined combination, such as Space, Enter or ControlOrMeta+A. Waits for a navigation the key starts, as click does.";
     "check" => CheckInput, ActionResult, "Check a checkbox or radio; --value=false unchecks it.";
     "select" => SelectInput, ActionResult, "Select native select options by value, label or index.";
     "select-text" => SelectTextInput, ActionResult, "Select rendered text or position its cursor; prefix and suffix disambiguate.";

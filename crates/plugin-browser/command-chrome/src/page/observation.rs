@@ -71,6 +71,9 @@ impl Observation {
                     .backend_node_id;
                 owners.push((frame.id.clone(), (parent_page.target_id().clone(), owner)));
             }
+            if frame_page.target_id() != page.target_id() {
+                refs.hold(&frame_page);
+            }
             pages.insert(frame.id.clone(), frame_page.clone());
             loaders.insert(frame.id.clone(), frame.loader_id.clone());
             let ax = match frame_page
@@ -487,13 +490,7 @@ impl Observation {
                 self.resolve_identity(&self.reference(reference, refs)?)
                     .await?,
             ]
-        } else if target.css.is_some()
-            || target.placeholder.is_some()
-            || target.test_id.is_some()
-            || target.label.is_some()
-            || target.text_match.is_some()
-            || target.text_pattern.is_some()
-        {
+        } else if dom_locator(target).is_some() {
             self.text_targets(page, target).await?
         } else {
             let names = self
@@ -546,28 +543,8 @@ impl Observation {
         page: &Page,
         target: &BrowserTarget,
     ) -> Result<Vec<TargetElement>> {
-        let (kind, expected) = if let Some(css) = &target.css {
-            ("css", css)
-        } else if let Some(label) = &target.label {
-            ("label", label)
-        } else if let Some(placeholder) = &target.placeholder {
-            ("placeholder", placeholder)
-        } else if let Some(test_id) = &target.test_id {
-            ("test-id", test_id)
-        } else if let Some(pattern) = &target.text_pattern {
-            ("text-pattern", pattern)
-        } else {
-            ("text", target.text_match.as_ref().expect("text locator"))
-        };
-        if kind == "text-pattern" {
-            crate::page::query::pattern_matches(page, expected, &[]).await?;
-        }
-        if kind == "css" {
-            let error: String = page.evaluate_expression(format!("(() => {{ try {{ document.querySelector({}); return ''; }} catch (error) {{ return error.message; }} }})()", json!(expected))).await?.into_value().map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-            if !error.is_empty() {
-                return Err(BrowserError::Configuration(error));
-            }
-        }
+        let (kind, expected) = dom_locator(target).expect("a DOM locator");
+        check_locator(page, kind, expected).await?;
         let mut backends = Vec::new();
         for frame in &self.documents {
             backends.extend(
@@ -598,52 +575,15 @@ impl Observation {
         script: &str,
         args: Vec<serde_json::Value>,
     ) -> Result<Vec<DomIdentity>> {
-        use chromiumoxide::cdp::js_protocol::runtime::{
-            CallArgument, CallFunctionOnParams, DeepSerializedValueType, SerializationOptions,
-            SerializationOptionsSerialization,
-        };
         let page = &self.pages[frame];
         let context = page
             .frame_execution_context(frame.clone())
             .await?
             .ok_or(BrowserError::StaleReference)?;
-        let result = page
-            .evaluate_function(
-                CallFunctionOnParams::builder()
-                    .function_declaration(script)
-                    .execution_context_id(context)
-                    .object_group(crate::page::element::OBJECT_GROUP)
-                    .arguments(
-                        args.into_iter()
-                            .map(|value| CallArgument::builder().value(value).build())
-                            .collect::<Vec<_>>(),
-                    )
-                    .serialization_options(
-                        SerializationOptions::builder()
-                            .serialization(SerializationOptionsSerialization::Deep)
-                            .max_depth(2)
-                            .additional_parameters(json!({"maxNodeDepth": 0}))
-                            .build()
-                            .map_err(BrowserError::Configuration)?,
-                    )
-                    .build()
-                    .map_err(BrowserError::Configuration)?,
-            )
-            .await?;
-        let serialized = result
-            .object()
-            .deep_serialized_value
-            .as_ref()
-            .filter(|value| value.r#type == DeepSerializedValueType::Array)
-            .and_then(|value| value.value.as_ref())
-            .ok_or_else(|| {
-                BrowserError::InvalidResult("locator did not return a serialized node array".into())
-            })?;
-        let nodes: Vec<SerializedNode> = serde_json::from_value(serialized.clone())
-            .map_err(|error| BrowserError::InvalidResult(format!("locator nodes: {error}")))?;
-        nodes
+        scan(page, context, script, args)
+            .await?
             .into_iter()
-            .map(|SerializedNode::Node { backend_node_id }| {
+            .map(|backend_node_id| {
                 let key = (page.target_id().clone(), backend_node_id);
                 if self.dom_index.contains_key(&key) {
                     Ok(key)
@@ -829,6 +769,90 @@ impl Observation {
     }
 }
 
+/// The kind and the expected text of a target that names DOM elements by a
+/// CSS selector, a label, a placeholder, a test ID or text; none for a
+/// reference or a role.
+pub(crate) fn dom_locator(target: &BrowserTarget) -> Option<(&'static str, &str)> {
+    [
+        ("css", &target.css),
+        ("label", &target.label),
+        ("placeholder", &target.placeholder),
+        ("test-id", &target.test_id),
+        ("text-pattern", &target.text_pattern),
+        ("text", &target.text_match),
+    ]
+    .into_iter()
+    .find_map(|(kind, expected)| expected.as_deref().map(|expected| (kind, expected)))
+}
+
+/// Rejects a CSS selector or a text pattern the page cannot parse, before any
+/// scan reports it as a missing match.
+pub(crate) async fn check_locator(page: &Page, kind: &str, expected: &str) -> Result<()> {
+    if kind == "text-pattern" {
+        crate::page::query::pattern_matches(page, expected, &[]).await?;
+    }
+    if kind == "css" {
+        let error: String = page.evaluate_expression(format!("(() => {{ try {{ document.querySelector({}); return ''; }} catch (error) {{ return error.message; }} }})()", json!(expected))).await?.into_value().map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+        if !error.is_empty() {
+            return Err(BrowserError::Configuration(error));
+        }
+    }
+    Ok(())
+}
+
+/// Runs a locator `script` in `context` and answers the nodes of the elements
+/// it returned, in its order. The returned array is kept in the command's
+/// object group.
+pub(crate) async fn scan(
+    page: &Page,
+    context: chromiumoxide::cdp::js_protocol::runtime::ExecutionContextId,
+    script: &str,
+    args: Vec<serde_json::Value>,
+) -> Result<Vec<BackendNodeId>> {
+    use chromiumoxide::cdp::js_protocol::runtime::{
+        CallArgument, CallFunctionOnParams, DeepSerializedValueType, SerializationOptions,
+        SerializationOptionsSerialization,
+    };
+    let result = page
+        .evaluate_function(
+            CallFunctionOnParams::builder()
+                .function_declaration(script)
+                .execution_context_id(context)
+                .object_group(crate::page::element::OBJECT_GROUP)
+                .arguments(
+                    args.into_iter()
+                        .map(|value| CallArgument::builder().value(value).build())
+                        .collect::<Vec<_>>(),
+                )
+                .serialization_options(
+                    SerializationOptions::builder()
+                        .serialization(SerializationOptionsSerialization::Deep)
+                        .max_depth(2)
+                        .additional_parameters(json!({"maxNodeDepth": 0}))
+                        .build()
+                        .map_err(BrowserError::Configuration)?,
+                )
+                .build()
+                .map_err(BrowserError::Configuration)?,
+        )
+        .await?;
+    let serialized = result
+        .object()
+        .deep_serialized_value
+        .as_ref()
+        .filter(|value| value.r#type == DeepSerializedValueType::Array)
+        .and_then(|value| value.value.as_ref())
+        .ok_or_else(|| {
+            BrowserError::InvalidResult("locator did not return a serialized node array".into())
+        })?;
+    let nodes: Vec<SerializedNode> = serde_json::from_value(serialized.clone())
+        .map_err(|error| BrowserError::InvalidResult(format!("locator nodes: {error}")))?;
+    Ok(nodes
+        .into_iter()
+        .map(|SerializedNode::Node { backend_node_id }| backend_node_id)
+        .collect())
+}
+
 // Blink includes additional DOM metadata in deep serialization. Validate the
 // node discriminator and backend identity; the locator does not use that metadata.
 #[derive(Deserialize)]
@@ -881,7 +905,7 @@ fn nest(nodes: Vec<(usize, BrowserTreeNode)>) -> Vec<BrowserTreeNode> {
 }
 
 // Chrome AX values carry optional JSON; absent name/role means empty text.
-fn ax_text(value: &Option<AxValue>) -> &str {
+pub(crate) fn ax_text(value: &Option<AxValue>) -> &str {
     value
         .as_ref()
         .and_then(|value| value.value.as_ref())
@@ -890,7 +914,7 @@ fn ax_text(value: &Option<AxValue>) -> &str {
 }
 
 /// Match the browser command's literal substring or exact semantic text contract.
-fn text_matches(actual: &str, expected: &str, exact: bool) -> bool {
+pub(crate) fn text_matches(actual: &str, expected: &str, exact: bool) -> bool {
     if exact {
         actual == expected
     } else {

@@ -31,7 +31,7 @@ pub(crate) async fn select_text(
         ));
     }
     let mut last_failure = None;
-    let mut pauses = element::CheckPauses::default();
+    let mut pauses = element::CheckPauses::action();
     loop {
         let attempt = async {
             let crate::page::element::Ready { element, named, .. } =
@@ -78,7 +78,7 @@ pub(crate) async fn select_text(
                     });
                     operation
                         .run(async {
-                            pauses.wait().await;
+                            pauses.wait_next().await;
                             Ok(())
                         })
                         .await?;

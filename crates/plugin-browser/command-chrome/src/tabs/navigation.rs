@@ -4,6 +4,13 @@
 //! The observation is installed before the navigation is issued and reports
 //! that navigation only. An HTTP error status is a received document, not a
 //! failure.
+//!
+//! An action's input waits for a navigation only when the browser announced
+//! one the input started, as Playwright's signal barrier does: Chrome answers
+//! a `Page.enable` sent after the input only after every event the input
+//! caused, so a click that navigates has said so by then, and one that does
+//! not returns at once. A navigation a page starts later, from a timer, is the
+//! next command's to wait for (`wait --url`, `--wait-url`); no clock decides.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -15,10 +22,11 @@ use chromiumoxide::{
     cdp::browser_protocol::{
         network::{EventLoadingFailed, EventRequestWillBeSent, LoaderId, RequestId, ResourceType},
         page::{
-            EventFrameNavigated, EventFrameStartedLoading, EventLifecycleEvent,
-            EventNavigatedWithinDocument, FrameId, GetFrameTreeParams, GetNavigationHistoryParams,
-            NavigateParams, NavigateToHistoryEntryParams, NavigationEntry, ReloadParams,
-            StopLoadingParams,
+            ClientNavigationDisposition, EnableParams, EventFrameNavigated,
+            EventFrameRequestedNavigation, EventFrameStartedLoading, EventFrameStoppedLoading,
+            EventLifecycleEvent, EventNavigatedWithinDocument, FrameId, GetFrameTreeParams,
+            GetNavigationHistoryParams, NavigateParams, NavigateToHistoryEntryParams,
+            NavigationEntry, ReloadParams, StopLoadingParams,
         },
     },
     listeners::EventStream,
@@ -50,17 +58,25 @@ pub struct NavigationObservation {
     same_document: EventStream<EventNavigatedWithinDocument>,
     lifecycle: EventStream<EventLifecycleEvent>,
     loading: EventStream<EventFrameStartedLoading>,
+    requested: EventStream<EventFrameRequestedNavigation>,
+    stopped: EventStream<EventFrameStoppedLoading>,
     frame: FrameId,
     previous_loader: LoaderId,
     expected_loader: Option<LoaderId>,
     documents: HashMap<RequestId, LoaderId>,
     states: HashMap<LoaderId, HashSet<String>>,
     committed: Option<LoaderId>,
+    /// Whether a new document committed before the action's input began.
+    changed: bool,
     pub url: String,
 }
 
 enum Observed {
     Other,
+    /// The page asked to navigate the tab, before any request.
+    Requested,
+    /// The main frame stopped loading.
+    Stopped,
     Started,
     SameDocument,
     Commit,
@@ -70,7 +86,23 @@ enum Observed {
 
 impl NavigationObservation {
     pub fn document_changed(&self) -> bool {
-        self.committed.is_some()
+        self.changed || self.committed.is_some()
+    }
+
+    /// Opens the window in which an action's input can start a navigation,
+    /// as Playwright's signal barrier opens around the input alone: what the
+    /// page started before, while the action located and checked its element,
+    /// is not the input's. The URL and a document change seen so far stay.
+    pub fn input_begins(&mut self) -> Result<()> {
+        while self.next().now_or_never().transpose()?.is_some() {}
+        if let Some(loader) = self.committed.take() {
+            self.changed = true;
+            self.previous_loader = loader;
+        }
+        self.expected_loader = None;
+        self.documents.clear();
+        self.states.clear();
+        Ok(())
     }
 
     pub async fn subscribe(page: &Page) -> Result<Self> {
@@ -92,6 +124,12 @@ impl NavigationObservation {
         let loading = page
             .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
             .await?;
+        let requested = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
+        let stopped = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
         let frame = page
             .execute(GetFrameTreeParams {})
             .await?
@@ -105,12 +143,15 @@ impl NavigationObservation {
             same_document,
             lifecycle,
             loading,
+            requested,
+            stopped,
             frame: frame.id,
             previous_loader: frame.loader_id,
             expected_loader: None,
             documents: HashMap::new(),
             states: HashMap::new(),
             committed: None,
+            changed: false,
             url: format!(
                 "{}{}",
                 frame.url,
@@ -123,6 +164,7 @@ impl NavigationObservation {
         observation.documents.clear();
         observation.states.clear();
         observation.committed = None;
+        observation.changed = false;
         Ok(observation)
     }
 
@@ -176,56 +218,113 @@ impl NavigationObservation {
                 let event = event.ok_or(BrowserError::TabNotFound)??;
                 Ok(if event.frame_id == self.frame { Observed::Started } else { Observed::Other })
             }
+            event = self.requested.next() => {
+                let event = event.ok_or(BrowserError::TabNotFound)??;
+                Ok(if event.frame_id == self.frame && event.disposition == ClientNavigationDisposition::CurrentTab {
+                    Observed::Requested
+                } else {
+                    Observed::Other
+                })
+            }
+            event = self.stopped.next() => {
+                let event = event.ok_or(BrowserError::TabNotFound)??;
+                Ok(if event.frame_id == self.frame { Observed::Stopped } else { Observed::Other })
+            }
         }
     }
 
-    pub async fn wait_load(
-        &mut self,
-        load: Load,
-        ordinary_click: bool,
-        operation: &Operation<'_>,
-    ) -> Result<()> {
-        // Only classifying a click's load start is bounded separately. A started
-        // navigation shares the command deadline with every other action phase.
-        let classification = tokio::time::Instant::now() + Duration::from_millis(250);
-        let mut started = !ordinary_click;
+    /// Waits for the navigation a command requested to reach `load`.
+    pub async fn wait_load(&mut self, load: Load, operation: &Operation<'_>) -> Result<()> {
         loop {
-            let event = if started {
-                self.next().await?
-            } else {
-                match tokio::time::timeout_at(classification, self.next()).await {
-                    Ok(event) => event?,
-                    Err(_) => return Ok(()),
-                }
-            };
-            if matches!(
-                event,
-                Observed::Started | Observed::Commit | Observed::SameDocument
-            ) {
-                operation.complete_input();
-            }
-            match event {
-                Observed::SameDocument if self.expected_loader.is_none() => return Ok(()),
-                Observed::Failed(reason) if !ordinary_click => {
-                    return Err(BrowserError::NavigationFailed(reason));
-                }
-                Observed::Failed(_) => return Ok(()),
-                Observed::Started | Observed::Commit => started = true,
-                _ => {}
-            }
-            if let Some(loader) = &self.committed
-                && (load == Load::Commit
-                    || self.states.get(loader).is_some_and(|states| {
-                        states.contains(if load == Load::Load {
-                            "load"
-                        } else {
-                            "DOMContentLoaded"
-                        })
-                    }))
-            {
-                return Ok(());
+            let event = self.next().await?;
+            if let Some(result) = self.settle(event, load, false, operation) {
+                return result;
             }
         }
+    }
+
+    /// Waits for the navigation an action's input started since
+    /// [`Self::input_begins`], if it started one:
+    /// until the new document's DOMContentLoaded, a same-document change, or
+    /// the navigation's end without a document, such as a download or a
+    /// refused request, which is the page's outcome, not the action's
+    /// failure. A dialog that opens meanwhile, such as `beforeunload`, holds
+    /// the navigation and is reported.
+    pub async fn wait_started(&mut self, tab: &BrowserTab, operation: &Operation<'_>) -> Result<()> {
+        let mut dialog = tab.state().dialog.watch();
+        let barrier = async {
+            tab.page().execute(EnableParams::default()).await?;
+            // Only the page's request to navigate counts, as in Playwright: a
+            // load or a commit can belong to a navigation started before the
+            // input.
+            let mut started = false;
+            while let Some(event) = self.next().now_or_never() {
+                let event = event?;
+                started |= matches!(event, Observed::Requested);
+                if let Some(result) = self.settle(event, Load::DomContentLoaded, true, operation) {
+                    return result;
+                }
+            }
+            if !started {
+                return Ok(());
+            }
+            loop {
+                let event = self.next().await?;
+                if let Some(result) = self.settle(event, Load::DomContentLoaded, true, operation) {
+                    return result;
+                }
+            }
+        };
+        tokio::select! {
+            result = barrier => result,
+            opened = dialog.wait_for(|dialog| dialog.is_some()) => {
+                opened.map_err(|_| BrowserError::Closed)?;
+                Err(BrowserError::DialogBlocked)
+            }
+        }
+    }
+
+    /// The outcome `event` settles, if any: `load` reached, a same-document
+    /// change, or a failure, which fails a requested navigation and ends an
+    /// action's.
+    fn settle(
+        &self,
+        event: Observed,
+        load: Load,
+        action: bool,
+        operation: &Operation<'_>,
+    ) -> Option<Result<()>> {
+        if matches!(
+            event,
+            Observed::Requested | Observed::Started | Observed::Commit | Observed::SameDocument
+        ) {
+            operation.complete_input();
+        }
+        match event {
+            Observed::SameDocument if self.expected_loader.is_none() => return Some(Ok(())),
+            Observed::Failed(reason) if !action => {
+                return Some(Err(BrowserError::NavigationFailed(reason)));
+            }
+            Observed::Failed(_) => return Some(Ok(())),
+            // The request went out and the loading stopped without a new
+            // document: the response became a download or had none to show.
+            Observed::Stopped
+                if action && self.expected_loader.is_some() && self.committed.is_none() =>
+            {
+                return Some(Ok(()));
+            }
+            _ => {}
+        }
+        let loader = self.committed.as_ref()?;
+        (load == Load::Commit
+            || self.states.get(loader).is_some_and(|states| {
+                states.contains(if load == Load::Load {
+                    "load"
+                } else {
+                    "DOMContentLoaded"
+                })
+            }))
+        .then_some(Ok(()))
     }
 
     /// Observe buffered URL changes first, then the current URL after delivery.
@@ -316,9 +415,9 @@ impl BrowserTab {
                     biased;
                     result = &mut request => {
                         result?;
-                        observation.wait_load(load, false, operation).await?;
+                        observation.wait_load(load, operation).await?;
                     }
-                    result = observation.wait_load(load, false, operation) => { result?; }
+                    result = observation.wait_load(load, operation) => { result?; }
                 }
                 Ok(observation.url.clone())
             })

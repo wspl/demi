@@ -160,7 +160,7 @@ pub async fn execute(
     }
     .await;
     // The shared object-group cleanup also handles dialogs and destroyed targets.
-    let result = after_cleanup(work, crate::page::element::release_objects(tab).await);
+    let result = after_cleanup(work, crate::page::element::release_objects(tab, references).await);
     result.map_err(|error| operation.failure(error, tab.id().as_str(), None))
 }
 

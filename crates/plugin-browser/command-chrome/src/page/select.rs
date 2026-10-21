@@ -51,7 +51,7 @@ pub(crate) async fn select_options(
         .map(|candidate| candidate.unwrap_or(Value::Null))
         .collect();
     let mut last_failure = None;
-    let mut pauses = element::CheckPauses::default();
+    let mut pauses = element::CheckPauses::action();
     let result: Result<(ResolvedElement, Vec<SelectedOption>)> = async {
         loop {
             let element::Ready { element, named, .. } = crate::page::element::ready_with_failure(
@@ -104,7 +104,7 @@ pub(crate) async fn select_options(
             });
             operation
                 .run(async {
-                    pauses.wait().await;
+                    pauses.wait_next().await;
                     Ok(())
                 })
                 .await?;
