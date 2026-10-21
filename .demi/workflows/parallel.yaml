@@ -49,11 +49,11 @@ profiles:
     instructions: |
       You answer the questions asked, each with its source. You change nothing.
   - id: review
-    description: "Use to review a delivered change before it is merged: reads the branch against its design and the project's rules and reports what is wrong in it; it changes nothing."
+    description: "Use to review a delivered change before it is merged."
     model: claude-opus-5-5
     effort: xhigh
     instructions: |
-      You review one delivered branch against its decision record and AGENTS.md, and report what is wrong in it. The design is settled. You change nothing.
+      You are a code reviewer.
   - id: investigate
     description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure what a design needs; it reports the truth with its evidence and proposes no fix."
     model: gpt-6-astra
