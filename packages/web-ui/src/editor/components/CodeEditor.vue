@@ -35,6 +35,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** The editor of the file at `path` goes, scrolled to this. */
   left: [path: string, snapshot: StateEffect<unknown>]
+  /** The editor is built and shows the file's text, once its language is in. */
+  built: [path: string]
 }>()
 
 const container = ref<HTMLDivElement>()
@@ -54,6 +56,11 @@ const view = useCodeView(container, props, [
   keymap.of([...defaultKeymap, ...foldKeymap]),
   foundLineExtension(),
 ], { scrollTo: props.scrollTo, left: (snapshot) => emit('left', props.path, snapshot) })
+
+watch(view, (built) => {
+  if (built)
+    emit('built', props.path)
+})
 
 watch([view, () => props.line], ([built, line]) => {
   if (built && line)

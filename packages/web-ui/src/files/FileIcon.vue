@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { computed, shallowRef, watch } from 'vue'
+import { computed } from 'vue'
 import { File, Folder } from '@lucide/vue'
-import { ensureFileIconTheme, fileIconTheme, fileIconUrl } from './file-icon-theme'
+import { regionForm } from '../infra/region-wait'
+import { ensureFileIconTheme, fileIconTheme, iconPicture } from './file-icon-theme'
 import { fileIconGlyph, fileIconName } from './file-icons'
 
 /**
  * A file or folder glyph from the Material Icon Theme, chosen by name: `src` gets the
  * source folder, `package.json` the Node badge, `App.vue` the Vue mark.
  *
- * Until the theme has loaded, and for a name it does not know, a plain outline that
- * takes the same room.
+ * The box has its size from the start, whatever it holds. The icon is a region
+ * (`infra/region-wait.ts`) that needs the theme's list and then the glyph's
+ * picture: for 300 ms at most, in all, the box holds nothing; past that, a plain
+ * outline, as for a name the theme does not know, which stays until the picture
+ * replaces it.
  */
 const props = withDefaults(
   defineProps<{
@@ -22,7 +26,7 @@ const props = withDefaults(
   { size: 16 },
 )
 
-ensureFileIconTheme()
+void ensureFileIconTheme()
 
 /** Where the glyph is in the theme's package, once the theme has loaded. */
 const glyph = computed(() => {
@@ -31,40 +35,31 @@ const glyph = computed(() => {
     ? fileIconGlyph(theme, props.icon ?? fileIconName(theme, props.name, props.isDirectory))
     : null
 })
-const src = shallowRef<string | null>(null)
+/** The glyph's picture: undefined while it is on its way, null where there is none. */
+const src = computed(() => (glyph.value === null ? null : iconPicture(glyph.value)))
 
-watch(
-  glyph,
-  (path) => {
-    src.value = null
-    if (!path)
-      return
-    fileIconUrl(path).then((url) => {
-      if (glyph.value === path)
-        src.value = url
-    })
-  },
-  { immediate: true },
-)
+const form = computed(() => regionForm(
+  `icon:${props.isDirectory ? 'folder' : 'file'}:${props.icon ?? props.name}`,
+  () => fileIconTheme.value !== null && (glyph.value === null || src.value !== undefined),
+))
 </script>
 
 <template>
-  <img
-    v-if="src"
-    :src="src"
-    :width="size"
-    :height="size"
-    class="max-w-none shrink-0"
-    alt=""
-    aria-hidden="true"
-    draggable="false"
-  />
-  <!-- The outline stands in the glyph's footprint, so a row's width does not change when the theme loads. -->
+  <!-- One box, so a row's width and height do not change when the list or the picture arrives. -->
   <span
-    v-else
     class="inline-flex shrink-0 items-center justify-center"
     :style="{ width: `${size}px`, height: `${size}px` }"
   >
-    <component :is="isDirectory ? Folder : File" :size="size - 2" />
+    <img
+      v-if="src && form === 'final'"
+      :src="src"
+      :width="size"
+      :height="size"
+      class="max-w-none shrink-0"
+      alt=""
+      aria-hidden="true"
+      draggable="false"
+    />
+    <component :is="isDirectory ? Folder : File" v-else-if="form === 'plain' || (form === 'final' && !src)" :size="size - 2" />
   </span>
 </template>

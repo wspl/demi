@@ -14,7 +14,7 @@ import { toolRowIcon } from './tool-row-icon'
 import { useShellRow } from '../shell-row'
 import { shellTitle } from '../tool-rendering'
 import { splitMedia, toolMedia } from '../tool-media'
-import { codeRuns, codeTextColor } from '../../markdown/highlight'
+import { codeColor, codeRuns } from '../../markdown/highlight'
 import { useMarkdownRenderVersion } from '../../markdown/render-version'
 
 const props = defineProps<{
@@ -26,11 +26,12 @@ const command = computed(() => (props.input['script'] as string) ?? '')
 const renderVersion = useMarkdownRenderVersion()
 /**
  * The script highlighted as Bash, in the colors all code shows in: its runs
- * once Bash's parser is there, and its text color, again in each mode.
+ * once Bash's parser is there, and its text color, hidden while its region
+ * waits (`markdown/highlight.ts`), again in each mode.
  */
 const commandColors = computed(() => {
   void renderVersion.value
-  return { runs: codeRuns(command.value, 'bash'), text: codeTextColor() }
+  return { runs: codeRuns(command.value, 'bash'), text: codeColor('bash') }
 })
 const title = computed(() => shellTitle(props.input))
 const media = computed(() => splitMedia(toolMedia(props.block.output, title.value)))

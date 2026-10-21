@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { FileText, History, RefreshCw } from '@lucide/vue'
 import type { StateEffect } from '@codemirror/state'
 import { CodeEditor, useEditor } from '../editor/load'
+import { regionForm, regionsChanged } from '../infra/region-wait'
 import { t as editorText } from '../editor/locales/text'
 import { renderable, type DocumentPlace } from '../markdown/document'
 import RegionNote from '../ui/RegionNote.vue'
@@ -77,6 +78,8 @@ const emit = defineEmits<{ open: [path: string] }>()
 // The view shows its loading state until the editor is there, whose load starts now.
 const { load: editorLoad, retry: retryEditor } = useEditor()
 const editorReady = computed(() => editorLoad.value.phase === 'ready')
+/** The path of the file whose editor is built, which draws its text with its colors. */
+const builtPath = ref<string | null>(null)
 
 /** Markdown and SVG only: their rendered view, or their text. */
 const mode = defineModel<'preview' | 'source'>('mode', { default: 'preview' })
@@ -264,12 +267,16 @@ const shownFile = computed<ShownFile>(() => {
       return { as: 'reading' }
   }
 })
-/** The file's bar, its label in place of the kind and facts when given; Download only where the source serves files' bytes. */
+/**
+ * The file's bar, its label in place of the kind and facts when given; Download only where the source serves files' bytes.
+ * Where the file's text is known the bar stands before the editor is there, without the language's name, so the text does not move when the editor arrives.
+ */
 const bar = computed(() => {
   const editor = editorLoad.value
-  if (props.path === null || editor.phase !== 'ready')
+  const textKnown = shownFile.value.as === 'text' || shownFile.value.as === 'start'
+  if (props.path === null || editor.phase === 'failed' || (editor.phase !== 'ready' && !textKnown))
     return null
-  const shown = fileBar(props.path, shownFile.value, editor.chunk.languageName)
+  const shown = fileBar(props.path, shownFile.value, editor.phase === 'ready' ? editor.chunk.languageName : null)
   return {
     ...shown,
     ...(props.label === undefined || !shown.download ? {} : { label: props.label }),
@@ -285,6 +292,25 @@ const markdown = computed(() => kind.value === 'markdown' &&
   shownMode.value === 'preview' &&
   state.value.phase === 'ready' &&
   renderable(state.value.text))
+/** Whether the view shows the file's text in the editor, unless the editor failed to load, which the region's note says. */
+const editorShown = computed(() => !markdown.value && props.path !== null && editorLoad.value.phase !== 'failed' && (state.value.phase === 'ready' || start.value?.phase === 'ready'))
+/** The text the editor shows. */
+const shownText = computed(() => state.value.phase === 'ready' ? state.value.text : start.value?.phase === 'ready' ? start.value.text : '')
+/**
+ * How the file's text draws: its region (`infra/region-wait.ts`) needs the
+ * editor and the file's language, so for 300 ms at most, in all, it draws
+ * nothing, then the text without colors, which the editor replaces once built.
+ */
+const editorForm = computed(() => {
+  const path = props.path
+  if (!editorShown.value || path === null)
+    return 'final'
+  return regionForm(`editor:${path}`, () => builtPath.value === path)
+})
+function editorBuilt(path: string): void {
+  builtPath.value = path
+  regionsChanged()
+}
 const tooLargeToRender = computed(() => kind.value === 'markdown' &&
   (state.value.phase === 'ready' ? !renderable(state.value.text) : start.value?.phase === 'ready'))
 const place = computed<DocumentPlace | null>(() => props.path === null ? null : { path: props.path, root: props.root })
@@ -367,16 +393,25 @@ defineExpose({ readOpenedLink })
       @open="emit('open', $event)"
     />
     <!-- One editor per file: a new text of it replaces the old in place. -->
-    <CodeEditor
-      v-else-if="editorReady && (state.phase === 'ready' || start?.phase === 'ready') && path"
-      :key="path"
-      class="h-full"
-      :path="path"
-      :text="state.phase === 'ready' ? state.text : start?.phase === 'ready' ? start.text : ''"
-      :scroll-to="scrolls.get(path)"
-      :line="line"
-      @left="(left, snapshot) => scrolls.set(left, snapshot)"
-    />
+    <div v-else-if="editorShown && path" class="relative h-full">
+      <CodeEditor
+        v-if="editorReady"
+        :key="path"
+        class="h-full"
+        :path="path"
+        :text="shownText"
+        :scroll-to="scrolls.get(path)"
+        :line="line"
+        @left="(left, snapshot) => scrolls.set(left, snapshot)"
+        @built="editorBuilt"
+      />
+      <!-- The text without colors, where the editor will stand, until it is built. -->
+      <pre
+        v-if="editorForm === 'plain'"
+        class="absolute inset-0 m-0 overflow-hidden whitespace-pre bg-surface px-3 pt-3 font-mono text-[13px] leading-[20px] text-fg-body"
+        data-plain-text
+      >{{ shownText }}</pre>
+    </div>
     <FileSummary
       v-else-if="editorReady && state.phase === 'card' && start?.phase !== 'loading' && path"
       :path="path"

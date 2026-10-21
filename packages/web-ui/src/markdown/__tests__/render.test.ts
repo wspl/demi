@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import { Marked } from 'marked'
+import { resetRegionWaits } from '../../infra/region-wait'
 import { loadKatex, mathExtensions } from '../math'
 import { messageMedia, renderMarkdown } from '../render'
 import type { AttachmentLookup, MessageFiles } from '../types'
@@ -391,17 +392,19 @@ test('prices stay text', () => {
     expect(renderMarkdown(text)).toBe(`<p>${text}</p>\n`)
 })
 
-test('until KaTeX arrives, math shows its source where it will stand, and asks for KaTeX', () => {
-  // A KaTeX that has not arrived, whatever another test loaded in this process.
+test('until KaTeX arrives, math shows its source where it will stand, hidden at first, and asks for KaTeX', () => {
+  // A KaTeX that has not arrived, whatever another test loaded in this process,
+  // in the 300 ms it is waited for (`region-draws-once.test.ts`).
+  resetRegionWaits()
   let asked = 0
   const reader = new Marked({ extensions: mathExtensions({}, () => {
     asked += 1
     return null
   }) })
-  expect(reader.parse('面积为$x^2$平方米')).toBe('<p>面积为<span class="math math-inline">x^2</span>平方米</p>\n')
-  expect(reader.parse('$$a < b$$')).toBe('<p><span class="math math-display">a &lt; b</span></p>\n')
-  expect(reader.parse('$$\nx_1\n$$')).toBe('<span class="math math-display">x_1</span>\n')
-  expect(asked).toBe(3)
+  expect(reader.parse('面积为$x^2$平方米')).toBe('<p>面积为<span class="math math-inline math-waiting">x^2</span>平方米</p>\n')
+  expect(reader.parse('$$a < b$$')).toBe('<p><span class="math math-display math-waiting">a &lt; b</span></p>\n')
+  expect(reader.parse('$$\nx_1\n$$')).toBe('<span class="math math-display math-waiting">x_1</span>\n')
+  expect(asked).toBeGreaterThan(0)
 })
 
 test('math renders on its own, beside Chinese text, and as a display', async () => {

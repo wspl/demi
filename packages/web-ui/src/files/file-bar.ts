@@ -70,7 +70,7 @@ const MEDIA_KINDS = { image: 'kind.image', video: 'kind.video', audio: 'kind.aud
  * What a file is, in full: *PNG Image*, *TypeScript*, *Plain Text* for text
  * in no language, a card's kind. An SVG shown as its source is text.
  */
-function kindName(path: string, shown: ShownFile, languageName: LanguageName): string {
+function kindName(path: string, shown: ShownFile, languageName: LanguageName | null): string | null {
   const name = baseName(path)
   const kind = previewKind(path)
   const asText = shown.as === 'text' || shown.as === 'start'
@@ -78,12 +78,13 @@ function kindName(path: string, shown: ShownFile, languageName: LanguageName): s
     return t(MEDIA_KINDS[kind], { extension: fileExtension(name) ?? '' }).trim()
   if (shown.as === 'card')
     return entryKind(name, false)
-  return languageName(path) ?? t('kind.plainText')
+  // Until the editor's chunk is there, a text file's language is not known.
+  return languageName === null ? null : languageName(path) ?? t('kind.plainText')
 }
 
 /** What a file is, in full, by its name alone, as a card names it: *PDF Document*, *ZIP file*. */
 export function fileKindName(path: string): string {
-  return kindName(path, { as: 'card', size: null }, () => null)
+  return kindName(path, { as: 'card', size: null }, () => null) ?? ''
 }
 
 /** The facts after a file's kind. */
@@ -111,12 +112,15 @@ function facts(shown: ShownFile): string[] {
  * - A file that is not there names itself and offers nothing.
  * - Any other shows its kind and facts, Preview and Source for Markdown and SVG,
  *   Copy of its whole text while the page holds all of it, and Download.
+ * - Without a language name, the editor's chunk not being there yet, a text
+ *   file's label holds its facts alone, so the bar stands at its size and the
+ *   kind joins it.
  */
-export function fileBar(path: string, shown: ShownFile, languageName: LanguageName): FileBar {
+export function fileBar(path: string, shown: ShownFile, languageName: LanguageName | null): FileBar {
   if (shown.as === 'missing')
     return { label: baseName(path), modes: false, copy: null, download: false }
   return {
-    label: [kindName(path, shown, languageName), ...facts(shown)].join(' · '),
+    label: [kindName(path, shown, languageName), ...facts(shown)].filter((part) => part !== null).join(' · '),
     modes: hasSourceView(path),
     copy: shown.as === 'text' ? shown.text : null,
     download: true,

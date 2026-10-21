@@ -15,7 +15,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { WEB_LINK_REL, isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
-import { codeRuns, codeTextColor } from '../../markdown/highlight'
+import { codeColor, codeRuns, codeTextColor, typedCodeRuns } from '../../markdown/highlight'
 import { bareUrls, closesFence, fenceInfo, typedFormat } from '../../markdown/user-markdown'
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
@@ -437,12 +437,23 @@ export function redrawDecorations(editor: Editor): void {
 }
 
 /**
- * A code block's colors: the theme's text color for the block, and its tokens'
+ * A sent message's code block's colors: the theme's text color for the block,
+ * hidden while its region waits (`markdown/highlight.ts`), and its tokens'
  * where the language colors them, each run by its offset in the code.
  */
 export function codeColors(node: ProseMirrorNode): { style: string; runs: { from: number; to: number; classes: string }[] } {
   const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
-  return { style: `color: ${codeTextColor()}`, runs: codeRuns(node.textContent, language) }
+  return { style: `color: ${codeColor(language)}`, runs: codeRuns(node.textContent, language) }
+}
+
+/**
+ * A code block's colors in the text a person types or edits: the theme's text
+ * color from the first moment, never hidden, and the tokens' where the language
+ * has loaded. The text being edited is no region.
+ */
+export function typedCodeColors(node: ProseMirrorNode): { style: string; runs: { from: number; to: number; classes: string }[] } {
+  const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
+  return { style: `color: ${codeTextColor()}`, runs: typedCodeRuns(node.textContent, language) }
 }
 
 /**
@@ -460,7 +471,7 @@ function decorate(doc: ProseMirrorNode): DecorationSet {
   const decorations: Decoration[] = []
   doc.descendants((node, pos) => {
     if (node.type.spec.code) {
-      const colors = codeColors(node)
+      const colors = typedCodeColors(node)
       decorations.push(Decoration.node(pos, pos + node.nodeSize, { style: colors.style }))
       for (const run of colors.runs) {
         decorations.push(Decoration.inline(pos + 1 + run.from, pos + 1 + run.to, { class: run.classes }))

@@ -4,10 +4,12 @@ import { lazyChunk } from '../infra/lazy'
 import { t } from './locales/text'
 
 // What the page holds of the editor before it arrives: the editor, its
-// languages and its highlighter are chunks of their own, loaded on first use,
-// so a page that shows no code downloads none of them. Nothing outside the
-// editor imports `./editor` or the highlighter statically; everything reaches
-// them through here and `markdown/highlight.ts`.
+// languages and its highlighter are chunks of their own, which the page loads
+// in the background once the first conversation has shown
+// (`infra/region-load.ts`) and a view that needs one starts loading if it is
+// not there yet, so the first conversation downloads none of them first.
+// Nothing outside the editor imports `./editor` or the highlighter statically;
+// everything reaches them through here and `markdown/highlight.ts`.
 
 /** The editor's components and the language data, as one chunk. */
 export type Editor = typeof import('./editor')
