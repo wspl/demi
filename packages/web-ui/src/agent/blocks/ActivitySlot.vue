@@ -16,13 +16,13 @@ const props = defineProps<{
   kind: ActivityKind
   /**
    * When the wait began, as `Date.now()`; Requesting shows how long it has
-   * waited since.
+   * waited since. Connecting counts nothing.
    */
-  since: number
+  since?: number
 }>()
 
 const requestingElapsed = useElapsedTime(
-  () => props.since,
+  () => props.since ?? Number.NaN,
   () => props.kind === 'requesting',
 )
 

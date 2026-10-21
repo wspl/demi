@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { AT_REST } from '../agent-activity'
 import { afterEach, expect, test } from 'bun:test'
 
 // Side questions' cards in a reply. Two questions about words of one paragraph
@@ -28,7 +29,7 @@ function question(id: string, quote: string, askedAt: string): ShownSideQuestion
   const start = REPLY.indexOf(quote)
   return {
     id, blockId: 'text-1', start, end: start + quote.length, quote, question: `Why ${quote}?`, title: null,
-    folded: false, askedAt, history: EMPTY_TRANSCRIPT, failures: {}, working: false,
+    folded: false, askedAt, history: EMPTY_TRANSCRIPT, failures: {}, working: false, activity: AT_REST,
   }
 }
 

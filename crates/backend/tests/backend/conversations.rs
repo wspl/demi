@@ -1329,7 +1329,7 @@ async fn a_request_refused_for_its_size_fails_the_turn_and_compact_at_any_share_
     let compaction = socket.until_idle().await;
     assert!(compacted(&compaction), "{compaction:?}");
     vendor.respond(answer(&["Second answer."], 8, 2));
-    socket.send(&ClientFrame::Resume {}).await;
+    socket.send(&ClientFrame::Resume { id: None }).await;
     socket.until_idle().await;
 
     assert_eq!(vendor.requests().len(), 4);

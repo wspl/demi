@@ -218,13 +218,19 @@ impl<H: HostResolver> Tree<H> {
         started.await.map_err(|error| AskError::Failed(format!("the side question did not start: {error}")))?
     }
 
-    /// Sends the follow-up `text` to the side question `id`: its next turn,
-    /// after its own history, opening it again when it closed.
-    pub(crate) async fn ask_more(self: &Rc<Self>, id: NodeId, text: String) -> Result<(), AskError> {
+    /// Sends the follow-up `text`, the message `message`, to the side
+    /// question `id`: its next turn, after its own history, opening it again
+    /// when it closed.
+    pub(crate) async fn ask_more(self: &Rc<Self>, id: NodeId, message: TurnId, text: String) -> Result<(), AskError> {
         let tree = self.clone();
         let sent = self.lifecycle.spawn_local(async move {
             let _turn = tree.starts.acquire(id.clone()).await;
-            let message = tree.text_message(text);
+            let message = QueuedMessage {
+                comments: Vec::new(),
+                id: message,
+                content: vec![UserContentBlock::Text { text }],
+                automation: None,
+            };
             if let Some(side) = tree.live_side(&id).await {
                 return side
                     .node
@@ -239,8 +245,8 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Runs the side question `id`'s failed turn again, as a turn's Retry
-    /// does, opening it again when it closed.
-    pub(crate) async fn retry_side(self: &Rc<Self>, id: NodeId) -> Result<(), AskError> {
+    /// does, as the action `action`, opening it again when it closed.
+    pub(crate) async fn retry_side(self: &Rc<Self>, id: NodeId, action: TurnId) -> Result<(), AskError> {
         let tree = self.clone();
         let retried = self.lifecycle.spawn_local(async move {
             let _turn = tree.starts.acquire(id.clone()).await;
@@ -252,7 +258,7 @@ impl<H: HostResolver> Tree<H> {
             // supervision has not looked at it yet.
             side.node
                 .session()
-                .retry()
+                .retry(Some(action))
                 .map(drop)
                 .map_err(|error| AskError::Refused(error.to_string()))
         });
@@ -497,6 +503,7 @@ impl<H: HostResolver> Tree<H> {
             let mut entry = agents::resting(node.id().clone(), agents::side_role(of));
             entry.phase = session.phase();
             entry.waited_ms = session.waited_ms();
+            entry.wait_action = session.wait_action();
             entry.pending_calls = session.pending_calls();
             self.agents.put(entry);
         }

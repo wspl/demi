@@ -109,7 +109,7 @@ beforeEach(async () => {
         {
           type: 'agents',
           version: { epoch: 'e', revision: 1 },
-          agents: [{ id, role: { kind: 'root' }, phase: 'idle', waitedMs: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }],
+          agents: [{ id, role: { kind: 'root' }, phase: 'idle', waitedMs: null, waitAction: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }],
         },
         { type: 'request_output', output: null },
       ]

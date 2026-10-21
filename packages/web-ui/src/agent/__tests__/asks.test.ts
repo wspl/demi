@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import type { Block } from '@demicodes/protocol'
 import { EMPTY_TRANSCRIPT, heldTranscript } from '@demicodes/conversation-client'
 import { cardContent, pageToRead, shownTurns, type ShownSideQuestion } from '../comments/asks'
+import { AT_REST } from '../agent-activity'
 import { model } from './agent-harness'
 
 // Cost: pure functions; microseconds.
@@ -36,7 +37,7 @@ function call(id: string, createdAt: string, description: string): Block {
 function question(blocks: Block[], working: boolean, start = 0, length = start + blocks.length): ShownSideQuestion {
   return {
     id: 'side', blockId: 'reply', start: 0, end: 5, quote: 'stale', question: 'Why stale?', title: null, folded: false,
-    askedAt: ASKED, history: heldTranscript(length, [{ start, blocks }]), failures: {}, working,
+    askedAt: ASKED, history: heldTranscript(length, [{ start, blocks }]), failures: {}, working, activity: AT_REST,
   }
 }
 

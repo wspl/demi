@@ -151,7 +151,7 @@ async fn a_turn_refused_for_its_size_compacts_at_any_share_and_then_resumes() {
         "{compaction:?}"
     );
     // The turn is still the unfinished one, and Resume finishes it.
-    client.send(ClientFrame::Resume {}).await;
+    client.send(ClientFrame::Resume { id: None }).await;
     client.until_idle().await;
 
     let blocks = session_of(&fixture).transcript().blocks;
@@ -200,7 +200,7 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
     // The pass ran inside the second turn, which the failure ended.
     assert!(!error.outside_turn);
 
-    reopened.send(ClientFrame::Resume {}).await;
+    reopened.send(ClientFrame::Resume { id: None }).await;
     reopened.until_idle().await;
     let blocks = session_of(&fixture).transcript().blocks;
     let answer = blocks.iter().rev().find_map(|block| match block {

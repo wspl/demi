@@ -5,6 +5,7 @@ import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
+import { pressed, refused, serverWaits, waitClock } from '@demicodes/web-ui/agent/wait-clock'
 import { agentWorks, markSent, markWithdrawn, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
@@ -181,7 +182,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     pendingSteers: [],
     starting: null,
     pendingCalls: [],
-    waitingSince: null, requestOutput: null, turnSpeed: null,
+    waitingSince: null, waitAction: null, requestOutput: null, turnSpeed: null,
     model: {
       providerId: demoModel.providerId,
       modelId: demoModel.model.id,
@@ -191,6 +192,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     lastError: null,
     load: 'ready',
     pendingAction: null,
+    waitClock: waitClock(),
     failures: {},
     contextUsage: options.contextUsage ?? usageAt(0.62),
     archived: false,
@@ -279,19 +281,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * block, or a call being written once its title is, ends the wait, and so
    * does the turn's end.
    */
-  function waitForModel(): void {
-    state.waitingSince = Date.now()
+  function waitForModel(action: string | null = null): void {
+    tellWait(Date.now(), action)
+  }
+
+  /**
+   * The server tells the agent's wait, begun by the action `action` when the
+   * page's own action began it, as the product's runtime takes it.
+   */
+  function tellWait(since: number | null, action: string | null = null): void {
+    state.waitingSince = since
+    state.waitAction = since === null ? null : action
+    serverWaits(state.waitClock, state.waitAction)
   }
 
   watch(() => state.phase, (phase) => {
     if (phase !== 'running') {
-      state.waitingSince = null
+      tellWait(null)
     }
   })
 
   function append(block: Block): void {
     if (block.type === 'thinking' || block.type === 'text' || block.type === 'tool_call') {
-      state.waitingSince = null
+      tellWait(null)
     }
     // Each block names its request, as the backend stores it: a message
     // starts one, and the rest belong to the one before them.
@@ -627,7 +639,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: null }]
       })
       at(run, t + 400, () => {
-        state.waitingSince = null
+        tellWait(null)
         state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: step.description }]
       })
       t += 900
@@ -714,8 +726,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /** The server acknowledges a recovery with the phase, before the transcript says so, as the backend does. */
   function acknowledgeRecovery(): void {
-    state.pendingAction = null
     state.phase = 'running'
+    waitForModel(state.pendingAction?.id ?? null)
+    state.pendingAction = null
   }
 
   /**
@@ -788,6 +801,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     const next = inOrder([...pendingSubmissions.value, message])
     markSent(next, message.id)
     pendingSubmissions.value = next
+    // A message that starts a turn makes the agent wait from its press.
+    pressed(state.waitClock, message.id)
   }
 
   /** Copies of the messages on their way, whose order the next change marks. */
@@ -921,9 +936,13 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       })
       return
     }
+    // The server starts the turn, and its wait, before it writes the message.
     at(run, ADMIT_MS, () => {
       state.phase = 'running'
+      // Its wait names the message that began it.
+      const message = turnMessage()?.id ?? null
       admitMessage()
+      waitForModel(message)
     })
     deliveredBy = Math.max(deliveredBy, Date.now() + CONFIRM_MS)
     at(run, CONFIRM_MS, () => {
@@ -966,6 +985,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     const pending = turnMessage()
     if (pending) {
       changeSubmission(pending.id, { error, requestId })
+      refused(state.waitClock, pending.id)
     }
   }
 
@@ -1046,7 +1066,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     cancel()
     const run = token
     state.lastError = null
-    state.pendingAction = 'resume'
+    const id = nextId('resume')
+    state.pendingAction = { kind: 'resume', id }
+    pressed(state.waitClock, id)
     at(run, ACK_MS, acknowledgeRecovery)
     at(run, ACK_MS + WAIT_MS / 2, unwindRecovery)
     thinkThenReply(run, ACK_MS + WAIT_MS, THINK_2)
@@ -1117,6 +1139,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       if (writeSteers()) {
         thinkThenReply(run, WAIT_MS, THINK_2)
         state.phase = 'running'
+        waitForModel()
         return
       }
       state.phase = 'idle'
@@ -1250,6 +1273,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     drop(id)
     cutRound()
     append(steerBlock(pending.content, pending.comments))
+    waitForModel()
     thinkThenReply(token, WAIT_MS, THINK_2)
   }
 
@@ -1371,8 +1395,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
       state.phase = 'running'
       state.load = 'reconnecting'
+      // The server tells the wait it went on with once the socket is back.
+      const asked = Date.now()
       at(run, ACK_MS, () => {
         state.load = 'ready'
+        tellWait(asked)
       })
       thinkThenReply(run, ACK_MS + WAIT_MS, THINK_2)
       return

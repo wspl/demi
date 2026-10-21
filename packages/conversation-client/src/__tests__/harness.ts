@@ -53,7 +53,7 @@ export function entry(id: string, phase: SessionPhase, pendingCalls: PendingCall
         cwd: '/Users/alex',
         onPath: true,
       }
-  return { id, role, phase, waitedMs: null, pendingCalls, context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
+  return { id, role, phase, waitedMs: null, waitAction: null, pendingCalls, context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
 }
 
 export function text(id: string, value: string): Block {

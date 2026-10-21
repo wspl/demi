@@ -40,6 +40,7 @@ import { provideOriginRevealer } from './agent-receipts'
 import { agentLinkWindow, findAgent, provideMessageAgents } from './agent-links'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
+import { rootActivity } from './agent-activity'
 import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
 import { useShare, type ExistingShare, type ShareService } from './sharing'
@@ -403,6 +404,8 @@ const shownAsking = computed<ReplyAsking | undefined>(() => props.asking && {
     fullAsk.value = id
   },
 })
+/** What the root does now, as the conversation holds it. */
+const activity = computed(() => rootActivity(props.conversation))
 const shownEdges = computed(() => windowEdges(props.conversation.history, shown.value))
 const shownLatest = computed(() => shown.value === latestWindow(props.conversation.history) || shownEdges.value.atEnd)
 /**
@@ -915,8 +918,7 @@ watch(
             :at-end="shownEdges.atEnd"
             :latest="shownLatest"
             :summaries="conversation.summaries"
-            :pending-calls="conversation.pendingCalls"
-            :waiting-since="conversation.waitingSince"
+            :activity="activity"
             :queue="conversation.queue"
             :starting="conversation.starting"
             :pending-steers="conversation.pendingSteers"

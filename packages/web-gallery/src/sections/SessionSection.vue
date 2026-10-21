@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { AT_REST, rootActivity } from '@demicodes/web-ui/agent/agent-activity'
 import { SHAPES, useCardCost } from '../fixtures/cost'
 import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
@@ -996,7 +997,7 @@ workFlow.settleWork()
  * it as its last frame and the call's result would, exited with 0; Run
  * Again starts it anew, so its tag shows again past 3 seconds.
  */
-const runningRun = reactive({ blocks: runningRunBlocks(), command: runningRunCommand() })
+const runningRun = reactive({ blocks: runningRunBlocks(), command: runningRunCommand(), waitingSince: null as number | null })
 function toggleRunningRun(): void {
   const index = runningRun.blocks.length - 1
   const call = runningRun.blocks[index]
@@ -1013,8 +1014,11 @@ function toggleRunningRun(): void {
       status: 'completed',
       view: shellView({ commandId: '62', runningMs: Date.parse(endedAt) - Date.parse(command.startedAt), chunks: [{ stream: 'stdout', text: command.output }] }),
     })
+    // The call returned: the turn asks the model again, as the server tells.
+    runningRun.waitingSince = Date.now()
     return
   }
+  runningRun.waitingSince = null
   Object.assign(command, { phase: 'running', startedAt: new Date().toISOString() })
   delete command.exitCode
   delete command.endedAt
@@ -1028,8 +1032,11 @@ function toggleRunningRun(): void {
 const steppedStage = ref(0)
 const steppedBlocks = computed(() => steppedRunBlocks(steppedStage.value))
 const steppedLast = computed(() => steppedStage.value === STEPPED_RUN_STAGES.length - 1)
+/** When the stepped run began to wait for the model, as the server would tell it; null at the stages that wait for none. */
+const steppedWaitingSince = ref<number | null>(null)
 function nextStep(): void {
   steppedStage.value = steppedLast.value ? 0 : steppedStage.value + 1
+  steppedWaitingSince.value = STEPPED_RUN_STAGES[steppedStage.value] === 'the step ended, the model is waited for' ? Date.now() : null
 }
 /**
  * An ended turn that left its command running: End Command ends it as its
@@ -1084,6 +1091,8 @@ const signInOffBlocks = signInRequestBlocks('sign-in-off')
 const signInOutsideBlocks = signInRequestBlocks('sign-in-outside')
 /** The same request still working, its last call ended and no reply yet. */
 const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
+/** When that request began to wait for the model's reply, as the server would tell it. */
+const signInRunningSince = Date.now() - 6_000
 // The calls being written: a finished sentence, then a call with its title,
 // and one without it yet, where Requesting follows the text as when no call
 // is being written.
@@ -1095,9 +1104,10 @@ const viewedBlocks = viewedMediaBlocks()
 const screenshotRun = screenshotRunBlocks()
 // A transcript whose pictures the media viewer steps through with the arrow keys.
 const viewerTranscript = viewerTranscriptBlocks()
+// The server ends its wait once a call's title is written, and tells it until then.
 const writingSpecimens = [
-  { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
-  { variant: 'without a description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
+  { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }], waitingSince: null },
+  { variant: 'without a description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }], waitingSince: Date.now() - 4_000 },
 ]
 const uncopiedBlocks = uncopiedRequestBlocks()
 const movedBlocks = movedRequestBlocks()
@@ -2710,7 +2720,7 @@ onBeforeUnmount(() => {
                 class="h-full"
                 :conversation-id="`gallery-writing-${specimen.variant}`"
                 :blocks="writingBlocks"
-                :pending-calls="specimen.calls"
+                :activity="{ ...AT_REST, pendingCalls: specimen.calls, waitingSince: specimen.waitingSince }"
                 :pending-steers="[]"
                 :queue="[]"
                 phase="running"
@@ -2746,6 +2756,7 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="workFlow.state.id"
                 :blocks="workFlow.state.blocks"
+                :activity="rootActivity(workFlow.state)"
                 :pending-steers="[]"
                 :queue="[]"
                 :phase="workFlow.state.phase"
@@ -2753,8 +2764,6 @@ onBeforeUnmount(() => {
                 :pending-action="workFlow.state.pendingAction"
                 :pending-submissions="workFlow.pendingSubmissions.value"
                 :removing="workFlow.removing.value"
-                :pending-calls="workFlow.state.pendingCalls"
-                :waiting-since="workFlow.state.waitingSince"
                 :bottom-offset="workSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only
@@ -2775,6 +2784,7 @@ onBeforeUnmount(() => {
               class="h-full"
               conversation-id="gallery-work-running"
               :blocks="runningRun.blocks"
+              :activity="{ ...AT_REST, waitingSince: runningRun.waitingSince }"
               :pending-steers="[]"
               :queue="[]"
               phase="running"
@@ -2793,6 +2803,7 @@ onBeforeUnmount(() => {
               class="h-full"
               conversation-id="gallery-work-stepped"
               :blocks="steppedBlocks"
+              :activity="{ ...AT_REST, waitingSince: steppedWaitingSince }"
               :pending-steers="[]"
               :queue="[]"
               :phase="steppedLast ? 'idle' : 'running'"
@@ -2866,6 +2877,7 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="changesFlow.state.id"
                 :blocks="changesFlow.state.blocks"
+                :activity="rootActivity(changesFlow.state)"
                 :pending-steers="[]"
                 :queue="[]"
                 :phase="changesFlow.state.phase"
@@ -2910,6 +2922,7 @@ onBeforeUnmount(() => {
               class="h-full"
               conversation-id="gallery-request-running"
               :blocks="signInRunningBlocks"
+              :activity="{ ...AT_REST, waitingSince: signInRunningSince }"
               :pending-steers="[]"
               :queue="[]"
               phase="running"
@@ -3123,6 +3136,7 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="turnFlow.state.id"
                 :blocks="turnFlow.state.blocks"
+                :activity="rootActivity(turnFlow.state)"
                 :pending-steers="turnFlow.state.pendingSteers"
                 :queue="turnFlow.state.queue"
                 :starting="turnFlow.state.starting"
@@ -3185,6 +3199,7 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="streamFlow.state.id"
                 :blocks="streamFlow.state.blocks"
+                :activity="rootActivity(streamFlow.state)"
                 :pending-steers="[]"
                 :queue="[]"
                 :phase="streamFlow.state.phase"
@@ -3581,6 +3596,7 @@ onBeforeUnmount(() => {
                 class="min-h-0 flex-1"
                 :conversation-id="deliveryFlow.state.id"
                 :blocks="deliveryFlow.state.blocks"
+                :activity="rootActivity(deliveryFlow.state)"
                 :pending-steers="[]"
                 :queue="[]"
                 :phase="deliveryFlow.state.phase"

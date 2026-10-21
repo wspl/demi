@@ -20,7 +20,7 @@ export const createdAt = '2026-09-24T12:00:00.000Z'
 
 /** The root's entry of the conversation `id`, its session in `phase`. */
 export function rootEntry(id: string, phase: SessionPhase = 'idle', parts: Partial<AgentEntry> = {}): AgentEntry {
-  return { id, role: { kind: 'root' }, phase, waitedMs: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null, ...parts }
+  return { id, role: { kind: 'root' }, phase, waitedMs: null, waitAction: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null, ...parts }
 }
 
 /** The entry of the running child `id` of the root `parent`, its session in `phase`. */

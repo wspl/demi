@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pressed, serverWaits, waitClock, type WaitClock } from '@demicodes/web-ui/agent/wait-clock'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { Block, MessageComment } from '@demicodes/protocol'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -58,9 +59,15 @@ const commenting: ReplyCommenting = {
 
 /** A side question of the specimen: its record, its transcript, and the script its answers follow. */
 interface GallerySide {
-  question: Omit<ShownSideQuestion, 'history' | 'failures' | 'working'>
+  question: Omit<ShownSideQuestion, 'history' | 'failures' | 'working' | 'activity'>
   blocks: Block[]
   working: boolean
+  /** When its turn began to wait for the model, as the server would tell it; null when it waits for none. */
+  waitingSince: number | null
+  /** The action whose start began that wait, as the server would tell it; null for none. */
+  waitAction: string | null
+  /** The presses of its question, follow-ups and Retries, whose waits the specimen's server tells at once. */
+  waitClock: WaitClock
   script: AskScript
   turns: number
 }
@@ -91,22 +98,39 @@ function sideOf(id: string): GallerySide | undefined {
   return sides.value.find((side) => side.question.id === id)
 }
 
-/** Its turn works through its script's steps, then answers, or fails when `fails`. */
-function work(id: string, fails = false): void {
+/** The server tells the side's wait, begun by the page's action `action` or by none. */
+function tellWait(side: GallerySide, since: number | null, action: string | null = null): void {
+  side.waitingSince = since
+  side.waitAction = since === null ? null : action
+  serverWaits(side.waitClock, side.waitAction)
+}
+
+/**
+ * The page's action `action` on the side question `id`: its turn works
+ * through its script's steps, then answers, or fails when `fails`.
+ */
+function work(id: string, action: string, fails = false): void {
   const side = sideOf(id)
   if (!side)
     return
+  pressed(side.waitClock, action)
   side.working = true
+  tellWait(side, Date.now(), action)
   const turn = side.turns - 1
   // The small model titles the side conversation from its first question while the answer is made.
   if (side.question.title === null)
     later(STEP_MS / 2, () => (side.question.title = side.script.title))
   side.script.steps.forEach((step, index) => {
-    later(STEP_MS * (index + 1), () => side.blocks.push(askStep(id, turn, index, step)))
+    // Each step ended when its block comes, and the model is asked again.
+    later(STEP_MS * (index + 1), () => {
+      side.blocks.push(askStep(id, turn, index, step))
+      tellWait(side, Date.now())
+    })
   })
   later(STEP_MS * (side.script.steps.length + 1), () => {
     side.blocks.push(fails ? askFailure(id, turn) : askAnswer(id, turn, side.script.answer))
     side.working = false
+    tellWait(side, null)
   })
 }
 
@@ -115,6 +139,9 @@ function start(question: NewSideQuestion): GallerySide {
     question: { ...question, title: null, folded: false, askedAt: new Date().toISOString() },
     blocks: [...askHistory()],
     working: false,
+    waitingSince: null,
+    waitAction: null,
+    waitClock: waitClock(),
     script: askScript(question.question, asked++),
     turns: 1,
   }
@@ -130,11 +157,18 @@ const asking: ReplyAsking = {
       history: heldTranscript(side.blocks.length, [{ start: 0, blocks: side.blocks }]),
       failures: {},
       working: side.working,
+      activity: {
+        pendingCalls: [],
+        waitingSince: side.waitingSince,
+        waitAction: side.waitAction,
+        waitClock: side.waitClock,
+        sentAction: null,
+      },
     }))
   },
   ask: (question) => {
     start(question)
-    work(question.id)
+    work(question.id, question.id)
   },
   followUp: (id, text) => {
     const side = sideOf(id)
@@ -143,14 +177,14 @@ const asking: ReplyAsking = {
     side.blocks.push(askMessage(id, side.turns, side.question.quote, text))
     side.turns += 1
     side.script = askScript(text, asked++)
-    work(id)
+    work(id, `follow-up-${asked}`)
   },
   retry: (id) => {
     const side = sideOf(id)
     if (!side)
       return
     side.blocks = side.blocks.filter((block) => block.type !== 'error')
-    work(id)
+    work(id, `retry-${asked++}`)
   },
   fold: (id, folded) => {
     const side = sideOf(id)
@@ -170,6 +204,7 @@ function applySeed(anchor: { start: number; end: number }): void {
   const id = side.question.id
   if (props.seed === 'asking') {
     side.working = true
+    side.waitingSince = Date.now()
     return
   }
   side.question.title = side.script.title
@@ -178,6 +213,7 @@ function applySeed(anchor: { start: number; end: number }): void {
     side.blocks.push(askStep(id, 0, 0, first))
   if (props.seed === 'working') {
     side.working = true
+    side.waitingSince = Date.now()
     return
   }
   if (props.seed === 'failed') {

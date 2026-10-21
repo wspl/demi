@@ -6,6 +6,8 @@ import { RefusedError, heldEdge } from '@demicodes/conversation-client'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
+import { useMessageRows } from '@demicodes/web-ui/agent/message-rows'
+import { rootActivity } from '@demicodes/web-ui/agent/agent-activity'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { codeText, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { createPageI18n } from '@demicodes/web-ui/i18n/text'
@@ -13,7 +15,7 @@ import { sendPageErrorReport } from '../api/page-errors'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { readConversationCopy } from '../state/offline'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { nextTick, toRaw, watch } from 'vue'
+import { effectScope, nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
@@ -744,6 +746,7 @@ function childEntry(
     },
     phase,
     waitedMs: null,
+    waitAction: null,
     pendingCalls: [],
     context: null,
     cost: NO_COST,
@@ -3020,7 +3023,7 @@ function playPageSockets(handshake?: ServerFrame[] | ((id: string, open: Extract
 
 /** The root's entry of conversation `id`, its session in `phase`. */
 function rootEntry(id: string, phase: SessionPhase = 'idle'): AgentEntry {
-  return { id, role: { kind: 'root' }, phase, waitedMs: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
+  return { id, role: { kind: 'root' }, phase, waitedMs: null, waitAction: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
 }
 
 /** The root's entry of `conversation` changed to `phase`, after the agents it holds. */
@@ -3215,6 +3218,267 @@ test('Retry of a conversation with no transcript shows nothing of its agents ove
   })
   expect(conversation.lastError).toBeNull()
   signOut()
+})
+
+// A page reopened from the disk while the model writes a long call: the
+// open names the agents' version the copy holds, and the backend answers
+// with what changed since, which the call being written is not. Before, the
+// copy left the calls being written out, and the page read their absence
+// as a wait for the model, a Requesting row counting from zero at every
+// return. Cost: two openings, no wait.
+test('a conversation reopened from the disk while its agent writes a call shows the call, not Requesting', async () => {
+  const signOut = signIn()
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const writing = { toolUseId: 'call-1', toolName: 'shell', description: 'Write the categorizer' }
+  const reading = { toolUseId: 'call-2', toolName: 'read', description: 'Read the notes' }
+  const reader = { ...childEntry(first, 'reader', {}, 'running'), pendingCalls: [reading] }
+  const { opening } = await startOpening(FIRST, {
+    handshake: [{ type: 'agent', revision: 2, agent: { ...rootEntry(FIRST, 'running'), pendingCalls: [writing], waitedMs: 3_000 } }],
+    agents: [reader],
+  })
+  // The disk keeps the blocks of a running turn but its last.
+  const asked = { ...shownBlock, id: 'asked' }
+  rootBlocks.set(FIRST, [asked, shownBlock])
+  await opening
+  await store.keepCopies()
+
+  // The page opens again, as after a reload.
+  signOut()
+  store.stopAll()
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  const signedOut = signIn()
+  const page = useConversations()
+  await connect()
+  const again = playPageSockets()
+  void page.activate(FIRST)
+  const conversation = page.items.find((item) => item.id === FIRST)!
+  const shown = () => ({
+    calls: conversation.pendingCalls.map((call) => call.description),
+    child: conversation.subagents.map((agent) => agent.pendingCalls.map((call) => call.description)),
+    wait: conversation.waitingSince,
+  })
+  const { scope, list } = drawnList(page, conversation)
+  const tail = () => [list.rows.value.at(-1)?.id, list.slot.value]
+  await openSent(again)
+  await waitFor(() => conversation.load === 'opening', () => `it is ${conversation.load}`)
+  // The copy shows while the socket opens: the calls, and no wait it could
+  // count; the tail row says it connects, as a lost socket's does.
+  expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['asked'])
+  expect(shown()).toEqual({ calls: ['Write the categorizer'], child: [['Read the notes']], wait: null })
+  expect(list.rows.value.map((row) => row.id)).toContain('pending-call:call-1')
+  expect(list.slot.value).toEqual({ kind: 'connecting' })
+
+  const open = again[0]!.sent.find((frame) => frame.type === 'open')!
+  expect(open.agents).toEqual({ epoch: 'e', revision: 2 })
+  deliver(again[0]!, [
+    { type: 'conversation', metadata: metaOf(FIRST) },
+    { type: 'opened' },
+    { type: 'agents', version: { epoch: 'e', revision: 2 }, since: 2, agents: [] },
+    { type: 'queue', queue: [] },
+    { type: 'pending_steers', pendingSteers: [] },
+    { type: 'transcript_reset', node: FIRST, start: 0, length: 2, blocks: [asked, shownBlock], version: { epoch: 'e', revision: 1 } },
+  ])
+  await waitFor(() => conversation.load === 'ready', () => `it is ${conversation.load}`)
+  expect(shown()).toEqual({ calls: ['Write the categorizer'], child: [['Read the notes']], wait: null })
+  expect(tail()).toEqual(['pending-call:call-1', null])
+  scope.stop()
+  signedOut()
+})
+
+/** The transcript's list of `conversation` as its view draws it, until `scope` stops. */
+function drawnList(store: ReturnType<typeof useConversations>, conversation: Conversation) {
+  const scope = effectScope()
+  const list = scope.run(() => useMessageRows(() => ({
+    conversationId: conversation.id,
+    blocks: latestBlocks(conversation.history),
+    activity: rootActivity(conversation),
+    pendingSteers: conversation.pendingSteers,
+    starting: conversation.starting,
+    queue: conversation.queue,
+    phase: conversation.phase,
+    load: conversation.load,
+    pendingAction: conversation.pendingAction,
+    pendingSubmissions: store.submissions(conversation),
+    atStart: true,
+    atEnd: true,
+    latest: true,
+  })))!
+  return { scope, list }
+}
+
+const PRESS = Date.parse('2026-09-13T00:10:00.000Z')
+
+// A message sent, then the user goes to another conversation while it is
+// delivered, and comes back once the server confirmed it. No list showed the
+// conversation in between. Before, only a list on screen paired the press
+// with the start the server told, so the one drawn on return counted from the
+// server's start. Cost: one opening, no wait.
+test('a message whose delivery no list showed counts from the press when the conversation is shown again', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  const accepted = deferred<void>()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => accepted.promise)
+  try {
+    setSystemTime(new Date(PRESS))
+    conversation.draft = 'Sort the downloads into folders.'
+    const sending = store.send(conversation)
+    await until(() => submit.mock.calls.length === 1, 'the message is submitted')
+    // The server starts the turn and its wait, which names the message,
+    // then takes the message.
+    setSystemTime(new Date(PRESS + 400))
+    sockets[0]!.receive(rootChange(conversation, 'running', { waitedMs: 0, waitAction: submit.mock.calls[0]![1] }))
+    accepted.resolve()
+    await sending
+    expect(store.submissions(conversation)).toEqual([])
+
+    setSystemTime(new Date(PRESS + 30_000))
+    const { scope, list } = drawnList(store, conversation)
+    expect(list.slot.value).toEqual({ kind: 'requesting', since: PRESS })
+    scope.stop()
+  } finally {
+    setSystemTime()
+    submit.mockRestore()
+  }
+})
+
+// "From the press" is the user's: a message sent while the socket is lost
+// says Connecting, then Requesting counted from the press once the socket is
+// back. Before, the count began when the row began to say Requesting. Cost:
+// two openings, no wait.
+test('a message sent while the socket reconnects counts from the press once the socket is back', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => new Promise(() => {}))
+  const { scope, list } = drawnList(store, conversation)
+  try {
+    setSystemTime(new Date(PRESS))
+    sockets[0]!.end()
+    await waitFor(() => conversation.load === 'reconnecting', () => `it is ${conversation.load}`)
+    conversation.draft = 'Sort the downloads into folders.'
+    void store.send(conversation)
+    await nextTick()
+    expect(list.slot.value).toEqual({ kind: 'connecting' })
+
+    setSystemTime(new Date(PRESS + 3_000))
+    reconnectNow()
+    await waitFor(() => conversation.load === 'ready', () => `it is ${conversation.load}`)
+    expect(list.slot.value).toEqual({ kind: 'requesting', since: PRESS })
+  } finally {
+    scope.stop()
+    setSystemTime()
+    submit.mockRestore()
+  }
+})
+
+// A steer sent near a turn's end: the turn ends while it is still on its
+// way, so it goes as the next message and starts a turn, and the wait for
+// that turn began with its press. Before, only a message that started a
+// turn at its press had its press kept, so the list counted the steer's
+// wait from when it was drawn, 0s again at each return to the conversation.
+// Cost: one opening, no wait.
+test('a steer still on its way when the turn ends starts the next turn, counted from its press on a list drawn later', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  sockets[0]!.receive(rootChange(conversation, 'running'))
+  await until(() => conversation.phase === 'running', 'the turn runs')
+  const steer = spyOn(ConversationRuntime.prototype, 'steer').mockImplementation(() => new Promise(() => {}))
+  try {
+    setSystemTime(new Date(PRESS))
+    conversation.draft = 'Also check the sign-up page.'
+    void store.send(conversation, 'steer')
+    await until(() => steer.mock.calls.length === 1, 'the steer is on its way')
+    setSystemTime(new Date(PRESS + 2_000))
+    sockets[0]!.receive(rootChange(conversation, 'idle'))
+    await until(() => conversation.phase === 'idle', 'the turn ended')
+
+    setSystemTime(new Date(PRESS + 30_000))
+    const { scope, list } = drawnList(store, conversation)
+    expect(list.slot.value).toEqual({ kind: 'requesting', since: PRESS })
+    scope.stop()
+  } finally {
+    setSystemTime()
+    steer.mockRestore()
+  }
+})
+
+// The socket drops during a message's wait and comes back: the server tells
+// the same wait again, its start reckoned from a later delivery. Before, the
+// page knew its wait by its start, which the delivery's latency moved, so
+// after the reconnect the row counted from the server's start, not the
+// press. The wait names the message that began it. Cost: two openings, no
+// wait.
+test('a reconnect during a message\'s wait keeps counting from the press', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    setSystemTime(new Date(PRESS))
+    conversation.draft = 'Sort the downloads into folders.'
+    await store.send(conversation)
+    const message = submit.mock.calls[0]![1]
+    setSystemTime(new Date(PRESS + 400))
+    sockets[0]!.receive(rootChange(conversation, 'running', { waitedMs: 0, waitAction: message }))
+    await until(() => conversation.waitAction === message, 'the server tells the wait')
+
+    sockets[0]!.end()
+    await waitFor(() => conversation.load === 'reconnecting', () => `it is ${conversation.load}`)
+    // The server's handshake tells the wait 30 s long, which this delivery
+    // reckons from 100 ms after the first.
+    const again = playPageSockets((opened, open, nodes) => [
+      ...backendOpening(opened, open, nodes),
+      { type: 'agent', revision: 2, agent: { ...rootEntry(opened, 'running'), waitedMs: 30_000, waitAction: message } },
+    ])
+    setSystemTime(new Date(PRESS + 30_500))
+    reconnectNow()
+    await openSent(again)
+    await waitFor(() => conversation.load === 'ready' && conversation.phase === 'running', () => `it is ${conversation.load}`)
+
+    setSystemTime(new Date(PRESS + 31_000))
+    const { scope, list } = drawnList(store, conversation)
+    expect(list.slot.value).toEqual({ kind: 'requesting', since: PRESS })
+    scope.stop()
+  } finally {
+    setSystemTime()
+    submit.mockRestore()
+  }
+})
+
+// A message not delivered, and one sent after it that goes in its place:
+// the turn the second starts waits from the second's press, the one that
+// began it. Before, the first's press went on to the second. Cost: one
+// opening, no wait.
+test('a message that starts the turn in place of one not delivered counts from its own press', async () => {
+  const { conversation } = await openWithSession(FIRST)
+  const store = useConversations()
+  const refusal = deferred<void>()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => refusal.promise)
+  const steer = spyOn(ConversationRuntime.prototype, 'steer').mockImplementation(() => new Promise(() => {}))
+  try {
+    setSystemTime(new Date(PRESS))
+    conversation.draft = 'Sort the downloads into folders.'
+    void store.send(conversation)
+    await until(() => submit.mock.calls.length === 1, 'the first message is on its way')
+    setSystemTime(new Date(PRESS + 5_000))
+    // The first starts the turn as far as the page knows, so this steers it.
+    conversation.draft = 'Skip the screenshots.'
+    void store.send(conversation, 'steer')
+    await until(() => store.submissions(conversation).length === 2, 'the second message is on its way')
+    refusal.reject(new Error('Not delivered'))
+    await until(() => store.submissions(conversation)[0]?.error !== null, 'the first message is not delivered')
+
+    setSystemTime(new Date(PRESS + 20_000))
+    const { scope, list } = drawnList(store, conversation)
+    expect(list.slot.value).toEqual({ kind: 'requesting', since: PRESS + 5_000 })
+    scope.stop()
+  } finally {
+    setSystemTime()
+    submit.mockRestore()
+    steer.mockRestore()
+  }
 })
 
 // Every first session is an opening: a new conversation's first send whose

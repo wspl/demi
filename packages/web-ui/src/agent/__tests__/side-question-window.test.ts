@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { AT_REST } from '../agent-activity'
 import { afterEach, expect, test } from 'bun:test'
 
 // The full window of a side question: opened from the card's ↗, it takes the
@@ -26,7 +27,7 @@ afterEach(() => {
 
 const question: ShownSideQuestion = {
   id: 'side', blockId: 'reply', start: 0, end: 5, quote: 'stale', question: 'Why stale?', title: null,
-  folded: false, askedAt: '2026-10-18T07:00:00.000Z', history: EMPTY_TRANSCRIPT, failures: {}, working: false,
+  folded: false, askedAt: '2026-10-18T07:00:00.000Z', history: EMPTY_TRANSCRIPT, failures: {}, working: false, activity: AT_REST,
 }
 
 test('the full window takes the focus and gives it back to ↗ without a focus ring', async () => {

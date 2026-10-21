@@ -342,8 +342,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       />
       <ActivitySlot
         v-else-if="block.type === 'activity_slot'"
-        :kind="block.slot.kind"
-        :since="block.slot.since"
+        v-bind="block.slot"
       />
       <div
         v-else-if="block.type === 'delivery_failure'"
