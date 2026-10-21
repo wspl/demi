@@ -53,7 +53,7 @@ use demi_command_package_mobile_protocol::{
 
 use crate::{
     driver::{
-        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, Png, Points,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, Png, Points,
         RawElement, Rect, Recording, Result, Screen, Simulator, TouchPhase,
     },
     keys,
@@ -80,6 +80,9 @@ const BASE_DENSITY: f64 = 160.0;
 const FINGER: i32 = 1;
 /// How long an app may take to show a paste.
 const PASTING: Duration = Duration::from_secs(2);
+/// How long the emulator's pictures may take to show a turn; they follow
+/// within a few of its frames.
+const TURN: Duration = Duration::from_secs(2);
 /// The usages of Left Control and of V, which paste.
 const CONTROL: u32 = 0xe0;
 const V: u32 = 0x19;
@@ -1122,9 +1125,14 @@ impl Device for AndroidDevice {
                 })
                 .await
                 .map_err(failed("the rotation"))?;
-            // The emulator's next picture says the same; the commands that
-            // follow already map their points by the new screen.
-            self.screen.send_replace(self.geometry.screen(turns(orientation)));
+            // The screen is the emulator's pictures' to say: the turn is
+            // done once they show it, and the commands that follow map their
+            // points by the turned screen.
+            let mut screen = self.screen.subscribe();
+            let shown = tokio::time::timeout(TURN, screen.wait_for(|screen| screen.orientation == orientation)).await;
+            if !matches!(shown, Ok(Ok(_))) {
+                tracing::warn!("the emulator's pictures did not turn {orientation} within {TURN:?}");
+            }
             Ok(())
         })
     }
@@ -1161,8 +1169,9 @@ impl Device for AndroidDevice {
         })
     }
 
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Framed>>> {
         Box::pin(async move {
+            // Drawn for the screen as it is now, which the frame names.
             let screen = *self.screen.borrow();
             let turns = turns(screen.orientation);
             // Android Studio's frame where the Host has its art; the
@@ -1170,21 +1179,27 @@ impl Device for AndroidDevice {
             // are known.
             let Some(art) = self.art().await else {
                 self.corners_read.call_once(|| self.read_corners());
-                return Ok(self.corners.get().map(|corners| Frame::Drawn {
-                    corners: corners.turned(turns, 1.0 / self.geometry.density),
+                return Ok(self.corners.get().map(|corners| Framed {
+                    frame: Frame::Drawn {
+                        corners: corners.turned(turns, 1.0 / self.geometry.density),
+                    },
+                    screen,
                 }));
             };
             let rendered = tokio::task::spawn_blocking(move || art.render(turns, screen.pixels, area))
                 .await
                 .map_err(|error| DriverError::Failed(format!("the frame was not drawn: {error}")))?
                 .map_err(DriverError::Failed)?;
-            Ok(Some(Frame::Image {
-                png: rendered.png.into(),
-                width: rendered.width,
-                height: rendered.height,
-                screen: rendered.screen,
-                // The art's mask covers the picture's corners.
-                silhouette: None,
+            Ok(Some(Framed {
+                frame: Frame::Image {
+                    png: rendered.png.into(),
+                    width: rendered.width,
+                    height: rendered.height,
+                    screen: rendered.screen,
+                    // The art's mask covers the picture's corners.
+                    silhouette: None,
+                },
+                screen,
             }))
         })
     }

@@ -18,7 +18,7 @@ use demi_command_package_mobile_protocol::{
 };
 
 use crate::driver::{
-    Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, Png, Points, RawElement,
+    Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, Png, Points, RawElement,
     Recording, Result, Screen, Simulator, TouchPhase,
 };
 
@@ -193,6 +193,8 @@ impl Driver for FakeDriver {
                 swipes: watch::Sender::new(Vec::new()),
                 appearance: Mutex::new(Appearance::Light),
                 recording: Mutex::default(),
+                unseen: Mutex::default(),
+                refused: Mutex::default(),
                 log: self.log.clone(),
             });
             self.devices
@@ -230,7 +232,25 @@ pub struct FakeDevice {
     appearance: Mutex<Appearance>,
     /// The file the recording under way writes.
     recording: Mutex<Option<std::path::PathBuf>>,
+    /// The screen the device draws its frame for, turned before it says so.
+    unseen: Mutex<Option<Screen>>,
+    /// The orientations the app in front refuses.
+    refused: Mutex<Vec<Orientation>>,
     log: Log,
+}
+
+/// `screen` turned to `orientation`.
+fn turned(mut screen: Screen, orientation: Orientation) -> Screen {
+    if screen.orientation.landscape() != orientation.landscape() {
+        screen.points = Points {
+            x: screen.points.y,
+            y: screen.points.x,
+        };
+        screen.pixels = (screen.pixels.1, screen.pixels.0);
+        screen.screenshot = (screen.screenshot.1, screen.screenshot.0);
+    }
+    screen.orientation = orientation;
+    screen
 }
 
 impl FakeDevice {
@@ -243,6 +263,19 @@ impl FakeDevice {
     /// read does.
     pub fn reads_take(&self, time: std::time::Duration) {
         *self.read_time.lock().unwrap() = time;
+    }
+
+    /// The device turns to `orientation` and draws its frame so before it
+    /// says it turned, as a simulator's frame may be drawn while its turn is
+    /// on the way.
+    pub fn turns_unseen(&self, orientation: Orientation) {
+        *self.unseen.lock().unwrap() = Some(turned(*self.screen.borrow(), orientation));
+    }
+
+    /// The app in front refuses `orientation`: a turn to it leaves the
+    /// screen as it is.
+    pub fn refuses(&self, orientation: Orientation) {
+        self.refused.lock().unwrap().push(orientation);
     }
 
     /// The device draws a new picture.
@@ -397,18 +430,11 @@ impl Device for FakeDevice {
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.log(format!("orient {orientation}"));
-            self.screen.send_modify(|screen| {
-                let turned = screen.orientation.landscape() != orientation.landscape();
-                screen.orientation = orientation;
-                if turned {
-                    screen.points = Points {
-                        x: screen.points.y,
-                        y: screen.points.x,
-                    };
-                    screen.pixels = (screen.pixels.1, screen.pixels.0);
-                    screen.screenshot = (screen.screenshot.1, screen.screenshot.0);
-                }
-            });
+            *self.unseen.lock().unwrap() = None;
+            if self.refused.lock().unwrap().contains(&orientation) {
+                return Ok(());
+            }
+            self.screen.send_modify(|screen| *screen = turned(*screen, orientation));
             Ok(())
         })
     }
@@ -448,11 +474,15 @@ impl Device for FakeDevice {
 
     /// Xcode installs no frame for a fake device: the view draws the frame
     /// around a screen whose corners have a 55-point radius.
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Framed>>> {
         Box::pin(async move {
             self.log(format!("frame {}x{}@{}", area.width, area.height, area.scale));
-            Ok(Some(Frame::Drawn {
-                corners: LiveCorners::round(55.0),
+            let screen = self.unseen.lock().unwrap().unwrap_or_else(|| *self.screen.borrow());
+            Ok(Some(Framed {
+                frame: Frame::Drawn {
+                    corners: LiveCorners::round(55.0),
+                },
+                screen,
             }))
         })
     }

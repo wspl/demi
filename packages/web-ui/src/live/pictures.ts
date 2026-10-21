@@ -28,6 +28,12 @@ export interface PictureSink<S extends LivePictureStream = LivePictureStream> {
 export interface PictureHandlers<S extends LivePictureStream> {
   /** The page painted a picture of `stream`'s generation. */
   shown(stream: S): void
+  /**
+   * Whether a picture of `stream`'s generation may paint now; one that may
+   * not is held, the newest only, until `retry`. Every picture may paint
+   * when the view has nothing to wait for, as without this.
+   */
+  ready?(stream: S): boolean
   /** A frame could not be decoded; the Host must send a key frame. */
   lost(): void
 }
@@ -104,6 +110,13 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
     this.decoder.decode(chunk)
   }
 
+  /** What a held picture waited for is there: it paints at the next refresh. */
+  retry(): void {
+    if (this.latest) {
+      this.painting ??= requestAnimationFrame(() => this.paint())
+    }
+  }
+
   /** Nothing is watched: decoding ends. The last picture stays until its canvas goes or the next one is painted. */
   stop(): void {
     this.release()
@@ -125,12 +138,16 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
   private paint(): void {
     this.painting = null
     const latest = this.latest
-    this.latest = null
     if (!latest) {
       return
     }
+    const stream = this.stream
+    if (stream && latest.generation === stream.generation && this.handlers.ready && !this.handlers.ready(stream)) {
+      // Held, whole, until `retry`; a newer picture replaces it.
+      return
+    }
+    this.latest = null
     try {
-      const stream = this.stream
       if (!stream || latest.generation !== stream.generation) {
         return
       }

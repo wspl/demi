@@ -59,10 +59,11 @@ struct DeviceLooks {
 }
 
 /// The frame, drawn: a PNG, where the screen sits in it, in its pixels, and
-/// the device's silhouette, which bounds the picture under it.
+/// the screen's shape, which bounds the picture under it.
 struct DrawnFrame {
   let png: Data
-  /// A grey PNG of the frame's size, white where the picture may lie.
+  /// A grey PNG of the frame's size, white where the picture may lie: the
+  /// screen's shape (`ChromeLayout.screenShape`).
   let silhouette: Data
   let width: Int
   let height: Int
@@ -94,14 +95,16 @@ func drawFrame(
   }
 
   // DeviceKit's layers: the buttons behind the bezel, the bezel, the
-  // screen in it, the buttons on top. The silhouette is read before the
-  // buttons on top, which lie outside the device.
+  // screen in it, the buttons on top.
+  let mask = looks.mask.flatMap(ScreenMask.init)
   let context = try layout.canvas(backing: backing)
   layout.drawButtons(artwork, onTop: false, in: context)
   layout.drawFrame(artwork, in: context)
-  layout.cutScreen(mask: looks.mask.flatMap(ScreenMask.init), screenPoints: screenPoints, in: context)
-  let shape = try silhouetteImage(context)
+  layout.cutScreen(mask: mask, screenPoints: screenPoints, in: context)
   layout.drawButtons(artwork, onTop: true, in: context)
+  let shape = try greyImage(
+    layout.screenShape(mask: mask, screenPoints: screenPoints, backing: backing), width: context.width,
+    height: context.height)
   guard let image = context.makeImage() else { throw ChromeError.unreadable("the frame was not drawn") }
 
   // The screen in the PNG's pixels.
@@ -114,15 +117,9 @@ func drawFrame(
     screen: screen)
 }
 
-/// The silhouette of what `context`, an RGBA canvas, holds, as a grey image.
-private func silhouetteImage(_ context: CGContext) throws -> CGImage {
-  let (width, height, row) = (context.width, context.height, context.bytesPerRow)
-  guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else {
-    throw ChromeError.unreadable("the frame's canvas has no pixels")
-  }
-  // The canvas is premultiplied RGBA: alpha is each pixel's fourth byte.
-  let alpha = (0..<(width * height)).map { pixels[($0 / width) * row + ($0 % width) * 4 + 3] }
-  var shape = silhouette(alpha: alpha, width: width, height: height)
+/// `bytes`, one a pixel, rows from the top, as a grey image.
+private func greyImage(_ bytes: [UInt8], width: Int, height: Int) throws -> CGImage {
+  var shape = bytes
   let image = shape.withUnsafeMutableBytes { bytes in
     CGContext(
       data: bytes.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,

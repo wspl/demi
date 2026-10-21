@@ -1,13 +1,12 @@
 /**
  * The `mobile` page's store (`packages/web-ui/src/plugins/stores.ts`): each
  * conversation's simulators on the page (`./controller.ts`), kept while the
- * plugin is on, by conversation, since one stream carries a conversation's
- * devices.
+ * plugin is on, by conversation, each device on a stream of its own.
  *
  * A device tab's content watches its conversation's simulators while it is
- * mounted. One no content watches is kept, with its view's connection and
- * each device's last picture and frame, so a return to the conversation shows
- * them at once; past the limit, the least recently watched is released.
+ * mounted. One no content watches is kept, with each device's stream, its
+ * canvas and its look, so a return to the conversation shows them at once;
+ * past the limit, the least recently watched is released.
  */
 import { effectScope, onScopeDispose } from 'vue'
 import { KeptSessions, definePluginStore, type KeptSession, type PageContext, type PluginStore } from '@demicodes/plugin-sdk'
@@ -41,7 +40,7 @@ function keptDevices(page: PageContext, conversation: string, options: MobileCon
   ))!
   return {
     devices,
-    // What its view watches follows its tabs' show and hide (`MobileSession.showing`).
+    // Whether each device's stream is looked at follows its views (`DeviceSession.showIn`).
     watched: () => {},
     dispose: () => {
       devices.dispose()

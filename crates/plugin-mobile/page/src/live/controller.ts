@@ -1,16 +1,17 @@
 /**
  * A conversation's simulators on the page (`crates/plugin-mobile/page/src/index.ts`),
- * which the plugin's store keeps while the plugin is on (`./store.ts`): one
- * live view shared by the conversation's device tabs, which shows the device of
- * the tab shown and is kept unwatched while none is, and the panel's controls,
- * each the page method of the command that does the same.
+ * which the plugin's store keeps while the plugin is on (`./store.ts`): each
+ * open device's live view, on a stream of its own, kept until the device
+ * closes (`docs/decisions/0017-each-device-streams-on-its-own.md`), and the
+ * panel's controls, each the page method of the command that does the same.
  */
 import { ref, watch, type Ref } from 'vue'
 import { clientPlatform } from '@demicodes/utils'
 import { pageVisibility, picturesSupported, type HeadlineText, type PluginCache } from '@demicodes/plugin-sdk'
 import { LIVE_NO_FOCUSED_FIELD, type PanelReason } from '../generated/plugin'
 import { MobileError, type MobileApi } from '../devices'
-import { MobileSession } from './session'
+import { DeviceSession } from './session'
+import type { MobileTabData } from './kind'
 import type { DeviceCall } from './controls'
 import { t } from '../locales/text'
 
@@ -40,9 +41,14 @@ export interface MobileControllerOptions {
 }
 
 export class MobileDevicesController {
-  readonly session: MobileSession
   /** Whether the pictures can show: unknown until the decoder answered. */
   readonly pictures: Ref<'unknown' | 'supported' | 'unsupported'> = ref('unknown')
+  /** Each open device's live view, by device, made as a view of it first shows. */
+  private readonly devices = new Map<string, DeviceSession>()
+  private readonly platform: 'mac' | 'windows' | 'linux' | 'other'
+  private readonly cache: PluginCache | undefined
+  /** Whether the page is visible. */
+  private visible = true
   private readonly ticking: ReturnType<typeof setInterval>
 
   constructor(
@@ -50,31 +56,70 @@ export class MobileDevicesController {
     private readonly errors: MobileErrors,
     options: MobileControllerOptions = {},
   ) {
-    this.session = new MobileSession({
-      open: api.stream,
-      cache: options.cache,
-      platform: options.platform ?? clientPlatform(navigator),
-      onNotice: (reason: PanelReason, message: string) =>
-        errors.report(t('failures.control'), new MobileError(reason, null, noticeText(reason, message))),
-      defect: (message, error) => errors.defect(message, error),
-    })
+    this.platform = options.platform ?? clientPlatform(navigator)
+    this.cache = options.cache
     const supported = options.pictures ?? (() => picturesSupported((message, error) => errors.defect(message, error)))
     void supported().then((yes) => {
       this.pictures.value = yes ? 'supported' : 'unsupported'
       if (yes) {
-        this.session.enable()
+        for (const session of this.devices.values()) {
+          session.enable()
+        }
       }
     })
-    this.ticking = setInterval(() => this.session.tick(), TICK_MS)
-    // A hidden page watches no device, so a device nobody looks at gets its
+    this.ticking = setInterval(() => {
+      for (const session of this.devices.values()) {
+        session.tick()
+      }
+    }, TICK_MS)
+    // A hidden page looks at no device, so a device nobody looks at gets its
     // hour; the watch ends with the effect scope its store made it in.
-    watch(pageVisibility, (visibility) => this.session.visibility(visibility !== 'hidden'), { immediate: true })
+    watch(pageVisibility, (visibility) => {
+      this.visible = visibility !== 'hidden'
+      for (const session of this.devices.values()) {
+        session.visibility(this.visible)
+      }
+    }, { immediate: true })
   }
 
-  /** The store released it, as when the plugin is turned off: the view ends and nothing reopens it. */
+  /** The live view of the device `data` names, its tab's, made the first time. */
+  device(data: MobileTabData): DeviceSession {
+    const kept = this.devices.get(data.device)
+    if (kept) {
+      return kept
+    }
+    const session: DeviceSession = new DeviceSession({
+      open: this.api.stream,
+      device: data.device,
+      model: data.model ?? null,
+      nativeId: data.nativeId ?? null,
+      cache: this.cache,
+      platform: this.platform,
+      onNotice: (reason: PanelReason, message: string) =>
+        this.errors.report(t('failures.control'), new MobileError(reason, null, noticeText(reason, message))),
+      // A device that closed takes its view along; its tab goes with it.
+      gone: () => {
+        if (this.devices.get(data.device) === session) {
+          this.devices.delete(data.device)
+        }
+      },
+      defect: (message, error) => this.errors.defect(message, error),
+    })
+    this.devices.set(data.device, session)
+    session.visibility(this.visible)
+    if (this.pictures.value === 'supported') {
+      session.enable()
+    }
+    return session
+  }
+
+  /** The store released it, as when the plugin is turned off: every device's view ends and nothing reopens it. */
   dispose(): void {
     clearInterval(this.ticking)
-    this.session.close()
+    for (const session of this.devices.values()) {
+      session.close()
+    }
+    this.devices.clear()
   }
 
   /**
@@ -89,15 +134,16 @@ export class MobileDevicesController {
         case 'rotate': {
           // The shown picture turns at once, and back if the device refuses.
           const { device, turn } = call.params
-          const press = this.session.turning(device, turn)
+          const session = this.devices.get(device)
+          const press = session?.turning(turn) ?? null
           let answered
           try {
             answered = await this.api.rotate(device, turn)
           } catch (error) {
-            this.session.turnAnswered(press, null)
+            session?.turnAnswered(press, null)
             throw error
           }
-          this.session.turnAnswered(press, answered.orientation)
+          session?.turnAnswered(press, answered.orientation)
           return null
         }
         case 'toggleAppearance':

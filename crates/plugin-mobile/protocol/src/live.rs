@@ -1,7 +1,10 @@
 //! The simulators' live view protocol: what the page and `demi-mobile` say to
-//! each other over the `mobile` user stream about the conversation's devices,
-//! beside the live view's own frames, pictures and input
-//! (`live-view-protocol`).
+//! each other over a `mobile` user stream about its one device, beside the
+//! live view's own frames, pictures and input (`live-view-protocol`).
+//!
+//! Each open device a page shows has a stream of its own, whose only state is
+//! whether it is looked at
+//! (`docs/decisions/0017-each-device-streams-on-its-own.md`).
 //!
 //! The page and the service ship in the same release; there is no version.
 
@@ -10,8 +13,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use demi_live_view_protocol::{
-    LiveActivity, LiveHeartbeat, LiveHello, LiveInputs, LiveKeyframe, LiveNotice,
-    LiveRelease, ModuleMessage, ViewerInput,
+    LiveActivity, LiveHeartbeat, LiveInputs, LiveKeyframe, LiveNotice, LiveRelease,
+    ModuleMessage, Platform, ViewerInput,
 };
 
 use crate::mobile::{DeviceId, Orientation, MobilePlatform};
@@ -19,10 +22,10 @@ use crate::mobile::{DeviceId, Orientation, MobilePlatform};
 /// The declared operation that serves a view (`crates/runner-jobs/src/commands/streams.rs`).
 pub const OPERATION: &str = "mobile.live";
 
-/// A notice's code when the watched device's capture failed; the next
-/// picture ends it.
+/// A notice's code when the device's capture failed; the next picture ends
+/// it.
 pub const CAPTURE_FAILED: &str = "capture_failed";
-/// A notice's code when this Host cannot capture the watched device.
+/// A notice's code when this Host cannot capture the device.
 pub const CAPTURE_UNAVAILABLE: &str = "capture_unavailable";
 /// A notice's code when the viewer's input did not reach the device.
 pub const INPUT_FAILED: &str = "input_failed";
@@ -31,42 +34,45 @@ pub const INPUT_FAILED: &str = "input_failed";
 /// the viewer's own, which the page quotes.
 pub const NO_FOCUSED_FIELD: &str = "no_focused_field";
 
-/// The view's arguments: none; the page and the service speak over the
-/// stream.
+/// The view's arguments: none; the page names the stream's device in its
+/// hello.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveInput {}
 
-/// What the page sends: the live view's own messages and the device it
-/// watches.
+/// What the page sends on one device's stream: the live view's own
+/// messages, and whether the stream is looked at.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveViewerMessage {
-    /// First: the viewer's platform.
-    Hello(#[garde(dive)] LiveHello),
-    /// The device the view shows, or none.
-    Watch {
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<DeviceId>")]
+    /// First, and once: the viewer's platform, and the device the stream
+    /// carries, its only one.
+    Hello {
         #[garde(skip)]
-        device: Option<DeviceId>,
-    },
-    /// The viewer's input to `device`, in the points of its screen as the
-    /// picture shows it upright.
-    Input {
+        platform: Platform,
         #[garde(skip)]
         device: DeviceId,
+    },
+    /// Whether the stream is looked at: whether a view of it shows in a
+    /// visible page. A stream starts not looked at; while it is not, the
+    /// service sends nothing.
+    Looked {
+        #[garde(skip)]
+        looked: bool,
+    },
+    /// The viewer's input, in the points of the screen as the picture shows
+    /// it upright.
+    Input {
         #[garde(dive)]
         input: ViewerInput,
     },
     Keyframe(#[garde(dive)] LiveKeyframe),
     Release(#[garde(dive)] LiveRelease),
-    /// The view lays `device` out in `width` × `height` device pixels, at
+    /// The view lays the device out in `width` × `height` device pixels, at
     /// `scale` device pixels per CSS pixel, and asks for its frame at that
-    /// size; asked again when its laid-out size changes.
+    /// size, as the device is turned now and again as it turns; asked only
+    /// for a frame the page does not keep.
     Frame {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(range(min = 1, max = 16384))]
         width: u32,
         #[garde(range(min = 1, max = 16384))]
@@ -74,18 +80,11 @@ pub enum LiveViewerMessage {
         #[garde(range(min = 0.25, max = 8.0))]
         scale: f64,
     },
-    /// The viewer's Wake: `device`'s screen turns on, and stays on if it
-    /// is.
-    Wake {
-        #[garde(skip)]
-        device: DeviceId,
-    },
-    /// The view shows `device`'s screen at `width` × `height` device
-    /// pixels, which its pictures need no more than; sent again when that
-    /// changes.
+    /// The viewer's Wake: the screen turns on, and stays on if it is.
+    Wake {},
+    /// The view shows the screen at `width` × `height` device pixels, which
+    /// its pictures need no more than; sent again when that changes.
     Shown {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(range(min = 1, max = 16384))]
         width: u32,
         #[garde(range(min = 1, max = 16384))]
@@ -227,12 +226,10 @@ pub enum LiveFrame {
     },
 }
 
-/// An open device as the view lists it.
+/// The stream's device as it is now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LiveDevice {
-    #[garde(skip)]
-    pub id: DeviceId,
     #[garde(skip)]
     pub name: String,
     #[garde(skip)]
@@ -248,36 +245,30 @@ pub struct LiveDevice {
     /// Whether a recording of it runs, whoever started it.
     #[garde(skip)]
     pub recording: bool,
-    /// Its orientation as its screen reports it when the state is sent,
-    /// which a view goes by until its pictures report one: the pictures
-    /// start only once the view laid the screen out, for which it needs a
-    /// frame, and the frame a view keeps is kept by its orientation.
+    /// Its orientation as its screen reports it when the state is sent.
     #[garde(skip)]
     pub orientation: Orientation,
 }
 
-/// What the service sends.
+/// What the service sends on one device's stream, only while the stream is
+/// looked at, but for [`LiveModuleMessage::Gone`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveModuleMessage {
-    /// The conversation's open devices on this Host and the one this
-    /// viewer watches.
+    /// The device as it is, once the stream is looked at and again as it
+    /// changes.
     State {
         #[garde(dive)]
-        devices: Vec<LiveDevice>,
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<DeviceId>")]
-        #[garde(skip)]
-        watched: Option<DeviceId>,
+        device: LiveDevice,
     },
+    /// The device is not open, or closed: the stream ends after this.
+    Gone {},
     /// Video frames of this generation follow, starting with a key frame:
     /// `width` × `height` pixels of the screen turned upright, whose
     /// points are `points_width` × `points_height`, at `scale` of its
     /// pixels.
     #[serde(rename_all = "camelCase")]
     Stream {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(skip)]
         generation: u32,
         #[garde(range(min = 1))]
@@ -293,33 +284,26 @@ pub enum LiveModuleMessage {
         #[garde(range(min = f64::MIN_POSITIVE, max = 1.0))]
         scale: f64,
     },
-    /// What input the watched device takes: touches.
+    /// What input the device takes: touches.
     Inputs {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(dive)]
         inputs: LiveInputs,
     },
-    /// Whether the agent uses the watched device, and where it last tapped,
-    /// in its points.
+    /// Whether the agent uses the device, and where it last tapped, in its
+    /// points.
     Activity {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(dive)]
         activity: LiveActivity,
     },
-    /// The watched device's frame for the size the view asked, sent again
-    /// when the device turns, with the size of its screen in points as the
-    /// frame shows it, so the view lays the screen out, and says the size
-    /// it shows it at, before the first picture.
+    /// The device's frame for the size the view asked, in `orientation`,
+    /// sent again when the device turns, with the size of its screen in
+    /// points as the frame shows it.
     ///
     /// `width` × `height` device pixels at `scale` are the area of the
     /// view's request it was drawn for, which the view keeps it by: a
     /// request the view made since may still be under way.
     #[serde(rename_all = "camelCase")]
     Frame {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(range(min = 1, max = 16384))]
         width: u32,
         #[garde(range(min = 1, max = 16384))]
@@ -333,17 +317,14 @@ pub enum LiveModuleMessage {
         #[garde(range(min = 1.0, max = 4096.0))]
         points_height: f64,
         /// None while the device still reads what its frame needs, such as
-        /// an Android screen's corners: the screen's size comes at once, so
-        /// the picture never waits for the frame, and the frame follows in
-        /// another `Frame`.
+        /// an Android screen's corners; the frame follows in another
+        /// `Frame`, and the view shows the device once it has it.
         #[garde(dive)]
         frame: Option<LiveFrame>,
     },
-    /// Whether the watched device's screen is on, as it watches it and
-    /// again each time that changes.
+    /// Whether the screen is on, once the stream is looked at and again
+    /// each time that changes.
     Screen {
-        #[garde(skip)]
-        device: DeviceId,
         #[garde(skip)]
         on: bool,
     },
