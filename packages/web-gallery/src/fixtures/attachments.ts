@@ -1,3 +1,4 @@
+import type { ReplyPicture } from '@demicodes/protocol'
 import type { AttachmentLookup, AttachmentOrigin } from '@demicodes/web-ui/markdown/types'
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
 import { WORKSPACE_ROOT } from './workspace'
@@ -12,7 +13,9 @@ export const GALLERY_HOST = 'host-1'
  * and the chart were uploaded from the workspace's files, the chart from a
  * version its file has changed since, which its viewer does not show: it shows
  * its copy; the release notes from a file the workspace no longer has; the
- * others before uploads recorded their file.
+ * others before uploads recorded their file. a14 and a15 are the copies the
+ * backend made of the workspace's pictures that a reply shows
+ * (`hostPictureCopies`).
  */
 const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string; source?: AttachmentOrigin }> = {
   a1: { name: 'login.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot },
@@ -26,8 +29,60 @@ const attachments: Record<string, { name: string; mediaType: string; size: numbe
   a10: { name: 'settings-dark.png', mediaType: 'image/png', size: 1753, blob: galleryBlobs.darkScreen },
   a11: { name: 'welcome.mp3', mediaType: 'audio/mpeg', size: 16423, blob: galleryBlobs.voiceOver },
   a12: { name: 'release-notes.md', mediaType: 'text/markdown', size: 496, blob: galleryBlobs.releaseNotes, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/release-notes.md` } },
+  a14: { name: 'photo.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/photo.png` } },
+  a15: { name: 'page-full.png', mediaType: 'image/png', size: 8035, blob: galleryBlobs.fullPage, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/assets/page-full.png` } },
   a13: { name: 'app.zip', mediaType: 'application/zip', size: 140, blob: galleryBlobs.archive, source: { host: GALLERY_HOST, path: `${WORKSPACE_ROOT}/dist/app.zip` } },
 }
+
+/**
+ * What a gallery reply keeps of the workspace's pictures it shows, as the
+ * backend settled each once the reply ended: the copies of the test pattern
+ * and the whole login page.
+ */
+export const hostPictureCopies: ReplyPicture[] = [
+  { target: 'assets/photo.png', copy: { state: 'copied', attachment: 'a14' } },
+  { target: 'assets/page-full.png', copy: { state: 'copied', attachment: 'a15' } },
+]
+
+/**
+ * A reply that shows pictures of the workspace: both copied, one still being
+ * copied, five the backend could not copy, each for a cause it can give, and
+ * one of a reply written before copies were kept.
+ */
+export const hostPicturesMarkdown = `The sign-in page works again. The test pattern and the whole page, from the workspace:
+
+![The test pattern](assets/photo.png)
+![The whole page](assets/page-full.png)
+
+The chart is still being copied:
+
+![The chart](out/chart.png)
+
+These could not be copied, each for its own reason, and the last was written before copies were kept:
+
+![The report](out/report.png)
+
+![The recording](out/recording.png)
+
+![The notes](out/notes.md)
+
+![The capture](out/capture.png)
+
+![The locked file](out/locked.png)
+
+![The old capture](assets/old.png)
+`
+
+/** What \`hostPicturesMarkdown\` keeps: the copy of each picture, or why there is none. */
+export const hostPicturesKept: ReplyPicture[] = [
+  ...hostPictureCopies,
+  { target: 'out/chart.png', copy: { state: 'copying' } },
+  { target: 'out/report.png', copy: { state: 'failed', reason: { kind: 'missing' } } },
+  { target: 'out/recording.png', copy: { state: 'failed', reason: { kind: 'too_large', size: 31_457_280 } } },
+  { target: 'out/notes.md', copy: { state: 'failed', reason: { kind: 'not_an_image', mediaType: 'text/markdown' } } },
+  { target: 'out/capture.png', copy: { state: 'failed', reason: { kind: 'host_unavailable' } } },
+  { target: 'out/locked.png', copy: { state: 'failed', reason: { kind: 'unreadable' } } },
+]
 
 /**
  * An attachment of the gallery's conversation, as the product's route

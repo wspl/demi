@@ -1082,6 +1082,19 @@ pub struct TextBlock {
     #[schemars(with = "Vec<CodeFile>")]
     #[garde(dive)]
     pub code_files: Option<Vec<CodeFile>>,
+    /// The pictures of the Host the text shows, by the path it wrote, and what
+    /// became of the copy the backend makes of each when the text is complete
+    /// (`crates/agent-server/src/node/reply_files.rs`). Absent when no copy
+    /// was asked for: a text that names no such picture, one that is not
+    /// complete, and one written before copies were kept.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<ReplyPicture>")]
+    #[garde(dive)]
+    pub pictures: Option<Vec<ReplyPicture>>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them
     /// (`crates/provider-claude-code/src/session.rs`); omitted when there are
@@ -1108,6 +1121,59 @@ pub struct CodeFile {
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
     pub line: Option<u64>,
+}
+
+/// A picture of the Host a reply shows, and its copy: the path as the reply
+/// wrote it, such as `out/chart.png`, and what the backend made of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplyPicture {
+    #[garde(length(min = 1))]
+    pub target: String,
+    #[garde(dive)]
+    pub copy: PictureCopy,
+}
+
+/// What became of the copy of a picture of the Host that a reply shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum PictureCopy {
+    /// The copy is being made; the picture shows as a placeholder.
+    Copying,
+    /// The conversation's attachment that holds the copy, such as `a3`.
+    Copied {
+        #[garde(length(min = 1))]
+        attachment: String,
+    },
+    /// The file could not be copied, and why; it is not read again.
+    Failed {
+        #[garde(dive)]
+        reason: PictureFailure,
+    },
+}
+
+/// Why a picture of the Host that a reply shows could not be copied. The
+/// backend names the cause and the page words it in the user's language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum PictureFailure {
+    /// The Host has no such file.
+    Missing,
+    /// The file is over the limit of an attachment; `size` is its bytes.
+    TooLarge {
+        #[garde(range(max = crate::MAX_SAFE_INTEGER))]
+        size: u64,
+    },
+    /// The file is no image; `media_type` is what it is.
+    NotAnImage {
+        #[garde(length(min = 1))]
+        media_type: String,
+    },
+    /// The Host could not be reached for the copy: it is offline or stopped,
+    /// the conversation works elsewhere now, or it has no Host yet.
+    HostUnavailable,
+    /// The Host could not read the file, or the copy could not be kept.
+    Unreadable,
 }
 
 /// What a stored `shell` call ran: its title and its script.

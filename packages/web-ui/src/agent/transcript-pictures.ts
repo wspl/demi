@@ -67,7 +67,7 @@ function blockPictures(block: MessageListBlock, context: TranscriptPicturesConte
       const files = context.files(block.id)
       const brief = childBrief(context.node, block.content)
       if (brief !== null)
-        return namedIn(block, [brief]).flatMap((references) => referencedMedia(references, files))
+        return namedIn(block, [brief]).flatMap((references) => referencedMedia(references, files, new Map()))
       const { markdown, capsules } = contentMessage(block.content)
       // Each file stands at a mark between the text around it.
       return namedIn(block, markdown.split(ATTACHMENT_MARK)).flatMap((references, index) => {
@@ -77,7 +77,8 @@ function blockPictures(block: MessageListBlock, context: TranscriptPicturesConte
       })
     }
     case 'text':
-      return namedIn(block, [block.text]).flatMap((references) => referencedMedia(references, context.files(block.id)))
+      return namedIn(block, [block.text]).flatMap((references) =>
+        referencedMedia(references, context.files(block.id), new Map(block.pictures?.map((picture) => [picture.target, picture.copy]))))
     case 'tool_call':
       return toolPictures(toolMedia(block.output, toolCallTitle(block)), context)
     case 'wakeup':

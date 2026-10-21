@@ -3,6 +3,7 @@ import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/att
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { ToolPicture } from '@demicodes/web-ui/agent/tool-media'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
+import { hostPictureCopies } from './attachments'
 import { agentReceiptMessages } from './subagents'
 
 export type { ShellView }
@@ -709,6 +710,7 @@ export function viewerTranscriptBlocks(): Block[] {
     {
       type: 'text', id: 'viewer-answer', createdAt: iso(580_000), model: demoModel,
       text: 'The tabs differ only in the button. The test pattern and the whole page, from the workspace:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
+      pictures: hostPictureCopies,
     },
   ])
 }
@@ -1590,6 +1592,7 @@ export function transcriptDemoBlocks(): Block[] {
       createdAt: thinkingEndedAt,
       model: demoModel,
       text: assistantMarkdown,
+      pictures: hostPictureCopies,
     },
     {
       type: 'abort',

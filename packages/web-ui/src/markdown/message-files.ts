@@ -1,7 +1,7 @@
 import { computed, inject, provide, type ComputedRef, type InjectionKey } from 'vue'
 import { transcriptRowOf, type MediaSequence, type MediaViewerState, type ShownMedium } from '../files/media-viewer'
 import { messagePicture } from './media-run'
-import { ATTACHMENT_ID_ATTRIBUTE, HOST_FILE_ATTRIBUTE, attachmentMedium, messageAttachment } from './render'
+import { ATTACHMENT_ID_ATTRIBUTE, attachmentMedium, messageAttachment } from './render'
 import type { MessageAgents } from '../agent/agent-links'
 import { agentMenu } from '../agent/agent-menu'
 import { downloadUrl } from '../files/download'
@@ -54,7 +54,8 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  *
  * - A click on an image the message shows, or on an attachment's image or video
  *   or its link, shows it large in `viewer`, where a video plays: an
- *   attachment's own copy (`attachmentMedium`).
+ *   attachment's own copy (`attachmentMedium`), as for a picture of the Host a
+ *   reply shows, whose copy is an attachment.
  *   `among` gives the media of the transcript it stands in.
  * - An image inside a link follows the link.
  * - A click on an agent's link opens the agent in the Agents window.
@@ -84,11 +85,7 @@ export function openMessageLink(
   if (target instanceof HTMLImageElement && !target.closest('a')) {
     event.preventDefault()
     const { kind, src, size, caption } = messagePicture(target)
-    const path = target.getAttribute(HOST_FILE_ATTRIBUTE)
-    const shown = { kind, name: caption || 'image', size, row: transcriptRowOf(target) }
-    // A Host image shows its file, at the version the page keeps, as the
-    // message does.
-    viewer.show(path !== null && files?.contents ? { ...shown, file: { path, contents: files.contents } } : { ...shown, src }, among)
+    viewer.show({ kind, name: caption || 'image', size, row: transcriptRowOf(target), src }, among)
     return
   }
   const commit = target?.closest('a[data-commit-link]')

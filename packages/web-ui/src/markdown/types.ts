@@ -1,6 +1,6 @@
 import type { MessageAgents } from '../agent/agent-links'
 import type { FileContents } from '../files/types'
-import type { HostImage } from '../files/host-image'
+import type { PictureCopy } from '@demicodes/protocol'
 
 /**
  * An attachment of the conversation, sent in a message or uploaded by the agent
@@ -75,10 +75,9 @@ export interface ConversationFiles {
    */
   home?: string | null
   /**
-   * The Host's files a message's images load from: each image shows the version
-   * of its file the page keeps, which the Host's watch keeps current, so it
-   * changes when the file does. Absent while the Host is not known, and a Host
-   * image then shows its alt text. /
+   * The Host's files, read through the page's kept versions of them, which
+   * the Host's watch keeps current: a file's download, and the files a
+   * message the user wrote names. Absent while the Host is not known.
    */
   contents?: FileContents
   /**
@@ -166,6 +165,21 @@ export interface MessageFiles extends ConversationFiles {
   node?: string | null
 }
 
+/**
+ * What a reply keeps of the pictures of the Host it shows
+ * (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`): the copy
+ * the backend made of each, by the target as the reply wrote it.
+ */
+export interface MessagePictures {
+  copies: ReadonlyMap<string, PictureCopy>
+  /**
+   * Whether the reply is still arriving: the backend copies its pictures
+   * once it is complete, so a picture it names has no copy yet and shows as a
+   * placeholder.
+   */
+  streaming: boolean
+}
+
 export interface MarkdownRenderOptions {
   /**
    * Absent, a message's paths stay text and its Host images show their alt
@@ -179,11 +193,10 @@ export interface MarkdownRenderOptions {
    */
   codeFiles?: ReadonlyMap<string, MessageFileTarget> | null
   /**
-   * What shows of each Host image the message names, by its absolute path
-   * (`useHostImagesAt`); one it does not name yet is still being read, and
-   * shows its alt text meanwhile.
+   * What the reply keeps of the pictures of the Host it shows; absent, such a
+   * picture shows as a link to its path.
    */
-  hostImages?: ReadonlyMap<string, HostImage>
+  pictures?: MessagePictures
   /**
    * The conversation's agents, which `agent:4` links; absent, such a link shows
    * its text alone.

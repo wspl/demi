@@ -5,8 +5,8 @@ import { Marked } from 'marked'
 import { resetRegionWaits } from '../../infra/region-wait'
 import { loadKatex, mathExtensions } from '../math'
 import { messageMedia, renderMarkdown } from '../render'
-import type { AttachmentLookup, MessageFiles } from '../types'
-import type { HostImage } from '../../files/host-image'
+import type { PictureCopy } from '@demicodes/protocol'
+import type { AttachmentLookup, MessageFiles, MessagePictures } from '../types'
 import type { FileContents } from '../../files/types'
 import type { MessageAgents } from '../../agent/agent-links'
 import { createPageI18n } from '../../i18n/text'
@@ -14,7 +14,7 @@ import { createPageI18n } from '../../i18n/text'
 // The files a message names.
 
 /**
- * The Host's kept files, which a message's Host images show; never read here.
+ * The Host's kept files; a message's rendering never reads them.
  */
 const contents: FileContents = {
   url: (path) => `/raw?path=${encodeURIComponent(path)}`,
@@ -29,10 +29,11 @@ const files: MessageFiles = {
 }
 
 /**
- * The Host images at `paths` as the page shows them once their files are read.
+ * What a reply keeps of its pictures of the Host, as the renderer reads it:
+ * the copy of each by the target that names it.
  */
-function shownImages(...paths: string[]): ReadonlyMap<string, HostImage> {
-  return new Map(paths.map((path) => [path, { state: 'shown', src: `/raw?path=${encodeURIComponent(path)}` }]))
+function kept(copies: Record<string, PictureCopy>, streaming = false): MessagePictures {
+  return { copies: new Map(Object.entries(copies)), streaming }
 }
 
 /**
@@ -103,41 +104,93 @@ test('a commit link starts with the commit icon, spaced as a file link is, and i
   expect(renderMarkdown('[Fix the total](commit:3f2a9c1)', { files })).toBe('<p>Fix the total</p>\n')
 })
 
-test('an image loads from the web, as a data URL, or from the Host; anything else shows its alt text', () => {
+test('an image loads from the web, as a data URL, or from the copy a reply keeps of a Host file; anything else shows its alt text', () => {
   const html = renderMarkdown(
     '![chart](out/chart.png) and ![logo](https://example.com/l.png) and ![dot](data:image/png;base64,AAAA) and ![mail](mailto:a@b.c)',
-    { files, hostImages: shownImages('/work/out/chart.png') },
+    { files: withAttachments, pictures: kept({ 'out/chart.png': { state: 'copied', attachment: 'a1' } }) },
   )
-  // A click on any of them shows it large in the media viewer, so none is
-  // wrapped in a link.
-  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" />`)
+  // The copy is an attachment's tile; a web image is no tile of one.
+  expect(html).toContain(`<p class="media-lone">${hostTile('chart')}</p>`)
   expect(html).toContain('<img src="https://example.com/l.png" alt="logo" />')
-  expect(html).not.toContain('<a ')
   // Each stands on its own line, the words between them on theirs.
   expect(html).toContain('<p>and</p>\n<p class="media-lone"><img src="data:image/png;base64,AAAA" alt="dot" /></p>\n<p>and mail</p>')
 })
 
-test('a link or image path starting ~/ names the Host home, and stays text while the home is not known', () => {
+test('a Host picture with no copy yet is a placeholder, and one that cannot be shown is a link to its file with why', () => {
+  const box = '<span class="image-placeholder" role="img" aria-label="chart">chart</span>'
+  const link = '<a href="/work/out/chart.png" data-file-link class="icon-link">'
+    + `${lead('data-file-icon="chart.png"', 'out')}/chart.png</a>`
+  // The reply is arriving, or the backend is copying it.
+  expect(renderMarkdown('![chart](out/chart.png)', { files: withAttachments, pictures: kept({}, true) })).toBe(`<p class="media-lone">${box}</p>\n`)
+  expect(renderMarkdown('see ![chart](out/chart.png)', { files: withAttachments, pictures: kept({ 'out/chart.png': { state: 'copying' } }) }))
+    .toBe(`<p>see</p>\n<p class="media-lone">${box}</p>\n`)
+  // The copy's attachment is being asked for.
+  expect(renderMarkdown('![chart](out/chart.png)', { files: withAttachments, pictures: kept({ 'out/chart.png': { state: 'copied', attachment: 'a4' } }) }))
+    .toBe(`<p class="media-lone">${box}</p>\n`)
+  // A failed copy, and a reply that kept no answer, show the file's path as a
+  // link; the failure says why.
+  const failed = renderMarkdown('see ![chart](out/chart.png)', { files, pictures: kept({ 'out/chart.png': { state: 'failed', reason: { kind: 'missing' } } }) })
+  expect(failed).toBe(`<p>see <span class="picture-unavailable">${link} <span class="picture-reason">(The file isn’t on the host)</span></span></p>\n`)
+  expect(renderMarkdown('see ![chart](out/chart.png)', { files }))
+    .toBe(`<p>see <span class="picture-unavailable">${link}</span></p>\n`)
+  // Nobody opens files: the words alone.
+  expect(renderMarkdown('see ![chart](out/chart.png)', { files: { ...files, open: undefined } }))
+    .toBe('<p>see <span class="picture-unavailable">out/chart.png</span></p>\n')
+})
+
+test('a link path starting ~/ names the Host home and stays text while it is not known; a picture of the Host shows its copy either way', () => {
   const markdown = '[todo](~/notes/todo.md) ![chart](~/out/chart.png)'
-  const html = renderMarkdown(markdown, { files: { ...files, home: '/Users/alex' }, hostImages: shownImages('/Users/alex/out/chart.png') })
+  const pictures = kept({ '~/out/chart.png': { state: 'copied', attachment: 'a1' } })
+  const html = renderMarkdown(markdown, { files: { ...withAttachments, home: '/Users/alex' }, pictures })
   expect(html).toContain(fileLink('/Users/alex/notes/todo.md', 'todo'))
-  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/Users/alex/out/chart.png')}" alt="chart" data-host-file="/Users/alex/out/chart.png" />`)
-  expect(renderMarkdown(markdown, { files })).toBe('<p>todo chart</p>\n')
+  expect(html).toContain(hostTile('chart'))
+  // The copy is the reply's own: the home being unknown, or no Host in reach
+  // at all, as on a shared page, changes nothing of it.
+  const unknownHome = renderMarkdown(markdown, { files: withAttachments, pictures })
+  expect(unknownHome).toContain('<p>todo</p>')
+  expect(unknownHome).toContain(hostTile('chart'))
+  expect(renderMarkdown('![chart](~/out/chart.png)', { files: { ...withAttachments, open: undefined, cwd: '' }, pictures }))
+    .toBe(`<p class="media-lone">${hostTile('chart')}</p>\n`)
+})
+
+// Planted defect it catches: a copy looked up by the target as the page's own
+// reader leaves it, `out/a&amp;b.png`, which the backend keeps as `out/a&b.png`.
+test('a picture is found by its target with its character references resolved, as the backend keeps it', () => {
+  const pictures = kept({ 'out/a&b.png': { state: 'copied', attachment: 'a1' } })
+  expect(renderMarkdown('![chart](out/a&amp;b.png)', { files: withAttachments, pictures })).toContain(hostTile('chart'))
+  expect(messageMedia('![chart](out/a&amp;b.png)', withAttachments, new Map([['out/a&b.png', { state: 'copied', attachment: 'a1' }]])))
+    .toHaveLength(1)
+})
+
+/**
+ * The reading the backend and the page share of a reply's image targets
+ * (`crates/agent-transcript/tests/agent-transcript/fixtures/picture-targets.json`):
+ * the pictures the backend names are the images the page shows as copies, and
+ * no other.
+ */
+const pictureTargets = z
+  .array(z.object({ markdown: z.string(), pictures: z.array(z.string()) }))
+  .parse(await Bun.file(resolve(import.meta.dir, '../../../../../crates/agent-transcript/tests/agent-transcript/fixtures/picture-targets.json')).json())
+
+test('the images the backend names as pictures are the ones the page shows as copies', () => {
+  const copies = (named: readonly string[]) => kept(Object.fromEntries(named.map((target) => [target, { state: 'copied', attachment: 'a1' } as const])))
+  for (const { markdown, pictures } of pictureTargets) {
+    const html = renderMarkdown(markdown, { files: { ...withAttachments, home: '/Users/alex' }, pictures: copies(pictures) })
+    // Every picture the backend named shows its copy, and with none named the
+    // page shows no copy.
+    expect(html.includes('data-attachment-image') || html.includes('/blobs/1'), markdown).toBe(pictures.length > 0)
+    // Each Host path with no copy is a link or words, never a copy: the
+    // backend named no picture the page does not take for a Host file, and the
+    // page takes for one every image the backend named.
+    expect(html, markdown).not.toContain('picture-unavailable')
+  }
 })
 
 test('an image inside a link follows the link', () => {
   expect(renderMarkdown('[![build](https://example.com/badge.svg)](https://example.com/ci)', { files }))
     .toBe('<p class="media-lone"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer nofollow"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
-  expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files, hostImages: shownImages('/work/out/chart.png') }))
-    .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" /></a>`)
-})
-
-test('a Host image shows its alt text in the placeholder box while its file is read and when the Host has no file there', () => {
-  const box = '<span class="image-placeholder" role="img" aria-label="chart">chart</span>'
-  const reading = renderMarkdown('![chart](out/chart.png)', { files, hostImages: new Map() })
-  expect(reading).toBe(`<p class="media-lone">${box}</p>\n`)
-  const none = renderMarkdown('see ![chart](out/chart.png)', { files, hostImages: new Map([['/work/out/chart.png', { state: 'none' }]]) })
-  expect(none).toBe(`<p>see ${box}</p>\n`)
+  expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files: withAttachments, pictures: kept({ 'out/chart.png': { state: 'copied', attachment: 'a1' } }) }))
+    .toContain('<a href="/work/docs/charts.md" data-file-link><img src="/blobs/1?type=image%2Fpng" alt="chart" data-width="480" data-height="300" /></a>')
 })
 
 test('without a Host, paths stay text and Host images show their alt text', () => {
@@ -255,6 +308,8 @@ function file(id: string): string {
 const block = (id: string) => `<attachment id="${id}" />`
 
 const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
+/** A picture of the Host a reply shows: the tile of its copy, an attachment's. */
+const hostTile = (alt: string) => '<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-attachment-id="a1"' + file('a1') + ` data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="${alt}" data-width="480" data-height="300" /></a>`
 const imageTile = '<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png" data-attachment-id="a1"' + file('a1') + ' data-keeps-windows><img src="/blobs/1?type=image%2Fpng" alt="login.png" data-width="480" data-height="300" /></a>'
 const videoTile = '<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" data-attachment-id="a2"' + file('a2') + ' data-keeps-windows class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="flow.mp4" data-width="1280" data-height="720"></video>' + mark + '</a>'
 const card = (id: string) => `<div class="attachment-block" data-attachment-card="${id}"></div>\n`
@@ -427,8 +482,9 @@ test('a message\'s pictures are its images that load and its attachment blocks t
     '`![code](not-an-image.png)`',
     block('a1'),
   ].join('\n\n')
-  expect(messageMedia(markdown, withAttachments)).toEqual([
-    { kind: 'image', file: { path: '/work/out/chart.png', contents }, name: 'chart' },
+  const pictures = new Map<string, PictureCopy>([['out/chart.png', { state: 'copied', attachment: 'a1' }]])
+  expect(messageMedia(markdown, withAttachments, pictures)).toEqual([
+    { kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 }, bytes: 15822 },
     { kind: 'image', src: 'https://example.com/l.png', name: 'logo' },
     { kind: 'video', src: '/blobs/2?type=video%2Fmp4', name: 'flow.mp4', size: { width: 1280, height: 720 }, bytes: 8598311 },
     { kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 }, bytes: 15822 },
@@ -436,6 +492,10 @@ test('a message\'s pictures are its images that load and its attachment blocks t
 })
 
 test('an image inside a link follows the link and is not among a message\'s pictures', () => {
-  expect(messageMedia('[![build](https://example.com/badge.svg)](https://example.com/ci) ![chart](out/chart.png)', files))
-    .toEqual([{ kind: 'image', file: { path: '/work/out/chart.png', contents }, name: 'chart' }])
+  const pictures = new Map<string, PictureCopy>([['out/chart.png', { state: 'copied', attachment: 'a1' }]])
+  expect(messageMedia('[![build](https://example.com/badge.svg)](https://example.com/ci) ![chart](out/chart.png)', withAttachments, pictures))
+    .toEqual([{ kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 }, bytes: 15822 }])
+  // A picture with no copy in, or that failed, is none of them.
+  expect(messageMedia('![chart](out/chart.png)', withAttachments, new Map([['out/chart.png', { state: 'copying' }]]))).toEqual([])
+  expect(messageMedia('![chart](out/chart.png)', withAttachments, new Map())).toEqual([])
 })

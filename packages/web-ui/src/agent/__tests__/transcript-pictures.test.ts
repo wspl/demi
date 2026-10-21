@@ -8,7 +8,7 @@ import type { MessageFiles } from '../../markdown/types'
 import { createdAt, model } from './agent-harness'
 
 // The pictures of a transcript in the order they stand, which the media
-// viewer steps through: the images the messages show, a Host image by its file,
+// viewer steps through: the images the messages show, a reply's Host picture by its copy and the user's by its file,
 // the user's attached files and the media tools returned.
 
 /**
@@ -51,7 +51,10 @@ const blocks: Block[] = [
     input: JSON.stringify({ script: 'demi file view a.png', description: 'Show the page' }),
     output: [{ type: 'text', text: 'ok' }, image('shot-1'), image('shot-2')],
   } as Block,
-  { ...base, type: 'text', id: 'x1', text: 'Done:\n\n![Chart](out/chart.png)\n<attachment id=\"a1\" />\n\n[a link](out/a.png)' },
+  {
+    ...base, type: 'text', id: 'x1', text: 'Done:\n\n![Chart](out/chart.png)\n<attachment id=\"a1\" />\n\n[a link](out/a.png)',
+    pictures: [{ target: 'out/chart.png', copy: { state: 'copied', attachment: 'a1' } }],
+  },
 ]
 
 test('the pictures of a transcript come in the order they stand: the user\'s, a call\'s, then the reply\'s', () => {
@@ -60,14 +63,14 @@ test('the pictures of a transcript come in the order they stand: the user\'s, a 
     ['file:/work/out/typed.png', 'alt'],
     ['/blob/shot-1', 'Show the page'],
     ['/blob/shot-2', 'Show the page'],
-    ['file:/work/out/chart.png', 'Chart'],
+    ['/blobs/1', 'login.png'],
     ['/blobs/1', 'login.png'],
   ])
 })
 
-test('a subagent\'s brief names its pictures as a message does', () => {
-  const brief: Block[] = [{ ...base, type: 'user', id: 'u2', turnId: 't2', preamble: null, content: [{ type: 'text', text: 'Look at ![x](out/a.png)' }] }]
-  expect(transcriptPictures(brief, { ...context, node: 'child-1' }).map(mediumKey)).toEqual(['file:/work/out/a.png'])
+test('a subagent\'s brief names the pictures that load, and none of the Host, which no copy stands for', () => {
+  const brief: Block[] = [{ ...base, type: 'user', id: 'u2', turnId: 't2', preamble: null, content: [{ type: 'text', text: 'Look at ![x](out/a.png) and ![y](https://example.com/y.png)' }] }]
+  expect(transcriptPictures(brief, { ...context, node: 'child-1' }).map(mediumKey)).toEqual(['https://example.com/y.png'])
 })
 
 // The Media tab's bar shows the size of every item of the series, so a user's
@@ -78,6 +81,7 @@ test('a user\'s attached picture carries the size of its file, as the agent\'s a
   const pictures = transcriptPictures(blocks, context)
   expect(pictures.filter((medium) => medium.name.endsWith('.png')).map((medium) => [medium.name, medium.bytes])).toEqual([
     ['mine.png', 1],
+    ['login.png', 15822],
     ['login.png', 15822],
   ])
 })
@@ -91,7 +95,7 @@ test('a user\'s attached picture carries the size of its file, as the agent\'s a
 // viewer in a 1,500-picture transcript take half a second. A few milliseconds.
 test('reading a transcript\'s pictures again lexes only the messages whose text changed', () => {
   const replies: Block[] = Array.from({ length: 20 }, (_, index) =>
-    ({ ...base, type: 'text', id: `r${index}`, text: `Step ${index}:\n\n![Chart](out/chart-${index}.png)` }))
+    ({ ...base, type: 'text', id: `r${index}`, text: `Step ${index}:\n\n![Chart](https://example.com/chart-${index}.png)` }))
   const transcript = [...blocks, ...replies]
   const read = (shown: readonly Block[]) =>
     transcriptPictures(shown, { ...context, files: () => ({ ...files }) }).map(mediumKey)
@@ -101,10 +105,10 @@ test('reading a transcript\'s pictures again lexes only the messages whose text 
     expect(read(transcript)).toEqual(before)
     expect(lexed).toHaveBeenCalledTimes(0)
 
-    const grown = { ...replies[3]!, text: `${(replies[3] as { text: string }).text}\n\n![Table](out/table.png)` } as Block
+    const grown = { ...replies[3]!, text: `${(replies[3] as { text: string }).text}\n\n![Table](https://example.com/table.png)` } as Block
     const after = read(transcript.map((block) => (block.id === 'r3' ? grown : block)))
     expect(lexed).toHaveBeenCalledTimes(1)
-    expect(after).toContain('file:/work/out/table.png')
+    expect(after).toContain('https://example.com/table.png')
   } finally {
     lexed.mockRestore()
   }

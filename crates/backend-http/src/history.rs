@@ -17,7 +17,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
-use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_texts};
+use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_blocks};
 use demi_conversation_socket_protocol::{index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
@@ -55,7 +55,7 @@ pub(super) async fn transcript(
     let mut page = page_answer(read, no_node, no_block, outside, changed)?;
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
-    page.attachments = attachment_facts(&services.conversations, &record.id, &node, reply_texts(&page.blocks))
+    page.attachments = attachment_facts(&services.conversations, &record.id, &node, reply_blocks(&page.blocks))
         .await
         .map_err(ApiError::conversation_unreadable)?;
     Ok(Json(page))

@@ -2410,7 +2410,7 @@ html[data-theme="light"] .file-pill {
   clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
-/* An image's alt text in its place while its file is read, or when it is
+/* An image's alt text in its place while its copy is made, or when it is
    missing or does not load (`markdown/image-placeholder.ts`), in a message
    and in a document alike: a quiet dashed box on the text's line. */
 .image-placeholder {
@@ -2422,6 +2422,12 @@ html[data-theme="light"] .file-pill {
   border: 1px dashed var(--line);
   border-radius: 0.375rem;
   font-size: 12px;
+  color: var(--fg-muted);
+}
+
+/* Why a picture of the Host a reply shows is not shown, after the link to its
+   file (`markdown/render.ts`). */
+.markdown-body .picture-reason {
   color: var(--fg-muted);
 }
 

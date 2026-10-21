@@ -3,8 +3,9 @@
 //! (`docs/decisions/0029-a-conversation-opens-whole.md`).
 //!
 //! A reply names an attachment by a line that is its tag alone,
-//! `<attachment id="a3" />`, the rule the page's renderer follows
-//! (`demi_backend_database::shares::named_attachments`). The socket's
+//! `<attachment id="a3" />`, the rule the page's renderer follows, and by the
+//! copy it keeps of a picture of the Host it shows
+//! (`demi_backend_database::shares::block_attachments`). The socket's
 //! transcript frames and the history route both carry the attachments their
 //! blocks and their text name that the node's replies show, so the page draws
 //! each card or picture at its size with the reply, and asks for none.
@@ -18,25 +19,25 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_attachments::{AttachmentNumber, read_all_shown};
 use demi_backend_database::conversations::ConversationStores;
-use demi_backend_database::shares::named_attachments;
+use demi_backend_database::shares::{block_attachments, named_attachments};
 use demi_conversation_socket_protocol::{ConversationAttachment, TranscriptPatch};
-use demi_shared_types::{Block, NodeId};
+use demi_shared_types::{Block, NodeId, TextBlock};
 use demi_web_api_protocol::ids::ConversationId;
 
 /// How many text blocks of a node a socket keeps the text of: the one being
 /// written and the few before it.
 const KEPT_BLOCKS: usize = 8;
 
-/// The attachments named in `texts`, the replies' texts, that the replies of
-/// the node `node` of `conversation` show, in their order; none for a
-/// conversation without a database yet.
+/// The attachments named by `replies`, the replies' text blocks, that the
+/// replies of the node `node` of `conversation` show, in their order; none
+/// for a conversation without a database yet.
 pub async fn attachment_facts<'a>(
     conversations: &ConversationStores,
     conversation: &ConversationId,
     node: &NodeId,
-    texts: impl IntoIterator<Item = &'a str>,
+    replies: impl IntoIterator<Item = &'a TextBlock>,
 ) -> Result<Vec<ConversationAttachment>, StorageError> {
-    described(conversations, conversation, node, texts.into_iter().flat_map(named_attachments).collect()).await
+    described(conversations, conversation, node, replies.into_iter().flat_map(block_attachments).collect()).await
 }
 
 /// The descriptions of `numbers` that the replies of `node` show.
@@ -57,10 +58,10 @@ async fn described(
     Ok(rows.into_iter().map(|row| row.description()).collect())
 }
 
-/// The texts of the replies among `blocks`.
-pub fn reply_texts(blocks: &[Block]) -> impl Iterator<Item = &str> {
+/// The replies among `blocks`.
+pub fn reply_blocks(blocks: &[Block]) -> impl Iterator<Item = &TextBlock> {
     blocks.iter().filter_map(|block| match block {
-        Block::Text(text) => Some(text.text.as_str()),
+        Block::Text(text) => Some(text),
         _ => None,
     })
 }
@@ -108,21 +109,19 @@ impl StreamedText {
         node: &NodeId,
         patches: &[TranscriptPatch],
     ) -> Result<Vec<ConversationAttachment>, StorageError> {
-        let mut named = BTreeSet::new();
-        for text in self.apply(node, patches) {
-            named.extend(named_attachments(&text));
-        }
+        let mut named = self.apply(node, patches);
         named.retain(|number| !self.described.contains(&(node.clone(), *number)));
         let found = described(conversations, conversation, node, named).await?;
         self.sent(node, &found);
         Ok(found)
     }
 
-    /// Applies `patches` to the text kept of `node`, and answers the block
-    /// texts they leave that may name an attachment not named before.
-    fn apply(&mut self, node: &NodeId, patches: &[TranscriptPatch]) -> Vec<String> {
+    /// Applies `patches` to the text kept of `node`, and answers the
+    /// attachments named by the block texts they leave that may name one not
+    /// named before.
+    fn apply(&mut self, node: &NodeId, patches: &[TranscriptPatch]) -> BTreeSet<AttachmentNumber> {
         let texts = self.texts.entry(node.clone()).or_default();
-        let mut to_read = Vec::new();
+        let mut named = BTreeSet::new();
         for patch in patches {
             match patch {
                 TranscriptPatch::Add { index, value, .. } => {
@@ -135,13 +134,13 @@ impl StreamedText {
                     }
                     if let Block::Text(text) = value {
                         texts.insert(*index, text.text.clone());
-                        to_read.push(text.text.clone());
+                        named.extend(block_attachments(text));
                     }
                 }
                 TranscriptPatch::ReplaceBlock { index, value } => match value {
                     Block::Text(text) => {
                         texts.insert(*index, text.text.clone());
-                        to_read.push(text.text.clone());
+                        named.extend(block_attachments(text));
                     }
                     _ => {
                         texts.remove(index);
@@ -158,8 +157,8 @@ impl StreamedText {
                         }
                         None => delta.as_str(),
                     };
-                    if delta.contains(['>', '\n']) && whole.contains("<attachment") {
-                        to_read.push(whole.to_owned());
+                    if delta.contains(['>', '\n']) {
+                        named.extend(named_attachments(whole));
                     }
                 }
                 TranscriptPatch::Truncate { length } => {
@@ -173,6 +172,6 @@ impl StreamedText {
         while texts.len() > KEPT_BLOCKS {
             texts.pop_first();
         }
-        to_read
+        named
     }
 }

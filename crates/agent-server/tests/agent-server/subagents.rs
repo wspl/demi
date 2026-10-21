@@ -1692,6 +1692,7 @@ pub(crate) fn answer(id: &str, words: &str) -> Block {
         created_at: Timestamp::UNIX_EPOCH,
         request: None,
         code_files: None,
+        pictures: None,
         model: test_model(),
         text: words.into(),
         forkable: true,

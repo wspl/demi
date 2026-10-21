@@ -103,7 +103,7 @@ pub use agent_message::{
 pub use block::{
     AbortBlock, AccountSwitchBlock, AgentMessageBlock, AutomationMark, Block, CodeFile, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock, Entry,
     ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, SIDE_QUESTIONS_SOURCE, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
-    REPORTING_SOURCE, WORKING_DIRECTORY_SOURCE,
+    REPORTING_SOURCE, WORKING_DIRECTORY_SOURCE, PictureCopy, PictureFailure, ReplyPicture,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
     client_blocks, WakeupPlacement,
 };

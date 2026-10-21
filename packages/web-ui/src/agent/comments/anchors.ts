@@ -13,9 +13,9 @@ export interface TextAnchor {
 
 /**
  * A picture of a reply as it renders: an image, or the box that stands in a
- * Host image's place while its file is read or when it is missing
- * (`imagePlaceholderHtml`), which is a picture too, so the pictures after it
- * keep their places as it loads.
+ * picture's place while it loads or its copy is made (`imagePlaceholderHtml`),
+ * which is a picture too, so the pictures after it keep their places as it
+ * loads.
  */
 const PICTURE = 'img, [role="img"]'
 
@@ -187,7 +187,6 @@ export function pictureAnchor(root: HTMLElement, picture: Element): (TextAnchor 
  */
 export function pictureQuote(image: HTMLImageElement): string {
   const named = image.closest('[data-attachment-image]')?.getAttribute('data-attachment-image')
-    ?? image.getAttribute('data-host-file')?.split('/').at(-1)
     ?? image.src.split(/[/?#]/).filter(Boolean).at(-1)
   return image.alt.trim() || named?.trim() || 'Image'
 }
@@ -195,7 +194,8 @@ export function pictureQuote(image: HTMLImageElement): string {
 /**
  * The picture `anchor` names in `root`, by its place among the block's
  * pictures, when it is still the picture `quote` names; null while it is
- * not drawn, as a Host image being read, or when the reply holds another.
+ * not drawn, as a picture whose copy is being made, or when the reply holds
+ * another.
  */
 export function pictureOf(root: HTMLElement, anchor: TextAnchor, quote: string): HTMLImageElement | null {
   const image = picturesOf(root)[anchor.start]

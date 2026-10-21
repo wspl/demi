@@ -14,6 +14,7 @@ mod ids;
 mod journal;
 mod log;
 mod replay;
+mod reply_markdown;
 mod reports;
 #[cfg(feature = "testing")]
 pub mod testing;
@@ -31,6 +32,7 @@ pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
 pub use log::{PendingCall, TranscriptLog, kept};
 pub use replay::{REPLAY_CHARS, Replay, ReplayedBlock, RequestView, bound_text, replay, tool_input};
+pub use reply_markdown::{has_scheme, markdown_options, named_pictures, picture_path};
 pub use reports::{duration, labelled_output, report_text, reports_text};
 
 use demi_shared_types::{Block, GoneCause, ModelMediaKind, WakeupPlacement};

@@ -1078,15 +1078,16 @@ pub(crate) fn name_block(
     for named in block_blobs(block) {
         blob.execute(params![node, index, named.as_str()])?;
     }
-    if let Block::Text(text) = block
-        && text.text.contains("<attachment")
-    {
-        let mut attachment = transaction.prepare_cached(
-            "INSERT OR IGNORE INTO block_attachments (node_id, idx, attachment) VALUES (?1, ?2, ?3)",
-        )?;
-        for number in shares::named_attachments(&text.text) {
-            let number = i64::try_from(number.0).expect("a parsed attachment number fits the column");
-            attachment.execute(params![node, index, number])?;
+    if let Block::Text(text) = block {
+        let named = shares::block_attachments(text);
+        if !named.is_empty() {
+            let mut attachment = transaction.prepare_cached(
+                "INSERT OR IGNORE INTO block_attachments (node_id, idx, attachment) VALUES (?1, ?2, ?3)",
+            )?;
+            for number in named {
+                let number = i64::try_from(number.0).expect("a parsed attachment number fits the column");
+                attachment.execute(params![node, index, number])?;
+            }
         }
     }
     Ok(())
@@ -2739,6 +2740,7 @@ pub(crate) mod tests {
             created_at: Timestamp::UNIX_EPOCH,
             request: None,
             code_files: None,
+            pictures: None,
             model: test_model(),
             text: "hello".into(),
             forkable: false,

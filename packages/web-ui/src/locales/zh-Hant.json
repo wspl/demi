@@ -317,6 +317,11 @@
   },
   "markdown": {
     "mathUnavailable": "數學公式顯示無法使用",
-    "attachmentMissing": "此對話中沒有附件 {id}"
+    "attachmentMissing": "此對話中沒有附件 {id}",
+    "pictureMissing": "主機上沒有該檔案",
+    "pictureTooLarge": "檔案為 {size}，太大無法保留",
+    "pictureNotAnImage": "檔案類型為 {type}，不是圖片",
+    "pictureHostUnavailable": "主機無法使用，未能複製",
+    "pictureUnreadable": "無法讀取該檔案"
   }
 }

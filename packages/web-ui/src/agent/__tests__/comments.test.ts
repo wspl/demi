@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { afterEach, expect, spyOn, test } from 'bun:test'
+import { afterEach, expect, test } from 'bun:test'
 
 // Comments on a reply's words. Comment on selected words saves the comment with
 // its quote and where it stands. The reply marks a waiting comment and, once a
@@ -350,6 +350,9 @@ test('an anchor across code and a link finds the same words after the reply is d
 
 const CHART = 'https://example.com/chart.png'
 
+/** The blob of the copy a reply keeps of a picture of the Host. */
+const HOST_COPY_SHA = 'cd'.repeat(32)
+
 /**
  * A reply holding `pictures`, each `[alt, src]`, with the comments layer over
  * it; `draw` draws it again.
@@ -369,8 +372,14 @@ async function pictured(pictures: readonly (readonly [string, string])[], option
         provideKeepPicture(options.keep)
       return () => h('div', { ref: rows, style: 'position: relative' }, [
       h('div', { 'data-reply-text': 'text-1' }, [
-        // A picture of the Host is one whose address is the page's own.
-        h('div', { class: 'markdown-body' }, [h('p', 'Here is the chart.'), ...shown.value.map(([alt, src]) => h('p', [h('img', { key: `${alt}${src}`, alt, src, ...(src.startsWith('/') ? { 'data-host-file': `/work${src}` } : {}) })]))]),
+        // A picture of the Host is the tile of its copy, an attachment: one
+        // whose address is the page's own.
+        h('div', { class: 'markdown-body' }, [h('p', 'Here is the chart.'), ...shown.value.map(([alt, src]) => {
+          const image = h('img', { key: `${alt}${src}`, alt, src })
+          return h('p', [src.startsWith('/')
+            ? h('a', { 'data-attachment-file': JSON.stringify({ type: 'stored', name: 'chart.png', sha256: HOST_COPY_SHA, mediaType: 'image/png' }) }, [image])
+            : image])
+        })]),
       ]),
       h(ReplyComments, {
         ref: layer,
@@ -612,38 +621,24 @@ test('Copy Message and Send to Conversation take a picture comment\'s picture as
   }
 })
 
-// A comment on a Host image keeps the picture's bytes before it is saved: until
-// they are kept, the box stays open with its text; a failure leaves both, says
-// why, and the same press tries again.
-test('a comment on a Host picture keeps its box and text until the picture is kept, and after a failure', async () => {
-  let attempts = 0
-  const kept = { sha256: 'cd'.repeat(32), mediaType: 'image/png' }
+// A picture of the Host a reply shows is the copy the backend keeps of it, an
+// attachment: a comment on it names that blob, and the page keeps no bytes.
+test('a comment on a picture of the Host names its copy and keeps no bytes', async () => {
+  let kept = 0
   const page = await pictured([['The chart', '/chart.png']], {
     waiting: [],
     keep: async () => {
-      attempts += 1
-      if (attempts === 1)
-        throw new Error('The upload failed.')
-      return kept
+      kept += 1
+      return { sha256: 'ef'.repeat(32), mediaType: 'image/png' }
     },
   })
-  const errors = spyOn(console, 'error').mockImplementation(() => {})
-  try {
-    const field = await commentOnPicture(page, 0, 'Which connection?')
-    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    await page.settle()
-    await page.settle()
-    expect(page.added).toEqual([])
-    const still = page.host.querySelector('textarea')
-    expect(still?.value).toBe('Which connection?')
-    still!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-    await page.settle()
-    await page.settle()
-    expect(page.added.map(({ text, picture }) => ({ text, picture }))).toEqual([
-      { text: 'Which connection?', picture: { type: 'ref', ref: kept.sha256, mediaType: 'image/png' } },
-    ])
-    expect(page.host.querySelector('textarea')).toBeNull()
-  } finally {
-    errors.mockRestore()
-  }
+  const field = await commentOnPicture(page, 0, 'Which connection?')
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await page.settle()
+  await page.settle()
+  expect(kept).toBe(0)
+  expect(page.added.map(({ text, picture }) => ({ text, picture }))).toEqual([
+    { text: 'Which connection?', picture: { type: 'ref', ref: 'cd'.repeat(32), mediaType: 'image/png' } },
+  ])
+  expect(page.host.querySelector('textarea')).toBeNull()
 })

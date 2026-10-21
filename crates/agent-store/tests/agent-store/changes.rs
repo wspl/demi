@@ -111,6 +111,7 @@ fn text(value: &str) -> Block {
         created_at: Timestamp::UNIX_EPOCH,
         request: None,
         code_files: None,
+        pictures: None,
         model: test_model(),
         text: value.into(),
         forkable: true,

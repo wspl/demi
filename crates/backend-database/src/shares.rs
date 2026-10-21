@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use std::ops::Range;
 
 use demi_agent_store::media::block_blobs;
-use demi_shared_types::{BlobRef, Block, BlockId, NodeId, Timestamp};
+use demi_shared_types::{BlobRef, Block, BlockId, NodeId, PictureCopy, TextBlock, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, ShareToken, UserId};
 use demi_web_api_protocol::shares::ShareTarget;
 use comrak::nodes::NodeValue;
@@ -510,6 +510,21 @@ pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
             (placed && !indented && alone(node.previous_sibling()) && alone(node.next_sibling())).then_some(number)
         })
         .collect()
+}
+
+/// The attachments a text block names: those its text delivers
+/// ([`named_attachments`]) and the copies it keeps of the pictures of the Host
+/// it shows (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`).
+pub fn block_attachments(text: &TextBlock) -> BTreeSet<AttachmentNumber> {
+    let mut named = named_attachments(&text.text);
+    for picture in text.pictures.iter().flatten() {
+        if let PictureCopy::Copied { attachment } = &picture.copy
+            && let Ok(number) = attachment.parse()
+        {
+            named.insert(number);
+        }
+    }
+    named
 }
 
 /// What stands for a tag in the text CommonMark reads: a private-use

@@ -79,7 +79,7 @@ use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use futures_util::future::LocalBoxFuture;
 
 use super::attachment_facts::StreamedText;
-use super::{attachment_facts, failure_facts, reply_texts};
+use super::{attachment_facts, failure_facts, reply_blocks};
 use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
 use crate::sync::ChannelSession;
 use crate::shard::{PageEnd, PageSocket, Shard};
@@ -731,7 +731,7 @@ impl Shard {
                 ..
             } => {
                 let failures = failure_facts(assembly, self.user(), &blocks).await;
-                let attachments = self.named_attachments(conversation, &node, reply_texts(&blocks)).await;
+                let attachments = self.named_attachments(conversation, &node, reply_blocks(&blocks)).await;
                 streamed.reset(&node, start, &blocks);
                 streamed.sent(&node, &attachments);
                 ServerFrame::TranscriptReset {
@@ -773,16 +773,16 @@ impl Shard {
         }
     }
 
-    /// The attachments `texts` name that the replies of `node` show. A
+    /// The attachments `replies` name that the replies of `node` show. A
     /// failed read is logged and carries none: the reply shows the tag's
     /// place as missing, as for a number the conversation does not have.
     async fn named_attachments<'a>(
         &self,
         conversation: &ConversationId,
         node: &NodeId,
-        texts: impl IntoIterator<Item = &'a str>,
+        replies: impl IntoIterator<Item = &'a demi_shared_types::TextBlock>,
     ) -> Vec<ConversationAttachment> {
-        attachment_facts(&self.services().conversations, conversation, node, texts)
+        attachment_facts(&self.services().conversations, conversation, node, replies)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(

@@ -267,6 +267,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         :block-id="block.id"
         :content="block.text"
         :code-files="block.codeFiles"
+        :pictures="block.pictures"
         :is-streaming="isTextStreaming"
         :show-footer="showAssistantFooter"
         :created-at="block.createdAt"

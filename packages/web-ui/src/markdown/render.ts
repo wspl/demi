@@ -2,7 +2,7 @@ import type { RendererObject, Token, Tokens } from 'marked'
 import { markdownReader } from './reader'
 import { baseName } from '@demicodes/utils'
 import type { AttachmentLookup, MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
-import type { HostImage } from '../files/host-image'
+import type { PictureCopy, PictureFailure } from '@demicodes/protocol'
 import { codeBlockHtml } from './highlight'
 import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
 import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
@@ -11,6 +11,8 @@ import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { escapeHtml } from './html'
 import { imagePlaceholderHtml } from './image-placeholder'
+import { pictureKey } from './picture-key'
+import { formatBytes } from '../files/format'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
@@ -184,12 +186,6 @@ function firstWord(html: string): string {
 export const ATTACHMENT_FILE_ATTRIBUTE = 'data-attachment-file'
 
 /**
- * The attribute of a Host image that names its file's path, which a click on it
- * shows in the viewer (`openMessageLink`).
- */
-export const HOST_FILE_ATTRIBUTE = 'data-host-file'
-
-/**
  * The attribute of an attachment's image or video that holds the attachment's
  * number, which a click on it shows it by (`openMessageLink`).
  */
@@ -322,20 +318,85 @@ function attachmentBlock(id: string, raw: string): string {
 }
 
 /**
- * Where an image loads from: its URL, or a Host image's file at the version
- * the page keeps of it, with the path the click shows it by; `loading`
- * while a Host image's file is read. Null shows its alt text.
+ * What an image of a message shows as: its URL; the copy the reply keeps of
+ * the Host file it names; a placeholder while the copy is being made; or a
+ * link to the Host file's path, with why it is not shown when the backend
+ * could not copy it. Null shows its alt text.
  */
-function imageSource(target: string): { src: string; path: string | null } | 'loading' | null {
+type PictureSource =
+  | { kind: 'url'; src: string }
+  | { kind: 'copy'; id: string; attachment: MessageAttachment }
+  | { kind: 'loading' }
+  | { kind: 'link'; reason: PictureFailure | null }
+
+/**
+ * What a picture whose copy the reply keeps shows as.
+ */
+function copiedPicture(copy: PictureCopy): PictureSource {
+  switch (copy.state) {
+    case 'copying':
+      return { kind: 'loading' }
+    case 'failed':
+      return { kind: 'link', reason: copy.reason }
+    case 'copied': {
+      const lookup = messageAttachment(activeOptions?.files, copy.attachment)
+      if (lookup?.state === 'loading')
+        return { kind: 'loading' }
+      const found = lookup?.state === 'found' && lookup.attachment.mediaType.startsWith('image/') ? lookup.attachment : null
+      return found ? { kind: 'copy', id: copy.attachment, attachment: found } : { kind: 'link', reason: null }
+    }
+  }
+}
+
+/**
+ * What the image `target` shows as. A reply keeps a copy of each picture of
+ * the Host it shows, found by the target alone: the page's knowledge of the
+ * Host's directories does not decide whether a copy shows, so a copy shows
+ * where the home is not known, as on a shared page. A Host picture with no
+ * copy kept is one still arriving, a placeholder, or one the reply kept no
+ * answer for, such as a reply written before copies were kept, a link.
+ */
+function pictureSource(target: string): PictureSource | null {
+  const pictures = activeOptions?.pictures
+  const copy = pictures?.copies.get(pictureKey(target))
+  if (copy !== undefined)
+    return copiedPicture(copy)
   const image = messageImage(target, activeOptions?.files)
   if (!image)
     return null
   if ('url' in image)
-    return { src: image.url, path: null }
-  const shown: HostImage = activeOptions?.hostImages?.get(image.path) ?? { state: 'loading' }
-  if (shown.state !== 'shown')
-    return shown.state === 'loading' ? 'loading' : null
-  return { src: shown.src, path: image.path }
+    return { kind: 'url', src: image.url }
+  return pictures?.streaming ? { kind: 'loading' } : { kind: 'link', reason: null }
+}
+
+/** Why the backend could not copy a picture, in the page's language. */
+function failureWords(reason: PictureFailure): string {
+  switch (reason.kind) {
+    case 'missing':
+      return t('markdown.pictureMissing')
+    case 'too_large':
+      return t('markdown.pictureTooLarge', { size: formatBytes(reason.size) })
+    case 'not_an_image':
+      return t('markdown.pictureNotAnImage', { type: reason.mediaType })
+    case 'host_unavailable':
+      return t('markdown.pictureHostUnavailable')
+    case 'unreadable':
+      return t('markdown.pictureUnreadable')
+  }
+}
+
+/**
+ * A picture the backend could not copy, or kept no copy of: the link to its
+ * Host file as the reply wrote the path, and why when it is known. Inside a
+ * link, the words alone.
+ */
+function pictureLink(target: string, reason: PictureFailure | null): string {
+  const files = activeOptions?.files
+  const file = files?.open && openLinks === 0 ? messageFileTarget(target, files) : null
+  const words = escapeHtml(target)
+  const link = file ? iconLink((attributes) => fileLink(file, attributes), fileIcon(baseName(file.path)), words, false) : words
+  const why = reason === null ? '' : ` <span class="picture-reason">(${escapeHtml(failureWords(reason))})</span>`
+  return `<span class="picture-unavailable">${link}${why}</span>`
 }
 
 /**
@@ -399,17 +460,22 @@ const messageRenderer: RendererObject = {
     return link((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)))
   },
   image(token) {
-    const source = imageSource(token.href)
-    // A target that loads nothing is words; a Host image whose file is being
-    // read or is not there keeps its place with its alt text in a box.
-    if (source === null && messageImage(token.href, activeOptions?.files) === null)
+    const source = pictureSource(token.href)
+    // A target that loads nothing is words; a Host picture whose copy is
+    // being made keeps its place with its alt text in a box.
+    if (source === null)
       return escapeHtml(token.text)
-    if (source === null || source === 'loading')
+    if (source.kind === 'loading')
       return imagePlaceholderHtml(token.text)
+    if (source.kind === 'link')
+      return pictureLink(token.href, source.reason)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    // A Host image names its file, which the viewer a click opens follows.
-    const file = source.path === null ? '' : ` ${HOST_FILE_ATTRIBUTE}="${escapeHtml(source.path)}"`
-    return `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title}${file} />`
+    if (source.kind === 'url')
+      return `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
+    const { attachment } = source
+    const image = `<img src="${escapeHtml(attachment.url)}" alt="${escapeHtml(token.text)}"${title}${sizeAttributes(declaredSize(attachment))} />`
+    // An image inside a link follows the link, as a web image does.
+    return openLinks > 0 ? image : `${attachmentLink(source.id, attachment)}${image}</a>`
   },
 }
 
@@ -420,11 +486,14 @@ function isWhiteSpace(token: Token): boolean {
 
 /**
  * Whether an image token shows a picture: one that loads, also while its
- * Host file is read. One that never shows, which leaves its alt text, is
- * words.
+ * copy is made. One that never shows, which leaves its alt text or a link to
+ * its file, is words.
  */
 function showsMedium(token: Token): boolean {
-  return token.type === 'image' && imageSource(token.href) !== null
+  if (token.type !== 'image')
+    return false
+  const kind = pictureSource(token.href)?.kind
+  return kind === 'url' || kind === 'copy' || kind === 'loading'
 }
 
 /**
@@ -651,41 +720,48 @@ export function messageMediumReferences(src: string): MessageMediumReference[] {
  * The pictures a message shows that open in the media viewer, in order:
  * each image that loads and each attachment block that is an image or a
  * video, named and sized as a click on it names and sizes it. An image
- * inside a link follows the link and is not among them; neither is one still
- * being asked for, or one that shows its alt text.
+ * inside a link follows the link and is not among them; neither is one whose
+ * copy is not in, or that shows its alt text or a link.
  */
-export function messageMedia(src: string, files: MessageFiles | undefined): ShownMedium[] {
-  return referencedMedia(messageMediumReferences(src), files)
+export function messageMedia(src: string, files: MessageFiles | undefined, pictures?: ReadonlyMap<string, PictureCopy>): ShownMedium[] {
+  return referencedMedia(messageMediumReferences(src), files, pictures)
 }
 
-/** `messageMedia` of the pictures a message's text names, read already. */
-export function referencedMedia(references: readonly MessageMediumReference[], files: MessageFiles | undefined): ShownMedium[] {
+/**
+ * `messageMedia` of the pictures a message's text names, read already, with
+ * the copies `pictures` keeps of those of the Host when the text is a reply's;
+ * absent, the text is the user's.
+ */
+export function referencedMedia(
+  references: readonly MessageMediumReference[],
+  files: MessageFiles | undefined,
+  pictures?: ReadonlyMap<string, PictureCopy>,
+): ShownMedium[] {
   return references.flatMap((reference): ShownMedium[] => {
     if (reference.type === 'attachment') {
       const lookup = messageAttachment(files, reference.id)
       const medium = lookup?.state === 'found' ? attachmentMedium(lookup.attachment) : null
       return medium ? [medium] : []
     }
-    const image = messageImage(reference.href, files)
     const name = reference.text || 'image'
+    // A picture of the Host a reply shows is the copy the reply keeps of it,
+    // found by its target alone, as the page shows it.
+    const copy = pictures?.get(pictureKey(reference.href))
+    if (copy !== undefined) {
+      const lookup = copy.state === 'copied' ? messageAttachment(files, copy.attachment) : undefined
+      const medium = lookup?.state === 'found' ? attachmentMedium(lookup.attachment) : null
+      return medium?.kind === 'image' ? [medium] : []
+    }
+    const image = messageImage(reference.href, files)
     if (image && 'url' in image)
       return [{ kind: 'image', src: image.url, name }]
-    // A Host image is its file, which the viewer shows at the version the page
-    // keeps.
-    if (image && files?.contents)
-      return [{ kind: 'image', file: { path: image.path, contents: files.contents }, name }]
+    // Without copies the text is the user's, whose Host image is its file,
+    // which the viewer shows at the version the page keeps. A reply's Host
+    // picture the backend kept no copy of shows as a link, which is no medium.
+    if (image && pictures === undefined)
+      return files?.contents ? [{ kind: 'image', file: { path: image.path, contents: files.contents }, name }] : []
     return []
   })
-}
-
-/** The target of each image of an agent's message, in order, at any depth. */
-export function messageImageTargets(src: string): string[] {
-  const targets: string[] = []
-  agentMarked.walkTokens(agentMarked.lexer(src), (token) => {
-    if (token.type === 'image')
-      targets.push(token.href)
-  })
-  return targets
 }
 
 /**
