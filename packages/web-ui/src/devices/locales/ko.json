@@ -76,6 +76,8 @@
     "measure": "측정",
     "measuring": "측정 중…",
     "noAnswer": "응답 없음",
+    "notMeasured": "측정 안 됨",
+    "measuredAt": "{when} 측정",
     "device": "기기",
     "name": "이름",
     "rename": "이름 변경…",

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { AddSourceAnswer, SettingsSkillDraft, SettingsSkillSource } from './types'
@@ -9,7 +9,6 @@ import {
   addedSourceSchema,
   skillsStateSchema,
   type AddSource,
-  type CheckUpdates,
   type SetEnabled,
   type SetSourceEnabled,
   type Failure,
@@ -20,8 +19,8 @@ import {
 /**
  * The skills plugin's settings section: its Skills page over the plugin's
  * state and methods. Every change comes back with the state the plugin
- * sends to each of the user's pages. Opening it asks the plugin to check
- * the sources for updates.
+ * sends to each of the user's pages, an update the backend found included
+ * (`crates/plugin-skills/plugin/src/heads.rs`): opening it checks nothing.
  */
 const props = defineProps<{
   /** The sources shown open at first. */
@@ -78,13 +77,6 @@ const sources = computed<SettingsSkillSource[]>(() =>
 )
 
 const openIds = ref<string[]>([...(props.open ?? [])])
-
-onMounted(() => {
-  plugin.call('check_updates', {} satisfies CheckUpdates, z.null()).catch((error: unknown) => {
-    // Nothing waits for it: a check that cannot start shows nothing new.
-    page.errors.defect('Could not check the sources for updates', error)
-  })
-})
 
 /**
  * Calls `method`, which answers nothing; a refusal says why in a toast. Its

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { productState } from '../__tests__/product-state'
@@ -57,7 +57,7 @@ beforeEach(async () => {
         rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
-        details: { type: 'failed', message: 'Not read in this test' },
+        details: { type: 'failed', message: 'Not read in this test' }, cliInstall: null,
       },
     ],
   })
@@ -117,13 +117,13 @@ beforeEach(async () => {
         createdAt: '2026-09-11T00:00:00.000Z',
       }
       // The entry joins the product state as the channel brings it.
-      state.providers.push({ ...entry, details: { type: 'failed', message: 'Not read in this test' } })
+      state.providers.push({ ...entry, details: { type: 'failed', message: 'Not read in this test' }, cliInstall: null })
       channels.last().send({ type: 'providers', providers: state.providers })
       return Response.json({ provider: entry })
     }
     if (path === '/api/providers/catalog') {
       return Response.json({
-        subscriptions: [{ providerType: 'codex', configured: false }],
+        subscriptions: [{ providerType: 'codex' }],
         vendors: [
           {
             id: 'anthropic',
@@ -306,7 +306,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
     rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
-    details: { type: 'failed' as const, message: 'Not read in this test' },
+    details: { type: 'failed' as const, message: 'Not read in this test' }, cliInstall: null,
   })
   state.providers.push(
     entry('proxy', null, true, 'https://proxy.example/v1'),
@@ -415,7 +415,7 @@ test('an edit or a model made while a test runs shows at once and is saved when 
   expect(state.providers[0]!.label).toBe('Renamed')
 })
 
-test('quota refreshes coalesce per account and do not block other accounts or edits', async () => {
+test('a usage refresh joins the one running for its account and blocks neither other accounts nor edits', async () => {
   const settings = useProviderSettings()
   const provider = settings.providers.find((entry) => entry.id === 'configured')!
   const deferred = Promise.withResolvers<Response>()
@@ -424,100 +424,23 @@ test('quota refreshes coalesce per account and do not block other accounts or ed
     accounts.push(body)
     return deferred.promise
   }
-  const first = settings.refreshUsage(provider, 'first', true)
-  await settings.refreshUsage(provider, 'first', true)
-  const second = settings.refreshUsage(provider, 'second', true)
+  const first = settings.refreshUsage(provider, 'first')
+  await settings.refreshUsage(provider, 'first')
+  const second = settings.refreshUsage(provider, 'second')
   expect(accounts).toEqual([
     JSON.stringify({ credentialId: 'first' }),
     JSON.stringify({ credentialId: 'second' }),
   ])
-  expect(settings.refreshingUsage.configured).toEqual({ first: 'automatic', second: 'automatic' })
+  expect(settings.refreshingUsage.configured).toEqual({ first: true, second: true })
   settings.change(provider, { name: 'While refreshing' })
   await idle()
   expect(writes).toBe(1)
   deferred.resolve(Response.json({}))
   await Promise.all([first, second])
   expect(settings.refreshingUsage).toEqual({})
-  await settings.refreshUsage(provider, 'first', true)
-  expect(accounts).toHaveLength(2)
-})
-
-test('automatic quota refresh uses a one-minute TTL; manual refresh bypasses and renews it', async () => {
-  const clock = spyOn(Date, 'now').mockReturnValue(1_000)
-  try {
-    const settings = useProviderSettings()
-    const provider = settings.providers.find((entry) => entry.id === 'configured')!
-    let requests = 0
-    const deferred = Promise.withResolvers<Response>()
-    probe = async () => {
-      requests++
-      return requests === 1 ? deferred.promise : Response.json({})
-    }
-    const initial = settings.refreshUsage(provider, 'first', true)
-    clock.mockReturnValue(11_000)
-    deferred.resolve(Response.json({}))
-    await initial
-    clock.mockReturnValue(70_999)
-    await settings.refreshUsage(provider, 'first', true)
-    expect(requests).toBe(1)
-    clock.mockReturnValue(71_000)
-    await settings.refreshUsage(provider, 'first', true)
-    expect(requests).toBe(2)
-    clock.mockReturnValue(72_000)
-    await settings.refreshUsage(provider, 'first')
-    expect(requests).toBe(3)
-    clock.mockReturnValue(131_999)
-    await settings.refreshUsage(provider, 'first', true)
-    expect(requests).toBe(3)
-    clock.mockReturnValue(132_000)
-    await settings.refreshUsage(provider, 'first', true)
-    expect(requests).toBe(4)
-  } finally {
-    clock.mockRestore()
-  }
-})
-
-test('automatic quota failures stay quiet; a manual retry records the vendor\'s words for the account\'s line, with no toast', async () => {
-  const settings = useProviderSettings()
-  const provider = settings.providers.find((entry) => entry.id === 'configured')!
-  let requests = 0
-  probe = async () => {
-    requests++
-    return Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
-  }
-  await settings.refreshUsage(provider, 'first', true)
-  expect(toasts).toHaveLength(0)
-  expect(settings.refreshingUsage).toEqual({})
-  await nextTick()
-  await settings.refreshUsage(provider, 'first', true)
-  expect(requests).toBe(1)
+  // Each press asks again: nothing holds an answer back.
   await settings.refreshUsage(provider, 'first')
-  expect(requests).toBe(2)
-  expect(toasts).toHaveLength(0)
-  expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
-})
-
-test('a manual refresh joins an automatic request and shows its pending state and failure', async () => {
-  const settings = useProviderSettings()
-  const provider = settings.providers.find((entry) => entry.id === 'configured')!
-  const deferred = Promise.withResolvers<Response>()
-  let requests = 0
-  probe = () => {
-    requests++
-    return deferred.promise
-  }
-  const automatic = settings.refreshUsage(provider, 'first', true)
-  expect(settings.refreshingUsage.configured?.first).toBe('automatic')
-  await settings.refreshUsage(provider, 'first')
-  expect(settings.refreshingUsage.configured?.first).toBe('manual')
-  await settings.refreshUsage(provider, 'first', true)
-  expect(settings.refreshingUsage.configured?.first).toBe('manual')
-  expect(requests).toBe(1)
-  deferred.resolve(Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 }))
-  await automatic
-  expect(settings.refreshingUsage).toEqual({})
-  expect(toasts).toHaveLength(0)
-  expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
+  expect(accounts).toHaveLength(3)
 })
 
 test('a manual usage refresh that fails keeps the vendor\'s words for that account until the next answer', async () => {
@@ -528,8 +451,6 @@ test('a manual usage refresh that fails keeps the vendor\'s words for that accou
     fail
       ? Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
       : Response.json({})
-  await settings.refreshUsage(provider, 'first', true)
-  expect(settings.usageFailures).toEqual({})
   await settings.refreshUsage(provider, 'first')
   expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
   expect(toasts).toHaveLength(0)
@@ -538,6 +459,39 @@ test('a manual usage refresh that fails keeps the vendor\'s words for that accou
   expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
   await settings.refreshUsage(provider, 'first')
   expect(settings.usageFailures).toEqual({})
+})
+
+// A refresh that failed is the account's line until the account's next
+// answer, however it comes: a snapshot the backend announces, from a
+// request of another page or the account's own use, is one. Planted defect:
+// the line cleared only by this page's next refresh. Cost: a played channel
+// and a stubbed fetch, a few milliseconds.
+test('a new usage snapshot of an account clears its failed refresh, and only its own', async () => {
+  const snapshot = (observedAt: string) => ({ observedAt, source: 'observation' as const, plan: null, accountLabel: null, windows: [] })
+  const account = (id: string, observedAt: string) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: snapshot(observedAt) })
+  const read = (first: string) => ({
+    type: 'read' as const,
+    auth: { status: 'authenticated' as const },
+    runtime: { status: 'ready' as const },
+    accounts: [account('first', first), account('second', '2026-10-21T08:00:00.000Z')],
+    active: 'first',
+    quota: null,
+    quotaCapability: { type: 'none' as const },
+    cliPackage: null,
+  })
+  state.providers[0]!.details = read('2026-10-21T08:00:00.000Z')
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  const provider = settings.providers.find((entry) => entry.id === 'configured')!
+  probe = async () => Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
+  await settings.refreshUsage(provider, 'first')
+  await settings.refreshUsage(provider, 'second')
+  expect(Object.keys(settings.usageFailures.configured ?? {})).toEqual(['first', 'second'])
+
+  state.providers[0]!.details = read('2026-10-21T08:05:00.000Z')
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await nextTick()
+  expect(Object.keys(settings.usageFailures.configured ?? {})).toEqual(['second'])
 })
 
 test('disposing provider settings cancels quota requests without a toast', async () => {
@@ -735,6 +689,59 @@ test('an API key change, which no view shows, still loads the catalog once the c
   expect(catalogReads).toEqual(['/api/models'])
 })
 
+// An install's progress and end are the backend's to announce: the page reads
+// the newest version once and follows the install on the channel. Planted
+// defect: the install read from the CLI's route, which no longer carries it,
+// so the page never shows it. Cost: a stubbed backend, a few milliseconds.
+test('a Claude Code install shows its progress and its end as the channel brings them, reading only the newest version', async () => {
+  let cliReads = 0
+  const stubbed = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === '/api/providers/claude/cli') {
+      cliReads++
+      return Response.json({ newest: { type: 'read', version: '2.1.0' } })
+    }
+    return stubbed(input, init)
+  }) as typeof fetch
+  const account = { id: 'a', label: 'alex@example.com', detail: null, updatedAt: null, quota: null }
+  state.providers.push({
+    id: 'claude',
+    kind: 'subscription',
+    providerType: 'claude-code',
+    label: 'Claude',
+    wireApi: null,
+    vendorId: null,
+    compatible: false,
+    endpoint: null,
+    hasApiKey: false,
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    models: null,
+    createdAt: '2026-09-10T00:00:00.000Z',
+    details: {
+      type: 'read',
+      auth: { status: 'authenticated' },
+      runtime: { status: 'ready' },
+      accounts: [account],
+      active: 'a',
+      quota: null,
+      quotaCapability: { type: 'none' },
+      cliPackage: '@anthropic-ai/claude-code',
+    },
+    cliInstall: { state: 'installing' },
+  })
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((candidate) => candidate.id === 'claude')!
+  settings.loadCli(entry())
+  await waitFor(() => !!entry().cli)
+  expect(entry().cli).toEqual({ newest: { version: '2.1.0' }, install: { state: 'installing' } })
+
+  state.providers.at(-1)!.cliInstall = { state: 'installed', path: '/home/alex/.local/bin/claude' }
+  channels.last().send({ type: 'providers', providers: state.providers })
+  expect(entry().cli?.install).toEqual({ state: 'installed' })
+  expect(cliReads).toBe(1)
+})
+
 test('Activate moves the Active mark at once, and a refused switch moves it back with a toast', async () => {
   // Cost: the product state and a stubbed backend; a few milliseconds.
   const account = (id: string) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: null })
@@ -761,6 +768,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
       quotaCapability: { type: 'none' },
       cliPackage: null,
     },
+    cliInstall: null,
   })
   channels.last().send({ type: 'providers', providers: state.providers })
   const settings = useProviderSettings()
@@ -956,6 +964,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
       quotaCapability: { type: 'none' as const },
       cliPackage: null,
     },
+    cliInstall: null,
   })
   channels.last().send({ type: 'providers', providers: state.providers })
   const settings = useProviderSettings()
@@ -991,6 +1000,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
       quotaCapability: { type: 'none' as const },
       cliPackage: null,
     },
+    cliInstall: null,
   })
   state.providers.push(entry(['first']))
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -1040,7 +1050,7 @@ test('an entry of media alone tests its key with no model, and a compatible audi
   const entry = (id: string, fields: Record<string, unknown>) => ({
     ...state.providers[0]!,
     id,
-    details: { type: 'failed' as const, message: 'Not read in this test' },
+    details: { type: 'failed' as const, message: 'Not read in this test' }, cliInstall: null,
     ...fields,
   })
   state.providers.push(

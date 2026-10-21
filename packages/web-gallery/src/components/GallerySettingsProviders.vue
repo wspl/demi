@@ -10,7 +10,6 @@ import type { ProviderLoginStage } from '@demicodes/web-ui/settings/types'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   type SettingsModelDraft,
-  type SettingsQuotaRefresh,
   type SettingsProviderEntry,
   type SettingsProviderModel,
   type SettingsVendor,
@@ -195,35 +194,25 @@ function refresh(p: SettingsProviderEntry) {
   )
 }
 
-const usageTimers = ref<Record<string, Record<string, { timer: number; trigger: SettingsQuotaRefresh }>>>({})
-/** The vendor's words for a manual refresh that failed, by provider and account, until that account's next answer. */
+const usageTimers = ref<Record<string, Record<string, { timer: number }>>>({})
+/** The vendor's words for a refresh that failed, by provider and account, until that account's next answer. */
 const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
-/** Every other request a manual press asked for fails, so the page shows both outcomes; an automatic one always answers. */
-let manualRefreshes = 0
+/** Every other press fails, so the page shows both outcomes. */
+let refreshes = 0
 const refreshingUsage = computed(() => Object.fromEntries(
   Object.entries(usageTimers.value).map(([id, accounts]) => [id, Object.fromEntries(
-    Object.entries(accounts).map(([accountId, request]) => [accountId, request.trigger]),
+    Object.keys(accounts).map((accountId) => [accountId, true as const]),
   )]),
 ))
-function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = false) {
-  if (automatic && s.value.quotaRefreshCache.isFresh(p.id, accountId)) {
-    return
-  }
+function refreshUsage(p: SettingsProviderEntry, accountId: string) {
   usageTimers.value[p.id] ??= {}
   const timers = usageTimers.value[p.id]!
-  const pending = timers[accountId]
-  if (pending) {
-    if (!automatic) {
-      pending.trigger = 'manual'
-    }
+  if (timers[accountId]) {
     return
   }
   timers[accountId] = {
-    trigger: automatic ? 'automatic' : 'manual',
     timer: window.setTimeout(() => {
-      s.value.quotaRefreshCache.record(p.id, accountId)
-      // A manual press that joined an automatic request shares its outcome, as in the product.
-      const fails = timers[accountId]?.trigger === 'manual' && ++manualRefreshes % 2 === 1
+      const fails = ++refreshes % 2 === 1
       delete timers[accountId]
       if (!Object.keys(timers).length) {
         delete usageTimers.value[p.id]
@@ -233,8 +222,12 @@ function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = f
         return
       }
       delete usageFailures.value[p.id]?.[accountId]
-      for (const window of p.accounts.find((account) => account.id === accountId)?.quota ?? []) {
+      const account = p.accounts.find((candidate) => candidate.id === accountId)
+      for (const window of account?.quota ?? []) {
         window.used = Math.min(window.max, window.used + 1)
+      }
+      if (account) {
+        account.quotaAt = new Date().toISOString()
       }
     }, 1200),
   }

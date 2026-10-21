@@ -76,6 +76,8 @@
     "measure": "Measure",
     "measuring": "Measuring…",
     "noAnswer": "No answer",
+    "notMeasured": "Not measured",
+    "measuredAt": "Measured {when}",
     "device": "Device",
     "name": "Name",
     "rename": "Rename…",

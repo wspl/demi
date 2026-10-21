@@ -5,7 +5,6 @@ import { useSession } from '../auth/session'
 import { fileExtensionSchema } from '@demicodes/protocol'
 import { SerialQueue, isAbortError } from '@demicodes/utils'
 import { errorMessage, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
-import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
@@ -16,7 +15,6 @@ import {
   SETTINGS_MEDIA_KINDS,
   type SettingsModelDraft,
   type SettingsModelMatch,
-  type SettingsQuotaRefresh,
   type SettingsModelEditor,
   type SettingsProviderCli,
   type SettingsProviderEntry,
@@ -58,10 +56,10 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const product = useProduct()
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
-  const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
+  /** The accounts whose usage the vendor is asked for again, by provider: the user's Refresh usage. */
+  const refreshingUsage = ref<Record<string, Record<string, true>>>({})
   /** The vendor's words for the last manual usage refresh that failed, per provider and account, until that account's next answer; the surfaces show them, no toast does. */
   const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
-  const quotaRefreshCache = createQuotaRefreshCache()
   /** Whether provider `id`'s operation of `kind` runs, as the page's one store of operations keeps it. */
   const runs = (id: string, kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli') =>
     operations.runs(providerOperation(id, { kind }))
@@ -77,8 +75,23 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
-  /** Each process provider's CLI, as last read (`crates/backend-user-shard/src/conversation/claude_cli.rs`). */
-  const clis = ref<Record<string, SettingsProviderCli>>({})
+  /** The newest version of each process provider's CLI, as last read (`crates/backend-user-shard/src/conversation/claude_cli.rs`). */
+  const newestClis = ref<Record<string, SettingsProviderCli['newest']>>({})
+  /**
+   * Process provider `providerId`'s CLI: its newest version once read, and
+   * its last install as the backend announced it with the providers.
+   */
+  function cliOf(providerId: string): SettingsProviderCli | null {
+    const newest = newestClis.value[providerId]
+    if (!newest) {
+      return null
+    }
+    const install = product.snapshot?.providers.find((provider) => provider.id === providerId)?.cliInstall ?? null
+    return {
+      newest,
+      install: install && (install.state === 'failed' ? { state: 'failed', message: install.message } : { state: install.state }),
+    }
+  }
   let lifetime = new AbortController()
   /** The provider operations on their way, by provider: each provider's in order. */
   const writes = new SerialQueue()
@@ -86,7 +99,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const configured = resources.providers.map((provider) => ({
       ...provider,
       ...testResults.value[provider.id],
-      ...(provider.cliPackage === null ? {} : { cli: clis.value[provider.id] ?? null }),
+      ...(provider.cliPackage === null ? {} : { cli: cliOf(provider.id) }),
       ...edits.value[provider.id],
     }))
     // The signed-in subscriptions in the user's order, which generated
@@ -501,26 +514,14 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * Reads a process provider's CLI. An install under way is read again until
-   * it ends: it is the one thing here that changes without the user.
+   * Reads the newest version of a process provider's CLI; an install's
+   * progress and end are not read but announced, with the providers.
    */
   async function readCli(providerId: string, refresh: boolean, signal: AbortSignal): Promise<void> {
     const path = `/providers/${encodeURIComponent(providerId)}/cli${refresh ? '?refresh=true' : ''}`
     const cli = await readResponse(await apiRequest(path, { signal }), providerCliSchema)
     signal.throwIfAborted()
-    clis.value[providerId] = {
-      newest: cli.newest.type === 'read' ? { version: cli.newest.version } : { error: cli.newest.message },
-      install: cli.install && (cli.install.state === 'failed'
-        ? { state: 'failed', message: cli.install.message }
-        : { state: cli.install.state }),
-    }
-    if (cli.install?.state === 'installing') {
-      window.setTimeout(() => {
-        if (!signal.aborted) {
-          void readCli(providerId, false, signal).catch(() => {})
-        }
-      }, 2_000)
-    }
+    newestClis.value[providerId] = cli.newest.type === 'read' ? { version: cli.newest.version } : { error: cli.newest.message }
   }
 
   /** Loads the CLI of a provider the page is showing; its failure is not the page's. */
@@ -549,7 +550,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     return perform(provider.id, { kind: 'cli' }, async (signal) => {
       try {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
-        await readCli(provider.id, false, lifetime.signal)
       } catch (error) {
         report(t('providers.cliInstallFailed'), error)
       }
@@ -567,23 +567,32 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
-  async function refreshUsage(
-    provider: SettingsProviderEntry,
-    accountId: string,
-    automatic = false,
-  ): Promise<void> {
-    if (refreshingUsage.value[provider.id]?.[accountId]) {
-      if (!automatic) {
-        refreshingUsage.value[provider.id]![accountId] = 'manual'
+  // An account's new snapshot is its next answer, whoever asked for it: the
+  // line of a refresh that failed before it goes.
+  watch(
+    () => resources.providers.flatMap((provider) =>
+      provider.accounts.map((account) => ({ providerId: provider.id, accountId: account.id, at: account.quotaAt ?? null }))),
+    (now, before) => {
+      for (const { providerId, accountId, at } of now) {
+        const was = before.find((entry) => entry.providerId === providerId && entry.accountId === accountId)
+        if (at !== null && was && was.at !== at) {
+          clearUsageFailure(providerId, accountId)
+        }
       }
-      return
-    }
-    if (automatic && quotaRefreshCache.isFresh(provider.id, accountId)) {
+    },
+  )
+
+  /**
+   * Asks the vendor for one account's usage again, the user's Refresh usage:
+   * the backend announces the snapshot it answers, as every other.
+   */
+  async function refreshUsage(provider: SettingsProviderEntry, accountId: string): Promise<void> {
+    if (refreshingUsage.value[provider.id]?.[accountId]) {
       return
     }
     const current = lifetime
     refreshingUsage.value[provider.id] ??= {}
-    refreshingUsage.value[provider.id]![accountId] = automatic ? 'automatic' : 'manual'
+    refreshingUsage.value[provider.id]![accountId] = true
     try {
       await apiRequest(`/providers/${encodeURIComponent(provider.id)}/quota`, {
         method: 'POST',
@@ -593,8 +602,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       current.signal.throwIfAborted()
       clearUsageFailure(provider.id, accountId)
     } catch (error) {
-      // Automatic refresh stays silent unless the user explicitly joins it.
-      if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
+      if (!current.signal.aborted) {
         usageFailures.value[provider.id] ??= {}
         // The vendor's own words, as they came.
         usageFailures.value[provider.id]![accountId] = error instanceof ApiError && error.code === 'quota_unavailable'
@@ -606,9 +614,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     } finally {
       if (current === lifetime) {
         const pending = refreshingUsage.value[provider.id]!
-        if (!current.signal.aborted) {
-          quotaRefreshCache.record(provider.id, accountId)
-        }
         delete pending[accountId]
         if (!Object.keys(pending).length) {
           delete refreshingUsage.value[provider.id]
@@ -1000,13 +1005,11 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       testResults.value = {}
       refreshingUsage.value = {}
       usageFailures.value = {}
-      quotaRefreshCache.clear()
     },
   )
 
   onScopeDispose(() => {
     lifetime.abort()
-    quotaRefreshCache.clear()
   })
 
   return {

@@ -2,7 +2,6 @@ import { createSmallModelState } from './small-model'
 import { macAddress } from './exposed-ports'
 import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
-import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
@@ -208,7 +207,6 @@ export function provider(
     models: [],
     accounts: [],
     media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
-    autoRefreshUsage: partial.kind === 'subscription',
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
   }
@@ -500,6 +498,7 @@ export function mockProviders(): MockProvider[] {
           label: 'alex@example.com',
           plan: 'Max 5×',
           active: true,
+          quotaAt: ago(4 * MINUTE),
           // As the usage probe names them: by period and scope, a limit on one model too. The
           // accounts' resets show every wording a reset takes, as the clock counts them down:
           // in hours and minutes within a day, the weekday within 6 days, the day after that.
@@ -514,6 +513,7 @@ export function mockProviders(): MockProvider[] {
           label: 'alex@work.example',
           plan: 'Pro',
           active: false,
+          quotaAt: ago(5 * HOUR),
           // The full window's reset has passed and the next snapshot has not come yet.
           quota: [
             { id: 'five_hour', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 100, max: 100, resetsAt: ahead(-20 * SECOND) },
@@ -536,6 +536,7 @@ export function mockProviders(): MockProvider[] {
           label: 'alex@family.example',
           plan: '',
           active: false,
+          quotaAt: ago(2 * DAY),
           // Every kind of window a vendor reports, each named by its kind and period; the name
           // column fits the longest. Its
           // usage comes as used ÷ limit × 100 in floating point, which reads in whole percent,
@@ -656,6 +657,7 @@ export function mockProviders(): MockProvider[] {
           label: 'alex@example.com',
           plan: 'Plus',
           active: true,
+          quotaAt: ago(40 * SECOND),
           quota: [
             { id: 'primary', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 18, max: 100, resetsAt: ahead(2 * HOUR + 10 * MINUTE) },
             { id: 'secondary', name: windowNamed('limit', WEEK_SECONDS), used: 46, max: 100, resetsAt: ahead(4 * DAY) },
@@ -961,7 +963,6 @@ export function incompleteProviders(): MockProvider[] {
   return [
     provider({
       id: 'codex-new', name: 'Codex', kind: 'subscription', family: 'codex', state: 'setup',
-      autoRefreshUsage: false,
     }),
     provider({
       id: 'google', name: 'Google', kind: 'api_key', family: 'google', vendorId: 'google',
@@ -1062,7 +1063,6 @@ function galleryDeviceProjects(): { deviceId: string; path: string }[] {
 
 export function createSettingsState() {
   return reactive({
-    quotaRefreshCache: createQuotaRefreshCache(),
     general: {
       theme: 'system' as 'light' | 'dark' | 'system',
       fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,

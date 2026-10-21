@@ -271,7 +271,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :limits="limits"
       :cost="store.costShown(conversation)"
       :cost-profiles="costProfiles"
-      @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null, $event)"
+      @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null)"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"

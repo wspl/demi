@@ -132,7 +132,7 @@ test('the disclosure is there and opens the cost when there is no context estima
   unmount!()
   unmount = null
 
-  const limits = { accountLabel: 'alex@example.com', windows: [], autoRefresh: false }
+  const limits = { accountLabel: 'alex@example.com', windows: [] }
   const early = await card({ usage: null, limits, cost: costOf(2) })
   const { context, cost } = disclosures(early)
   expect(context).toBeNull()

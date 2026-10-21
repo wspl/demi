@@ -48,6 +48,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::control::ControlService;
+use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
 use demi_backend_remote_host::{
@@ -1536,6 +1537,7 @@ impl Shard {
                 .services()
                 .cli_installs
                 .finish(shard.user(), &entry, outcome);
+            shard.mark(Part::Providers);
         });
     }
 
@@ -1683,7 +1685,9 @@ async fn call<T: DeserializeOwned>(
 }
 
 /// The outcome of each install that no conversation asked for, by user and
-/// entry, kept while the backend runs. A `std` mutex: no section awaits.
+/// entry, kept while the backend runs; the providers' part of the product
+/// state carries it, so each change marks that part. A `std` mutex: no
+/// section awaits.
 #[derive(Default)]
 pub struct CliInstalls {
     states: Mutex<HashMap<(UserId, ProviderId), CliInstall>>,
@@ -1725,30 +1729,23 @@ impl CliInstalls {
 }
 
 /// Starts the install of `entry`'s CLI on the Claude Code machine for
-/// `user` unless one is
-/// under way, and answers its state. Nobody waits for it.
-pub async fn start_install(
-    services: &Services,
-    shards: &Shards,
-    user: &UserId,
-    entry: &ProviderId,
-) -> CliInstall {
+/// `user` unless one is under way. Nobody waits for it: the user's pages
+/// learn of its start and its end with the providers' part.
+pub async fn start_install(services: &Services, shards: &Shards, user: &UserId, entry: &ProviderId) {
     if !services.cli_installs.begin(user, entry) {
-        return CliInstall::Installing {};
+        return;
     }
+    services.sync.mark(user, Part::Providers);
     let id = entry.clone();
     let queued = shards
         .of(user)
         .call(move |shard, _| async move { shard.install_cli(id) })
         .await;
-    match queued {
-        Ok(()) => CliInstall::Installing {},
-        Err(error) => {
-            let failed = CliInstall::Failed {
-                message: error.to_string(),
-            };
-            services.cli_installs.finish(user, entry, failed.clone());
-            failed
-        }
+    if let Err(error) = queued {
+        let failed = CliInstall::Failed {
+            message: error.to_string(),
+        };
+        services.cli_installs.finish(user, entry, failed);
+        services.sync.mark(user, Part::Providers);
     }
 }

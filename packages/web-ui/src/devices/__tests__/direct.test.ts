@@ -38,6 +38,7 @@ const status: DirectStatus = {
   attempt: failed,
   nextAt: null,
   figures: { direct: null, relay: null },
+  measuredAt: null,
   measuring: false,
 }
 

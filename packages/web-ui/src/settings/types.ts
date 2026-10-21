@@ -343,8 +343,6 @@ export interface SettingsQuotaWindow {
   resetsAt: string | null
 }
 
-export type SettingsQuotaRefresh = 'automatic' | 'manual'
-
 export interface SettingsProviderAccount {
   id: string
   label: string
@@ -354,6 +352,8 @@ export interface SettingsProviderAccount {
   signedOut?: boolean
   /** Rate-window quotas, when the vendor exposes them. */
   quota: SettingsQuotaWindow[]
+  /** When the vendor reported them, as an ISO 8601 timestamp; null before it did. */
+  quotaAt?: string | null
 }
 
 /** The CLI a process provider starts, which Demi installs and updates on Claude Code's machine. */
@@ -433,8 +433,6 @@ export interface SettingsProviderEntry {
    * Generation, on its page.
    */
   media: { [K in SettingsMediaKind]: SettingsEntryMedia<K> }
-  /** The vendor supports a free quota request when an account becomes visible. */
-  autoRefreshUsage?: boolean
   /** The vendor mark (`providerLogo`); null falls back to an initial. */
   logo: string | null
 }

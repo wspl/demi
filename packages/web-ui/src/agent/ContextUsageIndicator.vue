@@ -126,11 +126,10 @@ const emit = defineEmits<{
    */
   openInstruction: [entry: InstructionEntry]
   /**
-   * The host asks the vendor for the usage limits again, as Settings does. The
-   * request is automatic when the limits showed, and otherwise comes from the
-   * Refresh usage button.
+   * The Refresh usage button asks the vendor for the usage limits again, as
+   * Settings does; showing them asks nothing.
    */
-  refreshLimits: [automatic: boolean]
+  refreshLimits: []
 }>()
 
 /**
@@ -410,18 +409,13 @@ const ringColor = computed(() => {
                           :aria-label="t('context.refreshUsage')"
                           :spinning="limits.refreshing === true"
                           :disabled="limits.refreshing === true"
-                          @click="emit('refreshLimits', false)"
+                          @click="emit('refreshLimits')"
                         />
                       </Tooltip>
                     </template>
                   </SectionRow>
                   <div class="px-3 pt-0.5">
-                    <ProviderQuota
-                      :windows="limits.windows"
-                      :error="limits.error"
-                      :auto-refresh="limits.autoRefresh"
-                      @refresh="emit('refreshLimits', true)"
-                    />
+                    <ProviderQuota :windows="limits.windows" :observed-at="limits.observedAt" :error="limits.error" />
                   </div>
                 </div>
                 <div v-if="instructionList.length" class="border-t border-line pb-1">

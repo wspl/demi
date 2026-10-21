@@ -583,36 +583,43 @@ fn a_shutdown_during_a_fetch_leaves_the_source_as_it_was() {
     }));
 }
 
-#[tokio::test]
-async fn opening_the_page_shows_an_update_where_the_default_branch_moved_and_nowhere_else() {
+fn lint(repos: &Repos, description: &str) {
+    repos.commit(
+        "acme/more",
+        &[(
+            "lint/SKILL.md",
+            &skill_md(&format!("name: lint\ndescription: {description}")),
+            false,
+        )],
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_backend_checks_each_source_once_for_all_its_users_and_tells_their_pages_of_a_move() {
     local(async {
         let repos = Repos::new();
         tools(&repos);
-        repos.commit(
-            "acme/more",
-            &[(
-                "lint/SKILL.md",
-                &skill_md("name: lint\ndescription: Lint it."),
-                false,
-            )],
-        );
-        let plugged = Plugged::new(&repos.skills());
-        let tools = plugged.add("acme/tools").await;
-        let more = plugged.add("acme/more").await;
-        repos.commit(
-            "acme/more",
-            &[(
-                "lint/SKILL.md",
-                &skill_md("name: lint\ndescription: Lint it, strictly."),
-                false,
-            )],
-        );
-        // The fetches count as checks for five minutes.
-        repos.pass(Duration::from_secs(5 * 60));
+        lint(&repos, "Lint it.");
+        let skills = repos.skills();
+        let alex = Plugged::new(&skills);
+        let sam = Plugged::new(&skills);
+        let tools = alex.add("acme/tools").await;
+        let more = alex.add("acme/more").await;
+        sam.add("acme/more").await;
+        // Each user's page follows the sources from its first state on; the
+        // fetches count as checks for five minutes, so nothing is read yet.
+        alex.state().await;
+        sam.state().await;
+        let reads = repos.reads();
+        lint(&repos, "Lint it, strictly.");
 
-        let before = plugged.demi.changes();
-        plugged.call("check_updates", json!({})).await.unwrap();
-        plugged.demi.until(|demi| demi.changes() > before).await;
+        let (alex_before, sam_before) = (alex.demi.changes(), sam.demi.changes());
+        repos.pass(Duration::from_secs(5 * 60));
+        tokio::time::advance(Duration::from_secs(5 * 60)).await;
+        alex.demi.until(|demi| demi.changes() > alex_before).await;
+        sam.demi.until(|demi| demi.changes() > sam_before).await;
+        // One read of each source, though two users added acme/more.
+        assert_eq!(repos.reads(), reads + 2);
         let available = |state: &SkillsState| -> Vec<(String, bool)> {
             state
                 .sources
@@ -621,16 +628,89 @@ async fn opening_the_page_shows_an_update_where_the_default_branch_moved_and_now
                 .collect()
         };
         assert_eq!(
-            available(&plugged.state().await),
+            available(&alex.state().await),
             [(tools.clone(), false), (more.clone(), true)]
         );
+        assert_eq!(available(&sam.state().await), [(more.clone(), true)]);
 
-        // Updated, the source is at the newest commit again.
-        plugged.update(&more).await;
+        // Updated, the source is at the newest commit again, for its user.
+        alex.update(&more).await;
         assert_eq!(
-            available(&plugged.state().await),
-            [(tools, false), (more, false)]
+            available(&alex.state().await),
+            [(tools, false), (more.clone(), false)]
         );
+        assert_eq!(available(&sam.state().await), [(more, true)]);
+    })
+    .await;
+}
+
+/// Whether each source of `state` shows an update, by id.
+fn updates(state: &SkillsState) -> Vec<(String, bool)> {
+    state
+        .sources
+        .iter()
+        .map(|source| (source.id.clone(), source.update_available))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_fetch_that_read_earlier_and_ends_later_leaves_the_newer_head() {
+    local(async {
+        let repos = Repos::new();
+        lint(&repos, "Lint it.");
+        let skills = repos.skills();
+        let alex = Plugged::new(&skills);
+        let sam = Plugged::new(&skills);
+        let more = alex.add("acme/more").await;
+        sam.add("acme/more").await;
+
+        // Alex's update reads the second commit and is held there.
+        lint(&repos, "Lint it, strictly.");
+        let held = repos.hold_next("acme/more");
+        let alex_before = alex.demi.changes();
+        alex.call("update_source", json!({ "source": more })).await.unwrap();
+        held.read().await;
+        // Sam's update reads the third and ends first.
+        lint(&repos, "Lint it, very strictly.");
+        sam.update(&more).await;
+        held.release();
+        alex.demi.until(|demi| demi.changes() >= alex_before + 2).await;
+
+        // The newest commit stays the head: Sam is at it, Alex is behind it.
+        assert_eq!(updates(&sam.state().await), [(more.clone(), false)]);
+        assert_eq!(updates(&alex.state().await), [(more, true)]);
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_move_published_while_the_first_state_is_read_reaches_the_page() {
+    local(async {
+        let repos = Repos::new();
+        lint(&repos, "Lint it.");
+        let skills = repos.skills();
+        let alex = Plugged::new(&skills);
+        let sam = Plugged::new(&skills);
+        let more = alex.add("acme/more").await;
+        sam.add("acme/more").await;
+
+        // Sam's update has read a new commit and waits to record it.
+        lint(&repos, "Lint it, strictly.");
+        let held = repos.hold_next("acme/more");
+        sam.call("update_source", json!({ "source": more })).await.unwrap();
+        held.read().await;
+        // It records as Alex's page reads its first state, before anything
+        // else runs.
+        held.release();
+        let read = alex.state().await;
+        assert_eq!(updates(&read), [(more.clone(), false)]);
+        let before = alex.demi.changes();
+
+        // Alex's page learns of the move.
+        tokio::time::timeout(Duration::from_secs(60), alex.demi.until(|demi| demi.changes() > before))
+            .await
+            .expect("the page never learned of the move");
+        assert_eq!(updates(&alex.state().await), [(more, true)]);
     })
     .await;
 }

@@ -37,9 +37,10 @@
  * (`crates/runner-protocol/src/forward.rs`): the two cannot share code, so both
  * follow its numbers. The relay never closes because the direct channel opened.
  *
- * A page measures the two paths only when something reads the result (a peer
- * connecting, the device's page becoming visible, the user asking), so an idle
- * page sends nothing. Latency and loss decide the route; throughput is not
+ * A page measures the two paths only when the user asks or the path it uses to
+ * the device changes, so an idle page, or one that only shows a device's page,
+ * sends nothing; the device's page shows the last measurement this browser
+ * made, with when. Latency and loss decide the route; throughput is not
  * measured, since a speed test would move megabytes through the user's server
  * to show a figure nothing acts on.
  */
@@ -53,7 +54,7 @@ import { executionFor } from '../targets/execution'
 import { DEVICE_PATHS, statusPath, type DevicePath, type PathStatus, type DeviceRoute, type DirectStatus } from '@demicodes/web-ui/devices/direct'
 import { DeviceDirect, directState, type DirectState, type Permission } from './device'
 import { DeviceLive } from './live'
-import { DeviceMeter, meterState, type MeterState } from './meter'
+import { DeviceMeter, meterState, pageClock, type MeterState } from './meter'
 import { connectPeer } from './peer'
 import { DeviceSignaling, isBusy } from './signaling'
 
@@ -118,7 +119,7 @@ export function directStatus(deviceId: string): DirectStatus {
   const product = useProduct()
   const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
   const state = states.get(deviceId) ?? directState()
-  const measured = meters.get(deviceId) ?? meterState()
+  const measured = meters.get(deviceId) ?? keptMeasurement(deviceId)
   return {
     route: device?.route ?? 'automatic',
     crossing: (product.snapshot?.stunUrls.length ?? 0) > 0,
@@ -127,7 +128,42 @@ export function directStatus(deviceId: string): DirectStatus {
     trying: state.trying,
     nextAt: state.nextAt === null ? null : new Date(state.nextAt).toISOString(),
     figures: measured.figures,
+    measuredAt: measured.measuredAt,
     measuring: measured.measuring,
+  }
+}
+
+/** Where this browser keeps the last measurement of paired device `deviceId`'s paths. */
+const measuredKey = (deviceId: string) => `demi.deviceMeasured.${deviceId}`
+const pathFiguresSchema = z.object({ latencyMs: z.number(), loss: z.number().nullable() })
+const keptMeasurementSchema = z.object({
+  figures: z.object({ direct: pathFiguresSchema.nullable(), relay: pathFiguresSchema.nullable() }),
+  measuredAt: z.iso.datetime(),
+})
+
+/**
+ * The last measurement of paired device `deviceId`'s paths this browser
+ * made, in this page or an earlier one; none before the first.
+ */
+function keptMeasurement(deviceId: string): MeterState {
+  try {
+    const kept = localStorage.getItem(measuredKey(deviceId))
+    return kept === null ? meterState() : { ...keptMeasurementSchema.parse(JSON.parse(kept)), measuring: false }
+  } catch (error) {
+    // The browser's storage is optional, and an entry that is not a
+    // measurement is shown as none rather than repaired.
+    console.warn('Could not read the last measurement of a device', error)
+    return meterState()
+  }
+}
+
+/** Keeps device `deviceId`'s last measurement for this browser's next pages. */
+function keepMeasurement(deviceId: string, measured: MeterState): void {
+  try {
+    localStorage.setItem(measuredKey(deviceId), JSON.stringify({ figures: measured.figures, measuredAt: measured.measuredAt }))
+  } catch (error) {
+    // Private browsing and storage quotas only cost the figures next time.
+    console.warn('Could not keep the last measurement of a device', error)
   }
 }
 
@@ -180,7 +216,7 @@ function keepLastPath(deviceId: string, path: DevicePath): void {
 
 /**
  * Measures paired device `deviceId`'s paths once, starting its use while
- * its runner is connected, as its page shows or Measure asks
+ * its runner is connected, as Measure asks
  * (`packages/web/src/direct/measure.ts`). A measurement that runs is
  * joined.
  */
@@ -256,9 +292,9 @@ function use(deviceId: string): UsedDevice {
       live.close()
   })
   const route = (): DeviceRoute => product.snapshot?.devices.find((device) => device.id === deviceId)?.route ?? 'automatic'
-  const measured = meters.get(deviceId) ?? reactive(meterState())
+  const measured = meters.get(deviceId) ?? reactive(keptMeasurement(deviceId))
   meters.set(deviceId, measured)
-  const meter = new DeviceMeter(direct, signaling, route, measured)
+  const meter = new DeviceMeter(direct, signaling, route, measured, pageClock, (state) => keepMeasurement(deviceId, state))
   direct.setPermission(permission.value)
   direct.setRoute(route())
   const device = { direct, live, signaling, meter }
@@ -327,6 +363,19 @@ export function followDirect(): void {
           watchDirect(deviceId)
       },
       { immediate: true },
+    )
+    // The path the page uses to a device changed, as its peer went or the
+    // choice left it: the figures shown are measured again. A peer that
+    // connects is measured as it connects, for Automatic to decide.
+    watch(
+      () => [...states].map(([deviceId, state]) => [deviceId, statusPath(pathStatus(state))] as const),
+      (paths, before) => {
+        for (const [deviceId, path] of paths) {
+          const previous = before.find(([id]) => id === deviceId)?.[1]
+          if (previous !== undefined && previous !== path)
+            void used.get(deviceId)?.meter.measure()
+        }
+      },
     )
     // Each path the page finds to a device is kept as the one found last;
     // one taken while an attempt is still being made is not found yet.

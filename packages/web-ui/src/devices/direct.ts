@@ -128,8 +128,10 @@ export interface DirectStatus {
   attempt: DirectAttempt | null
   /** When the next attempt runs, as an ISO 8601 timestamp; null when none is planned. */
   nextAt: string | null
-  /** Each path's figures from the last measurement, null before one found any. */
+  /** Each path's figures from this browser's last measurement, null before one found any. */
   figures: { direct: PathFigures | null; relay: PathFigures | null }
+  /** When this browser last measured, as an ISO 8601 timestamp; null before the first. */
+  measuredAt: string | null
   /** A measurement runs, whoever asked for it; the host sets it as it starts one, as `trying`. */
   measuring: boolean
 }

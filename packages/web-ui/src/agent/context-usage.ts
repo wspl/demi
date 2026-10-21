@@ -191,13 +191,14 @@ export function contextCardParts(usage: ContextUsage | null, limits: UsageLimits
  * The usage limits the context card shows under its rows: the label Settings
  * shows for the account the conversation's model runs on (empty when it has
  * none) and that account's windows
- * (`packages/web-ui/src/ui/dates.ts`), and whether a visible card
- * asks the vendor for them again, as Settings does.
+ * (`packages/web-ui/src/ui/dates.ts`), the last the backend holds: only the
+ * card's Refresh usage button asks the vendor again, as in Settings.
  */
 export interface UsageLimits {
   accountLabel: string
   windows: SettingsQuotaWindow[]
-  autoRefresh: boolean
+  /** When the vendor reported them, as an ISO 8601 timestamp; null when unknown. */
+  observedAt?: string | null
   /**
    * A manual refresh runs: the card's button turns and the windows stay as they
    * were.

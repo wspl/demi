@@ -31,13 +31,54 @@ afterEach(() => {
   channels.restore()
 })
 
+// Providers shows the entries the page holds as it opens, whether or not the
+// vendor catalog, which the page reads once as it starts, has come; opening
+// it reads nothing. Planted defect: the page waiting for the catalog, which
+// here never answers. A few milliseconds.
+test('Providers shows its entries in its first frame, and opening it reads no catalog', async () => {
+  const requests: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const path = String(input)
+    requests.push(path)
+    if (path === '/api/providers/catalog') {
+      return new Promise<Response>(() => {})
+    }
+    return Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `Not in this test: ${path}` }, { status: 404 })
+  }) as typeof fetch
+  const pinia = createPinia()
+  const product = useProduct(pinia)
+  product.start()
+  channels.last().connect(productState({
+    providers: [{
+      id: 'work', kind: 'api_key', providerType: 'openai', label: 'Work API', wireApi: 'responses', vendorId: null,
+      compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual',
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+      models: null, createdAt: '2026-09-10T00:00:00.000Z',
+      details: { type: 'failed', message: 'Not read in this test' }, cliInstall: null,
+    }],
+  }))
+  const catalogReads = () => requests.filter((path) => path === '/api/providers/catalog').length
+  expect(catalogReads()).toBe(1)
+  const page = document.createElement('div')
+  document.body.append(page)
+  const app = createApp(ProvidersPanel)
+  app.use(pinia)
+  app.mount(page)
+  await nextTick()
+  expect(page.textContent).toContain('Work API')
+  expect(catalogReads()).toBe(1)
+  app.unmount()
+  page.remove()
+  product.stop()
+}, 2000)
+
 test('a tab that shows a running sign-in and then leaves the page does not cancel it', async () => {
   const requests: string[] = []
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
     requests.push(`${init?.method ?? 'GET'} ${path}`)
     if (path === '/api/providers/catalog') {
-      return Response.json({ subscriptions: [{ providerType: 'codex', configured: false }], vendors: [] })
+      return Response.json({ subscriptions: [{ providerType: 'codex' }], vendors: [] })
     }
     return Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `Not in this test: ${path}` }, { status: 404 })
   }) as typeof fetch
@@ -85,7 +126,7 @@ test('another tab’s paste and its refusal leave the code this tab typed; this 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input)
     if (path === '/api/providers/catalog') {
-      return Response.json({ subscriptions: [{ providerType: 'codex', configured: false }], vendors: [] })
+      return Response.json({ subscriptions: [{ providerType: 'codex' }], vendors: [] })
     }
     if (path === '/api/providers/subscription-login/claude/code' && init?.method === 'POST') {
       pasted.push(JSON.parse(String(init.body)).code)

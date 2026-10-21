@@ -217,6 +217,7 @@
   },
   "quota": {
     "unavailable": "用量資料尚未提供",
+    "updatedAt": "{when}更新",
     "used": "已使用 {share}",
     "window": {
       "period": {

@@ -3,9 +3,9 @@
 //!
 //! The routes:
 //!
-//! - Read the vendor's newest version and the caller's last install on the
-//!   Claude Code machine, without waking it.
-//! - Install again.
+//! - Read the vendor's newest version, without waking the Claude Code
+//!   machine.
+//! - Install again; the install's state reaches the pages with the entry's.
 //!
 //! A sign-in installs the tool it runs itself.
 
@@ -16,7 +16,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_providers::vault::entries::ProviderEntry;
 use demi_web_api_protocol::auth::UserDto;
-use demi_web_api_protocol::providers::{CliInstallAnswer, NewestVersion, ProviderCli};
+use demi_web_api_protocol::providers::{NewestVersion, ProviderCli};
 use demi_web_api_protocol::query::Refresh;
 
 use super::error::ApiError;
@@ -50,7 +50,7 @@ pub(super) async fn read(
     Path(id): Path<String>,
     QueryParams(Refresh { refresh }): QueryParams<Refresh>,
 ) -> Result<Json<ProviderCli>, ApiError> {
-    let entry = process_entry(&services, &user, &id).await?;
+    process_entry(&services, &user, &id).await?;
     let newest = match services.claude_releases.latest(refresh.0).await {
         Ok(release) => NewestVersion::Read {
             version: release.version,
@@ -59,10 +59,7 @@ pub(super) async fn read(
             message: error.to_string(),
         },
     };
-    Ok(Json(ProviderCli {
-        newest,
-        install: services.cli_installs.state(&user.id, &entry.id),
-    }))
+    Ok(Json(ProviderCli { newest }))
 }
 
 /// Starts the install on the Claude Code machine again.
@@ -71,8 +68,8 @@ pub(super) async fn install(
     State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<(StatusCode, Json<CliInstallAnswer>), ApiError> {
+) -> Result<StatusCode, ApiError> {
     let entry = process_entry(&services, &user, &id).await?;
-    let install = start_install(&services, &shards, &user.id, &entry.id).await;
-    Ok((StatusCode::ACCEPTED, Json(CliInstallAnswer { install })))
+    start_install(&services, &shards, &user.id, &entry.id).await;
+    Ok(StatusCode::ACCEPTED)
 }

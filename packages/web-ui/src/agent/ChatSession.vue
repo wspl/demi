@@ -365,7 +365,7 @@ const emit = defineEmits<{
    * A child's context card asks for the usage limits of the account it runs on,
    * `account` of its entry `providerId`, again.
    */
-  refreshLimits: [providerId: string, account: string | null, automatic: boolean]
+  refreshLimits: [providerId: string, account: string | null]
   /** An instruction in a child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
 }>()
@@ -1046,7 +1046,7 @@ watch(
             :usage-limits="usageLimits"
             :agent-cost="subagentCost"
             @compact-agent="(id) => emit('compactSubagent', id)"
-            @refresh-limits="(providerId, account, automatic) => emit('refreshLimits', providerId, account, automatic)"
+            @refresh-limits="(providerId, account) => emit('refreshLimits', providerId, account)"
             @open-instruction="(entry) => emit('openInstruction', entry)"
           />
           <SideQuestionWindow

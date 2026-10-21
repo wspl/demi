@@ -22,6 +22,10 @@ beforeEach(() => {
       // The page reads the model catalog as it starts.
       return Response.json({ providers: [], smallModel: null })
     }
+    if (path === '/api/providers/catalog') {
+      // And the vendor catalog.
+      return Response.json({ subscriptions: [], vendors: [] })
+    }
     requests.push(path)
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch

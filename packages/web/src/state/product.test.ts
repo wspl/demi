@@ -6,6 +6,7 @@ import { onSessionExpired } from '../api/client'
 import { conversationSummary as summary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from './product'
+import type { ProductState } from '../api/generated/web-api'
 
 const realFetch = globalThis.fetch
 const FIRST = '00000000-0000-4000-8000-000000000001'
@@ -610,22 +611,66 @@ test('back online after an offline that held, the return replaces a channel sile
   }
 })
 
-test('vendor readers share one request and reopening uses cached data', async () => {
-  const product = started()
+test('the page reads the vendor catalog once as it starts, and its readers share that read', async () => {
   const deferred = Promise.withResolvers<Response>()
   vendorResponse = () => deferred.promise
-  const first = product.loadVendors()
-  const second = product.loadVendors()
+  const product = started()
+  const reader = product.loadVendors()
   expect(product.vendorLoad).toBe('loading')
-  expect(vendorReads).toBe(1)
   deferred.resolve(Response.json({ subscriptions: [], vendors: [] }))
-  await Promise.all([first, second])
+  await reader
   expect(product.vendorLoad).toBe('ready')
   await product.loadVendors()
   expect(vendorReads).toBe(1)
 })
 
-test('failed catalog reads can retry, and a cached catalog survives a failed refresh', async () => {
+test('a page of the build that read the vendor catalog holds it from its first frame and reads it no more', async () => {
+  const kept = new Map<string, string>()
+  Reflect.set(globalThis, 'localStorage', {
+    getItem: (key: string) => kept.get(key) ?? null,
+    setItem: (key: string, value: string) => void kept.set(key, value),
+  })
+  process.env.DEMI_WEB_BUILD = 'b1'
+  try {
+    const catalog = { subscriptions: [{ providerType: 'codex' }], vendors: [] }
+    vendorResponse = async () => Response.json(catalog)
+    await started().loadVendors()
+    // A new page of the same build: the catalog is there before any read.
+    useProduct().stop()
+    disposePinia(pinia)
+    pinia = createPinia()
+    setActivePinia(pinia)
+    expect(useProduct().vendors).toEqual(catalog)
+    await started().loadVendors()
+    expect(vendorReads).toBe(1)
+
+    // Another build reads it again.
+    useProduct().stop()
+    disposePinia(pinia)
+    pinia = createPinia()
+    setActivePinia(pinia)
+    process.env.DEMI_WEB_BUILD = 'b2'
+    expect(useProduct().vendors).toBeNull()
+    await started().loadVendors()
+    expect(vendorReads).toBe(2)
+  } finally {
+    delete process.env.DEMI_WEB_BUILD
+    Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+})
+
+test('a vendor catalog that failed to load as the page started loads on Retry', async () => {
+  vendorResponse = async () => {
+    throw new Error('offline')
+  }
+  const product = started()
+  await waitFor(() => product.vendorLoad === 'failed')
+  vendorResponse = async () => Response.json({ subscriptions: [], vendors: [] })
+  await product.loadVendors()
+  expect(product.vendorLoad).toBe('ready')
+})
+
+test('a failed model list read can retry, and a held list survives a failed refresh', async () => {
   modelResponse = async () => {
     throw new Error('offline')
   }
@@ -645,33 +690,52 @@ test('failed catalog reads can retry, and a cached catalog survives a failed ref
   }
   await expect(product.loadModels(true)).rejects.toThrow('offline')
   expect(product.catalogLoad).toBe('ready')
-  vendorResponse = async () => {
-    throw new Error('offline')
-  }
-  await expect(product.loadVendors()).rejects.toThrow('offline')
-  expect(product.vendorLoad).toBe('failed')
-  vendorResponse = async () => Response.json({ subscriptions: [], vendors: [] })
-  await product.loadVendors()
-  expect(product.vendorLoad).toBe('ready')
 })
 
-test('an account change cannot populate the next account with a late vendor response', async () => {
-  const product = started()
+test('a stopped page drops its late vendor response', async () => {
   const deferred = Promise.withResolvers<Response>()
   vendorResponse = () => deferred.promise
+  const product = started()
   const previous = product.loadVendors()
   product.stop()
-  started()
   vendorResponse = async () => Response.json({ subscriptions: [], vendors: [] })
-  await product.loadVendors()
-  deferred.resolve(
-    Response.json({
-      subscriptions: [{ providerType: 'old-account', configured: true }],
-      vendors: [],
-    }),
-  )
+  await started().loadVendors()
+  deferred.resolve(Response.json({ subscriptions: [{ providerType: 'codex' }], vendors: [] }))
   await expect(previous).rejects.toThrow()
   expect(product.vendors?.subscriptions).toEqual([])
+})
+
+// An install's state rides on the entry in the providers part, but it is no
+// part of what the catalog answers for: the catalog shown stays, and is not
+// read again, as an install starts and ends. Planted defect: the install in
+// the catalog's key, which empties the catalog and reads it again. Cost: a
+// played channel and a stubbed fetch, a few milliseconds.
+test('a Claude Code install starting and ending leaves the catalog shown and reads it no more', async () => {
+  let calls = 0
+  const listed = [{ providerId: 'claude', displayName: 'Claude', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: '@anthropic-ai/claude-code',
+    availability: { type: 'available' }, models: [], imageModels: [], videoModels: [], audioModels: [] }]
+  modelResponse = async () => {
+    calls++
+    return Response.json({ providers: listed, smallModel: null })
+  }
+  const entry = (cliInstall: ProductState['providers'][number]['cliInstall']): ProductState['providers'][number] => ({
+    id: 'claude', kind: 'subscription', providerType: 'claude-code', label: 'Claude', wireApi: null, vendorId: null,
+    compatible: false, endpoint: null, hasApiKey: false, rotation: 'manual',
+    media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    models: null, createdAt: '2026-09-10T00:00:00.000Z',
+    details: { type: 'failed', message: 'Not read in this test' }, cliInstall,
+  })
+  const product = started(productState({ providers: [entry(null)] }))
+  await waitFor(() => product.catalogLoad === 'ready')
+  expect(calls).toBe(1)
+  for (const install of [{ state: 'installing' as const }, { state: 'installed' as const, path: '/home/alex/.local/bin/claude' }]) {
+    channels.last().send({ type: 'providers', providers: [entry(install)] })
+    expect(product.catalogLoad).toBe('ready')
+    expect(product.catalog.map((provider) => provider.providerId)).toEqual(['claude'])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  }
+  expect(calls).toBe(1)
 })
 
 test('conversations and the channel\'s messages reuse one catalog until it is a minute old; concurrent reads share one request', async () => {

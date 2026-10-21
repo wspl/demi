@@ -264,7 +264,7 @@ impl ArtifactResolver for Local {
     }
 }
 
-async fn cli(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
+pub(crate) async fn cli(backend: &TestBackend, session: &Session, provider: &str) -> ProviderCli {
     let read = backend
         .get(&format!("/api/providers/{provider}/cli"), Some(session))
         .await;
@@ -277,25 +277,34 @@ async fn cli(backend: &TestBackend, session: &Session, provider: &str) -> Provid
     read.json()
 }
 
-/// The entry's CLI once no install is under way, asking every 50 ms for at
-/// most 30 s.
+/// The entry's last install once none is under way, as the user's page
+/// learns it: from the snapshot, then from each change of the providers,
+/// for at most 30 s.
 pub(crate) async fn settled(
     backend: &TestBackend,
     session: &Session,
     provider: &str,
-) -> ProviderCli {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
-    loop {
-        let read = cli(backend, session, provider).await;
-        if read.install != Some(CliInstall::Installing {}) {
-            return read;
+) -> Option<CliInstall> {
+    let mut page = backend.sync(session).await;
+    let followed = async {
+        loop {
+            let providers = match page.next().await {
+                SyncEvent::Snapshot { state } => state.providers,
+                SyncEvent::Providers { providers } => providers,
+                _ => continue,
+            };
+            let install = providers
+                .iter()
+                .find(|entry| entry.provider.id.as_str() == provider)
+                .and_then(|entry| entry.cli_install.clone());
+            if install != Some(CliInstall::Installing {}) {
+                return install;
+            }
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the install never ended"
-        );
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
+    };
+    tokio::time::timeout(Duration::from_secs(30), followed)
+        .await
+        .expect("the install never ended")
 }
 
 /// A models.dev document whose `anthropic` vendor lists the Claude models
@@ -1610,7 +1619,7 @@ async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
         .post(&format!("/api/providers/{}/cli/install", kept.provider), Some(&kept.master), json!({}))
         .await;
     assert_eq!(started.status, StatusCode::ACCEPTED);
-    let failed = settled(&kept.backend, &kept.master, &kept.provider).await.install;
+    let failed = settled(&kept.backend, &kept.master, &kept.provider).await;
     assert!(matches!(failed, Some(CliInstall::Failed { .. })), "{failed:?}");
     let older = install_by_hand(cache.path(), OLDER).await;
     let said = kept.said(1).await;

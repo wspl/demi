@@ -40,6 +40,10 @@ beforeEach(() => {
     if (key === 'GET /api/models') {
       return Response.json({ providers: [], smallModel: null })
     }
+    // The vendor catalog the page reads as it starts.
+    if (key === 'GET /api/providers/catalog') {
+      return Response.json({ subscriptions: [], vendors: [] })
+    }
     sent.push(init?.body === undefined ? key : `${key} ${String(init.body)}`)
     const answer = answers[key]?.shift()
     if (!answer) {

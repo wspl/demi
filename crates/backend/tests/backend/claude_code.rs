@@ -74,7 +74,7 @@ use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
-use crate::claude::{PackageService, claude_models, settled};
+use crate::claude::{PackageService, claude_models, cli, settled};
 use crate::conversations::{
     Socket, anthropic, choose, create, events, kinds, last_text, message, message_start, send,
     text_block, thinking_block, tool_use_block, transcript, usage,
@@ -288,7 +288,7 @@ impl World {
         assert_eq!(started.status, StatusCode::ACCEPTED);
         let installed = settled(&backend, &master, &provider).await;
         assert!(
-            matches!(installed.install, Some(CliInstall::Installed { .. })),
+            matches!(installed, Some(CliInstall::Installed { .. })),
             "the Cloud did not install the CLI: {installed:?}"
         );
         Self {
@@ -451,14 +451,14 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
 
     // The install: the pointer, the manifest and this machine's build, each
     // read once, and an executable that is the supplied one, byte for byte.
-    let cli = settled(&world.backend, &world.master, &world.provider).await;
+    let install = settled(&world.backend, &world.master, &world.provider).await;
     // The CLI is an artifact of the package, in the runner's cache, where
     // it is the supplied one, byte for byte.
-    let Some(CliInstall::Installed { path }) = &cli.install else {
-        panic!("the CLI is not installed: {cli:?}");
+    let Some(CliInstall::Installed { path }) = &install else {
+        panic!("the CLI is not installed: {install:?}");
     };
     assert_eq!(
-        cli.newest,
+        cli(&world.backend, &world.master, &world.provider).await.newest,
         NewestVersion::Read {
             version: supplied.version.clone()
         }

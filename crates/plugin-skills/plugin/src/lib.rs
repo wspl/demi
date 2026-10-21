@@ -36,10 +36,18 @@
 //!
 //! The plugin writes to no Host, sends no credential when it fetches, and never
 //! blocks the shard thread: git runs on the blocking pool.
+//!
+//! # Updates
+//!
+//! The backend checks each source's default branch on its own schedule, once
+//! per interval however many users added the source (`heads.rs`), from the
+//! first page state a user's instance reads until the instance ends, and tells
+//! those users' pages when it moved. Opening Settings › Skills checks nothing.
 
 mod catalog;
 mod commands;
 mod fetch;
+mod heads;
 mod origin;
 mod project;
 mod skill;
@@ -52,7 +60,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use demi_plugin_interface::{
     CommandPlugin, Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, Reply,
@@ -63,34 +70,37 @@ use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 use tokio::task::AbortHandle;
 
 use crate::catalog::{Entry, NONE_AVAILABLE};
 use crate::fetch::FetchError;
+use crate::heads::{CHECK_INTERVAL, Heads};
 use crate::origin::Origin;
 use crate::project::ProjectSkill;
-use crate::sources::{Head, Source};
+use crate::sources::Source;
 
 pub use crate::fetch::Skipped;
 pub use crate::sources::{Failure, SkillState, SkillsState, SourceState};
 
-/// How long a source's check of its default branch counts before the page's
-/// next opening checks it again: it keeps a user who opens and closes
-/// settings from sending a request to every repository each time, while a
-/// commit pushed during a session shows the next time the page opens after
-/// the interval.
-const CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
-
 /// Maps a source's URL to the URL its fetch reads: the URL itself, or in a
 /// test, a repository the test made.
 pub type Resolve = dyn Fn(&str) -> String + Send + Sync;
+
+/// What a test's fetch of a source's URL waits for once it read the remote
+/// and before it records anything, so a test can order two fetches' ends.
+#[cfg(feature = "testing")]
+pub type ReadHook = dyn Fn(&str) -> futures_util::future::BoxFuture<'static, ()> + Send + Sync;
 
 /// The plugin's factory.
 pub struct Skills {
     manifest: Manifest,
     resolve: Arc<Resolve>,
     clock: Arc<dyn Clock>,
+    /// Every source's head, which every user's instance shares.
+    heads: Arc<Heads>,
+    #[cfg(feature = "testing")]
+    read_hook: Option<Arc<ReadHook>>,
 }
 
 impl Skills {
@@ -114,7 +124,18 @@ impl Skills {
             manifest,
             resolve,
             clock,
+            heads: Arc::default(),
+            #[cfg(feature = "testing")]
+            read_hook: None,
         }
+    }
+
+    /// This factory, whose fetches wait for `hook` once they read the
+    /// remote: a test's order of two fetches' ends.
+    #[cfg(feature = "testing")]
+    pub fn holding(mut self, hook: Arc<ReadHook>) -> Self {
+        self.read_hook = Some(hook);
+        self
     }
 }
 
@@ -137,8 +158,10 @@ impl demi_plugin_interface::PluginFactory for Skills {
             clock: self.clock.clone(),
             fetching: RefCell::default(),
             fetches: RefCell::default(),
-            heads: RefCell::default(),
-            checks: RefCell::default(),
+            heads: self.heads.clone(),
+            follow: RefCell::default(),
+            #[cfg(feature = "testing")]
+            read_hook: self.read_hook.clone(),
         })))
     }
 }
@@ -172,11 +195,6 @@ pub struct SetEnabled {
     pub enabled: bool,
 }
 
-/// `check_updates {}`.
-#[derive(Debug, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct CheckUpdates {}
-
 /// `set_source_enabled { source, enabled }`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -199,7 +217,6 @@ fn page() -> Page {
             "set_source_enabled",
             Scope::User,
         ))
-        .method(Method::new::<CheckUpdates, ()>("check_updates", Scope::User))
 }
 
 /// One user's skills plugin.
@@ -216,10 +233,14 @@ struct State {
     fetching: RefCell<BTreeMap<String, FetchEnd>>,
     /// Each running fetch: its task and what stops its blocking part.
     fetches: RefCell<Vec<(AbortHandle, Arc<AtomicBool>)>>,
-    /// What each source's default branch points to, by id.
-    heads: RefCell<BTreeMap<String, Head>>,
-    /// Each running check of the sources' default branches.
-    checks: RefCell<Vec<AbortHandle>>,
+    /// What each source's default branch points to, by id, as every
+    /// user's instance knows it.
+    heads: Arc<Heads>,
+    /// The task that checks the user's sources on the backend's schedule
+    /// and tells the pages of a move, from the first page state read on.
+    follow: RefCell<Option<AbortHandle>>,
+    #[cfg(feature = "testing")]
+    read_hook: Option<Arc<ReadHook>>,
 }
 
 /// How a fetch of a source ended.
@@ -248,7 +269,7 @@ impl Drop for Instance {
         }
         // A check's blocking part only reads the remote's refs; it ends on
         // its own, and its result goes nowhere.
-        for task in self.0.checks.take() {
+        if let Some(task) = self.0.follow.take() {
             task.abort();
         }
     }
@@ -274,6 +295,7 @@ impl Plugin for Instance {
                     Ok(Reply::Project { found, watch })
                 }
                 Request::PageState { .. } => {
+                    self.0.follow(&port);
                     let state = self.0.state(&port).await?;
                     Ok(Reply::State {
                         state: serde_json::to_value(state).expect("the state encodes as JSON"),
@@ -343,11 +365,6 @@ impl State {
                 self.switch(&port, &source, every, enabled).await?;
                 Ok(Value::Null)
             }
-            "check_updates" => {
-                let CheckUpdates {} = decode(params)?;
-                self.start_checks(port).await?;
-                Ok(Value::Null)
-            }
             method => Err(PluginError::failed(format!("no method \"{method}\""))),
         }
     }
@@ -359,7 +376,7 @@ impl State {
         Ok(sources::state(
             &sources,
             |id| fetching.contains_key(id),
-            &self.heads.borrow(),
+            &self.heads.of(sources.keys()),
         ))
     }
 
@@ -412,7 +429,6 @@ impl State {
                 Err(failure) => return Err(failure.into()),
             }
         }
-        self.heads.borrow_mut().remove(id);
         self.directories_changed(port).await
     }
 
@@ -490,9 +506,14 @@ impl State {
             .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
         let url = (self.resolve)(origin.url());
         let repository = origin.repository().to_owned();
+        let observation = self.heads.observe();
         let fetched = tokio::task::spawn_blocking(move || fetch::fetch(&url, &repository, &stop))
             .await
             .map_err(|error| PluginError::failed(format!("the fetch ended: {error}")))?;
+        #[cfg(feature = "testing")]
+        if let Some(hook) = &self.read_hook {
+            hook(origin.url()).await;
+        }
         let outcome = match fetched {
             Ok(fetched) => {
                 let blobs = sources::put_files(port, &fetched).await?;
@@ -521,11 +542,7 @@ impl State {
             match sources::write(port, id, &recorded, Some(*revision)).await {
                 Ok(_) => {
                     if let Ok((fetched, _)) = &outcome {
-                        let head = Head {
-                            checked_at: now,
-                            commit: Some(fetched.commit.clone()),
-                        };
-                        self.heads.borrow_mut().insert(id.to_owned(), head);
+                        self.heads.heard(id, observation, Some(now), fetched.commit.clone());
                     }
                     break;
                 }
@@ -543,77 +560,87 @@ impl State {
         }
     }
 
-    /// Checks, after the call that asked for it, the default branch of each
-    /// source that has a commit, is not being fetched, and was not checked
-    /// within [`CHECK_INTERVAL`]; the pages receive the new state once every
-    /// check ended, if one found another commit.
-    async fn start_checks(self: &Rc<Self>, port: PluginPort) -> Result<(), PluginError> {
-        let all = sources::read(&port).await?;
-        let now = self.clock.now();
-        let interval = i64::try_from(CHECK_INTERVAL.as_millis()).expect("minutes fit");
-        let mut due: Vec<(String, String)> = Vec::new();
-        {
-            let fetching = self.fetching.borrow();
-            let mut heads = self.heads.borrow_mut();
-            for (id, (source, _)) in all {
-                let recent = heads.get(&id).is_some_and(|head| {
-                    now.as_millisecond() - head.checked_at.as_millisecond() < interval
-                });
-                if source.commit.is_none() || fetching.contains_key(&id) || recent {
-                    continue;
-                }
-                let origin = Origin::parse(&source.origin)
-                    .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
-                let commit = heads.get(&id).and_then(|head| head.commit.clone());
-                let head = Head {
-                    checked_at: now,
-                    commit,
-                };
-                heads.insert(id.clone(), head);
-                due.push((id, (self.resolve)(origin.url())));
-            }
+    /// Starts the task that follows the user's sources, unless it runs:
+    /// every [`CHECK_INTERVAL`] it checks the default branch of each source
+    /// due, and it tells the pages, through `port`, of each move of one of
+    /// the user's sources, whoever's check or fetch found it.
+    fn follow(self: &Rc<Self>, port: &PluginPort) {
+        let mut follow = self.follow.borrow_mut();
+        if follow.as_ref().is_some_and(|task| !task.is_finished()) {
+            return;
         }
-        if due.is_empty() {
-            return Ok(());
-        }
+        // Subscribed before the state is read, so a move published meanwhile
+        // is told, if once more than needed.
+        let mut moves = self.heads.moves();
         let state = self.clone();
+        let port = port.clone();
         let task = tokio::task::spawn_local(async move {
-            let checks = due.into_iter().map(|(id, url)| async move {
-                let checked = tokio::task::spawn_blocking(move || fetch::remote_head(&url)).await;
-                (id, checked)
-            });
-            let mut changed = false;
-            for (id, checked) in join_all(checks).await {
-                let commit = match checked {
-                    Ok(Ok(commit)) => commit,
-                    Ok(Err(message)) => {
-                        tracing::info!(source = %id, %message, "a skill source's default branch was not checked");
-                        continue;
+            let mut ticks = tokio::time::interval(CHECK_INTERVAL);
+            ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    _ = ticks.tick() => {
+                        if let Err(error) = state.check_due(&port).await {
+                            tracing::warn!(%error, "the skill sources were not checked");
+                        }
                     }
-                    Err(error) => {
-                        tracing::warn!(source = %id, %error, "a skill source's check ended");
-                        continue;
+                    moved = moves.recv() => {
+                        let ours = match moved {
+                            Ok(id) => sources::read(&port).await.map(|all| all.contains_key(&id)),
+                            // A move missed may be one of the user's.
+                            Err(broadcast::error::RecvError::Lagged(_)) => Ok(true),
+                            Err(broadcast::error::RecvError::Closed) => return,
+                        };
+                        // A page that misses this change reads the state
+                        // again when it reconnects.
+                        let told = match ours {
+                            Ok(true) => port.changed(Scope::User).await.map_err(PluginError::from),
+                            Ok(false) => Ok(()),
+                            Err(error) => Err(error),
+                        };
+                        if let Err(error) = told {
+                            tracing::warn!(%error, "the pages did not learn of a source's move");
+                        }
                     }
-                };
-                let mut heads = state.heads.borrow_mut();
-                // A fetch that ended since, or a removal, knows better.
-                let Some(head) = heads.get_mut(&id).filter(|head| head.checked_at == now) else {
-                    continue;
-                };
-                if head.commit.as_ref() != Some(&commit) {
-                    head.commit = Some(commit);
-                    changed = true;
                 }
-            }
-            // A page that misses this change reads the state again when it
-            // reconnects.
-            if changed && let Err(error) = port.changed(Scope::User).await {
-                tracing::warn!(%error, "the pages did not learn of a check's end");
             }
         });
-        let mut checks = self.checks.borrow_mut();
-        checks.retain(|task| !task.is_finished());
-        checks.push(task.abort_handle());
+        *follow = Some(task.abort_handle());
+    }
+
+    /// Checks the default branch of each of the user's sources that has a
+    /// commit, is not being fetched, and was checked by no user within
+    /// [`CHECK_INTERVAL`]; a move found reaches every user's pages through
+    /// the heads.
+    async fn check_due(&self, port: &PluginPort) -> Result<(), PluginError> {
+        let all = sources::read(port).await?;
+        let now = self.clock.now();
+        let mut due: Vec<(String, u64, String)> = Vec::new();
+        for (id, (source, _)) in all {
+            if source.commit.is_none() || self.fetching.borrow().contains_key(&id) {
+                continue;
+            }
+            let origin = Origin::parse(&source.origin)
+                .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
+            if let Some(observation) = self.heads.claim(&id, now) {
+                due.push((id, observation, (self.resolve)(origin.url())));
+            }
+        }
+        let checks = due.into_iter().map(|(id, observation, url)| async move {
+            let checked = tokio::task::spawn_blocking(move || fetch::remote_head(&url)).await;
+            (id, observation, checked)
+        });
+        for (id, observation, checked) in join_all(checks).await {
+            match checked {
+                Ok(Ok(commit)) => self.heads.heard(&id, observation, None, commit),
+                Ok(Err(message)) => {
+                    tracing::info!(source = %id, %message, "a skill source's default branch was not checked");
+                }
+                Err(error) => {
+                    tracing::warn!(source = %id, %error, "a skill source's check ended");
+                }
+            }
+        }
         Ok(())
     }
 

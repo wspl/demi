@@ -6,7 +6,7 @@ import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { hostDeviceOptions } from '../targets/execution'
-import { followDirect, watchDirect } from '.'
+import { directStatus, followDirect, measureDirect, watchDirect } from '.'
 
 // A page that shows a conversation on a paired device whose runner is
 // connected opens the device's signaling socket at once, the first step of
@@ -103,6 +103,22 @@ test('a device not reached yet shows the path found last time, and the path the 
 
 test('a device this browser never reached shows no path', () => {
   expect(runOn(NEVER)).toMatchObject({ path: null, lastPath: null })
+})
+
+// A device's page shows the figures an earlier page of this browser measured,
+// with when; using the device measures nothing, Measure does. Planted
+// defect: figures kept only in the page, so a new page shows none.
+test('a device shows the last measurement this browser made, with when, and only Measure measures again', async () => {
+  const measuredAt = '2026-10-21T08:00:00.000Z'
+  saved.set(`demi.deviceMeasured.${NEVER}`, JSON.stringify({ figures: { direct: null, relay: { latencyMs: 48, loss: null } }, measuredAt }))
+  expect(directStatus(NEVER)).toMatchObject({ figures: { direct: null, relay: { latencyMs: 48 } }, measuredAt, measuring: false })
+
+  watchDirect(NEVER)
+  await Promise.resolve()
+  expect(directStatus(NEVER)).toMatchObject({ figures: { relay: { latencyMs: 48 } }, measuredAt, measuring: false })
+
+  measureDirect(NEVER)
+  expect(directStatus(NEVER)).toMatchObject({ figures: { relay: { latencyMs: 48 } }, measuredAt, measuring: true })
 })
 
 /** Device `id`'s row in Run On. */

@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import type { DeviceRoute, DirectAttempt, DirectStatus, PathFigures } from '@demicodes/web-ui/devices/direct'
+import { statusPath, type DeviceRoute, type DirectAttempt, type DirectStatus, type PathFigures } from '@demicodes/web-ui/devices/direct'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { demoDeviceReport, demoDeviceStart } from './device-installation'
 import { ago } from './time'
@@ -11,7 +11,8 @@ import { shownAmong } from './device-marks'
  * specimens, whose controls act on them as the product's do:
  *
  * - Try Again runs an attempt that ends as the device's path says.
- * - Measure and the page showing measure the paths again.
+ * - Measure measures the paths again, as a change of the path in use does;
+ *   showing a device's page measures nothing.
  * - The route changes how it is reached.
  * - Rename… and Revoke… change the list.
  */
@@ -96,6 +97,7 @@ export function demoDirect(scenario: DirectScenario): DirectStatus {
     attempt: scenario === 'serverOnly' ? null : demoAttempt(scenario, now - minutes(3)),
     nextAt: peer || scenario === 'serverOnly' || scenario === 'blocked' ? null : new Date(now + minutes(7)).toISOString(),
     figures: { direct: path?.figures ?? null, relay: RELAY },
+    measuredAt: new Date(now - minutes(12)).toISOString(),
     measuring: false,
   }
 }
@@ -117,19 +119,21 @@ const day = minutes(24 * 60)
 
 /**
  * A demo device, paired `paired` ago, reached as `scenario` says once it is
- * online; while it is offline this page has made no attempt and measured
- * nothing.
+ * online; while it is offline, or unless `measured`, this browser has
+ * measured nothing.
  */
 function demoDevice(
   device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'downloadPercent' | 'seen' | 'start' | 'autostartUnavailable' | 'home' | 'mark'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
+  measured = true,
 ): GalleryDevice {
   const reached = demoDirect(scenario)
+  const unmeasured = { figures: { direct: null, relay: null }, measuredAt: null }
   const direct =
     device.state === 'offline'
-      ? { ...reached, peer: false, chosen: false, attempt: null, nextAt: null, figures: { direct: null, relay: null } }
-      : reached
+      ? { ...reached, peer: false, chosen: false, attempt: null, nextAt: null, ...unmeasured }
+      : measured ? reached : { ...reached, ...unmeasured }
   return { device: { ...device, pairedAt: ago(paired), direct }, scenario }
 }
 
@@ -154,6 +158,8 @@ export function galleryDevices(): GalleryDevice[] {
       { id: 'studio', name: 'studio-pc', state: 'online', downloadPercent: 40, seen: ago(0), mark: { logo: 'windows', number: 1 }, ...demoDeviceReport('windows', 'an-older-release') },
       'unreachable',
       12 * day,
+      // This browser never measured it: Latency says so until Measure.
+      false,
     ),
     demoDevice(
       // Its server switched: it downloads the new runner, a quarter so far.
@@ -203,9 +209,9 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
   }
 
   /**
-   * Measures device `id`'s paths, as the product does when a peer
-   * connects, the page shows or Measure is selected; one asked for while
-   * one runs joins it, and the figures shown stay until it ends.
+   * Measures device `id`'s paths, as the product does when Measure is
+   * selected or the path in use changes; one asked for while one runs joins
+   * it, and the figures shown stay until it ends.
    */
   function measure(id: string) {
     const device = find(id)
@@ -214,14 +220,24 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
     device.direct.measuring = true
     later(MEASURE_MS, () => {
       device.direct.figures = measuredFigures(scenarioOf(device), device.direct.peer)
+      device.direct.measuredAt = new Date().toISOString()
       device.direct.measuring = false
     })
   }
-  // A device's page measures its paths each time it shows.
-  watch(shown, (id) => {
-    if (id)
-      measure(id)
-  }, { immediate: true })
+
+  // Each change of the path a device is reached by measures its paths
+  // again, as the product does: Relay Only, Prefer P2P over a slower peer,
+  // a peer chosen or lost.
+  watch(
+    () => devices.value.map((device) => ({ id: device.id, path: device.state === 'online' ? statusPath(device.direct) : null })),
+    (now, before) => {
+      for (const { id, path } of now) {
+        const was = before.find((entry) => entry.id === id)
+        if (path !== null && was && was.path !== path)
+          measure(id)
+      }
+    },
+  )
 
   function tryNow(id: string) {
     const device = find(id)
@@ -237,8 +253,8 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
       const ends = scenario === 'serverOnly' || scenario === 'dropped' ? 'connected' : scenario
       const status = demoDirect(ends)
       // The figures shown stay until a measurement replaces them; a new peer is measured at once.
-      const { figures, measuring } = device.direct
-      device.direct = { ...status, route: device.direct.route, attempt: demoAttempt(ends, startedAt), figures, measuring }
+      const { figures, measuredAt, measuring } = device.direct
+      device.direct = { ...status, route: device.direct.route, attempt: demoAttempt(ends, startedAt), figures, measuredAt, measuring }
       if (status.peer)
         measure(device.id)
     })
@@ -291,7 +307,7 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
       seen: new Date().toISOString(),
       pairedAt: new Date().toISOString(),
       ...demoDeviceReport('macos', DEMO_RUNNER_RELEASE),
-      direct: { ...demoDirect('connected'), peer: false, chosen: false, attempt: null, figures: { direct: null, relay: null } },
+      direct: { ...demoDirect('connected'), peer: false, chosen: false, attempt: null, figures: { direct: null, relay: null }, measuredAt: null },
     }
     devices.value.push(device)
     tryNow(device.id)
