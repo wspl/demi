@@ -104,7 +104,7 @@ const SUMMARY_ROOM: u64 = 13_000;
 
 /// The recent work a pass keeps as it was written: at least this many
 /// estimated tokens, or this share of the window in use when that is less.
-const KEPT_WORK: u64 = 20_000;
+const KEPT_WORK: u64 = 10_000;
 const KEPT_WORK_PERCENT: u8 = 15;
 
 /// The window in use for `model`, in tokens: the model's context window, or the

@@ -60,7 +60,7 @@ const MODELS: [(&str, u32); 2] = [("gen-a", 20_000), ("gen-b", 40_000)];
 
 /// The most recent work a pass keeps, in estimated tokens, or the share of
 /// the window in use, in percent, when that is less.
-const KEPT_WORK: (u64, u64) = (20_000, 15);
+const KEPT_WORK: (u64, u64) = (10_000, 15);
 
 /// Each provider's request builder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
