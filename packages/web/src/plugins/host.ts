@@ -19,7 +19,7 @@ import { executionFor } from '../targets/execution'
 import { pluginEnabled } from './enabled'
 import { callFailure } from './errors'
 import { PLUGIN_PAGES } from './generated/pages'
-import { conversationStates } from './states'
+import { usePluginStates } from './states'
 
 /**
  * The plugin pages' host in the product. It supplies:
@@ -74,7 +74,7 @@ export function productPageHost(): PageHost {
   const resources = useResources()
   const settings = useSettingsAddress()
   const conversations = useConversations()
-  const states = conversationStates(() => product.snapshot, (conversation) => conversations.metadataOf(conversation))
+  const states = usePluginStates()
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
   function primaryHost(plugin: string, conversation: string) {
     const state = product.snapshot

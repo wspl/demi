@@ -95,6 +95,7 @@ impl Plugged {
 
     pub async fn state(&self) -> SkillsState {
         let request = Request::PageState {
+            held: false,
             user: user(),
             conversation: None,
         };

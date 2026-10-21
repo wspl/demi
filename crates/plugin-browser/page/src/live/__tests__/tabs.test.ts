@@ -518,6 +518,31 @@ test('a tab opened in the background takes its page’s title once the browser n
   end()
 })
 
+test('a bound tab’s address and title come from the same record, the browser’s page or the tab’s own data, never one each', async () => {
+  const { controller, opened, end } = await requestHarness()
+  const tab = (url: string, title: string, loading = false) => opened[0]!.data(framed({
+    type: 'state',
+    running: true,
+    list: 9,
+    tabs: [{ id: 't1', title, url, createdBy: { kind: 'user' }, viewport: VIEWPORT, loading, canGoBack: false, canGoForward: false }],
+    watched: 't1',
+  }))
+  const both = (data: { url: string; tab?: string; title?: string }) => [controller.address(data), controller.title(data)]
+  // The panel tab's data is a page behind: the browser's word names both the address and the title.
+  const behind = { url: 'https://example.test/orders', tab: 't1', title: 'Orders' }
+  tab('https://example.test/invoice', 'Invoice 42')
+  expect(both(behind)).toEqual(['https://example.test/invoice', 'Invoice 42'])
+  // The browser still loads from the page the tab leaves: both are the tab's own.
+  tab('https://example.test/orders', 'Orders', true)
+  expect(both({ url: 'https://example.test/docs', tab: 't1' })).toEqual(['https://example.test/docs', null])
+  // The blank page of a browser tab that has not started on the address yet.
+  tab('about:blank', '')
+  expect(both({ url: 'https://example.test/docs', tab: 't1' })).toEqual(['https://example.test/docs', null])
+  // A tab without a browser tab has its data's address.
+  expect(both({ url: 'https://example.test/docs' })).toEqual(['https://example.test/docs', null])
+  end()
+})
+
 test('a fast page whose lists reach the page before the answer ends the loading with the answer', async () => {
   const { controller, answers, report, end } = await requestHarness()
   const url = 'https://example.test/docs'

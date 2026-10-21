@@ -116,7 +116,7 @@ fn operation(name: &str) -> NativeOperation {
 /// whenever the browser package says the conversation's tabs changed.
 pub(crate) fn page() -> Page {
     Page::new("@demicodes/plugin-browser")
-        .conversation_state(State::new::<BrowserTabs>().calls(operation("tabs")))
+        .conversation_state(State::new::<BrowserTabs>().calls(operation("tabs")).held())
         .panel_kind(KIND)
         .method(
             Method::new::<BindTab, TabBound>("bind", Scope::Conversation)
@@ -153,6 +153,7 @@ pub(crate) async fn list(port: &PluginPort) -> Result<Listing, PluginError> {
         Ok(listed) => Ok(Listing {
             tabs: listed.tabs,
             closed: listed.closed.unwrap_or_default(),
+            running: true,
         }),
         // A stopped Cloud runs no browser.
         Err(failure) if stopped(&failure) => Ok(Listing::default()),
@@ -166,13 +167,38 @@ pub(crate) struct Listing {
     pub tabs: Vec<BrowserTab>,
     /// The latest tabs closed on purpose, by a command or by their own page.
     pub closed: Vec<TabId>,
+    /// The Host answered, so the list is its word; a stopped Cloud's empty
+    /// list is not.
+    pub running: bool,
 }
 
-/// The conversation state: the browser's tabs.
-pub(crate) async fn tabs(port: &PluginPort) -> Result<Value, PluginError> {
-    to_value(BrowserTabs {
-        tabs: list(port).await?.tabs,
-    })
+/// The conversation state: the browser's tabs, as the plugin holds them
+/// while it does, else as the Host lists them, which the plugin then holds.
+pub(crate) async fn tabs(
+    port: &PluginPort,
+    work: &Work,
+    conversation: &ConversationId,
+) -> Result<Value, PluginError> {
+    if let Some(tabs) = work.held(conversation) {
+        return to_value(BrowserTabs { tabs });
+    }
+    let epoch = work.epoch(conversation);
+    let listing = list(port).await?;
+    if listing.running {
+        work.hold(conversation, epoch, listing.tabs.clone());
+    }
+    to_value(BrowserTabs { tabs: listing.tabs })
+}
+
+/// The conversation state as the plugin holds it, and none while it holds
+/// none: it reads no Host.
+pub(crate) fn held_tabs(
+    work: &Work,
+    conversation: &ConversationId,
+) -> Result<Option<Value>, PluginError> {
+    work.held(conversation)
+        .map(|tabs| to_value(BrowserTabs { tabs }))
+        .transpose()
 }
 
 /// A new tab on `url`, starting the environment when needed: work the
@@ -230,9 +256,9 @@ pub(crate) async fn navigate(
 }
 
 /// Answers the page call `method` with `params`, which its schema checked,
-/// for `conversation`, and marks the tab list changed once the method did
-/// its work: every method opens, closes or moves a tab, and one the browser
-/// refused changed none.
+/// for `conversation`. A method that opens, closes or moves a tab changes
+/// the list the Host tells the plugin of: the held list and the pages' copies
+/// follow that notice (`Work::sync`), never the call.
 pub(crate) async fn call(
     method: &str,
     params: Map<String, Value>,
@@ -240,9 +266,7 @@ pub(crate) async fn call(
     work: &Work,
     conversation: &ConversationId,
 ) -> Result<Value, PluginError> {
-    let result = run_method(method, params, port, work, conversation).await?;
-    port.changed(Scope::Conversation).await?;
-    Ok(result)
+    run_method(method, params, port, work, conversation).await
 }
 
 async fn run_method(

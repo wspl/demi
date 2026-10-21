@@ -142,6 +142,11 @@ export function failureShown(entry: ShownEntry<unknown> | null | undefined): Fil
   return entry.failure
 }
 
+/** Whether a view that shows `entry` has its first answer, or the reason there is none. */
+export function hasAnswered(entry: ShownEntry<unknown> | null | undefined): boolean {
+  return !!entry && (entry.answer !== null || entry.failure !== null)
+}
+
 /** A view's hold on an entry it shows. */
 export interface Showing<T> {
   readonly entry: ShownEntry<T>

@@ -397,6 +397,7 @@
     "closeLeft": "왼쪽 탭 닫기",
     "cannotShow": "이 탭을 표시할 수 없습니다.",
     "nothingOpen": "열린 항목 없음",
-    "noFiles": "파일 또는 변경 사항 없음"
+    "noFiles": "파일 또는 변경 사항 없음",
+    "reading": "{name} 읽는 중"
   }
 }

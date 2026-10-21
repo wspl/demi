@@ -64,10 +64,17 @@ pub enum Request {
     },
     /// The plugin's page state: the user's, or, with `conversation`, that
     /// conversation's.
+    ///
+    /// With `held`, the state as it goes along with the conversation's work
+    /// panel ([`crate::State::held`]): what the plugin holds, or reads from
+    /// its Host once when the panel has tabs of its kind and it holds none;
+    /// `Reply::Done` when it has neither.
     PageState {
         user: UserId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         conversation: Option<ConversationId>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        held: bool,
     },
     /// A page called a method, with parameters that are valid against the
     /// method's schema; `conversation` is the conversation a method of the

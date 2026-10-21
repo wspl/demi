@@ -29,6 +29,7 @@ import { t } from './locales/text'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
+import { usePluginStates } from '../plugins/states'
 import { pluginEnabled } from '../plugins/enabled'
 import { useConversations } from './store'
 
@@ -138,6 +139,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
   const product = useProduct()
   const conversations = useConversations()
+  const pluginStates = usePluginStates()
   const enabled = (plugin: string) => pluginEnabled(product.snapshot, plugin)
   const states = reactive(new Map<string, WorkState>())
   /** Each conversation's tabs; reactive on their own, so they stand beside the states, not in them. */
@@ -175,6 +177,10 @@ export const useWorkPanel = defineStore('work-panel', () => {
     if (!tabs) {
       const created = new PanelTabs(panelBackend(conversationId), (error) => {
         reportError(t('failures.changeWorkPanel'), error, { userVisible: true })
+      }, (held) => {
+        for (const { plugin, revision, state } of held) {
+          pluginStates.hold(plugin, conversationId, revision, state)
+        }
       })
       panels.set(conversationId, created)
       let readBefore = false

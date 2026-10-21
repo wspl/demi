@@ -23,6 +23,8 @@ export interface PanelTabKind<Data = unknown> {
   schema: z.ZodType<Data>
   // A method, so kinds of different data fit one list of kinds.
   title(data: Data): string
+  /** What the pane says it reads while it waits, such as a file's name; absent, the title. */
+  subject?(data: Data): string
   /** The strip's mark. Props: `data`. */
   mark: Component
   /**

@@ -14,31 +14,34 @@
 //! The user creates a tab of a plugin's kind only through an intent the kind
 //! opens; otherwise the plugin creates them.
 
-use std::sync::Arc;
-
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_plugins::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges, WorkPanel};
+use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges, PanelRead};
 
 use super::AppState;
 use super::body::JsonBody;
 use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use demi_backend_user_shard::services::Services;
 
-/// `GET /conversations/:id/panel`.
+/// `GET /conversations/:id/panel`: the tabs, with the conversation states
+/// the user's plugins hold, which read no Host.
 pub(super) async fn read(
-    State(services): State<Arc<Services>>,
+    State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<Json<WorkPanel>, ApiError> {
-    let record = owned(&services, &user.id, &id).await?;
-    Ok(Json(services.control.panel(record.id).await?))
+) -> Result<Json<PanelRead>, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let panel = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, cancel| async move { shard.plugins().panel_read(record.id, cancel).await })
+        .await??;
+    Ok(Json(panel))
 }
 
 /// `POST /conversations/:id/panel/changes { changes }`: applied in order,

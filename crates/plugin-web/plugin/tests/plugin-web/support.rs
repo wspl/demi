@@ -98,6 +98,7 @@ impl Plugged {
 
     pub async fn state(&self) -> WebState {
         let request = Request::PageState {
+            held: false,
             user: user(),
             conversation: None,
         };

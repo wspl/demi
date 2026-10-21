@@ -397,6 +397,7 @@
     "closeLeft": "关闭左侧标签页",
     "cannotShow": "无法显示此标签页。",
     "nothingOpen": "没有打开的内容",
-    "noFiles": "没有文件或更改"
+    "noFiles": "没有文件或更改",
+    "reading": "正在读取 {name}"
   }
 }

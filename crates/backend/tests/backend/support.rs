@@ -1688,7 +1688,12 @@ impl PanelPlugin {
             "Fixture panel",
             "A work panel kind whose tabs the scenarios change.",
         );
-        manifest.page = Some(Page::new("@demicodes/plugin-fixture-panel").panel_kind("page"));
+        manifest.page = Some(
+            Page::new("@demicodes/plugin-fixture-panel")
+                .panel_kind("page")
+                .conversation_state(State::new::<Value>().held())
+                .method(PageMethod::new::<serde_json::Map<String, Value>, Value>("hold", Scope::Conversation)),
+        );
         Self(manifest)
     }
 }
@@ -1699,19 +1704,32 @@ impl PluginFactory for PanelPlugin {
     }
 
     fn instance(&self) -> Rc<dyn Plugin> {
-        Rc::new(PanelTabs)
+        Rc::new(PanelTabs::default())
     }
 }
 
 /// An instance told of each tab its user creates or removes, which does
-/// nothing with it.
-struct PanelTabs;
+/// nothing with it, and whose conversation state is whatever its `hold`
+/// method last took, held until then by nothing.
+#[derive(Default)]
+struct PanelTabs {
+    held: std::cell::RefCell<Option<Value>>,
+}
 
 impl Plugin for PanelTabs {
-    fn call(&self, request: Request, _: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+    fn call(&self, request: Request, port: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
         Box::pin(async move {
             match request {
                 Request::PanelTab { .. } => Ok(Reply::Done),
+                Request::PageState { held: true, .. } => Ok(match self.held.borrow().clone() {
+                    Some(state) => Reply::State { state },
+                    None => Reply::Done,
+                }),
+                Request::PageCall { params, .. } => {
+                    *self.held.borrow_mut() = Some(Value::Object(params));
+                    port.changed(Scope::Conversation).await?;
+                    Ok(Reply::Result { result: Value::Null })
+                }
                 _ => unreachable!("a plugin of a panel kind only is told of its tabs"),
             }
         })

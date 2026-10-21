@@ -156,7 +156,6 @@ impl Plugin for Instance {
                     conversation, tab, ..
                 } => {
                     self.work.removed(&conversation, &port, &tab).await?;
-                    port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
                 Request::PackageMessage {
@@ -179,10 +178,24 @@ impl Plugin for Instance {
                     Ok(Reply::Done)
                 }
                 Request::PageState {
-                    conversation: Some(_),
+                    conversation: Some(conversation),
+                    held: true,
+                    ..
+                } => Ok(match page::held_tabs(&self.work, &conversation)? {
+                    Some(state) => Reply::State { state },
+                    // The panel has browser tabs and the plugin was never
+                    // told their list: it reads the Host here, once, rather
+                    // than leave the page to.
+                    None if self.work.has_tabs(&port).await? => Reply::State {
+                        state: page::tabs(&port, &self.work, &conversation).await?,
+                    },
+                    None => Reply::Done,
+                }),
+                Request::PageState {
+                    conversation: Some(conversation),
                     ..
                 } => Ok(Reply::State {
-                    state: page::tabs(&port).await?,
+                    state: page::tabs(&port, &self.work, &conversation).await?,
                 }),
                 Request::PageState {
                     conversation: None, ..

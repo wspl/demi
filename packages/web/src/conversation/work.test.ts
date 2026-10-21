@@ -265,7 +265,7 @@ function stubPanelRoutes(stored: { revision: number; tabs: PanelTab[] }) {
     const method = init?.method ?? 'GET'
     if (method === 'GET') {
       route.reads += 1
-      return Response.json(route.stored)
+      return Response.json({ states: [], ...route.stored })
     }
     route.sent.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : null })
     route.stored = { ...route.stored, revision: route.stored.revision + 1 }
@@ -438,7 +438,7 @@ test('on a phone a conversation comes up without its panel; only a show while th
   }
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const id = new URL(String(input), 'http://page.test').pathname.split('/')[3]!
-    return Response.json(stored[id])
+    return Response.json({ states: [], ...stored[id] })
   }) as typeof fetch
   const product = useProduct()
   const summaries = () => {

@@ -544,6 +544,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
                 .post(files::make_directory)
                 .delete(files::remove),
         )
+        .route("/conversations/{id}/fs/lists", post(files::lists))
         .route("/conversations/{id}/fs/file", get(files::text))
         .route(
             "/conversations/{id}/fs/raw",

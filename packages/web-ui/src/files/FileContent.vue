@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { FileText, History, RefreshCw } from '@lucide/vue'
 import type { StateEffect } from '@codemirror/state'
 import { CodeEditor, useEditor } from '../editor/load'
+import { usePaneReady } from '../agent/pane-ready'
 import { regionForm, regionsChanged } from '../infra/region-wait'
 import { t as editorText } from '../editor/locales/text'
 import { renderable, type DocumentPlace } from '../markdown/document'
@@ -20,6 +21,7 @@ import { t } from './locales/text'
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'
 import { hasSourceView, missingFile, previewKind, tooLargeNote } from './preview'
+import { hasAnswered } from './file-cache'
 import { useShowing } from './showing'
 import { useTextStart } from './text-start'
 import type { FileBrowserSource } from './types'
@@ -244,6 +246,36 @@ const card = useShowing(
   () => state.value.phase === 'card' ? props.path : null,
   (contents, path) => contents.showDescription(path),
 )
+
+/**
+ * Whether the view has all it first needs of its file, as a work panel pane
+ * waits for it (`agent/pane-ready.ts`): its folder's listing, the text or the
+ * description the bar and the body show, and the editor.
+ *
+ * The answer a held entry gives is in, though it is read again.
+ */
+const settled = computed(() => {
+  if (props.path === null)
+    return true
+  if (!hasAnswered(folder.entry.value))
+    return false
+  const editor = editorLoad.value.phase
+  if (editor !== 'ready')
+    return editor === 'failed'
+  // A media file's own part says when its description is in (`FilePreview`).
+  if (brokenLink.value !== null || media.value !== null)
+    return true
+  const current = state.value
+  switch (current.phase) {
+    case 'loading':
+      return false
+    case 'card':
+      return current.tooLarge ? start.value?.phase !== 'loading' : hasAnswered(card.entry.value)
+    default:
+      return true
+  }
+})
+usePaneReady(() => settled.value)
 
 /** What the view shows of its file, which the file's bar names and acts on. */
 const shownFile = computed<ShownFile>(() => {

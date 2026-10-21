@@ -26,6 +26,7 @@ export const fileKind: PanelKind<FileData> = {
   kind: 'file',
   schema: fileDataSchema,
   title: (data) => data.path ? t('kind.titleNamed', { name: baseName(data.path) }) : t('kind.title'),
+  subject: (data) => data.path ? baseName(data.path) : t('kind.title'),
   mark: FileMark,
   content: FileTab,
   pinned: { data: firstFileData },

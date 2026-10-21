@@ -12,10 +12,25 @@ export type PanelChange =
   | { type: 'remove'; id: string }
   | { type: 'move'; id: string; index: number }
 
-/** The backend's panel: its tabs, and how many changes made them. */
+/**
+ * A conversation state a plugin holds, with the revision it was held at, as
+ * the backend sends it with the panel (`crates/backend-http/src/panel.rs`).
+ */
+export interface HeldPluginState {
+  plugin: string
+  revision: number
+  state: unknown
+}
+
+/**
+ * The backend's panel: its tabs, and how many changes made them, with the
+ * states plugins hold, which a kind's content shows from the moment its tab
+ * appears. A panel without them, as a specimen's, holds none.
+ */
 export interface PanelRead {
   revision: number
   tabs: PanelTab[]
+  states?: readonly HeldPluginState[]
 }
 
 /**
@@ -143,6 +158,8 @@ export class PanelTabs {
     private readonly backend: PanelBackend,
     /** Reports a change the backend refused, or a read that failed. */
     private readonly refused: (error: unknown) => void,
+    /** Takes the plugin states a panel read brings, as it is taken. */
+    private readonly held: (states: readonly HeldPluginState[]) => void = () => {},
   ) {
     this.tabs = computed(() => this.slot.shown.value ?? [])
   }
@@ -209,6 +226,8 @@ export class PanelTabs {
    * nothing.
    */
   receive(panel: PanelRead): void {
+    // The states first: the tabs that need them show with them.
+    this.held(panel.states ?? [])
     this.slot.replace(panel.tabs, { revisions: { '': panel.revision } })
   }
 

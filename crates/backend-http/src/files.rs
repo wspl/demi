@@ -22,7 +22,7 @@ use demi_runner_protocol::files::protected_path;
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
-    AbsolutePath, ChangeSides, ChangesQuery, CommitName, CommitQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery, LogQuery,
+    AbsolutePath, ChangeSides, ChangesQuery, CommitName, CommitQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryLists, DirectoryQuery, ListedDirectories, ListedDirectory, LogQuery,
     FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery,
     UploadQuery, WorkingTreeChanges,
 };
@@ -93,6 +93,43 @@ pub(super) fn read_answer(read_at: &ReadAt, answer: impl IntoResponse) -> Respon
         response.headers_mut().insert(READ_AT, value);
     }
     response
+}
+
+/// Several directories' entries, read from the Host together: each answers as
+/// `GET .../fs` would, in the order asked, and one that cannot be listed
+/// leaves the others.
+pub(super) async fn lists(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(DirectoryLists { paths }): JsonBody<DirectoryLists>,
+) -> Result<Json<ListedDirectories>, ApiError> {
+    let lists = on_host(&state, &user.id, &id, None, async move |host| {
+        let reads = paths.iter().map(|path| browse_directory(&host.host, path));
+        let answers = futures_util::future::join_all(reads).await;
+        Ok(paths
+            .into_iter()
+            .zip(answers)
+            .map(|(path, answer)| match answer {
+                Ok((entries, read_at)) => ListedDirectory::Listed {
+                    path,
+                    home: host.home.clone(),
+                    entries,
+                    read_at: Some(read_at.to_string()),
+                },
+                Err(error) => {
+                    let (status, error) = ApiError::host_operation(error).into_body();
+                    ListedDirectory::Refused {
+                        path,
+                        status: status.as_u16(),
+                        error,
+                    }
+                }
+            })
+            .collect())
+    })
+    .await?;
+    Ok(Json(ListedDirectories { lists }))
 }
 
 pub(super) async fn make_directory(

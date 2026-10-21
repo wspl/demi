@@ -104,13 +104,73 @@ fn added_id(tab: &str) -> String {
     format!("browser-{tab}")
 }
 
-/// One conversation's work at a time.
+/// The conversation browser's tab list as the plugin holds it: what the Host
+/// last said it is, until the Host says it changed.
+#[derive(Default)]
+struct Held {
+    tabs: Option<Vec<BrowserTab>>,
+    /// Counts the Host's notices, which outdate what a read in flight brings.
+    epoch: u64,
+}
+
+/// One conversation's work at a time, and the tab lists held.
 #[derive(Default)]
 pub struct Work {
     locks: RefCell<HashMap<ConversationId, Rc<Mutex<()>>>>,
+    held: RefCell<HashMap<ConversationId, Held>>,
 }
 
 impl Work {
+    /// The tab list the plugin holds for `conversation`, if it holds one.
+    pub(crate) fn held(&self, conversation: &ConversationId) -> Option<Vec<BrowserTab>> {
+        self.held.borrow().get(conversation)?.tabs.clone()
+    }
+
+    /// Whether the conversation's panel has a tab of the `browser` kind.
+    pub(crate) async fn has_tabs(&self, port: &PluginPort) -> Result<bool, PluginError> {
+        Ok(port
+            .panel_tabs()
+            .await?
+            .tabs
+            .iter()
+            .any(|tab| tab.kind == KIND))
+    }
+
+    /// What a read of the Host that starts now must name to be held
+    /// ([`Work::hold`]).
+    pub(crate) fn epoch(&self, conversation: &ConversationId) -> u64 {
+        self.held.borrow().get(conversation).map_or(0, |held| held.epoch)
+    }
+
+    /// Holds `tabs`, which the Host listed, unless a notice came since the
+    /// read began at `epoch`. A list that is empty replaces a held one but
+    /// is not held first, so a conversation that has no browser holds
+    /// nothing.
+    pub(crate) fn hold(&self, conversation: &ConversationId, epoch: u64, tabs: Vec<BrowserTab>) {
+        let mut held = self.held.borrow_mut();
+        let entry = held.entry(conversation.clone()).or_default();
+        if entry.epoch == epoch && (!tabs.is_empty() || entry.tabs.is_some()) {
+            entry.tabs = Some(tabs);
+        }
+    }
+
+    /// The Host said the tabs changed: a read in flight no longer brings
+    /// the list, and the held one stands until the list that follows the
+    /// notice replaces it.
+    fn noticed(&self, conversation: &ConversationId) {
+        let mut held = self.held.borrow_mut();
+        held.entry(conversation.clone()).or_default().epoch += 1;
+    }
+
+    /// The Host's browser is gone, or its word is not to be had: the plugin
+    /// holds no list, and the next read asks the Host.
+    pub(crate) fn outdated(&self, conversation: &ConversationId) {
+        let mut held = self.held.borrow_mut();
+        let entry = held.entry(conversation.clone()).or_default();
+        entry.epoch += 1;
+        entry.tabs = None;
+    }
+
     fn lock(&self, conversation: &ConversationId) -> Rc<Mutex<()>> {
         self.locks
             .borrow_mut()
@@ -181,6 +241,7 @@ impl Work {
     ) -> Result<(), PluginError> {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
+        self.outdated(conversation);
         let panel = port.panel_tabs().await?;
         for tab in panel.tabs.iter().filter(|tab| tab.kind == KIND) {
             if TabData::of(tab).as_ref().and_then(TabData::live).is_some() {
@@ -208,10 +269,18 @@ impl Work {
     ) -> Result<(), PluginError> {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
+        self.noticed(conversation);
+        let epoch = self.epoch(conversation);
         let page::Listing {
             tabs: listed,
             closed,
+            running,
         } = page::list(port).await?;
+        if running {
+            self.hold(conversation, epoch, listed.clone());
+        } else {
+            self.outdated(conversation);
+        }
         let panel = port.panel_tabs().await?;
         let bound: Vec<(String, TabData)> = panel
             .tabs

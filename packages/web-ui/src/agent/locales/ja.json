@@ -397,6 +397,7 @@
     "closeLeft": "左側を閉じる",
     "cannotShow": "このタブは表示できません。",
     "nothingOpen": "開いているものはありません",
-    "noFiles": "ファイルも変更もありません"
+    "noFiles": "ファイルも変更もありません",
+    "reading": "{name}を読み取っています"
   }
 }

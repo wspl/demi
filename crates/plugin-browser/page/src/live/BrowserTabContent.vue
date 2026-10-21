@@ -9,7 +9,7 @@ import { Dropdown } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { RegionStatus } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
-import { downloadUrl, formatByteRatio, formatBytes, usePage } from '@demicodes/plugin-sdk'
+import { PaneReading, downloadUrl, formatByteRatio, formatBytes, usePage, usePaneReady, usePaneWaiting } from '@demicodes/plugin-sdk'
 import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
@@ -67,6 +67,11 @@ const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
+// The pane waits for the browser's tab list, which comes with the panel: until
+// it is in, the area under the address stays empty. A Cloud still starting, or
+// a list that could not be read, says so in the area.
+const pane = usePaneWaiting()
+usePaneReady(() => props.session.list.value !== null || props.session.listError.value !== null || props.session.api.hostStarting())
 /** What Demi does before the browser has the tab, if it does not have it yet. */
 const phase = computed(() => props.session.startingPhase(props.tabId, props.data))
 /** The tab loads: Stop, the strip's spinner and the progress line show it. */
@@ -323,7 +328,7 @@ watch(
   <div class="flex min-h-0 flex-1 flex-col" @keydown.capture="shortcut" @keyup.capture="shortcut">
     <AddressBar
       ref="addressBar"
-      :address="data.url"
+      :address="session.address(data)"
       :back-reason="backReason"
       :forward-reason="forwardReason"
       :can-reload="bound !== undefined"
@@ -420,7 +425,12 @@ watch(
         </Dropdown>
       </template>
     </AddressBar>
-    <div ref="area" class="relative flex min-h-0 flex-1 flex-col border-t border-line">
+    <div
+      ref="area"
+      class="relative flex min-h-0 flex-1 flex-col border-t border-line"
+      :class="pane.waiting.value ? 'invisible' : ''"
+    >
+      <PaneReading />
       <ProgressLine :active="busy" />
       <!-- A tab the plugin could not open cannot be shown at all. Retry returns it to opening in the same
            frame: the region leaves, and the tab loads as a new one does. -->

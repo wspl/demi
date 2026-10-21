@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { FolderTree } from '@lucide/vue'
 import { useElementSize, usePreferredReducedMotion } from '@vueuse/core'
+import { usePaneWaiting } from '../agent/pane-ready'
 import IconButton from '../ui/IconButton.vue'
+import PaneReading from '../ui/PaneReading.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TooltipPlacement from '../ui/TooltipPlacement.vue'
@@ -40,6 +42,12 @@ import { t } from './locales/text'
  * reading. The view learns how much of its end a tree shown over it covers, so
  * what it centres, such as an empty state, centres in the space beside the tree.
  *
+ * In a work panel pane (`agent/pane-ready.ts`), the view under the header row
+ * stays empty at its size until its reads are in, and says what it reads once
+ * it has waited long enough. The tree is empty with it until the pane is whole
+ * the first time; after that it stays as it is while only the view beside it
+ * changes, as when another file is picked.
+ *
  * In the phone layout (`ui/phone.ts`) the tree never docks: it covers the view's
  * whole width, sliding in from the end, and a pick in it slides it away again.
  */
@@ -56,6 +64,17 @@ defineSlots<{
   /** The tree; without it there is no tree and no control. */
   tree?(): unknown
 }>()
+
+const pane = usePaneWaiting()
+/** Whether the pane has been whole once: its tree then stays while only the view beside it changes. */
+const drawn = ref(false)
+// Counted from the mount: the parts below report in their setup, after this frame's first evaluation.
+onMounted(() => {
+  watch(() => pane.waiting.value, (waiting) => {
+    if (!waiting)
+      drawn.value = true
+  }, { immediate: true, flush: 'sync' })
+})
 
 const open = defineModel<boolean>('open', { default: true })
 const width = defineModel<number>('width', { default: TREE_WIDTH.default })
@@ -198,7 +217,8 @@ defineExpose({ show, dismiss })
     <!-- It clips a tree on its way in or out at the end. -->
     <div ref="body" class="relative flex min-h-0 flex-1 overflow-hidden border-t border-line">
       <!-- Its own stacking context: nothing in the view rises over a tree shown above it. -->
-      <div class="relative isolate min-w-0 flex-1">
+      <div class="relative isolate min-w-0 flex-1" :class="pane.waiting.value ? 'invisible' : ''">
+        <PaneReading />
         <slot :overlap="overlap" />
       </div>
       <template v-if="$slots.tree">
@@ -224,7 +244,10 @@ defineExpose({ show, dismiss })
           <div
             v-show="shown"
             class="overflow-hidden border-l border-line"
-            :class="docks ? '' : phone ? 'absolute inset-0 z-10 border-l-0' : 'absolute inset-y-0 right-0 z-10 max-w-full shadow-lg'"
+            :class="[
+              docks ? '' : phone ? 'absolute inset-0 z-10 border-l-0' : 'absolute inset-y-0 right-0 z-10 max-w-full shadow-lg',
+              pane.waiting.value && !drawn ? 'invisible' : '',
+            ]"
             :style="phone ? undefined : { flex: `0 0 ${width}px`, width: `${width}px` }"
           >
             <div class="h-full" :class="docks ? '' : 'w-full'" :style="docks ? { width: `${width}px` } : undefined">
