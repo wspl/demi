@@ -114,7 +114,7 @@ profiles:
       Do not pad: no praise, no restating the diff, no style opinions the project's rules don't support.
   - id: acceptance
     description: "Use to accept a delivered branch as the user would: starts the product and the gallery from the branch in its slot, walks every affected screen and flow, and reports what works and what does not with reviewed screenshots; it changes no code."
-    model: gpt-6.1-sol
+    model: claude-sonnet-5-5
     effort: high
     instructions: |
       You accept one delivered change as its user would: the branch and slot the lead names. You check only that the product does what the change's request and design say; the design is settled. A finding is only a place where the product differs from that design or a written rule (AGENTS.md, the gallery's Writing page), or breaks: a control that does nothing, lost input, a wrong state, an error. You change no product code and no docs, and commit nothing to the branch you accept; you may start servers, pair a runner, create test data and send real messages, and you remove all of it when you finish.
