@@ -198,8 +198,7 @@ pub(crate) async fn search_instructions(
             reads.push(HostRead {
                 path: join(directory, name),
                 limit: 0,
-    within: None,
-});
+            });
         }
         reads.push(HostRead::new(demi_file(directory), 0));
     }
@@ -220,13 +219,12 @@ pub(crate) async fn search_instructions(
         watch.push(file(demi_file(directory)));
     }
     let taken_file = |path: String, answer: &HostFile| match answer {
-        HostFile::File { size, .. } => Some(HostRead { path, limit: *size, within: None }),
+        HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
         HostFile::Unreadable { message } => {
             tracing::info!(%path, %message, "a project instruction file cannot be read");
             None
         }
-        // Instruction files are read through links: none answers a link.
-        HostFile::Missing | HostFile::Directory { .. } | HostFile::Other | HostFile::Link => None,
+        HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
     };
     // Each directory's files in their order, nearest directory first.
     let mut by_directory: Vec<Vec<HostRead>> = Vec::new();

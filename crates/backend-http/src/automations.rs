@@ -11,7 +11,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use demi_backend_user_shard::automations::{AutomationError, CALLS_PER_MINUTE, HookAnswer, HookCall, check_unknown};
+use demi_backend_user_shard::automations::{AutomationError, CALLS_PER_MINUTE, HookAnswer, HookCall};
 use demi_shared_types::AutomationId;
 use demi_web_api_protocol::automations::{
     AutomationAnswer, AutomationList, AutomationPatch, AutomationSecret, HolidayCountries, RunNow,
@@ -42,8 +42,8 @@ fn too_many() -> ApiError {
     )
 }
 
-/// `POST /hooks/:id`: a call of an automation's URL. An unknown address
-/// costs the same checks as a wrong secret, and gets the same answer.
+/// `POST /hooks/:id`: a call of an automation's URL. An unknown address gets
+/// the answer a wrong secret gets.
 pub(super) async fn hook(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -65,19 +65,17 @@ pub(super) async fn hook(
     if !admitted {
         return Err(too_many());
     }
+    let (Some(id), Some(owner), true) = (id, owner, parts.method == Method::POST) else {
+        return Err(unauthorized());
+    };
     let method = parts.method.to_string();
     let headers = parts
         .headers
         .iter()
         .filter_map(|(name, value)| Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned())))
         .collect();
-    let post = parts.method == Method::POST;
     let body = read(Request::from_parts(parts, body), &state).await?;
     let call = HookCall { method, headers, body };
-    let (Some(id), Some(owner), true) = (id, owner, post) else {
-        check_unknown(state.services.vault.key(), &call, state.services.control.now());
-        return Err(unauthorized());
-    };
     let answer = state
         .shards
         .of(&owner)

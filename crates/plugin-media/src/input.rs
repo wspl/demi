@@ -92,7 +92,7 @@ pub async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<Imag
                 HostFile::Missing => return Err(named("no such file")),
                 HostFile::Directory { .. } => return Err(named("is a directory")),
                 HostFile::Unreadable { message } => return Err(named(&message)),
-                HostFile::Other | HostFile::Link => return Err(named("not a file")),
+                HostFile::Other => return Err(named("not a file")),
             };
             let kind = match image::guess_format(&bytes) {
                 Ok(ImageFormat::Png) => ImageKind::Png,

@@ -483,7 +483,7 @@ fn copy_entry<'a>(
 }
 
 /// When the file was last modified, in milliseconds from the Unix epoch.
-pub(crate) fn modified(metadata: &std::fs::Metadata) -> io::Result<Timestamp> {
+fn modified(metadata: &std::fs::Metadata) -> io::Result<Timestamp> {
     let milliseconds = match metadata.modified()?.duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).map_err(io::Error::other)?,
         Err(error) => -i64::try_from(error.duration().as_millis()).map_err(io::Error::other)?,

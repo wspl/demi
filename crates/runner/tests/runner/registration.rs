@@ -14,7 +14,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use demi_backend_remote_host::testing::{
-    DetachedRunners, RunnerProcessOptions, login_shell_stand_in, runner_binary,
+    DetachedRunners, login_shell_stand_in, runner_binary,
 };
 use demi_runner_protocol::{
     manifest::Manifest,
@@ -565,18 +565,16 @@ async fn a_runner_with_a_log_started_in_a_terminals_foreground_leaves_the_termin
     .unwrap();
 }
 
-
 /// A runner with no `--home` keeps its installation in
 /// `~/.demi/runner/<backend's host[-port][-path]>-<4 hex digits of the URL's
 /// SHA-256>`, the directory the installers make
 /// (`crates/backend-runners/src/install.rs` pins the same names), apart for
-/// backends that read alike, and short for a very long path. `status` opens
+/// backends that read alike. `status` opens
 /// the directory without starting anything.
 #[tokio::test]
 async fn a_runner_names_its_installation_after_its_backend() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let home = tempfile::tempdir().unwrap();
-        let long = format!("https://example.com/{}", "a".repeat(250));
         let cases = [
             ("https://demi.example.com/", "demi.example.com-748c"),
             ("http://127.0.0.1:3310/", "127.0.0.1-3310-825d"),
@@ -591,7 +589,6 @@ async fn a_runner_names_its_installation_after_its_backend() {
             ("https://example.com/a_20b", "example.com-a_20b-aa8c"),
             ("https://example.com/Team", "example.com-Team-9492"),
             ("https://example.com/team", "example.com-team-75e0"),
-            (long.as_str(), &format!("example.com-{}-abfa", "a".repeat(84))),
         ];
         for (backend, name) in cases {
             let status = tokio::process::Command::new(runner_binary())
@@ -612,83 +609,6 @@ async fn a_runner_names_its_installation_after_its_backend() {
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(others, ["runner"]);
-    })
-    .await
-    .unwrap();
-}
-
-/// An installation's files, by path, for comparing what a command left.
-fn tree(directory: &std::path::Path) -> Vec<String> {
-    let mut found = Vec::new();
-    let mut pending = vec![directory.to_owned()];
-    while let Some(next) = pending.pop() {
-        for entry in std::fs::read_dir(&next).unwrap() {
-            let path = entry.unwrap().path();
-            found.push(path.strip_prefix(directory).unwrap().display().to_string());
-            if path.is_dir() {
-                pending.push(path);
-            }
-        }
-    }
-    found.sort();
-    found
-}
-
-/// `uninstall --backend <other>` on an installation that records another
-/// backend removes nothing and says whose it is, whether its runner is stopped
-/// or running. Before the rule, a stopped runner reported "registered to
-/// another backend" and then removed the whole installation as a backend it
-/// could not reach, and a running one revoked its device and removed itself.
-// Under a second for the stopped one, and a runner that starts and is asked
-// twice for the running one.
-#[tokio::test]
-async fn uninstalling_for_another_backend_removes_nothing() {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let uninstall = |home: &std::path::Path, state: &std::path::Path, backend: &'static str| {
-            let mut command = tokio::process::Command::new(runner_binary());
-            command
-                .args(["uninstall", "--backend", backend, "--home"])
-                .arg(state)
-                .env("HOME", home)
-                .env(
-                    demi_runner_protocol::SERVICE_MANAGER_STAND_IN,
-                    demi_backend_remote_host::testing::service_manager_stand_in(home),
-                );
-            command
-        };
-
-        // Stopped: an installer's files and a runner's configuration record
-        // `http://example.com/`.
-        let home = tempfile::tempdir().unwrap();
-        let state = home.path().join("installation");
-        std::fs::create_dir_all(state.join("releases")).unwrap();
-        std::fs::write(state.join("backend-url"), "http://example.com/\n").unwrap();
-        std::fs::write(state.join("release-id"), "r1\n").unwrap();
-        std::fs::write(state.join("runner.json"), r#"{"backendUrl":"http://example.com/"}"#).unwrap();
-        std::fs::write(state.join("token"), "secret").unwrap();
-        let before = tree(&state);
-        let refused = uninstall(home.path(), &state, "https://example.com/").output().await.unwrap();
-        let said = String::from_utf8_lossy(&refused.stderr);
-        assert_eq!(refused.status.code(), Some(1), "{refused:?}");
-        assert!(said.contains("belongs to http://example.com/, not https://example.com/"), "{said}");
-        assert_eq!(tree(&state), before);
-
-        // Running: another backend's uninstall neither revokes nor drains it.
-        let mut host = Host::start_with(RunnerProcessOptions {
-            release: Some("installed".into()),
-            ..RunnerProcessOptions::default()
-        })
-        .await
-        .online()
-        .await;
-        let (home, state) = (host.home().to_owned(), host.state());
-        let refused = uninstall(&home, &state, "http://example.com/").output().await.unwrap();
-        let said = String::from_utf8_lossy(&refused.stderr);
-        assert_eq!(refused.status.code(), Some(1), "{refused:?}");
-        assert!(said.contains("belongs to"), "{said}");
-        assert_eq!(manage("status", &state).await, Some(0), "the runner still runs");
-        assert!(state.join("runner.json").exists());
-        host.close().await;
     })
     .await
     .unwrap();

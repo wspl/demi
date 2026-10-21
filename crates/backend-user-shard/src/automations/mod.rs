@@ -39,7 +39,7 @@ use tokio::sync::Notify;
 use crate::shard::Shard;
 use schedule::{Plan, PlanError};
 
-pub use hooks::{CALLS_PER_MINUTE, HookAnswer, HookCall, HookLimits, check_unknown};
+pub use hooks::{CALLS_PER_MINUTE, HookAnswer, HookCall, HookLimits};
 
 /// The countries and regions whose holidays a task's working days can
 /// follow.

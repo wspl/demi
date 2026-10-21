@@ -62,9 +62,6 @@
 <a id="go-destination" href="/destination">Destination link</a>
 <!-- The click tells the test it was handled, and the test then lets the page navigate. -->
 <button id="later-hash" onclick="fetch('/typing-started'); fetch('/replace-load').then(() => location.hash = 'later')">Hash later</button>
-<button id="move-alert">Move alert</button>
-<button role="unsupported button" aria-disabled="true" id="role-token-disabled">Role token disabled</button>
-<hr aria-disabled="true" id="separator-disabled">
 <dl id="terms"><dt>Term</dt><dd>Meaning</dd></dl>
 <button id="press-alert">Press alert</button>
 <button id="shifting">Shifting</button>
@@ -92,15 +89,6 @@
     setTimeout(() => cover.remove(), 100);
   });
   shifting.addEventListener('click', () => shifting.dataset.clicks = String(Number(shifting.dataset.clicks || 0) + 1));
-  // The pointer's first move over the button hides it and opens a dialog,
-  // as a page's own timer can between a click's checks and its press.
-  const moveAlert = document.querySelector('#move-alert');
-  moveAlert.addEventListener('mousemove', () => {
-    if (moveAlert.dataset.alerted) return;
-    moveAlert.dataset.alerted = 'true';
-    moveAlert.style.visibility = 'hidden';
-    alert('Moved');
-  });
   // A page without frames, whose targets an action resolves in the main
   // document alone.
   if (location.pathname === '/frameless') {

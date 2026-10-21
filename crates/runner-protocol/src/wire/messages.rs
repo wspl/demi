@@ -1966,21 +1966,10 @@ pub enum FileRead {
 pub struct LookPath {
     pub path: String,
     pub limit: u64,
-    /// A directory `path` is under, below which nothing is followed: a
-    /// symbolic link, or a junction on Windows, at `path` or at a directory
-    /// between answers [`Looked::Link`], and nothing behind it is opened
-    /// (`crates/backend-user-shard/src/conversation/workflows.rs`). Absent, links are followed.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    pub within: Option<String>,
 }
 
 /// What an `fs_look` found at one path. A symbolic link at the path is
-/// followed, unless the look names a directory it is `within`; a
-/// directory's entries name a link as a link.
+/// followed; a directory's entries name a link as a link.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -2003,9 +1992,6 @@ pub enum Looked {
     },
     /// Neither a file nor a directory.
     Other,
-    /// A link stands at the path or between it and the directory the look
-    /// named it `within`, and was not followed.
-    Link,
     /// The runner could not read it, such as for want of permission.
     Unreadable {
         #[serde(

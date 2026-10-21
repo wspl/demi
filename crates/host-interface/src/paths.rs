@@ -70,35 +70,13 @@ impl HostPaths {
 
     /// `path` read against `directory` as the Host's own path join reads it,
     /// without taking out `.` and `..`, so the Host, which follows links first,
-    /// decides where they lead.
-    ///
-    /// - An absolute path stays as it is.
-    /// - On Windows a rooted path, `\rules\review.yaml`, is on `directory`'s
-    ///   drive.
-    /// - On Windows a drive-relative path, `C:foo`, stays as it is, for the
-    ///   Host to read against that drive's directory.
-    /// - Any other path is joined to `directory`.
+    /// decides where they lead: an absolute path stays as it is, any other is
+    /// joined to `directory`.
     pub fn beside(self, directory: &str, path: &str) -> String {
-        match self {
-            Self::Posix if path.starts_with('/') => path.to_owned(),
-            Self::Posix => self.join(directory, path),
-            Self::Windows => {
-                use typed_path::{Utf8WindowsComponent, Utf8WindowsPath};
-                let prefix = |path: &str| match Utf8WindowsPath::new(path).components().next() {
-                    Some(Utf8WindowsComponent::Prefix(prefix)) => Some(prefix.as_str().to_owned()),
-                    _ => None,
-                };
-                if prefix(path).is_some() {
-                    // A drive or a share of its own, `C:foo` included,
-                    // which the Host reads against that drive.
-                    path.to_owned()
-                } else if path.starts_with(['\\', '/']) {
-                    // Rooted on the directory's drive.
-                    format!("{}{path}", prefix(directory).unwrap_or_default())
-                } else {
-                    self.join(directory, path)
-                }
-            }
+        if self.is_absolute(path) {
+            path.to_owned()
+        } else {
+            self.join(directory, path)
         }
     }
 

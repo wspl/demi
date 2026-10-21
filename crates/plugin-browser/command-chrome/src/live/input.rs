@@ -373,9 +373,6 @@ async fn release(tab: Option<&BrowserTab>, held: Held) {
                 InputRelease::Mouse(event) => {
                     tab.page().execute(event).await?;
                 }
-                InputRelease::Script(..) => {
-                    unreachable!("a viewer's held input installs no interceptor")
-                }
             }
         }
         if held.touching {

@@ -293,7 +293,7 @@ async fn click_intercepted(
         .run(element::call::<element::ElementState>(
             &element.page,
             element,
-            &element::ELEMENT_STATE,
+            include_str!("element-state.js"),
             vec![
                 json!(["hit"]),
                 json!(false),
@@ -312,29 +312,22 @@ async fn click_intercepted(
         Ok(state) => Err(state.failure()),
         Err(error) => Err(error),
     };
-    // An ended tab took the interceptor along.
-    if tab.ended().is_cancelled() {
+    // A dialog the click opened stops the page's scripts; the interceptor
+    // left once the click's first event landed on the element, which it must
+    // have for the page to open one. An ended tab took it along.
+    if tab.state().dialog.is_open() || tab.ended().is_cancelled() {
         return clicked;
     }
     // Stopped on every other path, cancellation and a failed install
     // included, whose request may have installed it all the same.
-    let stop = element::function_call(
-        element,
-        &element::ELEMENT_STATE,
-        vec![json!([]), json!(false), json!(key), json!(true)],
-    )?;
-    // A dialog, the click's or the page's own, stops the page's scripts:
-    // the dialog's owner stops the interceptor once the dialog closes.
-    if tab.state().dialog.is_open() {
-        tab.state()
-            .dialog
-            .defer(vec![InputRelease::Script(element.page.clone(), stop)])
-            .await;
-        return clicked;
-    }
     let stopped = tokio::time::timeout(
         CONTROL_TIMEOUT,
-        element::evaluated::<Option<String>>(&element.page, stop),
+        element::call::<Option<String>>(
+            &element.page,
+            element,
+            include_str!("element-state.js"),
+            vec![json!([]), json!(false), json!(key), json!(true)],
+        ),
     )
     .await
     .map_err(|_| BrowserError::Timeout)

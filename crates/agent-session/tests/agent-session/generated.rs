@@ -417,7 +417,6 @@ impl Driver {
         .await;
         session
             .update_model(ModelSwitch {
-                compaction_blocked: None,
                 model: Box::new(self::model("gen-a")),
                 runtime: None,
             })
@@ -564,7 +563,6 @@ impl Driver {
                 }
                 let next = if self.session.model().model.id == "gen-a" { "gen-b" } else { "gen-a" };
                 let _ = self.session.update_model(ModelSwitch {
-                    compaction_blocked: None,
                     model: Box::new(model(next)),
                     runtime: None,
                 });

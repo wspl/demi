@@ -16,7 +16,6 @@ use chromiumoxide::{
         input::{DispatchKeyEventParams, DispatchMouseEventParams},
         page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams},
     },
-    cdp::js_protocol::runtime::CallFunctionOnParams,
     listeners::{EventStream, EventStreamError},
 };
 use futures_util::StreamExt;
@@ -28,14 +27,11 @@ use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result};
 /// Requests waiting for the owner; a full queue holds back their senders.
 const REQUESTS: usize = 16;
 
-/// A key or button release a dialog held back, or the cleanup of a click's
-/// hit-target interceptor, which the page's scripts cannot run while a
-/// dialog is open.
+/// A key or button release a dialog held back.
 #[derive(Clone)]
 pub enum InputRelease {
     Mouse(DispatchMouseEventParams),
     Key(DispatchKeyEventParams),
-    Script(Page, CallFunctionOnParams),
 }
 
 type Opening = Option<Arc<EventJavascriptDialogOpening>>;
@@ -239,12 +235,6 @@ impl Owner {
                 match release {
                     InputRelease::Mouse(event) => page.execute(event).await.map(|_| ()),
                     InputRelease::Key(event) => page.execute(event).await.map(|_| ()),
-                    // A document the dialog's answer let navigate took its
-                    // listener along, so a failed cleanup leaves nothing.
-                    InputRelease::Script(frame, call) => {
-                        let _gone = frame.execute(call).await;
-                        Ok(())
-                    }
                 }
             };
             // Chrome does not answer an input event whose handler opened a

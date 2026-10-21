@@ -454,7 +454,6 @@ impl<H: HostResolver> AgentServer<H> {
             None
         };
         Ok(Some(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(model),
             runtime,
         }))

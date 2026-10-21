@@ -999,39 +999,8 @@ async fn a_click_waits_for_its_navigation_not_one_started_before_its_input() {
     .await;
 }
 
-/// A dialog that opens after a click's interceptor is installed and before
-/// its press, with the press then landing elsewhere, leaves no interceptor
-/// behind: once the dialog is closed a click on another element reaches it.
-#[tokio::test]
-#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
-async fn an_interceptor_a_dialog_held_is_stopped_once_it_closes() {
-    with_fixture(|browser, base| async move {
-        let tab = browser
-            .open(&base, &CancellationToken::new(), TIMEOUT)
-            .await?;
-        assert_eq!(
-            command(&tab, "click", json!({"css": "#move-alert"}))
-                .await
-                .unwrap_err()
-                .code()
-                .to_string(),
-            "dialog_blocked"
-        );
-        command(&tab, "dialog.dismiss", json!({})).await?;
-        click(&tab, "#no-nav").await?;
-        assert_eq!(
-            evaluation::evaluate(&tab, "noNavClicks", &CancellationToken::new(), TIMEOUT).await?,
-            1
-        );
-        Ok(())
-    })
-    .await;
-}
-
 /// The locators an action resolves in the main document alone mean what
-/// they mean on the whole page: a role in any case, `--nth` on a reference,
-/// and Playwright's disabled rule, which takes the first valid token of
-/// `role` and the roles elements imply.
+/// they mean on the whole page: a role in any case and `--nth` on a reference.
 #[tokio::test]
 #[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
 async fn main_document_targets_keep_the_whole_pages_meaning() {
@@ -1054,63 +1023,6 @@ async fn main_document_targets_keep_the_whole_pages_meaning() {
             "target_not_found",
             "not_started",
         );
-        for css in ["#role-token-disabled", "#separator-disabled"] {
-            assert_eq!(
-                command(&tab, "read", json!({"css": css, "property": "enabled"})).await?["value"],
-                false,
-                "{css}"
-            );
-        }
-        Ok(())
-    })
-    .await;
-}
-
-/// A command's cleanup that fails partway, as when a dialog keeps a frame's
-/// renderer from answering, forgets only the sessions it released: the
-/// others stay for the next command's cleanup.
-#[tokio::test]
-#[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
-async fn a_cleanup_that_fails_keeps_the_sessions_it_did_not_release() {
-    with_fixture(|browser, base| async move {
-        let first = browser
-            .open(&base, &CancellationToken::new(), TIMEOUT)
-            .await?;
-        let second = browser
-            .open(&base, &CancellationToken::new(), TIMEOUT)
-            .await?;
-        let blocked = second.page().target_id().clone();
-        let mut session = first.state().gate.try_checkout().unwrap();
-        session.references.hold(first.page());
-        session.references.hold(second.page());
-        let mut released = Vec::new();
-        let failed = session
-            .references
-            .release_holders(|page| {
-                let ok = *page.target_id() != blocked;
-                if ok {
-                    released.push(page.target_id().clone());
-                }
-                async move {
-                    if ok {
-                        Ok(())
-                    } else {
-                        Err(demi_command_package_browser_chrome::driver::operation::BrowserError::Timeout)
-                    }
-                }
-            })
-            .await;
-        assert!(failed.is_err());
-        let mut kept = Vec::new();
-        session
-            .references
-            .release_holders(|page| {
-                kept.push(page.target_id().clone());
-                async { Ok(()) }
-            })
-            .await?;
-        assert!(kept.contains(&blocked));
-        assert!(released.iter().all(|id| !kept.contains(id)));
         Ok(())
     })
     .await;
