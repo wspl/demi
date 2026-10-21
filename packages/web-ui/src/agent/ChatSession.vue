@@ -349,10 +349,6 @@ const emit = defineEmits<{
    * context.
    */
   compactSubagent: [id: string]
-  /** Retry in a child's context card, after the read of its cost failed. */
-  retrySubagentCost: [id: string]
-  /** A child's context card opened or closed, which reads its calls or lets them go. */
-  subagentCostCalls: [id: string, wanted: boolean]
   /**
    * A child's context card asks for the usage limits of the account it runs on,
    * `account` of its entry `providerId`, again.
@@ -1034,8 +1030,6 @@ watch(
             :usage-limits="usageLimits"
             :agent-cost="subagentCost"
             @compact-agent="(id) => emit('compactSubagent', id)"
-            @retry-agent-cost="(id) => emit('retrySubagentCost', id)"
-            @agent-cost-calls="(id, wanted) => emit('subagentCostCalls', id, wanted)"
             @refresh-limits="(providerId, account, automatic) => emit('refreshLimits', providerId, account, automatic)"
             @open-instruction="(entry) => emit('openInstruction', entry)"
           />

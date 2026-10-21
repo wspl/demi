@@ -377,8 +377,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"
     :subagent-cost="(id) => store.costShown(conversation!, id)"
-    @retry-subagent-cost="store.retryCalls(conversation!, $event)"
-    @subagent-cost-calls="(id, wanted) => store.wantCalls(conversation!, id, wanted)"
     @refresh-limits="card.refreshLimits"
     @open-instruction="card.openInstruction"
     :automations="wakers"

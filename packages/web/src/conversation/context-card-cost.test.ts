@@ -5,9 +5,8 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 // (`packages/web-ui/src/agent/ContextUsageIndicator.vue`): the cost opens and closes
 // by its own caption whether or not the context's part is there, while it compacts
 // the header still opens the list, one part stands open at a time and the browser
-// keeps which, and the cache chart draws the main conversation's recent calls, from
-// the fourth, at most 40 points that each keep their calls, with the rate over the
-// same calls; and the Profiles part shows the main conversation and the five
+// keeps which, the card opens with the rate and the cache chart the backend counted,
+// which draws its points, their round numbers and their tips; and the Profiles part shows the main conversation and the five
 // profiles the conversation's workflow choice offers that cost the most. The card is web-ui's
 // ContextUsageIndicator, and its Cost section ContextCost, on a page of happy-dom
 // whose elements measure 300 px wide, as a card's chart does; milliseconds.
@@ -41,6 +40,8 @@ const { default: ContextUsageIndicator } = await import('@demicodes/web-ui/agent
 const { default: ContextCost } = await import('@demicodes/web-ui/agent/ContextCost.vue')
 const { workflowProfiles } = await import('@demicodes/web-ui/agent/workflow-menu')
 type CostShown = import('@demicodes/web-ui/agent/context-cost').CostShown
+type CacheChart = import('@demicodes/protocol').CacheChart
+type ChartPoint = import('@demicodes/protocol').ChartPoint
 
 let unmount: (() => void) | null = null
 beforeEach(() => {
@@ -52,29 +53,36 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-/** A turn call whose prompt the cache served at `rate`, a miss for `miss`. */
-function call(rate: number, miss: 'cache_expired' | null = null) {
-  return { startedAt: '2026-09-13T00:00:00.000Z', inputTokens: 100 - rate * 100, cacheWriteTokens: 0, cacheReadTokens: rate * 100, price: 0.5, afterCompaction: false, miss }
+/** The point of calls `first` to `last` at `rate`, as the backend counts it. */
+function point(first: number, last = first, rate = 0.9, misses: ChartPoint['misses'] = []): ChartPoint {
+  const at = '2026-09-13T00:00:00.000Z'
+  const count = last - first + 1
+  return { first, last, rate, from: at, to: at, misses, afterCompaction: false, price: count / 2, rewritten: count === 1 ? 100 : null }
 }
 
-/** `count` turn calls at `rate`. */
-function calls(count: number, rate = 0.9) {
-  return Array.from({ length: count }, () => call(rate))
+/**
+ * The backend's chart of an agent whose latest call is `last`, at 90%: each
+ * point `size` calls from the call `first`; no points before the fourth call.
+ */
+function chartOf(last: number, size = 1, first = 1): CacheChart {
+  const points: ChartPoint[] = []
+  for (let from = first; last >= 4 && from <= last; from += size)
+    points.push(point(from, Math.min(last, from + size - 1)))
+  return { rate: 0.9, size, points }
 }
 
-/** A conversation's cost whose main conversation made `calls`. */
-function costOf(calls: ReturnType<typeof call>[]): CostShown {
+/** A conversation's cost whose main conversation made `calls`, with `chart`. */
+function costOf(calls: number, chart: CacheChart = chartOf(calls)): CostShown {
   return {
     cost: {
       totals: {
-        inputTokens: calls.reduce((sum, next) => sum + next.inputTokens, 0), cacheWriteTokens: 0,
-        cacheReadTokens: calls.reduce((sum, next) => sum + next.cacheReadTokens, 0), outputTokens: 0,
-        price: { total: calls.length / 2, input: null, cacheWrite: null, cacheRead: null, output: null },
+        inputTokens: calls * 10, cacheWriteTokens: 0, cacheReadTokens: calls * 90, outputTokens: 0,
+        price: { total: calls / 2, input: null, cacheWrite: null, cacheRead: null, output: null },
       },
-      calls: calls.length,
+      calls,
       agents: [],
     },
-    calls: { status: 'read', calls: calls.map((each, index) => ({ number: index + 1, ...each })) },
+    chart,
   }
 }
 
@@ -120,12 +128,12 @@ function disclosures(shown: HTMLElement) {
 // stayed closed or did not show at all. With no usage limits either there
 // is no meter, whatever the conversation cost.
 test('the disclosure is there and opens the cost when there is no context estimate, and the list while compacting', async () => {
-  expect(await card({ usage: null, cost: costOf([call(0.9)]) })).toBeNull()
+  expect(await card({ usage: null, cost: costOf(1) })).toBeNull()
   unmount!()
   unmount = null
 
   const limits = { accountLabel: 'alex@example.com', windows: [], autoRefresh: false }
-  const early = await card({ usage: null, limits, cost: costOf([call(0.9), call(0.9)]) })
+  const early = await card({ usage: null, limits, cost: costOf(2) })
   const { context, cost } = disclosures(early)
   expect(context).toBeNull()
   expect(cost?.getAttribute('aria-expanded')).toBe('false')
@@ -136,7 +144,7 @@ test('the disclosure is there and opens the cost when there is no context estima
   unmount!()
   unmount = null
 
-  const compacting = await card({ usage: USAGE, isCompacting: true, cost: costOf([call(0.9)]) })
+  const compacting = await card({ usage: USAGE, isCompacting: true, cost: costOf(1) })
   const list = disclosures(compacting).context
   expect(list?.textContent).toContain('Compacting')
   list!.click()
@@ -148,7 +156,7 @@ test('the disclosure is there and opens the cost when there is no context estima
 // One part stands open at a time, as an accordion's, and a card opened later
 // shows the part the user left open.
 test('opening one part of the card closes the other, and the next card opens the part left open', async () => {
-  const props = { usage: USAGE, cost: costOf([call(0.9), call(0.9)]) }
+  const props = { usage: USAGE, cost: costOf(2) }
   const first = await card(props)
   const { context, cost } = disclosures(first)
   context!.click()
@@ -166,12 +174,14 @@ test('opening one part of the card closes the other, and the next card opens the
 
 /**
  * The opened Cost section of a conversation whose main conversation made
- * `calls`, with the tip of the call at `tip`, by its place, pinned.
+ * `calls` calls, drawn as `chart`, with the tip of the call at `tip`, by its
+ * place, pinned.
  */
-async function chartOf(calls: ReturnType<typeof call>[], tip: number | null = null) {
+async function drawn(chart: CacheChart, tip: number | null = null) {
   const root = document.createElement('div')
   document.body.append(root)
-  const app = createApp({ render: () => h(ContextCost, { open: true, state: costOf(calls), pinnedTip: tip }) })
+  const calls = chart.points.at(-1)?.last ?? 3
+  const app = createApp({ render: () => h(ContextCost, { open: true, state: costOf(calls, chart), pinnedTip: tip }) })
   app.mount(root)
   await nextTick()
   await nextTick()
@@ -188,54 +198,44 @@ async function chartOf(calls: ReturnType<typeof call>[], tip: number | null = nu
   return shown
 }
 
-// The chart draws at most 40 points over the main conversation's last 400
-// calls, a point merging more calls as the conversation grows, and the rate
-// counts the calls the chart draws. Before its fourth call the rate shows
-// alone.
-test('the cache chart merges calls into at most 40 points from the fourth call, and the rate counts the drawn calls', async () => {
-  expect(await chartOf(calls(3))).toMatchObject({ rate: true, points: 0, labels: [] })
-  const points = async (count: number) => (await chartOf(calls(count))).points
-  expect(await points(4)).toBe(4)
-  expect(await points(40)).toBe(40)
-  // Two calls a point from the 41st.
-  expect(await points(41)).toBe(21)
-  expect(await points(200)).toBe(40)
-  expect(await points(1_000)).toBe(40)
-  // The window is the last 400 calls: the 600 before them miss and are not
-  // counted.
-  expect((await chartOf([...calls(600, 0), ...calls(400)])).rate).toBe(true)
+// The context card opens whole: the rate and the chart are the backend's,
+// which came with the agent's node, so the card's first frame shows both and
+// reads nothing (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
+// Before, the card read the calls as it opened and grew once they came.
+test('a context card opens with the rate and the cache chart in its first frame', async () => {
+  const shown = await card({ usage: USAGE, expanded: 'cost', cost: costOf(12) })
+  expect(shown.textContent).toContain('Cache hit rate90%')
+  expect(shown.querySelector('.cost-chart-line')?.getAttribute('d')?.match(/[ML]/g)).toHaveLength(12)
 })
 
-// A point holds the calls of its block of k from call 1, and the window starts
-// at a block, so a new call changes only the last point: at 401 calls the
-// window is calls 11 to 401, never 2 to 401.
-test('a point keeps its calls as new calls arrive, and its tip names their numbers, rate, price and misses', async () => {
-  expect((await chartOf(calls(400), 10)).tip).toStartWith('#11–#20')
-  expect((await chartOf(calls(409), 10)).tip).toStartWith('#11–#20')
-  // The ten calls before the window miss: the rate counts none of them.
-  const moved = await chartOf([...calls(10, 0), ...calls(391)], 10)
-  expect(moved.points).toBe(40)
-  expect(moved.rate).toBe(true)
-  expect(moved.tip).toStartWith('#11–#20')
-  // The last group holds the calls made so far.
-  expect((await chartOf(calls(199), 197)).tip).toStartWith('#196–#199')
+// The chart draws the points the backend sent, and without points the rate
+// shows alone, as before an agent's fourth call.
+test('the cache chart draws the backend\'s points, and the rate shows alone without them', async () => {
+  expect(await drawn(chartOf(3))).toMatchObject({ rate: true, points: 0, labels: [] })
+  expect((await drawn(chartOf(41, 2))).points).toBe(21)
+  expect((await drawn(chartOf(1_000, 10, 601))).points).toBe(40)
+})
 
-  const missed = [...calls(200)]
-  missed[127] = call(0, 'cache_expired')
-  const group = await chartOf(missed, 127)
+// A tip says what its point holds: a group's numbers, time, rate, misses
+// and price, or one call's own.
+test('a point\'s tip names its calls\' numbers, rate, price and misses, and a one-call point is the call\'s own', async () => {
+  const missed = chartOf(200, 5)
+  missed.points[25] = point(126, 130, 0.72, ['cache_expired'])
+  const group = await drawn(missed, 127)
   expect(group.misses).toBe(1)
   expect(group.tip).toBe('#126–#130Sep 13 at 12:00 AMCache hit rate72%Cache miss · Cache expiredEquivalent API price$2.50')
+  // The last point holds the calls made so far.
+  expect((await drawn(chartOf(199, 5), 197)).tip).toStartWith('#196–#199')
   // One call a point: the call's own tip.
-  expect((await chartOf(calls(12), 4)).tip).toStartWith('Request #5')
+  expect((await drawn(chartOf(12), 4)).tip).toStartWith('Request #5')
 })
 
 // The numbers under the chart are round, 1, 2 or 5 times a power of ten,
 // about one for each 60 px of its 300, and none forced at either end.
 test('the numbers under the chart are round, about one for each 60 px', async () => {
-  const labels = async (count: number) => (await chartOf(calls(count))).labels
-  expect(await labels(12)).toEqual(['2', '4', '6', '8', '10', '12'])
-  expect(await labels(49)).toEqual(['10', '20', '30', '40'])
-  expect(await labels(1_000)).toEqual(['700', '800', '900'])
+  expect((await drawn(chartOf(12))).labels).toEqual(['2', '4', '6', '8', '10', '12'])
+  expect((await drawn(chartOf(49, 2))).labels).toEqual(['10', '20', '30', '40'])
+  expect((await drawn(chartOf(1_000, 10, 601))).labels).toEqual(['700', '800', '900'])
 })
 
 test('the Profiles part shows the main conversation and each profile the workflow choice offers that ran subagents', async () => {
@@ -267,7 +267,7 @@ test('the Profiles part shows the main conversation and each profile the workflo
     const root = document.createElement('div')
     document.body.append(root)
     const app = createApp({
-      render: () => h(ContextCost, { open: true, state: { cost, calls: null }, profiles: workflowProfiles(choice, list, global) }),
+      render: () => h(ContextCost, { open: true, state: { cost, chart: null }, profiles: workflowProfiles(choice, list, global) }),
     })
     app.mount(root)
     await nextTick()
@@ -289,12 +289,12 @@ test('the Profiles part shows the main conversation and each profile the workflo
 test('the Profiles part shows the main conversation and the five profiles that cost the most, largest first', async () => {
   const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
   const cost = {
-    ...costOf([call(0.9)]).cost,
+    ...costOf(1).cost,
     agents: [{ agent: 0, profile: null, price: 0.5 }, ...names.map((name, index) => ({ agent: index + 1, profile: name, price: index + 1 }))],
   }
   const root = document.createElement('div')
   document.body.append(root)
-  const app = createApp({ render: () => h(ContextCost, { open: true, state: { cost, calls: null }, profiles: names }) })
+  const app = createApp({ render: () => h(ContextCost, { open: true, state: { cost, chart: null }, profiles: names }) })
   app.mount(root)
   await nextTick()
   const caption = [...root.querySelectorAll('.cost-caption')].find((element) => element.textContent?.trim() === 'Profiles')!
@@ -309,7 +309,7 @@ test('the Profiles part shows the main conversation and the five profiles that c
 // compatible entry without catalog prices showed four labels and no figures.
 test('the price by kind leaves out each kind with no price, and with none priced there is no grid', async () => {
   const shown = async (input: number | null) => {
-    const plain = costOf([call(0.9)])
+    const plain = costOf(1)
     const state = { ...plain, cost: { ...plain.cost, totals: { ...plain.cost.totals, price: { ...plain.cost.totals.price, input } } } }
     const root = document.createElement('div')
     document.body.append(root)

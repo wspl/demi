@@ -48,6 +48,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'remove_result'>
   | ServerFrameOf<'abort_result'>
   | ServerFrameOf<'shell_output'>
+  | ServerFrameOf<'cache_chart'>
   | ServerFrameOf<'shell_write_result'>
   | ServerFrameOf<'retry_scheduled'>
   | ServerFrameOf<'error'>

@@ -366,12 +366,14 @@ impl Socket {
     }
 
     /// Opens the conversation, with the model its record holds, showing its
-    /// root, and reads the handshake to the root's transcript.
+    /// root, and reads the handshake to the root's transcript and cache
+    /// chart.
     pub(crate) async fn open(&mut self) -> Vec<ServerFrame> {
         self.send(&ClientFrame::Subscribe { node: self.root.clone(), held: None }).await;
         self.send(&ClientFrame::Open { agents: None, draft: None }).await;
+        let root = self.root.clone();
         let handshake = self
-            .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
+            .until(|frame| matches!(frame, ServerFrame::CacheChart { node, .. } if node == &root))
             .await;
         assert_eq!(
             handshake.first(),
@@ -1099,7 +1101,8 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
             "opened",
             "agents",
             "request_output",
-            "transcript_reset"
+            "transcript_reset",
+            "cache_chart"
         ]
     );
     vendor.respond(answer(&["Hello", " there."], 12, 3));
@@ -1246,7 +1249,10 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     drop(socket);
     let mut reloaded = Socket::connect(&backend, &master, FIRST).await;
     let handshake = reloaded.open().await;
-    let Some(ServerFrame::TranscriptReset { blocks, .. }) = handshake.last() else {
+    let Some(blocks) = handshake.iter().find_map(|frame| match frame {
+        ServerFrame::TranscriptReset { blocks, .. } => Some(blocks),
+        _ => None,
+    }) else {
         panic!("{handshake:?}");
     };
     assert_eq!(*blocks, live);

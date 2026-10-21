@@ -82,8 +82,8 @@ const props = defineProps<{
   limits: UsageLimits | null
   /**
    * The child's own cost, from its metadata, which its context card shows
-   * without the Profiles part, with the calls the host reads while the card
-   * is open. Absent, the card shows none.
+   * without the Profiles part, with its cache chart. Absent, the card shows
+   * none.
    */
   cost?: CostShown | null
 }>()
@@ -92,10 +92,6 @@ const emit = defineEmits<{
   compact: []
   openInstruction: [entry: InstructionEntry]
   refreshLimits: [automatic: boolean]
-  /** Read the child's calls again after a read that failed. */
-  retryCost: []
-  /** The child's card opened or closed, which reads its calls or lets them go. */
-  costCalls: [wanted: boolean]
 }>()
 
 const icons = useIconPx()
@@ -207,8 +203,6 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
         @compact="emit('compact')"
         @open-instruction="emit('openInstruction', $event)"
         @refresh-limits="emit('refreshLimits', $event)"
-        @retry-cost="emit('retryCost')"
-        @cost-calls="emit('costCalls', $event)"
       />
     </div>
   </div>

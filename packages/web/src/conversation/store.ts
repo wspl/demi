@@ -5,7 +5,7 @@ import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { NO_COST, agentCost, conversationCost, withCalls, type CostShown } from '@demicodes/web-ui/agent/context-cost'
+import { NO_COST, agentCost, conversationCost, type CostShown } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -67,7 +67,6 @@ import { connectConversationClient, takeConnection } from '@demicodes/web-ui/tra
 import type { ConversationClient } from '@demicodes/web-ui/transport/protocol'
 import { REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
-  agentCallsSchema,
   attachedHostsSchema,
   batchAnswerSchema,
   createdConversationSchema,
@@ -473,7 +472,7 @@ export const useConversations = defineStore('conversations', () => {
       failures: {},
       contextUsage: null,
       cost: NO_COST,
-      calls: {},
+      charts: {},
     }
   }
 
@@ -1381,9 +1380,6 @@ export const useConversations = defineStore('conversations', () => {
       shown: () => shownBefore || conversation.history.windows.length > 0,
       onEvent: (next) => {
         applyConversationEvent(conversation, next)
-        if (next.type === 'agents' || next.type === 'agent') {
-          readNewCalls(conversation)
-        }
         reconcileSubmission(conversation)
       },
     })
@@ -1431,7 +1427,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.agentsHeld = null
     conversation.lastError = null
     conversation.cost = NO_COST
-    conversation.calls = {}
+    conversation.charts = {}
     clearSession(conversation)
   }
 
@@ -1508,7 +1504,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     closedChildren.set(conversation.id, closed)
     for (const child of dropped) {
-      delete conversation.calls[child]
+      delete conversation.charts[child]
       childrenRead.delete(child)
     }
     for (const id of ids.filter((each) => !childrenRead.has(each))) {
@@ -1538,100 +1534,16 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * What the context card of the conversation, `node` null, or of its
    * agent `node`, shows of their cost: from their agents' metadata, with
-   * the calls the card holds while it is open.
+   * the cache chart of the node it shows.
    */
   function costShown(conversation: Conversation, node: string | null = null): CostShown | null {
-    const calls = conversation.calls[node ?? conversation.id] ?? null
+    const chart = conversation.charts[node ?? conversation.id] ?? null
     if (node === null) {
       const other = conversation.metadata.shown.value?.otherCost ?? NO_COST
-      return { cost: conversationCost(conversation.cost, conversation.subagents, other), calls }
+      return { cost: conversationCost(conversation.cost, conversation.subagents, other), chart }
     }
     const agent = conversation.subagents.find((each) => each.id === node)
-    return agent ? { cost: agentCost(agent.cost), calls } : null
-  }
-
-  /**
-   * The context card of `node`, the root's for null, opened or closed: an
-   * opened card reads its agent's recent calls, and a closed one lets them
-   * go.
-   */
-  function wantCalls(conversation: Conversation, node: string | null, wanted: boolean): void {
-    const id = node ?? conversation.id
-    if (!wanted) {
-      delete conversation.calls[id]
-      return
-    }
-    if (!conversation.calls[id]) {
-      void readCalls(conversation, id)
-    }
-  }
-
-  /** Retry in a context card whose calls did not read. */
-  function retryCalls(conversation: Conversation, node: string | null = null): void {
-    const id = node ?? conversation.id
-    if (conversation.calls[id]?.status === 'failed') {
-      void readCalls(conversation, id)
-    }
-  }
-
-  /** The calls the entry of node `id` counts. */
-  function countedCalls(conversation: Conversation, id: string): number {
-    return id === conversation.id ? conversation.cost.calls : conversation.subagents.find((agent) => agent.id === id)?.cost.calls ?? 0
-  }
-
-  /** Each open card whose agent's entry counts more calls than it holds reads those after its last. */
-  function readNewCalls(conversation: Conversation): void {
-    for (const [id, state] of Object.entries(conversation.calls)) {
-      const last = state.status === 'read' ? state.calls.at(-1)?.number ?? 0 : null
-      if (last !== null && countedCalls(conversation, id) > last) {
-        void readCalls(conversation, id)
-      }
-    }
-  }
-
-  /** The reads of calls on their way, by conversation and node, one at a time each. */
-  const callReads = new Set<string>()
-
-  /**
-   * Reads the recent calls of node `id`, those after the last the card
-   * holds, while its card stays open; a card closed meanwhile takes none.
-   */
-  async function readCalls(conversation: Conversation, id: string): Promise<void> {
-    const key = `${conversation.id}/${id}`
-    if (callReads.has(key)) {
-      return
-    }
-    callReads.add(key)
-    let brought = false
-    const held = conversation.calls[id]
-    const calls = held?.status === 'read' ? held.calls : []
-    if (held?.status !== 'read') {
-      conversation.calls[id] = { status: 'reading' }
-    }
-    try {
-      const after = calls.at(-1)?.number
-      const query = after === undefined ? '' : `?after=${after}`
-      const response = await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/agents/${encodeURIComponent(id)}/calls${query}`,
-        { signal: lifetime.signal },
-      )
-      const answer = await readResponse(response, agentCallsSchema)
-      brought = answer.calls.length > 0
-      if (conversation.calls[id]) {
-        conversation.calls[id] = { status: 'read', calls: withCalls(calls, answer.calls) }
-      }
-    } catch (error) {
-      if (conversation.calls[id] && !lifetime.signal.aborted) {
-        conversation.calls[id] = { status: 'failed', error: shownError(error) }
-      }
-    } finally {
-      callReads.delete(key)
-    }
-    // Calls the entry counted while the read was on its way are read next.
-    const state = conversation.calls[id]
-    if (brought && state?.status === 'read' && countedCalls(conversation, id) > (state.calls.at(-1)?.number ?? 0)) {
-      void readCalls(conversation, id)
-    }
+    return agent ? { cost: agentCost(agent.cost), chart } : null
   }
 
   /**
@@ -3637,8 +3549,6 @@ export const useConversations = defineStore('conversations', () => {
     metadataOf: (id: string): ConversationMetadata | null =>
       items.value.find((item) => item.id === id)?.metadata.shown.value ?? null,
     costShown,
-    wantCalls,
-    retryCalls,
     /**
      * Whether the page has, or is opening, a session of the conversation,
      * which sends a live child's transcript once the page shows it

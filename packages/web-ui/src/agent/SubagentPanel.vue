@@ -85,10 +85,6 @@ const emit = defineEmits<{
   refreshLimits: [providerId: string, account: string | null, automatic: boolean]
   /** An instruction in the child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
-  /** Retry in the shown child's context card, after its cost's read failed. */
-  retryAgentCost: [id: string]
-  /** The shown child's card opened or closed, which reads its calls or lets them go. */
-  agentCostCalls: [id: string, wanted: boolean]
 }>()
 /**
  * Whether the panel is open, and the child it shows. None leaves it open,
@@ -301,8 +297,6 @@ function closeTab(id: string): void {
         :limits="context?.limits ?? null"
         :cost="agentCost?.(active.id)"
         @compact="emit('compactAgent', active.id)"
-        @retry-cost="emit('retryAgentCost', active.id)"
-        @cost-calls="emit('agentCostCalls', active.id, $event)"
         @open-instruction="emit('openInstruction', $event)"
         @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null, $event)"
       />

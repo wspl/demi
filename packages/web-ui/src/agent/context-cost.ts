@@ -1,5 +1,4 @@
-import type { AgentCost, CostCall, CostPrice, CostTotals } from '@demicodes/protocol'
-import type { ShownError } from '../infra/errors'
+import type { AgentCost, CacheChart, CostPrice, CostTotals } from '@demicodes/protocol'
 import { t } from './locales/text'
 
 /**
@@ -24,21 +23,14 @@ export interface AgentPrice {
 }
 
 /**
- * The turn calls of the agent a card shows, which the cache chart and rate
- * draw: read when the card opens, the recent ones only, and read on from the
- * last held as the agent's entry counts more; or the failure of a read,
- * which the section says with Retry.
+ * What a card's Cost section shows: the cost, and the cache chart of the
+ * agent it shows, which the backend counts and sends with the agent's node
+ * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
  */
-export type CallsState =
-  | { status: 'reading' }
-  | { status: 'read', calls: CostCall[] }
-  | { status: 'failed', error: ShownError }
-
-/** What a card's Cost section shows: the cost, and the calls while the card holds them. */
 export interface CostShown {
   cost: ConversationCostView
-  /** Null while the card is closed, when nothing reads them. */
-  calls: CallsState | null
+  /** Null until the agent's node first brought it. */
+  chart: CacheChart | null
 }
 
 const NO_PRICE: CostPrice = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
@@ -104,88 +96,6 @@ export function conversationCost(
 /** One agent's own cost, as its window's card shows it. */
 export function agentCost(cost: AgentCost): ConversationCostView {
   return { totals: cost.totals, calls: cost.calls, agents: [] }
-}
-
-/**
- * The calls `held` with those a read after its last brought, `read`: a call
- * the page holds already stays once, and only the recent `CHART_WINDOW` are
- * kept.
- */
-export function withCalls(held: readonly CostCall[], read: readonly CostCall[]): CostCall[] {
-  const last = held.at(-1)?.number ?? 0
-  return [...held, ...read.filter((call) => call.number > last)].slice(-CHART_WINDOW)
-}
-
-/**
- * The tokens of a call's prompt: uncached, written to the cache and read from
- * it.
- */
-function prompt(call: Pick<CostCall, 'inputTokens' | 'cacheWriteTokens' | 'cacheReadTokens'>): number {
-  return call.inputTokens + call.cacheWriteTokens + call.cacheReadTokens
-}
-
-/**
- * The share of a call's prompt the vendor read from its cache; 0 for an empty
- * prompt.
- */
-export function callHitRate(call: CostCall): number {
-  const whole = prompt(call)
-  return whole === 0 ? 0 : call.cacheReadTokens / whole
-}
-
-/** The hit rate over `calls`; null without a call that sent a prompt. */
-export function hitRate(calls: readonly CostCall[]): number | null {
-  const whole = calls.reduce((sum, call) => sum + prompt(call), 0)
-  return whole === 0 ? null : calls.reduce((sum, call) => sum + call.cacheReadTokens, 0) / whole
-}
-
-/**
- * The turn calls of an agent from which the cache chart, and its switch,
- * shows: with fewer, a line says nothing a user can read and
- * the rate alone says it.
- */
-export const CHART_CALLS = 4
-
-/** The most recent turn calls the chart can draw, and the cache hit rate count. */
-export const CHART_WINDOW = 400
-
-/**
- * The points the chart draws at most: past them a point stands for several
- * calls, so a long conversation's line stays readable.
- */
-export const CHART_POINTS = 40
-
-/** Consecutive turn calls the chart draws as one point. */
-export interface CallGroup {
-  /** The number of its first call in the conversation, from 1. */
-  first: number
-  calls: readonly CostCall[]
-}
-
-/**
- * An agent's recent turn calls as the chart draws them: groups of `size`
- * calls counted from its call 1, the most recent `CHART_POINTS` of them, and
- * the calls they hold, which the cache hit rate counts.
- *
- * The groups keep their place among the agent's calls and the window starts
- * at a group's first call, so a new call changes only the last group, never
- * the calls of another point.
- */
-export function chartGroups(calls: readonly CostCall[]): { size: number, groups: CallGroup[], calls: readonly CostCall[] } {
-  const last = calls.at(-1)?.number ?? 0
-  const size = Math.max(1, Math.ceil(Math.min(last, CHART_WINDOW) / CHART_POINTS))
-  const first = Math.max(0, Math.ceil(last / size) - CHART_POINTS) * size + 1
-  const shown = calls.filter((call) => call.number >= first)
-  const groups: CallGroup[] = []
-  for (const call of shown) {
-    const start = Math.floor((call.number - 1) / size) * size + 1
-    const group = groups.at(-1)
-    if (group?.first === start)
-      (group.calls as CostCall[]).push(call)
-    else
-      groups.push({ first: start, calls: [call] })
-  }
-  return { size, groups, calls: shown }
 }
 
 /**

@@ -1,22 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { pageLanguage } from '../i18n/text'
-import { t as shared } from '../locales/text'
-import Button from '../ui/Button.vue'
 import Fold from '../ui/Fold.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
 import { ICON_PX } from '../ui/icon-metrics'
-import RequestIdLine from '../ui/RequestIdLine.vue'
 import SectionRow from '../ui/SectionRow.vue'
 import { formatDollars } from '../ui/numbers'
 import CacheHitChart from './CacheHitChart.vue'
-import {
-  type CostShown,
-  CHART_CALLS,
-  chartGroups,
-  hitRate,
-  profileRows,
-} from './context-cost'
+import { type CostShown, profileRows } from './context-cost'
 import { t } from './locales/text'
 
 /**
@@ -30,11 +21,13 @@ import { t } from './locales/text'
  * - the price by kind of token, two by two
  * - the share of the profiles the conversation's workflow offers, in two
  *   columns
- * - the chart of the main conversation's recent cache hits
+ * - the chart of the agent's recent cache hits
  *
- * A figure that cannot be computed is left out with its label: the rate
- * and the chart while the calls are being read. A read of the calls that
- * failed says so under the caption, with its request's id and Retry.
+ * The rate and the chart are the backend's, which come with the agent's
+ * node (`docs/decisions/0019-the-server-counts-the-cache-chart.md`), so the
+ * section opens with them. A figure the section does not have is left out
+ * with its label: the rate of an agent that sent no prompt yet, and the
+ * chart before its fourth call.
  */
 const props = defineProps<{
   state: CostShown
@@ -54,29 +47,16 @@ const props = defineProps<{
   profiles?: readonly string[]
 }>()
 const emit = defineEmits<{
-  /** Read the calls again after a read that failed. */
-  retry: []
   /** The caption was clicked, which opens or closes the section. */
   toggle: []
 }>()
 
 const cost = computed(() => props.state.cost)
-/** The calls the rate and the chart count, once read. */
-const calls = computed(() => (props.state.calls?.status === 'read' ? props.state.calls.calls : []))
-const failed = computed(() => (props.state.calls?.status === 'failed' ? props.state.calls.error : null))
+const chart = computed(() => props.state.chart)
 
 const price = computed(() => cost.value?.totals.price.total ?? null)
-/**
- * The main conversation's recent calls, which the rate counts and the chart
- * draws.
- */
-const recent = computed(() => chartGroups(calls.value))
-const rate = computed(() => hitRate(recent.value.calls))
+const rate = computed(() => chart.value?.rate ?? null)
 const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 0 })
-/**
- * The chart shows once the main conversation made enough calls to draw a line.
- */
-const charted = computed(() => recent.value.calls.length >= CHART_CALLS)
 
 /** The two figures of the closed section, each that can be computed. */
 const figures = computed(() => [
@@ -123,13 +103,6 @@ function share(price: number): string {
         </template>
       </SectionRow>
     </button>
-    <div v-if="failed" class="px-3 pb-2 text-detail leading-4 text-fg-subtle">
-      <div class="flex items-center gap-3">
-        <p class="min-w-0 flex-1 break-words">{{ t('context.cost.loadFailed') }}</p>
-        <Button size="sm" @click="emit('retry')">{{ shared('common.retry') }}</Button>
-      </div>
-      <RequestIdLine v-if="failed.requestId" :request-id="failed.requestId" />
-    </div>
     <!--
       Closed, two figures side by side: the price at the text's left edge, the
       rate at the middle.
@@ -172,8 +145,8 @@ function share(price: number): string {
             <span class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
           </span>
         </div>
-        <div v-if="charted" class="px-3">
-          <CacheHitChart :groups="recent.groups" :size="recent.size" :pinned-tip="pinnedTip" />
+        <div v-if="chart && chart.points.length > 0" class="px-3">
+          <CacheHitChart :chart="chart" :pinned-tip="pinnedTip" />
         </div>
       </template>
     </Fold>

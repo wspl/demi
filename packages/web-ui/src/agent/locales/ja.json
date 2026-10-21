@@ -347,7 +347,6 @@
       "title": "コスト",
       "price": "API 換算価格",
       "hitRate": "キャッシュヒット率",
-      "loadFailed": "コストを読み込めませんでした。",
       "kind": {
         "input": "入力",
         "cacheWrite": "キャッシュ書き込み",

@@ -945,6 +945,7 @@ export class ConversationClient {
       case 'edit_result':
       case 'remove_result':
       case 'shell_output':
+      case 'cache_chart':
       case 'shell_write_result':
       case 'retry_scheduled':
         this.emit(frame)

@@ -22,10 +22,11 @@
 //! open { agents, draft } ------------> attach to the live tree
 //!                         <----------- opened
 //!                         <----------- agents { version, since? }
-//!                         <----------- queue, pending_steers,
-//!                                      request_output
+//!                         <----------- request_output
 //!                         <----------- transcript_reset { node }, each
 //!                                      subscribed live node held stale
+//!                         <----------- cache_chart { node }, each
+//!                                      subscribed agent
 //!                         <----------- shell_output, each live command
 //!                         <----------- transcript_patch { node, revision }
 //!                         <----------- agent { revision }
@@ -37,7 +38,8 @@
 //! # Versions
 //!
 //! Every collection carries a [`Version`]: a node's transcript, the agents of
-//! a conversation.
+//! a conversation. A node's cache chart needs none: it travels whole each
+//! time, and the latest frame is the current chart.
 //!
 //! - A change carries the revision one past the previous one of its
 //!   collection. A client applies a change whose revision is one past its own,
@@ -71,7 +73,7 @@ pub use client::{
     ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery,
 };
 pub use agents::{AgentEntry, AgentRole, HeldEdge, SideQuestion, Subagent};
-pub use cost::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
+pub use cost::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,

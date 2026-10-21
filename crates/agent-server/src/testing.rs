@@ -11,7 +11,7 @@ use std::{
 
 use demi_agent_store::{media::HeldMedia, testing::test_model};
 use demi_agent_tools::{HostResolver, ProfileModel, Unavailable};
-use demi_conversation_socket_protocol::{AgentEntry, AgentRole, ClientContent, ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{AgentEntry, AgentRole, CacheChart, ClientContent, ClientFrame, ServerFrame};
 use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
 use demi_shared_types::{ContextUsage, ModelSelection, NodeId, ProviderModel, SessionPhase, UnavailableSetting, UserContentBlock};
 use futures_util::future::LocalBoxFuture;
@@ -226,6 +226,10 @@ pub struct NoKeptAgents;
 impl AgentsSource for NoKeptAgents {
     fn kept<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, KeptAgents> {
         Box::pin(async { KeptAgents::default() })
+    }
+
+    fn charts<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, HashMap<u64, CacheChart>> {
+        Box::pin(async { HashMap::new() })
     }
 }
 

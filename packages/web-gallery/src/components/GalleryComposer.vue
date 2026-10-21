@@ -827,8 +827,6 @@ onBeforeUnmount(() => {
     :instructions="demoInstructions"
     :cost="cardCost.cost.value"
     :cost-profiles="costProfiles"
-    @retry-cost="cardCost.retry"
-    @cost-calls="cardCost.calls"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
     :saved="savedRows"

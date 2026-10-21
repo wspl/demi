@@ -5,7 +5,6 @@
 //!
 //! - one page of its transcript at a time, in light form;
 //! - a block whole;
-//! - its recent turn calls, which a context card's cache chart plots;
 //!
 //! and where the call that started a command lies.
 //!
@@ -17,13 +16,11 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
-use demi_backend_database::usage::CHART_CALLS;
 use demi_backend_user_shard::conversation::failure_facts;
 use demi_conversation_socket_protocol::{index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::usage::{AgentCalls, CallsQuery};
 
 use super::AppState;
 use super::conversations::owned;
@@ -176,37 +173,6 @@ pub(super) fn block_answer(
         Some(BlockRead::NoNode) => Err(no_node()),
         Some(BlockRead::NoBlock) | None => Err(no_block()),
     }
-}
-
-/// `GET /conversations/:id/agents/:node/calls`: the agent's recent turn calls
-/// after the one `?after=` names, which its context card's cache chart plots
-/// (`crates/backend-database/src/usage.rs`). A side question's rows are the
-/// root's, so it, like a node the conversation lacks, has none of its own.
-pub(super) async fn calls(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, node)): Path<(String, String)>,
-    QueryParams(query): QueryParams<CallsQuery>,
-) -> Result<Json<AgentCalls>, ApiError> {
-    let services = &state.services;
-    let record = owned(services, &user.id, &id).await?;
-    let node = NodeId::try_from(node).map_err(|_| no_node())?;
-    let number = services
-        .conversations
-        .read(&record.id, move |connection| tree::agent_number(connection, &node))
-        .await
-        .map_err(ApiError::conversation_unreadable)?
-        .flatten();
-    let calls = match number {
-        Some(agent) => {
-            services
-                .control
-                .agent_calls(record.id.clone(), agent, query.after.unwrap_or(0), CHART_CALLS)
-                .await?
-        }
-        None => Vec::new(),
-    };
-    Ok(Json(AgentCalls { calls }))
 }
 
 /// `GET /conversations/:id/commands/:commandId`: where the call that started

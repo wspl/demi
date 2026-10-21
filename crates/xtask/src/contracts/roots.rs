@@ -77,10 +77,6 @@ pub fn protocol() -> Vec<Root> {
         // Every user stream takes it, over the relay and the direct channel
         // alike (`packages/web-ui/src/plugins/streams.ts`).
         sends::<direct::StreamWatched>(),
-        // An agent's turn call, which the calls read brings and web-ui's
-        // cache chart draws, and no frame carries
-        // (`packages/web-ui/src/agent/context-cost.ts`).
-        receives::<frames::CostCall>(),
         // The speed of the root's last turn, which the conversation's
         // metadata carries and web-ui's reading of the chips row shows
         // (`packages/web-ui/src/agent/request-output.ts`).
@@ -254,7 +250,6 @@ pub fn web() -> Vec<Root> {
         receives::<files::GitCommit>(),
         receives::<usage::UsageTotals>(),
         receives::<usage::InstanceUsage>(),
-        receives::<usage::AgentCalls>(),
         receives::<users::Users>(),
         sends::<users::CreateUser>(),
         receives::<users::CreatedUser>(),

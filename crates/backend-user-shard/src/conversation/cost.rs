@@ -5,11 +5,13 @@
 //!    announces the row with what its agent costs now.
 //! 2. The backend hands the row to its user's shard.
 //! 3. The shard tells the conversation's live tree, whose agent entry of that
-//!    agent changes (`crates/agent-server/src/server/tree/agents.rs`); a row
-//!    of no agent, such as a title's, changes the conversation's metadata.
+//!    agent changes, with its cache chart for a turn call
+//!    (`crates/agent-server/src/server/tree/agents.rs`); a row of no agent,
+//!    such as a title's, changes the conversation's metadata.
 //!
-//! Nothing reads the ledger to announce a row, and a conversation whose tree
-//! is not live is told nothing: its tree reads what is kept when it opens.
+//! Nothing reads the ledger again to announce a row: the chart is counted in
+//! the row's write. A conversation whose tree is not live is told nothing:
+//! its tree reads what is kept when it opens.
 
 use std::rc::Rc;
 
@@ -27,7 +29,7 @@ impl Shard {
         match written.agent {
             Some(agent) => {
                 if let Some(tree) = self.agent().tree(&root_of(&written.conversation)) {
-                    tree.cost_changed(agent, written.cost);
+                    tree.cost_changed(agent, written.cost, written.chart);
                 }
             }
             None => self.mark(Part::Metadata(written.conversation)),

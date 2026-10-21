@@ -108,6 +108,10 @@ export function applyConversationEvent(
         : applyTranscriptPatches(record.history, event.patches, performance.now(), event.version)
       record.failures = { ...record.failures, ...event.failures }
     }
+  } else if (event.type === 'cache_chart') {
+    // The node's chart whole, the backend's count of its agent's recent
+    // calls, which its context card draws.
+    conversation.charts[event.node] = event.chart
   } else if (event.type === 'opened') {
     // The open's snapshot brings every running command of the nodes the
     // page shows, and the page's running commands are those: one that ended

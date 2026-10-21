@@ -347,7 +347,6 @@
       "title": "비용",
       "price": "API 환산 가격",
       "hitRate": "캐시 적중률",
-      "loadFailed": "비용을 불러올 수 없습니다.",
       "kind": {
         "input": "입력",
         "cacheWrite": "캐시 쓰기",

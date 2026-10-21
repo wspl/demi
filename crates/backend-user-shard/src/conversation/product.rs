@@ -16,7 +16,7 @@ use demi_agent_tools::{
     ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
     runs_on as job_model,
 };
-use demi_conversation_socket_protocol::JobModel;
+use demi_conversation_socket_protocol::{CacheChart, JobModel};
 use demi_shared_types::{ModelSelection, NodeId};
 
 use super::runs_on::runs_on;
@@ -379,8 +379,8 @@ impl ContextSource for PluginContext {
     }
 }
 
-/// What the backend keeps of a conversation's agents that their entries
-/// show: each agent's cost, kept with the usage ledger
+/// What the backend keeps of a conversation's agents that the tree shows:
+/// each agent's cost and, read apart, its cache chart, from the usage ledger
 /// (`crates/backend-database/src/usage.rs`), and each side question's card.
 pub(crate) struct ShardAgents {
     /// Weak: the shard owns the agent server that holds the source.
@@ -430,6 +430,31 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                 ),
             }
             kept
+        })
+    }
+
+    fn charts<'a>(
+        &'a self,
+        root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, std::collections::HashMap<u64, CacheChart>> {
+        Box::pin(async move {
+            let Some(shard) = self.shard.upgrade() else {
+                return std::collections::HashMap::new();
+            };
+            let conversation = demi_backend_host_access::conversation_of(root);
+            match shard.services().control.conversation_charts(conversation.clone()).await {
+                Ok(charts) => charts.into_iter().collect(),
+                // The cards show no rate and no chart until the agent's next
+                // turn call.
+                Err(error) => {
+                    tracing::warn!(
+                        %conversation,
+                        error = &error as &dyn std::error::Error,
+                        "a conversation's cache charts were not read"
+                    );
+                    std::collections::HashMap::new()
+                }
+            }
         })
     }
 }
