@@ -50,15 +50,10 @@ pub(crate) struct MirrorLine {
     pub(crate) entries: Vec<serde_json::Value>,
 }
 
-/// A user message the CLI printed: one written to it, printed back as the
-/// CLI takes it into a turn (`--replay-user-messages`), or the results of
-/// tool calls, which it prints as it sends them.
+/// A user message the CLI printed: the results of tool calls, which it
+/// prints as it sends them. They count for nothing.
 #[derive(Deserialize)]
-pub(crate) struct UserLine {
-    /// Set on a message written to the CLI that it printed back.
-    #[serde(default, rename = "isReplay")]
-    pub(crate) is_replay: bool,
-}
+pub(crate) struct UserLine {}
 
 /// A whole assistant message. With partial messages the CLI streams the
 /// message first; its tool uses are read from here, since here their input
@@ -352,6 +347,11 @@ pub(crate) struct ResultLine {
     /// ([`USAGE_LIMIT`]).
     #[serde(default)]
     api_error: ReportedString,
+    /// The client ids of every user message the turn consumed, all of a batch
+    /// the CLI merged into the turn among them; absent for a turn that
+    /// consumed none, such as one a resumed session's input started.
+    #[serde(default)]
+    user_message_uuids: Vec<String>,
 }
 
 /// The token counts of the CLI's latest API call, which the response carries.
@@ -726,6 +726,11 @@ pub(crate) enum TurnEnd {
 }
 
 impl ResultLine {
+    /// Whether the turn consumed the user message of client id `uuid`.
+    pub(crate) fn names(&self, uuid: &str) -> bool {
+        self.user_message_uuids.iter().any(|each| each == uuid)
+    }
+
     pub(crate) fn end(self) -> TurnEnd {
         if self.is_error == Some(true) {
             let mut parts: Vec<String> = Vec::new();

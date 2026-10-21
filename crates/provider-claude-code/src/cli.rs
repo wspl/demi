@@ -124,10 +124,6 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         "--input-format",
         "stream-json",
         "--include-partial-messages",
-        // Each user message is printed back as the CLI takes it into a
-        // turn, so a run knows which `result` answers its last one
-        // (`crates/provider-claude-code/src/run.rs`).
-        "--replay-user-messages",
         "--resume",
         session,
         "--session-mirror",

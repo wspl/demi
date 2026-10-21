@@ -332,7 +332,6 @@ async fn a_new_process_starts_with_the_cli_contract_in_its_accounts_directory_wi
         "--input-format",
         "stream-json",
         "--include-partial-messages",
-        "--replay-user-messages",
         "--resume",
         &resumed,
         "--session-mirror",
@@ -588,9 +587,9 @@ async fn messages_answered_in_turns_of_their_own_are_responses_of_the_run_that_w
     assert!(cli.signals().is_empty());
 }
 
-/// Two messages the CLI takes into one turn are both printed back before
-/// that turn's one `result`, which ends the run. (Fails with a run that
-/// waits for a `result` for each message it wrote.)
+/// Two messages the CLI merges into one turn are both named by that turn's
+/// one `result`, which ends the run. (Fails with a run that waits for a
+/// `result` for each message it wrote.)
 // Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn messages_taken_into_one_turn_end_the_run_at_its_one_result() {
@@ -625,10 +624,41 @@ async fn messages_taken_into_one_turn_end_the_run_at_its_one_result() {
     assert_eq!(placement.starts(), 1);
 }
 
+/// Three receipts written at once: the CLI answers the first in a turn of its
+/// own, then merges the other two into one turn. The run ends at the merged
+/// turn's `result`, which names the last receipt. (A run that counted the
+/// messages the CLI printed back waited for good: it printed the merged turn
+/// back once.)
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_batch_merged_after_an_earlier_turn_ends_the_run_at_the_result_that_names_its_last_message() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut cli = kept_after_first(&mut runtime, &mut starts).await;
+
+    let mut receipts = answered_first();
+    receipts.push(user("receipt A"));
+    receipts.push(user("receipt B"));
+    receipts.push(user("receipt C"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(receipts))), async {
+        assert_eq!(cli.take().await, user_line("receipt A"));
+        cli.text("A is in");
+        cli.result(2, 2);
+        assert_eq!(cli.take().await, user_line("receipt B"));
+        assert_eq!(cli.take().await, user_line("receipt C"));
+        cli.text("B and C are in");
+        cli.result(3, 3);
+    });
+    assert_eq!(events, [text("A is in"), usage(2, 2), text("B and C are in"), usage(3, 3)]);
+    assert!(cli.unread().is_empty());
+    assert_eq!(placement.starts(), 1);
+}
+
 /// What the CLI prints for a message it answers itself, a command it does not
-/// offer: its own whole answer and a `result`, with no message printed back and
-/// no model call (Claude Code 2.1.296 and 2.1.301 with
-/// `--disable-slash-commands`).
+/// offer: its own whole answer and a `result`, with no model call (Claude Code
+/// 2.1.296 and 2.1.301 with `--disable-slash-commands`). The `result` names
+/// the message, which the turn consumed.
 fn answer_locally(cli: &Cli, command: &str) {
     cli.say(json!({
         "type": "assistant",
@@ -639,9 +669,9 @@ fn answer_locally(cli: &Cli, command: &str) {
     cli.say(json!({ "type": "result", "subtype": "success", "is_error": false, "num_turns": 0 }));
 }
 
-/// A message the CLI answers itself, never printing it back, ends the run
-/// at the `result` of that answer. (The run waited for its message to be
-/// printed back, for good.)
+/// A message the CLI answers itself ends the run at the `result` of that
+/// answer, which names it. (The run waited for its message to be printed
+/// back, for good.)
 // Two runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_message_the_cli_answers_itself_ends_the_run_at_its_result() {
@@ -653,7 +683,7 @@ async fn a_message_the_cli_answers_itself_ends_the_run_at_its_result() {
     let mut items = answered_first();
     items.push(user("/cost"));
     let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
-        assert_eq!(cli.read().await, user_line("/cost"));
+        assert_eq!(cli.take().await, user_line("/cost"));
         answer_locally(&cli, "/cost");
     });
     assert!(
@@ -679,7 +709,7 @@ async fn a_message_the_cli_answers_itself_and_one_for_the_model_give_both_answer
     items.push(user("/cost"));
     items.push(user("hello"));
     let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
-        assert_eq!(cli.read().await, user_line("/cost"));
+        assert_eq!(cli.take().await, user_line("/cost"));
         answer_locally(&cli, "/cost");
         assert_eq!(cli.take().await, user_line("hello"));
         cli.message_start();
@@ -703,9 +733,9 @@ async fn a_message_the_cli_answers_itself_and_one_for_the_model_give_both_answer
     assert!(cli.signals().is_empty());
 }
 
-/// A turn that fails while a message the run wrote is not printed back yet
-/// fails the run and closes the process, which would otherwise answer that
-/// message after the run ended. (The process was kept.)
+/// A turn that fails without naming the last message the run wrote fails the
+/// run and closes the process, which would otherwise answer that message
+/// after the run ended. (The process was kept.)
 // Two runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_turn_that_fails_before_every_message_was_taken_fails_the_run_and_closes_the_process() {
