@@ -1,4 +1,4 @@
-import type { Block, MediaSource, ProviderFailureFacts } from '@demicodes/protocol'
+import type { Block, MediaSource, ProviderFailureFacts, ReplyPicture } from '@demicodes/protocol'
 import type { HeldTranscript } from '../../transport/protocol'
 import { toolCallTitle } from '../block-helpers'
 import { plainUserMarkdown } from '../../markdown/user-markdown'
@@ -101,6 +101,8 @@ export interface CardTurn {
    */
   status: string | null
   answer: string
+  /** The pictures of the Host the answer shows, with their copies once it is complete. */
+  pictures?: readonly ReplyPicture[]
   streaming: boolean
 }
 
@@ -176,11 +178,12 @@ export function cardContent(question: ShownSideQuestion): CardContent {
   return {
     turns: turns.map((turn) => {
       const texts = turn.blocks.filter((block) => block.type === 'text')
-      const answer = texts.at(-1)?.text ?? ''
+      const reply = texts.at(-1)
+      const answer = reply?.text ?? ''
       const running = question.working && turn === last
       const writing = running && turn.blocks.at(-1)?.type === 'text'
       if (!running || writing)
-        return { question: turn.question, status: null, answer, streaming: writing }
+        return { question: turn.question, status: null, answer, ...(reply?.pictures ? { pictures: reply.pictures } : {}), streaming: writing }
       const step = turn.blocks.at(-1)
       const status = step?.type === 'tool_call' ? toolCallTitle(step) : t('ask.thinking')
       return { question: turn.question, status, answer: '', streaming: false }

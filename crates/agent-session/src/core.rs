@@ -2010,6 +2010,14 @@ impl SessionCore {
         }
     }
 
+    /// Settles the picture of the text `id` named by `target`
+    /// (`AgentSession::settle_picture`).
+    pub(super) fn settle_picture(&mut self, id: &BlockId, target: &str, copy: demi_shared_types::PictureCopy) {
+        if self.transcript.settle_picture(id, target, copy) {
+            self.commit();
+        }
+    }
+
     /// Gives the call `id` the view `view`, as its lists change while the
     /// calls before it in its step return.
     pub(super) fn replace_view(&mut self, id: &BlockId, view: ToolView) {

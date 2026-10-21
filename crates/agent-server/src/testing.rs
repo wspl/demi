@@ -13,7 +13,7 @@ use demi_agent_store::{media::HeldMedia, testing::test_model};
 use demi_agent_tools::{HostResolver, ProfileModel, Unavailable};
 use demi_conversation_socket_protocol::{AgentEntry, AgentRole, CacheChart, ClientContent, ClientFrame, ServerFrame};
 use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
-use demi_shared_types::{ContextUsage, ModelSelection, NodeId, ProviderModel, SessionPhase, UnavailableSetting, UserContentBlock};
+use demi_shared_types::{ContextUsage, ModelSelection, NodeId, PictureFailure, ProviderModel, SessionPhase, UnavailableSetting, UserContentBlock};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -234,10 +234,42 @@ impl AgentsSource for NoKeptAgents {
 }
 
 /// A Host whose files a test names: a path a reply writes, read against its
-/// working directory, is a file when `files` holds what it resolves to.
-#[derive(Default)]
+/// working directory, is a file when `files` holds what it resolves to, and a
+/// picture is copied when `pictures` holds its path.
 pub struct TestHostFiles {
     pub files: RefCell<Vec<String>>,
+    /// The pictures the Host copies, by the path asked for: the attachment's
+    /// number, or why it is not copied. A path not here is a file that is
+    /// not there.
+    pub pictures: RefCell<HashMap<String, Result<String, PictureFailure>>>,
+    /// The paths asked for, in order.
+    pub copied: RefCell<Vec<String>>,
+    /// Holds each copy until it is opened.
+    hold: tokio::sync::watch::Sender<bool>,
+}
+
+impl Default for TestHostFiles {
+    fn default() -> Self {
+        Self {
+            files: RefCell::default(),
+            pictures: RefCell::default(),
+            copied: RefCell::default(),
+            hold: tokio::sync::watch::Sender::new(true),
+        }
+    }
+}
+
+impl TestHostFiles {
+    /// Holds the copies asked for from now until [`release`](Self::release),
+    /// as a Host that is slow to answer.
+    pub fn hold(&self) {
+        self.hold.send_replace(false);
+    }
+
+    /// Lets the held copies, and those asked for later, go on.
+    pub fn release(&self) {
+        self.hold.send_replace(true);
+    }
 }
 
 impl ReplyFiles for TestHostFiles {
@@ -258,6 +290,27 @@ impl ReplyFiles for TestHostFiles {
                     })
                     .collect(),
             )
+        })
+    }
+
+    fn copy_picture<'a>(
+        &'a self,
+        _root: &'a NodeId,
+        _node: &'a NodeId,
+        _device: Option<&'a str>,
+        _cwd: &'a str,
+        path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<String, PictureFailure>> {
+        Box::pin(async move {
+            self.copied.borrow_mut().push(path.to_owned());
+            let mut open = self.hold.subscribe();
+            // The sender lives as long as this Host, which the caller holds.
+            let _ = open.wait_for(|open| *open).await;
+            self.pictures
+                .borrow()
+                .get(path)
+                .cloned()
+                .unwrap_or(Err(PictureFailure::Missing))
         })
     }
 }

@@ -1,7 +1,7 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type { MediaSource } from '@demicodes/protocol'
 import { copiedStoredFileSchema, type CopiedMessage } from '../message-input/copied-message'
-import { ATTACHMENT_FILE_ATTRIBUTE, HOST_FILE_ATTRIBUTE } from '../../markdown/render'
+import { ATTACHMENT_FILE_ATTRIBUTE } from '../../markdown/render'
 import { ATTACHMENT_MARK } from '../../markdown/user-markdown'
 import { pictureQuote } from './anchors'
 
@@ -9,9 +9,8 @@ import { pictureQuote } from './anchors'
  * A picture in the agent's reply as a comment, a side question and Send to
  * Conversation take it:
  *
- * - For an attachment, the blob of the user's it already is.
- * - For a Host image, the blob the page makes of the bytes it shows, since its
- *   file may change or go.
+ * - For an attachment, and for a picture of the Host the reply shows, whose
+ *   copy is an attachment, the blob of the user's it already is.
  * - For a picture of the web whose site lets the page read it, the same kind of
  *   blob, so every provider reads its bytes.
  * - Otherwise, the address the picture loads from, which a provider that
@@ -71,20 +70,14 @@ export async function pictureSource(image: HTMLImageElement, keep: KeepPicture |
   if (attachment)
     return { type: 'ref', ref: attachment.sha256, mediaType: attachment.mediaType, ...sizeOf(image) }
   const src = image.currentSrc || image.src
-  const host = image.hasAttribute(HOST_FILE_ATTRIBUTE)
-  if (!keep) {
-    if (host)
-      throw new Error('This page cannot keep a picture of the Host.')
+  if (!keep)
     return { type: 'url', url: src }
-  }
   try {
     const kept = await keep(src, pictureQuote(image))
     return { type: 'ref', ref: kept.sha256, mediaType: kept.mediaType, ...sizeOf(image) }
-  } catch (error) {
+  } catch {
     // A picture of the web whose site does not let the page read it stays its
-    // address. A Host image's bytes have no other way to the model.
-    if (host)
-      throw error
+    // address.
     return { type: 'url', url: src }
   }
 }
@@ -109,9 +102,7 @@ export async function pictureWords(image: HTMLImageElement, keep: KeepPicture | 
     return { text: `![${name}](${src})`, files: [] }
   try {
     return file(await keep(src, name))
-  } catch (error) {
-    if (image.hasAttribute(HOST_FILE_ATTRIBUTE))
-      throw error
+  } catch {
     return { text: `![${name}](${src})`, files: [] }
   }
 }

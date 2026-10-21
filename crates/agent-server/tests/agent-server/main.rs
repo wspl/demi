@@ -7,6 +7,7 @@ mod connections;
 mod editing;
 mod live;
 mod output;
+mod pictures;
 mod profiles;
 mod resume;
 mod sides;

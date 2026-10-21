@@ -1931,11 +1931,14 @@ dependencies = [
 name = "demi-agent-transcript"
 version = "0.1.52"
 dependencies = [
+ "comrak",
  "demi-agent-store",
  "demi-agent-transcript",
  "demi-conversation-socket-protocol",
  "demi-provider-common",
  "demi-shared-types",
+ "percent-encoding",
+ "regex",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

@@ -8,6 +8,7 @@ import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { vContextMenu, type ContextMenuGroup } from '@demicodes/web-ui/ui/context-menu'
 import { fileMenu } from '@demicodes/web-ui/files/object-menus'
+import { hostPictureCopies } from '../fixtures/attachments'
 import { ago } from '../fixtures/time'
 import { LINKED_COMMIT } from '../fixtures/history'
 import { productWould } from '../product-would'
@@ -78,6 +79,7 @@ function rowMenu(row: Row): () => ContextMenuGroup[] {
     <div class="w-[40rem] max-w-full rounded-lg bg-surface ring-1 ring-line">
       <AssistantTextBlock
         :content="reply"
+        :pictures="hostPictureCopies"
         :created-at="createdAt"
         show-footer
         :fork="fork"

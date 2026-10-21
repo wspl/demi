@@ -6869,6 +6869,7 @@ mod tests {
                 created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
                 request: None,
                 code_files: None,
+                pictures: None,
                 model: demi_agent_store::testing::test_model(),
                 text: text.to_owned(),
                 forkable: true,

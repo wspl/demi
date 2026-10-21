@@ -317,6 +317,11 @@
   },
   "markdown": {
     "mathUnavailable": "数式の表示を使用できません",
-    "attachmentMissing": "このチャットに添付ファイル {id} はありません"
+    "attachmentMissing": "このチャットに添付ファイル {id} はありません",
+    "pictureMissing": "ホストにファイルがありません",
+    "pictureTooLarge": "ファイルは {size} あり、大きすぎて保存できません",
+    "pictureNotAnImage": "ファイルは {type} で、画像ではありません",
+    "pictureHostUnavailable": "ホストを利用できず、コピーできませんでした",
+    "pictureUnreadable": "ファイルを読み込めません"
   }
 }

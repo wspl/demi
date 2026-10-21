@@ -1278,6 +1278,7 @@ pub mod store_contract {
             created_at: Timestamp::UNIX_EPOCH,
             request: None,
             code_files: None,
+            pictures: None,
             model: test_model(),
             text: text.to_owned(),
             forkable: true,

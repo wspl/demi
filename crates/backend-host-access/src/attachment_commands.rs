@@ -25,6 +25,12 @@
 //!
 //! The command returns no medium: the attachment is for the user.
 //!
+//! The same copy is made for a picture of the Host that a reply shows, when
+//! the reply ends ([`copy_picture`],
+//! `docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`): the Host is
+//! then looked at, never woken, only while it is the device the agent ran on,
+//! and the file must be an image.
+//!
 //! `download` writes attachments of the conversation, the user's or the
 //! agent's, into the invocation's directory. The runner downloads each from
 //! this backend as every file Demi downloads, resumed after a break
@@ -54,10 +60,10 @@ use demi_backend_database::{StorageError, sequences};
 use demi_backend_remote_host::collect_pipe;
 use demi_runner_protocol::wire::FileHash;
 use demi_host_interface::{
-    ByteRange, Call, GroupBuilder, Host as _, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
+    ByteRange, Call, GroupBuilder, Host as _, HostError, HostErrorKind, LeafBuilder, RpcError, RpcPort, TypedRpc, WhenExists, WriteOptions,
 };
 use demi_shared_types::{
-    BlobRef, NodeId, PixelSize, Sequence, preview_media_type,
+    BlobRef, NodeId, PictureFailure, PixelSize, Sequence, preview_media_type,
     output::{Cell, Table},
 };
 use demi_web_api_protocol::attachments::ATTACHMENT_MAX_BYTES;
@@ -68,6 +74,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::HostShard;
+use crate::access::{ConversationHost, HostAccessError};
 use crate::host_commands::{conversation_of, verb};
 
 const SUMMARY: &str = "Give the user files of this host as attachments of the conversation, which your messages show, and fetch the conversation's attachments as files.";
@@ -257,7 +264,7 @@ async fn upload(
     let mut failed = false;
     for path in args.path {
         let stored = tokio::select! {
-            stored = store(&*shard, &conversation, &device, &invocation.cwd, node.clone(), &path) => stored,
+            stored = store(&*shard, &conversation, &device, &invocation.cwd, node.clone(), &path, Purpose::Upload) => stored,
             () = port.cancelled() => return Ok(130),
         };
         match stored {
@@ -294,6 +301,134 @@ async fn upload(
     Ok(u8::from(failed))
 }
 
+/// Why a file of the Host is copied into the conversation, which decides how
+/// the Host is reached and what the copy may be.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Purpose {
+    /// An agent's `demi attachment upload`: the command wakes a stopped Cloud
+    /// as any command does, and any file is a copy.
+    Upload,
+    /// A picture a reply shows: the Host is looked at, never woken, and only
+    /// while it is the device the agent ran on; the file must be an image.
+    Picture,
+}
+
+/// Why a file of the Host was not copied into the conversation. The words
+/// are the upload command's; a picture of a reply keeps the cause alone
+/// ([`CopyError::failure`]).
+#[derive(Debug, thiserror::Error)]
+enum CopyError {
+    /// The Host has no such file.
+    #[error("{0}")]
+    Missing(String),
+    /// The file is over the limit of an attachment.
+    #[error("the file is {size} bytes; an attachment is at most 25 MiB ({} bytes)", ATTACHMENT_MAX_BYTES)]
+    TooLarge { size: u64 },
+    /// The file is no image, and a picture must be.
+    #[error("the file is not an image ({0})")]
+    NotAnImage(String),
+    /// The Host could not be reached for the copy.
+    #[error("{0}")]
+    HostUnavailable(String),
+    /// The Host could not read the file, or the copy could not be kept.
+    #[error("{0}")]
+    Unreadable(String),
+}
+
+impl CopyError {
+    /// The cause a reply keeps with the picture.
+    fn failure(&self) -> PictureFailure {
+        match self {
+            Self::Missing(_) => PictureFailure::Missing,
+            Self::TooLarge { size } => PictureFailure::TooLarge { size: *size },
+            Self::NotAnImage(media_type) => PictureFailure::NotAnImage {
+                media_type: media_type.clone(),
+            },
+            Self::HostUnavailable(_) => PictureFailure::HostUnavailable,
+            Self::Unreadable(_) => PictureFailure::Unreadable,
+        }
+    }
+}
+
+/// A failure the Host answered: no such file, or no way to reach it, or
+/// neither.
+impl From<HostError> for CopyError {
+    fn from(error: HostError) -> Self {
+        match &error.kind {
+            HostErrorKind::Failed { code } if matches!(code.as_deref(), Some("ENOENT" | "ENOTDIR")) => {
+                Self::Missing(error.message)
+            }
+            HostErrorKind::Offline | HostErrorKind::Unavailable | HostErrorKind::Interrupted => {
+                Self::HostUnavailable(error.message)
+            }
+            HostErrorKind::Failed { .. } | HostErrorKind::TooLarge | HostErrorKind::Protocol => {
+                Self::Unreadable(error.message)
+            }
+        }
+    }
+}
+
+/// Why the conversation admitted no operation on its Host.
+impl From<HostAccessError> for CopyError {
+    fn from(error: HostAccessError) -> Self {
+        match error {
+            HostAccessError::Host(error) => error.into(),
+            HostAccessError::Refused(_)
+            | HostAccessError::Cloud(_)
+            | HostAccessError::Cancelled
+            | HostAccessError::Missing => Self::HostUnavailable(error.to_string()),
+            HostAccessError::Storage(_) | HostAccessError::Objects(_) | HostAccessError::Store(_) => {
+                Self::Unreadable(error.to_string())
+            }
+        }
+    }
+}
+
+/// Runs `operation` on the conversation's Host `device` as `purpose` reaches
+/// it, or answers why it cannot. Each admission waits only as long as the
+/// call: a stopped call drops it.
+async fn on_host<T>(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    purpose: Purpose,
+    operation: impl AsyncFnOnce(&ConversationHost) -> T,
+) -> Result<T, CopyError> {
+    let cancel = CancellationToken::new();
+    match purpose {
+        Purpose::Upload => Ok(shard.with_host(conversation, Some(device), &cancel, operation).await?),
+        Purpose::Picture => shard
+            .look_at_host_on(conversation, device, &cancel, operation)
+            .await?
+            .ok_or_else(|| {
+                CopyError::HostUnavailable("the conversation no longer works on the Host the reply was written on".to_owned())
+            }),
+    }
+}
+
+/// Copies the picture at `path`, beside `cwd`, from the conversation's Host
+/// on `device` into its attachments, as the reply of the agent of `node`
+/// shows it (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`),
+/// and answers its number. The Host is looked at, never woken, and only while
+/// it is `device`; a file that is no image, or is over the limit of an
+/// attachment, is refused. Answers why when it cannot.
+pub async fn copy_picture(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    cwd: &str,
+    node: NodeId,
+    path: &str,
+) -> Result<String, PictureFailure> {
+    let row = store(shard, conversation, device, cwd, Some(node), path, Purpose::Picture)
+        .await
+        .map_err(|error| {
+            tracing::debug!(%path, %error, "a picture of a reply was not copied");
+            error.failure()
+        })?;
+    Ok(row.number.to_string())
+}
+
 /// Copies the file at `path`, beside `cwd`, from the conversation's Host on
 /// `device`, and stores it as the conversation's next attachment, the upload of
 /// the agent of `node`: its blob first, then its record.
@@ -307,17 +442,14 @@ async fn store(
     cwd: &str,
     node: Option<NodeId>,
     path: &str,
-) -> Result<AttachmentRow, String> {
-    // Each admission waits only as long as the call: a stopped call drops it.
-    let hash = shard
-        .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
-            host.host
-                .hash_file_in(cwd, path, ATTACHMENT_MAX_BYTES as u64)
-                .await
-        })
-        .await
-        .map_err(|error| error.to_string())?
-        .map_err(|error| error.message)?;
+    purpose: Purpose,
+) -> Result<AttachmentRow, CopyError> {
+    let hash = on_host(shard, conversation, device, purpose, async |host| {
+        host.host
+            .hash_file_in(cwd, path, ATTACHMENT_MAX_BYTES as u64)
+            .await
+    })
+    .await??;
     // The full path of the file the Host read, as it writes it, which a file
     // card opens in the Files panel in the copy's place.
     let (sha256, full_path) = match hash {
@@ -327,36 +459,37 @@ async fn store(
             within_limit(size)?;
             (sha256, path)
         }
-        FileHash::TooLarge { size } => return Err(over_limit(size)),
+        FileHash::TooLarge { size } => return Err(CopyError::TooLarge { size }),
     };
     let blobs = shard.blobs();
     let held = blobs
         .opening(&sha256)
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| CopyError::Unreadable(error.to_string()))?;
     // The media type and an image's or a video's size come from the file's
     // opening, so a held blob is read only that far, and a file read whole
     // is read only that far too: the same file gets the same record.
     let (blob, opening, size) = match held {
         Some(opening) => (sha256, opening.bytes, opening.size),
         None => {
-            let bytes = shard
-                .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
-                    read(&host.host, cwd, path).await
-                })
-                .await
-                .map_err(|error| error.to_string())??;
+            let bytes = on_host(shard, conversation, device, purpose, async |host| {
+                read(&host.host, cwd, path).await
+            })
+            .await??;
             let size = u64::try_from(bytes.len()).expect("an attachment's size fits u64");
             let blob = blobs
                 .put(bytes.clone())
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| CopyError::Unreadable(error.to_string()))?;
             let opened = bytes.len().min(OPENING_BYTES as usize);
             (blob, bytes.slice(..opened), size)
         }
     };
     let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
     let media_type = upload_media_type(sent, &opening);
+    if purpose == Purpose::Picture && !media_type.starts_with("image/") {
+        return Err(CopyError::NotAnImage(media_type));
+    }
     let pixels = pixel_size(opening, &media_type);
     let name = path
         .rsplit(['/', '\\'])
@@ -381,7 +514,9 @@ async fn store(
         let conversation = conversation.clone();
         move || shard.summary_changed(&conversation)
     };
-    commit(shard.tasks(), shard.conversation_db(conversation), attachment, announce).await
+    commit(shard.tasks(), shard.conversation_db(conversation), attachment, announce)
+        .await
+        .map_err(CopyError::Unreadable)
 }
 
 /// An attachment's record before the conversation gives it its number.
@@ -449,17 +584,11 @@ pub(crate) fn commit(
 }
 
 /// Refuses a file over the limit of the user's own uploads.
-fn within_limit(size: u64) -> Result<(), String> {
+fn within_limit(size: u64) -> Result<(), CopyError> {
     if size > ATTACHMENT_MAX_BYTES as u64 {
-        return Err(over_limit(size));
+        return Err(CopyError::TooLarge { size });
     }
     Ok(())
-}
-
-/// Why a file of `size` bytes, over the limit, is not uploaded.
-fn over_limit(size: u64) -> String {
-    let limit = ATTACHMENT_MAX_BYTES;
-    format!("the file is {size} bytes; an attachment is at most 25 MiB ({limit} bytes)")
 }
 
 /// The bytes of the file at `path` beside `cwd`. A file that grew past the
@@ -468,16 +597,11 @@ async fn read(
     host: &demi_backend_remote_host::RemoteHost,
     cwd: &str,
     path: &str,
-) -> Result<Bytes, String> {
-    let opened = host
-        .read_pipe_in(cwd, path, ByteRange::default())
-        .await
-        .map_err(|error| error.message)?;
+) -> Result<Bytes, CopyError> {
+    let opened = host.read_pipe_in(cwd, path, ByteRange::default()).await?;
     // Dropping the reader stops the read.
     within_limit(opened.stat.size)?;
-    collect_pipe(opened.body, ATTACHMENT_MAX_BYTES)
-        .await
-        .map_err(|error| error.message)
+    Ok(collect_pipe(opened.body, ATTACHMENT_MAX_BYTES).await?)
 }
 
 #[cfg(test)]

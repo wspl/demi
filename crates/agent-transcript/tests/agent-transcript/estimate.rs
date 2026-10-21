@@ -78,6 +78,7 @@ fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
         created_at: Timestamp::UNIX_EPOCH,
         request: None,
         code_files: None,
+        pictures: None,
         model: test_model(),
         text: "reply".into(),
         forkable: true,

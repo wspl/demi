@@ -17,7 +17,7 @@ use demi_agent_tools::{
     runs_on as job_model,
 };
 use demi_conversation_socket_protocol::{CacheChart, JobModel};
-use demi_shared_types::{ModelSelection, NodeId, WorkflowChoice};
+use demi_shared_types::{ModelSelection, NodeId, PictureFailure, WorkflowChoice};
 
 use super::runs_on::runs_on;
 use demi_backend_host_access::attachment_commands::attachment_group;
@@ -533,6 +533,48 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
                     None
                 }
             }
+        })
+    }
+
+    fn copy_picture<'a>(
+        &'a self,
+        root: &'a NodeId,
+        node: &'a NodeId,
+        device: Option<&'a str>,
+        cwd: &'a str,
+        path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<String, PictureFailure>> {
+        Box::pin(async move {
+            // The backend closing, a conversation with no Host yet, a device
+            // that is no device and a home not known are each a Host the
+            // picture cannot be copied from.
+            let shard = self.shard.upgrade().ok_or(PictureFailure::HostUnavailable)?;
+            let conversation = conversation_of(root);
+            let device = device
+                .and_then(|device| demi_web_api_protocol::ids::DeviceId::try_from(device).ok())
+                .ok_or(PictureFailure::HostUnavailable)?;
+            // A path from the Host's home is read from the home its runner
+            // reported.
+            let path = match path.strip_prefix("~/") {
+                Some(rest) => {
+                    let home = shard.devices().home(&device).ok_or(PictureFailure::HostUnavailable)?;
+                    shard
+                        .host_paths(&conversation)
+                        .await
+                        .map_err(|_| PictureFailure::HostUnavailable)?
+                        .join(&home, rest)
+                }
+                None => path.to_owned(),
+            };
+            demi_backend_host_access::attachment_commands::copy_picture(
+                shard.host_shard(),
+                &conversation,
+                &device,
+                cwd,
+                node.clone(),
+                &path,
+            )
+            .await
         })
     }
 }

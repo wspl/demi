@@ -14,6 +14,9 @@
 //!   attachment as it is stored, since a reply may name it first.
 //! - A job `demi host shell` runs on an attached Host uploads that Host's
 //!   files. A file whose blob the namespace holds already is not read again.
+//! - A complete reply that shows pictures of the Host keeps a copy of each as
+//!   an attachment of the conversation, or why it could not be copied
+//!   (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`).
 //!
 //! The model is an Anthropic endpoint the test scripts; the devices are real
 //! runners.
@@ -566,5 +569,156 @@ async fn whether_an_attachments_file_is_there_is_asked_of_the_host_it_came_from(
     let on_beta = beta.runner.home_dir().to_owned();
     switch(&backend, &master, CONVERSATION, &beta, &on_beta).await;
     assert_eq!(check("a1").await.refusal(), no_file);
+    backend.close().await;
+}
+
+// About a second: a real device and one scripted turn.
+//
+// A complete reply that shows pictures of the Host keeps the copy of each as
+// an attachment of the node that wrote it, beside the path the reply wrote, or
+// why the file was not copied, and a web picture is
+// no business of the backend. The frame that settles a copy carries its
+// description, so the page draws it at its size with the reply and asks no
+// Host. The copy stays what the file was when the reply ended, across the
+// file's removal and a restart.
+//
+// Planted defects it catches: a reply that keeps no copy, a copy that is not
+// the node's own attachment, and a failure that is not kept.
+#[tokio::test]
+async fn a_complete_reply_keeps_a_copy_of_each_picture_of_the_host_it_shows() {
+    use crate::support::{MASTER_EMAIL, MASTER_PASSWORD};
+    use crate::conversations::transcript;
+    use demi_shared_types::{PictureCopy, PictureFailure, ReplyPicture};
+
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    std::fs::create_dir_all(format!("{root}/out")).unwrap();
+    std::fs::write(format!("{root}/out/chart.png"), &*PNG).unwrap();
+    std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+
+    work.turn(vec![say(
+        "![chart](out/chart.png) ![again](out/chart.png) ![gone](missing.png) ![notes](notes.md) ![web](https://example.com/web.png)",
+    )])
+    .await;
+    // The frames up to the last picture settling.
+    let settled = |frame: &ServerFrame| match frame {
+        ServerFrame::TranscriptPatch { patches, .. } => patches.iter().any(|patch| {
+            matches!(patch, TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. }
+                if text.pictures.as_ref().is_some_and(|pictures| {
+                    pictures.len() == 3 && pictures.iter().all(|picture| picture.copy != PictureCopy::Copying)
+                }))
+        }),
+        _ => false,
+    };
+    let frames = work.socket.until(settled).await;
+    // The frame that settles the copy carries its description, once.
+    let attachments: Vec<&ConversationAttachment> = frames
+        .iter()
+        .flat_map(|frame| match frame {
+            ServerFrame::TranscriptPatch { attachments, .. } => attachments.iter().collect(),
+            _ => Vec::new(),
+        })
+        .collect();
+    let [copy]: [&ConversationAttachment; 1] = attachments.try_into().expect("a1 alone");
+    assert_eq!((copy.id.as_str(), copy.name.as_str(), copy.media_type.as_str()), ("a1", "chart.png", "image/png"));
+    assert_eq!((copy.width, copy.height), (Some(4), Some(3)));
+    assert_eq!(copy.source.as_ref().map(|source| source.host.as_str()), Some(device.id()));
+
+    // The copy is the file as it was, whatever becomes of the file, and the
+    // reply keeps its answers across a restart.
+    std::fs::remove_file(format!("{root}/out/chart.png")).unwrap();
+    drop(work);
+    backend.close().await;
+    let backend = harness.start().await;
+    let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    let blocks = transcript(&backend, &master, CONVERSATION).await.blocks;
+    let Some(Block::Text(reply)) = blocks.iter().rev().find(|block| matches!(block, Block::Text(_))) else {
+        panic!("{blocks:?}")
+    };
+    let pictures = reply.pictures.clone().expect("the reply keeps its pictures");
+    let [chart, gone, notes]: [ReplyPicture; 3] = pictures.try_into().expect("a picture for each file path, once");
+    assert_eq!(chart, ReplyPicture { target: "out/chart.png".into(), copy: PictureCopy::Copied { attachment: "a1".into() } });
+    assert_eq!(gone, ReplyPicture { target: "missing.png".into(), copy: PictureCopy::Failed { reason: PictureFailure::Missing } });
+    assert_eq!(
+        notes,
+        ReplyPicture {
+            target: "notes.md".into(),
+            copy: PictureCopy::Failed { reason: PictureFailure::NotAnImage { media_type: "text/markdown".into() } }
+        }
+    );
+    let described = named_attachments(&backend, &master, CONVERSATION, CONVERSATION).await;
+    let [stored]: [ConversationAttachment; 1] = described.try_into().expect("only the copy that was made");
+    let bytes = backend.get(&format!("/api/blobs/{}", stored.blob), Some(&master)).await;
+    assert_eq!(bytes.body, *PNG);
+    backend.close().await;
+}
+
+// About a second: a real device and one scripted turn.
+//
+// A picture over the limit of an attachment is refused unread, by the size
+// the Host names, and a path from the Host's home, `~/chart.png`, is read
+// from the home the device reported, as the file beside the conversation's
+// directory is not. Each is kept as the cause and nothing else.
+//
+// Planted defects it catches: a `~/` path read against the working directory
+// (the file is not there), and a file read whole before its size is known.
+#[tokio::test]
+async fn a_picture_over_the_limit_is_refused_by_its_size_and_one_in_the_home_is_copied() {
+    use demi_shared_types::{PictureCopy, PictureFailure, ReplyPicture};
+
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    // The conversation works in `{home}/work`; the picture is in the home
+    // itself, and a file of the same name is not beside the conversation.
+    let home = device.runner.home().to_owned();
+    std::fs::write(format!("{home}/chart.png"), &*PNG).unwrap();
+    let huge = std::fs::File::create(format!("{root}/huge.png")).unwrap();
+    huge.set_len(HUGE).unwrap();
+    huge.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o200))
+        .unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+
+    work.turn(vec![say("![big](huge.png) ![home](~/chart.png)")]).await;
+    let settled = |frame: &ServerFrame| match frame {
+        ServerFrame::TranscriptPatch { patches, .. } => patches.iter().any(|patch| {
+            matches!(patch, TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. }
+                if text.pictures.as_ref().is_some_and(|pictures| {
+                    pictures.len() == 2 && pictures.iter().all(|picture| picture.copy != PictureCopy::Copying)
+                }))
+        }),
+        _ => false,
+    };
+    let frames = work.socket.until(settled).await;
+    let Some(ServerFrame::TranscriptPatch { patches, .. }) = frames.last() else {
+        panic!("{frames:?}")
+    };
+    let Some(TranscriptPatch::ReplaceBlock { value: Block::Text(reply), .. }) = patches.last() else {
+        panic!("{patches:?}")
+    };
+    assert_eq!(
+        reply.pictures,
+        Some(vec![
+            ReplyPicture { target: "huge.png".into(), copy: PictureCopy::Failed { reason: PictureFailure::TooLarge { size: HUGE } } },
+            ReplyPicture { target: "~/chart.png".into(), copy: PictureCopy::Copied { attachment: "a1".into() } },
+        ])
+    );
+    let described: Vec<&ConversationAttachment> = frames
+        .iter()
+        .flat_map(|frame| match frame {
+            ServerFrame::TranscriptPatch { attachments, .. } => attachments.iter().collect(),
+            _ => Vec::new(),
+        })
+        .collect();
+    let [stored]: [&ConversationAttachment; 1] = described.try_into().expect("only the picture in the home");
+    assert_eq!((stored.name.as_str(), stored.media_type.as_str()), ("chart.png", "image/png"));
     backend.close().await;
 }

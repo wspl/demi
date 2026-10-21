@@ -97,8 +97,8 @@ use demi_shared_gates::SerialGate;
 use demi_shared_types::{
     MessageComment,
     AgentMessage, AutomationMark, Block, BlockId, Clock, CommandId, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
-    PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
-    Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
+    PendingSteer, PictureCopy, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
+    TextBlock, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -633,6 +633,32 @@ impl AgentSession {
     /// the window holds the text.
     pub fn keep_code_files(&self, id: &BlockId, files: Vec<demi_shared_types::CodeFile>) {
         self.shared.update(|core| core.keep_code_files(id, files));
+    }
+
+    /// The texts of the window with a picture whose copy is still being made,
+    /// as a node that stopped in the middle of copying finds them when it
+    /// starts. Only those texts are copied out of the window.
+    pub fn unsettled_pictures(&self) -> Vec<TextBlock> {
+        self.shared.read(|core| {
+            core.transcript
+                .blocks()
+                .iter()
+                .filter_map(|block| match block {
+                    Block::Text(text)
+                        if text.pictures.iter().flatten().any(|picture| picture.copy == PictureCopy::Copying) =>
+                    {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+    }
+
+    /// Settles the picture the text `id` names by `target`, whose copy was
+    /// being made, as `copy`.
+    pub fn settle_picture(&self, id: &BlockId, target: &str, copy: PictureCopy) {
+        self.shared.update(|core| core.settle_picture(id, target, copy));
     }
 
     /// A new session with an empty transcript; its node's first checkpoint is

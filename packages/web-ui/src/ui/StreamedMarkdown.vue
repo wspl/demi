@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onScopeDispose, ref, shallowReactive, shallowRef, watch, type ComputedRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
@@ -7,10 +7,8 @@ import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/render-vers
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { messageLinkMenu, openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
 import { vLinkMenus, type LinkMenus } from '@demicodes/web-ui/ui/context-menu'
-import { hostImagePaths, useHostImagesAt } from '@demicodes/web-ui/markdown/host-images'
-import type { HostImage } from '@demicodes/web-ui/files/host-image'
-import type { MessageAttachment, MessageFileTarget } from '@demicodes/web-ui/markdown/types'
-import type { CodeFile } from '@demicodes/protocol'
+import type { MessageAttachment, MessageFileTarget, MessagePictures } from '@demicodes/web-ui/markdown/types'
+import type { CodeFile, ReplyPicture } from '@demicodes/protocol'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
@@ -43,10 +41,17 @@ const props = withDefaults(defineProps<{
    * stays code.
    */
   codeFiles?: readonly CodeFile[]
+  /**
+   * The pictures of the Host the reply shows, with the copy the backend made
+   * of each once the reply ended; absent, such a picture shows as a link to
+   * its file.
+   */
+  pictures?: readonly ReplyPicture[]
 }>(), {
   streaming: false,
   arrivals: undefined,
   codeFiles: undefined,
+  pictures: undefined,
 })
 
 const root = ref<HTMLElement>()
@@ -76,47 +81,27 @@ const codeFiles = computed<ReadonlyMap<string, MessageFileTarget> | null>(() =>
     ? null
     : new Map(props.codeFiles.map((file) => [file.code, { path: file.path, line: file.line }])))
 
-/** The Host image paths each block that shows names. */
-const blockImagePaths = shallowReactive(new Set<ComputedRef<string[]>>())
-// The Host images of what shows, each at the version of its file the page keeps.
-const hostImages = useHostImagesAt(() => renderFiles.value?.contents, () => [...blockImagePaths].flatMap((paths) => paths.value))
-
-/** Whether two blocks' Host images show the same. */
-function sameImages(a: ReadonlyMap<string, HostImage>, b: ReadonlyMap<string, HostImage>): boolean {
-  if (a.size !== b.size)
-    return false
-  for (const [path, image] of a) {
-    const other = b.get(path)
-    if (other?.state !== image.state || (other.state === 'shown' && image.state === 'shown' && other.src !== image.src))
-      return false
-  }
-  return true
-}
+// What the reply keeps of the pictures it shows, by the target that names each.
+const pictureCopies = computed<MessagePictures>(() => ({
+  copies: new Map(props.pictures?.map((picture) => [picture.target, picture.copy])),
+  streaming: props.streaming,
+}))
 
 /**
  * A block's render, which follows the highlighter (its arrival and the document's
- * theme) and what it names: its Host images, the files of its code, its agents.
+ * theme) and what it names: its pictures, the files of its code, its agents.
  *
- * It reads its own Host images, so a change of another block's leaves it as it is.
+ * A block with no image reads no picture, so a change of the reply's pictures
+ * leaves it as it is.
  */
 function renderBlock(source: () => string): () => string {
-  const paths = computed(() => hostImagePaths(source(), renderFiles.value))
-  blockImagePaths.add(paths)
-  onScopeDispose(() => blockImagePaths.delete(paths))
-  const images = computed<ReadonlyMap<string, HostImage>>((previous) => {
-    const all = hostImages.value
-    const own = new Map(paths.value.flatMap((path) => {
-      const image = all.get(path)
-      return image ? [[path, image] as const] : []
-    }))
-    return previous && sameImages(previous, own) ? previous : own
-  })
   return () => {
     void renderVersion.value
-    return md.render(source(), {
+    const text = source()
+    return md.render(text, {
       files: renderFiles.value,
       codeFiles: codeFiles.value,
-      hostImages: images.value,
+      ...(text.includes('![') ? { pictures: pictureCopies.value } : {}),
       agents: agents(),
     })
   }

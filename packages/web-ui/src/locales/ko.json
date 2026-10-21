@@ -317,6 +317,11 @@
   },
   "markdown": {
     "mathUnavailable": "수식 표시를 사용할 수 없습니다",
-    "attachmentMissing": "이 대화에 첨부 파일 {id}이(가) 없습니다"
+    "attachmentMissing": "이 대화에 첨부 파일 {id}이(가) 없습니다",
+    "pictureMissing": "호스트에 파일이 없습니다",
+    "pictureTooLarge": "파일이 {size}로 너무 커서 보관할 수 없습니다",
+    "pictureNotAnImage": "파일이 {type} 형식이라 이미지가 아닙니다",
+    "pictureHostUnavailable": "호스트를 사용할 수 없어 복사하지 못했습니다",
+    "pictureUnreadable": "파일을 읽을 수 없습니다"
   }
 }

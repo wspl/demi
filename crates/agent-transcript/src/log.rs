@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
 use demi_conversation_socket_protocol::{TranscriptPatch, Version, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
-use demi_shared_types::{AutomationMark, CodeFile, MessageComment, 
+use demi_shared_types::{AutomationMark, CodeFile, MessageComment, PictureCopy, ReplyPicture, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, Entry, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
@@ -20,7 +20,7 @@ use demi_agent_store::changes::{request_of, run_of};
 use serde_json::Value;
 
 use super::{
-    PatchBatch, is_interruption,
+    PatchBatch, is_interruption, reply_markdown::named_pictures,
     earlier::Earlier,
     journal::{DirtyRows, Journal, patch_index},
 };
@@ -628,6 +628,7 @@ impl TranscriptLog {
             created_at,
             request: None,
             code_files: None,
+            pictures: None,
             model: model.clone(),
             text: text.to_owned(),
             forkable: false,
@@ -653,6 +654,20 @@ impl TranscriptLog {
             return false;
         }
         text.forkable = true;
+        // The pictures of the Host the text shows are named in the same step
+        // that completes it, so a page never sees a complete text whose
+        // pictures are not yet named as being copied.
+        if text.pictures.is_none() {
+            let named = named_pictures(&text.text);
+            if !named.is_empty() {
+                text.pictures = Some(
+                    named
+                        .into_iter()
+                        .map(|(target, _)| ReplyPicture { target, copy: PictureCopy::Copying })
+                        .collect(),
+                );
+            }
+        }
         self.record_replace(self.start + at);
         true
     }
@@ -809,6 +824,29 @@ impl TranscriptLog {
             return false;
         }
         text.code_files = Some(files);
+        self.record_replace(index);
+        true
+    }
+
+    /// Settles the picture the text `id` names by `target`, whose copy is
+    /// being made, as `copy`; answers whether it did. A block that is gone,
+    /// or a picture already settled, takes none.
+    pub fn settle_picture(&mut self, id: &BlockId, target: &str, copy: PictureCopy) -> bool {
+        let Some(index) = self.position(id) else {
+            return false;
+        };
+        let Block::Text(text) = &mut self.blocks[index - self.start] else {
+            return false;
+        };
+        let Some(picture) = text
+            .pictures
+            .iter_mut()
+            .flatten()
+            .find(|picture| picture.target == target && picture.copy == PictureCopy::Copying)
+        else {
+            return false;
+        };
+        picture.copy = copy;
         self.record_replace(index);
         true
     }

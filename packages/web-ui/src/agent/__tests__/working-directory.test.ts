@@ -43,10 +43,10 @@ test('a child’s relative links and images read against its directory, and open
   }
   const html = renderMarkdown('[cookie](src/cookie.ts) ![chart](out/chart.png)', {
     files: childMessageFiles(conversation, '/slots/2'),
-    hostImages: new Map([['/slots/2/out/chart.png', { state: 'shown', src: '/raw?path=/slots/2/out/chart.png' }]]),
   })
   expect(html).toContain('<a href="/slots/2/src/cookie.ts" data-file-link class="icon-link">')
-  expect(html).toContain('<img src="/raw?path=/slots/2/out/chart.png" alt="chart" data-host-file="/slots/2/out/chart.png" />')
+  // A picture with no copy kept is a link to its file, read the same way.
+  expect(html).toContain('<a href="/slots/2/out/chart.png" data-file-link class="icon-link">')
   // The same message of the conversation's own agent reads against the
   // conversation's.
   expect(renderMarkdown('[cookie](src/cookie.ts)', { files: conversation })).toContain('<a href="/work/src/cookie.ts"')

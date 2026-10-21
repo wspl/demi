@@ -132,7 +132,7 @@ defineExpose({ element: root, failed: () => props.failure != null })
         -->
         <div class="whitespace-pre-wrap font-semibold text-fg-emphasis">{{ turn.question }}</div>
         <Shimmer v-if="turn.status !== null" active class="truncate text-fg-muted">{{ turn.status }}</Shimmer>
-        <StreamedMarkdown v-else-if="turn.answer !== ''" :content="turn.answer" :streaming="turn.streaming" class="text-fg-body" />
+        <StreamedMarkdown v-else-if="turn.answer !== ''" :content="turn.answer" :pictures="turn.pictures" :streaming="turn.streaming" class="text-fg-body" />
       </div>
       <div v-if="failure" class="flex flex-col items-start gap-2">
         <ErrorBlock

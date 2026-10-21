@@ -317,6 +317,11 @@
   },
   "markdown": {
     "mathUnavailable": "数学公式显示不可用",
-    "attachmentMissing": "此对话中没有附件 {id}"
+    "attachmentMissing": "此对话中没有附件 {id}",
+    "pictureMissing": "主机上没有该文件",
+    "pictureTooLarge": "文件为 {size}，太大无法保留",
+    "pictureNotAnImage": "文件类型为 {type}，不是图片",
+    "pictureHostUnavailable": "主机不可用，未能复制",
+    "pictureUnreadable": "无法读取该文件"
   }
 }
