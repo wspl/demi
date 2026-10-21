@@ -109,7 +109,7 @@ async fn run_turn(
         // The turn needs the model's next answer from here: after its input,
         // a step's calls, or a response that the input arriving meanwhile
         // continues.
-        s.update(|core| core.start_waiting(None));
+        s.update(SessionCore::start_waiting);
         if switch_first && apply_switch(s, cancel).await? {
             s.update(|core| core.push_resume(None));
         }
@@ -374,7 +374,7 @@ async fn compact_before_request(
 async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
     let blocks = s.read(|core| core.transcript.blocks()[..cut - core.transcript.start()].to_vec());
     persist::commit_rewrite(s, blocks).await?;
-    s.update(|core| core.start_waiting(None));
+    s.update(SessionCore::start_waiting);
     Ok(())
 }
 
@@ -533,7 +533,7 @@ async fn read(
                 let within_run = !matches!(event, ProviderEvent::Response(_));
                 s.update(|core| {
                     if completes_text && core.complete_tail_text() && within_run {
-                        core.start_waiting(None);
+                        core.start_waiting();
                     }
                     core.apply_event(event);
                 });

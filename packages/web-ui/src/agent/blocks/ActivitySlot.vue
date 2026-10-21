@@ -15,15 +15,16 @@ import FunctionalBlock from './FunctionalBlock.vue'
 const props = defineProps<{
   kind: ActivityKind
   /**
-   * When the wait began, as `Date.now()`; Requesting shows how long it has
-   * waited since. Connecting counts nothing.
+   * When the server began the wait, as `Date.now()`; Requesting shows how
+   * long it has waited since. Without it, as while the page's own action has
+   * no answer, and for Connecting, the row counts nothing.
    */
-  since?: number
+  since?: number | null
 }>()
 
 const requestingElapsed = useElapsedTime(
   () => props.since ?? Number.NaN,
-  () => props.kind === 'requesting',
+  () => props.kind === 'requesting' && props.since != null,
 )
 
 const label = computed(() => {

@@ -4,7 +4,6 @@ import { onBeforeUnmount, reactive, ref, shallowRef } from 'vue'
 import { deferred, type Deferred } from '@demicodes/utils'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
-import { waitClock } from '@demicodes/web-ui/agent/wait-clock'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { demoModel } from '../fixtures/blocks'
@@ -14,8 +13,8 @@ import { useGalleryShares } from '../fixtures/sharing'
 const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
   id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running',
-  load: 'ready', lastError: null, pendingAction: null, waitClock: waitClock(), failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
-  waitingSince: null, waitAction: null, requestOutput: null, turnSpeed: null,
+  load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
+  waitingSince: null, requestOutput: null, turnSpeed: null,
   scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
   history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,

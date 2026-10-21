@@ -152,14 +152,7 @@ pub enum ClientFrame {
         subagent_id: NodeId,
     },
     Retry {},
-    /// Resume the unfinished turn, as the action `id`, which the page names
-    /// so it counts the wait the resume begins from its own press (the
-    /// entry's `waitAction`); absent where nobody pressed it.
-    Resume {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[garde(skip)]
-        id: Option<TurnId>,
-    },
+    Resume {},
     /// Compact the context of `node`, the root when absent: a subagent's
     /// context card compacts that child.
     Compact {
@@ -238,7 +231,7 @@ impl ClientFrame {
             Self::AbortSubagents {} => ClientFrameKind::AbortSubagents,
             Self::AbortSubagent { .. } => ClientFrameKind::AbortSubagent,
             Self::Retry {} => ClientFrameKind::Retry,
-            Self::Resume { .. } => ClientFrameKind::Resume,
+            Self::Resume {} => ClientFrameKind::Resume,
             Self::Compact { .. } => ClientFrameKind::Compact,
             Self::ShellWrite { .. } => ClientFrameKind::ShellWrite,
             Self::ShellAbort { .. } => ClientFrameKind::ShellAbort,

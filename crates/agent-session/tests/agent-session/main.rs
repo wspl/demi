@@ -1264,7 +1264,7 @@ fn waits(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Option<u64>>>>
     let subscription = session.subscribe({
         let waits = waits.clone();
         move |event| {
-            if let SessionEvent::WaitingChanged { waited_ms, .. } = event {
+            if let SessionEvent::WaitingChanged { waited_ms } = event {
                 waits.borrow_mut().push(*waited_ms);
             }
         }
@@ -1311,51 +1311,6 @@ async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built()
     // The stop ends the wait with the turn.
     assert_eq!(*waits.borrow(), [Some(0), None]);
     assert!(provider.requests().is_empty());
-}
-
-// A page that sent an action counts the wait it began from its own press,
-// and knows that wait by the action's id: the wait carries it while it runs.
-// A wait that no press began carries none: the request after a call's result,
-// and the turn of a message that waited in the queue behind another.
-//
-// A paused clock.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn a_wait_names_the_action_whose_admission_began_it() {
-    let provider = ScriptedRuntime::new([
-        paced(vec![
-            (1_000, event::tool_call("call-1", "read", json!({ "description": "Read the notes" }))),
-            (0, event::response(1, 1)),
-        ]),
-        paced(vec![(1_000, event::text("read")), (0, event::response(1, 1))]),
-        paced(vec![(1_000, event::text("queued")), (0, event::response(1, 1))]),
-        paced(vec![(1_000, event::text("again")), (0, event::response(1, 1))]),
-    ]);
-    let store = MemoryTreeStore::new();
-    let read = tool("read", |_| Box::pin(async { Ok(output("42")) }));
-    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
-    let session = start_at(&provider, test_runtime(vec![read]), &store, SessionConfig::default(), clock).await;
-    let actions = Rc::new(RefCell::new(Vec::new()));
-    let _subscription = session.subscribe({
-        let actions = actions.clone();
-        move |event| {
-            if let SessionEvent::WaitingChanged { waited_ms: Some(_), action } = event {
-                actions.borrow_mut().push(action.as_ref().map(ToString::to_string));
-            }
-        }
-    });
-
-    let first = session.send(text("go"), turn("t1")).unwrap();
-    assert_eq!(session.wait_action(), Some(turn("t1")), "the message sent while nothing ran began its wait");
-    let queued = session.send(text("then this"), turn("t2")).unwrap();
-    assert_eq!(first.await, Ok(ActionEnd::Completed));
-    assert_eq!(queued.await, Ok(ActionEnd::Completed));
-    let retried = session.retry(Some(turn("r1"))).unwrap();
-    assert_eq!(session.wait_action(), Some(turn("r1")), "the retry runs as the action its request named");
-    assert_eq!(retried.await, Ok(ActionEnd::Completed));
-
-    // The message's, the request after its call's result, the queued
-    // message's turn, the retry's.
-    assert_eq!(*actions.borrow(), [Some("t1".to_owned()), None, None, Some("r1".to_owned())]);
 }
 
 // The wait ends with the model's first output: a call being written only once

@@ -11,7 +11,6 @@ import { settleSent, sideRecord } from './side-records'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followFrame, isTerminalRunning } from '@demicodes/web-ui/agent/terminals'
 import { subagentEntryFields } from '@demicodes/web-ui/agent/subagents'
-import { serverWaits } from '@demicodes/web-ui/agent/wait-clock'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
@@ -72,8 +71,6 @@ export function takeAgents(
       held.sessionPhase = entry.phase
       held.pendingCalls = entry.pendingCalls
       held.waitingSince = entry.waitedMs === null ? null : receivedAt - entry.waitedMs
-      held.waitAction = entry.waitAction
-      serverWaits(held.waitClock, entry.waitAction)
       settleSent(held)
       if (!listedSides.includes(held)) {
         listedSides.push(held)

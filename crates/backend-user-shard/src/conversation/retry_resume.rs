@@ -185,7 +185,7 @@ impl Shard {
         // The action reports its course to the conversation's pages as
         // events; a refusal means the session is closing.
         session
-            .resume(reason, None)
+            .resume(reason)
             .map_err(|refusal| refusal.to_string())?;
         Ok(true)
     }

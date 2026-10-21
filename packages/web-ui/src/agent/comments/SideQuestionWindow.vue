@@ -34,9 +34,8 @@ const blocks = computed(() => (props.question ? shownTurns(props.question) : [])
  * in view, since a side conversation is short and starts with what the user
  * asked. A taller one the user scrolls down. The list places itself once, when
  * it first has rows. Before its first question is held, as right after the
- * press, it shows its tail row alone, Requesting from the press; it is drawn
- * again, at its start, once the question is held, and the row counts on from
- * the press, which the side question holds.
+ * press, it shows its tail row alone, Requesting; it is drawn again, at its
+ * start, once the question is held.
  */
 const opening = computed<PersistedScrollState | undefined>(() => {
   const first = blocks.value[0]

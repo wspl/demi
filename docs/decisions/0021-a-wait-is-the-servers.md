@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0028
 ---
 
 # A wait is the server's

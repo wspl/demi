@@ -16,7 +16,7 @@
 
 use demi_shared_types::{
     BlockId, ContextUsage, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, PendingCall, PendingSteer, QueuedMessage,
-    SessionPhase, Timestamp, TurnId,
+    SessionPhase, Timestamp,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -44,17 +44,6 @@ pub struct AgentEntry {
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub waited_ms: Option<u64>,
-    /// The action whose start began the wait: a message's id, or the id the
-    /// request of a resume, a retry or a side question's follow-up named,
-    /// when the action started as it was admitted. The page that sent it
-    /// counts the wait from its own press, through every delivery of the
-    /// entry. Null while it waits for none, for a wait within a turn, as
-    /// after a call's result or a steer sent now, and for an action that
-    /// waited behind another.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<TurnId>")]
-    #[garde(skip)]
-    pub wait_action: Option<TurnId>,
     /// The calls its model is writing, while its session lives; never kept.
     #[garde(dive)]
     pub pending_calls: Vec<PendingCall>,

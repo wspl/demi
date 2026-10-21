@@ -1,3 +1,4 @@
+import { toRaw } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { NewSideQuestion, ReplyAsking, ShownSideQuestion } from '@demicodes/web-ui/agent/comments/asks'
@@ -8,9 +9,8 @@ import {
   followUpSideQuestion,
   retrySideQuestion,
 } from '../api/side-questions'
-import type { Conversation, SideRecord } from '../state/types'
+import type { Conversation, SentAction, SideRecord } from '../state/types'
 import { settleSent, sideActivity, sideRecord } from './side-records'
-import { pressed, refused } from '@demicodes/web-ui/agent/wait-clock'
 
 /** What of a conversation its side questions are: its id and those the page holds. */
 type SideHolder = Pick<Conversation, 'id' | 'sides'>
@@ -50,24 +50,21 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
   }
 
   /**
-   * The backend took the action `id` of the side question `side`: it stays
+   * The backend took the action `sent` of the side question `side`: it stays
    * on its way until the socket shows it (`settleSent`).
    */
-  function taken(side: SideRecord, id: string): void {
-    if (side.sent?.id === id) {
-      side.sent.heldWhenTaken = side.history
+  function taken(side: SideRecord, sent: SentAction): void {
+    if (side.sent !== null && toRaw(side.sent) === sent) {
+      side.sent.taken = true
       settleSent(side)
     }
   }
 
-  /**
-   * Asks a new side question, its first message under its own id: its card
-   * shows at once, working, and goes again if the backend refuses it.
-   */
+  /** Asks a new side question: its card shows at once, working, and goes again if the backend refuses it. */
   async function ask(conversation: SideHolder, question: NewSideQuestion): Promise<void> {
     const side = sideRecord({ ...question, picture: question.picture ?? undefined, title: null, folded: false, askedAt: new Date().toISOString() })
-    side.sent = { id: question.id, heldWhenTaken: null }
-    pressed(side.waitClock, question.id)
+    const sent: SentAction = { heldWhenSent: side.history, taken: false }
+    side.sent = sent
     conversation.sides = [...conversation.sides, side]
     try {
       const record = await askSideQuestion(conversation.id, question)
@@ -77,7 +74,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
         held.record = record
       }
       if (held) {
-        taken(held, question.id)
+        taken(held, sent)
       }
     } catch (error) {
       conversation.sides = conversation.sides.filter((each) => each.id !== question.id)
@@ -86,25 +83,23 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
   }
 
   /**
-   * Sends the side question `id` the action `send` names under an id of the
-   * page's, a follow-up or a Retry, while its card shows it working.
+   * Sends the side question `id` the action `send` names, a follow-up or a
+   * Retry, while its card shows it working.
    */
-  async function sending(conversation: SideHolder, id: string, title: string, send: (action: string) => Promise<void>): Promise<void> {
+  async function sending(conversation: SideHolder, id: string, title: string, send: () => Promise<void>): Promise<void> {
     const side = sideOf(conversation, id)
     if (!side) {
       return
     }
-    const action = crypto.randomUUID()
-    side.sent = { id: action, heldWhenTaken: null }
-    pressed(side.waitClock, action)
+    const sent: SentAction = { heldWhenSent: side.history, taken: false }
+    side.sent = sent
     try {
-      await send(action)
-      taken(side, action)
+      await send()
+      taken(side, sent)
     } catch (error) {
-      if (side.sent?.id === action) {
+      if (side.sent !== null && toRaw(side.sent) === sent) {
         side.sent = null
       }
-      refused(side.waitClock, action)
       reportError(title, error, { userVisible: true })
     }
   }
@@ -158,8 +153,8 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
         return conversation.sides.map(shown)
       },
       ask: (question) => void ask(conversation, question),
-      followUp: (id, text) => void sending(conversation, id, t('failures.sendFollowUp'), (action) => followUpSideQuestion(conversation.id, id, action, text)),
-      retry: (id) => void sending(conversation, id, t('failures.retrySideQuestion'), (action) => retrySideQuestion(conversation.id, id, action)),
+      followUp: (id, text) => void sending(conversation, id, t('failures.sendFollowUp'), () => followUpSideQuestion(conversation.id, id, text)),
+      retry: (id) => void sending(conversation, id, t('failures.retrySideQuestion'), () => retrySideQuestion(conversation.id, id)),
       fold: (id, folded) => void fold(conversation, id, folded),
       read: readPage,
     }

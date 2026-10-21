@@ -5,7 +5,6 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
-import { waitClock } from '@demicodes/web-ui/agent/wait-clock'
 import { shortTranscriptBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { runningRunCommand } from '../fixtures/terminals'
@@ -29,12 +28,11 @@ const session = reactive<ChatSessionState>({
   queue: [],
   pendingSteers: [], starting: null,
   pendingCalls: [],
-  waitingSince: null, waitAction: null, requestOutput: null, turnSpeed: null,
+  waitingSince: null, requestOutput: null, turnSpeed: null,
   phase: 'idle',
   load: 'loading',
   lastError: null,
   pendingAction: null,
-  waitClock: waitClock(),
   failures: {},
   archived: false,
   scroll: null,

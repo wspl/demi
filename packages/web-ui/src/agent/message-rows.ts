@@ -129,7 +129,7 @@ export function useMessageRows(
       if (previous && scope !== previous[2]) {
         recovery.value = null
       }
-      if (action?.kind === 'resume') {
+      if (action === 'resume') {
         recovery.value ??= recoveryFrom(visibleBlocks.value)
       } else if (phase === 'idle') {
         recovery.value = null

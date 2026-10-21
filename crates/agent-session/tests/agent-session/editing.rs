@@ -136,7 +136,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
         runtime: None,
     };
     session.update_model(switch).unwrap();
-    assert_eq!(session.retry(None).err(), Some(AdmissionError::Editing));
+    assert_eq!(session.retry().err(), Some(AdmissionError::Editing));
     assert_eq!(session.compact().err(), Some(AdmissionError::Editing));
     assert_eq!(
         session.accept_agent_message(agent_message("m1")).await,
@@ -403,7 +403,7 @@ async fn an_accepted_edit_stays_accepted_when_its_turn_fails_and_neither_a_repea
     assert_eq!(session.transcript().version, version);
     assert_eq!(provider.requests().len(), 3);
     // Resume continues after the tool's result and does not run it again.
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
     assert_eq!(runs.get(), 1);
     let request = provider.requests().pop().unwrap();
     assert_eq!(

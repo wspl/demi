@@ -14,7 +14,7 @@ use demi_shared_types::NodeId;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::side_questions::{
-    AskRequest, SideFollowUp, SideQuestionAnswer, SideQuestionPatch, SideRetry,
+    AskRequest, SideFollowUp, SideQuestionAnswer, SideQuestionPatch,
 };
 
 use super::AppState;
@@ -43,39 +43,38 @@ pub(super) async fn ask(
     Ok((status, Json(SideQuestionAnswer { id: side, side_question })))
 }
 
-/// `POST /conversations/:id/side-questions/:side/messages { id, text }`: 204
+/// `POST /conversations/:id/side-questions/:side/messages { text }`: 204
 /// once the side question took the follow-up.
 pub(super) async fn follow_up(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, side)): Path<(String, String)>,
-    JsonBody(SideFollowUp { id: message, text }): JsonBody<SideFollowUp>,
+    JsonBody(SideFollowUp { text }): JsonBody<SideFollowUp>,
 ) -> Result<StatusCode, ApiError> {
     let id = conversation(id)?;
     let side = side_id(side)?;
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.ask_more(id, side, message, text).await })
+        .call(move |shard, _| async move { shard.ask_more(id, side, text).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `POST /conversations/:id/side-questions/:side/retry { id }`: 204 once its
+/// `POST /conversations/:id/side-questions/:side/retry`: 204 once its
 /// failed turn runs again.
 pub(super) async fn retry(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, side)): Path<(String, String)>,
-    JsonBody(SideRetry { id: action }): JsonBody<SideRetry>,
 ) -> Result<StatusCode, ApiError> {
     let id = conversation(id)?;
     let side = side_id(side)?;
     state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.retry_side(id, side, action).await })
+        .call(move |shard, _| async move { shard.retry_side(id, side).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

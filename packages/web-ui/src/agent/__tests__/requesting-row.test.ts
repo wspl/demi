@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { afterEach, expect, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 
 // The transcript's Requesting row, as the session view draws the root's list
 // from the conversation's state (`ChatSession.vue`, `rootActivity`): the
@@ -12,17 +12,20 @@ const { h, reactive } = await import('vue')
 const { default: AgentMessageList } = await import('../AgentMessageList.vue')
 const { ConversationRuntime } = await import('../conversation-runtime')
 const { EMPTY_TRANSCRIPT } = await import('@demicodes/conversation-client')
-const { pressed, waitClock } = await import('../wait-clock')
 const { rootActivity } = await import('../agent-activity')
 const { providerWaitLabel } = await import('../thinking-label')
 const { t } = await import('../locales/text')
 const { drawn, settled, tailRow } = await import('./drawn-list')
 const { agentsFrame, clientHarness, rootEntry, userBlock } = await import('./agent-harness')
 type RuntimeState = import('../conversation-runtime').RuntimeState
+type PendingSubmissionState = import('../types').PendingSubmissionState
 
-const PRESS = Date.parse('2026-10-21T08:00:00.000Z')
+const SENT = Date.parse('2026-10-21T08:00:00.000Z')
 const now = spyOn(Date, 'now')
 const cleanups: (() => void)[] = []
+beforeEach(() => {
+  now.mockReturnValue(SENT)
+})
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) {
     cleanup()
@@ -41,78 +44,117 @@ function state(): RuntimeState {
     starting: null,
     pendingCalls: [],
     waitingSince: null,
-    waitAction: null,
     requestOutput: null,
     lastError: null,
     load: 'loading',
     pendingAction: null,
-    waitClock: waitClock(),
     failures: {},
     contextUsage: null,
   })
 }
 
-/** The root's list over `conversation`, with the bindings the session view gives it. */
-function drawnRoot(conversation: RuntimeState): () => Promise<string | null> {
-  const view = drawn(() => h(AgentMessageList, {
-    conversationId: conversation.id,
-    // The message the turn answers; an empty transcript says it has none.
-    blocks: [userBlock('u-1', 'm-1', 'Sort the downloads into folders.')],
-    activity: rootActivity(conversation),
-    pendingSteers: conversation.pendingSteers,
-    starting: conversation.starting,
-    queue: conversation.queue,
-    phase: conversation.phase,
-    load: conversation.load,
-    pendingAction: conversation.pendingAction,
-    pendingSubmissions: [],
-    bottomOffset: 0,
-    persistedScrollState: undefined,
-  }))
-  cleanups.push(view.unmount)
+/** The conversation `conversation` over a socket whose server the test plays, opened. */
+async function connected(conversation: RuntimeState) {
+  const server = clientHarness()
+  const runtime = new ConversationRuntime({ state: conversation, connect: async () => server.client })
+  cleanups.push(() => runtime.dispose())
+  await runtime.connect()
+  return server
+}
+
+/**
+ * The root's list over `conversation`, with the bindings the session view
+ * gives it, and the messages on their way `sending`; each call draws it
+ * anew, as a return to the conversation does.
+ */
+function drawnRoot(conversation: RuntimeState, sending: { messages: PendingSubmissionState[] } = { messages: [] }): () => Promise<string | null> {
+  let unmount: (() => void) | null = null
   return async () => {
+    unmount?.()
+    const view = drawn(() => h(AgentMessageList, {
+      conversationId: conversation.id,
+      // The message the turn answers; an empty transcript says it has none.
+      blocks: [userBlock('u-1', 'm-1', 'Sort the downloads into folders.')],
+      activity: rootActivity(conversation),
+      pendingSteers: conversation.pendingSteers,
+      starting: conversation.starting,
+      queue: conversation.queue,
+      phase: conversation.phase,
+      load: conversation.load,
+      pendingAction: conversation.pendingAction,
+      pendingSubmissions: sending.messages,
+      bottomOffset: 0,
+      persistedScrollState: undefined,
+    }))
+    unmount = view.unmount
+    cleanups.push(view.unmount)
     await settled()
     return tailRow(view.host)
   }
 }
 
-// The socket drops during the wait a message began and comes back: the
-// handshake tells the same wait again, its start reckoned from a later
-// delivery. The page knows the wait by the message that began it, never by
-// its start, which each delivery's latency moves; before, the row counted
-// from the server's start after the reconnect, not from the press.
-test('a wait the page\'s message began counts from the press when the server tells it again after a reconnect', async () => {
-  const conversation = state()
-  const server = clientHarness()
-  const runtime = new ConversationRuntime({ state: conversation, connect: async () => server.client })
-  cleanups.push(() => runtime.dispose())
-  pressed(conversation.waitClock, 'm-1', PRESS)
-  now.mockReturnValue(PRESS + 400)
-  await runtime.connect()
-  server.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 0, waitAction: 'm-1' })]))
-  now.mockReturnValue(PRESS + 30_500)
-  server.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 30_000, waitAction: 'm-1' })], 2))
+const message: PendingSubmissionState = { id: 'm-2', way: 'send', text: 'Then the photos.', attachments: [], error: null }
 
-  now.mockReturnValue(PRESS + 31_000)
-  const row = drawnRoot(conversation)
-  expect(await row()).toBe(providerWaitLabel(31_000))
+// The page cannot know how long a wait it has no answer about has lasted:
+// before, it counted from the press, and the count moved once the server
+// told the wait from its own start.
+test('after Send and before the server answers, the row says Requesting without a time', async () => {
+  const conversation = state()
+  const server = await connected(conversation)
+  server.receive(agentsFrame([rootEntry('conversation', 'idle')]))
+  const sending = reactive({ messages: [message] })
+  now.mockReturnValue(SENT)
+  const row = drawnRoot(conversation, sending)
+  expect(await row()).toBe(t('transcript.thinking.requesting'))
+  now.mockReturnValue(SENT + 30_000)
+  expect(await row()).toBe(t('transcript.thinking.requesting'))
 })
 
-// A wait no press of this page began, as another page's message's, counts
-// from the server's start.
-test('a wait another page began counts from the server\'s start', async () => {
+test('once the server tells its wait, the row shows the server\'s count, not one from the press', async () => {
   const conversation = state()
-  const server = clientHarness()
-  const runtime = new ConversationRuntime({ state: conversation, connect: async () => server.client })
-  cleanups.push(() => runtime.dispose())
-  pressed(conversation.waitClock, 'm-1', PRESS)
-  now.mockReturnValue(PRESS + 10_000)
-  await runtime.connect()
-  server.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 2_000, waitAction: 'elsewhere' })]))
+  const server = await connected(conversation)
+  server.receive(agentsFrame([rootEntry('conversation', 'idle')]))
+  const sending = reactive({ messages: [message] })
+  now.mockReturnValue(SENT + 30_000)
+  // The message reached the server late: the wait it began is two seconds old.
+  server.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 2_000 })], 2))
+  const row = drawnRoot(conversation, sending)
+  expect(await row()).toBe(providerWaitLabel(2_000))
+  sending.messages = []
+  now.mockReturnValue(SENT + 35_000)
+  expect(await row()).toBe(providerWaitLabel(7_000))
+})
 
-  now.mockReturnValue(PRESS + 12_000)
+// The server counts each wait from its start and tells it on every
+// delivery; the page only shows it. Before, a list drawn again counted from
+// when it was drawn, so every return restarted the clock.
+test('a switch, a reconnect and a reload show the server\'s count unchanged', async () => {
+  const STARTED = SENT
+  const conversation = state()
+  const server = await connected(conversation)
+  now.mockReturnValue(STARTED + 4_000)
+  server.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 4_000 })]))
   const row = drawnRoot(conversation)
-  expect(await row()).toBe(providerWaitLabel(4_000))
+  now.mockReturnValue(STARTED + 5_000)
+  expect(await row()).toBe(providerWaitLabel(5_000))
+
+  // A switch to another conversation and back draws the list again.
+  now.mockReturnValue(STARTED + 12_000)
+  expect(await row()).toBe(providerWaitLabel(12_000))
+
+  // The socket comes back, and its handshake tells the same wait again.
+  now.mockReturnValue(STARTED + 20_300)
+  server.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 20_300 })], 2))
+  now.mockReturnValue(STARTED + 21_000)
+  expect(await row()).toBe(providerWaitLabel(21_000))
+
+  // A reload holds nothing of the page before it: the handshake tells the wait.
+  const reloaded = state()
+  const again = await connected(reloaded)
+  now.mockReturnValue(STARTED + 40_000)
+  again.receive(agentsFrame([rootEntry('conversation', 'running', { waitedMs: 40_000 })]))
+  now.mockReturnValue(STARTED + 41_000)
+  expect(await drawnRoot(reloaded)()).toBe(providerWaitLabel(41_000))
 })
 
 // A conversation opened from the copy the page kept shows it while its

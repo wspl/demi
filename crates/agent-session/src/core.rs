@@ -126,7 +126,7 @@ pub(crate) struct SessionCore {
     /// The first output of the model ends the wait, reasoning whose text the
     /// vendor withholds included, so a model that thinks never reads as one
     /// that has not answered. A compaction pauses it.
-    waiting: Option<Wait>,
+    waiting_since: Option<Timestamp>,
     /// The output of the turn's latest request, from its start until the
     /// turn ends; live only, like the wait.
     output: Option<StreamedOutput>,
@@ -209,14 +209,10 @@ pub(super) struct StartedAction {
 
 pub(super) struct PendingAction {
     pub(super) kind: ActionKind,
-    /// A send's message id; for every other action the id its request
-    /// named, or a fresh one.
+    /// A send's message id; a fresh id for every other action.
     turn: TurnId,
     /// Answered when the action ends, or when it leaves the queue.
     reply: Option<ActionReply>,
-    /// It was admitted while nothing ran or waited, so it starts at its
-    /// admission and its wait is the one its request began.
-    at_admission: bool,
 }
 
 impl PendingAction {
@@ -351,20 +347,8 @@ struct Published {
     next_turn_reports: Vec<CommandReport>,
     intervals: Vec<CommandInterval>,
     edits: usize,
-    waiting: Option<Wait>,
+    waiting_since: Option<Timestamp>,
     output: Option<StreamedOutput>,
-}
-
-/// A wait for the model's answer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Wait {
-    since: Timestamp,
-    /// The action whose start began it, when the action started at its
-    /// admission: its id names the request that asked for it, so the page
-    /// that sent that request counts the wait from its own press. None for a
-    /// wait within a turn, as after a call's result or a steer sent now, and
-    /// for an action that waited behind another, whose wait no press began.
-    action: Option<TurnId>,
 }
 
 /// The output of one request: estimated as it streams, then the response's
@@ -515,7 +499,7 @@ impl SessionCore {
             prepares_ahead: false,
             persist: PersistMarks::default(),
             outbox: Vec::new(),
-            waiting: None,
+            waiting_since: None,
             output: None,
             turn_output: TurnOutput::default(),
             turn_speed: parts.turn_speed,
@@ -533,7 +517,7 @@ impl SessionCore {
                 next_turn_reports: Vec::new(),
                 intervals: Vec::new(),
                 edits: 0,
-                waiting: None,
+                waiting_since: None,
                 output: None,
             },
         };
@@ -763,28 +747,19 @@ impl SessionCore {
         Ok(self.push_action(ActionKind::Send { content, comments, automation }, id))
     }
 
-    /// Admits a retry, a resume or a compaction pass, under `id` when its
-    /// request named one, as a page names the action it counts a wait from.
-    /// An id the session knows already is acknowledged without a second
-    /// action.
-    pub(super) fn admit(&mut self, kind: ActionKind, id: Option<TurnId>) -> Result<ActionHandle, AdmissionError> {
+    /// Admits a retry, a resume or a compaction pass.
+    pub(super) fn admit(&mut self, kind: ActionKind) -> Result<ActionHandle, AdmissionError> {
         self.refuse_admission()?;
-        let turn = match id {
-            Some(id) if self.knows_turn(&id) => return Ok(ActionHandle::ended(ActionEnd::Duplicate)),
-            Some(id) => id,
-            None => self.new_turn(),
-        };
+        let turn = self.new_turn();
         Ok(self.push_action(kind, turn))
     }
 
     fn push_action(&mut self, kind: ActionKind, turn: TurnId) -> ActionHandle {
         let (reply, handle) = ActionHandle::channel();
-        let at_admission = matches!(self.activity, Activity::Idle) && self.pending.is_empty();
         self.pending.push_back(PendingAction {
             kind,
             turn,
             reply: Some(reply),
-            at_admission,
         });
         if matches!(self.activity, Activity::Idle) {
             self.start_next();
@@ -814,21 +789,20 @@ impl SessionCore {
             self.activity = Activity::Closed { interrupted: false };
             return;
         }
-        let (kind, turn, reply, at_admission) = match self.pending.pop_front() {
-            Some(action) => (action.kind, action.turn, action.reply, action.at_admission),
-            None if self.wants_continuation() => (ActionKind::Continue, self.new_turn(), None, false),
+        let (kind, turn, reply) = match self.pending.pop_front() {
+            Some(action) => (action.kind, action.turn, action.reply),
+            None if self.wants_continuation() => (ActionKind::Continue, self.new_turn(), None),
             None => {
                 self.activity = Activity::Idle;
                 self.write_into_failed_turn();
                 return;
             }
         };
-        self.start_action(kind, turn, reply, at_admission);
+        self.start_action(kind, turn, reply);
     }
 
-    /// Runs `kind` as the session's action, writing `turn`; `at_admission`
-    /// when it starts as it is admitted.
-    fn start_action(&mut self, kind: ActionKind, turn: TurnId, reply: Option<ActionReply>, at_admission: bool) {
+    /// Runs `kind` as the session's action, writing `turn`.
+    fn start_action(&mut self, kind: ActionKind, turn: TurnId, reply: Option<ActionReply>) {
         let cancel = TurnCancel::new();
         self.held = false;
         let unwritten = match &kind {
@@ -844,7 +818,7 @@ impl SessionCore {
         // hooks and the Host reads that build its request; a compaction
         // alone asks for none.
         if !matches!(kind, ActionKind::Compact) {
-            self.start_waiting(at_admission.then(|| turn.clone()));
+            self.start_waiting();
         }
         self.activity = Activity::Running(ActionRun {
             turn: turn.clone(),
@@ -931,7 +905,7 @@ impl SessionCore {
     fn wake_for_user(&mut self) {
         if matches!(self.activity, Activity::Idle) && self.pending.is_empty() && !self.disposing {
             let turn = self.new_turn();
-            self.start_action(ActionKind::Continue, turn, None, false);
+            self.start_action(ActionKind::Continue, turn, None);
         }
     }
 
@@ -1022,7 +996,6 @@ impl SessionCore {
                 kind: ActionKind::Send { content, comments, automation },
                 turn: turn.clone(),
                 reply: None,
-                at_admission: false,
             });
         }
         self.activity = Activity::Closed { interrupted: began };
@@ -1365,8 +1338,8 @@ impl SessionCore {
             return;
         }
         self.cut_round(SendNow::Steer);
-        if self.send_now_pending() && self.waiting.is_some() {
-            self.waiting = Some(Wait { since: self.clock.now(), action: None });
+        if self.send_now_pending() && self.waiting_since.is_some() {
+            self.waiting_since = Some(self.clock.now());
         }
     }
 
@@ -1957,32 +1930,25 @@ impl SessionCore {
     }
 
     /// The node's turn needs the model's next answer: it waits from now,
-    /// begun by `action` (`Wait::action`), unless a wait runs already, whose
-    /// clock runs on, as across a retry.
-    pub(super) fn start_waiting(&mut self, action: Option<TurnId>) {
-        if self.waiting.is_none() {
-            self.waiting = Some(Wait { since: self.clock.now(), action });
+    /// unless a wait runs already, whose clock runs on, as across a
+    /// retry.
+    pub(super) fn start_waiting(&mut self) {
+        if self.waiting_since.is_none() {
+            self.waiting_since = Some(self.clock.now());
         }
     }
 
     /// The model's output shows, a compaction pass begins, or the action
     /// ended.
     pub(super) fn stop_waiting(&mut self) {
-        self.waiting = None;
+        self.waiting_since = None;
     }
 
     /// How long the node has waited for the model, while it waits.
     pub(super) fn waited_ms(&self) -> Option<u64> {
         let now = self.clock.now().as_millisecond();
-        self.waiting
-            .as_ref()
-            .map(|wait| u64::try_from(now - wait.since.as_millisecond()).unwrap_or(0))
-    }
-
-    /// The action whose start began the wait, while the node waits for a
-    /// wait one began (`Wait::action`).
-    pub(super) fn wait_action(&self) -> Option<TurnId> {
-        self.waiting.as_ref().and_then(|wait| wait.action.clone())
+        self.waiting_since
+            .map(|since| u64::try_from(now - since.as_millisecond()).unwrap_or(0))
     }
 
     /// The calls the model is writing, oldest first.
@@ -2607,11 +2573,10 @@ impl SessionCore {
             self.published.phase = phase;
             events.push(SessionEvent::PhaseChanged { phase });
         }
-        if self.waiting != self.published.waiting {
-            self.published.waiting = self.waiting.clone();
+        if self.waiting_since != self.published.waiting_since {
+            self.published.waiting_since = self.waiting_since;
             events.push(SessionEvent::WaitingChanged {
                 waited_ms: self.waited_ms(),
-                action: self.wait_action(),
             });
         }
         if self.output != self.published.output {

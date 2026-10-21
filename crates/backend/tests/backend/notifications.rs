@@ -410,7 +410,7 @@ async fn each_turn_notifies_as_it_ended_and_work_that_ends_none_notifies_nothing
     socket.stop().await;
     // Its answer fills most of the window, so a compaction may follow.
     scripts.root(FIRST, vec![vec![event::text("Resumed and done."), event::response(60_000, 1)]]);
-    socket.send(&ClientFrame::Resume { id: None }).await;
+    socket.send(&ClientFrame::Resume {}).await;
     socket.until_idle().await;
     let (_, _, resumed) = next(&mut received, &browsers).await;
     let PushMessage::TurnFinished { turn, answer_start, .. } = &resumed else {

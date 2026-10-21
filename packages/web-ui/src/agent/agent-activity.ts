@@ -1,6 +1,5 @@
 import type { PendingCall } from '@demicodes/protocol'
 import type { ConversationState } from './types'
-import type { WaitClock } from './wait-clock'
 
 /**
  * What the agent whose transcript a list shows does now, as the page holds
@@ -16,30 +15,24 @@ export interface AgentActivity {
    * server tells it; null when it waits for none.
    */
   waitingSince: number | null
-  /** The action whose start began that wait, as the server tells it; null for none. */
-  waitAction: string | null
-  /** The presses of the page's own actions; absent where the page acts on none, as for a subagent. */
-  waitClock?: WaitClock
   /**
-   * The page's own action other than a message that is on its way, a
-   * recovery or a side question's question, follow-up or Retry: its id,
-   * until the server shows it has it; null for none.
+   * The page's own action other than a message, a recovery or a side
+   * question's question, follow-up or Retry, is on its way: the server has
+   * not answered it yet.
    */
-  sentAction: string | null
+  actionSent: boolean
 }
 
 /** The root's activity, as its conversation holds it. */
 export function rootActivity(
-  state: Pick<ConversationState, 'pendingCalls' | 'waitingSince' | 'waitAction' | 'waitClock' | 'pendingAction'>,
+  state: Pick<ConversationState, 'pendingCalls' | 'waitingSince' | 'pendingAction'>,
 ): AgentActivity {
   return {
     pendingCalls: state.pendingCalls,
     waitingSince: state.waitingSince,
-    waitAction: state.waitAction,
-    waitClock: state.waitClock,
-    sentAction: state.pendingAction?.id ?? null,
+    actionSent: state.pendingAction !== null,
   }
 }
 
 /** What an agent does while it does nothing, as a share's page holds it. */
-export const AT_REST: AgentActivity = { pendingCalls: [], waitingSince: null, waitAction: null, sentAction: null }
+export const AT_REST: AgentActivity = { pendingCalls: [], waitingSince: null, actionSent: false }

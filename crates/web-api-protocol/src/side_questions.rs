@@ -5,7 +5,7 @@
 //! agent's.
 
 use demi_conversation_socket_protocol::SideQuestion;
-use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, TurnId, is_blank};
+use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -33,26 +33,12 @@ pub struct AskRequest {
     pub question: String,
 }
 
-/// `POST /conversations/:id/side-questions/:sideId/messages`: a follow-up,
-/// under the id the page chose, which names the wait it begins (the agent
-/// entry's `waitAction`); the same request again sends nothing more.
+/// `POST /conversations/:id/side-questions/:sideId/messages`: a follow-up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SideFollowUp {
-    #[garde(skip)]
-    pub id: TurnId,
     #[garde(custom(not_blank))]
     pub text: String,
-}
-
-/// `POST /conversations/:id/side-questions/:sideId/retry`: runs its failed
-/// turn again, as the action `id` the page chose, which names the wait it
-/// begins (the agent entry's `waitAction`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SideRetry {
-    #[garde(skip)]
-    pub id: TurnId,
 }
 
 /// `PATCH /conversations/:id/side-questions/:sideId`: folds its card into

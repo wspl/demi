@@ -12,7 +12,6 @@ use serde_json::json;
 
 use crate::subagents::{closed_phase, fixture, held_said, refused, root, root_receipts, said};
 use crate::support::{
-    turn,
         Fixture, Gate, Model, TestProduct, agent, conversation, held, request_text, send, streamed_then_held, texts, until,
     };
 
@@ -246,7 +245,7 @@ async fn a_side_question_outlives_the_roots_stop_and_its_follow_up_continues_its
 
     fixture
         .server
-        .ask_more(&conversation(), side(), turn("follow-up-1"), "What should it be?".into())
+        .ask_more(&conversation(), side(), "What should it be?".into())
         .await
         .expect("the follow-up is taken");
     until(|| model.requests_of(FIRST).len() == 2).await;
@@ -434,7 +433,7 @@ async fn the_root_hears_of_a_side_question_with_the_users_next_message_once_and_
     // A follow-up while the turn works.
     fixture
         .server
-        .ask_more(&conversation(), side(), turn("follow-up-2"), "Can it be shorter?".into())
+        .ask_more(&conversation(), side(), "Can it be shorter?".into())
         .await
         .unwrap();
     until(|| model.requests_of(FIRST).len() == 2).await;
@@ -545,7 +544,7 @@ async fn a_side_question_whose_history_was_compacted_still_tells_what_it_was_ask
     until(|| closed_phase(&fixture, &side()).is_some()).await;
     fixture
         .server
-        .ask_more(&conversation(), side(), turn("follow-up-3"), "Can it be shorter?".into())
+        .ask_more(&conversation(), side(), "Can it be shorter?".into())
         .await
         .unwrap();
     until(|| fixture.store.record(&side()).unwrap().round == 2 && closed_phase(&fixture, &side()).is_some()).await;

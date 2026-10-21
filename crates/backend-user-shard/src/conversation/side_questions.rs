@@ -16,7 +16,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::side_questions;
 use demi_backend_host_access::root_of;
-use demi_shared_types::{NodeId, TurnId, markdown_quote};
+use demi_shared_types::{NodeId, markdown_quote};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_conversation_socket_protocol::SideQuestion;
 use demi_web_api_protocol::side_questions::AskRequest;
@@ -141,23 +141,23 @@ impl Shard {
         Ok((asked, true))
     }
 
-    /// Sends the follow-up `text`, the message `message`, to the side
-    /// question `side` of the user's conversation `id`.
-    pub async fn ask_more(&self, id: ConversationId, side: NodeId, message: TurnId, text: String) -> Result<(), SideRefusal> {
+    /// Sends the follow-up `text` to the side question `side` of the user's
+    /// conversation `id`.
+    pub async fn ask_more(&self, id: ConversationId, side: NodeId, text: String) -> Result<(), SideRefusal> {
         let record = self.side_conversation(&id, true).await?;
         self.side_question(&record.id, &side).await?;
         self.open_for_side(&record.id).await?;
-        self.agent().ask_more(&root_of(&record.id), side, message, text).await?;
+        self.agent().ask_more(&root_of(&record.id), side, text).await?;
         Ok(())
     }
 
     /// Runs the failed turn of the side question `side` of the user's
-    /// conversation `id` again, as the action `action`.
-    pub async fn retry_side(&self, id: ConversationId, side: NodeId, action: TurnId) -> Result<(), SideRefusal> {
+    /// conversation `id` again.
+    pub async fn retry_side(&self, id: ConversationId, side: NodeId) -> Result<(), SideRefusal> {
         let record = self.side_conversation(&id, true).await?;
         self.side_question(&record.id, &side).await?;
         self.open_for_side(&record.id).await?;
-        self.agent().retry_side(&root_of(&record.id), side, action).await?;
+        self.agent().retry_side(&root_of(&record.id), side).await?;
         Ok(())
     }
 

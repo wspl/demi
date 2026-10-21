@@ -9,7 +9,6 @@ import type { ComposerAttachment } from './message-input/attachments'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import type { ModelSettings } from './model-selection'
 import type { SendWay } from './send-way'
-import type { WaitClock } from './wait-clock'
 
 export type { ModelSettings } from './model-selection'
 
@@ -93,8 +92,6 @@ export interface ConversationState {
    * the server tells it; null when it waits for none.
    */
   waitingSince: number | null
-  /** The action whose start began that wait, as the server tells it; null for none. */
-  waitAction: string | null
   /** The output of the request the root agent runs, as the server tells it; null when its turn has none. */
   requestOutput: RequestOutputReading | null
   /** The conversation's model settings, which its composer shows. */
@@ -107,8 +104,6 @@ export interface ConversationState {
    * says Requesting meanwhile.
    */
   pendingAction: PendingAction
-  /** The presses of this page's own actions (`wait-clock.ts`). */
-  waitClock: WaitClock
   /**
    * What the providers read out of the error blocks' failure records, by block
    * id, as the backend sends them beside the transcript.
@@ -139,13 +134,11 @@ export interface ChatSessionState
     | 'starting'
     | 'pendingCalls'
     | 'waitingSince'
-    | 'waitAction'
     | 'requestOutput'
     | 'phase'
     | 'load'
     | 'lastError'
     | 'pendingAction'
-    | 'waitClock'
     | 'failures'
   > {
   archived: boolean

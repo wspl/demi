@@ -16,7 +16,6 @@ import type {
   ComposerRemoteAttachment,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { PendingAction } from '@demicodes/web-ui/agent/activity-slot'
-import type { WaitClock } from '@demicodes/web-ui/agent/wait-clock'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -84,8 +83,6 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pendingCalls: PendingCall[]
   /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none. */
   waitingSince: number | null
-  /** The action whose start began that wait, as the server tells it; null for none. */
-  waitAction: string | null
   /** The output of the request the root agent runs; null when its turn has none. */
   requestOutput: ConversationState['requestOutput']
   model: ModelSettings
@@ -152,8 +149,6 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   terminals: TerminalRecord[]
   load: SessionLoad
   pendingAction: PendingAction
-  /** The clock of the wait this page began, which the transcript's tail row keeps across returns. */
-  waitClock: WaitClock
   /** The failure facts of the error blocks, by block id, as the backend sends them. */
   failures: Record<string, ProviderFailureFacts>
   contextUsage: ConversationState['contextUsage']
@@ -212,27 +207,21 @@ export interface SideRecord {
   sessionPhase: SessionPhase
   pendingCalls: PendingCall[]
   waitingSince: number | null
-  /** The action whose start began that wait, as the server tells it; null for none. */
-  waitAction: string | null
   /** The page's question, follow-up or Retry on its way (`settleSent`); null for none. */
   sent: SentAction | null
-  /** The presses of the page's question, follow-ups and Retries (`wait-clock.ts`). */
-  waitClock: WaitClock
   /** The folds and openings of its card on their way, one at a time; none while none is. */
   folding: SideFolding | null
 }
 
 /**
- * A side question's question, follow-up or Retry the page sent, under the id
- * it named, until the conversation's socket shows the server has it.
+ * A side question's question, follow-up or Retry the page sent, until the
+ * conversation's socket shows the server has it.
  */
 export interface SentAction {
-  id: string
-  /**
-   * The transcript the page held when the backend answered that it took the
-   * action; null before it answered.
-   */
-  heldWhenTaken: HeldTranscript | null
+  /** The transcript the page held when it sent the action. */
+  heldWhenSent: HeldTranscript
+  /** The backend answered that it took the action. */
+  taken: boolean
 }
 
 /**
