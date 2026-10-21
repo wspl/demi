@@ -1,4 +1,4 @@
-import { computed, markRaw, reactive, type Raw, ref, toRaw, watch } from 'vue'
+import { computed, markRaw, reactive, type Raw, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, deferred, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
@@ -25,6 +25,7 @@ import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
+import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
@@ -589,11 +590,10 @@ export const useConversations = defineStore('conversations', () => {
     // its capsules, then those of the sends not yet accepted.
     const ids = new Set([...(unsaved ? conversation.attachmentIds : []), ...sending])
     const files = filesById(conversation, [...ids])
-    return {
-      messageEdit: conversation.messageEdit
-        ? structuredClone(toRaw(conversation.messageEdit))
-        : null,
-      pendingSends: conversation.pendingSends.map((pending) => structuredClone(toRaw(pending))),
+    // One copy of the whole: what the web browser stores holds no proxy.
+    return plainCopy({
+      messageEdit: conversation.messageEdit,
+      pendingSends: conversation.pendingSends,
       local:
         conversation.persistence === 'synced'
           ? null
@@ -604,39 +604,35 @@ export const useConversations = defineStore('conversations', () => {
                 title: conversation.title,
                 pinned: conversation.pinned,
                 archived: conversation.archived,
-                target: { ...conversation.target },
+                target: conversation.target,
                 createdAt: conversation.createdAt,
                 updatedAt: conversation.updatedAt,
               },
             },
       base: !local && unsaved ? recordSync.base(conversation) : null,
       text: unsaved ? conversation.draft : '',
-      comments: unsaved ? conversation.comments.map((comment) => structuredClone(toRaw(comment))) : [],
-      notSaved: conversation.notSaved.map((row) => structuredClone(toRaw(row))),
-      savedWrites: conversation.savedWrites.map((write) => structuredClone(toRaw(write))),
+      comments: unsaved ? conversation.comments : [],
+      notSaved: conversation.notSaved,
+      savedWrites: conversation.savedWrites,
       // A conversation with a record holds its model settings there.
-      model: local ? { ...conversation.model } : null,
+      model: local ? conversation.model : null,
       // And its Workflow menu choice; Default goes unwritten.
-      ...(local && conversation.workflow.type !== 'default' ? { workflow: { ...conversation.workflow } } : {}),
+      ...(local && conversation.workflow.type !== 'default' ? { workflow: conversation.workflow } : {}),
       files: files.map((file) =>
         isComposerFile(file)
           ? {
               kind: 'file',
               id: file.id,
               name: file.name,
-              file: file.file ? toRaw(file.file) : null,
-              upload: file.upload ? { ...file.upload } : null,
-              ...(file.claim
-                ? { claim: { file: { ...file.claim.file }, picture: file.claim.picture ? toRaw(file.claim.picture) : null } }
-                : {}),
+              file: file.file,
+              upload: file.upload,
+              ...(file.claim ? { claim: { file: file.claim.file, picture: file.claim.picture } } : {}),
               ...(file.snippet ? { snippet: file.snippet } : {}),
             }
-          : { ...file },
+          : file,
       ),
-      scroll: conversation.scroll
-        ? structuredClone(toRaw(conversation.scroll))
-        : null,
-    }
+      scroll: conversation.scroll,
+    })
   }
 
   /**

@@ -1,5 +1,6 @@
 import { errorMessage } from '../../infra/errors'
-import { computed, onScopeDispose, ref, shallowRef, toRaw, watch } from 'vue'
+import { plainCopy } from '../../infra/plain-copy'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import {
   changeMessageEditContent,
   editContent,
@@ -115,7 +116,7 @@ export function useMessageEditComposer(options: {
     release()
     attachmentError.value = null
     const state = options.state()
-    const content = structuredClone(toRaw(state ? editContent(state) : []))
+    const content = plainCopy(state ? editContent(state) : [])
     const split = splitMessageContent(content)
     const ids = split.files.map(() => crypto.randomUUID())
     files.value = new Map(ids.map((id, index) => [id, split.files[index] ?? []]))
