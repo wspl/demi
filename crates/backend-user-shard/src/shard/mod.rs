@@ -394,23 +394,32 @@ impl Shard {
     async fn close(&self) {
         self.closing.cancel();
         self.sync_channels.close();
-        self.sync_channels.wait().await;
+        closed("the sync channels ended", self.sync_channels.wait()).await;
         self.stop_idle_watches();
         self.pending_watches.clear();
         self.retry_resumes.clear();
         self.cloud.stop();
         self.titles.abort_all();
         self.tree_openers.close();
-        self.tree_openers.wait().await;
-        let _transfers_closed = self.conversations.end_transfers().await;
-        self.mark_running_roots().await;
-        self.agent.shutdown().await;
-        self.cloud_shard().close_cloud().await;
-        self.devices.shut_down(&self.services.control).await;
+        closed("the tree openings ended", self.tree_openers.wait()).await;
+        let _transfers_closed = closed("the transfers ended", self.conversations.end_transfers()).await;
+        closed("the running roots were marked", self.mark_running_roots()).await;
+        closed("the agents were disposed", self.agent.shutdown()).await;
+        closed("the Cloud closed", self.cloud_shard().close_cloud()).await;
+        closed("the devices were shut down", self.devices.shut_down(&self.services.control)).await;
         self.tasks.close();
-        self.tasks.wait().await;
-        self.pipes.close().await;
+        closed("the tasks ended", self.tasks.wait()).await;
+        closed("the pipes closed", self.pipes.close()).await;
     }
+}
+
+/// Awaits `step` of a shard's close and logs how long it took, so the journal
+/// of a close that hangs names the step after the last it logged.
+async fn closed<T>(step: &'static str, work: impl Future<Output = T>) -> T {
+    let started = std::time::Instant::now();
+    let output = work.await;
+    tracing::info!(step, elapsed_ms = started.elapsed().as_millis() as u64, "a step of the shard's close ended");
+    output
 }
 
 /// Why a call produced no answer.
@@ -690,14 +699,19 @@ impl ShardPool {
         Self::stop(self.shards.queues.to_vec(), self.workers).await;
     }
 
+    /// Tells every shard to close, then waits for them all, so a shard that
+    /// takes long to close keeps no other running
+    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`).
     async fn stop(queues: Vec<mpsc::Sender<Message>>, workers: Vec<Worker>) {
+        let mut closing = Vec::new();
         for queue in &queues {
             let (closed, done) = oneshot::channel();
             if queue.send(Message::Close(closed)).await.is_ok() {
-                // A shard loop that ended already has nothing left to stop.
-                let _ = done.await;
+                closing.push(done);
             }
         }
+        // A shard loop that ended already has nothing left to stop.
+        let _ = futures_util::future::join_all(closing).await;
         for worker in workers {
             match worker {
                 Worker::Inline(task) => {

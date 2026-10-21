@@ -72,6 +72,7 @@ test('frames travel as JSON text messages both ways', async () => {
   const submitting = client.submit([{ type: 'text', text: 'hello' }], 'm1')
   expect(JSON.parse(socket.written.at(-1) ?? '')).toEqual({ type: 'send', messageId: 'm1', content: [{ type: 'text', text: 'hello' }] })
   socket.message(JSON.stringify({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u1', 'm1', 'hello')], version: { epoch: 'e', revision: 1 } }))
+  socket.message(JSON.stringify({ type: 'send_result', messageId: 'm1', at: null }))
   await submitting
   socket.message(JSON.stringify({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], revision: 2 }))
   expect(events.at(-1)).toEqual({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: text('t1', 'hi') }], version: { epoch: 'e', revision: 2 }, failures: {} })

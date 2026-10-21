@@ -280,7 +280,44 @@
             }
           },
           "calls": 2
-        }
+        },
+        "queue": [
+          {
+            "id": "msg-2",
+            "content": [
+              {
+                "type": "text",
+                "text": "next"
+              }
+            ]
+          }
+        ],
+        "pendingSteers": [
+          {
+            "id": "steer-1",
+            "turnId": "turn-1",
+            "model": {
+              "providerId": "stub",
+              "model": {
+                "id": "stub-model",
+                "name": "Stub",
+                "contextWindow": 1000,
+                "outputLimit": null,
+                "thinking": [],
+                "acceptedExtensions": []
+              },
+              "thinking": null,
+              "serviceTierId": null
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "skip it"
+              }
+            ]
+          }
+        ],
+        "starting": null
       },
       {
         "id": "child-1",
@@ -324,7 +361,10 @@
             }
           },
           "calls": 2
-        }
+        },
+        "queue": [],
+        "pendingSteers": [],
+        "starting": null
       },
       {
         "id": "side-1",
@@ -358,7 +398,10 @@
             }
           },
           "calls": 2
-        }
+        },
+        "queue": [],
+        "pendingSteers": [],
+        "starting": null
       }
     ]
   },
@@ -412,7 +455,10 @@
             }
           },
           "calls": 2
-        }
+        },
+        "queue": [],
+        "pendingSteers": [],
+        "starting": null
       }
     ]
   },
@@ -490,56 +536,55 @@
           }
         },
         "calls": 2
-      }
-    }
-  },
-  {
-    "type": "queue",
-    "queue": [
-      {
-        "id": "msg-2",
-        "content": [
-          {
-            "type": "text",
-            "text": "next"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "type": "pending_steers",
-    "pendingSteers": [
-      {
-        "id": "steer-1",
-        "turnId": "turn-1",
-        "model": {
-          "providerId": "stub",
+      },
+      "queue": [
+        {
+          "id": "msg-2",
+          "content": [
+            {
+              "type": "text",
+              "text": "next"
+            }
+          ]
+        }
+      ],
+      "pendingSteers": [
+        {
+          "id": "steer-1",
+          "turnId": "turn-1",
           "model": {
-            "id": "stub-model",
-            "name": "Stub",
-            "contextWindow": 1000,
-            "outputLimit": null,
-            "thinking": [],
-            "acceptedExtensions": []
+            "providerId": "stub",
+            "model": {
+              "id": "stub-model",
+              "name": "Stub",
+              "contextWindow": 1000,
+              "outputLimit": null,
+              "thinking": [],
+              "acceptedExtensions": []
+            },
+            "thinking": null,
+            "serviceTierId": null
           },
-          "thinking": null,
-          "serviceTierId": null
-        },
-        "content": [
-          {
-            "type": "text",
-            "text": "skip it"
-          }
-        ]
-      }
-    ]
+          "content": [
+            {
+              "type": "text",
+              "text": "skip it"
+            }
+          ]
+        }
+      ],
+      "starting": null
+    }
   },
   {
     "type": "steer_result",
     "steerId": "steer-1",
     "outcome": {
-      "status": "accepted"
+      "status": "accepted",
+      "at": {
+        "epoch": "agents-1",
+        "revision": 7
+      }
     }
   },
   {
@@ -552,14 +597,32 @@
     }
   },
   {
+    "type": "send_result",
+    "messageId": "msg-3",
+    "at": {
+      "epoch": "agents-1",
+      "revision": 9
+    }
+  },
+  {
+    "type": "send_result",
+    "messageId": "msg-4",
+    "at": null
+  },
+  {
     "type": "remove_result",
     "id": "steer-1",
-    "outcome": "removed"
+    "outcome": "removed",
+    "at": {
+      "epoch": "agents-1",
+      "revision": 8
+    }
   },
   {
     "type": "remove_result",
     "id": "m-2",
-    "outcome": "gone_on"
+    "outcome": "gone_on",
+    "at": null
   },
   {
     "type": "abort_result",

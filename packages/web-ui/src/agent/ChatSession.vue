@@ -911,6 +911,7 @@ watch(
             :pending-calls="conversation.pendingCalls"
             :waiting-since="conversation.waitingSince"
             :queue="conversation.queue"
+            :starting="conversation.starting"
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"

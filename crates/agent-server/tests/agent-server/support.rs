@@ -833,8 +833,10 @@ pub fn send(id: &str, message: &str) -> ClientFrame {
     }
 }
 
-pub fn is_pending_steers(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::PendingSteers { .. })
+/// The handshake's frame after the agents: the output of the request the root
+/// runs.
+pub fn is_request_output(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::RequestOutput { .. })
 }
 
 /// The handshake's last frame for a client subscribed to the root alone:

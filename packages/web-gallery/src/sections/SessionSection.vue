@@ -3125,6 +3125,7 @@ onBeforeUnmount(() => {
                 :blocks="turnFlow.state.blocks"
                 :pending-steers="turnFlow.state.pendingSteers"
                 :queue="turnFlow.state.queue"
+                :starting="turnFlow.state.starting"
                 :phase="turnFlow.state.phase"
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"

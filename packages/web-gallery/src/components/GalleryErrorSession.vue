@@ -157,7 +157,7 @@ function state(
     shownAt: null,
     summaries: {},
     queue: [],
-    pendingSteers: [],
+    pendingSteers: [], starting: null,
     pendingCalls: [],
     waitingSince: null, requestOutput: null, turnSpeed: null,
     phase: 'idle',

@@ -167,9 +167,11 @@ pub(super) struct ActionRun {
     /// The transcript's revision when the action started: an action that
     /// wrote nothing since has not begun.
     started_at: u64,
-    /// The blobs a send's message references until its `user` block is
-    /// written: waiting input meanwhile, whose held bytes stay.
-    unwritten_media: Vec<BlobRef>,
+    /// The message a send started with, until its `user` block is written:
+    /// clients show it as the turn's starting message, so the state holds
+    /// every message the session accepted, and its held bytes stay
+    /// (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    unwritten: Option<QueuedMessage>,
     /// What the user sent now, which the turn takes at its next boundary.
     send_now: Option<SendNow>,
     /// Taken by the worker when it starts the action.
@@ -338,6 +340,7 @@ struct Published {
     queue: Vec<TurnId>,
     phase: SessionPhase,
     pending_steers: Vec<PendingSteer>,
+    starting: Option<QueuedMessage>,
     pending_calls: Vec<PendingCall>,
     agent_inputs: Vec<BlockId>,
     reports: Vec<CommandReport>,
@@ -507,6 +510,7 @@ impl SessionCore {
                 queue: Vec::new(),
                 phase: SessionPhase::Idle,
                 pending_steers: Vec::new(),
+                starting: None,
                 pending_calls: Vec::new(),
                 agent_inputs: Vec::new(),
                 reports: Vec::new(),
@@ -801,9 +805,14 @@ impl SessionCore {
     fn start_action(&mut self, kind: ActionKind, turn: TurnId, reply: Option<ActionReply>) {
         let cancel = TurnCancel::new();
         self.held = false;
-        let unwritten_media = match &kind {
-            ActionKind::Send { content, .. } => media::content_references(content).cloned().collect(),
-            _ => Vec::new(),
+        let unwritten = match &kind {
+            ActionKind::Send { content, comments, automation } => Some(QueuedMessage {
+                id: turn.clone(),
+                content: content.clone(),
+                comments: comments.clone(),
+                automation: automation.clone(),
+            }),
+            _ => None,
         };
         // A turn waits for the model's answer from its start, through the
         // hooks and the Host reads that build its request; a compaction
@@ -816,7 +825,7 @@ impl SessionCore {
             cancel: cancel.clone(),
             stage: TurnStage::Preparing,
             started_at: self.transcript.version().revision,
-            unwritten_media,
+            unwritten,
             send_now: None,
             start: Some(StartedAction {
                 kind,
@@ -1165,9 +1174,9 @@ impl SessionCore {
     /// Starts dispose: admissions end, the running action is stopped as a
     /// shutdown, and queued messages lose their callers but stay for the
     /// final checkpoint. Returns false when dispose already started.
-    pub(super) fn begin_dispose(&mut self) -> bool {
+    pub(super) fn begin_dispose(&mut self) {
         if self.disposing {
-            return false;
+            return;
         }
         self.disposing = true;
         for action in &mut self.pending {
@@ -1183,7 +1192,6 @@ impl SessionCore {
         if matches!(self.activity, Activity::Idle) {
             self.activity = Activity::Closed { interrupted: false };
         }
-        true
     }
 
     /// Every provider runtime the session holds, for closing.
@@ -1277,13 +1285,18 @@ impl SessionCore {
 
     // Steers and agent messages.
 
-    /// Accepts a human steer for the running action's next boundary.
+    /// Accepts a human steer for the running action's next boundary. A steer
+    /// whose id the session holds, pending or written, was taken already, as
+    /// a page that lost the answer sends it again: it is accepted once.
     pub(super) fn steer(
         &mut self,
         id: BlockId,
         content: Vec<UserContentBlock>,
         comments: Vec<MessageComment>,
     ) -> Result<(), SteerError> {
+        if self.inputs.pending_steers().iter().any(|steer| steer.id == id) || self.transcript.find(&id).is_some() {
+            return Ok(());
+        }
         let turn = self.steerable_turn()?;
         self.inputs.add(Input::Steer(PendingSteer {
             id,
@@ -1628,7 +1641,7 @@ impl SessionCore {
         self.transcript
             .push_user(turn, &self.model, content, comments, preamble, automation);
         if let Activity::Running(run) = &mut self.activity {
-            run.unwritten_media.clear();
+            run.unwritten = None;
         }
         self.commit();
     }
@@ -2251,8 +2264,9 @@ impl SessionCore {
             referenced.extend(media::content_references(&steer.content).cloned());
             referenced.extend(media::comment_references(&steer.comments).cloned());
         }
-        if let Activity::Running(run) = &self.activity {
-            referenced.extend(run.unwritten_media.iter().cloned());
+        if let Activity::Running(ActionRun { unwritten: Some(message), .. }) = &self.activity {
+            referenced.extend(media::content_references(&message.content).cloned());
+            referenced.extend(media::comment_references(&message.comments).cloned());
         }
         referenced
     }
@@ -2485,6 +2499,15 @@ impl SessionCore {
         self.inputs.pending_steers()
     }
 
+    /// The message the running turn started with, until its `user` block is
+    /// written.
+    pub(super) fn starting(&self) -> Option<QueuedMessage> {
+        match &self.activity {
+            Activity::Running(run) => run.unwritten.clone(),
+            _ => None,
+        }
+    }
+
     /// Ends a change: the events it made, then the queue, the pending steers
     /// and the phase when they changed.
     ///
@@ -2534,6 +2557,11 @@ impl SessionCore {
         if pending_steers != self.published.pending_steers {
             self.published.pending_steers = pending_steers.clone();
             events.push(SessionEvent::PendingSteersChanged { pending_steers });
+        }
+        let starting = self.starting();
+        if starting != self.published.starting {
+            self.published.starting = starting.clone();
+            events.push(SessionEvent::StartingChanged { starting });
         }
         let pending_calls = self.pending_calls();
         if pending_calls != self.published.pending_calls {

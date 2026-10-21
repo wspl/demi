@@ -80,6 +80,11 @@ export interface ConversationState {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
+  /**
+   * The message the root's running turn started with, until the turn writes it
+   * into the transcript, as the server tells it; null otherwise.
+   */
+  starting: QueuedMessage | null
   /** The calls the model is writing, as the server lists them. */
   pendingCalls: PendingCall[]
   /**
@@ -126,6 +131,7 @@ export interface ChatSessionState
     | 'summaries'
     | 'queue'
     | 'pendingSteers'
+    | 'starting'
     | 'pendingCalls'
     | 'waitingSince'
     | 'requestOutput'

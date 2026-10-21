@@ -35,7 +35,7 @@ use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::support::{
-        Fixture, Gate, PluginSource, TestProduct, conversation, held, is_pending_steers, kinds, send, session_of, switch, until, is_root_reset,
+        Fixture, Gate, PluginSource, TestProduct, conversation, held, is_request_output, kinds, send, session_of, switch, until, is_root_reset,
     };
 
 #[tokio::test(flavor = "local")]
@@ -289,7 +289,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), files);
     client.open().await;
-    client.next_until(is_pending_steers).await;
+    client.next_until(is_request_output).await;
     client
         .send(ClientFrame::Send {
             comments: Vec::new(),
@@ -351,7 +351,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
             blobs.forget(&uploaded);
         }
         client.open().await;
-        client.next_until(is_pending_steers).await;
+        client.next_until(is_request_output).await;
         client.send(send(message, "and now?")).await;
         client.until_idle().await;
     }
@@ -420,7 +420,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), files);
     client.open().await;
-    client.next_until(is_pending_steers).await;
+    client.next_until(is_request_output).await;
     client
         .send(ClientFrame::Send {
             comments: Vec::new(),
@@ -446,7 +446,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     // Restored, the session holds no bytes; the open reads no blob, and the
     // readying after it reads the image's.
     client.open().await;
-    client.next_until(is_pending_steers).await;
+    client.next_until(is_request_output).await;
     let readied = script.readied(answered + 1).await;
     let (_, request) = &readied[answered];
     let image = UserPart::Image(Medium::Bytes(MediaBytes {
@@ -496,7 +496,7 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
     files.upload("upload-1", resolved);
     let mut client = TestClient::connect_with(&fixture.server, &conversation(), files);
     client.open().await;
-    client.next_until(is_pending_steers).await;
+    client.next_until(is_request_output).await;
     client
         .send(ClientFrame::Send {
             comments: Vec::new(),
@@ -513,7 +513,7 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
     client.next_until(|frame| *frame == ServerFrame::Closed).await;
 
     client.open().await;
-    let mut handshake = client.next_until(is_pending_steers).await;
+    let mut handshake = client.next_until(is_request_output).await;
     handshake.extend(client.received());
     // The estimate cannot be told without reading the picture: the root's
     // entry says none.
@@ -968,11 +968,11 @@ async fn the_context_sources_are_asked_at_once_and_answer_in_their_order() {
     );
 }
 
-/// Remove on a steer or a queued message: the session answers whether it
-/// removed the message or the message had gone on, after the list frame
-/// the removal changed, so the page never guesses from what comes next.
+/// Remove on a steer or a queued message: the root's entry shows the list
+/// without it, and the session answers whether it removed the message or the
+/// message had gone on, so the page never guesses from what comes next.
 #[tokio::test(flavor = "local")]
-async fn removing_a_waiting_message_is_answered_after_its_list() {
+async fn removing_a_waiting_message_shows_in_its_list_and_is_answered_removed_or_gone_on() {
     let script = ScriptedRuntime::new([Turn::pending()]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
@@ -1003,18 +1003,29 @@ async fn removing_a_waiting_message_is_answered_after_its_list() {
     // Asked again, each has gone: the session no longer holds it.
     client.send(dequeue()).await;
     client.send(cancel()).await;
+    // The root's entry shows each list as it changes, from one queued
+    // message and one steer.
+    let (mut queue, mut pending) = (Some(1), Some(1));
     let shown: Vec<String> = client
         .received()
         .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::Queue { queue } => Some(format!("queue {}", queue.len())),
-            ServerFrame::PendingSteers { pending_steers } => {
-                Some(format!("pending_steers {}", pending_steers.len()))
+        .flat_map(|frame| match frame {
+            ServerFrame::RemoveResult { id, outcome, .. } => {
+                vec![format!("remove_result {id} {}", serde_json::to_value(outcome).unwrap().as_str().unwrap())]
             }
-            ServerFrame::RemoveResult { id, outcome } => {
-                Some(format!("remove_result {id} {}", serde_json::to_value(outcome).unwrap().as_str().unwrap()))
-            }
-            _ => None,
+            frame => root_entry(frame)
+                .into_iter()
+                .flat_map(|entry| {
+                    let mut changed = Vec::new();
+                    if queue.replace(entry.queue.len()) != Some(entry.queue.len()) {
+                        changed.push(format!("queue {}", entry.queue.len()));
+                    }
+                    if pending.replace(entry.pending_steers.len()) != Some(entry.pending_steers.len()) {
+                        changed.push(format!("pending_steers {}", entry.pending_steers.len()));
+                    }
+                    changed
+                })
+                .collect(),
         })
         .collect();
     assert_eq!(
@@ -1056,14 +1067,10 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_
         client.send(send(id, text)).await;
     }
     until(|| script.requests().len() == 1).await;
-    let queue_ids = |frame: &ServerFrame| match frame {
-        ServerFrame::Queue { queue } => Some(
-            queue
-                .iter()
-                .map(|message| message.id.to_string())
-                .collect::<Vec<_>>(),
-        ),
-        _ => None,
+    let queue_ids = |frame: &ServerFrame| {
+        root_entry(frame)
+            .map(|entry| entry.queue.iter().map(|message| message.id.to_string()).collect::<Vec<_>>())
+            .filter(|queue| !queue.is_empty())
     };
 
     client
@@ -1078,7 +1085,9 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_
         .await;
     // m3 runs at once, then m2, whose reply waits.
     until(|| script.requests().len() == 3).await;
-    let queues: Vec<Vec<String>> = client.received().iter().filter_map(queue_ids).collect();
+    // The root's entry changes for its phase too: each list once.
+    let mut queues: Vec<Vec<String>> = client.received().iter().filter_map(queue_ids).collect();
+    queues.dedup();
     assert_eq!(
         queues,
         [

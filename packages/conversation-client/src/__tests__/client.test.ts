@@ -19,23 +19,27 @@ test('open resolves on opened', async () => {
   await opening
 })
 
-test('a submitted message is confirmed by its own user block or queue entry, before its turn ends', async () => {
+// A send settles on its answer's version, before its turn ends: the step that
+// took it, which shows the message as the turn's starting message or in the
+// queue. Another message's answer settles nothing.
+test('a submitted message settles once the client holds the version its own answer names', async () => {
   const h = harness()
   let confirmed = false
   const pending = h.client.submit([{ type: 'text', text: 'hello' }]).then(() => {
     confirmed = true
   })
   const send = sentOfType(h.sent, 'send')
-  h.phase('running')
-  h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u0', 'another-turn', 'hello')], version: { epoch: 'e', revision: 1 } })
+  h.receive({ type: 'send_result', messageId: 'another-turn', at: null })
+  h.receive({ type: 'send_result', messageId: send.messageId, at: { epoch: 'e', revision: 1 } })
   await settle()
   expect(confirmed).toBe(false)
-  h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: user('u1', send.messageId, 'hello') }], revision: 2 })
+  h.phase('running')
   await pending
 
   const queued = h.client.submit([{ type: 'text', text: 'next' }], 'chosen-id')
   expect(h.sent.at(-1)).toMatchObject({ type: 'send', messageId: 'chosen-id' })
-  h.receive({ type: 'queue', queue: [{ id: 'chosen-id', content: [{ type: 'text', text: 'next' }] }] })
+  h.queue([{ id: 'chosen-id', content: [{ type: 'text', text: 'next' }] }])
+  h.receive({ type: 'send_result', messageId: 'chosen-id', at: { epoch: 'e', revision: 2 } })
   await queued
 })
 
@@ -180,15 +184,15 @@ test('a queued send ends when the next message runs or the session is idle, and 
   }
   h.phase('running')
   h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [user('u1', firstSend.messageId, 'first')], version: { epoch: 'e', revision: 1 } })
-  h.receive({ type: 'queue', queue: [{ id: secondSend.messageId, content: [] }, { id: thirdSend.messageId, content: [] }] })
+  h.queue([{ id: secondSend.messageId, content: [] }, { id: thirdSend.messageId, content: [] }])
   const dequeued = h.client.dequeueMessage(secondSend.messageId)
-  h.receive({ type: 'queue', queue: [{ id: thirdSend.messageId, content: [] }] })
-  h.receive({ type: 'remove_result', id: secondSend.messageId, outcome: 'removed' })
+  h.queue([{ id: thirdSend.messageId, content: [] }])
+  h.receive({ type: 'remove_result', id: secondSend.messageId, outcome: 'removed', at: { epoch: 'e', revision: 3 } })
   expect(await dequeued).toBe('removed')
   await second
   expect(settled).toEqual(['second'])
   // The third message runs right after the first, with no idle between them.
-  h.receive({ type: 'queue', queue: [] })
+  h.queue([])
   h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: user('u3', thirdSend.messageId, 'third') }], revision: 2 })
   await first
   expect(settled).toEqual(['second', 'first'])
@@ -197,21 +201,78 @@ test('a queued send ends when the next message runs or the session is idle, and 
   expect(settled).toEqual(['second', 'first', 'third'])
 })
 
-test('a steer resolves on its own accepted result and fails on a rejected one', async () => {
+// The answer is no state: a steer accepted while the version that shows it is
+// late stays the page's own until the client holds that version. Before, the
+// steer resolved on its answer, the page dropped its row, and the message
+// showed nowhere until the list came.
+test('an accepted steer resolves once the client holds the version its answer names, and a rejected one fails', async () => {
   const h = harness()
-  const accepted = h.client.steer([{ type: 'text', text: 'also this' }], 'steer-1')
+  let delivered = false
+  const accepted = h.client.steer([{ type: 'text', text: 'also this' }], 'steer-1').then(() => {
+    delivered = true
+  })
   const rejected = h.client.steer([{ type: 'text', text: 'and this' }], 'steer-2').catch((error: unknown) => error)
   h.receive({ type: 'steer_result', steerId: 'steer-2', outcome: { status: 'rejected', code: 'no_session', reason: 'No session is open on this connection' } })
-  h.receive({ type: 'steer_result', steerId: 'steer-1', outcome: { status: 'accepted' } })
+  h.receive({ type: 'steer_result', steerId: 'steer-1', outcome: { status: 'accepted', at: { epoch: 'e', revision: 1 } } })
+  await settle()
+  expect(delivered).toBe(false)
+  h.steers([pendingSteer('steer-1')])
   await accepted
   expect(await rejected).toMatchObject({ message: 'No session is open on this connection' })
+})
+
+test('a steer the root lists before its answer resolves with the answer', async () => {
+  const h = harness()
+  const steering = h.client.steer([{ type: 'text', text: 'also this' }], 'steer-1')
+  h.steers([pendingSteer('steer-1')])
+  h.receive({ type: 'steer_result', steerId: 'steer-1', outcome: { status: 'accepted', at: { epoch: 'e', revision: 1 } } })
+  await steering
+})
+
+// Recall settles on the version too: a removal answered `removed` while the
+// version that drops the steer is late resolves once the client holds it, so
+// the page never shows a recalled steer again in between.
+test('a removal resolves once the client holds the version its answer names', async () => {
+  const h = harness()
+  h.steers([pendingSteer('first')])
+  let outcome: string | undefined
+  const removal = h.client.cancelPendingSteer('first').then((answer) => {
+    outcome = answer
+  })
+  h.receive({ type: 'remove_result', id: 'first', outcome: 'removed', at: { epoch: 'e', revision: 2 } })
+  await settle()
+  expect(outcome).toBeUndefined()
+  h.steers([])
+  await removal
+  expect(outcome).toBe('removed')
+})
+
+// A gap in the agents' revisions is filled on the same socket. (It closed the
+// socket.)
+test('an agent change past the next revision asks for the changes since the one held and waits for them', () => {
+  const h = harness()
+  h.steers([])
+  h.sent.length = 0
+  h.receive({ type: 'agent', revision: 3, agent: { ...entry(ROOT, 'running'), pendingSteers: [pendingSteer('lost')] } })
+  expect(h.sent).toEqual([{ type: 'agents_since', held: { epoch: 'e', revision: 1 } }])
+  expect(h.client.pendingSteers()).toEqual([])
+  h.receive({ type: 'agent', revision: 4, agent: entry(ROOT, 'running') })
+  h.receive({
+    type: 'agents',
+    version: { epoch: 'e', revision: 4 },
+    since: 1,
+    agents: [{ ...entry(ROOT, 'running'), pendingSteers: [pendingSteer('kept')] }],
+  })
+  expect(h.client.pendingSteers()).toEqual([pendingSteer('kept')])
+  expect(h.closes()).toBe(0)
+  expect(h.events.map((event) => event.type)).not.toContain('disconnected')
 })
 
 test('the pending steers leave by id, even when the history arrives before the list', () => {
   const h = harness()
   const written = { ...pendingSteer('first'), type: 'steer' as const, createdAt }
   h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [written], version: { epoch: 'e', revision: 1 } })
-  h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first'), pendingSteer('second')] })
+  h.steers([pendingSteer('first'), pendingSteer('second')])
   expect(h.client.pendingSteers()).toEqual([pendingSteer('second')])
   // Both have the same content; only the id says which one the transcript holds.
   h.receive({ type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', index: 1, value: { ...written, id: 'second' } }], revision: 2 })
@@ -219,30 +280,29 @@ test('the pending steers leave by id, even when the history arrives before the l
   expect(h.events.filter((event) => event.type === 'pending_steers').at(-1)).toEqual({ type: 'pending_steers', pendingSteers: [] })
 })
 
-// The session answers a removal after the list it changed; a turn that fails
-// meanwhile is no answer.
+// A turn that fails meanwhile is no answer to a removal.
 test('a cancelled steer leaves with the list the server answers, and the removal resolves with the answer', async () => {
   const h = harness()
-  h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first'), pendingSteer('second')] })
+  h.steers([pendingSteer('first'), pendingSteer('second')])
   let outcome: string | undefined
   const removal = h.client.cancelPendingSteer('first').then((answer) => {
     outcome = answer
   })
   expect(h.sent).toEqual([{ type: 'cancel_pending_steer', steerId: 'first' }])
   h.receive({ type: 'error', code: 'generation_failed', message: 'The model failed' })
-  h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('second')] })
-  h.receive({ type: 'remove_result', id: 'other', outcome: 'removed' })
+  h.steers([pendingSteer('second')])
+  h.receive({ type: 'remove_result', id: 'other', outcome: 'removed', at: { epoch: 'e', revision: 2 } })
   await Promise.resolve()
   expect(outcome).toBeUndefined()
   expect(h.client.pendingSteers()).toEqual([pendingSteer('second')])
-  h.receive({ type: 'remove_result', id: 'first', outcome: 'gone_on' })
+  h.receive({ type: 'remove_result', id: 'first', outcome: 'gone_on', at: { epoch: 'e', revision: 2 } })
   await removal
   expect(outcome).toBe('gone_on')
 })
 
 test('the pending steers the client answers are its own copies', () => {
   const h = harness()
-  h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first')] })
+  h.steers([pendingSteer('first')])
   const copy = h.client.pendingSteers()
   copy[0]!.content.length = 0
   copy.length = 0
@@ -263,7 +323,7 @@ test("the calls being written are the root's entry's until its next change, a su
 
 test('a frame the contract does not allow disconnects the client before anything acts on it', () => {
   for (const frame of [
-    { type: 'pending_steers', pendingSteers: [{ id: 7 }] },
+    { type: 'agent', revision: 1, agent: { ...entry(ROOT, 'running'), pendingSteers: [{ id: 7 }] } },
     { type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [{ type: 'text' }], version: { epoch: 'e', revision: 0 } },
     { type: 'transcript_patch', node: ROOT, patches: [{ op: 'add', path: ['blocks', 0], value: text('a', 'x') }], revision: 1 },
     { type: 'tool_progress', toolUseId: 't1', output: [] },
@@ -354,12 +414,12 @@ test('a node the page stops showing drops its frames on their way until its rese
 test('closed clears the transcript, the version and the pending steers, and ends the actions', async () => {
   const h = harness()
   h.receive({ type: 'transcript_reset', node: ROOT, start: 0, length: 1, blocks: [text('a', 'one')], version: { epoch: 'e', revision: 1 } })
-  h.receive({ type: 'pending_steers', pendingSteers: [pendingSteer('first')] })
+  h.steers([pendingSteer('first')])
   const action = h.client.send([{ type: 'text', text: 'hi' }])
   const steer = h.client.steer([{ type: 'text', text: 'also' }]).catch((error: unknown) => error)
   h.receive({ type: 'closed' })
   await action
-  expect(await steer).toMatchObject({ message: 'Session closed' })
+  expect(await steer).toMatchObject({ message: 'Agent connection closed' })
   expect(h.blocks()).toEqual([])
   expect(h.client.transcriptVersion()).toBeNull()
   expect(h.client.pendingSteers()).toEqual([])

@@ -20,7 +20,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::testing::{MemoryTreeStore, model_of};
 use demi_conversation_socket_protocol::{
-    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, Refusal, RemoveOutcome, ServerFrame, SteerOutcome,
+    AgentCode, AgentEntry, ClientFrame, ClientFrameKind, EditOutcome, Refusal, RemoveOutcome, ServerFrame, SteerOutcome,
 };
 use demi_provider_common::{
     Ahead, InferenceItem, ProviderEvent,
@@ -85,6 +85,82 @@ async fn a_page_that_opens_a_conversation_has_its_next_request_readied_ahead_aft
     assert_eq!(next.session_id, history.session_id);
 }
 
+/// A command's answer names the agents' version of the step that took it,
+/// and the page has the entry that shows the message by then: a send that
+/// starts the turn as its starting message, a steer in the pending steers.
+/// (A steer's answer named nothing, and the list that showed it could come
+/// after it.)
+#[tokio::test(flavor = "local")]
+async fn a_commands_answer_names_the_version_of_the_step_that_shows_it() {
+    let script = ScriptedRuntime::new([Turn::pending()]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    // The revision of the latest root entry that `shows`, among `frames`.
+    let shown_at = |frames: &[ServerFrame], shows: &dyn Fn(&AgentEntry) -> bool| {
+        frames.iter().rev().find_map(|frame| match frame {
+            ServerFrame::Agent { revision, agent } if agent.id == conversation() && shows(agent) => Some(*revision),
+            _ => None,
+        })
+    };
+
+    client.send(send("m1", "one")).await;
+    let frames = client.next_until(|frame| matches!(frame, ServerFrame::SendResult { .. })).await;
+    let Some(ServerFrame::SendResult { message_id, at: Some(at) }) = frames.last() else {
+        panic!("{frames:?}")
+    };
+    assert_eq!(message_id.as_str(), "m1");
+    let starting = shown_at(&frames, &|entry| entry.starting.as_ref().is_some_and(|message| message.id.as_str() == "m1"));
+    assert!(starting.is_some_and(|revision| revision <= at.revision), "{frames:?}");
+
+    until(|| script.requests().len() == 1).await;
+    let steer_id = BlockId::try_from("steer-1").unwrap();
+    client
+        .send(ClientFrame::Steer { steer_id: steer_id.clone(), content: client_text("also this"), comments: Vec::new() })
+        .await;
+    let frames = client.next_until(|frame| matches!(frame, ServerFrame::SteerResult { .. })).await;
+    let Some(ServerFrame::SteerResult { outcome: SteerOutcome::Accepted { at: Some(at) }, .. }) = frames.last() else {
+        panic!("{frames:?}")
+    };
+    let listed = shown_at(&frames, &|entry| entry.pending_steers.iter().any(|steer| steer.id == steer_id));
+    assert!(listed.is_some_and(|revision| revision <= at.revision), "{frames:?}");
+}
+
+/// A page that meets a gap in the agents' revisions asks for the changes
+/// since the revision it holds, and gets them on the same socket: the root's
+/// entry changed since, with the message it queued, and nothing it already
+/// holds. (A gap closed the socket, and only a new one mended it.)
+#[tokio::test(flavor = "local")]
+async fn a_page_asks_for_the_agents_changed_since_the_revision_it_holds() {
+    let script = ScriptedRuntime::new([Turn::pending()]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.client();
+    client.open().await;
+    let held = client
+        .next_until(|frame| matches!(frame, ServerFrame::Agents { .. }))
+        .await
+        .into_iter()
+        .find_map(|frame| match frame {
+            ServerFrame::Agents { version, .. } => Some(version),
+            _ => None,
+        })
+        .expect("the handshake lists the agents");
+    client.send(send("m1", "one")).await;
+    client.send(send("m2", "two")).await;
+    until(|| script.requests().len() == 1).await;
+    client.received();
+
+    client.send(ClientFrame::AgentsSince { held: held.clone() }).await;
+    let answered = client.next_until(|frame| matches!(frame, ServerFrame::Agents { .. })).await;
+    let Some(ServerFrame::Agents { version, since, agents }) = answered.last() else {
+        panic!("{answered:?}")
+    };
+    assert_eq!((version.epoch.as_str(), *since), (held.epoch.as_str(), Some(held.revision)));
+    assert!(version.revision > held.revision, "{version:?}");
+    let root = agents.iter().find(|agent| agent.id == conversation()).expect("the root changed");
+    let queued: Vec<String> = root.queue.iter().map(|message| message.id.to_string()).collect();
+    assert_eq!(queued, ["m2"]);
+}
+
 #[tokio::test(flavor = "local")]
 async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_last() {
     let script = ScriptedRuntime::new([Turn::Events(vec![
@@ -106,8 +182,6 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
         [
             "opened",
             "agents",
-            "queue",
-            "pending_steers",
             "request_output",
             "transcript_reset"
         ]
@@ -232,7 +306,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
         "{received:?}"
     );
     let handshake: Vec<String> = received.iter().map(frame_type).collect();
-    assert_eq!(handshake, ["opened", "agents", "queue", "pending_steers", "request_output", "transcript_reset"]);
+    assert_eq!(handshake, ["opened", "agents", "request_output", "transcript_reset"]);
 
     gate.open();
     let turn = second.until_idle().await;
@@ -323,14 +397,19 @@ async fn two_opens_of_one_conversation_at_once_build_one_tree() {
     );
 }
 
-/// The queue's messages by id.
+/// The tree's events among `frames`, which every connection receives,
+/// without the replies to its own frames.
+fn events(frames: &[ServerFrame]) -> Vec<ServerFrame> {
+    frames
+        .iter()
+        .filter(|frame| !matches!(frame, ServerFrame::SendResult { .. }))
+        .cloned()
+        .collect()
+}
+
+/// The queue's messages by id, as the root's entry `frame` carries them.
 fn queued(frame: &ServerFrame) -> Option<Vec<String>> {
-    match frame {
-        ServerFrame::Queue { queue } => {
-            Some(queue.iter().map(|message| message.id.to_string()).collect())
-        }
-        _ => None,
-    }
+    root_entry(frame).map(|entry| entry.queue.iter().map(|message| message.id.to_string()).collect())
 }
 
 // Two tabs of one conversation: every event of the tree reaches both, a
@@ -349,7 +428,8 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
     first.send(send("m1", "hi")).await;
     let seen_by_first = first.until_idle().await;
     let seen_by_second = second.until_idle().await;
-    assert_eq!(seen_by_first, seen_by_second);
+    assert_eq!(events(&seen_by_first), seen_by_second);
+    assert!(seen_by_first.iter().any(|frame| matches!(frame, ServerFrame::SendResult { .. })));
     assert!(
         seen_by_second
             .iter()
@@ -414,7 +494,7 @@ async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_t
             .boxed_local()
     }))]);
     let config = ServerConfig {
-        outbox_frames: 16,
+        outbox_steps: 16,
         ..ServerConfig::default()
     };
     let fixture = Fixture::with(&script, MemoryTreeStore::new(), config);
@@ -435,7 +515,7 @@ async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_t
     let mut held = 0;
     let end = loop {
         match stalled.outgoing().await {
-            Outgoing::Frame(_) => held += 1,
+            Outgoing::Frames(_) => held += 1,
             end => break end,
         }
     };
@@ -517,7 +597,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
         queues.contains(&vec!["m2".to_owned(), "m3".to_owned()]),
         "{queues:?}"
     );
-    assert_eq!(seen_by_first, seen_by_second);
+    assert_eq!(events(&seen_by_first), events(&seen_by_second));
     let turns: Vec<String> = session_of(&fixture)
         .transcript()
         .blocks
@@ -621,6 +701,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
             ServerFrame::RemoveResult {
                 id: "m1".into(),
                 outcome: RemoveOutcome::GoneOn,
+                at: None,
             },
             ServerFrame::SteerResult {
                 steer_id: steer_id.clone(),
@@ -634,6 +715,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
             ServerFrame::RemoveResult {
                 id: steer_id.into_string(),
                 outcome: RemoveOutcome::GoneOn,
+                at: None,
             },
         ]
     );
@@ -659,6 +741,8 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     client
         .next_until(|frame| root_entry(frame).is_some_and(|entry| entry.waited_ms.is_some()))
         .await;
+    // The send's own answer and the rest of its step.
+    client.received();
     for frame in [
         ClientFrame::Retry {},
         ClientFrame::Resume {},
@@ -721,7 +805,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
         let mut drained = Vec::new();
         loop {
             match frames.recv().await {
-                Outgoing::Frame(frame) => drained.push(frame),
+                Outgoing::Frames(step) => drained.extend(step),
                 outgoing => return (drained, outgoing),
             }
         }
@@ -735,8 +819,6 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
         [
             "opened",
             "agents",
-            "queue",
-            "pending_steers",
             "request_output"
         ]
     );

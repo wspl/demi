@@ -488,7 +488,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         matches!(
             steered.last(),
             Some(ServerFrame::SteerResult {
-                outcome: SteerOutcome::Accepted,
+                outcome: SteerOutcome::Accepted { .. },
                 ..
             })
         ),

@@ -305,6 +305,8 @@ pub struct TestClient<H: HostResolver> {
     root_phase: SessionPhase,
     connection: Connection<H>,
     frames: FrameRx,
+    /// The frames of a step read but not yet answered by `next`.
+    read: std::collections::VecDeque<ServerFrame>,
     /// How long a wait for a frame may take before it fails as a hang.
     hang_guard: Duration,
 }
@@ -327,6 +329,7 @@ impl<H: HostResolver> TestClient<H> {
             root_phase: SessionPhase::Idle,
             connection,
             frames,
+            read: std::collections::VecDeque::new(),
             hang_guard: HANG_GUARD,
         }
     }
@@ -358,15 +361,17 @@ impl<H: HostResolver> TestClient<H> {
 
     /// The next frame; `None` once the outbox is closed or lagged.
     pub async fn next(&mut self) -> Option<ServerFrame> {
-        match self.frames.recv().await {
-            Outgoing::Frame(frame) => {
-                if let Some(entry) = entry_in(&frame, &self.root) {
-                    self.root_phase = entry.phase;
-                }
-                Some(frame)
+        if self.read.is_empty() {
+            match self.frames.recv().await {
+                Outgoing::Frames(step) => self.read.extend(step),
+                Outgoing::Lagged | Outgoing::Closed => return None,
             }
-            Outgoing::Lagged | Outgoing::Closed => None,
         }
+        let frame = self.read.pop_front()?;
+        if let Some(entry) = entry_in(&frame, &self.root) {
+            self.root_phase = entry.phase;
+        }
+        Some(frame)
     }
 
     /// The frames up to the one that tells the root went idle, after the
@@ -388,7 +393,8 @@ impl<H: HostResolver> TestClient<H> {
 
     /// Every frame waiting now.
     pub fn received(&mut self) -> Vec<ServerFrame> {
-        let frames = waiting_frames(&mut self.frames);
+        let mut frames: Vec<ServerFrame> = self.read.drain(..).collect();
+        frames.extend(waiting_frames(&mut self.frames));
         if let Some(entry) = frames.iter().rev().find_map(|frame| entry_in(frame, &self.root)) {
             self.root_phase = entry.phase;
         }
@@ -438,8 +444,8 @@ impl<H: HostResolver> TestClient<H> {
 /// Every frame `outbox` holds now.
 pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
     let mut frames = Vec::new();
-    while let Some(Outgoing::Frame(frame)) = outbox.try_recv() {
-        frames.push(frame);
+    while let Some(Outgoing::Frames(step)) = outbox.try_recv() {
+        frames.extend(step);
     }
     frames
 }

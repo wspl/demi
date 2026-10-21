@@ -117,6 +117,13 @@ interface ActionWaiter {
   reject: (error: Error) => void
 }
 
+/** Which of the root's waiting inputs an agent entry changed. */
+interface WaitingChanged {
+  queue: boolean
+  pending: boolean
+  starting: boolean
+}
+
 interface Waiter<T> {
   resolve: (value: T) => void
   reject: (error: Error) => void
@@ -172,7 +179,6 @@ export class ConversationClient {
   private readonly transport: ConversationClientTransport
   private readonly listeners = new Set<ConversationClientListener>()
   private readonly actionWaiters: ActionWaiter[] = []
-  private readonly steerWaiters = new Map<string, Waiter<void>>()
   private readonly abortWaiters: Waiter<AbortResult>[] = []
   private readonly detachTransport: () => void
   private disconnected = false
@@ -188,10 +194,14 @@ export class ConversationClient {
   private readonly agents = new Map<string, AgentEntry>()
   /** The version of the agents the client holds; null before the open's. */
   private agentsVersion: Version | null = null
+  /** The client asked for the agents' changes it missed, and ignores changes until the answer. */
+  private agentsStale = false
   /** The root's node, the conversation's id; null before `open`. */
   private root: string | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
+  /** The message the root's running turn started with, until its turn writes it. */
+  private starting: QueuedMessage | null = null
   private readonly conversationFrame: (frame: unknown) => boolean
 
   constructor(transport: ConversationClientTransport, options: ConversationClientOptions = {}) {
@@ -248,13 +258,17 @@ export class ConversationClient {
    * backend decides that a delivery failed, and says why.
    */
   submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
+    // The answer names the agents' version that shows the message, queued or
+    // starting the turn; the send settles once the client holds it
+    // (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    let at: Version | null | undefined
     return this.request(
       { type: 'send', messageId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) },
       (event) => {
-        const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
-          && this.writtenTurns.has(messageId)
-        const queued = event.type === 'queue' && event.queue.some((message) => message.id === messageId)
-        if (written || queued) {
+        if (event.type === 'send_result' && event.messageId === messageId) {
+          at = event.at
+        }
+        if (at !== undefined && this.holdsVersion(at)) {
           return { resolve: undefined }
         }
         return this.failure(event, 'send')
@@ -280,18 +294,21 @@ export class ConversationClient {
     if (this.writtenTurns.has(turnId) || this.queue.some((message) => message.id === turnId)) {
       return Promise.resolve()
     }
+    // Settles once the client holds the agents' version the answer names.
+    let at: Version | null | undefined
     return this.request(
       { type: 'send_saved', id, turnId, delivery, ...(content ? { content } : {}) },
       (event) => {
         if (event.type === 'steer_result' && event.steerId === turnId) {
-          return event.outcome.status === 'accepted'
-            ? { resolve: undefined }
-            : { reject: new SteerRejectedError(event.outcome) }
+          if (event.outcome.status !== 'accepted') {
+            return { reject: new SteerRejectedError(event.outcome) }
+          }
+          at = event.outcome.at
         }
-        const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
-          && this.writtenTurns.has(turnId)
-        const queued = event.type === 'queue' && event.queue.some((message) => message.id === turnId)
-        if (delivery !== 'steer' && (written || queued)) {
+        if (event.type === 'send_result' && event.messageId === turnId) {
+          at = event.at
+        }
+        if (at !== undefined && this.holdsVersion(at)) {
           return { resolve: undefined }
         }
         if (event.type === 'rejected' && event.command === 'send_saved' && event.code === 'saved_not_found') {
@@ -358,7 +375,8 @@ export class ConversationClient {
    * or `gone_on` when its turn had started or the session never held it.
    */
   async dequeueMessage(messageId: string): Promise<RemoveOutcome> {
-    const outcome = await this.removeRequest(messageId, { type: 'dequeue_message', messageId })
+    const { outcome, at } = await this.removeRequest(messageId, { type: 'dequeue_message', messageId })
+    await this.untilState(() => this.holdsVersion(at))
     if (outcome === 'removed') {
       this.settleQueuedSend(messageId)
     }
@@ -383,9 +401,34 @@ export class ConversationClient {
     }
   }
 
-  /** Adds input to the running turn; resolves when the steer is accepted. */
+  /**
+   * Adds input to the running turn; resolves once the client holds the agents'
+   * version the answer names, which shows the steer, and rejects with
+   * `SteerRejectedError` when the session refuses it
+   * (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+   */
   steer(content: ClientContent[], steerId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
-    return this.steerRequest(steerId, { type: 'steer', steerId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) })
+    let at: Version | null | undefined
+    return this.request(
+      { type: 'steer', steerId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) },
+      (event) => {
+        if (event.type === 'steer_result' && event.steerId === steerId) {
+          if (event.outcome.status !== 'accepted') {
+            return { reject: new SteerRejectedError(event.outcome) }
+          }
+          at = event.outcome.at
+        }
+        if (at !== undefined && this.holdsVersion(at)) {
+          return { resolve: undefined }
+        }
+        // A turn that fails once the steer was accepted writes it into the
+        // transcript: the failure is the turn's, not the steer's.
+        if (at !== undefined && event.type === 'error') {
+          return undefined
+        }
+        return this.failure(event, 'steer')
+      },
+    )
   }
 
   /**
@@ -398,25 +441,27 @@ export class ConversationClient {
   }
 
   /**
-   * Withdraws a pending steer; resolves with the session's answer:
-   * `removed`, or `gone_on` when the turn had taken it or the session never
-   * held it.
+   * Withdraws a pending steer; resolves with the session's answer, `removed`,
+   * or `gone_on` when the turn had taken it or the session never held it, once
+   * the client holds the agents' version that shows it.
    */
-  cancelPendingSteer(steerId: string): Promise<RemoveOutcome> {
-    return this.removeRequest(steerId, { type: 'cancel_pending_steer', steerId })
+  async cancelPendingSteer(steerId: string): Promise<RemoveOutcome> {
+    const { outcome, at } = await this.removeRequest(steerId, { type: 'cancel_pending_steer', steerId })
+    await this.untilState(() => this.holdsVersion(at))
+    return outcome
   }
 
   /**
-   * Sends a removal and waits for its `remove_result`, which follows the
-   * list's frame. A failed turn does not fail it: its `error` frame is the
-   * turn's, not the removal's.
+   * Sends a removal and waits for its `remove_result`: its outcome and the
+   * agents' version that shows it, which the caller waits to hold. A failed
+   * turn does not fail it: its `error` frame is the turn's, not the removal's.
    */
-  private removeRequest(id: string, frame: ClientFrame): Promise<RemoveOutcome> {
+  private removeRequest(id: string, frame: ClientFrame): Promise<{ outcome: RemoveOutcome; at: Version | null }> {
     return this.request(
       frame,
       (event) => {
         if (event.type === 'remove_result' && event.id === id) {
-          return { resolve: event.outcome }
+          return { resolve: { outcome: event.outcome, at: event.at } }
         }
         return event.type === 'error' ? undefined : this.failure(event, frame.type)
       },
@@ -558,6 +603,11 @@ export class ConversationClient {
     return structuredClone(this.pending)
   }
 
+  /** The message the root's running turn started with, until its turn writes it, as a copy. */
+  startingMessage(): QueuedMessage | null {
+    return structuredClone(this.starting)
+  }
+
   /** The calls the root's model is writing, as copies. */
   pendingCalls(): PendingCall[] {
     const root = this.root === null ? undefined : this.agents.get(this.root)
@@ -652,14 +702,41 @@ export class ConversationClient {
     })
   }
 
-  private steerRequest(steerId: string, frame: ClientFrame): Promise<void> {
+  /**
+   * Resolves once `holds` does, as the client's state stands now or after any
+   * later event; rejects when the connection ends first.
+   */
+  private untilState(holds: () => boolean): Promise<void> {
+    if (holds()) {
+      return Promise.resolve()
+    }
     if (this.disconnected) {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
-      this.steerWaiters.set(steerId, { resolve, reject })
-      this.sendFrame(frame)
+      const unsubscribe = this.subscribe((event) => {
+        if (holds()) {
+          unsubscribe()
+          resolve()
+        } else if (event.type === 'disconnected') {
+          unsubscribe()
+          reject(event.error)
+        } else if (event.type === 'closed') {
+          unsubscribe()
+          reject(new Error('Agent connection closed'))
+        }
+      })
     })
+  }
+
+  /**
+   * Whether the client holds the agents at `at`, the version a command's
+   * answer names: at or past its revision, or at another epoch, whose reset
+   * showed the whole state; null names no tree, and nothing to wait for.
+   */
+  private holdsVersion(at: Version | null): boolean {
+    const held = this.agentsVersion
+    return at === null || (held !== null && (held.epoch !== at.epoch || held.revision >= at.revision))
   }
 
   /** The wait of a `send` whose message has not run. */
@@ -690,15 +767,10 @@ export class ConversationClient {
     for (const waiter of this.actionWaiters.splice(0)) {
       waiter.reject(waiter.status === 'sent' ? error : new ActionOutlivedError(error))
     }
-    this.rejectSteersAndAborts(error)
+    this.rejectAborts(error)
   }
 
-  private rejectSteersAndAborts(error: Error): void {
-    const steers = [...this.steerWaiters.values()]
-    this.steerWaiters.clear()
-    for (const waiter of steers) {
-      waiter.reject(error)
-    }
+  private rejectAborts(error: Error): void {
     for (const waiter of this.abortWaiters.splice(0)) {
       waiter.reject(error)
     }
@@ -723,8 +795,10 @@ export class ConversationClient {
 
   private handle(frame: ServerFrame): void {
     switch (frame.type) {
+      // The agents that follow tell the root's waiting inputs: its entry, or
+      // nothing when it did not change since what the client holds.
       case 'opened':
-        this.pending = []
+        this.agentsStale = false
         this.emit(frame)
         return
       case 'transcript_reset': {
@@ -763,37 +837,45 @@ export class ConversationClient {
         const held = this.agentsVersion
         if (frame.since === undefined || held === null || held.epoch !== frame.version.epoch) {
           this.agents.clear()
+          this.queue = []
+          this.pending = []
+          this.starting = null
         }
+        this.agentsStale = false
         for (const agent of frame.agents) {
           this.takeAgent(agent)
         }
         this.agentsVersion = frame.version
         this.emit({ ...frame, receivedAt: Date.now() })
+        // The waiting inputs as they stand now, which the caller takes as
+        // listed even when the root's entry did not change.
+        this.emitWaiting({ queue: true, pending: true, starting: true })
         return
       }
       case 'agent': {
+        // Changes that arrive while the client asks for those it missed are
+        // in the answer.
+        if (this.agentsStale) {
+          return
+        }
         const held = this.agentsVersion
-        // The socket brings every change in order; one past what it holds
-        // means frames were lost, which only a new connection mends.
-        if (held === null || frame.revision !== held.revision + 1) {
-          this.disconnect(new Error(`An agent change arrived at revision ${frame.revision} after ${held?.revision ?? 'none'}`))
+        if (held === null) {
+          this.disconnect(new Error(`An agent change arrived at revision ${frame.revision} before the agents`))
+          return
+        }
+        if (frame.revision !== held.revision + 1) {
+          if (frame.revision > held.revision) {
+            this.agentsStale = true
+            this.sendFrame({ type: 'agents_since', held: { ...held } })
+          }
           return
         }
         this.agentsVersion = { epoch: held.epoch, revision: frame.revision }
-        this.takeAgent(frame.agent)
+        const changed = this.takeAgent(frame.agent)
         this.emit({ ...frame, receivedAt: Date.now() })
+        this.emitWaiting(changed)
         return
       }
-      case 'queue':
-        this.queue = frame.queue
-        this.emit(frame)
-        this.followSends()
-        return
-      case 'pending_steers':
-        this.pending = structuredClone(frame.pendingSteers)
-        this.removeWrittenSteers(false)
-        this.emitPendingSteers()
-        return
       case 'request_output': {
         const arrived = Date.now()
         const output = frame.output
@@ -811,8 +893,8 @@ export class ConversationClient {
         return
       }
       case 'steer_result':
+      case 'send_result':
         this.emit(frame)
-        this.settleSteer(frame)
         return
       case 'abort_result':
         this.emit(frame)
@@ -840,7 +922,7 @@ export class ConversationClient {
             waiter.reject(error)
           }
         }
-        this.rejectSteersAndAborts(error)
+        this.rejectAborts(error)
         return
       }
       case 'closed':
@@ -853,11 +935,12 @@ export class ConversationClient {
         this.agentsVersion = null
         this.queue = []
         this.pending = []
+        this.starting = null
         this.emit(frame)
         for (const waiter of this.actionWaiters.splice(0)) {
           waiter.resolve()
         }
-        this.rejectSteersAndAborts(new Error('Session closed'))
+        this.rejectAborts(new Error('Session closed'))
         return
       case 'edit_result':
       case 'remove_result':
@@ -882,9 +965,23 @@ export class ConversationClient {
    * Takes `agent` as its entry: its phase moves the waits of its actions on,
    * and a closed child's end every wait for it.
    */
-  private takeAgent(agent: AgentEntry): void {
+  /**
+   * Takes `agent` as its node's entry; answers which of the root's waiting
+   * inputs changed with it.
+   */
+  private takeAgent(agent: AgentEntry): WaitingChanged {
     const previous = this.agents.get(agent.id)
     this.agents.set(agent.id, agent)
+    const changed = { queue: false, pending: false, starting: false }
+    if (agent.role.kind === 'root') {
+      changed.queue = JSON.stringify(this.queue) !== JSON.stringify(agent.queue)
+      changed.pending = JSON.stringify(this.pending) !== JSON.stringify(agent.pendingSteers)
+      changed.starting = JSON.stringify(this.starting) !== JSON.stringify(agent.starting)
+      this.queue = agent.queue
+      this.pending = structuredClone(agent.pendingSteers)
+      this.starting = agent.starting
+      this.removeWrittenSteers(false)
+    }
     const node = agent.role.kind === 'root' ? null : agent.id
     if (previous?.phase !== agent.phase) {
       this.followPhase(node, previous?.phase ?? null, agent.phase)
@@ -894,6 +991,21 @@ export class ConversationClient {
       for (const waiter of this.actionWaiters.filter((candidate) => candidate.node === agent.id)) {
         this.settleAction(waiter, () => waiter.resolve())
       }
+    }
+    return changed
+  }
+
+  /** Tells the root's waiting inputs that `changed`. */
+  private emitWaiting(changed: WaitingChanged): void {
+    if (changed.queue) {
+      this.emit({ type: 'queue', queue: this.queue })
+      this.followSends()
+    }
+    if (changed.pending) {
+      this.emitPendingSteers()
+    }
+    if (changed.starting) {
+      this.emit({ type: 'starting', starting: this.starting })
     }
   }
 
@@ -971,19 +1083,6 @@ export class ConversationClient {
 
   private emitPendingSteers(): void {
     this.emit({ type: 'pending_steers', pendingSteers: this.pendingSteers() })
-  }
-
-  private settleSteer(frame: ServerFrameOf<'steer_result'>): void {
-    const waiter = this.steerWaiters.get(frame.steerId)
-    if (!waiter) {
-      return
-    }
-    this.steerWaiters.delete(frame.steerId)
-    if (frame.outcome.status === 'accepted') {
-      waiter.resolve()
-    } else {
-      waiter.reject(new SteerRejectedError(frame.outcome))
-    }
   }
 
   /**

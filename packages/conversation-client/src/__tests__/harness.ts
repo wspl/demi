@@ -53,7 +53,7 @@ export function entry(id: string, phase: SessionPhase, pendingCalls: PendingCall
         cwd: '/Users/alex',
         onPath: true,
       }
-  return { id, role, phase, waitedMs: null, pendingCalls, context: null, cost: NO_COST }
+  return { id, role, phase, waitedMs: null, pendingCalls, context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
 }
 
 export function text(id: string, value: string): Block {
@@ -144,6 +144,10 @@ export function harness({ opened = true }: { opened?: boolean } = {}) {
     events,
     /** Delivers the agent `node`'s session phase, as its entry's change. */
     phase: (phase: SessionPhase, node: string = ROOT) => change({ ...(entries.get(node) ?? entry(node, phase)), phase }),
+    /** Delivers the root's queue, as its entry's change. */
+    queue: (queue: AgentEntry['queue']) => change({ ...(entries.get(ROOT) ?? entry(ROOT, 'running')), queue }),
+    /** Delivers the root's pending steers, as its entry's change. */
+    steers: (pendingSteers: PendingSteer[]) => change({ ...(entries.get(ROOT) ?? entry(ROOT, 'running')), pendingSteers }),
     /** Delivers the calls the agent `node`'s model writes, as its entry's change. */
     calls: (pendingCalls: PendingCall[], node: string = ROOT) =>
       change({ ...(entries.get(node) ?? entry(node, 'running')), pendingCalls }),

@@ -167,6 +167,12 @@ pub(crate) struct FrameSink {
     /// Whether any connection is attached, which the nodes' jobs follow
     /// (`crates/agent-server/src/server/tree/live.rs`).
     attached: watch::Sender<bool>,
+    /// The frames of the step being delivered, by connection, which go into
+    /// its outbox as one step when the step ends ([`FrameSink::step`]).
+    step: RefCell<Vec<(u64, Vec<ServerFrame>)>>,
+    /// How deep the steps being delivered nest: a listener of one session may
+    /// change another, whose step joins the one under way.
+    depth: Cell<usize>,
 }
 
 #[derive(Clone)]
@@ -187,7 +193,35 @@ impl FrameSink {
         Self {
             attachments: watch::Sender::new(Vec::new()),
             attached: watch::Sender::new(false),
+            step: RefCell::default(),
+            depth: Cell::new(0),
         }
+    }
+
+    /// Runs `deliver`, the delivery of one step of a session, and sends each
+    /// connection the frames it emitted as one step, which the page applies
+    /// as one change (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    pub(crate) fn step(&self, deliver: impl FnOnce()) {
+        self.depth.set(self.depth.get() + 1);
+        deliver();
+        self.depth.set(self.depth.get() - 1);
+        if self.depth.get() > 0 {
+            return;
+        }
+        let steps = std::mem::take(&mut *self.step.borrow_mut());
+        let refused: Vec<u64> = steps
+            .into_iter()
+            .filter_map(|(connection, frames)| {
+                let outbox = self
+                    .attachments
+                    .borrow()
+                    .iter()
+                    .find(|attachment| attachment.connection == connection)
+                    .map(|attachment| attachment.outbox.clone())?;
+                (!outbox.push_step(frames)).then_some(connection)
+            })
+            .collect();
+        self.detach_refused(&refused);
     }
 
     /// Sends the event `frame` to every attached connection. A connection
@@ -211,8 +245,19 @@ impl FrameSink {
             .any(|attachment| attachment.subscribed.borrow().contains(node))
     }
 
-    /// Sends `frame` to the attached connections `to` picks.
+    /// Sends `frame` to the attached connections `to` picks, as a step of its
+    /// own, or as part of the step being delivered.
     fn emit_where(&self, to: impl Fn(&Attachment) -> bool, frame: ServerFrame) {
+        if self.depth.get() > 0 {
+            let mut step = self.step.borrow_mut();
+            for attachment in self.attachments.borrow().iter().filter(|attachment| to(attachment)) {
+                match step.iter_mut().find(|(connection, _)| *connection == attachment.connection) {
+                    Some((_, frames)) => frames.push(frame.clone()),
+                    None => step.push((attachment.connection, vec![frame.clone()])),
+                }
+            }
+            return;
+        }
         let refused: Vec<u64> = self
             .attachments
             .borrow()
@@ -221,6 +266,11 @@ impl FrameSink {
             .filter(|attachment| !attachment.outbox.push(frame.clone()))
             .map(|attachment| attachment.connection)
             .collect();
+        self.detach_refused(&refused);
+    }
+
+    /// Detaches the connections `refused`, whose outbox lagged or is gone.
+    fn detach_refused(&self, refused: &[u64]) {
         if refused.is_empty() {
             return;
         }
@@ -440,9 +490,12 @@ impl<H: HostResolver> Tree<H> {
             entry.phase = session.phase();
             entry.waited_ms = session.waited_ms();
             entry.pending_calls = session.pending_calls();
+            entry.queue = session.queued_messages();
+            entry.pending_steers = session.pending_steers();
+            entry.starting = session.starting();
         });
         let reading = OutputReading::new(sink.clone());
-        let frames = session.subscribe({
+        let frames = session.subscribe_steps({
             let sink = sink.clone();
             let agents = agents.clone();
             let reading = reading.clone();
@@ -450,7 +503,8 @@ impl<H: HostResolver> Tree<H> {
             let root = root.clone();
             let paths = paths.clone();
             let activity = activity.clone();
-            move |event| {
+            // A step's frames go to each page as one change.
+            move |step: &[SessionEvent]| agents.step(|| for event in step {
                 cut_path(&paths, event);
                 note_activity(&activity, event);
                 note_agent(&agents, &root, event);
@@ -470,7 +524,7 @@ impl<H: HostResolver> Tree<H> {
                 if let SessionEvent::PhaseChanged { .. } = event {
                     status_changed(&root);
                 }
-            }
+            })
         });
         let changes = watch::Sender::new(0);
         let idle = deps.config.idle_tree;
@@ -827,7 +881,7 @@ impl<H: HostResolver> Tree<H> {
     ///
     /// 1. `opened`;
     /// 2. the agents changed since the version the page holds, `agents`;
-    /// 3. the root's queue and pending steers;
+    /// 3. the output of the request the root runs;
     /// 4. the transcript of each live node it subscribes to, from the blocks
     ///    `held` names, with the view of each of its live commands
     ///    ([`node_frames`](Self::node_frames)).
@@ -849,13 +903,7 @@ impl<H: HostResolver> Tree<H> {
         let session = self.root.session();
         let mut frames = vec![
             ServerFrame::Opened,
-            self.agents.snapshot(agents, |id| self.node(id).and_then(|node| node.session().waited_ms())),
-            ServerFrame::Queue {
-                queue: session.queued_messages(),
-            },
-            ServerFrame::PendingSteers {
-                pending_steers: session.pending_steers(),
-            },
+            self.agents_since(agents),
             ServerFrame::RequestOutput {
                 output: session.request_output(),
             },
@@ -871,6 +919,17 @@ impl<H: HostResolver> Tree<H> {
             outbox.push(frame);
         }
         sent
+    }
+
+    /// The agents' version now.
+    pub fn agents_version(&self) -> Version {
+        self.agents.version()
+    }
+
+    /// The `agents` frame for a page that holds the agents at `held`: the
+    /// entries changed since, or all of them ([`Agents::snapshot`]).
+    pub(crate) fn agents_since(&self, held: Option<&Version>) -> ServerFrame {
+        self.agents.snapshot(held, |id| self.node(id).and_then(|node| node.session().waited_ms()))
     }
 
     /// What a connection that subscribes to the node `id` receives: the
@@ -973,20 +1032,38 @@ impl<H: HostResolver> Tree<H> {
         continued
     }
 
-    /// Disposes the tree: the starts and closes under way finish, then every
-    /// session saves its final checkpoint and the subtree stays live in the
-    /// store for the next open.
+    /// Stops every session of the tree at once, the root, each child and each
+    /// side question, without waiting: what they run is cancelled as by a
+    /// shutdown, and nothing new starts
+    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`).
+    pub(crate) fn stop(&self) {
+        self.disposing.set(true);
+        self.root.session().stop();
+        for child in self.children.borrow().values() {
+            child.node().session().stop();
+        }
+        for side in self.sides.borrow().values() {
+            side.node().session().stop();
+        }
+    }
+
+    /// Disposes the tree: every session stops, the starts and closes under
+    /// way finish, then every session saves its final checkpoint and the
+    /// subtree stays live in the store for the next open.
     ///
     /// Every attached connection receives what the disposal changed, then
     /// `closed`, and is detached.
     pub(crate) async fn dispose(&self) {
-        self.disposing.set(true);
+        self.stop();
         for child in self.children.borrow().values() {
             child.stop_supervision();
         }
         for side in self.sides.borrow().values() {
             side.stop_supervision();
         }
+        // Every session stopped above, so this waits on no work that only
+        // their stop would end, such as a spawn that waits for the root's
+        // runtime (`docs/decisions/0024-a-close-stops-before-it-waits.md`).
         self.lifecycle.close();
         self.lifecycle.wait().await;
         // The commands of closed children still stopping run on, as a
@@ -1047,17 +1124,11 @@ impl<H: HostResolver> Tree<H> {
 }
 
 /// The frame of the conversation's own that an event of the root's session
-/// becomes: its queue, its pending steers, a retry and an error; its
-/// transcript goes to its subscribers and the rest is its agent entry's. An
-/// action's failure was already reported as its `error`.
+/// becomes: a retry and an error; its transcript goes to its subscribers and
+/// the rest is its agent entry's. An action's failure was already reported as
+/// its `error`.
 fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
     Some(match event {
-        SessionEvent::QueueChanged { queue } => ServerFrame::Queue {
-            queue: queue.clone(),
-        },
-        SessionEvent::PendingSteersChanged { pending_steers } => ServerFrame::PendingSteers {
-            pending_steers: pending_steers.clone(),
-        },
         SessionEvent::RetryScheduled {
             attempt,
             delay_ms,
@@ -1082,9 +1153,15 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
 }
 
 /// Takes what `event` of the node `id`'s session changes of its agent entry
-/// into it: its phase, its wait, the calls being written and its context.
+/// into it: its phase, its wait, the calls being written, its context and its
+/// waiting inputs.
 pub(super) fn note_agent(agents: &Agents, id: &NodeId, event: &SessionEvent) {
     match event {
+        SessionEvent::QueueChanged { queue } => agents.change(id, |entry| entry.queue = queue.clone()),
+        SessionEvent::PendingSteersChanged { pending_steers } => {
+            agents.change(id, |entry| entry.pending_steers = pending_steers.clone());
+        }
+        SessionEvent::StartingChanged { starting } => agents.change(id, |entry| entry.starting = starting.clone()),
         SessionEvent::PhaseChanged { phase } => agents.change(id, |entry| entry.phase = *phase),
         SessionEvent::WaitingChanged { waited_ms } => agents.change(id, |entry| entry.waited_ms = *waited_ms),
         SessionEvent::PendingCallsChanged { pending_calls } => {

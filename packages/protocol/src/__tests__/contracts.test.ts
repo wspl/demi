@@ -150,8 +150,8 @@ describe('server frames', () => {
   })
 
   test('a page accepts frame fields it does not know and drops them', () => {
-    const frame = { type: 'queue', queue: [], since: '2026-09-21T14:13:20.000Z' }
-    expect(serverFrameSchema.parse(frame)).toEqual({ type: 'queue', queue: [] })
+    const frame = { type: 'opened', since: '2026-09-21T14:13:20.000Z' }
+    expect(serverFrameSchema.parse(frame)).toEqual({ type: 'opened' })
     expect(serverFrameSchema.safeParse({ type: 'tool_progress', toolUseId: 't1' }).success).toBe(false)
   })
 })

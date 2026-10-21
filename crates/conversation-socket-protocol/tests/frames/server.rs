@@ -21,13 +21,13 @@ fn every_server_frame_keeps_its_wire_shape() {
         assert_eq!(serde_json::to_value(&frame).unwrap(), fixture);
         kinds.insert(fixture["type"].as_str().unwrap().to_owned());
     }
-    assert_eq!(kinds.len(), 18, "one fixture of every frame");
+    assert_eq!(kinds.len(), 17, "one fixture of every frame");
 }
 
 #[test]
 fn a_page_accepts_frame_fields_it_does_not_know() {
-    let frame = json!({"type": "queue", "queue": [], "since": "2026-09-21T14:13:20.000Z"});
-    assert_eq!(decode(&frame), ServerFrame::Queue { queue: Vec::new() });
+    let frame = json!({"type": "opened", "since": "2026-09-21T14:13:20.000Z"});
+    assert_eq!(decode(&frame), ServerFrame::Opened);
 
     let schema = serde_json::to_value(schemars::schema_for!(ServerFrame)).unwrap();
     for variant in schema["oneOf"].as_array().unwrap() {

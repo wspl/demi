@@ -424,20 +424,26 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
     socket.send(&send("m2", "Hold on")).await;
     vendor.received(2).await;
     let steer_turn = fresh();
-    let accepted_steer = ServerFrame::SteerResult {
-        steer_id: BlockId::try_from(steer_turn.clone()).unwrap(),
-        outcome: SteerOutcome::Accepted,
+    // Accepted, at the agents' version that shows it, which has moved on by
+    // the second answer.
+    let steer_id = BlockId::try_from(steer_turn.clone()).unwrap();
+    let accepted_steer = |frame: Option<&ServerFrame>| {
+        matches!(
+            frame,
+            Some(ServerFrame::SteerResult { steer_id: id, outcome: SteerOutcome::Accepted { at: Some(_) } })
+                if *id == steer_id
+        )
     };
     socket.send(&send_saved(&steer.id, &steer_turn, SavedDelivery::Steer)).await;
     let accepted = socket
         .until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
         .await;
-    assert_eq!(accepted.last(), Some(&accepted_steer));
+    assert!(accepted_steer(accepted.last()), "{accepted:?}");
     socket.send(&send_saved(&steer.id, &steer_turn, SavedDelivery::Steer)).await;
     let again = socket
         .until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
         .await;
-    assert_eq!(again.last(), Some(&accepted_steer));
+    assert!(accepted_steer(again.last()), "{again:?}");
     // Another page's send of it, as another turn, finds it gone and goes nowhere.
     socket.send(&send_saved(&steer.id, &fresh(), SavedDelivery::Steer)).await;
     let rejected = socket

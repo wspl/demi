@@ -71,7 +71,7 @@ function record(folded: boolean, title: string | null = null) {
 /** The side question's entry among the conversation's agents. */
 function entry(folded: boolean, title: string | null = null): AgentEntry {
   const { id, ...role } = record(folded, title)
-  return { id, role: { kind: 'side', ...role }, phase: 'idle', waitedMs: null, pendingCalls: [], context: null, cost: NO_COST }
+  return { id, role: { kind: 'side', ...role }, phase: 'idle', waitedMs: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
 }
 
 /** The backend's answer of a change: the side question as it is now. */

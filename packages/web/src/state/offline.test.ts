@@ -109,10 +109,9 @@ beforeEach(async () => {
         {
           type: 'agents',
           version: { epoch: 'e', revision: 1 },
-          agents: [{ id, role: { kind: 'root' }, phase: 'idle', waitedMs: null, pendingCalls: [], context: null, cost: NO_COST }],
+          agents: [{ id, role: { kind: 'root' }, phase: 'idle', waitedMs: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }],
         },
-        { type: 'queue', queue: [] },
-        { type: 'pending_steers', pendingSteers: [] },
+        { type: 'request_output', output: null },
       ]
       for (const [node, edge] of this.nodes) {
         const blocks = transcripts.get(node) ?? []

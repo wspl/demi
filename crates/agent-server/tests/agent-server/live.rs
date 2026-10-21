@@ -21,7 +21,7 @@ use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
 use serde_json::json;
 
 use crate::support::{
-        LiveHosts, ScriptedShell, ScriptedShells, conversation, is_pending_steers, scripted_host_server, send,
+        LiveHosts, ScriptedShell, ScriptedShells, conversation, is_request_output, scripted_host_server, send,
     };
 
 /// How often a tree sends its commands' new output, at most.
@@ -75,7 +75,7 @@ async fn serving() -> (
     let server = scripted_host_server(providers, shells.clone(), MemoryTreeStore::new());
     let mut first = TestClient::connect(&server, &conversation());
     first.open().await;
-    first.next_until(is_pending_steers).await;
+    first.next_until(is_request_output).await;
     first.send(send("m1", "Serve.")).await;
     first.until_idle().await;
     (server, shells.last(), first, script)

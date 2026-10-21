@@ -1,5 +1,5 @@
-import { expect, jest, spyOn, test } from 'bun:test'
-import type { PendingSteer } from '@demicodes/protocol'
+import { beforeEach, expect, jest, spyOn, test } from 'bun:test'
+import type { AgentEntry, PendingSteer } from '@demicodes/protocol'
 import { deferred, delay, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, RemovalRefusedError, type RuntimeState } from '../conversation-runtime'
@@ -10,8 +10,23 @@ import { ConversationClient, EMPTY_TRANSCRIPT } from '@demicodes/conversation-cl
 import { agentsFrame, clientHarness, createdAt, model, rootEntry, subagentEntry, userBlock } from './agent-harness'
 
 /** The root's entry with its session in `phase`, as the whole agents. */
+/** The root's entry as the test's server last told it. */
+let root: AgentEntry = rootEntry('conversation')
+
+beforeEach(() => {
+  root = rootEntry('conversation')
+})
+
+/** The agents as the server tells them once the root's session is in `phase`. */
 function phase(phase: RuntimeState['phase']) {
-  return agentsFrame([rootEntry('conversation', phase)])
+  root = { ...root, phase }
+  return agentsFrame([root])
+}
+
+/** The agents as the server tells them once the root's queue or pending steers are `waiting`. */
+function waiting(waiting: Partial<Pick<AgentEntry, 'queue' | 'pendingSteers'>>) {
+  root = { ...root, ...waiting }
+  return agentsFrame([root])
 }
 
 function state(): RuntimeState {
@@ -21,6 +36,7 @@ function state(): RuntimeState {
     phase: 'idle',
     queue: [],
     pendingSteers: [],
+    starting: null,
     pendingCalls: [],
     waitingSince: null, requestOutput: null,
     lastError: null,
@@ -176,8 +192,8 @@ test('send now on a pending steer or a queued message stops nothing and never tu
     await runtime.connect()
     const steer: PendingSteer = { id: 'steer', turnId: 'turn', model, content: [{ type: 'text', text: 'now' }] }
     h.receive(phase('running'))
-    h.receive({ type: 'pending_steers', pendingSteers: [steer] })
-    h.receive({ type: 'queue', queue: [{ id: 'queued', content: [{ type: 'text', text: 'next' }] }] })
+    h.receive(waiting({ pendingSteers: [steer] }))
+    h.receive(waiting({ queue: [{ id: 'queued', content: [{ type: 'text', text: 'next' }] }] }))
     await runtime.interruptPendingSteer('steer')
     await runtime.sendQueuedNow('queued')
     // The session cuts the running round short itself: no Stop, no Continue.
@@ -208,8 +224,8 @@ test.each([
   try {
     await runtime.connect()
     h.receive(phase('running'))
-    h.receive({ type: 'pending_steers', pendingSteers: kind === 'steer' ? [{ id: 'm', turnId: 'turn-1', model, content }] : [] })
-    h.receive({ type: 'queue', queue: kind === 'queued' ? [{ id: 'm', content }] : [] })
+    h.receive(waiting({ pendingSteers: kind === 'steer' ? [{ id: 'm', turnId: 'turn-1', model, content }] : [] }))
+    h.receive(waiting({ queue: kind === 'queued' ? [{ id: 'm', content }] : [] }))
     let settled = false
     const removal = runtime.removeWaiting('m').then(() => 'removed', (error: unknown) => error).finally(() => {
       settled = true
@@ -217,11 +233,11 @@ test.each([
     await waitFor(() => h.sent.length > 2)
     expect(h.sent.at(-1)).toEqual(kind === 'steer' ? { type: 'cancel_pending_steer', steerId: 'm' } : { type: 'dequeue_message', messageId: 'm' })
     // The list's frame comes first, and the agent going idle tells nothing.
-    h.receive(kind === 'steer' ? { type: 'pending_steers', pendingSteers: [] } : { type: 'queue', queue: [] })
+    h.receive(waiting(kind === 'steer' ? { pendingSteers: [] } : { queue: [] }))
     h.receive(phase('idle'))
     await turn()
     expect(settled).toBe(false)
-    h.receive({ type: 'remove_result', id: 'm', outcome })
+    h.receive({ type: 'remove_result', id: 'm', outcome, at: null })
     const result = await removal
     if (outcome === 'removed') {
       expect(result).toBe('removed')
@@ -253,7 +269,7 @@ for (const fate of ['removed', 'gone on', 'still listed'] as const) {
       lost.receive({ type: 'opened' })
       await opening
       lost.receive(phase('running'))
-      lost.receive({ type: 'pending_steers', pendingSteers: [steer] })
+      lost.receive(waiting({ pendingSteers: [steer] }))
       const removal = runtime.removeWaiting('s').then(() => 'removed', (error: unknown) => error)
       await turn()
       expect(lost.sent.at(-1)).toEqual({ type: 'cancel_pending_steer', steerId: 's' })
@@ -269,14 +285,14 @@ for (const fate of ['removed', 'gone on', 'still listed'] as const) {
       const written = { type: 'steer' as const, id: 's', turnId: 'turn', createdAt, model, content }
       next.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: fate === 'gone on' ? 1 : 0, version: { epoch: 'epoch', revision: 1 }, blocks: fate === 'gone on' ? [written] : [] })
       next.receive(phase('running'))
-      next.receive({ type: 'queue', queue: [] })
-      next.receive({ type: 'pending_steers', pendingSteers: fate === 'still listed' ? [steer] : [] })
+      next.receive(waiting({ queue: [] }))
+      next.receive(waiting({ pendingSteers: fate === 'still listed' ? [steer] : [] }))
       await turn()
       if (fate === 'still listed') {
         // Asked again on the new connection, and settled on its answer.
         expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }, { type: 'cancel_pending_steer', steerId: 's' }])
-        next.receive({ type: 'pending_steers', pendingSteers: [] })
-        next.receive({ type: 'remove_result', id: 's', outcome: 'removed' })
+        next.receive(waiting({ pendingSteers: [] }))
+        next.receive({ type: 'remove_result', id: 's', outcome: 'removed', at: null })
       } else {
         expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
       }
@@ -306,7 +322,7 @@ test('a steer the session accepts waits as a pending steer, and one it refuses, 
     const accepted = runtime.steer(content, 'first')
     await waitFor(() => h.sent.at(-1)?.type === 'steer')
     expect(h.sent.at(-1)).toEqual({ type: 'steer', steerId: 'first', content })
-    h.receive({ type: 'steer_result', steerId: 'first', outcome: { status: 'accepted' } })
+    h.receive({ type: 'steer_result', steerId: 'first', outcome: { status: 'accepted', at: null } })
     await accepted
     // The turn is ending: the session refuses the next steer.
     const refused = runtime.steer(content, 'second')
@@ -314,7 +330,8 @@ test('a steer the session accepts waits as a pending steer, and one it refuses, 
     h.receive({ type: 'steer_result', steerId: 'second', outcome: { status: 'rejected', code: 'turn_finishing', reason: 'The running turn is finishing' } })
     await waitFor(() => h.sent.at(-1)?.type === 'send')
     expect(h.sent.at(-1)).toEqual({ type: 'send', messageId: 'second', content })
-    h.receive({ type: 'queue', queue: [{ id: 'second', content }] })
+    h.receive(waiting({ queue: [{ id: 'second', content }] }))
+    h.receive({ type: 'send_result', messageId: 'second', at: null })
     await refused
     expect(h.sent.map((frame) => frame.type)).toEqual(['subscribe', 'open', 'steer', 'steer', 'send'])
     expect(current.lastError).toBeNull()
@@ -343,7 +360,7 @@ for (const held of [true, false]) {
       lost.receive({ type: 'opened' })
       await opening
       lost.receive(phase('running'))
-      lost.receive({ type: 'pending_steers', pendingSteers: [] })
+      lost.receive(waiting({ pendingSteers: [] }))
       let settled = false
       const steering = runtime.steer(content, 'steer').finally(() => {
         settled = true
@@ -366,15 +383,16 @@ for (const held of [true, false]) {
       expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
       next.receive({ type: 'transcript_reset', node: 'conversation', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
       next.receive(phase('running'))
-      next.receive({ type: 'queue', queue: [] })
-      next.receive({ type: 'pending_steers', pendingSteers: held ? [steer] : [] })
+      next.receive(waiting({ queue: [] }))
+      next.receive(waiting({ pendingSteers: held ? [steer] : [] }))
       await turn()
       if (held) {
         await steering
         expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }])
       } else {
         expect(next.sent).toEqual([{ type: 'subscribe', node: 'conversation' }, { type: 'open' }, { type: 'send', messageId: 'steer', content }])
-        next.receive({ type: 'queue', queue: [{ id: 'steer', content }] })
+        next.receive(waiting({ queue: [{ id: 'steer', content }] }))
+        next.receive({ type: 'send_result', messageId: 'steer', at: null })
         await steering
       }
       expect(current.lastError).toBeNull()
@@ -575,6 +593,7 @@ test('a message whose socket is lost before the session confirmed it waits for t
       version: { epoch: 'epoch', revision: 1 },
       blocks: [userBlock('block', 'message', 'Hello')],
     })
+    next.receive({ type: 'send_result', messageId: 'message', at: null })
     await sending
     expect(current.load).toBe('ready')
     expect(current.lastError).toBeNull()
@@ -624,6 +643,7 @@ test('a saved message whose socket is lost before the session took it goes again
       version: { epoch: 'epoch', revision: 1 },
       blocks: [userBlock('block', 'turn', 'Check the DNS')],
     })
+    next.receive({ type: 'send_result', messageId: 'turn', at: null })
     expect(await sending).toBe(true)
 
     // The session holds it already, as when the first send reached it: nothing
@@ -728,7 +748,7 @@ test('the handshake\'s frames are applied once the session opens and are not kep
     send(frame) {
       if (frame.type === 'open') {
         deliver({ type: 'opened' })
-        deliver({ type: 'queue', queue: [] })
+        deliver(agentsFrame([rootEntry('conversation')]))
       }
     },
     onFrame(handler) {

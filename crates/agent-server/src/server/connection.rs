@@ -57,17 +57,21 @@ fn agent_ended() -> Refusal {
 /// A connection's bounded outbox. When it is full, the client lags: the
 /// outbox closes, and the backend closes the socket with a code that says so;
 /// the client reconnects and adopts the running tree.
+///
+/// Each entry is the frames of one step, which go to the page in one
+/// message and are applied together; a reply or a lone event is a step of one
+/// frame (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
 pub(crate) struct Outbox {
-    sender: RefCell<Option<mpsc::Sender<ServerFrame>>>,
+    sender: RefCell<Option<mpsc::Sender<Vec<ServerFrame>>>>,
     /// Shared with the receiving end, which holds no sender: the channel
     /// closes once the connection and its tree let go of the outbox.
     lagged: Rc<Cell<bool>>,
 }
 
 impl Outbox {
-    /// An outbox of at most `frames` frames, and its receiving end.
-    pub(crate) fn new(frames: usize) -> (Rc<Self>, FrameRx) {
-        let (sender, receiver) = mpsc::channel(frames);
+    /// An outbox of at most `steps` steps, and its receiving end.
+    pub(crate) fn new(steps: usize) -> (Rc<Self>, FrameRx) {
+        let (sender, receiver) = mpsc::channel(steps);
         let lagged = Rc::new(Cell::new(false));
         let outbox = Rc::new(Self {
             sender: RefCell::new(Some(sender)),
@@ -82,14 +86,19 @@ impl Outbox {
         )
     }
 
-    /// Queues `frame`; false once the outbox lagged or its receiver is gone,
-    /// when the frame goes nowhere.
+    /// Queues `frame`, a step of its own; false once the outbox lagged or its
+    /// receiver is gone, when the frame goes nowhere.
     pub(crate) fn push(&self, frame: ServerFrame) -> bool {
+        self.push_step(vec![frame])
+    }
+
+    /// Queues the frames of one step, which go in one message.
+    pub(crate) fn push_step(&self, frames: Vec<ServerFrame>) -> bool {
         let mut sender = self.sender.borrow_mut();
         let Some(queue) = sender.as_ref() else {
             return false;
         };
-        match queue.try_send(frame) {
+        match queue.try_send(frames) {
             Ok(()) => true,
             Err(TrySendError::Full(_)) => {
                 self.lagged.set(true);
@@ -107,7 +116,8 @@ impl Outbox {
 /// What the outbox has next for the socket.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outgoing {
-    Frame(ServerFrame),
+    /// The frames of one step, which go in one message.
+    Frames(Vec<ServerFrame>),
     /// The client fell behind by a full outbox: close the socket as lagging.
     Lagged,
     /// The connection is gone.
@@ -116,7 +126,7 @@ pub enum Outgoing {
 
 /// The receiving end of a connection's outbox.
 pub struct FrameRx {
-    frames: mpsc::Receiver<ServerFrame>,
+    frames: mpsc::Receiver<Vec<ServerFrame>>,
     lagged: Rc<Cell<bool>>,
 }
 
@@ -127,7 +137,7 @@ impl FrameRx {
         }
         match self.frames.recv().await {
             _ if self.lagged.get() => Outgoing::Lagged,
-            Some(frame) => Outgoing::Frame(frame),
+            Some(frames) => Outgoing::Frames(frames),
             None => Outgoing::Closed,
         }
     }
@@ -138,7 +148,7 @@ impl FrameRx {
             return Some(Outgoing::Lagged);
         }
         match self.frames.try_recv() {
-            Ok(frame) => Some(Outgoing::Frame(frame)),
+            Ok(frames) => Some(Outgoing::Frames(frames)),
             Err(mpsc::error::TryRecvError::Empty) => None,
             Err(mpsc::error::TryRecvError::Disconnected) => Some(Outgoing::Closed),
         }
@@ -169,7 +179,7 @@ impl<H: HostResolver> Connection<H> {
         root: NodeId,
         resolver: Rc<dyn ContentResolver>,
     ) -> (Self, FrameRx) {
-        let (outbox, frames) = Outbox::new(server.deps.config.outbox_frames);
+        let (outbox, frames) = Outbox::new(server.deps.config.outbox_steps);
         let connection = Self {
             id,
             root,
@@ -269,21 +279,33 @@ impl<H: HostResolver> Connection<H> {
         });
     }
 
-    fn steer_result(&self, steer_id: BlockId, outcome: Result<(), Refusal>) {
+    /// Answers a steer: accepted at `at`, the agents' version that shows it,
+    /// or refused.
+    fn steer_result(&self, steer_id: BlockId, outcome: Result<Option<Version>, Refusal>) {
         let outcome = match outcome {
-            Ok(()) => SteerOutcome::Accepted,
+            Ok(at) => SteerOutcome::Accepted { at },
             Err(refusal) => SteerOutcome::Rejected { refusal },
         };
         self.send(ServerFrame::SteerResult { steer_id, outcome });
     }
 
-    fn remove_result(&self, id: String, removed: bool) {
+    /// Answers a removal, whose outcome the agents show at `at`.
+    fn remove_result(&self, id: String, removed: bool, at: Option<Version>) {
         let outcome = if removed {
             RemoveOutcome::Removed
         } else {
             RemoveOutcome::GoneOn
         };
-        self.send(ServerFrame::RemoveResult { id, outcome });
+        self.send(ServerFrame::RemoveResult { id, outcome, at });
+    }
+
+    /// The agents' version once the step of the command just taken reached
+    /// every page: an answer names it, so the page takes the command as done
+    /// only once it holds the step
+    /// (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    async fn shown_at(tree: &Tree<H>, session: &AgentSession) -> Option<Version> {
+        session.delivered().await;
+        Some(tree.agents_version())
     }
 
     /// Shows the node `node`'s messages on this connection from now on: an
@@ -405,10 +427,10 @@ impl<H: HostResolver> Connection<H> {
                 });
             }
             ClientFrame::CancelPendingSteer { steer_id } => {
-                self.remove_result(steer_id.into_string(), false);
+                self.remove_result(steer_id.into_string(), false, None);
             }
             ClientFrame::DequeueMessage { message_id } => {
-                self.remove_result(message_id.into_string(), false);
+                self.remove_result(message_id.into_string(), false, None);
             }
             ClientFrame::SteerNow { .. }
             | ClientFrame::AbortSubagents {}
@@ -422,6 +444,7 @@ impl<H: HostResolver> Connection<H> {
     async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame, kind: ClientFrameKind) -> bool {
         let session = tree.root().session();
         match frame {
+            ClientFrame::AgentsSince { held } => self.send(tree.agents_since(Some(&held))),
             ClientFrame::Send {
                 message_id,
                 content,
@@ -438,7 +461,7 @@ impl<H: HostResolver> Connection<H> {
                 // The session reports the action's course as events; the
                 // handle is not needed.
                 let message = QueuedMessage {
-                    id: message_id,
+                    id: message_id.clone(),
                     content,
                     comments,
                     automation: None,
@@ -447,6 +470,8 @@ impl<H: HostResolver> Connection<H> {
                     self.reject(kind, error.refusal());
                     return false;
                 }
+                let at = Self::shown_at(tree, &session).await;
+                self.send(ServerFrame::SendResult { message_id, at });
                 return true;
             }
             ClientFrame::Steer { steer_id, content, comments } => {
@@ -460,14 +485,17 @@ impl<H: HostResolver> Connection<H> {
                     Err(error) => Err(error.refusal()),
                 };
                 let accepted = outcome.is_ok();
+                let outcome = match outcome {
+                    Ok(()) => Ok(Self::shown_at(tree, &session).await),
+                    Err(refusal) => Err(refusal),
+                };
                 self.steer_result(steer_id, outcome);
                 return accepted;
             }
-            // The session tells the list's change as it happens, so the
-            // answer follows the list's frame.
             ClientFrame::CancelPendingSteer { steer_id } => {
                 let removed = session.cancel_pending_steer(&steer_id);
-                self.remove_result(steer_id.into_string(), removed);
+                let at = Self::shown_at(tree, &session).await;
+                self.remove_result(steer_id.into_string(), removed, at);
             }
             ClientFrame::SteerNow { steer_id } => session.steer_now(&steer_id),
             // The backend keeps the saved messages and hands the session
@@ -483,7 +511,8 @@ impl<H: HostResolver> Connection<H> {
             }
             ClientFrame::DequeueMessage { message_id } => {
                 let removed = session.dequeue_message(&message_id);
-                self.remove_result(message_id.into_string(), removed);
+                let at = Self::shown_at(tree, &session).await;
+                self.remove_result(message_id.into_string(), removed, at);
             }
             ClientFrame::SendQueuedMessage { message_id } => {
                 session.send_queued_message(&message_id);

@@ -721,7 +721,7 @@ async fn open_client(
     let mut client = TestClient::connect(server, root).with_hang_guard(TURN_TIMEOUT);
     client.open().await;
     client
-        .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+        .next_until(|frame| matches!(frame, ServerFrame::RequestOutput { .. }))
         .await;
     client
 }

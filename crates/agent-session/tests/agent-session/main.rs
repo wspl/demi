@@ -2034,6 +2034,85 @@ async fn a_second_response_of_one_run_streams_its_text_before_the_run_ends() {
     assert_eq!(texts, ["one", "two"]);
 }
 
+/// The events of one change reach a step listener together: the turn's end
+/// is one step, the answer's response with the phase that goes idle, so a
+/// client never shows the finished turn still running. And a message whose
+/// turn starts at once is in the state from the step that accepts it, as the
+/// turn's starting message, until the step that writes its `user` block.
+/// (Before, the message showed nowhere until its turn wrote it.)
+#[tokio::test(flavor = "local")]
+async fn a_change_reaches_clients_as_one_step_and_a_starting_message_shows_until_written() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![event::text("Done."), event::response(1, 1)])]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let steps = Rc::new(RefCell::new(Vec::<Vec<String>>::new()));
+    let _subscription = session.subscribe_steps({
+        let steps = steps.clone();
+        move |step| {
+            let kinds: Vec<String> = step
+                .iter()
+                .filter_map(|event| match event {
+                    SessionEvent::StartingChanged { starting } => {
+                        Some(format!("starting {}", starting.as_ref().map_or("none", |message| message.id.as_str())))
+                    }
+                    SessionEvent::TranscriptChanged { patches, .. } => patches.iter().find_map(|patch| match patch {
+                        TranscriptPatch::Add { value: Block::User(_), .. } => Some("user block".to_owned()),
+                        TranscriptPatch::Add { value: Block::Response(_), .. } => Some("response".to_owned()),
+                        _ => None,
+                    }),
+                    SessionEvent::PhaseChanged { phase } => Some(format!("phase {phase:?}")),
+                    _ => None,
+                })
+                .collect();
+            if !kinds.is_empty() {
+                steps.borrow_mut().push(kinds);
+            }
+        }
+    });
+
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    assert_eq!(steps.borrow()[0], ["starting t1", "phase Running"]);
+    assert_eq!(session.starting().map(|message| message.id), Some(turn("t1")));
+    running.await.unwrap();
+    let steps = steps.borrow();
+    let written = steps.iter().position(|step| step.contains(&"user block".to_owned())).expect("the user block");
+    assert!(steps[written].contains(&"starting none".to_owned()), "{steps:?}");
+    let end = steps.last().unwrap();
+    assert!(end.contains(&"response".to_owned()) && end.contains(&"phase Idle".to_owned()), "{steps:?}");
+    assert_eq!(session.starting(), None);
+}
+
+/// A steer sent again with the same id, as a page that lost the answer does,
+/// is taken once, pending or written. (It was taken twice.)
+#[tokio::test(flavor = "local")]
+async fn a_steer_sent_again_with_its_id_is_taken_once() {
+    let (release, released) = oneshot::channel::<()>();
+    let run = Turn::Stream(Box::new(move |_| {
+        use futures_util::StreamExt;
+        futures_util::stream::once(released)
+            .map(|_| event::response(1, 1))
+            .boxed_local()
+    }));
+    let provider = ScriptedRuntime::new([run, Turn::Events(vec![event::text("ok"), event::response(1, 1)])]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    until(|| provider.requests().len() == 1).await;
+    let id = BlockId::try_from("steer-1").unwrap();
+    session.steer(text("also this"), id.clone()).unwrap();
+    session.steer(text("also this"), id.clone()).unwrap();
+    assert_eq!(session.pending_steers().len(), 1);
+    release.send(()).unwrap();
+    running.await.unwrap();
+    let steers = |session: &AgentSession| {
+        session.transcript().blocks.iter().filter(|block| matches!(block, Block::Steer(_))).count()
+    };
+    assert_eq!(steers(&session), 1);
+    // Written, it is still the one steer, though nothing runs now.
+    assert_eq!(session.steer(text("also this"), id), Ok(()));
+    assert_eq!((steers(&session), session.pending_steers().len()), (1, 0));
+}
+
 /// A steer, its Recall and a message sent while a run waits after an answer
 /// reach clients at once: the hold that keeps the answer's text with the
 /// turn's end holds no input list. Before, the lists waited for the run to go

@@ -78,6 +78,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
+  /** The message the root's running turn started with, until the turn writes it; null otherwise. */
+  starting: QueuedMessage | null
   /** The calls the model is writing. */
   pendingCalls: PendingCall[]
   /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none. */

@@ -5,12 +5,18 @@
 //! The list is a collection kept in sync by its [`Version`]: the `agents`
 //! frame carries it whole, or the entries changed since a revision the page
 //! holds, and each `agent` frame one changed entry with the revision one past
-//! the previous. An entry carries no result: a child's result is its
-//! transcript's last answer, and its parent's transcript holds it as
-//! delivered.
+//! the previous. A page that meets a gap asks for the changes since the
+//! revision it holds (`agents_since`). An entry carries no result: a child's
+//! result is its transcript's last answer, and its parent's transcript holds
+//! it as delivered.
+//!
+//! An entry also carries the agent's waiting inputs, its queue and its
+//! pending steers, so a command that changes them settles on the entry, never
+//! on its answer (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
 
 use demi_shared_types::{
-    BlockId, ContextUsage, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, PendingCall, SessionPhase, Timestamp,
+    BlockId, ContextUsage, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, PendingCall, PendingSteer, QueuedMessage,
+    SessionPhase, Timestamp,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -51,6 +57,20 @@ pub struct AgentEntry {
     /// What its own ledger rows cost, kept as they are written.
     #[garde(dive)]
     pub cost: AgentCost,
+    /// The messages waiting for its turn to end, in the order they run;
+    /// empty for one that is not live. Never kept.
+    #[garde(dive)]
+    pub queue: Vec<QueuedMessage>,
+    /// The steers it accepted that wait for its next step, in order; empty
+    /// for one that is not live.
+    #[garde(dive)]
+    pub pending_steers: Vec<PendingSteer>,
+    /// The message its running turn started with, until the turn writes it
+    /// into the transcript; null otherwise. Never kept.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<QueuedMessage>")]
+    #[garde(dive)]
+    pub starting: Option<QueuedMessage>,
 }
 
 /// What an agent is in its tree.

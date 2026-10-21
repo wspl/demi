@@ -747,6 +747,9 @@ function childEntry(
     pendingCalls: [],
     context: null,
     cost: NO_COST,
+    queue: [],
+    pendingSteers: [],
+    starting: null,
   }
 }
 
@@ -3016,7 +3019,7 @@ function playPageSockets(handshake?: ServerFrame[] | ((id: string, open: Extract
 
 /** The root's entry of conversation `id`, its session in `phase`. */
 function rootEntry(id: string, phase: SessionPhase = 'idle'): AgentEntry {
-  return { id, role: { kind: 'root' }, phase, waitedMs: null, pendingCalls: [], context: null, cost: NO_COST }
+  return { id, role: { kind: 'root' }, phase, waitedMs: null, pendingCalls: [], context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null }
 }
 
 /** The root's entry of `conversation` changed to `phase`, after the agents it holds. */
@@ -3050,8 +3053,7 @@ function backendOpening(
     ...shown,
     { type: 'opened' },
     { type: 'agents', version: { epoch: 'e', revision: 1 }, agents: [rootEntry(id), ...agents] },
-    { type: 'queue', queue: [] },
-    { type: 'pending_steers', pendingSteers: [] },
+    { type: 'request_output', output: null },
     ...nodes.map((node) => {
       const blocks = node === id ? root : []
       return { type: 'transcript_reset', node, start: 0, length: blocks.length, blocks, version: { epoch: 'e', revision: 1 } }
@@ -3492,8 +3494,7 @@ test('a conversation opened during a turn shows its transcript with its steer an
     { flush: 'sync' },
   )
   await openWithSession(FIRST, [
-    { type: 'agent', revision: 2, agent: { ...rootEntry(FIRST, 'running'), waitedMs: 11_000 } },
-    { type: 'pending_steers', pendingSteers: [steer] },
+    { type: 'agent', revision: 2, agent: { ...rootEntry(FIRST, 'running'), waitedMs: 11_000, pendingSteers: [steer] } },
   ])
   stop()
   // The transcript shows with the session's turn, its steer and its wait, in one change.

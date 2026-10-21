@@ -149,9 +149,9 @@ pub type TreeStores = Rc<dyn Fn(&NodeId) -> Rc<dyn AgentTreeStore>>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServerConfig {
     pub session: SessionConfig,
-    /// The most frames a connection's outbox holds; a connection whose
-    /// client lags this far is closed.
-    pub outbox_frames: usize,
+    /// The most steps a connection's outbox holds, each the frames of one
+    /// change; a connection whose client lags this far is closed.
+    pub outbox_steps: usize,
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
     /// The least interval a command reports at, in milliseconds
@@ -168,7 +168,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             session: SessionConfig::default(),
-            outbox_frames: 4_096,
+            outbox_steps: 4_096,
             idle_tree: Duration::from_secs(600),
             interval_floor_ms: INTERVAL_FLOOR_MS,
             call_window_ms: CALL_WINDOW_MS,
@@ -633,8 +633,14 @@ impl<H: HostResolver> AgentServer<H> {
         Ok(())
     }
 
-    /// Disposes every live tree, then waits for evictions under way.
+    /// Stops every live tree at once, then disposes each and waits for the
+    /// evictions under way: no agent runs on while a close waits for another
+    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`).
     pub async fn shutdown(&self) {
+        let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
+        for tree in &trees {
+            tree.stop();
+        }
         let roots: Vec<NodeId> = self.trees.borrow().keys().cloned().collect();
         join_all(roots.iter().map(|root| self.close_tree(root))).await;
         self.evictions.close();

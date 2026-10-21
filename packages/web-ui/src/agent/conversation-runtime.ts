@@ -78,6 +78,7 @@ export type RuntimeState = Pick<
   | 'phase'
   | 'queue'
   | 'pendingSteers'
+  | 'starting'
   | 'pendingCalls'
   | 'waitingSince'
   | 'requestOutput'
@@ -790,6 +791,9 @@ export class ConversationRuntime {
         break
       case 'pending_steers':
         state.pendingSteers = event.pendingSteers
+        break
+      case 'starting':
+        state.starting = event.starting
         break
       case 'request_output':
         state.requestOutput = event.output

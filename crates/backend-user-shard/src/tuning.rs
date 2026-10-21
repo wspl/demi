@@ -31,9 +31,10 @@ impl Default for LifecycleTuning {
 /// bounds.
 #[derive(Debug, Clone, Copy)]
 pub struct ConversationTuning {
-    /// The most frames a conversation socket's outbox holds; a client that
-    /// falls this far behind is disconnected as lagging.
-    pub outbox_frames: usize,
+    /// The most steps a conversation socket's outbox holds, each the frames
+    /// of one change; a client that falls this far behind is disconnected as
+    /// lagging.
+    pub outbox_steps: usize,
     /// The provider requests a user's conversations may start in any minute.
     pub requests_per_minute: usize,
     /// Whether the backend asks the conversation's model for a title; off, a
@@ -53,7 +54,7 @@ pub struct ConversationTuning {
 impl Default for ConversationTuning {
     fn default() -> Self {
         Self {
-            outbox_frames: demi_agent_server::ServerConfig::default().outbox_frames,
+            outbox_steps: demi_agent_server::ServerConfig::default().outbox_steps,
             requests_per_minute: demi_backend_providers::usage::rate_limit::REQUESTS_PER_WINDOW,
             titles: true,
             search_interval: Duration::from_secs(2),

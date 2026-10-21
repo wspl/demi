@@ -26,7 +26,7 @@ use crate::subagents::{
     spawn_during_turn,
 };
 use crate::support::{
-    Fixture, Gate, Model, TestProduct, agent, agent_call, agent_in, conversation, listed_model, until, is_pending_steers,
+    Fixture, Gate, Model, TestProduct, agent, agent_call, agent_in, conversation, listed_model, until, is_request_output,
 };
 
 /// A profile the user created, enabled, with the parent's model and
@@ -700,7 +700,7 @@ async fn the_live_limit_counts_the_subagents_of_all_the_users_conversations_toge
     let other = NodeId::try_from("other conversation").unwrap();
     let mut other_client = TestClient::connect(&fixture.server, &other);
     other_client.open().await;
-    other_client.next_until(is_pending_steers).await;
+    other_client.next_until(is_request_output).await;
 
     // A closed child whose provider the user then removes: its resume
     // fails after the check of the live limit.

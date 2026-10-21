@@ -301,6 +301,10 @@ function copyOf(conversation: Conversation): ConversationCopy | null {
       pendingCalls: [],
       context: toRaw(conversation.contextUsage),
       cost: toRaw(conversation.cost),
+      // The waiting inputs live while the session does and are never kept.
+      queue: [],
+      pendingSteers: [],
+      starting: null,
     },
     ...conversation.subagents.map((agent) => subagentEntry(toRaw(agent))),
     ...conversation.sides.flatMap((side) => sideEntry(toRaw(side))),
@@ -332,6 +336,9 @@ function subagentEntry(agent: SubagentRecord): AgentEntry {
     pendingCalls: [],
     context: toRaw(agent.contextUsage),
     cost: toRaw(agent.cost),
+    queue: [],
+    pendingSteers: [],
+    starting: null,
   }
 }
 
@@ -349,5 +356,8 @@ function sideEntry(side: SideRecord): AgentEntry[] {
     pendingCalls: [],
     context: null,
     cost: NO_COST,
+    queue: [],
+    pendingSteers: [],
+    starting: null,
   }]
 }

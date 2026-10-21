@@ -497,7 +497,10 @@ test('after a reload, the transcript the client assembled from live patches equa
   expect(vendor.unused()).toBe(0)
 })
 
-test('a submitted message is acknowledged once it is in the transcript, before the model answers', async () => {
+// A send is acknowledged once the session's state shows the message: as the
+// turn's starting message until the turn writes it, then as its first block,
+// all before the model answers.
+test('a submitted message is acknowledged once the session holds it, before the model answers', async () => {
   const model = await scriptedModel()
   const id = await createConversation(model)
   const held = vendor.hold({ type: 'text', text: 'An answer that waits.' })
@@ -506,6 +509,13 @@ test('a submitted message is acknowledged once it is in the transcript, before t
     const messageId = crypto.randomUUID()
     await client.submit([text('Acknowledge me')], messageId)
     // The page clears its composer now; the reply has not come.
+    const writes = (blocks: readonly Block[]) =>
+      blocks.some((block) => block.type === 'user' && block.turnId === messageId)
+    expect(client.startingMessage()?.id === messageId || writes(transcriptOf(client))).toBe(true)
+    if (!writes(transcriptOf(client))) {
+      await nextEvent(client, () => (writes(transcriptOf(client)) ? true : undefined))
+    }
+    expect(client.startingMessage()).toBeNull()
     const written = transcriptOf(client)
     expect(kinds(written)).toEqual(['user'])
     expect(written[0]).toMatchObject({ type: 'user', turnId: messageId, content: [{ type: 'text', text: 'Acknowledge me' }] })
