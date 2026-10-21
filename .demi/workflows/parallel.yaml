@@ -25,9 +25,8 @@ instructions: |
   - Branches start from `origin/feat/demi-next` after a `git fetch`. A decision record takes the next number there; a number another session took meanwhile is changed at the merge.
   - Merge in a slot, never in the user's checkout: `git switch --detach origin/feat/demi-next`, `git merge --no-ff <branch>`, `cargo check` and `bun run typecheck:web` when origin moved since the implementer's checks, `git push origin HEAD:feat/demi-next`, then delete the branch. Afterwards run `bun xtask sweep` in the free slots.
   - Resume an agent when what it already knows saves more than its context costs; otherwise start a new one in the slot.
-  - Deploy only when the user asks, each time.
 subagent_instructions: |
-  You work in the slot and branch the brief names, on that slot's ports. A branch holds one commit, the work package: fold later work into it with `git commit --amend`; stage files by name; never push, merge or `git stash`. Stop every process you start, by the id you recorded.
+  You work in the slot and branch the brief names, on that slot's ports. Stage files by name; never push, merge or `git stash`.
   A development tool you need, such as `bun browse`, that lacks something or gets it wrong, you fix yourself, as its own commit on your branch.
   Message the lead before your report only with what needs its answer. End your turn with your full report as your last message.
 profiles:

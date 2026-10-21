@@ -98,6 +98,32 @@ A shared mechanism goes where its use decides:
 -   A mechanism usable by any plugin goes in the plugin contract. A Host
     directory is an example.
 
+## Rules across modules
+
+-   The conversation's side of the page asks only the backend, never a Host
+    through it. What it shows from a Host, such as a directory's instruction
+    files or workflows, the backend keeps: the runner watches exactly what each
+    fact depends on and reports a change, the backend reads the fact again,
+    stores it with when it was read and announces a new value, and a request
+    takes what is held, without waiting on or waking a Host
+    (`crates/backend-host-access/src/kept.rs`). The work panel, which shows a
+    Host's own files and changes, reads the Host when shown.
+-   The Cloud and a paired device are the same thing: a Host behind a runner.
+    Code never distinguishes them except where the design says they differ
+    (pairing, revocation, lifecycle). Anything that reaches a conversation's
+    Host goes through the conversation's host access (`with_host` in
+    `backend-host-access`, see `crates/backend-host-access/src/lib.rs`), which
+    resolves the target, wakes a stopped Cloud, and holds the file gate. There
+    is no other way to a conversation's Host, and every other way to a Host is
+    named in that comment; if the host access does not fit, change it first.
+-   Every reusable UI behavior lives in `web-ui` as a component or primitive,
+    and a plugin's feature UI lives in its plugin package, written only against
+    `@demicodes/plugin-sdk` (`packages/plugin-sdk/src/index.ts`); `web-ui` knows
+    no plugin, and `web` and `web-gallery` supply only data, state, services and
+    handlers. A behavior first built for one surface (a control's affordance, a
+    page's interaction, a dialog flow) is generalized into `web-ui` in the same
+    commit, never left local to the gallery, the product or one plugin.
+
 ## Dependency direction
 
 Dependencies point down. The following rules apply:
