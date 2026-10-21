@@ -2034,6 +2034,57 @@ async fn a_second_response_of_one_run_streams_its_text_before_the_run_ends() {
     assert_eq!(texts, ["one", "two"]);
 }
 
+/// A steer, its Recall and a message sent while a run waits after an answer
+/// reach clients at once: the hold that keeps the answer's text with the
+/// turn's end holds no input list. Before, the lists waited for the run to go
+/// on, so a page that hears the steer accepted showed it nowhere, and a
+/// recalled one stayed listed.
+#[tokio::test(flavor = "local")]
+async fn input_lists_reach_clients_while_a_run_waits_after_an_answer() {
+    use futures_util::StreamExt;
+    let run = Turn::Stream(Box::new(|_| {
+        futures_util::stream::iter([event::text("Done."), event::response(1, 1)])
+            .chain(futures_util::stream::pending())
+            .boxed_local()
+    }));
+    let provider = ScriptedRuntime::new([run]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let seen = Rc::new(RefCell::new(Vec::<String>::new()));
+    let answered = Rc::new(Cell::new(false));
+    let _subscription = session.subscribe({
+        let seen = seen.clone();
+        let answered = answered.clone();
+        move |event| match event {
+            // The answer's end passes the hold it starts.
+            SessionEvent::OutputChanged { output } => {
+                answered.set(answered.get() || output.as_ref().is_some_and(|output| output.ended));
+            }
+            SessionEvent::PendingSteersChanged { pending_steers } => {
+                seen.borrow_mut().push(format!("steers {}", pending_steers.len()));
+            }
+            SessionEvent::QueueChanged { queue } => seen.borrow_mut().push(format!("queue {}", queue.len())),
+            SessionEvent::ContextUsageChanged { .. } => seen.borrow_mut().push("usage".into()),
+            SessionEvent::TranscriptChanged { .. } => seen.borrow_mut().push("transcript".into()),
+            _ => {}
+        }
+    });
+
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    until(|| answered.get()).await;
+    seen.borrow_mut().clear();
+    let steer = BlockId::try_from("steer-1").unwrap();
+    session.steer(text("later"), steer.clone()).unwrap();
+    assert_eq!(seen.borrow().as_slice(), ["steers 1"]);
+    assert!(session.cancel_pending_steer(&steer));
+    assert_eq!(seen.borrow().as_slice(), ["steers 1", "steers 0"]);
+    let _queued = session.send(text("next"), turn("t2")).unwrap();
+    assert_eq!(seen.borrow().as_slice(), ["steers 1", "steers 0", "queue 1"]);
+
+    session.abort().await;
+    assert_eq!(running.await, Ok(ActionEnd::Aborted));
+}
+
 /// A call the model is writing: it is listed from its start, which completes
 /// the text before it, gains its description once that string is whole, and
 /// leaves the list in the step that adds its block.
