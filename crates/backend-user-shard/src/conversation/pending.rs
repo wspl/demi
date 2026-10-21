@@ -1,13 +1,12 @@
 //! The changes an agent asks for that wait for its conversation's tree to be
-//! idle: its pending move and the attached devices it asked to detach.
+//! idle: the attached devices it asked to detach.
 //!
-//! A move and a detach are transitions, which the command's own job and its
-//! working tree would always find busy, so the command only records them and
-//! answers at once. A rename and an attach apply at once.
+//! A detach is a transition, which the command's own job and its working tree
+//! would always find busy, so the command only records it and answers at once.
+//! A rename, an attach and a move apply at once.
 //!
 //! # Recording
 //!
-//! - A newer pending move replaces an older one.
 //! - An archive drops it.
 //! - An attach of a device cancels its mark to detach; the device stays usable
 //!   until the detach is made.
@@ -20,11 +19,6 @@
 //! reserves it in the same step, so nothing else is admitted first, and makes
 //! the changes in one transition. A closed tree is idle at once.
 //!
-//! A move checks what a user's switch checks, not whether the device is
-//! online. One that fails, such as into a project deleted meanwhile, leaves the
-//! conversation where it was and wakes the root with Demi's notice of the
-//! reason.
-//!
 //! The changes are stored, so a start makes those a restart cut off.
 
 use std::cell::RefCell;
@@ -33,16 +27,9 @@ use std::rc::{Rc, Weak};
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget, PendingMove};
 use demi_backend_host_access::root_of;
-use demi_backend_host_access::transition::ChangeRefusal;
-use demi_web_api_protocol::ids::DeviceId;
 use demi_backend_page_sync::Part;
-use demi_backend_permissions::PermissionShard;
 use demi_shared_gates::Reservation;
-use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId};
-use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 use tokio::sync::Notify;
 use tokio_util::task::AbortOnDropHandle;
@@ -115,18 +102,24 @@ impl Shard {
         self.settle_when_idle(id);
     }
 
-    /// Makes the conversation's pending changes with its idle tree reserved,
-    /// `tree`, or none when it is closed, in one transition: the move, then
-    /// each detach. Answers whether a change is left that this one did not
-    /// see, such as a newer move.
+    /// Makes the conversation's pending detaches with its idle tree reserved,
+    /// `tree`, or none when it is closed, in one transition. Answers whether
+    /// a detach is left that this one did not see.
     async fn settle(&self, id: &ConversationId, tree: Option<Reservation>) -> bool {
         let control = &self.services().control;
         let host = self.host_shard();
-        let record = match host.owned_conversation(id).await {
-            Ok(record) if !record.archived => record,
-            // An archive dropped the move; a gone conversation has nothing.
-            _ => return false,
+        // The detaches read what they change within the conversation's change
+        // boundary, as a user's detach does; its slot is keyed by the id as
+        // the record spells it.
+        let Ok(spelled) = host.owned_conversation(id).await else {
+            return false;
         };
+        let _boundary = self.conversations().slot(&spelled.id).changes.acquire().await;
+        match host.owned_conversation(id).await {
+            Ok(record) if !record.archived => {}
+            // An archive dropped the detaches; a gone conversation has none.
+            _ => return false,
+        }
         let pending = match control.pending_changes(id.clone()).await {
             Ok(pending) if !pending.is_empty() => pending,
             Ok(_) => return false,
@@ -136,20 +129,8 @@ impl Shard {
             }
         };
         let hold = host.hold_when_free(id, tree).await;
-        let mut failure = None;
-        if let Some(moving) = &pending.moving {
-            match self.make_move(&record, moving).await {
-                Ok(()) => {}
-                Err(reason) => {
-                    if let Err(error) = control.drop_pending_move(id.clone(), moving.id.clone()).await {
-                        tracing::warn!(conversation = %id, "a failed move was not dropped: {error}");
-                    }
-                    failure = Some(reason);
-                }
-            }
-        }
         for device in &pending.detaching {
-            // The move may have changed the record the detach compares.
+            // Each detach changes the record the next one compares.
             let record = match host.owned_conversation(id).await {
                 Ok(record) => record,
                 Err(error) => {
@@ -163,134 +144,15 @@ impl Shard {
         }
         drop(hold);
         self.mark(Part::Conversation(id.clone()));
-        if let (Some(reason), Some(moving)) = (failure, &pending.moving) {
-            self.tell_move_failed(&record, moving, reason).await;
-        }
         match control.pending_changes(id.clone()).await {
-            Ok(left) => {
-                left.moving.is_some_and(|newer| Some(&newer.id) != pending.moving.as_ref().map(|moving| &moving.id))
-                    || left.detaching.iter().any(|device| !pending.detaching.contains(device))
-            }
+            Ok(left) => left.detaching.iter().any(|device| !pending.detaching.contains(device)),
             Err(_) => false,
-        }
-    }
-
-    /// Makes the pending move `moving` as a user's switch is made: it checks
-    /// what a switch checks, not whether the device is online. The error is
-    /// why, as the agent reads it and the page words it.
-    async fn make_move(&self, record: &ConversationRecord, moving: &PendingMove) -> Result<(), MoveFailure> {
-        let switched = self
-            .host_shard()
-            .switch_target(record, moving.target.clone(), Some(moving.id.clone()))
-            .await
-            .map_err(|refusal| MoveFailure::of(&refusal))?;
-        match switched {
-            Some(switched) => {
-                if switched.made.is_some() {
-                    self.mark(Part::Workspaces);
-                }
-                self.switched(&record.id).await;
-            }
-            // A move to where it runs is made as nothing.
-            None => self
-                .services()
-                .control
-                .drop_pending_move(record.id.clone(), moving.id.clone())
-                .await
-                .map_err(|error| MoveFailure {
-                    reason: error.to_string(),
-                    code: None,
-                })?,
-        }
-        Ok(())
-    }
-
-    /// Wakes the root with Demi's notice that the move `moving` failed for
-    /// `why`, naming where the conversation still runs.
-    async fn tell_move_failed(&self, record: &ConversationRecord, moving: &PendingMove, failure: MoveFailure) {
-        let why = &failure.reason;
-        let host = self.host_shard();
-        let place = match host.resolve_target(record).await {
-            Ok(target) => self.place(&target).await,
-            Err(_) => "where it was".to_owned(),
-        };
-        let content = format!(
-            "Demi could not make the move this conversation's agent asked for: {why}. The conversation still runs on {place}."
-        );
-        let id = match BlockId::try_from(format!("move-failed:{}", moving.id)) {
-            Ok(id) => id,
-            Err(_) => return,
-        };
-        let at = self.services().clock.now();
-        let message = |recipient: &NodeId| AgentMessage {
-            id: id.clone(),
-            sender: None,
-            recipient_id: recipient.clone(),
-            timestamp: at,
-            content: content.clone(),
-            event: AgentMessageEvent::MoveFailed {
-                reason: why.to_owned(),
-                code: failure.code.map(|code| code.to_string()),
-            },
-            origin: None,
-        };
-        let root = root_of(&record.id);
-        if let Err(error) = PermissionShard::admit(self, &record.id, &root, &message).await {
-            tracing::warn!(conversation = %record.id, "a failed move's notice was not delivered: {error}");
-        }
-    }
-
-    /// Where a target runs, as Demi's messages about a move name it: its
-    /// Host and directory, `MacBook Pro (/Users/alex/code/app)`.
-    pub(crate) async fn place(&self, target: &ExecutionTarget) -> String {
-        format!("{} ({})", self.target_host(target).await, target.path())
-    }
-
-    /// The Host a target runs on, by the name Demi's messages give it.
-    pub(crate) async fn target_host(&self, target: &ExecutionTarget) -> String {
-        match target.device() {
-            Some(device) => self.host_name(device).await,
-            None => "Cloud".to_owned(),
-        }
-    }
-
-    /// A device's name, or Cloud for the user's Cloud, as Demi's messages
-    /// and commands name it.
-    pub(crate) async fn host_name(&self, device: &DeviceId) -> String {
-        match self.services().control.device(device.clone()).await {
-            Ok(Some(record)) if record.kind == DeviceKind::Managed => "Cloud".to_owned(),
-            Ok(Some(record)) => record.name,
-            _ => device.to_string(),
-        }
-    }
-}
-
-/// Why a move an agent asked for failed: the reason the agent reads, and
-/// the code of the refusal the page words it from, when a refusal names it.
-struct MoveFailure {
-    reason: String,
-    code: Option<ErrorCode>,
-}
-
-impl MoveFailure {
-    /// The failure of a move the switch refused.
-    fn of(refusal: &ChangeRefusal) -> Self {
-        let reason = match refusal {
-            ChangeRefusal::WorkspaceNotFound => "the project no longer exists".into(),
-            ChangeRefusal::DeviceNotFound => "the device is no longer paired".into(),
-            ChangeRefusal::Conflict => "another move came first".into(),
-            ChangeRefusal::Archived => "the conversation is archived".into(),
-            refusal => refusal.to_string(),
-        };
-        Self {
-            reason,
-            code: Some(refusal.code().0),
         }
     }
 }
 
 /// Waits until the conversation's tree does nothing by itself, or is
-/// closed, and makes its pending changes then; again while a newer change
+/// closed, and makes its pending detaches then; again while a newer one
 /// waits.
 async fn settle_when_idle(shard: Weak<Shard>, id: ConversationId, poke: Rc<Notify>) {
     loop {

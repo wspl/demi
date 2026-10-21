@@ -15,22 +15,11 @@
   },
   "move": {
     "title": "このチャットを {host} に移動しますか？",
-    "titleStop": "エージェントを停止して、このチャットを {host} に移動しますか？",
     "runsHome": "そこのホームディレクトリで実行されます。",
     "runsIn": "{directory} で実行されます。",
     "runsOwn": "そこの専用ディレクトリで実行されます。",
     "filesStay": "{host} のファイルはそのまま残ります。",
-    "agentLearns": "エージェントは次に作業を始めるときに移動を把握します。今すぐ知らせることもできます。",
-    "stopAndMove": "停止して移動",
-    "move": "移動",
-    "stopMoveTell": "停止して移動し、エージェントに通知",
-    "moveAndTell": "移動してエージェントに通知"
-  },
-  "stop": {
-    "agent": "エージェント",
-    "subagents": "{count} 個のサブエージェント",
-    "commands": "{count} 件のコマンド",
-    "sentence": "{list}が停止します。"
+    "move": "移動"
   },
   "project": {
     "title": "新しいプロジェクト",

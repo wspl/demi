@@ -428,7 +428,7 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
         },
     );
     case(
-        "fs: symlink, readlink, lstat, realpath, link, chmod, utimes",
+        "fs: symlink, readlink, lstat, realpath, directory, link, chmod, utimes",
         |c| {
             Box::pin(async move {
                 let fs = c.host.fs();
@@ -466,6 +466,13 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
                     real.ends_with("/links/target.txt"),
                     "realpath resolves the link",
                 )?;
+                fs.symlink(&root, &format!("{root}/here")).await.map_err(text)?;
+                let directory = fs.directory(&format!("{root}/here/")).await.map_err(text)?;
+                ok(
+                    directory.ends_with("/links") && !directory.ends_with('/'),
+                    "directory resolves the link and drops the separator",
+                )?;
+                code(fs.directory(&format!("{root}/link")).await.map(drop), "ENOTDIR", "a file is no directory")?;
                 let entries = fs.read_dir(&root).await.map_err(text)?;
                 let link = entries
                     .iter()

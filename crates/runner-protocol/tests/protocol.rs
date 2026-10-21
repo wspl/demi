@@ -50,7 +50,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 62);
+    assert_eq!(frames.len(), 63);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -65,7 +65,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 60);
+    assert_eq!(frames.len(), 61);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));

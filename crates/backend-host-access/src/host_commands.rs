@@ -10,8 +10,9 @@
 //! - `pair` pairs the computer whose installer shows a code and attaches it.
 //! - `attach` attaches a device at once.
 //! - `detach` marks a device to detach once the conversation's work ends.
-//! - `move` makes a host and a directory where the conversation runs once its
-//!   work ends.
+//! - `move` makes a host and a directory where the conversation runs, at once
+//!   (`docs/decisions/0027-a-move-applies-at-once.md`), and answers once it is
+//!   made.
 //!
 //! The dispatch asks the user before a call brings in a host the conversation
 //! may not reach, and before every pairing.
@@ -48,9 +49,9 @@ use std::future::Future;
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::conversation_index::{
-    AttachedHostRecord, ChangeOutcome, ExecutionTarget, RecordChange,
+    AttachedHostRecord, ExecutionTarget, RecordChange,
 };
-use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob, host_paths};
+use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
     Call, DEMI_ROOT, GroupBuilder, LeafBuilder, ProcessEnd, RpcError,
@@ -71,7 +72,6 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
-use crate::directories::DirectoryRefusal;
 use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
@@ -85,7 +85,7 @@ const ENTRY: &str = "Lists the computers this conversation can reach, its primar
 /// conversation may not reach.
 const PAIR_PATH: [&str; 3] = [DEMI_ROOT, "host", "pair"];
 
-const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies when this conversation's work ends, and the host it leaves stays attached.";
+const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies at once: commands already running finish where they are, every later command runs there, and the host it leaves stays attached.";
 
 const DEVICES_SUMMARY: &str = "List the user's paired devices and the Cloud: name, id, kind, status (a stopped Cloud wakes for work), and what each is to this conversation, with the name it reaches it by.";
 
@@ -348,28 +348,6 @@ async fn devices_named(
         });
     }
     Ok(found)
-}
-
-/// Records the move to `target` as the conversation's pending move, which
-/// the shard makes once its tree is next idle (`crates/backend-host-access/src/transition.rs`).
-pub async fn pend_move(
-    shard: &dyn HostShard,
-    conversation: &ConversationId,
-    target: ConversationTarget,
-) -> Result<(), RpcError> {
-    match shard
-        .control()
-        .set_pending_move(conversation.clone(), target)
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?
-    {
-        Ok(_) => {
-            shard.settle_when_idle(conversation);
-            Ok(())
-        }
-        Err(ChangeOutcome::Archived) => Err(RpcError::Failed("this conversation is archived".into())),
-        Err(_) => Err(RpcError::Failed("this conversation is gone".into())),
-    }
 }
 
 /// A handler over the live shard; a call after the shard closed fails.
@@ -759,8 +737,10 @@ async fn detach(
     Ok(0)
 }
 
-/// `demi host move`: checks that the directory is one on the host now, then
-/// records the move, which applies when the conversation's work ends.
+/// `demi host move`: moves the conversation to the directory on the host
+/// through the one move operation, which checks the directory, and answers
+/// once it is made. A command stopped before the move's commit starts moves
+/// nothing.
 async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
         args: MoveArgs { directory, .. },
@@ -768,69 +748,33 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
     } = call;
     let conversation = conversation_of(&invocation)?;
     let brought = brought(&invocation)?;
-    let host = NamedDevice {
-        device: DeviceId::try_from(brought.device.clone())
-            .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?,
-        name: brought.name.clone(),
-        cloud: brought.cloud,
-    };
-    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
-    let record = shard
-        .control()
-        .device(host.device.clone())
-        .await
-        .map_err(failed)?
-        .ok_or_else(|| RpcError::Failed(format!("{}: the device is gone", host.name)))?;
-    if !host_paths(record.platform).is_absolute(&directory) {
-        return Err(RpcError::Failed(format!(
-            "{directory}: give an absolute directory on {}",
-            host.name
-        )));
-    }
-    // A command stopped while the Host wakes or answers releases its access
-    // and records no move. The move keeps the directory as the Host names
-    // it (`crates/backend-database/src/selection.rs`).
-    let directory = tokio::select! {
-        resolved = shard.canonical_directory(&record, &directory) => resolved.map_err(|refusal| match refusal {
-            DirectoryRefusal::Offline(reason) => RpcError::Failed(reason),
-            DirectoryRefusal::NotADirectory => {
-                RpcError::Failed(format!("{directory} is not a directory on {}", host.name))
-            }
-            DirectoryRefusal::Failed(reason) => RpcError::Failed(format!("{directory} on {}: {reason}", host.name)),
-        })?,
-        () = port.cancelled() => return Err(RpcError::Failed("the call was cancelled".into())),
-    };
-    let target = if host.cloud {
+    let device = DeviceId::try_from(brought.device.clone())
+        .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?;
+    let target = if brought.cloud {
         ConversationTarget::Cloud {
-            path: Some(directory.clone()),
+            path: Some(directory),
         }
     } else {
         ConversationTarget::Device {
-            device_id: host.device.clone(),
-            path: directory.clone(),
+            device_id: device,
+            path: directory,
         }
     };
-    let conversation_record = shard
-        .owned_conversation(&conversation)
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?;
-    // A move to where it runs replaces a move that waits, and is made as
-    // nothing. A directory that selects nothing, such as one of a device
-    // whose home was never heard, fails with nothing pending.
-    let there = shard
-        .selection_for(&conversation_record, &target)
-        .await
-        .map_err(|refusal| RpcError::Failed(refusal.to_string()))?
-        == conversation_record.target;
-    pend_move(&*shard, &conversation, target).await?;
-    if there {
-        port.stdout("This conversation runs there already.\n").await?;
-    } else {
-        port.stdout(format!(
-            "The move to {} ({directory}) applies when this conversation's work ends; until then commands run where they do now.\n",
-            host.name
-        ))
-        .await?;
+    let cancel = CancellationToken::new();
+    let moving = shard.move_conversation(&conversation, target, &cancel);
+    tokio::pin!(moving);
+    let moved = loop {
+        tokio::select! {
+            moved = &mut moving => break moved,
+            () = port.cancelled(), if !cancel.is_cancelled() => cancel.cancel(),
+        }
+    };
+    match moved.map_err(|refusal| RpcError::Failed(refusal.to_string()))? {
+        None => port.stdout("This conversation runs there already.\n").await?,
+        Some(switched) => {
+            port.stdout(format!("Moved to {} ({}).\n", brought.name, switched.switch.to.path()))
+                .await?;
+        }
     }
     Ok(0)
 }

@@ -1662,6 +1662,22 @@ self.read_pipe(path, ByteRange::default()).await?.body,
         })
     }
 
+    fn directory<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>> {
+        Box::pin(async move {
+            match self
+                .fs("directory", |id, cwd| Inbound::FsDirectory {
+                    id,
+                    path: path.into(),
+                    cwd,
+                })
+                .await?
+            {
+                FsResult::Directory(real) => Ok(real),
+                _ => Err(mismatch()),
+            }
+        })
+    }
+
     fn utimes<'a>(
         &'a self,
         path: &'a str,

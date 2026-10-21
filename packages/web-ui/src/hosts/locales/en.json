@@ -15,22 +15,11 @@
   },
   "move": {
     "title": "Move this conversation to {host}?",
-    "titleStop": "Stop the agent and move this conversation to {host}?",
     "runsHome": "It will run in the home directory there.",
     "runsIn": "It will run in {directory}.",
     "runsOwn": "It will run in a directory of its own there.",
     "filesStay": "Files on {host} stay there.",
-    "agentLearns": "The agent learns of the move when it next works, or now if you tell it.",
-    "stopAndMove": "Stop and Move",
-    "move": "Move",
-    "stopMoveTell": "Stop, Move and Tell Agent",
-    "moveAndTell": "Move and Tell Agent"
-  },
-  "stop": {
-    "agent": "the agent",
-    "subagents": "{count} subagent | {count} subagents",
-    "commands": "{count} command | {count} commands",
-    "sentence": "{list} will stop."
+    "move": "Move"
   },
   "project": {
     "title": "New Project",

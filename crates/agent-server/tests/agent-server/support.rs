@@ -1100,18 +1100,6 @@ impl ScriptedShell {
         }
     }
 
-    /// The command `command` exits.
-    pub fn exit(&self, command: &str) {
-        let record = self
-            .record(&CommandId::try_from(command).unwrap())
-            .expect("the command started");
-        record
-            .borrow_mut()
-            .settle(Ending::Exited(0), Arc::new(WholeOutput::default()), None, Vec::new(), "");
-        self.feed.changed(&record);
-        self.ends.send_replace(());
-    }
-
     /// The running command prints `text`.
     pub fn print(&self, text: &str) {
         let record = self.first();

@@ -1551,7 +1551,7 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline while its work runs · Move to Another Host… asks to stop the agent first"
+            variant="primary Host offline in a conversation with messages · Move to Another Host… asks first"
             wide
           >
             <GalleryComposer
@@ -1561,7 +1561,7 @@ onBeforeUnmount(() => {
                 primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline', mark: GALLERY_MARKS.debian },
                 devices: offlineMenuDevices,
               }"
-              :working="{ agent: true, subagents: 0, commands: 1 }"
+              has-messages
             />
           </GallerySpecimen>
           <GallerySpecimen

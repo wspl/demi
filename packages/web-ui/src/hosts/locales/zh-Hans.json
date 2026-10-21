@@ -15,22 +15,11 @@
   },
   "move": {
     "title": "将此对话移动到 {host}？",
-    "titleStop": "停止智能体并将此对话移动到 {host}？",
     "runsHome": "它将在那里的主目录中运行。",
     "runsIn": "它将在 {directory} 中运行。",
     "runsOwn": "它将在那里的专属目录中运行。",
     "filesStay": "{host} 上的文件会保留在原处。",
-    "agentLearns": "智能体会在下次工作时得知此移动，或在你告知时立即得知。",
-    "stopAndMove": "停止并移动",
-    "move": "移动",
-    "stopMoveTell": "停止、移动并告知智能体",
-    "moveAndTell": "移动并告知智能体"
-  },
-  "stop": {
-    "agent": "智能体",
-    "subagents": "{count} 个子智能体",
-    "commands": "{count} 个命令",
-    "sentence": "{list}将停止。"
+    "move": "移动"
   },
   "project": {
     "title": "新建项目",

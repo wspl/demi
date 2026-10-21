@@ -78,8 +78,10 @@ uuid = { version = "1", features = ["v4"] }
 zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
+demi-shared-gates = { path = "../shared-gates", features = ["testing"] }
 demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
 percent-encoding = "2"
 shlex = "2"
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
+tracing-subscriber.workspace = true

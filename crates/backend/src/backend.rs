@@ -411,14 +411,14 @@ impl Backend {
                 "the pending deletions cannot be listed"
             );
         }
-        // Each move or detach an agent asked for that a restart cut off is
-        // made, before a page opens its tree
-        // (`crates/backend-host-access/src/transition.rs`). A failure
+        // Each detach an agent asked for that a restart cut off is made,
+        // before a page opens its tree
+        // (`crates/backend-user-shard/src/conversation/pending.rs`). A failure
         // does not stop the start: the next start makes it.
         if let Err(error) = settle_pending(&services.control, &shards.shards()).await {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
-                "the pending moves cannot be listed"
+                "the pending detaches cannot be listed"
             );
         }
         // A credential request's command ended with the run before, so no one waits

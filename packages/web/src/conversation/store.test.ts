@@ -268,7 +268,7 @@ function applyPatch(summary: ConversationSummary, patch: Record<string, unknown>
       metadata.model = { ...metadata.model!, [field]: value }
     } else if (field === 'workflow') {
       metadata.workflow = value as ConversationMetadata['workflow']
-    } else if (field !== 'notifyAgent') {
+    } else {
       Object.assign(summary, { [field]: value })
     }
   }
@@ -357,7 +357,7 @@ beforeEach(async () => {
     if (path === '/api/conversations/batch') {
       const items = body.items as {
         id: string
-        patch: Partial<ConversationSummary> & { notifyAgent?: boolean }
+        patch: Partial<ConversationSummary>
       }[]
       return Response.json(
         {
@@ -379,8 +379,7 @@ beforeEach(async () => {
                 ],
               }
             }
-            // Telling the agent is no field of the record, and has no result of its own.
-            const { notifyAgent: _told, ...fields } = item.patch
+            const fields = item.patch
             applyPatch(current, fields)
             return {
               status: 'updated',
@@ -1655,7 +1654,7 @@ test('the first send creates the conversation with its settings and no title in 
   }
 })
 
-test('a draft moves without telling anyone and is created where it moved; a conversation with a record asks the backend to tell its agent', async () => {
+test('a draft moves on the page and is created where it moved; a conversation with a record asks the backend to move it', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)
@@ -1670,88 +1669,23 @@ test('a draft moves without telling anyone and is created where it moved; a conv
   try {
     await useProduct().loadModels(true)
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
-    expect(await store.switchTarget(id, onLaptop, true)).toBe(true)
+    expect(await store.switchTarget(id, onLaptop)).toBe(true)
     conversation.draft = 'First message'
     await store.send(conversation)
     const created = requests.filter((request) => request.path === '/api/conversations')
     expect(created.map((request) => request.body)).toMatchObject([{ target: onLaptop }])
     expect(requests.filter((request) => request.path === '/api/conversations/batch')).toEqual([])
 
-    expect(await store.switchTarget(FIRST, onLaptop, true)).toBe(true)
+    expect(await store.switchTarget(FIRST, onLaptop)).toBe(true)
     expect(await store.switchTarget(FIRST, { kind: 'cloud' })).toBe(true)
     expect(requests.filter((request) => request.path === '/api/conversations/batch').map((request) => request.body)).toEqual([
-      { items: [{ id: FIRST, patch: { target: onLaptop, notifyAgent: true } }] },
+      { items: [{ id: FIRST, patch: { target: onLaptop } }] },
       { items: [{ id: FIRST, patch: { target: { kind: 'cloud' } } }] },
     ])
   } finally {
     submit.mockRestore()
     connect.mockRestore()
     globalThis.fetch = originalFetch
-  }
-})
-
-// Moving a conversation whose agent
-// works stops its work first, and the move goes out once the session says it
-// is idle, since the backend refuses a move while its tree is busy.
-test('moving a conversation whose agent works stops its work and sends the move only once the session is idle', async () => {
-  const store = useConversations()
-  const conversation = store.items.find((item) => item.id === FIRST)!
-  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/ada/work' }
-  const stopped: string[] = []
-  const restoreFetch = answerOpening(FIRST)
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  const abort = spyOn(ConversationRuntime.prototype, 'abort').mockImplementation(async () => {
-    stopped.push('turn')
-  })
-  const abortTerminal = spyOn(ConversationRuntime.prototype, 'abortTerminal').mockImplementation(async (id) => {
-    stopped.push(`command ${id}`)
-  })
-  try {
-    await chooseStubModel(conversation)
-    await store.activate(FIRST)
-    conversation.phase = 'running'
-    conversation.terminals.push({ id: 'build', title: 'Build', phase: 'running', startedAt: '2026-09-09T00:00:00.000Z', output: '' })
-    const moving = store.switchTargetAfterStop(conversation, onLaptop, true)
-    await waitFor(() => stopped.length === 2, () => `stopped: ${stopped.join(', ')}`)
-    expect(stopped.toSorted()).toEqual(['command build', 'turn'])
-    expect(batchBodies()).toEqual([])
-    // The session's own phase change, which the page hears as the stop lands.
-    conversation.phase = 'idle'
-    // The command's job holds the conversation until its runner says it ended.
-    await nextTick()
-    expect(batchBodies()).toEqual([])
-    conversation.terminals[0]!.phase = 'aborted'
-    expect(await moving).toBe(true)
-    expect(batchBodies()).toEqual([{ items: [{ id: FIRST, patch: { target: onLaptop, notifyAgent: true } }] }])
-  } finally {
-    abortTerminal.mockRestore()
-    abort.mockRestore()
-    connect.mockRestore()
-    restoreFetch()
-  }
-})
-
-test('a conversation whose turn ended meanwhile moves at once, and one whose stop is refused does not move', async () => {
-  const store = useConversations()
-  const conversation = store.items.find((item) => item.id === FIRST)!
-  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/ada/work' }
-  const restoreFetch = answerOpening(FIRST)
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  const abort = spyOn(ConversationRuntime.prototype, 'abort').mockRejectedValue(new Error('Agent connection closed'))
-  try {
-    await chooseStubModel(conversation)
-    expect(await store.switchTargetAfterStop(conversation, onLaptop, false)).toBe(true)
-    expect(abort).not.toHaveBeenCalled()
-    expect(batchBodies()).toEqual([{ items: [{ id: FIRST, patch: { target: onLaptop } }] }])
-
-    conversation.phase = 'running'
-    expect(await store.switchTargetAfterStop(conversation, { kind: 'cloud' }, false)).toBe(false)
-    expect(batchBodies()).toHaveLength(1)
-  } finally {
-    conversation.phase = 'idle'
-    abort.mockRestore()
-    connect.mockRestore()
-    restoreFetch()
   }
 })
 
@@ -5340,7 +5274,7 @@ test('a change of the model shows at once and a refusal gives the stored setting
   }
 })
 
-test('moving a conversation into a project on its Host shows the project at once; a refusal moves it back', async () => {
+test('a move into a project on its Host shows once the backend made it; a refusal leaves the conversation where it was', async () => {
   const { store, first } = await openWithSaved([])
   const product = useProduct()
   const cloud = productState({ devices: [{
@@ -5354,13 +5288,14 @@ test('moving a conversation into a project on its Host shows the project at once
   }
   const held = holdWrites()
   try {
-    // The move is on its way, and the page answers that it moved.
-    expect(await store.switchTarget(FIRST, { kind: 'workspace', workspaceId: 'notes' })).toBe(true)
+    // The move is on its way: the page shows where the conversation is
+    // until the backend answers.
+    const moving = store.switchTarget(FIRST, { kind: 'workspace', workspaceId: 'notes' })
     await until(() => held.waiting.length === 1, 'the move reaches the backend')
-    expect([first.target, first.projectId, first.cwd]).toEqual([{ kind: 'workspace', workspaceId: 'notes' }, 'notes', '/notes'])
+    expect([first.target, first.projectId]).toEqual([{ kind: 'cloud' }, null])
     held.waiting[0]!.answer(refusal('internal_error', 500))
-    await until(() => first.projectId === null, 'the refusal moves it back')
-    expect(first.target).toEqual({ kind: 'cloud' })
+    expect(await moving).toBe(false)
+    expect([first.target, first.projectId]).toEqual([{ kind: 'cloud' }, null])
   } finally {
     held.restore()
   }

@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
 import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
-import type { WorkToStop } from '@demicodes/web-ui/hosts/move-question'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { slow } from '../fixtures/slow'
@@ -29,8 +28,6 @@ const props = defineProps<{
   inProject?: boolean
   /** The conversation has messages, so a move asks first. */
   hasMessages?: boolean
-  /** The agent works: a move asks to stop it first, naming what stops. */
-  working?: WorkToStop
 }>()
 
 const homes: Record<string, string> = { mac: '/Users/alex', studio: '/home/alex', build: '/home/ci' }
@@ -51,7 +48,7 @@ const attachedHosts = computed(() => attachedIds.value.map(host))
 async function moveTo(id: string | null) {
   const to = host(id)
   const from = primaryHost.value
-  if (props.hasMessages || props.working) {
+  if (props.hasMessages) {
     const home = id ? homes[id] : undefined
     await moveQuestion.ask(
       {
@@ -59,15 +56,8 @@ async function moveTo(id: string | null) {
         directory: home ? '~' : null,
         from: from.name,
         fromCloud: from.kind === 'cloud',
-        ...(props.working ? { stops: props.working } : {}),
       },
-      async (tell) => {
-        if (props.working) {
-          productWould('Stop the Agent')
-        }
-        if (tell) {
-          productWould(`Tell the Agent It Moved to ${to.name}`)
-        }
+      async () => {
         primaryId.value = id
         return true
       },

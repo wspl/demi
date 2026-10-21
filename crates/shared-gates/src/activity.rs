@@ -165,7 +165,7 @@ impl ActivityGate {
 /// it is, or until it is given up. It is polled as it would be uncounted, so
 /// the view changes nothing of when an entrant gets its lease.
 #[cfg(feature = "testing")]
-async fn counted<F: std::future::Future>(waiting: &watch::Sender<usize>, acquire: F) -> F::Output {
+pub(crate) async fn counted<F: std::future::Future>(waiting: &watch::Sender<usize>, acquire: F) -> F::Output {
     let mut acquire = std::pin::pin!(acquire);
     let mut counted = None;
     std::future::poll_fn(|context| {

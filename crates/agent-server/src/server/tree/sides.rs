@@ -30,7 +30,7 @@ use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{
-    Tree, agents, cut_path, note_activity, note_agent,
+    Tree, agents, cut_path, note_agent,
     supervisor::OWNER_CLOSING,
     told::{self, Asked},
 };
@@ -454,11 +454,9 @@ impl<H: HostResolver> Tree<H> {
                 let agents = self.agents.clone();
                 let id = node.id().clone();
                 let paths = self.paths.clone();
-                let activity = self.activity.clone();
                 // A step's frames go to each page as one change.
                 move |step: &[SessionEvent]| agents.step(|| for event in step {
                     cut_path(&paths, event);
-                    note_activity(&activity, event);
                     note_agent(&agents, &id, event);
                     match event {
                         SessionEvent::TranscriptChanged { patches, revision } => {

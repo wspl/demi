@@ -1,52 +1,56 @@
-//! The transitions that end a conversation's target: a target switch, an
-//! archive and a detach.
+//! The changes that end a conversation's target: a move (a target switch),
+//! an archive and a detach.
 //!
-//! Each runs while the conversation is held for it (`hold_for_transition`):
+//! An archive and a detach run while the conversation is held for them
+//! (`hold_for_transition`):
 //!
 //! - The shard reserves the idle tree.
 //! - The file transfers, user streams and the one-shot calls admitted like them
 //!   end.
 //! - The file gate is reserved.
 //!
-//! The transition sends the conversation release to the devices it leaves, then
-//! commits, whether the devices took the release or not
+//! Each sends the conversation release to the devices it leaves, then commits,
+//! whether the devices took the release or not
 //! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The shard's
 //! `transition` is the one entry every change of a conversation goes through.
 //!
-//! A switch, in order:
+//! A move (`docs/decisions/0027-a-move-applies-at-once.md`) stops and waits
+//! for nothing, in order:
 //!
 //! ```text
-//! 1. validate the destination and the user's ownership
-//! 2. reserve the idle tree            (shard)
-//! 3. end transfers, streams and the one-shot calls like them; await them
-//! 4. reserve file admission; send the release to the device it leaves, when
-//!    that device's runner is connected
-//! 5. commit the target and attachment changes against the expected selection
-//! 6. advance the execution-context revision, release the reservations,
-//!    admit transfers and streams again against the new selection
+//! 1. check the destination: one question to its Host for a directory
+//! 2. end transfers, streams and the one-shot calls like them; await them
+//! 3. commit the target and attachment changes against the expected selection
+//! 4. advance the execution-context revision; each agent's next request names
+//!    the new Host and directory
+//! 5. once nothing of the conversation runs on the device it left, reserve
+//!    the conversation's gate of that device, which every admission there
+//!    holds a lease of, and send the release, unless the conversation is back
+//!    on it
 //! ```
 //!
-//! Concurrent changes cannot both replace the same expected selection: the
-//! loser is refused as busy or conflicting, so work is never dispatched against
-//! an ambiguous target.
+//! Commands already running finish where they started and report as usual;
+//! every command started after the commit runs on the new target. Concurrent
+//! moves cannot both replace the same expected selection: the loser is refused
+//! as conflicting, so work is never dispatched against an ambiguous target.
 //!
 //! Turn admission uses the tree's lifecycle boundary, not the root's displayed
 //! phase, which would miss a running child.
 //!
-//! A tree whose every running node waits only for its offline primary device
-//! counts as idle: the switch fails those operations, which were never sent.
-//! Commands already running on an offline device do not block a switch away
-//! from it. Their jobs hold the file gate on that Host, which the switch
-//! leaves, and their runner keeps them until it is back.
+//! A move away from an offline device fails the commands that wait for it,
+//! which were never sent, and the agents go on on the new Host. The commands
+//! still running there let go of the conversation's file gate, which nothing
+//! would release while the device is away; their runner keeps them until it is
+//! back.
 //!
-//! The device a switch leaves stays attached, its commands starting in the
+//! The device a move leaves stays attached, its commands starting in the
 //! conversation's directory there, and the incoming device leaves the
-//! attachment set. A switch of directory on the same device adds no duplicate.
+//! attachment set. A move of directory on the same device adds no duplicate.
 //! Files do not move, and a path keeps referring to its original device.
 //!
-//! If the database commit fails after the release, the old selection stays and
-//! the conversation browser starts fresh at its next open: the state of its
-//! tabs cannot be rolled back.
+//! If the database commit of an archive fails after the release, the old
+//! selection stays and the conversation browser starts fresh at its next open:
+//! the state of its tabs cannot be rolled back.
 
 use demi_backend_database::conversation_index::{
     ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
@@ -70,7 +74,7 @@ pub enum ChangeRefusal {
     Archived,
     /// Work of the tree is running, or another transition or a Host
     /// operation holds the conversation.
-    #[error("A conversation with running work cannot be archived, restored or moved")]
+    #[error("A conversation with running work cannot be archived or restored")]
     TurnInFlight,
     #[error("No such provider")]
     ProviderNotFound,
@@ -105,6 +109,9 @@ pub enum ChangeRefusal {
     /// The destination's Host failed to resolve its directory.
     #[error("{0}")]
     HostFailed(String),
+    /// The move's caller went away before its commit started.
+    #[error("The move was cancelled; the conversation did not move")]
+    Cancelled,
     /// Another switch changed the target first.
     #[error("Another target change came first")]
     Conflict,
@@ -134,7 +141,7 @@ impl ChangeRefusal {
             Self::HostFailed(_) => (ErrorCode::HostOperationFailed, 502),
             Self::Conflict => (ErrorCode::TargetConflict, 409),
             Self::HostIsPrimary => (ErrorCode::HostIsPrimary, 409),
-            Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
+            Self::Runtime(_) | Self::Storage(_) | Self::Cancelled => (ErrorCode::OperationFailed, 500),
         }
     }
 }
@@ -168,10 +175,10 @@ pub struct TransitionHold {
 }
 
 impl dyn HostShard + '_ {
-    /// Holds the conversation for a transition (§ Switch the primary target,
-    /// steps 2 to 4) once the shard reserved its idle tree, `tree`: its
-    /// transfers and streams ended and their release awaited, and its file
-    /// gate reserved. A busy file gate refuses.
+    /// Holds the conversation for an archive or a detach once the shard
+    /// reserved its idle tree, `tree`: its transfers and streams ended and
+    /// their release awaited, and its file gate reserved. A busy file gate
+    /// refuses.
     pub async fn hold_for_transition(
         &self,
         id: &ConversationId,
@@ -190,7 +197,7 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// Holds the conversation for the changes an agent asked for, once the
+    /// Holds the conversation for the detaches an agent asked for, once the
     /// shard reserved its idle tree: as [`hold_for_transition`](Self::hold_for_transition)
     /// does, except that it waits for the Host operations that hold the file
     /// gate to end, since nobody is there to retry a refusal.
@@ -240,8 +247,8 @@ impl dyn HostShard + '_ {
             .await??)
     }
 
-    /// The device a switch to `to` reaches, which hears no release; none for
-    /// the Cloud before its first use made its device.
+    /// The device a move to `to` reaches; none for the Cloud before its first
+    /// use made its device.
     async fn destination_device(
         &self,
         owner: &UserId,
@@ -265,22 +272,21 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// The held switch's steps 4 to 6 (§ Switch the primary target):
+    /// A move's commit (§ steps 3 and 4), its destination `to` checked:
     ///
-    /// - The device it leaves hears the conversation release and stays attached
-    ///   where it was left.
+    /// - The device it leaves stays attached where it was left.
     /// - The device it reaches is primary alone.
-    /// - The commit selects `to`'s directory against the selection the switch
+    /// - The commit selects `to`'s directory against the selection the move
     ///   started from (§ Resolve a target).
     ///
-    /// A switch that makes the pending move `pending` clears it in its commit.
-    /// Answers where the switch went from and to and the execution-context
+    /// Answers where the move went from and to and the execution-context
     /// revision it made, and none when `to` selects what the conversation has.
+    /// The release of the device it left is the caller's
+    /// ([`release_departed`](Self::release_departed)).
     pub async fn switch_target(
         &self,
         expected: &ConversationRecord,
         to: ConversationTarget,
-        pending: Option<String>,
     ) -> Result<Option<Switched>, ChangeRefusal> {
         let control = self.control();
         let current = control
@@ -292,24 +298,61 @@ impl dyn HostShard + '_ {
         }
         let from = self.resolve_target(expected).await?;
         let arriving = self.destination_device(&expected.owner, &to).await?;
-        let departed = from.device().cloned();
-        if let Some(device) = &departed
-            && Some(device) != arriving.as_ref()
-        {
-            self.release_on(expected.id.as_str(), device).await;
-        }
         let ends = SwitchEnds {
-            departed: departed.map(|device| (device, from.path().to_owned())),
+            departed: from.device().cloned().map(|device| (device, from.path().to_owned())),
             arriving,
         };
         match control
-            .switch_conversation_target(expected.id.clone(), expected.target.clone(), from, to, ends, pending)
+            .switch_conversation_target(expected.id.clone(), expected.target.clone(), from, to, ends)
             .await?
         {
             SwitchWrite::Switched { switch, revision, made } => Ok(Some(Switched { switch, revision, made })),
             SwitchWrite::Unchanged => Ok(None),
             SwitchWrite::Conflict => Err(ChangeRefusal::Conflict),
             SwitchWrite::Unselectable(reason) => Err(reason.into()),
+        }
+    }
+
+    /// The release of `device`, which a move of the conversation `id` left
+    /// (§ step 5): once nothing of the conversation runs there, it reserves
+    /// the conversation's gate of the device in the same step, so no work
+    /// starts there until the release is answered, and sends the release
+    /// unless the conversation is back on the device. A release that fails
+    /// is logged and fails nothing.
+    pub async fn release_departed(&self, id: &ConversationId, device: &DeviceId) {
+        let gate = self.conversations().slot(id).host_gate(device);
+        loop {
+            // Subscribed before the attempt, so a lease that ends after it
+            // wakes the wait.
+            let mut changed = gate.subscribe();
+            if let Some(_released) = gate.try_reserve() {
+                if !self.runs_on(id, device).await {
+                    self.release_on(id.as_str(), device).await;
+                }
+                return;
+            }
+            // Work there for a conversation back on the device is its own.
+            if self.runs_on(id, device).await || changed.changed().await.is_err() {
+                return;
+            }
+        }
+    }
+
+    /// Whether the conversation `id` runs on `device` as its primary Host;
+    /// true for one that is gone, which its deletion released. A record
+    /// that cannot be read counts as running there: releasing a device the
+    /// conversation is back on would end services its work uses.
+    async fn runs_on(&self, id: &ConversationId, device: &DeviceId) -> bool {
+        match self.control().conversation(id.clone()).await {
+            Ok(Some(record)) => self
+                .resolve_target(&record)
+                .await
+                .map_or(true, |target| target.device() == Some(device)),
+            Ok(None) => true,
+            Err(error) => {
+                tracing::warn!(conversation = %id, "a moved conversation's record cannot be read: {error}");
+                true
+            }
         }
     }
 

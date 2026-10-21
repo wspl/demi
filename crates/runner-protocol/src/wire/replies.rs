@@ -57,6 +57,8 @@ pub enum FsResult {
     Link,
     Readlink(String),
     Realpath(String),
+    /// The directory's real path.
+    Directory(String),
     Utimes,
 }
 
@@ -84,6 +86,7 @@ impl FsResult {
             Self::Link => "link",
             Self::Readlink(_) => "readlink",
             Self::Realpath(_) => "realpath",
+            Self::Directory(_) => "directory",
             Self::Utimes => "utimes",
         }
     }
@@ -139,7 +142,10 @@ impl Serialize for FsOk {
                 reply.serialize_field("result", stat)?;
             }
             FsResult::Readdir(entries) => reply.serialize_field("result", entries)?,
-            FsResult::WriteFile(name) | FsResult::Readlink(name) | FsResult::Realpath(name) => {
+            FsResult::WriteFile(name)
+            | FsResult::Readlink(name)
+            | FsResult::Realpath(name)
+            | FsResult::Directory(name) => {
                 reply.serialize_field("result", name)?;
             }
             FsResult::WriteDirectory
@@ -229,6 +235,7 @@ impl ReplyResult for FsResult {
             "link" => none(map, Self::Link)?,
             "readlink" => Self::Readlink(map.next_value()?),
             "realpath" => Self::Realpath(map.next_value()?),
+            "directory" => Self::Directory(map.next_value()?),
             "utimes" => none(map, Self::Utimes)?,
             other => return Err(de::Error::custom(format!("unknown fs operation {other}"))),
         })

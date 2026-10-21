@@ -6,7 +6,7 @@ import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion, workToStop } from '@demicodes/web-ui/hosts/move-question'
+import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -91,29 +91,18 @@ const primaryHost = computed<HostMenuHost>(() => {
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
-// A move stays open while the agent works, as the product's: choosing asks to stop it first.
+// A move stays open while the agent works, as the product's, and stops nothing.
 const locked = computed(() => (session.archived ? 'archived' as const : undefined))
 const moveQuestion = useMoveQuestion()
 
 /**
- * Moves the session to `path` on `deviceId`: at once while the agent is
- * idle, otherwise once the user answers the question, which stops the agent,
- * its subagents and its commands first.
+ * Moves the session to `path` on `deviceId` once the user answers the
+ * question, as the product asks of a conversation with messages; whatever the
+ * agent does goes on.
  */
 async function moveTo(deviceId: string, path: string): Promise<boolean> {
   const host = hosts.find((candidate) => candidate.id === deviceId)
-  // The specimen's Host is always online: its agent never only waits for it.
-  const stops = workToStop({ ...session, onlyWaitsForHost: false })
-  const move = async () => {
-    flow.abortSubagents()
-    for (const terminal of session.terminals) {
-      flow.abortTerminal(terminal.id)
-    }
-    flow.stop()
-    settle(deviceId, path)
-    return true
-  }
-  if (!stops || !host) {
+  if (!host) {
     settle(deviceId, path)
     return true
   }
@@ -123,9 +112,11 @@ async function moveTo(deviceId: string, path: string): Promise<boolean> {
       directory: homePath(path, host.source.home),
       from: primaryHost.value.name,
       fromCloud: primaryHost.value.kind === 'cloud',
-      stops,
     },
-    move,
+    async () => {
+      settle(deviceId, path)
+      return true
+    },
   )
 }
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {

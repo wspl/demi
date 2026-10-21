@@ -7,6 +7,9 @@
 //! - A target switch moves the work and attaches the device it leaves.
 //! - A switch ends the conversation's open transfers instead of waiting for
 //!   them.
+//! - A switch while a command runs applies at once: the command finishes
+//!   where it started and reports, and the agent's next request names the new
+//!   place.
 //! - Attached hosts are detached, and each change of them raises the revision a
 //!   page reads them by.
 //! - An attached host's commands start where it was attached, whatever an
@@ -415,91 +418,56 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
     backend.close().await;
 }
 
-// About a second: a real device runs two turns of the scripted model, the
-// second woken by the move the user told the agent of.
+// Several seconds: two real devices, and one runs a turn's shell job across
+// the move.
 #[tokio::test]
-async fn a_move_told_to_the_agent_wakes_the_root_with_one_message_and_a_move_alone_admits_none() {
-    use demi_shared_types::{AgentMessageEvent, Block};
-
-    use crate::conversations::{FIRST, transcript};
-    use crate::subagents::{Scripts, say as answer, tree_on};
+async fn a_move_while_a_command_runs_applies_at_once_and_the_command_finishes_where_it_started_and_reports() {
+    use crate::conversations::{FIRST, send};
+    use crate::subagents::{Scripts, WAIT, say as answer, shell as call, tree_on};
 
     let scripts = std::sync::Arc::new(Scripts::default());
-    let (_harness, backend, master, paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
+    let (harness, backend, master, _laptop, root, _provider) = tree_on(&scripts, Harness::new()).await;
+    let studio = backend.pair(&master, "studio").await;
+    let site = std::fs::canonicalize(directory(&studio, "site")).unwrap();
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    scripts.root(FIRST, vec![answer("ready")]);
-    socket.chat("m1", "Start").await;
-    let moves = |path: &str, notify: bool| {
-        let quiet = format!("{root}/{path}");
-        std::fs::create_dir_all(&quiet).unwrap();
-        let mut body = json!({
-            "target": { "kind": "device", "deviceId": paired.id(), "path": quiet }
-        });
-        if notify {
-            body["notifyAgent"] = json!(true);
-        }
-        let (backend, master) = (&backend, &master);
-        async move {
-            backend
-                .patch(&format!("/api/conversations/{FIRST}"), master, body)
-                .await
-        }
-    };
-    let agent_messages = |blocks: &[Block]| -> Vec<demi_shared_types::AgentMessage> {
-        blocks
-            .iter()
-            .filter_map(|block| match block {
-                Block::AgentMessage(block) => Some(block.message.clone()),
-                _ => None,
-            })
-            .collect()
-    };
+    scripts.root(
+        FIRST,
+        vec![
+            call("t1", &format!("touch started; {WAIT}; echo \"finished in $(pwd -P)\"")),
+            call("t2", "echo \"next in $(pwd -P)\""),
+            answer("done"),
+        ],
+    );
+    socket.send(&send("m1", "Build, then look around")).await;
+    crate::support::eventually("the command runs", || async {
+        std::path::Path::new(&root).join("started").exists()
+    })
+    .await;
 
-    // Telling the agent needs a switch to tell.
-    let alone = backend
-        .patch(
-            &format!("/api/conversations/{FIRST}"),
-            &master,
-            json!({ "notifyAgent": true }),
-        )
+    // The move answers at once, with the command still running.
+    let moved = backend
+        .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "target": target(&studio, &site) }))
         .await;
-    assert_eq!(
-        alone.refusal(),
-        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
-    );
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let primary: (String, String) = harness
+        .control_database()
+        .query_row("SELECT target_device_id, target_path FROM conversations WHERE id = ?1", [FIRST], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(primary, (studio.id().to_owned(), site.display().to_string()));
+    assert!(!scripts.asked(|session| session == FIRST).iter().any(|asked| asked.contains("finished in")));
 
-    // A move alone: the answer comes once the switch is made, and nothing
-    // reached the agent.
-    let quiet = moves("quiet", false).await;
-    assert_eq!(quiet.status, StatusCode::OK, "{}", String::from_utf8_lossy(&quiet.body));
-    let blocks = transcript(&backend, &master, FIRST).await.blocks;
-    assert!(agent_messages(&blocks).is_empty(), "{blocks:?}");
-    let asked = scripts.asked(|session| session == FIRST).len();
-    assert_eq!(asked, 1);
-
-    // Told: one message from the user, under the revision the move made,
-    // wakes the idle root, which reads where it was and where it is.
-    scripts.root(FIRST, vec![answer("noted")]);
-    let told = moves("told", true).await;
-    assert_eq!(told.status, StatusCode::OK, "{}", String::from_utf8_lossy(&told.body));
+    // The command finishes where it started and reports as usual; the
+    // agent's next request names the new place, where its next command runs.
+    std::fs::write(format!("{root}/go"), "").unwrap();
     socket.until_idle().await;
-    let woken = scripts.asked(|session| session == FIRST);
-    assert_eq!(woken.len(), 2);
-    let expected = format!(
-        "The user moved this conversation from laptop ({root}/quiet) to laptop ({root}/told). Files did not move. Check what this means for the work so far, and tell the user."
-    );
-    assert!(woken[1].contains(&expected), "{}", woken[1]);
-    let revision = context_version(&_harness, FIRST);
-    let messages = agent_messages(&transcript(&backend, &master, FIRST).await.blocks);
-    assert_eq!(messages.len(), 1, "{messages:?}");
-    let message = &messages[0];
-    assert_eq!(message.id.as_str(), format!("moved:{revision}"));
-    assert_eq!(message.sender, None);
-    let AgentMessageEvent::Moved { host, path, home } = &message.event else {
-        panic!("{message:?}");
-    };
-    assert_eq!((host.as_str(), path.as_str()), ("laptop", format!("{root}/told").as_str()));
-    assert!(home.as_deref().is_some_and(|home| path.starts_with(home)), "{home:?}");
+    let asked = scripts.asked(|session| session == FIRST);
+    let real_root = std::fs::canonicalize(&root).unwrap();
+    assert!(asked[1].contains(&format!("finished in {}", real_root.display())), "{}", asked[1]);
+    assert!(asked[1].contains("[Execution target switched]"), "{}", asked[1]);
+    assert!(asked[1].contains(&site.display().to_string()), "{}", asked[1]);
+    assert!(asked[2].contains(&format!("next in {}", site.display())), "{}", asked[2]);
     backend.close().await;
 }

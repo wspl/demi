@@ -191,9 +191,6 @@ async fn a_move_while_the_agent_waits_for_its_offline_device_fails_the_command_a
         .start(vec![shell("t1", "echo hello", 60_000), say("moved on")])
         .await;
     until_waiting(&mut work).await;
-    // The backend says the agent only waits for the device, so the page's
-    // move stops nothing.
-    assert!(crate::conversations::metadata(&backend, &master, FIRST).await.only_waits_for_host);
     let beta_home = beta.runner.home_dir().to_owned();
     switch(&backend, &master, FIRST, &beta, &beta_home).await;
     until_root_idle(&mut work).await;

@@ -38,7 +38,7 @@ import { effortIcon } from '@demicodes/web-ui/agent/reasoning'
 import { THINKING_OFF } from '@demicodes/web-ui/agent/model-selection'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion, type WorkToStop } from '@demicodes/web-ui/hosts/move-question'
+import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -86,15 +86,11 @@ const menuDevices: HostDeviceOption[] = shownAmong([
   { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
 ])
 const askedMove = useMoveQuestion()
-function askMove(stops?: WorkToStop) {
+function askMove() {
   void askedMove.ask(
-    { host: 'MacBook Pro', directory: '~/code/photo-album', from: 'Cloud', fromCloud: true, ...(stops ? { stops } : {}) },
-    async (tell) => {
-      productWould(
-        stops
-          ? tell ? 'Stop the Agent, Move the Conversation and Tell the Agent' : 'Stop the Agent and Move the Conversation'
-          : tell ? 'Move the Conversation and Tell the Agent' : 'Move the Conversation',
-      )
+    { host: 'MacBook Pro', directory: '~/code/photo-album', from: 'Cloud', fromCloud: true },
+    async () => {
+      productWould('Move the Conversation')
       return true
     },
   )
@@ -582,14 +578,6 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         <GallerySpecimen variant="host menu · in a project: a device opens its directory picker">
           <GalleryHostMenu :devices="menuDevices" primary-id="studio" in-project has-messages />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · while the agent works: choosing asks to stop it first">
-          <GalleryHostMenu
-            :devices="menuDevices"
-            primary-id="mac"
-            :attached-ids="['build']"
-            :working="{ agent: true, subagents: 0, commands: 2 }"
-          />
-        </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
           <GalleryHostMenu :devices="menuDevices" primary-id="lab" />
         </GallerySpecimen>
@@ -600,10 +588,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           <GalleryHostMenu :devices="menuDevices" primary-id="nas" has-messages />
         </GallerySpecimen>
         <GallerySpecimen variant="move dialog">
-          <div class="flex gap-2">
-            <Button @click="askMove()">Move to MacBook Pro…</Button>
-            <Button @click="askMove({ agent: true, subagents: 1, commands: 2 })">Move While the Agent Works…</Button>
-          </div>
+          <Button @click="askMove()">Move to MacBook Pro…</Button>
           <MoveConversationDialog
             :is-open="askedMove.open.value"
             :overlay-store="appOverlayStore"
