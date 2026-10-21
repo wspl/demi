@@ -227,6 +227,13 @@ pub struct ConversationMetadata {
     /// each agent's own is its entry's, and the conversation's is their sum.
     #[garde(dive)]
     pub other_cost: AgentCost,
+    /// When the conversation's first call ended, whichever agent made it;
+    /// null before it made one. The context card offers the last hour's cost
+    /// once this is more than an hour ago
+    /// (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    pub first_call_at: Option<Timestamp>,
     /// How many messages the conversation keeps saved for later.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub saved: u64,
@@ -268,6 +275,40 @@ pub struct ConversationMetadata {
     /// and an answer open the share dialog on the existing link.
     #[garde(skip)]
     pub shares: Vec<ConversationShare>,
+}
+
+/// `GET /conversations/:id/cost/last-hour`: what the conversation's calls of
+/// the last 60 minutes cost, counted by the backend from its usage ledger
+/// (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct LastHourCost {
+    /// Each agent that made a call in the hour, and the rows of no agent, such
+    /// as a title's, when there are some: the rows of no agent first, then the
+    /// agents by number. An agent that made none has no entry.
+    #[garde(dive)]
+    pub agents: Vec<LastHourAgent>,
+}
+
+/// What one agent's calls of the last hour cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct LastHourAgent {
+    /// The agent's number; null for the rows of no agent.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub agent: Option<u64>,
+    /// What its calls of the hour cost, as `AgentCost` keeps the cost of all
+    /// of them.
+    #[garde(dive)]
+    pub cost: AgentCost,
+    /// The share of those turn calls' prompt tokens the vendor read from its
+    /// cache; null without a call that sent a prompt.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<f64>")]
+    #[garde(skip)]
+    pub rate: Option<f64>,
 }
 
 /// `GET /conversations/:id`: one conversation as the sidebar lists it, its

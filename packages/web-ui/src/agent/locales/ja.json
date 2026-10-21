@@ -348,6 +348,10 @@
       "title": "コスト",
       "price": "API 換算価格",
       "hitRate": "キャッシュヒット率",
+      "range": {
+        "lastHour": "過去 1 時間",
+        "all": "すべて"
+      },
       "kind": {
         "input": "入力",
         "cacheWrite": "キャッシュ書き込み",

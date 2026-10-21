@@ -112,6 +112,7 @@ impl Shard {
             .find(|kept| kept.agent.is_none())
             .map(|kept| kept.cost)
             .unwrap_or_default();
+        let first_call_at = services.control.conversation_first_call(record.id.clone()).await?;
         Ok(ConversationMetadata {
             model: record.model.as_ref().map(settings).transpose()?,
             workflow: record.workflow,
@@ -120,6 +121,7 @@ impl Shard {
             turn_speed: facts.turn_speed,
             plugins_changed,
             other_cost,
+            first_call_at,
             saved: record.saved,
             saved_revision: record.saved_revision,
             panel_revision: record.panel_revision,

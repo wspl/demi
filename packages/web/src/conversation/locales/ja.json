@@ -13,6 +13,7 @@
     "readDraft": "下書きを読み取れませんでした",
     "readSaved": "保存したメッセージを読み取れませんでした",
     "readHosts": "ホストを読み取れませんでした",
+    "readLastHour": "直近 1 時間のコストを読み取れませんでした",
     "readAgents": "エージェントを読み取れませんでした",
     "updateConversations": "チャットを更新できませんでした",
     "deleteConversations": "チャットを削除できませんでした",

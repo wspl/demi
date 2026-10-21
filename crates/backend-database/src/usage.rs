@@ -28,21 +28,35 @@
 //!  call, so a new call changes only the last point
 //! ```
 //!
+//! # The last hour
+//!
+//! The cost of the last hour is not kept: it is summed from the ledger's rows
+//! that ended in the last 60 minutes, per agent, when a page asks
+//! (`docs/decisions/0041-the-cost-shows-the-last-hour.md`). The rows of one
+//! conversation are found by `usage_ledger_conversation`, ordered by their
+//! end, so a read reads that hour's rows of that conversation and no others.
+//!
 //! The counts are the vendor's, so the ledger is a record for reconciliation and
 //! not a bill. Prices tiered by a request's length, as some models charge more
 //! past 200K tokens, are not modelled: a call is priced at the model's base rates.
 
 use demi_conversation_socket_protocol::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 use demi_shared_types::{Cost, Currency, ModelCost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
+use demi_web_api_protocol::conversations::LastHourAgent;
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::usage::{UsageGroup, UserUsage};
+use std::collections::BTreeMap;
+
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+
+/// How far back the cost of the last hour counts.
+const LAST_HOUR_MS: i64 = 60 * 60 * 1000;
 
 /// The most recent turn calls of an agent a cache chart counts.
 const CHART_WINDOW: u64 = 400;
@@ -161,6 +175,8 @@ pub struct UsageWritten {
     /// The agent's cache chart with the row, for a turn call; none for any
     /// other row, which leaves it as it was.
     pub chart: Option<CacheChart>,
+    /// The row is the conversation's first, whichever agent wrote it.
+    pub first: bool,
 }
 
 /// A window of the account's quota as a call's response reported it, as
@@ -238,7 +254,7 @@ impl ControlService {
         let user = row.user.clone();
         let conversation = row.conversation.clone();
         let agent = row.agent;
-        let (id, cost, chart) = self.call(move |connection, _| {
+        let (id, cost, chart, first) = self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let call = match (row.agent, row.purpose, row.usage) {
                 (Some(agent), "turn", Some(usage)) => Some(next_call(
@@ -312,6 +328,15 @@ impl ControlService {
                     call.and_then(|call| call.miss).map(|miss| miss.to_string()),
                 ],
             )?;
+            // Asked after the insert: a transaction that has read cannot wait for
+            // another connection's write lock, which SQLite refuses at once
+            // with BUSY, and a row that is no turn call reads nothing before
+            // its insert.
+            let first: bool = transaction
+                .prepare_cached(
+                    "SELECT NOT EXISTS (SELECT 1 FROM usage_ledger WHERE conversation_id = ?1 AND id <> ?2)",
+                )?
+                .query_row(params![row.conversation.as_str(), id], |row| row.get(0))?;
             let added = RowCost {
                 usage: row.usage,
                 parts: row.price,
@@ -324,7 +349,7 @@ impl ControlService {
                 _ => None,
             };
             transaction.commit()?;
-            Ok((id, totals, chart))
+            Ok((id, totals, chart, first))
         })
         .await?;
         self.announce_usage(UsageWritten {
@@ -333,6 +358,7 @@ impl ControlService {
             agent,
             cost,
             chart,
+            first,
         });
         Ok(id)
     }
@@ -352,6 +378,29 @@ impl ControlService {
                 costs.push(agent_cost(row)?);
             }
             Ok(costs)
+        })
+        .await
+    }
+
+    /// When the conversation's first call ended; none before it made one.
+    pub async fn conversation_first_call(&self, conversation: ConversationId) -> Result<Option<Timestamp>, StorageError> {
+        self.call(move |connection, _| {
+            let first: Option<i64> = connection
+                .prepare_cached("SELECT MIN(ended_at) FROM usage_ledger WHERE conversation_id = ?1")?
+                .query_row([conversation.as_str()], |row| row.get(0))?;
+            first
+                .map(|first| decode("usage_ledger", "ended_at", Timestamp::from_millisecond(first)))
+                .transpose()
+        })
+        .await
+    }
+
+    /// What the conversation's calls that ended in the last hour cost, by
+    /// agent, and the share of each agent's turn calls' prompt tokens that
+    /// the cache served, as of the control store's clock.
+    pub async fn conversation_last_hour(&self, conversation: ConversationId) -> Result<Vec<LastHourAgent>, StorageError> {
+        self.call(move |connection, now| {
+            last_hour(connection, conversation.as_str(), now.as_millisecond() - LAST_HOUR_MS)
         })
         .await
     }
@@ -574,8 +623,8 @@ fn next_call(
         });
     }
     let usage = facts.usage;
-    let written = usage.input_tokens + usage.cache_write_tokens;
-    let prompt = written + usage.cache_read_tokens;
+    let written = written_tokens(&usage);
+    let prompt = prompt_tokens(&usage);
     let missed = written >= MISS_TOKENS && written as f64 > prompt as f64 * MISS_SHARE;
     let miss = if missed {
         let changed = |before: Option<&str>, after: Option<&str>| matches!((before, after), (Some(before), Some(after)) if before != after);
@@ -623,6 +672,47 @@ struct RowCost {
     usd: Option<f64>,
 }
 
+/// The tokens of a call's prompt that the cache did not serve: sent uncached
+/// or written to the cache.
+fn written_tokens(usage: &TokenUsage) -> u64 {
+    usage.input_tokens + usage.cache_write_tokens
+}
+
+/// The tokens of a call's prompt: those the cache did not serve and those it
+/// read.
+fn prompt_tokens(usage: &TokenUsage) -> u64 {
+    written_tokens(usage) + usage.cache_read_tokens
+}
+
+/// What a row costs: its tokens' price or, for a call whose tokens have no
+/// price, the vendor's own cost in dollars; none when neither is known.
+fn row_price(parts: Option<ApiPrice>, usd: Option<f64>) -> Option<f64> {
+    parts.map(|parts| parts.total()).or(usd)
+}
+
+/// Adds `row` to `cost`, with one more turn call when `call`. A price that is
+/// null in `cost` or in the row adds to the other: null only while no row had
+/// one.
+fn add_row(cost: &mut AgentCost, row: &RowCost, call: bool) {
+    let usage = row.usage.unwrap_or_default();
+    let totals = &mut cost.totals;
+    totals.input_tokens += usage.input_tokens;
+    totals.cache_write_tokens += usage.cache_write_tokens;
+    totals.cache_read_tokens += usage.cache_read_tokens;
+    totals.output_tokens += usage.output_tokens;
+    let add = |sum: &mut Option<f64>, part: Option<f64>| {
+        if let Some(part) = part {
+            *sum = Some(sum.unwrap_or(0.0) + part);
+        }
+    };
+    add(&mut totals.price.total, row_price(row.parts, row.usd));
+    add(&mut totals.price.input, row.parts.map(|parts| parts.input));
+    add(&mut totals.price.cache_write, row.parts.map(|parts| parts.cache_write));
+    add(&mut totals.price.cache_read, row.parts.map(|parts| parts.cache_read));
+    add(&mut totals.price.output, row.parts.map(|parts| parts.output));
+    cost.calls += u64::from(call);
+}
+
 /// Adds `row` to the kept cost of the conversation's agent `agent`, or of its
 /// rows of no agent, with one more turn call when `call`.
 fn add_cost(
@@ -632,37 +722,32 @@ fn add_cost(
     row: &RowCost,
     call: bool,
 ) -> Result<(), StorageError> {
-    let usage = row.usage.unwrap_or_default();
-    let price = row.parts.map(|parts| parts.total()).or(row.usd);
+    let mut cost = kept_cost(connection, conversation, agent)?;
+    add_row(&mut cost, row, call);
+    let totals = &cost.totals;
     let values = params![
         conversation,
         agent.map(column_count),
-        column_count(usage.input_tokens),
-        column_count(usage.cache_write_tokens),
-        column_count(usage.cache_read_tokens),
-        column_count(usage.output_tokens),
-        price,
-        row.parts.map(|parts| parts.input),
-        row.parts.map(|parts| parts.cache_write),
-        row.parts.map(|parts| parts.cache_read),
-        row.parts.map(|parts| parts.output),
-        i64::from(call),
+        column_count(totals.input_tokens),
+        column_count(totals.cache_write_tokens),
+        column_count(totals.cache_read_tokens),
+        column_count(totals.output_tokens),
+        totals.price.total,
+        totals.price.input,
+        totals.price.cache_write,
+        totals.price.cache_read,
+        totals.price.output,
+        column_count(cost.calls),
     ];
-    // A price null in the kept cost or in the row adds to the other: null
-    // only while no row had one.
-    let updated = connection.prepare_cached(
-        "UPDATE usage_costs SET
-           input_tokens = input_tokens + ?3, cache_write_tokens = cache_write_tokens + ?4,
-           cache_read_tokens = cache_read_tokens + ?5, output_tokens = output_tokens + ?6,
-           price_total = CASE WHEN ?7 IS NULL THEN price_total ELSE coalesce(price_total, 0) + ?7 END,
-           price_input = CASE WHEN ?8 IS NULL THEN price_input ELSE coalesce(price_input, 0) + ?8 END,
-           price_cache_write = CASE WHEN ?9 IS NULL THEN price_cache_write ELSE coalesce(price_cache_write, 0) + ?9 END,
-           price_cache_read = CASE WHEN ?10 IS NULL THEN price_cache_read ELSE coalesce(price_cache_read, 0) + ?10 END,
-           price_output = CASE WHEN ?11 IS NULL THEN price_output ELSE coalesce(price_output, 0) + ?11 END,
-           calls = calls + ?12
-         WHERE conversation_id = ?1 AND agent IS ?2",
-    )?
-    .execute(values)?;
+    let updated = connection
+        .prepare_cached(
+            "UPDATE usage_costs SET
+               input_tokens = ?3, cache_write_tokens = ?4, cache_read_tokens = ?5, output_tokens = ?6,
+               price_total = ?7, price_input = ?8, price_cache_write = ?9, price_cache_read = ?10,
+               price_output = ?11, calls = ?12
+             WHERE conversation_id = ?1 AND agent IS ?2",
+        )?
+        .execute(values)?;
     if updated == 0 {
         connection
             .prepare_cached(
@@ -674,6 +759,93 @@ fn add_cost(
             .execute(values)?;
     }
     Ok(())
+}
+
+/// The rows of conversation `?1` that ended after `?2`, with what `row_usage`,
+/// `row_prices` and the cost's call count read of a row.
+const LAST_HOUR: &str = "SELECT agent, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+       cost, cost_currency, api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
+       call_number
+     FROM usage_ledger WHERE conversation_id = ?1 AND ended_at > ?2";
+
+/// What the rows that ended in the last hour add up to, per agent and for the
+/// rows of no agent, the rows of no agent first: each row is added as the kept
+/// cost adds it (`add_row`), and the share of the prompts the cache served is
+/// counted over the turn calls alone.
+fn last_hour(connection: &Connection, conversation: &str, since: i64) -> Result<Vec<LastHourAgent>, StorageError> {
+    // The cost, and the prompt tokens and the part the cache read.
+    let mut agents: BTreeMap<Option<u64>, (AgentCost, u64, u64)> = BTreeMap::new();
+    let mut statement = connection.prepare_cached(LAST_HOUR)?;
+    let mut rows = statement.query(params![conversation, since])?;
+    while let Some(row) = rows.next()? {
+        let agent = row
+            .get::<_, Option<i64>>("agent")?
+            .map(|agent| decode("usage_ledger", "agent", u64::try_from(agent)))
+            .transpose()?;
+        let usage = row_usage(row)?;
+        let (parts, usd) = row_prices(row)?;
+        let call = row.get::<_, Option<i64>>("call_number")?.is_some();
+        let (cost, prompt, read) = agents.entry(agent).or_default();
+        add_row(cost, &RowCost { usage, parts, usd }, call);
+        if let (true, Some(usage)) = (call, usage) {
+            *prompt += prompt_tokens(&usage);
+            *read += usage.cache_read_tokens;
+        }
+    }
+    Ok(agents
+        .into_iter()
+        .map(|(agent, (cost, prompt, read))| LastHourAgent { agent, cost, rate: read_share(read, prompt) })
+        .collect())
+}
+
+/// The counts of a row of the ledger: none when the vendor reported none.
+fn row_usage(row: &Row<'_>) -> Result<Option<TokenUsage>, StorageError> {
+    let count = |column: &'static str| -> Result<Option<u64>, StorageError> {
+        row.get::<_, Option<i64>>(column)?
+            .map(|count| decode("usage_ledger", column, u64::try_from(count)))
+            .transpose()
+    };
+    match [
+        count("input_tokens")?,
+        count("output_tokens")?,
+        count("cache_read_tokens")?,
+        count("cache_write_tokens")?,
+    ] {
+        [Some(input_tokens), Some(output_tokens), Some(cache_read_tokens), Some(cache_write_tokens)] => Ok(Some(TokenUsage {
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+        })),
+        // A call the vendor reported no counts for.
+        [None, None, None, None] => Ok(None),
+        _ => Err(corrupt("input_tokens", "some of the token counts only")),
+    }
+}
+
+/// What a row of the ledger says it would cost: the price of each kind of its
+/// tokens, and the vendor's own cost when that is in dollars.
+fn row_prices(row: &Row<'_>) -> Result<(Option<ApiPrice>, Option<f64>), StorageError> {
+    let parts = match [
+        row.get::<_, Option<f64>>("api_price_input")?,
+        row.get("api_price_cache_write")?,
+        row.get("api_price_cache_read")?,
+        row.get("api_price_output")?,
+    ] {
+        [Some(input), Some(cache_write), Some(cache_read), Some(output)] => Some(ApiPrice {
+            input,
+            cache_write,
+            cache_read,
+            output,
+        }),
+        [None, None, None, None] => None,
+        _ => return Err(corrupt("api_price_input", "some of the price's parts only")),
+    };
+    let currency: Option<String> = row.get("cost_currency")?;
+    let usd = row
+        .get::<_, Option<f64>>("cost")?
+        .filter(|_| currency == Some(Currency::Usd.to_string()));
+    Ok((parts, usd))
 }
 
 /// The kept cost of the conversation's agent `agent`, or of its rows of no
@@ -727,22 +899,12 @@ struct ChartCall {
     /// Its number among its agent's turn calls, from 1.
     number: u64,
     started_at: Timestamp,
-    input_tokens: u64,
-    cache_write_tokens: u64,
-    cache_read_tokens: u64,
+    usage: TokenUsage,
     /// Its tokens' price, or the vendor's own cost in dollars; none when
     /// neither is known.
     price: Option<f64>,
     after_compaction: bool,
     miss: Option<CacheMiss>,
-}
-
-impl ChartCall {
-    /// The tokens of its prompt: uncached, written to the cache and read
-    /// from it.
-    fn prompt(&self) -> u64 {
-        self.input_tokens + self.cache_write_tokens + self.cache_read_tokens
-    }
 }
 
 /// The calls each point stands for and the number of the first call a
@@ -760,7 +922,7 @@ fn agent_chart(connection: &Connection, conversation: &str, agent: u64, last: u6
     // The window's calls are the agent's latest turn calls, so the scan
     // back from its latest row stops at the window's first.
     let mut statement = connection.prepare_cached(
-        "SELECT call_number, started_at, ended_at, input_tokens, cache_write_tokens, cache_read_tokens,
+        "SELECT call_number, started_at, ended_at, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
            api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
            cost, cost_currency, after_compaction, miss
          FROM usage_ledger
@@ -784,8 +946,14 @@ fn agent_chart(connection: &Connection, conversation: &str, agent: u64, last: u6
 /// The share of `calls`' prompt tokens read from the cache; none when they
 /// sent no prompt.
 fn hit_rate(calls: &[ChartCall]) -> Option<f64> {
-    let prompt: u64 = calls.iter().map(ChartCall::prompt).sum();
-    let read: u64 = calls.iter().map(|call| call.cache_read_tokens).sum();
+    let prompt: u64 = calls.iter().map(|call| prompt_tokens(&call.usage)).sum();
+    let read: u64 = calls.iter().map(|call| call.usage.cache_read_tokens).sum();
+    read_share(read, prompt)
+}
+
+/// The share of `prompt` tokens that `read` of them were read from the
+/// cache; none when no prompt was sent.
+fn read_share(read: u64, prompt: u64) -> Option<f64> {
     // A count is far below 2^53, where an f64 stops being exact.
     (prompt > 0).then(|| read as f64 / prompt as f64)
 }
@@ -817,7 +985,7 @@ fn count_chart(size: u64, calls: &[ChartCall]) -> CacheChart {
                     misses,
                     after_compaction: group.iter().any(|call| call.after_compaction),
                     price: (!prices.is_empty()).then(|| prices.iter().sum()),
-                    rewritten: (group.len() == 1).then(|| head.input_tokens + head.cache_write_tokens),
+                    rewritten: (group.len() == 1).then(|| written_tokens(&head.usage)),
                 }
             })
             .collect()
@@ -834,20 +1002,8 @@ fn chart_call(row: &Row<'_>) -> Result<ChartCall, StorageError> {
     let count = |column: &'static str| -> Result<u64, StorageError> {
         decode("usage_ledger", column, u64::try_from(row.get::<_, i64>(column)?))
     };
-    let parts = match [
-        row.get::<_, Option<f64>>("api_price_input")?,
-        row.get("api_price_cache_write")?,
-        row.get("api_price_cache_read")?,
-        row.get("api_price_output")?,
-    ] {
-        [Some(input), Some(cache_write), Some(cache_read), Some(output)] => Some(input + cache_write + cache_read + output),
-        [None, None, None, None] => None,
-        _ => return Err(corrupt("api_price_input", "some of the price's parts only")),
-    };
-    let currency: Option<String> = row.get("cost_currency")?;
-    let usd = row
-        .get::<_, Option<f64>>("cost")?
-        .filter(|_| currency == Some(Currency::Usd.to_string()));
+    let usage = row_usage(row)?.ok_or_else(|| corrupt("input_tokens", "no token counts for a turn call"))?;
+    let (parts, usd) = row_prices(row)?;
     let ended_at = instant(row, "usage_ledger", "ended_at")?;
     let started_at = match row.get::<_, Option<i64>>("started_at")? {
         Some(_) => instant(row, "usage_ledger", "started_at")?,
@@ -861,10 +1017,8 @@ fn chart_call(row: &Row<'_>) -> Result<ChartCall, StorageError> {
     Ok(ChartCall {
         number: count("call_number")?,
         started_at,
-        input_tokens: count("input_tokens")?,
-        cache_write_tokens: count("cache_write_tokens")?,
-        cache_read_tokens: count("cache_read_tokens")?,
-        price: parts.or(usd),
+        usage,
+        price: row_price(parts, usd),
         after_compaction: row.get("after_compaction")?,
         miss,
     })
@@ -903,46 +1057,8 @@ pub(crate) fn keep_costs(connection: &Connection) -> Result<(), StorageError> {
             .get::<_, Option<i64>>("agent")?
             .map(|agent| decode("usage_ledger", "agent", u64::try_from(agent)))
             .transpose()?;
-        let count = |column: &'static str| -> Result<Option<u64>, StorageError> {
-            row.get::<_, Option<i64>>(column)?
-                .map(|count| decode("usage_ledger", column, u64::try_from(count)))
-                .transpose()
-        };
-        let usage = match [
-            count("input_tokens")?,
-            count("output_tokens")?,
-            count("cache_read_tokens")?,
-            count("cache_write_tokens")?,
-        ] {
-            [Some(input_tokens), Some(output_tokens), Some(cache_read_tokens), Some(cache_write_tokens)] => Some(TokenUsage {
-                input_tokens,
-                output_tokens,
-                cache_read_tokens,
-                cache_write_tokens,
-            }),
-            // A call the vendor reported no counts for.
-            [None, None, None, None] => None,
-            _ => return Err(corrupt("input_tokens", "some of the token counts only")),
-        };
-        let parts = match [
-            row.get::<_, Option<f64>>("api_price_input")?,
-            row.get("api_price_cache_write")?,
-            row.get("api_price_cache_read")?,
-            row.get("api_price_output")?,
-        ] {
-            [Some(input), Some(cache_write), Some(cache_read), Some(output)] => Some(ApiPrice {
-                input,
-                cache_write,
-                cache_read,
-                output,
-            }),
-            [None, None, None, None] => None,
-            _ => return Err(corrupt("api_price_input", "some of the price's parts only")),
-        };
-        let currency: Option<String> = row.get("cost_currency")?;
-        let usd = row
-            .get::<_, Option<f64>>("cost")?
-            .filter(|_| currency == Some(Currency::Usd.to_string()));
+        let usage = row_usage(row)?;
+        let (parts, usd) = row_prices(row)?;
         let purpose: Option<String> = row.get("purpose")?;
         let call = match (agent, purpose.as_deref(), usage) {
             (Some(agent), Some("turn"), Some(usage)) => {
@@ -988,7 +1104,7 @@ mod tests {
     use std::sync::Arc;
 
     use demi_conversation_socket_protocol::CacheMiss;
-    use demi_shared_types::{Cost, Currency, SystemClock, Timestamp, TokenUsage};
+    use demi_shared_types::{Clock, Cost, Currency, SystemClock, Timestamp, TokenUsage};
     use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
     use super::{ApiPrice, UsageRow};
@@ -1069,14 +1185,14 @@ mod tests {
     const CONVERSATION: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
 
     async fn ledger() -> (tempfile::TempDir, ControlService, demi_web_api_protocol::ids::UserId) {
+        ledger_on(Arc::new(SystemClock)).await
+    }
+
+    async fn ledger_on(clock: Arc<dyn Clock>) -> (tempfile::TempDir, ControlService, demi_web_api_protocol::ids::UserId) {
         let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(
-            &data.path().join("control.sqlite"),
-            Arc::new(SystemClock),
-            Arc::new(NoSealedConfigs),
-        )
-        .await
-        .unwrap();
+        let control = ControlService::open(&data.path().join("control.sqlite"), clock, Arc::new(NoSealedConfigs))
+            .await
+            .unwrap();
         let master = testing::master(&control).await;
         (data, control, master.id)
     }
@@ -1262,6 +1378,112 @@ mod tests {
         let rates: Vec<(u64, Option<f64>)> = charts.iter().map(|(agent, chart)| (*agent, chart.rate)).collect();
         assert_eq!(rates, [(0, Some(0.5)), (1, Some(0.5)), (3, Some(1.0 / 3.0))]);
         control.close().await.unwrap();
+    }
+
+    /// The last hour's cost counts the rows that ended in the 60 minutes
+    /// before now, as the kept cost counts all of them: per agent and for the
+    /// rows of no agent, with each kind's price, the price of a call without
+    /// one the vendor's own cost in dollars, a price null while no row has
+    /// one, and the cache's share of the turn calls' prompts
+    /// (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+    ///
+    /// Planted defects: a row from before the hour counted, a cost in yuan
+    /// counted as dollars, a media row's tokens counted in the rate, or the
+    /// rows of no agent left out.
+    ///
+    /// Seven rows of an in-memory ledger: milliseconds.
+    #[tokio::test]
+    async fn the_last_hour_sums_the_rows_that_ended_in_it_per_agent() {
+        let clock = Arc::new(demi_provider_common::testing::ManualClock::new(
+            Timestamp::from_millisecond(1_790_000_000_000 + 90 * MINUTE).unwrap(),
+        ));
+        let (_data, control, user) = ledger_on(clock).await;
+        let mut written = control.usage_written();
+        let price = |input, cache_write, cache_read, output| Some(ApiPrice { input, cache_write, cache_read, output });
+        write(
+            &control,
+            &user,
+            vec![
+                // Ended 69 minutes ago.
+                Call { price: price(1.0, 1.0, 1.0, 1.0), ..turn(1_000, 0, 0, 20 * MINUTE) },
+                Call { price: price(0.125, 0.25, 0.5, 0.125), ..turn(100, 200, 700, 40 * MINUTE) },
+                Call { price: price(0.5, 0.0, 0.25, 0.75), ..turn(50, 0, 950, 80 * MINUTE) },
+                Call {
+                    agent: Some(1),
+                    purpose: "image",
+                    usage: None,
+                    cost: Some(Cost { amount: 2.0, currency: Currency::Usd }),
+                    ..turn(0, 0, 0, 50 * MINUTE)
+                },
+                Call {
+                    agent: Some(1),
+                    purpose: "video",
+                    usage: None,
+                    cost: Some(Cost { amount: 9.0, currency: Currency::Cny }),
+                    ..turn(0, 0, 0, 51 * MINUTE)
+                },
+                Call { agent: Some(2), ..turn(10, 20, 30, 60 * MINUTE) },
+                Call { agent: None, purpose: "title", price: price(0.5, 0.0, 0.0, 0.5), ..turn(1, 0, 0, 85 * MINUTE) },
+            ],
+        )
+        .await;
+        // Only the conversation's first row says it is the first.
+        let mut firsts = Vec::new();
+        for _ in 0..7 {
+            firsts.push(written.recv().await.unwrap().first);
+        }
+        assert_eq!(firsts, [true, false, false, false, false, false, false]);
+        let conversation = ConversationId::try_from(CONVERSATION).unwrap();
+        let hour = control.conversation_last_hour(conversation.clone()).await.unwrap();
+        let read: Vec<_> = hour
+            .iter()
+            .map(|agent| {
+                let totals = &agent.cost.totals;
+                (agent.agent, totals.input_tokens, totals.price.total, agent.cost.calls, agent.rate)
+            })
+            .collect();
+        assert_eq!(
+            read,
+            [
+                (None, 1, Some(1.0), 0, None),
+                (Some(0), 150, Some(2.5), 2, Some(1_650.0 / 2_000.0)),
+                (Some(1), 0, Some(2.0), 0, None),
+                (Some(2), 10, None, 1, Some(0.5)),
+            ]
+        );
+        let kinds = hour[1].cost.totals.price;
+        assert_eq!(
+            (kinds.input, kinds.cache_write, kinds.cache_read, kinds.output),
+            (Some(0.625), Some(0.25), Some(0.75), Some(0.875))
+        );
+        // The first call ended a second after it started, 20 minutes in.
+        assert_eq!(
+            control.conversation_first_call(conversation).await.unwrap(),
+            Some(Timestamp::from_millisecond(1_790_000_000_000 + 20 * MINUTE + 1_000).unwrap())
+        );
+        assert_eq!(control.conversation_first_call(ConversationId::try_from("1f6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap()).await.unwrap(), None);
+        control.close().await.unwrap();
+    }
+
+    /// The last hour's rows are found through the conversation's index by
+    /// their end, however many rows the conversation has.
+    #[test]
+    fn the_last_hour_is_found_through_its_index() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("control.sqlite");
+        let mut connection = rusqlite::Connection::open(&path).unwrap();
+        crate::schema::CONTROL.apply(&mut connection, &path, &crate::schema::NoBlobs).unwrap();
+        let plan: Vec<String> = connection
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", super::LAST_HOUR))
+            .unwrap()
+            .query_map(rusqlite::params!["c1", 100], |row| row.get::<_, String>(3))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            plan.iter().any(|step| step.contains("USING INDEX usage_ledger_conversation (conversation_id=? AND ended_at>?)")),
+            "{plan:?}"
+        );
     }
 
     /// An agent's cache chart, as each of its turn calls announces it: the

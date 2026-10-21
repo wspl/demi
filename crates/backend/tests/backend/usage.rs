@@ -14,7 +14,8 @@
 //! their modules' (`claude`, `titles`, `rotation`).
 
 use demi_agent_server::testing::root_entry;
-use demi_conversation_socket_protocol::{CacheChart, ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{AgentCost, CacheChart, ClientFrame, ServerFrame};
+use demi_web_api_protocol::conversations::LastHourCost;
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
@@ -25,7 +26,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, anthropic, answer, choose, create, kinds, last_text, message, text_block, transcript, usage,
+    FIRST, Socket, anthropic, answer, choose, create, kinds, last_text, message, metadata, text_block, transcript, usage,
 };
 use crate::support::Harness;
 
@@ -388,5 +389,17 @@ async fn each_call_reaches_the_open_page_as_its_agents_cost_and_cache_chart() {
     let opened = again.open().await;
     assert_eq!(opened.iter().find_map(cost_of), Some(totals[1]));
     assert_eq!(opened.iter().find_map(chart_of).as_ref(), charts.last());
+
+    // Both calls ended within the hour, so the last hour's cost is the
+    // root's whole cost, with the cache's share of both prompts; the
+    // conversation's metadata names when its first call ended.
+    let hour: LastHourCost = backend
+        .get(&format!("/api/conversations/{FIRST}/cost/last-hour"), Some(&master))
+        .await
+        .json();
+    let rate = charts[1].rate;
+    let root = hour.agents.iter().find(|agent| agent.agent == Some(0)).expect("the root's last hour");
+    assert_eq!((root.cost, root.rate), (AgentCost { totals: last, calls: 2 }, rate));
+    assert!(metadata(&backend, &master, FIRST).await.first_call_at.is_some());
     backend.close().await;
 }

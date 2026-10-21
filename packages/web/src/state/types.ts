@@ -22,7 +22,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationShare, ConversationTarget, DeviceKind, FiledRun, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationShare, ConversationTarget, DeviceKind, FiledRun, LastHourCost, WorkflowChoice } from '../api/generated/web-api'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
@@ -162,6 +162,13 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
    */
   charts: Record<string, CacheChart>
+  /**
+   * What the conversation cost in the last hour, as the backend counts it
+   * while a card shows it
+   * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`); null while none
+   * does, and until the first read answers.
+   */
+  lastHour: LastHourCost | null
 }
 
 export interface Device extends DeviceReport {

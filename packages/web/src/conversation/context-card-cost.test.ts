@@ -83,6 +83,8 @@ function costOf(calls: number, chart: CacheChart = chartOf(calls)): CostShown {
       agents: [],
     },
     chart,
+    lastHour: null,
+    firstCallAt: null,
   }
 }
 
@@ -230,6 +232,97 @@ test('a point\'s tip names its calls\' numbers, rate, price and misses, and a on
   expect((await drawn(chartOf(12), 4)).tip).toStartWith('Request #5')
 })
 
+// A conversation more than an hour old offers the last hour: the switch is in
+// the caption, the browser keeps its choice for every card, and while a card
+// shows the last hour the page keeps it current, from the card's opening to
+// the choice of All or the card's end
+// (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+test('a conversation older than an hour offers the last hour, which the card counts and the page keeps current while it shows', async () => {
+  const hour = {
+    cost: { ...costOf(1).cost, totals: { ...costOf(1).cost.totals, price: { ...costOf(1).cost.totals.price, total: 0.5 } } },
+    rate: 0.6,
+  }
+  const older = (ago: number) => ({
+    ...costOf(40),
+    cost: { ...costOf(40).cost, totals: { ...costOf(40).cost.totals, price: { ...costOf(40).cost.totals.price, total: 20 } } },
+    lastHour: hour,
+    firstCallAt: new Date(Date.now() - ago).toISOString(),
+  })
+  const watches = { started: 0, ended: 0 }
+  const { provideCostWatch } = await import('@demicodes/web-ui/agent/context-cost')
+  const watched = async (props: Record<string, unknown>) => {
+    const root = document.createElement('div')
+    document.body.append(root)
+    const app = createApp({
+      setup() {
+        provideCostWatch(() => {
+          watches.started += 1
+          return () => { watches.ended += 1 }
+        })
+        return () => h(ContextUsageIndicator, { pinned: true, usage: USAGE, expanded: 'cost', ...props })
+      },
+    })
+    app.mount(root)
+    unmount = () => {
+      app.unmount()
+      root.remove()
+    }
+    await nextTick()
+    return document.querySelector<HTMLElement>('[data-context-card]')!
+  }
+  const segment = (shown: HTMLElement, label: string) =>
+    [...shown.querySelectorAll<HTMLElement>('[role="radio"]')].find((each) => each.textContent?.trim() === label)
+
+  // Fifty-nine minutes in, both would show the same: no switch, nothing watched.
+  const young = await watched({ cost: older(59 * 60_000), costRange: 'lastHour' })
+  expect(young.querySelector('[role="radiogroup"]')).toBeNull()
+  expect(young.textContent).toContain('Cost$20.00')
+  expect(watches).toEqual({ started: 0, ended: 0 })
+  unmount!()
+
+  // Past the hour the switch shows, All counts the whole conversation and
+  // watches nothing.
+  const shown = await watched({ cost: older(61 * 60_000) })
+  expect(shown.textContent).toContain('Cost$20.00')
+  expect(watches).toEqual({ started: 0, ended: 0 })
+
+  // Last Hour counts the hour and starts the watch; the closed section's
+  // figures follow, and All ends the watch.
+  segment(shown, 'Last Hour')!.click()
+  await nextTick()
+  expect(shown.textContent).toContain('Cost$0.50')
+  expect(shown.textContent).toContain('Cache hit rate60%')
+  expect(localStorage.getItem('demi-cost-range')).toBe('lastHour')
+  expect(watches).toEqual({ started: 1, ended: 0 })
+  segment(shown, 'All')!.click()
+  await nextTick()
+  expect(shown.textContent).toContain('Cost$20.00')
+  expect(watches).toEqual({ started: 1, ended: 1 })
+  segment(shown, 'Last Hour')!.click()
+  await nextTick()
+  expect(watches).toEqual({ started: 2, ended: 1 })
+  unmount!()
+  unmount = null
+  // Closing the card ends the watch it held.
+  expect(watches).toEqual({ started: 2, ended: 2 })
+
+  // The next card opens on the choice the browser kept, and counts nothing
+  // until the page's count arrives.
+  const later = await watched({ cost: { ...older(61 * 60_000), lastHour: null } })
+  expect(later.textContent).toContain('Cost')
+  expect(later.textContent).not.toContain('$')
+  expect(watches).toEqual({ started: 3, ended: 2 })
+  // The chart shows the latest calls all the same, while the count is awaited
+  // and in an hour where the agent made no call, which has no rate.
+  expect(later.querySelector('.cost-chart-line')).not.toBeNull()
+  unmount!()
+  unmount = null
+  const quiet = await watched({ cost: { ...older(61 * 60_000), lastHour: { ...hour, rate: null } } })
+  expect(quiet.querySelector('.cost-chart-line')).not.toBeNull()
+  const captions = [...quiet.querySelectorAll('.cost-caption')].map((caption) => caption.textContent?.trim())
+  expect(captions).toContain('Cache hit rate')
+})
+
 // The numbers under the chart are round, 1, 2 or 5 times a power of ten,
 // about one for each 60 px of its 300, and none forced at either end.
 test('the numbers under the chart are round, about one for each 60 px', async () => {
@@ -267,7 +360,7 @@ test('the Profiles part shows the main conversation and each profile the workflo
     const root = document.createElement('div')
     document.body.append(root)
     const app = createApp({
-      render: () => h(ContextCost, { open: true, state: { cost, chart: null }, profiles: workflowProfiles(choice, list, global) }),
+      render: () => h(ContextCost, { open: true, state: { ...costOf(1), cost, chart: null }, profiles: workflowProfiles(choice, list, global) }),
     })
     app.mount(root)
     await nextTick()
@@ -294,7 +387,7 @@ test('the Profiles part shows the main conversation and the five profiles that c
   }
   const root = document.createElement('div')
   document.body.append(root)
-  const app = createApp({ render: () => h(ContextCost, { open: true, state: { cost, chart: null }, profiles: names }) })
+  const app = createApp({ render: () => h(ContextCost, { open: true, state: { ...costOf(1), cost, chart: null }, profiles: names }) })
   app.mount(root)
   await nextTick()
   const caption = [...root.querySelectorAll('.cost-caption')].find((element) => element.textContent?.trim() === 'Profiles')!

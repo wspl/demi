@@ -13,6 +13,7 @@
     "readDraft": "無法讀取草稿",
     "readSaved": "無法讀取暫存的訊息",
     "readHosts": "無法讀取主機",
+    "readLastHour": "無法讀取最近一小時的費用",
     "readAgents": "無法讀取智慧體",
     "updateConversations": "無法更新對話",
     "deleteConversations": "無法刪除對話",

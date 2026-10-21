@@ -13,6 +13,7 @@
     "readDraft": "Could Not Read the Draft",
     "readSaved": "Could Not Read the Saved Messages",
     "readHosts": "Could Not Read the Hosts",
+    "readLastHour": "Could Not Read the Last Hour’s Cost",
     "readAgents": "Could Not Read the Agents",
     "updateConversations": "Could Not Update Conversations",
     "deleteConversations": "Could Not Delete Conversations",

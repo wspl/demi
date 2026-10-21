@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { CacheChart, CacheMiss, ChartPoint } from '@demicodes/protocol'
-import type { AgentPrice, ConversationCostView, CostShown } from '@demicodes/web-ui/agent/context-cost'
+import { type AgentPrice, type ConversationCostView, type CostShown, type LastHourShown, lastHourOf } from '@demicodes/web-ui/agent/context-cost'
 import { type GlobalProfiles, workflowProfiles } from '@demicodes/web-ui/agent/workflow-menu'
 import { demoSubagentProfiles } from './subagent-profiles'
 import { MINUTE } from './time'
@@ -99,6 +99,35 @@ export const SHAPES = {
 } satisfies Record<string, ChartShape>
 
 /**
+ * A cost as the agents' metadata would sum it: the main agent's price `main`
+ * and the subagents' `others`, over `calls` turn calls, with each kind's price
+ * in the shares of a conversation that reads its cache well.
+ */
+function costView(main: number, others: readonly AgentPrice[], calls: number, priced: boolean): ConversationCostView {
+  const total = main + others.reduce((sum, agent) => sum + agent.price, 0)
+  const share = { input: 0.08, cacheWrite: 0.34, cacheRead: 0.18, output: 0.4 }
+  const tokens = (kind: keyof typeof share) => Math.round((total * share[kind] * 1e6) / RATE[kind])
+  const unpriced = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
+  return {
+    calls,
+    totals: {
+      inputTokens: tokens('input'),
+      cacheWriteTokens: tokens('cacheWrite'),
+      cacheReadTokens: tokens('cacheRead'),
+      outputTokens: tokens('output'),
+      price: !priced ? unpriced : {
+        total,
+        input: total * share.input,
+        cacheWrite: total * share.cacheWrite,
+        cacheRead: total * share.cacheRead,
+        output: total * share.output,
+      },
+    },
+    agents: priced ? [{ agent: 0, profile: null, price: main }, ...others] : [],
+  }
+}
+
+/**
  * A long conversation's cost and cache chart, as the agents' metadata and the
  * backend's chart bring them: calls about a minute apart, compactions and
  * misses of several causes at fixed calls, and subagents started with
@@ -108,7 +137,7 @@ export const SHAPES = {
  * that holds the first call, a miss or the first call after a compaction
  * reads less from the cache.
  */
-export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: ChartShape = SHAPES.long, priced = true): { cost: ConversationCostView, chart: CacheChart } {
+export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: ChartShape = SHAPES.long, priced = true): { cost: ConversationCostView, chart: CacheChart, lastHour: LastHourShown, firstCallAt: string } {
   const random = sequence(7)
   const { calls, size } = shape
   const first = shape.first ?? 1
@@ -147,46 +176,43 @@ export function costFixture(subagents: keyof typeof SUBAGENTS | 'none', shape: C
   if (calls < 4)
     main = calls * 0.12
   const others = subagents === 'none' ? [] : SUBAGENTS[subagents]
-  const elsewhere = others.reduce((total, agent) => total + agent.price, 0)
-  const total = main + elsewhere
-  // The price by kind, in the shares of a conversation that reads its cache
-  // well.
-  const share = { input: 0.08, cacheWrite: 0.34, cacheRead: 0.18, output: 0.4 }
-  const tokens = (kind: keyof typeof share) => Math.round((total * share[kind] * 1e6) / RATE[kind])
-  const unpriced = { total: null, input: null, cacheWrite: null, cacheRead: null, output: null }
-  const cost: ConversationCostView = {
-    calls: calls + others.length,
-    totals: {
-      inputTokens: tokens('input'),
-      cacheWriteTokens: tokens('cacheWrite'),
-      cacheReadTokens: tokens('cacheRead'),
-      outputTokens: tokens('output'),
-      price: !priced ? unpriced : {
-        total,
-        input: total * share.input,
-        cacheWrite: total * share.cacheWrite,
-        cacheRead: total * share.cacheRead,
-        output: total * share.output,
-      },
-    },
-    agents: priced ? [{ agent: 0, profile: null, price: main }, ...others] : [],
-  }
+  const cost = costView(main, others, calls + others.length, priced)
   // The rate over the window, the drawn points' calls; a conversation of
   // fewer than four calls has no points, and the first call read nothing.
   const window = points.reduce((sum, point) => sum + (point.last - point.first + 1), 0)
   const rate = points.length === 0
     ? (calls > 1 ? 0.46 : 0)
     : points.reduce((sum, point) => sum + point.rate * (point.last - point.first + 1), 0) / window
-  return { cost, chart: { rate, size, points } }
+  const chart = { rate, size, points }
+  // The last hour holds the latest calls a minute apart, 55 at most, and a
+  // quarter of what each subagent cost.
+  const hourCalls = Math.min(calls, 55)
+  const hourOthers = others.map((agent) => ({ ...agent, price: agent.price / 4 }))
+  const lastHour = {
+    cost: costView(calls < 4 ? main : (main * hourCalls) / calls, hourOthers, hourCalls + hourOthers.length, priced),
+    rate: Math.min(0.99, rate + 0.02),
+  }
+  return { cost, chart, lastHour, firstCallAt: new Date(Date.now() - calls * 65_000).toISOString() }
 }
+
+/** A conversation that made no call in the last hour, as the page shows the backend's empty answer. */
+const QUIET_HOUR: LastHourShown = lastHourOf([], [], null)
 
 /**
  * What a card specimen holds of its conversation's cost, as the product's
  * store does: the cost from the agents' metadata, and the cache chart its
  * node brought, so the card opens whole.
  */
-export function useCardCost(subagents: keyof typeof SUBAGENTS | 'none', { shape = SHAPES.long, priced = true }: { shape?: ChartShape, priced?: boolean } = {}) {
+export function useCardCost(
+  subagents: keyof typeof SUBAGENTS | 'none',
+  { shape = SHAPES.long, priced = true, quiet = false }: { shape?: ChartShape, priced?: boolean, quiet?: boolean } = {},
+) {
   const fixture = costFixture(subagents, shape, priced)
-  const cost = ref<CostShown>({ cost: fixture.cost, chart: fixture.chart })
+  const cost = ref<CostShown>({
+    cost: fixture.cost,
+    chart: fixture.chart,
+    lastHour: quiet ? QUIET_HOUR : fixture.lastHour,
+    firstCallAt: fixture.firstCallAt,
+  })
   return { cost }
 }

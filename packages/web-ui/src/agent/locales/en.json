@@ -348,6 +348,10 @@
       "title": "Cost",
       "price": "Equivalent API price",
       "hitRate": "Cache hit rate",
+      "range": {
+        "lastHour": "Last Hour",
+        "all": "All"
+      },
       "kind": {
         "input": "Input",
         "cacheWrite": "Cache write",

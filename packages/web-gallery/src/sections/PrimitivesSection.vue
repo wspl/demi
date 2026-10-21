@@ -143,6 +143,9 @@ const compactPinned = ref(false)
 const cardLong = useCardLimits('alex@example.com')
 /** Each cost specimen's conversation, read as its card opens, as the product reads it. */
 const costClosed = useCardCost('profiles')
+const costClosedHour = useCardCost('profiles')
+const costHour = useCardCost('profiles')
+const costQuietHour = useCardCost('profiles', { quiet: true })
 const costProfiles = useCardCost('profiles')
 const costPlain = useCardCost('plain')
 const costAlone = useCardCost('none')
@@ -1155,6 +1158,25 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
               </div>
             </GallerySpecimen>
           </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · Cost closed, Last Hour: the price and rate of the last 60 minutes">
+              <div class="px-44 pt-[36rem]">
+                <ContextUsageIndicator
+                  pinned
+                  :expanded="null"
+                  cost-range="lastHour"
+                  :usage="usageAt(0.62)"
+                  :instructions="demoInstructions"
+                  :limits="cardLong.limits.value"
+                  :cost="costClosedHour.cost.value"
+                  :cost-profiles="OFFERED_PROFILES"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @refresh-limits="cardLong.refresh"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
           <GalleryOverlayWell size="tall">
             <GallerySpecimen variant="card · Cost opened, 180 calls of 5 a point, the profiles Global Workflow offers; a disabled one and none have no row">
               <div class="px-44 pt-[70rem]">
@@ -1164,6 +1186,40 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :usage="usageAt(0.62)"
                   :instructions="demoInstructions"
                   :cost="costProfiles.cost.value"
+                  :cost-profiles="OFFERED_PROFILES"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="tall">
+            <GallerySpecimen variant="card · Cost opened, Last Hour: the chart still shows the latest calls">
+              <div class="px-44 pt-[70rem]">
+                <ContextUsageIndicator
+                  pinned
+                  expanded="cost"
+                  cost-range="lastHour"
+                  :usage="usageAt(0.62)"
+                  :instructions="demoInstructions"
+                  :cost="costHour.cost.value"
+                  :cost-profiles="OFFERED_PROFILES"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="tall">
+            <GallerySpecimen variant="card · Cost opened, Last Hour with no call in the hour">
+              <div class="px-44 pt-[40rem]">
+                <ContextUsageIndicator
+                  pinned
+                  expanded="cost"
+                  cost-range="lastHour"
+                  :usage="usageAt(0.62)"
+                  :instructions="demoInstructions"
+                  :cost="costQuietHour.cost.value"
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"

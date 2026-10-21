@@ -140,6 +140,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
             Some(json!({ "archived": true })),
         ),
         (Method::GET, format!("/api/conversations/{c}/hosts"), None),
+        (Method::GET, format!("/api/conversations/{c}/cost/last-hour"), None),
         (Method::GET, format!("/api/conversations/{c}/fs"), None),
         (
             Method::POST,
