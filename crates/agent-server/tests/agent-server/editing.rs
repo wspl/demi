@@ -34,7 +34,7 @@ use serde_json::json;
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
-        Fixture, Gate, Model, TestProduct, agent, conversation, held, kinds, named_node, send, session_of, switch, until,
+        Fixture, Gate, Model, TestProduct, agent, conversation, held, is_request_output, kinds, named_node, send, session_of, switch, until,
     },
 };
 
@@ -1132,4 +1132,65 @@ async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_ed
         read(script.requests().last().unwrap()),
         [UserPart::Text(quoted.into()), UserPart::Text("Start at 1 MB".into())]
     );
+}
+
+/// Waits until the saved checkpoint of `node` holds the loss of a resident
+/// command for its next turn (`crates/agent-session/src/reports.rs`).
+async fn until_loss_waits(store: &MemoryTreeStore, node: &NodeId) {
+    for _ in 0..1_000 {
+        let saved = store.session_store(node).load().await.unwrap().unwrap();
+        if !saved.state.next_turn_reports.is_empty() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the loss never waited in the checkpoint of {node}");
+}
+
+// A dev server the root started was lost while the conversation was idle: its
+// report waits for the next turn, and a Fork from the root's answer still
+// succeeds, its new root holding no report of the source's command.
+//
+// Under a second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_no_report() {
+    let script = ScriptedRuntime::new([
+        Turn::Events(vec![event::tool_call(
+            "call-1",
+            "shell",
+            json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+        )]),
+        said("Serving."),
+    ]);
+    let providers = std::rc::Rc::new(demi_agent_server::testing::ScriptedProviders::default());
+    providers.provide("stub", &script);
+    let shells = std::rc::Rc::new(crate::support::ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = crate::support::scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
+    page.open().await;
+    page.next_until(is_request_output).await;
+    page.send(send("m1", "Serve.")).await;
+    page.until_idle().await;
+    shells.last().lose();
+    until_loss_waits(&store, &conversation()).await;
+
+    let blocks = server
+        .node(&conversation(), &conversation())
+        .unwrap()
+        .session()
+        .transcript()
+        .blocks;
+    let answer = blocks
+        .iter()
+        .rev()
+        .find(|block| matches!(block, Block::Text(_)))
+        .unwrap()
+        .id()
+        .clone();
+    let seed = server.prepare_fork(&conversation(), &answer).await.unwrap();
+    let destination = NodeId::try_from("fork").unwrap();
+    server.initialize_fork(&destination, seed).await.unwrap();
+    let saved = store.session_store(&destination).load().await.unwrap().unwrap();
+    assert!(saved.state.next_turn_reports.is_empty() && saved.state.reports.is_empty());
 }

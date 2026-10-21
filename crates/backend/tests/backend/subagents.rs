@@ -1177,11 +1177,11 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
         effort: Some("off".to_owned()),
         fast: true,
     };
-    let runs_on = |jobs: &[AgentEntry]| -> Vec<(u64, Option<String>, JobModel, u64, Option<u64>)> {
+    let runs_on = |jobs: &[AgentEntry]| -> Vec<(u64, Option<String>, JobModel, u64)> {
         jobs.iter()
             .map(|entry| {
                 let child = crate::conversations::child_of(entry).clone();
-                (child.number, child.profile, child.model, child.round, child.forked_from)
+                (child.number, child.profile, child.model, child.round)
             })
             .collect()
     };
@@ -1189,35 +1189,27 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
     // A child without a profile runs on its parent's model.
     scripts.child(vec![shell("c1", WAIT), say("first"), shell("c3", WAIT), say("again")]);
     let jobs = round("t1", "demi agent spawn <<< 'Look'").await;
-    assert_eq!(runs_on(&jobs), [(1, None, inherited.clone(), 1, None)]);
+    assert_eq!(runs_on(&jobs), [(1, None, inherited.clone(), 1)]);
 
     // A profile's child runs on the profile's model.
     scripts.child(vec![shell("c2", WAIT), say("quick")]);
     let jobs = round("t2", "demi agent spawn --profile quick <<< 'Look fast'").await;
     assert_eq!(
         runs_on(&jobs),
-        [(2, Some("quick".to_owned()), fast.clone(), 1, None)]
+        [(2, Some("quick".to_owned()), fast.clone(), 1)]
     );
 
     // A resumed child starts its second round on the same model.
     let jobs = round("t3", "demi agent resume 1 <<< 'Look again'").await;
-    assert_eq!(runs_on(&jobs), [(1, None, inherited.clone(), 2, None)]);
-
-    // A fork of the profile's child without a profile runs on its
-    // parent's model, which it switches to from its source's, and says
-    // which agent it was forked from.
-    scripts.child(vec![shell("c4", WAIT), say("forked")]);
-    let jobs = round("t4", "demi agent fork 2 <<< 'Look once more'").await;
-    assert_eq!(runs_on(&jobs), [(3, None, inherited.clone(), 1, Some(2))]);
+    assert_eq!(runs_on(&jobs), [(1, None, inherited.clone(), 2)]);
 
     // The conversation's subagents route says the same of the closed ones.
     let listed = transcript(&backend, &master, FIRST).await.subagents;
     assert_eq!(
         runs_on(&listed),
         [
-            (1, None, inherited.clone(), 2, None),
-            (2, Some("quick".to_owned()), fast, 1, None),
-            (3, None, inherited, 1, Some(2))
+            (1, None, inherited.clone(), 2),
+            (2, Some("quick".to_owned()), fast, 1)
         ]
     );
     backend.close().await;

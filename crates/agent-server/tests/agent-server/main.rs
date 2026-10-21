@@ -5,7 +5,6 @@ mod command_sets;
 mod compaction;
 mod connections;
 mod editing;
-mod fork;
 mod live;
 mod output;
 mod profiles;

@@ -260,7 +260,7 @@ async fn a_side_question_outlives_the_roots_stop_and_its_follow_up_continues_its
     assert!(model.is_done());
 }
 
-// A side question asks `demi agent` to start a subagent, fork one, send a
+// A side question asks `demi agent` to start a subagent, send a
 // message and change its directory: each is refused in words that say a
 // side question cannot, and nothing starts. Runs a few milliseconds.
 #[tokio::test(flavor = "local")]

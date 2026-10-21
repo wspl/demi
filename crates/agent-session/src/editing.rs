@@ -540,28 +540,13 @@ pub async fn fork_seed(
     let unfinished_before = |before: usize| async move {
         Ok::<_, ForkError>(store.last_of(Kind::ExecutingCall, before).await.map_err(store_error)?.is_some())
     };
-    let named = match end {
-        ForkEnd::At(target) | ForkEnd::Side(target) => Some(target),
-        ForkEnd::Newest => None,
+    let target = match end {
+        ForkEnd::At(target) | ForkEnd::Side(target) => target,
     };
-    let in_window = named.is_none_or(|target| window.iter().any(|block| block.id() == target));
-    let (length, tail) = if in_window {
-        match fork_prefix(window, end) {
-            Ok(kept) => (start, kept.to_vec()),
-            // No text of the window ends a Fork with no call before it
-            // executing: the newest such text is before the window.
-            Err(CutError::NothingCompleted) => {
-                let at = store
-                    .last_of(Kind::CompletedText, start)
-                    .await
-                    .map_err(store_error)?
-                    .ok_or(CutError::NothingCompleted)?;
-                (at + 1, Vec::new())
-            }
-            Err(error) => return Err(error.into()),
-        }
+    let (length, tail) = if window.iter().any(|block| block.id() == target) {
+        let kept = fork_prefix(window, end)?;
+        (start, kept.to_vec())
     } else {
-        let target = named.expect("a Fork end the window lacks names a block");
         let at = store.position(target).await.map_err(store_error)?.ok_or(CutError::NotCompletedText)?;
         let read = store.blocks(at..at + 1).await.map_err(store_error)?;
         if !read.blocks.first().is_some_and(|block| Kind::CompletedText.holds(block)) {
@@ -571,7 +556,7 @@ pub async fn fork_seed(
             // The side question's history goes on through the window, which
             // starts with the compaction that summarized its text.
             ForkEnd::Side(_) => (start, window[..=side_end(window, 0)].to_vec()),
-            _ => (at + 1, Vec::new()),
+            ForkEnd::At(_) => (at + 1, Vec::new()),
         }
     };
     // The rows named end at the window or before it, at the text.
