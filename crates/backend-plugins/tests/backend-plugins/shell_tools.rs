@@ -420,8 +420,18 @@ fn reporting() -> ServerConfig {
     }
 }
 
-// About two seconds: two scripts, each a shell job, and the reports of one
-// of them every half second.
+/// A server whose calls watch a command for at most a second, the
+/// product's ten seconds shortened, and whose commands report at intervals
+/// from a tenth of a second.
+fn windowed() -> ServerConfig {
+    ServerConfig {
+        call_window_ms: 1_000,
+        ..reporting()
+    }
+}
+
+// About three seconds: two scripts, each a shell job, the call of the one that
+// runs on returning at the window, and its reports every half second.
 #[tokio::test(flavor = "local")]
 async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_one_is_an_error() {
     within(async {
@@ -436,7 +446,7 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
         .into_iter()
         .chain(replies(40));
         let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start_with(&script, reporting()).await;
+        let fixture = Fixture::start_with(&script, windowed()).await;
         let mut client = fixture.opened().await;
         turn(&mut client, "message-1", "Run the suite.").await;
 
@@ -488,27 +498,17 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
 }
 
 
-/// A server whose calls watch a command for at most a second, the
-/// product's minute shortened, and whose commands report at intervals from
-/// a tenth of a second.
-fn windowed() -> ServerConfig {
-    ServerConfig {
-        call_window_ms: 1_000,
-        ..reporting()
-    }
-}
-
-// About two and a half seconds: two scripts, each a shell job, and the
-// first report of one of them two seconds after its start.
+// About three seconds: two scripts, each a shell job, and the first report of
+// one of them two seconds after its start.
 #[tokio::test(flavor = "local")]
-async fn a_call_returns_at_the_window_or_its_shorter_interval_and_reports_count_from_the_start() {
+async fn a_call_returns_at_the_window_whatever_its_interval_and_reports_count_from_the_start() {
     within(async {
-        // One after the other: the linter's end would end the suite's
-        // window.
-        let turns = [
-            Turn::Events(vec![exec("suite", "until [ -e done ]; do sleep 0.05; done", 2_000)]),
-            Turn::Events(vec![exec("lint", "sleep 0.8", 500)]),
-        ]
+        // Together: the calls of one response run at the same time, and the
+        // linter's end comes after both calls returned at the window.
+        let turns = [Turn::Events(vec![
+            exec("suite", "until [ -e done ]; do sleep 0.05; done", 2_000),
+            exec("lint", "sleep 1.5", 500),
+        ])]
         .into_iter()
         .chain(replies(40));
         let script = ScriptedRuntime::new(turns);
@@ -546,11 +546,11 @@ async fn a_call_returns_at_the_window_or_its_shorter_interval_and_reports_count_
             "{watched}"
         );
         // The linter's interval is shorter than the window: its call
-        // returned at its interval.
+        // returned at the window all the same.
         let lint = result(&results, "lint");
         assert_eq!(field(lint, "status"), "running", "{lint}");
         let ran: u64 = field(lint, "runningMs").parse().unwrap();
-        assert!(ran < 1_000, "{lint}");
+        assert!((1_000..1_500).contains(&ran), "{lint}");
         assert!(lint.contains("It reports every 1s until it ends"), "{lint}");
         drop(results);
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
@@ -667,7 +667,7 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
         .into_iter()
         .chain(replies(3));
         let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start_with(&script, reporting()).await;
+        let fixture = Fixture::start_with(&script, windowed()).await;
         let _ = server.set(fixture.server.clone());
         let _ = workspace.set(fixture.workspace.clone());
         let mut client = fixture.opened().await;
@@ -725,7 +725,7 @@ async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
         .into_iter()
         .chain(replies(3));
         let script = ScriptedRuntime::new(turns);
-        let fixture = Fixture::start_with(&script, reporting()).await;
+        let fixture = Fixture::start_with(&script, windowed()).await;
         fixture.providers.select(model_reading("stub", "test-model", &[FileExtension::Png]));
         let shot = demi_agent_store::testing::png(4, 3, 1).into_bytes();
         std::fs::write(format!("{}/shot.png", fixture.workspace), &shot).unwrap();

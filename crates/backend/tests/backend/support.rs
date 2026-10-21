@@ -462,6 +462,11 @@ impl Harness {
                 // however short, so that the scenario sees it within its
                 // time.
                 interval_floor_ms: 100,
+                // A call that watches a command still running returns after
+                // five seconds, which a loaded machine's slow commands do
+                // not reach and a scenario that leaves a command running
+                // waits through.
+                call_window_ms: 5_000,
                 ..ConversationTuning::default()
             },
             pages: PageTuning::default(),

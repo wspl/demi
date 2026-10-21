@@ -49,6 +49,10 @@ pub struct ConversationTuning {
     /// (`crates/agent-tools/src/lib.rs`): the product's, which a test shortens to
     /// see reports within its time.
     pub interval_floor_ms: u32,
+    /// The longest a `shell` call watches a command that still runs, in
+    /// milliseconds (`crates/agent-tools/src/lib.rs`): the product's, which a
+    /// test shortens to see a call return within its time.
+    pub call_window_ms: u32,
 }
 
 impl Default for ConversationTuning {
@@ -59,6 +63,7 @@ impl Default for ConversationTuning {
             titles: true,
             search_interval: Duration::from_secs(2),
             interval_floor_ms: demi_agent_server::ServerConfig::default().interval_floor_ms,
+            call_window_ms: demi_agent_server::ServerConfig::default().call_window_ms,
         }
     }
 }
