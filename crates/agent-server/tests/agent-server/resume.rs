@@ -8,13 +8,15 @@
 use std::rc::Rc;
 
 use demi_agent_server::ServerConfig;
+use demi_agent_session::testing::COMPACTION_SUMMARY_INSTRUCTION;
 use demi_agent_store::{
     AgentTreeStore, ClosePhase, NodeClose, NodeRecord,
     testing::{MemoryTreeStore, model_of, text},
 };
 use demi_agent_tools::{Profile, ProfileModel};
 use demi_conversation_socket_protocol::ServerFrame;
-use demi_shared_types::{Block, ModelSelection, NodeId, QueuedMessage, Timestamp, TurnId};
+use demi_provider_common::testing::{Turn, event};
+use demi_shared_types::{Block, ModelSelection, NodeId, ProviderModel, QueuedMessage, Timestamp, TurnId};
 use serde_json::{Value, json};
 
 use crate::subagents::{answer, checkpoint, checkpoint_on, child_in, child_record, closed_phase, held_said, is_closed, refused, root, said, spawn, spawn_during_turn, user};
@@ -54,6 +56,13 @@ fn frontend() -> Profile {
 
 fn fixture(model: &Model, other: &Model) -> Fixture {
     fixture_on(model, other, MemoryTreeStore::new())
+}
+
+/// As [`fixture`], whose catalog lists `other-model` as `listed`.
+fn fixture_listing(model: &Model, other: &Model, listed: ProviderModel) -> Fixture {
+    let fixture = fixture(model, other);
+    fixture.resolver.list("other", vec![listed]);
+    fixture
 }
 
 /// As [`fixture`], over a store that holds children already.
@@ -573,4 +582,56 @@ async fn an_inheriting_child_keeps_the_instructions_its_parent_had_at_its_spawn(
     // The grandchild runs on its own record's, not its parent's now.
     let asked = other.requests_of("task grandchild");
     assert!(asked[0].system_prompt.ends_with("Instructions for this subagent:\n\nRead only."), "{}", asked[0].system_prompt);
+}
+
+// A resume onto a profile whose model has a smaller window compacts the
+// history with the model the child ran on first, as a model switch does.
+#[tokio::test(flavor = "local")]
+async fn a_resume_onto_a_smaller_window_compacts_with_the_childs_model_first() {
+    let long = "f".repeat(8_000);
+    let model = Model::default();
+    model.root([said("noted"), said("noted")]);
+    model.child(
+        "task trace the estimate",
+        [
+            // The usage the vendor reported anchors the estimate, as a
+            // resume keeps it.
+            Turn::Events(vec![event::text(&long), event::response(5_000, 0)]),
+            said("Summary: the card reads a stale cache."),
+            // A pass the estimate asks for again.
+            said("Summary: the card reads a stale cache."),
+        ],
+    );
+    let compacted = "The earlier part of this conversation was compacted.";
+    let other = Model::default();
+    other.child(compacted, [said("Fixed.")]);
+    let small = ProviderModel {
+        context_window: Some(1_000),
+        ..listed_model("other-model", &[], &[])
+    };
+    let fixture = fixture_listing(&model, &other, small);
+    let mut client = fixture.opened().await;
+    let child = spawn(&fixture, &root(), json!({ "prompt": "task trace the estimate" })).await;
+    client.next_until(is_closed(&child)).await;
+    until(|| fixture.store.record(&child).unwrap().delivered).await;
+
+    let resumed = agent(
+        &fixture.server,
+        &root(),
+        "resume",
+        json!({ "id": 1, "profile": "frontend", "message": "Fix it." }),
+    )
+    .await;
+    assert_eq!(resumed.code, 0, "{resumed:?}");
+    client.next_until(|frame| is_closed(&child)(frame) && crate::subagents::child_in(frame, &child).is_some_and(|row| row.round == 2)).await;
+
+    let on_stub = model.requests_of("task trace the estimate");
+    assert!(on_stub.len() >= 2);
+    assert!(on_stub[1..].iter().all(|request| request_text(request).contains(COMPACTION_SUMMARY_INSTRUCTION) && request.model_id == "test-model"));
+    let asked = other.requests_of(compacted);
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].model_id, "other-model");
+    let text = request_text(&asked[0]);
+    assert!(text.contains("Summary: the card reads a stale cache."), "{text}");
+    assert!(!text.contains(&long), "{text}");
 }

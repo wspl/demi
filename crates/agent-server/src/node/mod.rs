@@ -1063,9 +1063,9 @@ pub(crate) enum Origin {
         /// the process loses before its first save still has it.
         first_message: Option<QueuedMessage>,
     },
-    /// A forked child (`crates/agent-server/src/server/tree/supervisor.rs`).
+    /// A side question (`crates/agent-server/src/server/tree/sides.rs`).
     ///
-    /// Its first checkpoint is the seed of its source's history, with its first
+    /// Its first checkpoint is the seed of the root's history, with its first
     /// message queued. It is created in one commit and then restored as a
     /// stored node is.
     Forked {

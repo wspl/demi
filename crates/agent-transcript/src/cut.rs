@@ -163,8 +163,6 @@ pub enum CutError {
     NotCompletedText,
     #[error("The Fork boundary contains unfinished tool calls")]
     UnfinishedToolCalls,
-    #[error("No completed assistant message to fork from yet")]
-    NothingCompleted,
 }
 
 /// Where a Fork's history ends.
@@ -172,9 +170,6 @@ pub enum CutError {
 pub enum ForkEnd<'a> {
     /// The completed text the user picked, which a conversation Fork names.
     At(&'a BlockId),
-    /// The newest completed text with no call before it still executing,
-    /// which `demi agent fork` takes (`crates/agent-server/src/server/tree/supervisor.rs`).
-    Newest,
     /// The completed text a side question asks about, with the response
     /// that ended it; see [`fork_prefix`].
     Side(&'a BlockId),
@@ -202,7 +197,6 @@ pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Blo
     };
     let index = match end {
         ForkEnd::At(target) => at(target)?,
-        ForkEnd::Newest => newest(blocks, 0).ok_or(CutError::NothingCompleted)?,
         // A side question's history is what the conversation's next request
         // would have sent after the reply, its response included, so it reads
         // the conversation's prompt cache.

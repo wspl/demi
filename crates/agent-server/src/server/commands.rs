@@ -12,7 +12,7 @@
 //!
 //! Design decisions:
 //!
-//! - `spawn`, `fork` and `resume` answer once the child exists and its message
+//! - `spawn` and `resume` answer once the child exists and its message
 //!   is queued, because the supervisor owns the child independently of the
 //!   invoking job. The outcome arrives as a message, so there is no `wait`
 //!   verb.
@@ -55,11 +55,6 @@ const SEND_SUMMARY: &str = "Deliver information to any live agent in the tree, o
 const ABORT_SUMMARY: &str = "Abort your own running children, each with its whole subtree. Siblings are untouched; only the spawning session may abort a child. --json takes one id.";
 
 const RESUME_SUMMARY: &str = "Revive one of your own archived children with a new user message on its preserved transcript, which it keeps whole under the same number and description. It goes on with the profile it runs on, or with the one you name, whose model, effort, Context and instructions it takes from this round on, whichever vendor's model that is. Return its id immediately after accepting the message; the child reports to you with messages, and the notice of its end arrives separately. Use agent send to communicate and agent abort to stop it. Archived ids are in agent list.";
-
-const FORK_SUMMARY: &str = "Start a new child from what one of your own children, running or archived, already knows: a copy of its history up to its latest completed answer, continued with your message on the profile you name. Use it to hand a child's findings to another profile without the work done again. The source is untouched and goes on if it runs. Return the new child's id immediately after creation; it reports to you with messages, and the notice of its end arrives, as a spawned child's do. To give the same child another round, on what it runs on or on another profile, use agent resume instead.";
-
-/// How to write a fork's message, the field it reads from stdin.
-const FORK_MESSAGE: &str = "The fork's next user message, which it reads after the source's history: what to do now with what the source found, such as \"Fix it as you described\", with what the source did not know (where to work, which branch, what to verify) and what the report it sends you must contain.";
 
 const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the root down, each node's children after it: status, profile, execution, seconds since start and since the last event, and description; --all adds the archived children (finished, revivable by their parent). A read, not a wait — not for polling loops.";
 
@@ -127,19 +122,6 @@ struct ResumeArgs {
     profile: Option<String>,
 }
 
-/// The input of `demi agent fork`.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct ForkArgs {
-    /// subagentId of one of your children, running or archived, whose
-    /// history the fork starts from
-    id: u64,
-    message: String,
-    profile: Option<String>,
-    /// Short UI title; the source's followed by " (fork)" when omitted.
-    description: Option<String>,
-}
-
 /// The input of `demi agent list`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -158,9 +140,9 @@ struct ShowArgs {
 }
 
 /// The group's entry in the model's capability index.
-const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; resumes or forks one onto another profile to go on from what it knows; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists, checks and picks workflows. A single lookup or edit is faster by hand.";
+const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; resumes one onto another profile to go on from what it knows; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists, checks and picks workflows. A single lookup or edit is faster by hand.";
 
-/// `demi agent spawn --json`, `fork --json` and `resume --json`.
+/// `demi agent spawn --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct Started {
@@ -289,7 +271,7 @@ pub(crate) fn with_runtime_groups<H: HostResolver>(
 /// when the node may not spawn.
 fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -> GroupBuilder {
     let summary = if can_spawn {
-        "Agent tree: spawn, fork and manage your own children; send, list and show any live agent."
+        "Agent tree: spawn, resume and manage your own children; send, list and show any live agent."
     } else {
         "Agent tree communication: this session may not spawn subagents; send, list and show any live agent."
     };
@@ -340,17 +322,6 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                     .stdin_field("message")
                     .json_output::<Started>()
                     .bind(TypedRpc::new(verb(server.clone(), resume))),
-            )
-            .leaf(
-                LeafBuilder::rpc("fork", FORK_SUMMARY)
-                    .input::<ForkArgs>()
-                    .positionals(["id"])
-                    .describe("message", FORK_MESSAGE)
-                    .describe("profile", PROFILE_OPTION)
-                    .stdin_field("message")
-                    .success_output("stdout is \"subagentId: <id>\", the new child's; creation succeeded, not necessarily execution")
-                    .json_output::<Started>()
-                    .bind(TypedRpc::new(verb(server.clone(), fork))),
             );
     }
     group
@@ -485,23 +456,6 @@ async fn resume<H: HostResolver>(
         id,
         message: message.to_owned(),
         profile_name: call.args.profile,
-    };
-    match call.tree.start(&call.caller, input).await {
-        Ok(child) => started(&port, call.json, child).await,
-        Err(error) => fail(&error),
-    }
-}
-
-async fn fork<H: HostResolver>(call: Invoked<H, ForkArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let message = trim(&call.args.message);
-    if message.is_empty() {
-        return refuse("message must not be empty");
-    }
-    let input = StartInput::Fork {
-        source: call.args.id,
-        message: message.to_owned(),
-        profile_name: call.args.profile,
-        description: call.args.description,
     };
     match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,

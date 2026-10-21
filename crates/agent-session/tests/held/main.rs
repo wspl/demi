@@ -32,7 +32,7 @@ use demi_provider_common::{
     testing::{FixedClock, ScriptedRuntime},
 };
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
-use demi_shared_types::{Block, ModelSelection, NodeId, SessionPhase, Timestamp, TurnId};
+use demi_shared_types::{Block, BlockId, ModelSelection, NodeId, SessionPhase, Timestamp, TurnId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 
@@ -257,7 +257,7 @@ async fn a_restored_session_holds_only_the_window_after_its_last_boundary() {
     // A Fork of it names the rows before the window and copies only the
     // window's: at no moment does it hold the path.
     let before = peak_from_now();
-    let seed = session.prepare_fork(ForkEnd::Newest).await.unwrap();
+    let seed = session.prepare_fork(ForkEnd::At(&BlockId::try_from(format!("b{}", BLOCKS - 3)).unwrap())).await.unwrap();
     let seed_peak = PEAK.load(Ordering::Relaxed) - before;
     let fork = NodeId::try_from("fork").unwrap();
     let record = NodeRecord { parent: Some(root()), number: 1, ..NodeRecord::root(fork.clone(), Timestamp::UNIX_EPOCH) };

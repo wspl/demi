@@ -3,7 +3,7 @@
 //! The operations are:
 //!
 //! - the agent directory of its live nodes;
-//! - starting children (spawn, fork, resume and restore);
+//! - starting children (spawn, resume and restore);
 //! - closing them (a completion, a failure or an abort);
 //! - delivering their completions;
 //! - messages between agents;
@@ -18,7 +18,7 @@
 //! child starts empty.
 //!
 //! ```text
-//!  root --spawn, fork, resume, abort--> child --(same verbs)--> grandchild
+//!  root --spawn, resume, abort--> child --(same verbs)--> grandchild
 //!    ^                                    |
 //!    '------ reports, and the notice of its end -----'
 //!  any live node --send, show, list--> any live node  (the agent directory)
@@ -61,10 +61,9 @@
 //!   ends, so it tells the parent with `demi agent send parent`. Told only to
 //!   leave a server running, a child detached it from its job (`nohup`, then
 //!   `setsid`), which left a process no command stands for.
-//! - A fork runs on the profile the caller names or inherits the caller's,
-//!   never the source's, so it carries no configuration the caller did not ask
-//!   for. A fork is a second child from what one knows; `resume` with a
-//!   profile is the same child going on, on that profile.
+//! - A child goes on with another profile by `resume --profile`, the same
+//!   child with its whole history; no command copies a child's history into a
+//!   second child.
 //! - `show` and `list` are supervisor reads and never messages to the target. A
 //!   stuck child cannot report on itself, since a steer waits for a boundary
 //!   that a hung tool never reaches.
@@ -89,11 +88,11 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentMessageError, AgentSession, Execution, ForkError, ForkSeed, ModelSwitch, SessionEvent, Settle,
+    AgentMessageError, AgentSession, Execution, ModelSwitch, SessionEvent, Settle,
     Subscription,
 };
 use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, Reprofile};
-use demi_agent_transcript::{CutError, ForkEnd, last_failure};
+use demi_agent_transcript::last_failure;
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
     JobModel, JobPhase, ServerFrame, TranscriptPatch,
@@ -118,7 +117,7 @@ use super::profiles::{Limits, SetupFor};
 use crate::{
     Node,
     node::{self, Instructions, NodeRole, NodeSpec, Origin},
-    server::{AgentServer, stored_fork_seed},
+    server::AgentServer,
 };
 
 /// The bound of `show`'s last assistant text and of an archived child's
@@ -206,13 +205,6 @@ pub(crate) enum StartInput {
         id: NodeId,
         message: String,
         profile_name: Option<String>,
-    },
-    /// `demi agent fork`: the caller's child the model knows by `source`.
-    Fork {
-        source: u64,
-        message: String,
-        profile_name: Option<String>,
-        description: Option<String>,
     },
 }
 
@@ -418,7 +410,7 @@ impl<H: HostResolver> Tree<H> {
         self.children.borrow().len() + self.admitted.get()
     }
 
-    /// Starts a child of `caller` for `demi agent spawn`, `fork` or `resume`.
+    /// Starts a child of `caller` for `demi agent spawn` or `resume`.
     ///
     /// It creates or reopens the child in a task of the tree, so the start runs
     /// to its end even when the call is cancelled. Starts of one owner take
@@ -456,15 +448,6 @@ impl<H: HostResolver> Tree<H> {
                     message,
                     profile_name,
                 } => tree.reopen(&owner, id, message, profile_name).await,
-                StartInput::Fork {
-                    source,
-                    message,
-                    profile_name,
-                    description,
-                } => {
-                    tree.fork(&owner, source, message, profile_name, description)
-                        .await
-                }
             }
         }
         .in_current_span());
@@ -540,92 +523,6 @@ impl<H: HostResolver> Tree<H> {
         Ok(number)
     }
 
-    /// Forks the child of `owner` the model knows by `source`.
-    ///
-    /// The fork is a new child of `owner` with the next agent number, whose
-    /// history is the source's through its newest completed text, and whose
-    /// next user message is `message`. The source is untouched. Answers its
-    /// number.
-    ///
-    /// - The checks are a spawn's.
-    /// - The profile `profile_name`, none for the inherit profile, sets what it
-    ///   runs on.
-    /// - `description` defaults to the source's with ` (fork)`.
-    /// - Its first request switches from the source's model to that profile's
-    ///   as a model switch does, compacting first with the source's model when
-    ///   the history is over the new model's threshold.
-    async fn fork(
-        self: &Rc<Self>,
-        owner: &Rc<Node<H>>,
-        source: u64,
-        message: String,
-        profile_name: Option<String>,
-        description: Option<String>,
-    ) -> Result<u64, String> {
-        if !owner.record().can_spawn_subagents {
-            return Err("this session may not spawn subagents".to_owned());
-        }
-        let Some(source) = self.child_record_of(owner.id(), source).await? else {
-            return Err(format!(
-                "no subagent {source} of yours to fork (see `demi agent list`)"
-            ));
-        };
-        let server = self.server.upgrade().ok_or("the agent server is gone")?;
-        let setup = self
-            .spawn_setup(&server, owner, profile_name.as_deref(), SetupFor::Spawn)
-            .await?;
-        let mut seed = self.fork_seed(&source).await?;
-        // A fork starts where its parent works, as a spawn does.
-        let now = owner.placement().await.map_err(|error| error.to_string())?;
-        let cwd = ChildDirectory {
-            cwd: owner.directory_at(&now),
-            under: now,
-        };
-        self.check_depth(owner, setup.limits).await?;
-        let slot = self.reserve_live(&server, setup.limits)?;
-        // The child starts on the source's model, which compacts what the
-        // profile's model cannot hold, and switches at its first request.
-        let from = seed.checkpoint.state.model.clone();
-        let (runtime, switch) = self
-            .runtime_for(&server, owner, &from, &setup.model)
-            .await
-            .map_err(RuntimeError::reason)?;
-        let number = self
-            .store
-            .next_number(Sequence::Agent)
-            .await
-            .map_err(|error| error.to_string())?;
-        let description = description.unwrap_or_else(|| {
-            format!("{} (fork)", source.description)
-                .trim_start()
-                .to_owned()
-        });
-        let record = NodeRecord {
-            id: self.new_node_id(),
-            number,
-            parent: Some(owner.id().clone()),
-            description,
-            profile: profile_name,
-            instructions: setup.instructions,
-            context_limit: setup.context_limit,
-            model: Some(setup.model.clone()),
-            round: 1,
-            started_at: self.clock.now(),
-            can_spawn_subagents: setup.can_spawn,
-            closed: None,
-            delivered: false,
-            forked_from: Some(source.number),
-            started_by: owner.session().executing_call(),
-            cwd: Some(cwd),
-            side: None,
-        };
-        seed.checkpoint.state.queue.push(self.text_message(message));
-        let origin = Origin::Forked { record, seed };
-        self.start_child(&server, owner, origin, runtime, switch, Some(slot))
-            .await?;
-        Ok(number)
-    }
-
     /// The provider runtime a child starts on, and the switch that lands the
     /// model `to` its record names, for a child whose history was last
     /// requested with `from`; no switch when they are one selection.
@@ -672,22 +569,6 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// The history a fork of the child `source` starts from: captured from
-    /// its live session in one step, or read from its archived checkpoint.
-    async fn fork_seed(&self, source: &NodeRecord) -> Result<ForkSeed, String> {
-        let seed = match self.child(&source.id) {
-            Some(child) => child.node.session().prepare_fork(ForkEnd::Newest).await,
-            None => stored_fork_seed(self.store.as_ref(), &source.id, ForkEnd::Newest).await,
-        };
-        seed.map_err(|error| match error {
-            ForkError::Target(CutError::NothingCompleted) => format!(
-                "Agent {} has no completed message to fork from yet",
-                source.number
-            ),
-            error => error.to_string(),
-        })
-    }
-
     /// The provider runtime of a child of `owner` that infers with `model`
     /// (`crates/agent-server/src/node/mod.rs`).
     ///
@@ -723,8 +604,8 @@ impl<H: HostResolver> Tree<H> {
     /// With `profile_name` the child moves to that profile: the record takes
     /// its model, instructions, Context and spawning right in the same commit.
     /// The round switches from the model its history was last requested with
-    /// to the record's at its first request, compacting first as a fork's
-    /// does. The profile is resolved, and the runtime of its model built,
+    /// to the record's at its first request, compacting first as a model
+    /// switch does. The profile is resolved, and the runtime of its model built,
     /// before anything changes, so a refused one leaves the child archived as
     /// it was. The switches that guard a spawn do not guard a resume.
     async fn reopen(
@@ -830,7 +711,7 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Everything spawn, fork, reopen and restore share.
+    /// Everything spawn, reopen and restore share.
     ///
     /// In order, it sets up:
     ///

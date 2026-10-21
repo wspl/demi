@@ -348,24 +348,19 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
     backend.close().await;
 }
 
-// A few seconds: the root, its child, the child's fork and a side question
-// each run shell jobs on a real device.
+// A few seconds: the root, its child and a side question each run shell jobs
+// on a real device.
 //
 // A reply shows only what its own agent uploaded, as the page asks for it with
 // `?node=`:
 //
 // - The root shows its a1, the child its a2, the side question its a3, each
 //   none of another's.
-// - The child's fork, whose copied history the child wrote, shows the child's
-//   a2.
 //
-// Planted defects this catches:
-//
-// - An upload recorded by the agent's number, which a side question shares
-//   with the root, so the root shows the side's file.
-// - A fork that shows only its own uploads, so its copied replies lose theirs.
+// Planted defect this catches: an upload recorded by the agent's number, which
+// a side question shares with the root, so the root shows the side's file.
 #[tokio::test]
-async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked_from() {
+async fn a_reply_shows_the_uploads_of_its_own_agent() {
     use demi_shared_types::Block;
 
     use crate::conversations::{FIRST, last_text, transcript};
@@ -398,7 +393,6 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
         vec![call("c1", &format!("{WAIT} && demi attachment upload child.png")), say("child")],
     )
     .await;
-    round("t2", "demi agent fork 1 <<< 'Again'", vec![call("f1", WAIT), say("forked")]).await;
     let tree = transcript(&backend, &master, FIRST).await;
     let node = |number: u64| {
         tree.subagents
@@ -407,7 +401,7 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
             .map(|entry| entry.id.as_str().to_owned())
             .expect("the agent is listed")
     };
-    let (child, fork) = (node(1), node(2));
+    let child = node(1);
     let reply = tree
         .blocks
         .iter()
@@ -435,7 +429,6 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
     for (node, shown) in [
         (FIRST, ["a1"].as_slice()),
         (child.as_str(), ["a2"].as_slice()),
-        (fork.as_str(), ["a2"].as_slice()),
         (SIDE, ["a3"].as_slice()),
     ] {
         let mut answered = Vec::new();
