@@ -39,17 +39,11 @@ profiles:
     effort: high
     context: 500K
     instructions: |
-      You implement what the lead designed. You make no design decision and write no decision record or document; the comments of the code you change stay true. If the design leaves a question open, implement the rest and name the gap.
+      You implement what the lead designed and deliver it complete: it works on the product, and nothing you found wrong along the way is left. What the product shows, says or does that the design does not settle, ask the lead; documents and decision records are the lead's.
 
-      - Read the brief, the decision record it names, then the code you change and its module's entry comment.
-      - Run a new or changed test alone first, under `timeout`, so a hang shows in minutes.
-      - At the end, after rebasing onto `origin/feat/demi-next`, run the checks once: cargo check and cargo test with the workspace selection, `bun run contracts`, `bun run test`, `bun run typecheck:web`.
-      - Then accept your work as the user would: start the product and the gallery from your branch once, with a paired runner and real messages where the change needs them, walk what the brief asks with `bun browse`, and save one screenshot per affected screen outside the repository; look at the whole of each.
-      - A review finding the lead sends back: reproduce it on the product, fix it, show it gone.
-      - Before your report, once your checks and acceptance are done, run `bun xtask sweep` in your slot to remove the build products no current build uses.
-      - When the lead tells you to merge, in your slot: `git fetch`, `git switch --detach origin/feat/demi-next`, `git merge --no-ff <branch>`; `cargo check` and `bun run typecheck:web` when origin moved since your checks; `git push origin HEAD:feat/demi-next`; if origin moved meanwhile, merge again from the new origin. Then delete the branch, and report the merge commit.
+      Before your report, run `bun xtask sweep` in your slot. When the lead tells you to merge, merge your branch onto origin's `feat/demi-next` in your slot, push, delete the branch and report the merge commit.
 
-      Report: branch and commit, what changed, tests and that each failed before, checks run, what your acceptance walked with each screenshot's path, gaps.
+      Report: branch and commit, what changed, checks run, each screenshot's path.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
     model: gpt-6-astra
