@@ -87,11 +87,6 @@ pub use crate::sources::{Failure, SkillState, SkillsState, SourceState};
 /// test, a repository the test made.
 pub type Resolve = dyn Fn(&str) -> String + Send + Sync;
 
-/// What a test's fetch of a source's URL waits for once it read the remote
-/// and before it records anything, so a test can order two fetches' ends.
-#[cfg(feature = "testing")]
-pub type ReadHook = dyn Fn(&str) -> futures_util::future::BoxFuture<'static, ()> + Send + Sync;
-
 /// The plugin's factory.
 pub struct Skills {
     manifest: Manifest,
@@ -99,8 +94,6 @@ pub struct Skills {
     clock: Arc<dyn Clock>,
     /// Every source's head, which every user's instance shares.
     heads: Arc<Heads>,
-    #[cfg(feature = "testing")]
-    read_hook: Option<Arc<ReadHook>>,
 }
 
 impl Skills {
@@ -125,17 +118,7 @@ impl Skills {
             resolve,
             clock,
             heads: Arc::default(),
-            #[cfg(feature = "testing")]
-            read_hook: None,
         }
-    }
-
-    /// This factory, whose fetches wait for `hook` once they read the
-    /// remote: a test's order of two fetches' ends.
-    #[cfg(feature = "testing")]
-    pub fn holding(mut self, hook: Arc<ReadHook>) -> Self {
-        self.read_hook = Some(hook);
-        self
     }
 }
 
@@ -160,8 +143,6 @@ impl demi_plugin_interface::PluginFactory for Skills {
             fetches: RefCell::default(),
             heads: self.heads.clone(),
             follow: RefCell::default(),
-            #[cfg(feature = "testing")]
-            read_hook: self.read_hook.clone(),
         })))
     }
 }
@@ -239,8 +220,6 @@ struct State {
     /// The task that checks the user's sources on the backend's schedule
     /// and tells the pages of a move, from the first page state read on.
     follow: RefCell<Option<AbortHandle>>,
-    #[cfg(feature = "testing")]
-    read_hook: Option<Arc<ReadHook>>,
 }
 
 /// How a fetch of a source ended.
@@ -506,14 +485,9 @@ impl State {
             .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
         let url = (self.resolve)(origin.url());
         let repository = origin.repository().to_owned();
-        let observation = self.heads.observe();
         let fetched = tokio::task::spawn_blocking(move || fetch::fetch(&url, &repository, &stop))
             .await
             .map_err(|error| PluginError::failed(format!("the fetch ended: {error}")))?;
-        #[cfg(feature = "testing")]
-        if let Some(hook) = &self.read_hook {
-            hook(origin.url()).await;
-        }
         let outcome = match fetched {
             Ok(fetched) => {
                 let blobs = sources::put_files(port, &fetched).await?;
@@ -542,7 +516,7 @@ impl State {
             match sources::write(port, id, &recorded, Some(*revision)).await {
                 Ok(_) => {
                     if let Ok((fetched, _)) = &outcome {
-                        self.heads.heard(id, observation, Some(now), fetched.commit.clone());
+                        self.heads.fetched(id, now, fetched.commit.clone());
                     }
                     break;
                 }
@@ -615,24 +589,24 @@ impl State {
     async fn check_due(&self, port: &PluginPort) -> Result<(), PluginError> {
         let all = sources::read(port).await?;
         let now = self.clock.now();
-        let mut due: Vec<(String, u64, String)> = Vec::new();
+        let mut due: Vec<(String, String)> = Vec::new();
         for (id, (source, _)) in all {
             if source.commit.is_none() || self.fetching.borrow().contains_key(&id) {
                 continue;
             }
             let origin = Origin::parse(&source.origin)
                 .map_err(|message| PluginError::failed(format!("a stored origin: {message}")))?;
-            if let Some(observation) = self.heads.claim(&id, now) {
-                due.push((id, observation, (self.resolve)(origin.url())));
+            if self.heads.claim(&id, now) {
+                due.push((id, (self.resolve)(origin.url())));
             }
         }
-        let checks = due.into_iter().map(|(id, observation, url)| async move {
+        let checks = due.into_iter().map(|(id, url)| async move {
             let checked = tokio::task::spawn_blocking(move || fetch::remote_head(&url)).await;
-            (id, observation, checked)
+            (id, checked)
         });
-        for (id, observation, checked) in join_all(checks).await {
+        for (id, checked) in join_all(checks).await {
             match checked {
-                Ok(Ok(commit)) => self.heads.heard(&id, observation, None, commit),
+                Ok(Ok(commit)) => self.heads.checked(&id, now, commit),
                 Ok(Err(message)) => {
                     tracing::info!(source = %id, %message, "a skill source's default branch was not checked");
                 }

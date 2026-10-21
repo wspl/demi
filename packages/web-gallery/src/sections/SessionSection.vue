@@ -1928,7 +1928,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Workflow Menu"
-        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice. Global Workflow follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read, or that is a symbolic link, stands in the menu with why, as its tip, and cannot be chosen; a .demi/workflows directory that is a link makes the menu say so in one row. A new conversation offers the menu before its first message and keeps the choice it was given. It starts with the model and the workflow last chosen in its project, or outside projects; a project never used starts as a conversation outside one does, and a remembered workflow the project no longer has starts as No Subagents. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
+        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice. Global Workflow follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read stands in the menu with why, as its tip, and cannot be chosen; a .demi/workflows directory the Host cannot read makes the menu say so in one row. A new conversation offers the menu before its first message and keeps the choice it was given. It starts with the model and the workflow last chosen in its project, or outside projects; a project never used starts as a conversation outside one does, and a remembered workflow the project no longer has starts as No Subagents. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="a new conversation starts with its project’s choices" wide>
@@ -1956,9 +1956,9 @@ onBeforeUnmount(() => {
               :workflow-choice="{ type: 'none' }"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="the workflows directory is a link" wide>
+          <GallerySpecimen variant="the workflows directory cannot be read" wide>
             <GalleryComposer
-              :workflows="{ state: 'unavailable', reason: 'Workflows are files of the project, not links.' }"
+              :workflows="{ state: 'unavailable', reason: 'the Host cannot read /Users/alex/app/.demi: Permission denied (os error 13)' }"
               :workflow-choice="{ type: 'workflow', id: 'review' }"
             />
           </GallerySpecimen>

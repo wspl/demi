@@ -25,8 +25,8 @@ pub struct ConversationWorkflows {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub directory: Option<String>,
-    /// Why that directory cannot be used: it is a symbolic link, which is
-    /// never followed; null while it can.
+    /// Why that directory cannot be used: the Host could not read it; null
+    /// while it can.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub unavailable: Option<String>,
@@ -77,8 +77,8 @@ pub struct MenuWorkflow {
     pub name: Option<String>,
     /// The file on the Host.
     pub path: String,
-    /// Why it cannot be used: it is a link, or it does not read, with its
-    /// path and the line and field that are wrong; null while it can.
+    /// Why it cannot be used: it does not read, with its path and the line
+    /// and field that are wrong; null while it can.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub unavailable: Option<String>,

@@ -723,7 +723,7 @@ fn a_changed_too_large_for_one_message_is_split_without_losing_a_key() {
 /// port when it is not the scheme's default, then its path's segments, and
 /// last four hex digits of the SHA-256 of the whole URL. The readable part is
 /// a file name on every system: an IPv6 host's colons and a percent-encoded
-/// byte are replaced, and a very long path is cut.
+/// byte are replaced.
 #[test]
 fn an_installation_is_named_after_its_backends_host_port_and_path() {
     let cases = [
@@ -766,18 +766,6 @@ fn backends_that_read_alike_have_installations_of_their_own() {
         // A case-insensitive file system tells them apart too.
         assert_ne!(first_name.to_lowercase(), second_name.to_lowercase(), "{first} and {second}");
     }
-}
-
-/// A legal but very long path does not make a name a file system refuses: the
-/// readable part is cut, and the hash still tells the backends apart.
-#[test]
-fn a_very_long_backend_path_still_names_an_installable_directory() {
-    let long = |tail: &str| format!("https://example.com/{}{tail}", "a".repeat(250));
-    let first = installation_name(&url::Url::parse(&long("x")).unwrap());
-    let second = installation_name(&url::Url::parse(&long("y")).unwrap());
-    assert!(first.len() <= 101 && second.len() <= 101, "{first}");
-    assert_ne!(first, second);
-    assert!(first.starts_with("example.com-aaaa"));
 }
 
 /// A conversation's scratch directory is named by the first 12 hex digits of

@@ -197,8 +197,7 @@ pub(super) async fn apply_switch(
     let Some((target, limits)) = s.read(|core| core.switch_target()) else {
         return Ok(false);
     };
-    let blocked = s.read(|core| core.switch_blocked());
-    let compacted = compaction::compact_to_fit(s, &target, limits, blocked.as_deref(), cancel).await?;
+    let compacted = compaction::compact_to_fit(s, &target, limits, cancel).await?;
     let replaced = s.update(|core| core.install_switch());
     for mut runtime in replaced {
         runtime.close().await;

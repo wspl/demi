@@ -194,7 +194,8 @@ pub struct WorkflowListing {
     /// The directory that holds them, `.demi/workflows` of the nearest
     /// directory that has one; null when none has.
     pub directory: Option<String>,
-    /// Why that directory cannot be used, a link; null while it can.
+    /// Why that directory cannot be used, as the Host could not read it; null
+    /// while it can.
     pub unavailable: Option<String>,
     /// By id.
     pub workflows: Vec<ListedWorkflow>,
@@ -208,8 +209,8 @@ pub struct ListedWorkflow {
     pub name: Option<String>,
     /// The file on the Host.
     pub path: String,
-    /// Why it cannot be used: it is a link, or the parser's whole error;
-    /// null while it can.
+    /// Why it cannot be used: the parser's whole error, or why the Host could
+    /// not read it; null while it can.
     pub unavailable: Option<String>,
 }
 

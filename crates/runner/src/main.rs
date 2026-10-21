@@ -250,27 +250,6 @@ fn directory(installation: &Installation, boot: Option<&ManagedBoot>) -> io::Res
     Ok(directory)
 }
 
-/// [`directory`] for a command that acts on what the installation holds:
-/// start, status, drain and uninstall. A directory that records another backend
-/// than the one `--backend` names is refused, so that nothing started, drained
-/// or removed there is another backend's. `run` is no such command: a runner
-/// that finds another backend's installation stops and starts nothing
-/// (`crates/runner/src/registration.rs`).
-fn owned_directory(installation: &Installation) -> io::Result<PathBuf> {
-    let directory = directory(installation, None)?;
-    if let Some(backend) = &installation.backend {
-        for recorded in state::recorded_backends(&directory)? {
-            if recorded != *backend {
-                return Err(io::Error::other(format!(
-                    "the installation in {} belongs to {recorded}, not {backend}; nothing was changed",
-                    directory.display()
-                )));
-            }
-        }
-    }
-    Ok(directory)
-}
-
 fn home() -> io::Result<PathBuf> {
     std::env::home_dir()
         .filter(|home| !home.as_os_str().is_empty())
@@ -400,24 +379,24 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             (installation, managed_boot, name, managed, artifacts, log, false)
         }
         Action::Status { installation } => {
-            let state = RunnerState::open(owned_directory(&installation)?).await?;
+            let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
             let stdout = tokio::fs::File::from_std(standard_file(1)?);
             return manage(&state, management::Action::Status, release, stdout).await;
         }
         Action::Announce { installation } => {
-            let state = RunnerState::open(owned_directory(&installation)?).await?;
+            let state = RunnerState::open(directory(&installation, None)?).await?;
             // The answer is the status, which the asker does not need.
             return manage(&state, management::Action::Announce, None, tokio::io::sink()).await;
         }
         Action::Drain { installation } => {
-            let state = RunnerState::open(owned_directory(&installation)?).await?;
+            let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
             let stdout = tokio::fs::File::from_std(standard_file(1)?);
             return manage(&state, management::Action::Drain, release, stdout).await;
         }
         Action::Start { installation } => {
-            let directory = owned_directory(&installation)?;
+            let directory = directory(&installation, None)?;
             // The started runner serves the installation this one names,
             // and writes its log.
             let mut arguments = vec!["run".to_owned(), "--log".to_owned()];
@@ -434,7 +413,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             return Ok(0);
         }
         Action::Uninstall { installation } => {
-            let directory = owned_directory(&installation)?;
+            let directory = directory(&installation, None)?;
             // Checked before anything writes there: opening the state would
             // make the directory and its lock.
             removal::installation(&directory)?;

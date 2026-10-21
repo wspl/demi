@@ -4,14 +4,10 @@
 use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
-use std::sync::Mutex;
 use std::time::Duration;
 
 use demi_shared_types::{Clock, Timestamp};
-
-use tokio::sync::Semaphore;
 
 use crate::Skills;
 
@@ -34,26 +30,6 @@ pub struct Repos {
     clock: Arc<Still>,
     /// How many times a plugin read a repository: a fetch or a check.
     reads: Arc<AtomicUsize>,
-    /// The next fetch of each repository named, which waits once it read.
-    held: Arc<Mutex<HashMap<String, Arc<Held>>>>,
-}
-
-/// A fetch held once it read its repository, until the test lets it go.
-pub struct Held {
-    read: Semaphore,
-    go: Semaphore,
-}
-
-impl Held {
-    /// Waits until the held fetch read its repository.
-    pub async fn read(&self) {
-        self.read.acquire().await.unwrap().forget();
-    }
-
-    /// Lets the held fetch go on and record what it read.
-    pub fn release(&self) {
-        self.go.add_permits(1);
-    }
 }
 
 /// A file of a commit: its path, its text, and whether it is executable.
@@ -65,7 +41,6 @@ impl Default for Repos {
             root: tempfile::tempdir().unwrap(),
             clock: Arc::new(Still(AtomicI64::new(FETCHED_AT))),
             reads: Arc::default(),
-            held: Arc::default(),
         }
     }
 }
@@ -114,16 +89,6 @@ impl Repos {
         self.clock.0.fetch_add(milliseconds, Ordering::Relaxed);
     }
 
-    /// Holds the next fetch of `owner/repo` once it read the repository.
-    pub fn hold_next(&self, name: &str) -> Arc<Held> {
-        let held = Arc::new(Held {
-            read: Semaphore::new(0),
-            go: Semaphore::new(0),
-        });
-        self.held.lock().unwrap().insert(name.to_owned(), held.clone());
-        held
-    }
-
     /// How many times the plugins read one of these repositories, by a
     /// fetch or a check of its default branch.
     pub fn reads(&self) -> usize {
@@ -139,18 +104,7 @@ impl Repos {
             let name = url.strip_prefix("https://github.com/").unwrap_or(url);
             format!("file://{}", root.join(name).display())
         };
-        let held = self.held.clone();
-        let hook = move |url: &str| -> futures_util::future::BoxFuture<'static, ()> {
-            let name = url.strip_prefix("https://github.com/").unwrap_or(url);
-            let next = held.lock().unwrap().remove(name);
-            Box::pin(async move {
-                if let Some(next) = next {
-                    next.read.add_permits(1);
-                    next.go.acquire().await.unwrap().forget();
-                }
-            })
-        };
-        Skills::resolving(Arc::new(resolve), self.clock.clone()).holding(Arc::new(hook))
+        Skills::resolving(Arc::new(resolve), self.clock.clone())
     }
 }
 

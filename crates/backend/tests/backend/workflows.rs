@@ -337,9 +337,9 @@ async fn a_page_hears_of_a_workflow_added_or_edited_and_reads_the_list_again() {
 }
 
 // A few seconds: a real runner on a paired device answers the reads, and
-// three turns run a shell job each.
+// two turns run a shell job each.
 #[tokio::test]
-async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_its_instructions_at_once() {
+async fn a_linked_workflow_is_read_check_lets_the_host_resolve_and_a_new_choice_reads_its_instructions_at_once() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -349,7 +349,7 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
 
     // `repo/.demi/workflows` holds review.yaml, docs.yaml, and linked.yaml,
-    // a link to a workflow outside the project.
+    // a link to a workflow outside the project, read as a file is.
     let home = alpha.runner.home_dir().to_owned();
     let repo = home.join("repo");
     let workflows = repo.join(".demi/workflows");
@@ -373,30 +373,20 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
         listed["workflows"],
         json!([
             { "id": "docs", "name": "Docs Review", "path": path(&workflows.join("docs.yaml")), "unavailable": null, "profiles": [] },
-            { "id": "linked", "name": null, "path": path(&workflows.join("linked.yaml")), "unavailable": "Workflows are files of the project, not links.", "profiles": [] },
+            { "id": "linked", "name": "Docs Review", "path": path(&workflows.join("linked.yaml")), "unavailable": null, "profiles": [] },
             { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null, "profiles": ["explore", "slow"] },
         ])
     );
 
-    // Chosen, the linked workflow refuses spawns with that reason.
-    choose(&backend, &master, json!({ "type": "workflow", "id": "linked" })).await;
+    // The Host follows `deep` before `..`: the file `check` reads is
+    // `elsewhere/outside.yaml`, which does not parse, not `repo/outside.yaml`.
     let turn = work
         .turn(vec![
-            shell(
-                "t1",
-                "demi agent spawn <<< 'Think'; demi agent workflows check deep/../outside.yaml",
-                15_000,
-            ),
-            say("refused"),
+            shell("t1", "demi agent workflows check deep/../outside.yaml", 15_000),
+            say("checked"),
         ])
         .await;
     let received = &turn.received[0];
-    assert!(
-        received.contains("this conversation's workflow \"linked\" is unavailable: Workflows are files of the project, not links."),
-        "{received}"
-    );
-    // The Host follows `deep` before `..`: the file it reads is
-    // `elsewhere/outside.yaml`, which does not parse, not `repo/outside.yaml`.
     assert!(
         received.contains("demi agent workflows check: deep/../outside.yaml does not read: error: line 1 column 7"),
         "{received}"
@@ -436,43 +426,14 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     assert!(first.contains("REVIEW STEPS\\n</workflow>"), "{first}");
     assert!(second.contains("REVIEW STEPS TWO"), "{second}");
 
-    // `.demi/workflows` itself a link: nothing in it is read, and the menu
-    // says why.
-    std::fs::remove_dir_all(&workflows).unwrap();
-    std::fs::create_dir_all(home.join("shared-workflows")).unwrap();
-    std::fs::write(home.join("shared-workflows/review.yaml"), REVIEW).unwrap();
-    std::os::unix::fs::symlink(home.join("shared-workflows"), &workflows).unwrap();
-    let listed = page.when(&backend, &master, |listed| !listed["unavailable"].is_null()).await;
-    assert_eq!(listed["directory"], json!(path(&workflows)));
-    assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
-    assert_eq!(listed["workflows"], json!([]));
-
-    // `.demi` itself a link, to a directory whose `workflows` holds a
-    // workflow: nothing behind it is listed or read.
-    std::fs::rename(repo.join(".demi"), home.join("old-demi")).unwrap();
-    std::fs::create_dir_all(home.join("shared-demi/workflows")).unwrap();
-    std::fs::write(home.join("shared-demi/workflows/review.yaml"), REVIEW).unwrap();
-    std::os::unix::fs::symlink(home.join("shared-demi"), repo.join(".demi")).unwrap();
-    let listed = page
-        .when(&backend, &master, |listed| {
-            listed["directory"] == path(&workflows) && !listed["unavailable"].is_null()
-        })
-        .await;
-    assert_eq!(listed["directory"], json!(path(&workflows)));
-    assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
-    assert_eq!(listed["workflows"], json!([]));
-
     // A `.demi` the Host cannot read is not looked past: its workflows are
-    // unavailable, and none of a directory above is offered instead. It
-    // arrives unreadable, in one rename the watch reports.
-    let locked = home.join("locked-demi");
-    std::fs::create_dir_all(locked.join("workflows")).unwrap();
-    std::fs::write(locked.join("workflows/review.yaml"), REVIEW).unwrap();
+    // unavailable, and none of a directory above is offered instead. The
+    // watch reports a workflow added below it, and the search then finds it
+    // unreadable.
     use std::os::unix::fs::PermissionsExt;
-    // Not readable, but writable, which a rename of a directory needs.
-    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o300)).unwrap();
-    std::fs::remove_file(repo.join(".demi")).unwrap();
-    std::fs::rename(&locked, repo.join(".demi")).unwrap();
+    // Not readable, but searchable, so the workflow can still be written.
+    std::fs::set_permissions(repo.join(".demi"), std::fs::Permissions::from_mode(0o300)).unwrap();
+    std::fs::write(workflows.join("added.yaml"), DOCS).unwrap();
     let listed = page
         .when(&backend, &master, |listed| {
             listed["unavailable"].as_str().is_some_and(|reason| reason.starts_with("the Host cannot read"))

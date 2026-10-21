@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { effectScope, shallowRef, watchEffect } from 'vue'
-import { REGION_WAIT_MS, pinRegionForms, regionForm, regionsChanged, regionsSettled, resetRegionWaits, type RegionForm } from '../region-wait'
+import { REGION_WAIT_MS, pinRegionForms, regionForm, regionsChanged, resetRegionWaits, type RegionForm } from '../region-wait'
 
 // A region that needs things which are not there waits for them, for 300 ms at
 // most in all, and draws again once when it is final. Fake timers; no I/O.
@@ -79,31 +79,6 @@ test('a region shown while another waits for the same key waits out what is left
   expect([first.draws.at(-1), second.draws.at(-1)]).toEqual(['plain', 'plain'])
   first.remove()
   second.remove()
-})
-
-test('what loads for no region waits until no region waits for anything, the chain of a region included, or for the longest it waits', async () => {
-  // Nothing asked: no wait.
-  await regionsSettled(1000)
-  const highlighter = shallowRef(false)
-  const language = shallowRef(false)
-  const region = show('code:haskell', () => highlighter.value && language.value)
-  let resumed = 0
-  const settled = regionsSettled(5000).then(() => (resumed += 1))
-  // The first link of the chain arrives: the second is still awaited, so the load stays held.
-  highlighter.value = true
-  regionsChanged()
-  await Promise.resolve()
-  expect(resumed).toBe(0)
-  language.value = true
-  regionsChanged()
-  await settled
-  expect(resumed).toBe(1)
-  region.remove()
-  // A region that never gets what it needs holds the load up only for the longest it waits.
-  show('math', () => false)
-  const capped = regionsSettled(2000)
-  jest.advanceTimersByTime(2000)
-  await capped
 })
 
 test('pinned, every region draws in the form it is pinned to, and in its own again once unpinned', () => {

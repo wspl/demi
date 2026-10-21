@@ -26,12 +26,9 @@ type ElementState = (
   intercept?: boolean,
 ) => Promise<{ failed: string | null }>
 
-// Composed as `element.rs` composes it, with the shared role resolution in
-// its scope.
 async function elementState(): Promise<ElementState> {
-  const read = (name: string) => readFile(new URL(name, import.meta.url), 'utf8')
-  const [aria, state] = await Promise.all([read('./aria-role.js'), read('./element-state.js')])
-  return new Function(`const aria = (${aria})(); return (${state})`)() as ElementState
+  const source = await readFile(new URL('./element-state.js', import.meta.url), 'utf8')
+  return new Function(`return (${source})`)() as ElementState
 }
 
 /** A 20 px button at `x`, and the frame the page function waits for. */

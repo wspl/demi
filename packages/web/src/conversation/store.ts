@@ -2062,9 +2062,6 @@ export const useConversations = defineStore('conversations', () => {
     const result = await readResponse(response, createdConversationSchema)
     signal.throwIfAborted()
     product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
-    // The choice the menu made while the record was on its way, which the
-    // request could not carry.
-    const chosen = conversation.workflow
     conversation.persistence = 'synced'
     Object.assign(conversation, listEntry(result.conversation))
     cache.delete(conversation.id)
@@ -2072,11 +2069,6 @@ export const useConversations = defineStore('conversations', () => {
       madeHere.add(conversation.id)
     }
     takeMetadata(conversation, result.metadata)
-    // It applies before the first message goes, so the first turn's spawns
-    // and instructions follow it (`crates/backend-user-shard/src/conversation/workflows.rs`).
-    if (!sameWorkflow(chosen, result.metadata.workflow)) {
-      await applyWorkflow(conversation.id, chosen)
-    }
   }
 
   function rename(id: string, title: string): void {
@@ -2373,9 +2365,7 @@ export const useConversations = defineStore('conversations', () => {
    * Makes `workflow` the conversation's Workflow menu choice: it shows at
    * once, and a write that fails or is refused gives the stored choice
    * back; settles once it is written or refused. A conversation without a
-   * record keeps it in its draft, which its first send gives the record,
-   * and one whose record is on its way applies it as soon as the record is
-   * made, before its first message goes.
+   * record keeps it in its draft, which its first send gives the record.
    */
   async function applyWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)

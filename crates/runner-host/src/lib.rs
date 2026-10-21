@@ -51,7 +51,6 @@
 
 pub mod files;
 pub mod fs;
-pub mod nofollow;
 pub mod git;
 mod history;
 pub mod host;

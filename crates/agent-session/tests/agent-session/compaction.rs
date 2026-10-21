@@ -62,7 +62,6 @@ async fn small_session_with(
     let session = start(provider, tools, store, config).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -302,7 +301,6 @@ async fn a_limit_on_the_models_window_lowers_the_token_threshold_from_the_next_c
     let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -643,7 +641,6 @@ async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_n
     .await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -763,7 +760,6 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
     let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -844,7 +840,6 @@ async fn a_restored_session_tells_its_usage_without_a_blob_while_its_media_lie_b
     let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
             runtime: None,
         })
@@ -1093,7 +1088,6 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     session.send(text("b"), turn("t2")).unwrap().await.unwrap();
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -1107,7 +1101,6 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     // A switch back to the larger window compacts nothing.
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(test_model()),
             runtime: None,
         })
@@ -1154,7 +1147,6 @@ async fn switching_to_a_smaller_window(provider: &ScriptedRuntime, store: &Rc<Me
     }
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -1254,7 +1246,6 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
 
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -1808,7 +1799,6 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     let session = restore_compacting(&store, &provider).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(small_model()),
             runtime: None,
         })
@@ -2636,7 +2626,6 @@ async fn after_four_shots(
     let session = start(&provider, tools, &store, SessionConfig::default()).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
             runtime: None,
         })
@@ -2681,7 +2670,6 @@ async fn screenshots_near_a_vendors_image_or_byte_limit_never_compact_a_history_
         let after = ScriptedRuntime::new([answer("after the switch")]).with_limits(limits);
         session
             .update_model(ModelSwitch {
-                compaction_blocked: None,
                 model: Box::new(model_reading("other", "model-b", &[FileExtension::Png])),
                 runtime: Some(Box::new(after.clone())),
             })
@@ -2968,7 +2956,6 @@ async fn each_models_token_threshold_leaves_room_for_its_answer_and_the_summary_
         model.model.output_limit = Some(output_limit);
         session
             .update_model(ModelSwitch {
-                compaction_blocked: None,
                 model: Box::new(model),
                 runtime: None,
             })
@@ -3109,7 +3096,6 @@ async fn a_pass_keeps_the_users_newest_words_within_their_budget_beside_its_summ
     let session = start(&provider, vec![slow], &store, config).await;
     session
         .update_model(ModelSwitch {
-            compaction_blocked: None,
             model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
             runtime: None,
         })
