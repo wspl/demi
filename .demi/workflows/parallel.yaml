@@ -14,7 +14,7 @@ instructions: |
   - review: reads a delivered branch once, before the merge, when it changes logic a user would meet.
 
   Flow of a work package
-  1. A new decision: write its record on the branch first, as the branch's one commit; show it to the user.
+  1. A new decision: write its record on the branch first, as the branch's one commit; show it to the user. A new capability has research on how the leading open-source projects of its kind built it before its record is written.
   2. Brief one implementer for the whole request, on one branch in a free slot, with the few things its acceptance must show. A new screen, panel or control stops at a gallery prototype for the user's agreement first.
   3. The implementer checks, then accepts its own work on the product with screenshots. Look at the screenshots yourself.
   4. Review when the change has logic a user would meet. Decide which findings to fix (what users will plausibly meet, data loss, security); the implementer reproduces each on the product, fixes it and shows it gone. Read the fixes yourself; a branch is reviewed once.
