@@ -23,7 +23,7 @@ instructions: |
   Slots and git
   - Four slots, `../demi-slots/1` to `../demi-slots/4`, each a worktree with its own warm build; at most four items run at once. Slot n uses ports 33n0–33n9 and 189n0–189n9. Items that change the same files run one after another.
   - Branches start from `origin/feat/demi-next` after a `git fetch`. A decision record takes the next number there; a number another session took meanwhile is changed at the merge.
-  - Merge in a slot, never in the user's checkout: `git switch --detach origin/feat/demi-next`, `git merge --no-ff <branch>`, `cargo check` and `bun run typecheck:web` when origin moved since the implementer's checks, `git push origin HEAD:feat/demi-next`, then delete the branch. Afterwards run `bun xtask sweep` in the free slots.
+  - Merge in a slot, never in the user's checkout: `git switch --detach origin/feat/demi-next`, `git merge --no-ff <branch>`, `cargo check` and `bun run typecheck:web` when origin moved since the implementer's checks, `git push origin HEAD:feat/demi-next`, then delete the branch.
   - Resume an agent when what it already knows saves more than its context costs; otherwise start a new one in the slot.
 subagent_instructions: |
   You work in the slot and branch the brief names, on that slot's ports. Stage files by name; never push, merge or `git stash`.
@@ -43,6 +43,7 @@ profiles:
       - At the end, after rebasing onto `origin/feat/demi-next`, run the checks once: cargo check and cargo test with the workspace selection, `bun run contracts`, `bun run test`, `bun run typecheck:web`.
       - Then accept your work as the user would: start the product and the gallery from your branch once, with a paired runner and real messages where the change needs them, walk what the brief asks with `bun browse`, and save one screenshot per affected screen outside the repository; look at the whole of each.
       - A review finding the lead sends back: reproduce it on the product, fix it, show it gone.
+      - Before your report, once your checks and acceptance are done, run `bun xtask sweep` in your slot to remove the build products no current build uses.
 
       Report: branch and commit, what changed, tests and that each failed before, checks run, what your acceptance walked with each screenshot's path, gaps.
   - id: research
