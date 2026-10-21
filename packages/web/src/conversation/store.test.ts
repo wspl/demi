@@ -4899,6 +4899,49 @@ test('a Save not yet confirmed survives a reload and goes again by itself', asyn
   }
 })
 
+// A Save that goes again after a reload, for a message another page deleted
+// meanwhile, stands as Not Saved, and the page keeps saving its drafts.
+// Before, the row held the reactive copy of the kept Save's files, which the
+// web browser cannot store: every later save of any draft failed, and with it
+// every upload and every new conversation.
+test('a Save sent again after a reload for a message deleted meanwhile stands as Not Saved, and drafts still save', async () => {
+  let signOut = signIn()
+  const kept = new Map<string, draftStorage.SavedDraft>()
+  const keep = () => spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    kept.set(id, structuredClone(draft))
+  })
+  const shot: DraftFile = { type: 'upload', ref: 'u1', fileName: 'shot.png', mediaType: 'image/png', sha256: 'a'.repeat(64) }
+  let writes = keep()
+  let opened = await openWithSaved([{ ...savedMessage('a', `Message A\n${ATTACHMENT_MARK}\n`), files: [shot] }])
+  const held = holdWrites()
+  try {
+    opened.store.editSaved(opened.first, 'a')
+    opened.store.saveSavedEdit(opened.first)
+    await until(() => (kept.get(FIRST)?.savedWrites ?? []).length === 1, 'the page keeps the Save')
+    held.restore()
+    signOut()
+    opened.store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+
+    // The next page: another page deleted the message meanwhile.
+    pinia = createPinia()
+    setActivePinia(pinia)
+    signOut = signIn(kept.get(FIRST)!)
+    writes = keep()
+    useConversations()
+    await connect()
+    opened = await openWithSaved([])
+    await until(() => (kept.get(FIRST)?.notSaved ?? []).length === 1, 'the refused Save is kept as Not Saved')
+    expect(kept.get(FIRST)?.savedWrites).toEqual([])
+    expect(kept.get(FIRST)?.notSaved.map(({ files }) => files)).toEqual([[shot]])
+  } finally {
+    held.restore()
+    writes.mockRestore()
+    signOut()
+  }
+})
+
 test('Retry on a message not saved saves it under its own id, and it is listed as saved once read', async () => {
   const signOut = signIn()
   const { store, first } = await openWithSaved([])

@@ -1,4 +1,4 @@
-import { inject, provide, toRaw, type InjectionKey } from 'vue'
+import { inject, provide, type InjectionKey } from 'vue'
 import { z } from 'zod'
 import { EditRejectedError } from '@demicodes/conversation-client'
 import {
@@ -11,6 +11,7 @@ import {
   type Version,
 } from '@demicodes/protocol'
 import { reportError } from '../infra/errors'
+import { plainCopy } from '../infra/plain-copy'
 import { t } from './locales/text'
 import type { MessageListBlock } from './pending-steers'
 
@@ -120,7 +121,7 @@ export function unchangedEditRequest(block: Block, version: Version): MessageEdi
     operationId: crypto.randomUUID(),
     targetBlockId: block.id,
     version: { ...version },
-    content: structuredClone(toRaw(block.content)),
+    content: plainCopy(block.content),
   }
 }
 
@@ -141,7 +142,7 @@ export function beginMessageEdit(block: Block, version: Version): SentMessageEdi
  * `content`; one without text gets an empty line to type in.
  */
 export function beginSavedEdit(savedId: string, content: MessageEditContent[]): SavedMessageEdit {
-  const opened = structuredClone(toRaw(content))
+  const opened = plainCopy(content)
   if (!opened.some((part) => part.type === 'text')) {
     opened.push({ type: 'text', text: '' })
   }
@@ -249,7 +250,7 @@ export function changeMessageEditContent<State extends MessageEditState>(
   if (state.phase !== 'editing') {
     return state
   }
-  const next = structuredClone(toRaw(state))
+  const next = plainCopy(state)
   change(editContent(next))
   return next
 }
@@ -274,7 +275,7 @@ export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
     return
   }
   const regenerate = draft.phase === 'uncertain' && draft.regenerate === true
-  await sendMessageEdit(host, structuredClone(toRaw(draft.request)), regenerate ? 'regenerating' : 'sending')
+  await sendMessageEdit(host, plainCopy(draft.request), regenerate ? 'regenerating' : 'sending')
 }
 
 /**
@@ -288,7 +289,7 @@ export async function regenerateMessage(host: MessageEditHost, request: MessageE
   if (host.get()) {
     return
   }
-  await sendMessageEdit(host, structuredClone(toRaw(request)), 'regenerating')
+  await sendMessageEdit(host, plainCopy(request), 'regenerating')
 }
 
 async function sendMessageEdit(
