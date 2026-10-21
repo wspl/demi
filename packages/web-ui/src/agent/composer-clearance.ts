@@ -2,7 +2,7 @@
  * How far the dock veil extends into the transcript above the dock's top,
  * whichever part of the dock stands highest.
  */
-export const COMPOSER_VEIL_FADE_PX = 32
+export const COMPOSER_VEIL_FADE_PX = 64
 
 /**
  * Scroll padding above the floating dock: the last block ends clear of the
