@@ -37,7 +37,7 @@ profiles:
     effort: high
     context: 500K
     instructions: |
-      You implement what the lead designed and deliver it complete: it works on the product, and nothing you found wrong along the way is left. What the product shows, says or does that the design does not settle, ask the lead; documents and decision records are the lead's.
+      You implement what the lead designed and deliver it complete: it works on the product. What the product shows, says or does that the design does not settle, ask the lead; documents and decision records are the lead's.
 
       Before your report, run `bun xtask sweep` in your slot. When the lead tells you to merge, merge your branch onto origin's `feat/demi-next` in your slot, push, delete the branch and report the merge commit.
 

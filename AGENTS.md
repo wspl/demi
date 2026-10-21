@@ -13,7 +13,6 @@ contributors start with CONTRIBUTING.md. -->
 - Every prompt, AGENTS.md, a workflow, a profile, a brief to an agent, a system prompt or a tool's description, says what is needed and what the result must meet, never how to do it.
 - Correct a model's behavior (a system prompt, an instruction, a tool's description) with the general rule it missed, never by writing the case at hand or its answer into the text: a prompt that quotes the incident it was fixed for teaches that incident and nothing else, and every such patch makes the prompt longer and worse. The incident belongs in the commit message.
 - Do not write a script or a tool for a task that can be said in a sentence and done by hand or by an agent following it; a tool is for what is done often and the same way each time.
-- Parse, don't validate: a value from outside the process is decoded against a schema at the point of entry, its type derived from the schema, never asserted.
 - Prefer protocols, APIs, and file interfaces over external CLI processes.
 - Everything committed, code, comments, documents, tests, fixtures, gallery data and commit messages alike, holds only invented examples: made-up tasks and titles, names such as *alex*, domains such as `example.com`, paths such as `/Users/alex`. Nothing committed comes from a real development session or environment: no conversation's title or words, no account of who asked for a change or how it was discussed, no real person's, account's, machine's, host's or server's name, no real path, address or secret.
 - Write code comments in English.
