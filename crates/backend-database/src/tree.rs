@@ -40,7 +40,7 @@ use demi_shared_types::{
 use futures_util::future::LocalBoxFuture;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
 use demi_agent_store::media::block_blobs;
-use crate::path::{self, PATH_LENGTH, PATH_ROWS, POSITION, Path};
+use crate::path::{self, PATH_LENGTH, PATH_ROWS, POSITION, Path, RUN_NODE, Segment};
 use crate::shares;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
@@ -72,37 +72,34 @@ impl SqliteTreeStore {
         Self { db, blobs, saved }
     }
 
-    /// Creates the node of `record` with its first checkpoint `initial`,
-    /// after the rows of `prefix` when there is one, copied from the
-    /// database file it names or, with none, this one.
-    async fn create(
-        &self,
-        record: NodeRecord,
-        prefix: Option<(Option<std::path::PathBuf>, StoredPrefix)>,
-        initial: CheckpointUpdate,
-    ) -> Result<(), StoreError> {
+    /// Creates the node of `record` with its first checkpoint `initial`, its
+    /// path starting as `start` says.
+    async fn create(&self, record: NodeRecord, start: Start, initial: CheckpointUpdate) -> Result<(), StoreError> {
         let completions = initial.carried_completions()?;
         let node = record.id.clone();
-        let copied = prefix.is_some();
+        let started = !matches!(start, Start::Empty);
         let change = self
             .db
             .call(move |connection| {
-                let attached = match &prefix {
-                    Some((Some(file), _)) => {
+                let attached = match &start {
+                    Start::Copied(Some(file), _) => {
                         connection.execute("ATTACH DATABASE ?1 AS source", [file.to_string_lossy()])?;
                         true
                     }
                     _ => false,
                 };
-                let created = create_in(connection, &record, prefix.as_ref().map(|(file, prefix)| {
-                    (if file.is_some() { "source" } else { "main" }, prefix)
-                }), &initial, &completions);
+                let prefix = match &start {
+                    Start::Empty => Prefix::None,
+                    Start::Copied(file, prefix) => Prefix::Copied(if file.is_some() { "source" } else { "main" }, prefix),
+                    Start::Shared(prefix) => Prefix::Shared(prefix),
+                };
+                let created = create_in(connection, &record, prefix, &initial, &completions);
                 if attached {
                     connection.execute("DETACH DATABASE source", [])?;
                 }
-                // A node that starts with copied rows is indexed for search
-                // whole, as its publication marks it.
-                created.map(|created| created.map(|change| change.filter(|_| !copied)))
+                // A node that starts with rows is indexed for search whole, as
+                // its publication marks it.
+                created.map(|created| created.map(|change| change.filter(|_| !started)))
             })
             .await
             .map_err(store_error)??;
@@ -111,12 +108,32 @@ impl SqliteTreeStore {
     }
 }
 
+/// Where a new node's path starts.
+enum Start {
+    /// Nowhere: the node's first blocks are `initial`'s.
+    Empty,
+    /// After rows copied as its own from a conversation's database file, or
+    /// from this one with none.
+    Copied(Option<std::path::PathBuf>, StoredPrefix),
+    /// After rows of this conversation's tree that stay their node's, which
+    /// the new node's path names.
+    Shared(StoredPrefix),
+}
+
+/// [`Start`] inside the transaction that creates the node, a copy's rows in
+/// the schema it names.
+enum Prefix<'a> {
+    None,
+    Copied(&'a str, &'a StoredPrefix),
+    Shared(&'a StoredPrefix),
+}
+
 /// The node `record` with its first checkpoint `initial` in one
-/// transaction, after the rows of `prefix` in the schema it names.
+/// transaction, after the rows of `prefix`.
 fn create_in(
     connection: &mut Connection,
     record: &NodeRecord,
-    prefix: Option<(&str, &StoredPrefix)>,
+    prefix: Prefix<'_>,
     initial: &CheckpointUpdate,
     completions: &[CompletionId],
 ) -> Result<Result<Option<TranscriptChange>, StoreError>, StorageError> {
@@ -125,9 +142,12 @@ fn create_in(
         return Ok(Err(StoreError::Failed(format!("node {} already exists", record.id))));
     }
     insert_node(&transaction, record, initial)?;
-    if let Some((schema, prefix)) = prefix
-        && let Err(refused) = copy_prefix(&transaction, &record.id, schema, prefix)?
-    {
+    let started = match prefix {
+        Prefix::None => Ok(()),
+        Prefix::Copied(schema, prefix) => copy_prefix(&transaction, &record.id, schema, prefix)?,
+        Prefix::Shared(prefix) => share_prefix(&transaction, &record.id, prefix)?,
+    };
+    if let Err(refused) = started {
         return Ok(Err(refused));
     }
     if let Err(refused) = write_checkpoint(&transaction, &record.id, initial, completions)? {
@@ -211,6 +231,20 @@ fn copy_prefix(
     )?;
     transaction.execute("DELETE FROM temp.fork_rows", [])?;
     Ok(Ok(()))
+}
+
+/// Starts the path of `node` where `prefix` ends: its first positions name
+/// the rows of the node `prefix` names, which stay that node's, and a later
+/// switch of that node leaves them as captured. No row is copied, and no
+/// block is read.
+fn share_prefix(transaction: &Transaction<'_>, node: &NodeId, prefix: &StoredPrefix) -> Result<Result<(), StoreError>, StorageError> {
+    match Path::starting_at(transaction, node.as_str(), prefix.node.as_str(), integer(prefix.leaf), count(prefix.length))? {
+        Ok(path) => {
+            path.write(transaction)?;
+            Ok(Ok(()))
+        }
+        Err(reason) => Ok(Err(StoreError::Failed(reason))),
+    }
 }
 
 /// The `nodes` row of `record`, with `initial`'s state, and its
@@ -338,7 +372,7 @@ impl AgentTreeStore for SqliteTreeStore {
         record: NodeRecord,
         initial: CheckpointUpdate,
     ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
-        Box::pin(self.create(record, None, initial))
+        Box::pin(self.create(record, Start::Empty, initial))
     }
 
     fn create_node_after<'a>(
@@ -350,15 +384,16 @@ impl AgentTreeStore for SqliteTreeStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             // Another conversation's rows are read from its file, attached
-            // to this one's writer for the copy.
-            let file = match root {
+            // to this one's writer for the copy; this tree's own are named
+            // where they are.
+            let start = match root {
                 Some(root) => {
                     let source = ConversationId::try_from(root.as_str()).map_err(|error| StoreError::Failed(error.to_string()))?;
-                    self.db.file_of(&source)
+                    Start::Copied(self.db.file_of(&source), prefix.clone())
                 }
-                None => None,
+                None => Start::Shared(prefix.clone()),
             };
-            self.create(record, Some((file, prefix.clone())), initial).await
+            self.create(record, start, initial).await
         })
     }
 
@@ -930,6 +965,12 @@ fn write_checkpoint(
         .map_or(i64::MAX, count)
         .min(count(update.block_count))
         .min(stored);
+    // The rows the node starts from are settled and another node's.
+    if cut < path.base() {
+        return Ok(Err(StoreError::Failed(format!(
+            "a save of node {node} cuts its path at position {cut}, inside the rows it starts from"
+        ))));
+    }
     // A block the save carries to the new branch under its id, as a
     // compaction inside a turn does, replaces its row there, whose
     // versions it keeps.
@@ -939,9 +980,9 @@ fn write_checkpoint(
         let mut ids = transaction.prepare_cached(
             "SELECT idx, json_extract(block, '$.id') FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3",
         )?;
-        for (_, rows) in path.segments(cut..stored) {
+        for segment in path.segments(node.as_str(), cut..stored) {
             let found = ids
-                .query_map(params![node.as_str(), rows.start, rows.end], |row| {
+                .query_map(params![segment.node, segment.rows.start, segment.rows.end], |row| {
                     Ok((row.get::<_, String>(1)?, row.get::<_, i64>(0)?))
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -957,7 +998,11 @@ fn write_checkpoint(
     for (position, block) in &update.changed_blocks {
         let position = count(*position);
         if position < cut {
-            let row = path.row_at(position).expect("the path holds every position below the cut");
+            let Some(row) = path.row_at(position) else {
+                return Ok(Err(StoreError::Failed(format!(
+                    "a save of node {node} rewrites position {position}, which is in the rows it starts from"
+                ))));
+            };
             shares::keep_rewritten(transaction, node, row)?;
             transaction
                 .prepare_cached("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?
@@ -1114,9 +1159,9 @@ fn last_of(
            AND idx >= ?3 AND idx < ?4 AND ({})",
         kind.condition("block").unwrap_or_else(|| "1".to_owned())
     ))?;
-    for (start, rows) in path.segments(0..end.min(path.len())).into_iter().rev() {
+    for Segment { start, node: holder, rows } in path.segments(node.as_str(), 0..end.min(path.len())).into_iter().rev() {
         let found: Option<i64> =
-            statement.query_row(params![node.as_str(), types, rows.start, rows.end], |row| row.get(0))?;
+            statement.query_row(params![holder, types, rows.start, rows.end], |row| row.get(0))?;
         if let Some(row) = found {
             return Ok(Some(decode("path_runs", "start", usize::try_from(start + row - rows.start))?));
         }
@@ -1140,9 +1185,9 @@ fn next_of(
            AND idx >= ?3 AND idx < ?4 AND ({})",
         kind.condition("block").unwrap_or_else(|| "1".to_owned())
     ))?;
-    for (start, rows) in path.segments(from..path.len()) {
+    for Segment { start, node: holder, rows } in path.segments(node.as_str(), from..path.len()) {
         let found: Option<i64> =
-            statement.query_row(params![node.as_str(), types, rows.start, rows.end], |row| row.get(0))?;
+            statement.query_row(params![holder, types, rows.start, rows.end], |row| row.get(0))?;
         if let Some(row) = found {
             return Ok(Some(decode("path_runs", "start", usize::try_from(start + row - rows.start))?));
         }
@@ -1169,8 +1214,8 @@ fn blocks_of(
          ORDER BY idx",
     )?;
     let mut found = Vec::new();
-    for (start, rows) in path.segments(range.start..range.end.min(path.len())) {
-        let mut read = statement.query(params![node.as_str(), types, rows.start, rows.end])?;
+    for Segment { start, node: holder, rows } in path.segments(node.as_str(), range.start..range.end.min(path.len())) {
+        let mut read = statement.query(params![holder, types, rows.start, rows.end])?;
         while let Some(row) = read.next()? {
             let idx: i64 = row.get(0)?;
             let text: String = row.get(1)?;
@@ -1189,7 +1234,7 @@ fn turn_position(connection: &Connection, node: &NodeId, turn: &TurnId) -> Resul
     let position: Option<i64> = connection
         .prepare_cached(&format!(
             "SELECT min({POSITION}) FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+               ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') = 'user'
                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
              WHERE run.node_id = ?1 AND json_extract(blocks.block, '$.turnId') = ?2"
         ))?
@@ -1225,7 +1270,7 @@ fn earlier_ids(connection: &Connection, node: &NodeId, end: i64) -> Result<(Vec<
                 CASE json_extract(blocks.block, '$.type') WHEN 'user' THEN json_extract(blocks.block, '$.turnId')
                   ELSE json_extract(blocks.block, '$.id') END
          FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-           ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') IN ('user', 'tool_call')
+           ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') IN ('user', 'tool_call')
              AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
          WHERE run.node_id = ?1 AND {POSITION} < ?2
          ORDER BY run.start, blocks.idx"
@@ -1280,8 +1325,8 @@ fn each_block(
         .prepare_cached("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx")?;
     let first = decode("path_runs", "start", usize::try_from(range.start))?;
     let mut position = first;
-    for (_, rows) in path.segments(range.clone()) {
-        let mut found = statement.query(params![node.as_str(), rows.start, rows.end])?;
+    for Segment { node: holder, rows, .. } in path.segments(node.as_str(), range.clone()) {
+        let mut found = statement.query(params![holder, rows.start, rows.end])?;
         let mut expected = rows.start;
         while let Some(row) = found.next()? {
             if row.get::<_, i64>(0)? != expected {
@@ -2027,7 +2072,7 @@ impl Transcript {
     pub fn user_blocks(&self, connection: &Connection, length: usize) -> Result<Vec<usize>, StorageError> {
         let agent_sql = format!(
             "SELECT {POSITION} FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+               ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') = 'user'
                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
              WHERE run.node_id = ?1 AND {POSITION} < ?2
              ORDER BY 1"
@@ -2136,12 +2181,14 @@ impl Transcript {
         let (sql, key) = match self {
             Self::Agent(node) => {
                 let path = Path::read(connection, node.as_str())?;
-                let Some((_, rows)) = path.segments(count(index)..count(index) + 1).pop() else {
+                let Some(Segment { node: holder, rows, .. }) =
+                    path.segments(node.as_str(), count(index)..count(index) + 1).pop()
+                else {
                     return Err(self.gap(index));
                 };
                 (
                     format!("SELECT {} FROM blocks WHERE node_id = ?1 AND idx = ?2", columns("block")),
-                    [Value::Text(node.as_str().to_owned()), Value::Integer(rows.start)],
+                    [Value::Text(holder.to_owned()), Value::Integer(rows.start)],
                 )
             }
             Self::Shared { token } => (
@@ -2177,8 +2224,9 @@ impl Transcript {
         let wanted = [Value::Text(id.as_str().to_owned()), Value::Integer(count(length))];
         let agent_sql = format!(
             "SELECT {POSITION} FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
-               ON run.node_id = blocks.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE json_extract(blocks.block, '$.id') = ?2 AND blocks.node_id = ?1 AND {POSITION} < ?3"
+               ON run.node_id = ?1 AND {RUN_NODE} = blocks.node_id
+                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE json_extract(blocks.block, '$.id') = ?2 AND {POSITION} < ?3"
         );
         let (sql, parameters): (&str, Vec<Value>) = match self {
             Self::Agent(node) => (
@@ -2225,7 +2273,7 @@ impl Transcript {
             .query_row(
                 &format!(
                     "SELECT blocks.block FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-                       ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'context'
+                       ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') = 'context'
                          AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
                      WHERE run.node_id = ?1 AND {POSITION} < ?2 AND json_extract(blocks.block, '$.source') = ?3
                      ORDER BY {POSITION} DESC LIMIT 1"
@@ -2785,6 +2833,164 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert_eq!(destination.session_store(&id("child")).load().await.unwrap().unwrap().transcript, path[..3]);
+    }
+
+    /// A side question of the root, asked of the root's `reply`.
+    fn side_record(node: &str) -> NodeRecord {
+        NodeRecord {
+            cwd: None,
+            model: None,
+            side: Some(SideOf {
+                block: BlockId::try_from("a1").unwrap(),
+                start: 0,
+                end: 5,
+                quote: "hello".to_owned(),
+                picture: None,
+                question: "Why?".to_owned(),
+                asked_at: Timestamp::UNIX_EPOCH,
+            }),
+            ..record(node, Some("root"), 0)
+        }
+    }
+
+    // A side question starts where its source is: its path names the source's
+    // rows and copies none, and the node reads, pages and finds its history
+    // through them as it does its own rows. What the source does afterwards,
+    // an edit that makes another branch current included, leaves the rows the
+    // node starts from, also when the source's path had left them before the
+    // node was made.
+    #[tokio::test(flavor = "local")]
+    async fn a_node_that_starts_at_rows_of_the_tree_names_them_and_copies_none() {
+        let (tree, stores, _data) = store().await;
+        let root = id("root");
+        let path = vec![user("u1"), shell_call("c1", "cmd-1"), response("r1"), reply("a1")];
+        tree.create_node(record("root", None, 0), update(path.iter().cloned().enumerate().collect(), 4))
+            .await
+            .unwrap();
+        let captured = tree.session_store(&root).prefix(4).await.unwrap().unwrap();
+        tree.create_node_after(side_record("early"), None, &captured, update(vec![(4, reply("answer"))], 5))
+            .await
+            .unwrap();
+        // The root's edit of its first message makes another branch current,
+        // which the capture no longer ends.
+        let edit = CheckpointUpdate {
+            state: state(),
+            changed_blocks: vec![(0, user("u1-edited")), (1, reply("a1-edited"))],
+            block_count: 2,
+            moved_from: Some(0),
+            version: true,
+        };
+        tree.session_store(&root).save(edit).await.unwrap();
+        tree.create_node_after(side_record("late"), None, &captured, update(vec![(4, reply("answer"))], 5))
+            .await
+            .unwrap();
+
+        for side in ["early", "late"] {
+            let store = tree.session_store(&id(side));
+            let own: i64 = stores
+                .read(&conversation(), move |connection| {
+                    Ok(connection.query_row("SELECT count(*) FROM blocks WHERE node_id = ?1", [side], |row| row.get(0))?)
+                })
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(own, 1, "{side} holds only its own row");
+            let loaded = store.load().await.unwrap().unwrap();
+            assert_eq!(loaded.transcript, [path.clone(), vec![reply("answer")]].concat(), "{side}");
+            assert_eq!(store.blocks(1..3).await.unwrap().blocks, path[1..3], "{side}");
+            assert_eq!(store.position(&BlockId::try_from("c1").unwrap()).await.unwrap(), Some(1));
+            assert_eq!(store.position(&BlockId::try_from("answer").unwrap()).await.unwrap(), Some(4));
+            assert_eq!(store.last_of(Kind::User, 5).await.unwrap(), Some(0));
+            assert_eq!(store.turn_position(&TurnId::try_from("t1").unwrap()).await.unwrap(), Some(0));
+            assert_eq!(
+                store.blocks_of(vec![Kind::ToolCall, Kind::CompletedText], 0..5).await.unwrap().len(),
+                1,
+                "the call, and no completed text"
+            );
+            let earlier = store.earlier(4).await.unwrap();
+            assert_eq!((earlier.user_turns.len(), earlier.calls.len()), (1, 1));
+
+            // A page of its history reads through the rows it starts from.
+            let name = id(side);
+            let read = stores
+                .read(&conversation(), move |connection| {
+                    read_page(
+                        connection,
+                        &Transcript::Agent(name),
+                        PageQuery { before: None, after: None, around: None, edge: None },
+                    )
+                })
+                .await
+                .unwrap()
+                .unwrap();
+            let PageRead::Page { start, length, blocks, versions, .. } = read else {
+                panic!("a page");
+            };
+            assert_eq!((start, length, blocks.len(), versions.len()), (0, 5, 5, 0), "{side}");
+            let name = id(side);
+            let call = stores
+                .read(&conversation(), move |connection| {
+                    read_block(connection, &Transcript::Agent(name), &BlockId::try_from("c1").unwrap())
+                })
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(call, BlockRead::Block(Block::ToolCall(_))), "{side}");
+        }
+
+        // The node goes on after the rows it starts from: its first row of
+        // its own follows none, and a retry of its answer is a row beside it.
+        let side = tree.session_store(&id("early"));
+        side.save(update(vec![(5, reply("more"))], 6)).await.unwrap();
+        let mut retry = update(vec![(4, reply("answer-retried"))], 5);
+        retry.moved_from = Some(4);
+        side.save(retry).await.unwrap();
+        let loaded = side.load().await.unwrap().unwrap();
+        assert_eq!(loaded.transcript, [path.clone(), vec![reply("answer-retried")]].concat());
+        let rows: Vec<(i64, Option<i64>)> = stores
+            .read(&conversation(), |connection| {
+                Ok(connection
+                    .prepare("SELECT idx, follows FROM blocks WHERE node_id = 'early' ORDER BY idx")?
+                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                    .collect::<rusqlite::Result<_>>()?)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(rows, [(0, None), (1, Some(0)), (2, None)]);
+
+        // The rows it starts from are settled: a save that cuts the path
+        // inside them, or rewrites one, is refused and changes nothing.
+        let mut cut = update(vec![(2, reply("other"))], 3);
+        cut.moved_from = Some(2);
+        assert!(side.save(cut).await.is_err());
+        assert!(side.save(update(vec![(2, reply("rewritten"))], 5)).await.is_err());
+        assert_eq!(side.load().await.unwrap().unwrap(), loaded);
+
+        // The source deletes with the node that starts from it, and no
+        // alone: the first of two nodes of a tree that the second starts at.
+        tree.create_node(record("child", Some("root"), 1), update(vec![(0, user("c-u1")), (1, reply("c-a1"))], 2))
+            .await
+            .unwrap();
+        let from_child = tree.session_store(&id("child")).prefix(2).await.unwrap().unwrap();
+        tree.create_node_after(record("after", Some("root"), 2), None, &from_child, update(Vec::new(), 2))
+            .await
+            .unwrap();
+        let removed = stores
+            .db(&conversation())
+            .call(|connection| Ok(connection.execute("DELETE FROM nodes WHERE id = 'child'", []).is_ok()))
+            .await
+            .unwrap();
+        assert!(!removed, "a node another node starts from stays");
+        let removed = stores
+            .db(&conversation())
+            .call(|connection| {
+                connection.execute("DELETE FROM nodes WHERE id = 'root'", [])?;
+                Ok(connection.query_row("SELECT (SELECT count(*) FROM path_runs) + (SELECT count(*) FROM blocks)", [], |row| row.get::<_, i64>(0))?)
+            })
+            .await
+            .unwrap();
+        assert_eq!(removed, 0, "with the tree, every node goes");
     }
 
     async fn facts(stores: &ConversationStores) -> SummaryFacts {

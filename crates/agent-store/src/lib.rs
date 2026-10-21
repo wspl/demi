@@ -120,7 +120,8 @@ pub trait SessionStore {
     /// with ([`AgentTreeStore::create_node_after`]).
     ///
     /// They are named by the row at their end, so a later switch or edit of
-    /// this node leaves them as they are now. None for no blocks.
+    /// this node leaves them as they are now. None for no blocks. A node whose
+    /// path starts with another node's rows names none of its blocks this way.
     fn prefix(&self, length: usize) -> LocalBoxFuture<'_, Result<Option<StoredPrefix>, StoreError>>;
 
     /// Makes the latest leaf of the `version`th version (from 1) at the path's
@@ -182,8 +183,12 @@ pub trait AgentTreeStore {
     /// `prefix`, rows of this tree, or with `root` of the tree of that
     /// conversation root.
     ///
-    /// The store copies them as the node's first rows, in the database, without
-    /// reading them into the process. `initial` holds the blocks after them.
+    /// The rows of another conversation's tree are copied as the node's first
+    /// rows, in the database, without reading them into the process. The rows
+    /// of this tree are not copied: they stay their node's, the new node's path
+    /// starts with them, and every read of the node's history reads them from
+    /// there. They are settled, and a save of the node that would rewrite one
+    /// is refused. `initial` holds the blocks after them.
     fn create_node_after<'a>(
         &'a self,
         record: NodeRecord,

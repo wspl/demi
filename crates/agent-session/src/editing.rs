@@ -458,10 +458,11 @@ pub enum ForkError {
 /// A Fork's seed: the history through the completed text a [`ForkEnd`] names,
 /// idle, with nothing waiting.
 ///
-/// It seeds a new root, or a forked child or side question
-/// (`crates/agent-server/src/server/tree/supervisor.rs`). The blocks the
+/// It seeds a new root or a side question
+/// (`crates/agent-server/src/server/tree/sides.rs`). The blocks the
 /// source's store holds before its window are no part of it: `prefix` names
-/// them as rows, which the destination's store copies in the database
+/// them as rows, which the destination's store copies in the database, or,
+/// when they are its own tree's, starts its node's path with
 /// ([`demi_agent_store::AgentTreeStore::create_node_after`]), and the
 /// checkpoint holds the blocks after them, from its `start`.
 #[derive(Debug, Clone, PartialEq)]
@@ -475,7 +476,8 @@ impl ForkSeed {
     /// checkpoint, in one commit.
     ///
     /// The prefix's rows are copied from the tree of the conversation root
-    /// `source`, or from `store`'s own with none, then the seed's blocks.
+    /// `source`; with none they are `store`'s own tree's, which the node's path
+    /// starts with. The seed's blocks follow them.
     pub async fn create(
         &self,
         store: &dyn AgentTreeStore,

@@ -1550,7 +1550,8 @@ CREATE TABLE plugin_oauth_clients (
 ///   turn, 0.1.33 the one before a running command kept its call's script,
 ///   0.1.36 the one before an attachment kept the file it was uploaded from,
 ///   0.1.37 the one before every block named its request, and 0.1.38 the one
-///   before the messages a compaction kept named theirs.
+///   before the messages a compaction kept named theirs, and 0.1.48 the one
+///   before a path could start with another node's rows.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1658,8 +1659,21 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.47.sql"),
             migration: Migration::Code(conversation_from_0_1_47),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.48.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_48),
+        },
     ],
 };
+
+/// From 0.1.48's conversation schema to the current one.
+///
+/// A node's path may start with rows of another node, which a run of its path
+/// names by that node's id. Every path stored before holds its own rows alone,
+/// so no run names a node.
+const CONVERSATION_FROM_0_1_48: &str = "
+ALTER TABLE path_runs ADD COLUMN source TEXT REFERENCES nodes (id);
+";
 
 /// From 0.1.47's conversation schema to the current one.
 ///
@@ -4930,7 +4944,8 @@ CREATE TABLE nodes (
   -- place of the user's limit; null for the user's limit.
   context_limit    INTEGER CHECK (context_limit >= 1),
   -- The row number of the current path's last block, the current leaf;
-  -- null while the path is empty (message-editing.md § Versions).
+  -- null while the path holds no row of the node's own
+  -- (message-editing.md § Versions).
   leaf             INTEGER CHECK (leaf >= 0),
   -- The row a cut of the path left off its end that no row has replaced
   -- yet: the next row written at the path's end replaces it. Null when the
@@ -5019,11 +5034,16 @@ CREATE INDEX blocks_carrying ON blocks (node_id, replaces) WHERE replaces IS NOT
 -- path position `start` holds the rows `first` to `first + length - 1`.
 -- Derived from the rows and the node's leaf, and written with the leaf in
 -- the same transaction, so a page of the path reads an index range.
+-- A node that starts where another node's path is, a side question, has
+-- first runs whose rows are `source`'s: they stay `source`'s, and the
+-- database refuses to delete `source` while a run names it. Null for a run
+-- of the node's own rows.
 CREATE TABLE path_runs (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   start   INTEGER NOT NULL CHECK (start >= 0),
   first   INTEGER NOT NULL CHECK (first >= 0),
   length  INTEGER NOT NULL CHECK (length >= 1),
+  source  TEXT REFERENCES nodes (id),
   PRIMARY KEY (node_id, start)
 ) STRICT, WITHOUT ROWID;
 -- Each blob a block names, as a medium or a side of an edit, by the block's
