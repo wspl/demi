@@ -58,9 +58,9 @@ const menu: ContextMenuDeclaration = {
   text: true,
   // The page's own tools act on the reply in place and come first; Send to
   // Conversation, which opens a submenu, last.
-  selectionEntries: (text) => [
-    ...(tools && props.blockId && root.value ? tools.selection({ blockId: props.blockId, root: root.value }, () => props.isStreaming) : []),
-    ...(targets ? [sendEntry(targets, () => quotedWords(text))] : []),
+  selectionEntries: (selected) => [
+    ...(tools && props.blockId && root.value ? tools.selection({ blockId: props.blockId, root: root.value }, selected, () => props.isStreaming) : []),
+    ...(targets ? [sendEntry(targets, () => quotedWords(selected.text))] : []),
   ],
   // A picture takes a comment and a side question as words do, and goes to
   // another conversation as a file.

@@ -216,7 +216,7 @@ const menu: ContextMenuDeclaration = {
       ...(targets && own.value ? [sendEntry(targets, sentWords)] : []),
     ]]
   },
-  selectionEntries: (text) => (targets && own.value && !props.pending ? [sendEntry(targets, () => textWords(text))] : []),
+  selectionEntries: ({ text }) => (targets && own.value && !props.pending ? [sendEntry(targets, () => textWords(text))] : []),
   text: true,
 }
 

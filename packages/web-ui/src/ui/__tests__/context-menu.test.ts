@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { afterEach, expect, jest, test } from 'bun:test'
+import { afterEach, expect, jest, spyOn, test } from 'bun:test'
 
 // The page's context menus: one handler at the page's root builds each menu from
 // what is under the pointer, the content's entries innermost first, then the first
@@ -113,14 +113,16 @@ test('a link in a message has its own entries first, then the message’s, and n
 })
 
 test('the selection under the pointer has its own menu: Copy and what its object offers for it, nothing else', () => {
-  page(() => message({ selectionEntries: (text) => [entry(`Send “${text}”`)] }))
+  page(() => message({ selectionEntries: ({ text }) => [entry(`Send “${text}”`)] }))
   const { opened, services } = install()
   const range = document.createRange()
   range.selectNodeContents(byId('link'))
   window.getSelection()!.addRange(range)
   // Where the selection is drawn: the pointer at (40, 50) is on it. Off it, and between its lines, are layout's, which the Chromium test (selection-menu.test.ts) checks.
-  range.getClientRects = () => [new DOMRect(30, 40, 60, 20)] as unknown as DOMRectList
+  // The page reads the selection into a range of its own (`readSelection`), whose boxes are stubbed so.
+  const boxes = spyOn(Range.prototype, 'getClientRects').mockImplementation(() => [new DOMRect(30, 40, 60, 20)] as unknown as DOMRectList)
   rightClick(byId('link'))
+  boxes.mockRestore()
   expect(labels(opened[0])).toEqual([['Copy', 'Send “the docs”']])
   opened[0]!.menu.groups()[0]![0]!.run?.()
   expect(services.copied).toEqual(['the docs'])
@@ -292,29 +294,29 @@ function select(node: Node, start: number, end: number, endNode: Node = node): v
 
 test('a selection in a message gets a toolbar with what acts on it in place, the right-click menu holding Copy and the rest; any other selection gets none', async () => {
   page(() => h('div', [
-    message({ selectionEntries: (text) => [{ ...entry(`Comment on “${text}”`), inPlace: true }, entry(`Send “${text}”`)] }),
-    message({ selectionEntries: (text) => [entry(`Send “${text}”`)] }),
+    message({ selectionEntries: ({ text }) => [{ ...entry(`Comment on “${text}”`), inPlace: true }, entry(`Send “${text}”`)] }),
+    message({ selectionEntries: ({ text }) => [entry(`Send “${text}”`)] }),
     h('p', { id: 'outside' }, 'A heading of the page'),
     h(SelectionToolbar),
   ]))
   await nextTick()
   const [first, second] = document.querySelectorAll('#text')
   select(first!.firstChild!, 0, 3)
-  expect(menus.selectionTools(window.getSelection(), false)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”'])
+  expect(menus.selectionTools(false)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”'])
   await nextTick()
   const toolbar = () => document.querySelector('[data-selection-toolbar]')
   expect(toolbar()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Comment on “See”')
   // A phone has no right-click: its toolbar holds every tool the message offers, Copy being the system's.
-  expect(menus.selectionTools(window.getSelection(), true)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”', 'Send “See”'])
+  expect(menus.selectionTools(true)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”', 'Send “See”'])
   // Across two messages, in a message that offers nothing in place, or outside any: no toolbar.
   select(first!.firstChild!, 0, 3, second!.firstChild!)
-  expect(menus.selectionTools(window.getSelection(), false)).toBeNull()
+  expect(menus.selectionTools(false)).toBeNull()
   select(second!.firstChild!, 0, 3)
-  expect(menus.selectionTools(window.getSelection(), false)).toBeNull()
+  expect(menus.selectionTools(false)).toBeNull()
   await nextTick()
   expect(toolbar()).toBeNull()
   select(byId('outside').firstChild!, 0, 6)
-  expect(menus.selectionTools(window.getSelection(), true)).toBeNull()
+  expect(menus.selectionTools(true)).toBeNull()
 })
 
 test('a context menu opened in a dialog stands on it and leaves it open', async () => {

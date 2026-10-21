@@ -209,7 +209,7 @@ const sent = computed(() => [
 ])
 // A reply's selection offers Comment while the list takes comments.
 provideReplySelectionTools({
-  selection: (reply, streaming) => comments.value?.selectionTools(reply, streaming) ?? [],
+  selection: (reply, selected, streaming) => comments.value?.selectionTools(reply, selected, streaming) ?? [],
   picture: (reply, image, streaming) => comments.value?.pictureTools(reply, image, streaming) ?? [],
 })
 

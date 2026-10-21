@@ -107,7 +107,7 @@ test('Comment on words selected in a reply saves them with where they stand, and
   window.getSelection()!.addRange(range)
   const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
   let streaming = true
-  const [tool] = page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, () => streaming)
+  const [tool] = page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, { text: range.toString(), range, object: replyRoot }, () => streaming)
   expect([tool!.label, tool!.disabled, tool!.disabledReason]).toEqual(['Comment', true, 'Wait for this reply to finish.'])
   streaming = false
   expect(tool!.disabled).toBe(false)
@@ -518,7 +518,7 @@ test('a comment on words before a picture goes before the comment on the picture
   window.getSelection()!.removeAllRanges()
   window.getSelection()!.addRange(range)
   const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
-  page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, () => false)[0]!.run!()
+  page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, { text: range.toString(), range, object: replyRoot }, () => false)[0]!.run!()
   await page.settle()
   const box = page.host.querySelector('textarea')!
   box.value = 'Which chart?'

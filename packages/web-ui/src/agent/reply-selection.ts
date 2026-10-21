@@ -1,12 +1,13 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import type { ContextMenuEntry } from '../ui/context-menu'
+import type { ContextMenuEntry, ResolvedSelection } from '../ui/context-menu'
 
 /**
  * Tools the transcript adds for what the user picks in an agent's reply, the
  * reply's text block `blockId`, whose element is `root`, such as Comment and
  * Ask (`ReplyComments`):
  *
- * - for selected text, after Copy and before Send to Conversation
+ * - for selected text, the reply's own text the page's selection takes, as the
+ *   page read it (`readSelection`), after Copy and before Send to Conversation
  * - for a picture, after Copy Image and Save Image and before Send to
  *   Conversation
  *
@@ -16,7 +17,7 @@ import type { ContextMenuEntry } from '../ui/context-menu'
  * provides none adds nothing.
  */
 export interface ReplySelectionTools {
-  selection: (reply: { blockId: string; root: HTMLElement }, streaming: () => boolean) => readonly ContextMenuEntry[]
+  selection: (reply: { blockId: string; root: HTMLElement }, selected: ResolvedSelection, streaming: () => boolean) => readonly ContextMenuEntry[]
   picture: (reply: { blockId: string; root: HTMLElement }, image: HTMLImageElement, streaming: () => boolean) => readonly ContextMenuEntry[]
 }
 
