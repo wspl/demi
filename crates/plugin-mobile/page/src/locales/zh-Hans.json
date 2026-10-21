@@ -22,8 +22,11 @@
   },
   "region": {
     "connecting": "正在连接模拟器…",
+    "frame": "正在载入设备外框…",
+    "screen": "正在等待屏幕…",
     "waiting": "正在等待设备…",
     "couldntShow": "无法显示模拟器",
+    "frameFailed": "无法显示设备外框。",
     "unsupported": "此浏览器无法显示实时视频。"
   },
   "failures": {

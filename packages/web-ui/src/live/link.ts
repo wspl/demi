@@ -9,7 +9,12 @@
  * - joins the pictures' chunks and acknowledges each with when it arrived,
  * - hands the frames of the generation the view shows to a decoder in sequence,
  * - asks for a key frame after one it could not decode,
- * - tells the stream whether anyone watches the view, and
+ * - tells the stream whether anyone watches the view, and expects nothing of
+ *   a view nobody watches, whose module may fall silent, so it is neither
+ *   stalled nor broken for its silence,
+ * - ends a view whose module does not answer in time when the session
+ *   expects it to, as a session does when its view is watched again: a
+ *   connection lost while its module was silent shows only then, and
  * - opens a view that ended again after the page's reconnect waits, or, for
  *   one nobody watches, once someone does: an unwatched view keeps no
  *   conversation, Host or Cloud awake, so the backend may end its stream.
@@ -36,6 +41,10 @@ export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 export const REFUSED_FRAME = 'invalid_frame'
 /** Why the page ended a view whose stream brought nothing, heartbeats included, for as long as a page socket may. */
 export const SILENT_STREAM = 'silent'
+/** Why the page ended a view whose module did not answer in time when the session expected it to. */
+export const UNANSWERED_STREAM = 'unanswered'
+/** How long a module may take to answer the session, as a page socket's pong may. */
+export const LIVE_ANSWER_MS = 5_000
 
 /** What the view shows of its connection; the session's own state holds it. */
 export interface LiveLinkState {
@@ -100,6 +109,8 @@ export class LiveLink<F, S extends LivePictureStream> {
   private watchedNow = true
   /** The view ended while nobody watched it, and opens again once someone does. */
   private endedUnwatched = false
+  /** When the module's answer the session expects is due; none while it expects none. */
+  private answerDue: number | null = null
 
   constructor(
     private readonly state: LiveLinkState,
@@ -146,13 +157,23 @@ export class LiveLink<F, S extends LivePictureStream> {
       },
     }, { live: true })
     this.stream = stream
-    if (!this.watchedNow) {
+    if (this.watchedNow) {
+      this.listen()
+    } else {
       stream.watched(false)
     }
-    // The module speaks at least every quarter second, so the page's rule
-    // for a silent socket holds for the view as for its other sockets.
-    this.silence = watchSilence('live view', () => this.end(SILENT_STREAM))
     this.handlers.opened()
+  }
+
+  /**
+   * Expects the module to speak, from now: it speaks at least every quarter
+   * second while someone watches the view, so the page's rule for a silent
+   * socket holds for the view as for its other sockets.
+   */
+  private listen(): void {
+    this.received = this.time()
+    this.silence?.stop()
+    this.silence = watchSilence('live view', () => this.end(SILENT_STREAM))
   }
 
   /** A view waiting to reconnect connects at once, its waits started over. */
@@ -177,6 +198,13 @@ export class LiveLink<F, S extends LivePictureStream> {
     }
     this.watchedNow = watched
     this.stream?.watched(watched)
+    if (watched && this.stream !== null) {
+      this.listen()
+    } else if (!watched) {
+      this.silence?.stop()
+      this.silence = null
+      this.answerDue = null
+    }
     if (!watched && this.reopening !== null) {
       this.reopening.cancel()
       this.reopening = null
@@ -227,8 +255,21 @@ export class LiveLink<F, S extends LivePictureStream> {
     })
   }
 
+  /**
+   * The session asked its module for an answer, which it gives with
+   * [`live`](#live): a view that does not hear it within
+   * [`LIVE_ANSWER_MS`](#LIVE_ANSWER_MS) ends, and opens again. Only an answer
+   * from the module counts, not the backend's word that the socket is up.
+   */
+  expectAnswer(): void {
+    if (this.stream !== null) {
+      this.answerDue = this.time() + LIVE_ANSWER_MS
+    }
+  }
+
   /** The module answered: the view works. */
   live(): void {
+    this.answerDue = null
     this.failures = 0
     this.state.ended = null
     if (this.state.connection === 'opening') {
@@ -242,6 +283,7 @@ export class LiveLink<F, S extends LivePictureStream> {
 
   /** Lets the stream go, with its watch and its pictures: nothing it says afterwards reaches the view. */
   private drop(): void {
+    this.answerDue = null
     this.silence?.stop()
     this.silence = null
     this.pictures?.stop()
@@ -408,10 +450,17 @@ export class LiveLink<F, S extends LivePictureStream> {
     this.handlers.keyframe(this.video)
   }
 
-  /** Time passes: without a byte for a second the connection is stalled. */
+  /**
+   * Time passes: without a byte for a second the connection is stalled, and
+   * without the answer the session expects in time, the view ends.
+   */
   tick(): void {
+    if (this.answerDue !== null && this.time() > this.answerDue) {
+      this.end(UNANSWERED_STREAM)
+      return
+    }
     this.bound()
-    if (this.state.connection === 'live' && this.time() - this.received > LIVE_STALL_MS) {
+    if (this.watchedNow && this.state.connection === 'live' && this.time() - this.received > LIVE_STALL_MS) {
       this.state.connection = 'stalled'
       this.handlers.stalled()
     }

@@ -328,6 +328,38 @@ public struct ChromeLayout {
     }
   }
 
+  /// Where the picture may lie under the frame, one byte a pixel of the
+  /// canvas at `backing`, rows from the top: 255 in the screen's own shape,
+  /// its mask's or, without one, its rectangle, grown by a pixel all round
+  /// so the edge of the hole the frame cuts shows the picture beneath it;
+  /// 0 elsewhere.
+  ///
+  /// The shape comes from the device's geometry alone. A bound read from
+  /// the artwork's transparency fails for a bezel that is translucent all
+  /// round, as some models' are: it encloses nothing, and the picture would
+  /// show nowhere.
+  public func screenShape(mask: ScreenMask?, screenPoints: CGSize, backing: Double) throws -> [UInt8] {
+    let (width, height) = pixels(backing: backing)
+    guard width > 0, height > 0,
+      let context = CGContext(
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width,
+        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)
+    else { throw ChromeError.unreadable("the screen's shape could not be drawn") }
+    context.translateBy(x: 0, y: Double(height))
+    context.scaleBy(x: backing, y: -backing)
+    context.concatenate(transform)
+    let grown = screen.insetBy(dx: -1 / backing, dy: -1 / backing)
+    if let mask {
+      mask.draw(in: grown, screenPoints: screenPoints, context)
+    } else {
+      context.fill(grown)
+    }
+    guard let data = context.data?.assumingMemoryBound(to: UInt8.self) else {
+      throw ChromeError.unreadable("the screen's shape has no pixels")
+    }
+    return Array(UnsafeBufferPointer(start: data, count: width * height))
+  }
+
   /// Cuts the screen out of what is drawn, in the mask's shape, for the
   /// picture beneath; the whole rectangle without a mask.
   public func cutScreen(mask: ScreenMask?, screenPoints: CGSize, in context: CGContext) {
@@ -341,43 +373,6 @@ public struct ChromeLayout {
       context.fill(screen)
     }
   }
-}
-
-/// Where the picture may lie under a frame drawn as `alpha`, one byte a
-/// pixel, rows from the top: 255 there, 0 elsewhere. It is all the frame's
-/// wholly opaque pixels enclose, its screen's hole and the bezel, and
-/// never a pixel the frame leaves partly transparent at its outer edge.
-///
-/// The screen's rectangle reaches past the device's outline at its corners,
-/// so a picture drawn whole under the frame would show its square corners
-/// there; bounded by this, it shows only through the hole, whose edge the
-/// frame draws.
-public func silhouette(alpha: [UInt8], width: Int, height: Int) -> [UInt8] {
-  // Outside is what a pixel short of opaque reaches from the image's edge.
-  var shape = [UInt8](repeating: 255, count: width * height)
-  var pending: [Int] = []
-  func reach(_ index: Int) {
-    if shape[index] == 255 && alpha[index] < 255 {
-      shape[index] = 0
-      pending.append(index)
-    }
-  }
-  for x in 0..<width {
-    reach(x)
-    reach((height - 1) * width + x)
-  }
-  for y in 0..<height {
-    reach(y * width)
-    reach(y * width + width - 1)
-  }
-  while let index = pending.popLast() {
-    let (x, y) = (index % width, index / width)
-    if x > 0 { reach(index - 1) }
-    if x < width - 1 { reach(index + 1) }
-    if y > 0 { reach(index - width) }
-    if y < height - 1 { reach(index + width) }
-  }
-  return shape
 }
 
 /// The most points a traced corner keeps.

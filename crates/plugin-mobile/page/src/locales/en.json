@@ -22,8 +22,11 @@
   },
   "region": {
     "connecting": "Connecting to the simulator…",
+    "frame": "Loading the device’s frame…",
+    "screen": "Waiting for the screen…",
     "waiting": "Waiting for the device…",
     "couldntShow": "Couldn’t Show the Simulator",
+    "frameFailed": "The device’s frame couldn’t be shown.",
     "unsupported": "This browser can’t show live video."
   },
   "failures": {

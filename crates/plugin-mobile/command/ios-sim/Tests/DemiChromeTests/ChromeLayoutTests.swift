@@ -167,24 +167,25 @@ private func expect(_ rect: CGRect, _ x: Double, _ y: Double, _ width: Double, _
   }
 }
 
-@Test func theSilhouetteIsWhatTheOpaqueFrameEncloses() {
-  // A 12 by 12 frame: a soft outer ring (alpha 128) around an opaque ring
-  // two pixels wide, around a hole whose own edge is soft too. The picture
-  // may lie in the hole and under the opaque ring, never under the soft
-  // outer pixels, through which it would show. Microseconds.
-  let side = 12
-  var alpha = [UInt8](repeating: 0, count: side * side)
-  for y in 0..<side {
-    for x in 0..<side {
-      let ring = min(x, y, side - 1 - x, side - 1 - y)
-      alpha[y * side + x] = ring == 0 ? 0 : ring == 1 ? 128 : ring <= 3 ? 255 : ring == 4 ? 100 : 0
-    }
-  }
-  let shape = silhouette(alpha: alpha, width: side, height: side)
-  for y in 0..<side {
-    for x in 0..<side {
-      let ring = min(x, y, side - 1 - x, side - 1 - y)
-      #expect(shape[y * side + x] == (ring >= 2 ? 255 : 0), "pixel \(x), \(y) of ring \(ring)")
-    }
-  }
+@Test func thePictureLiesInTheScreensOwnShapeWhateverTheArtwork() throws {
+  // The iPad's layout at render scale .37, drawn at 2 pixels a point,
+  // without a mask: the picture may lie in the screen's rectangle, a
+  // pixel wider all round, and nowhere else, however translucent the
+  // bezel's artwork is, which the shape never reads. Planted defect this
+  // catches: a shape read from the artwork's alpha, which a bezel that is
+  // nowhere wholly opaque leaves empty, hiding the whole screen.
+  // Milliseconds.
+  let layout = try ChromeLayout(
+    chrome: tablet(), artworkSize: artworkSize, screenPoints: CGSize(width: 1032, height: 1376), scale: 0.37,
+    quarterTurns: 0)
+  let backing = 2.0
+  let (width, _) = layout.pixels(backing: backing)
+  let shape = try layout.screenShape(mask: nil, screenPoints: CGSize(width: 1032, height: 1376), backing: backing)
+  let at = { (x: Double, y: Double) in shape[Int(y * backing) * width + Int(x * backing)] }
+  let screen = layout.screen
+  #expect(at(screen.midX, screen.midY) == 255, "the screen's middle")
+  #expect(at(screen.minX + 0.3, screen.minY + 0.3) == 255, "the screen's corner")
+  #expect(at(screen.minX, screen.midY) == 255, "the pixel the screen's edge lies in, whose antialiasing shows the picture")
+  #expect(at(screen.minX - 3, screen.midY) == 0, "the bezel")
+  #expect(at(1, 1) == 0, "outside the device")
 }

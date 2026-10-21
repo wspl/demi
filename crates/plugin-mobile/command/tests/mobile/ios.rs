@@ -13,7 +13,7 @@ use futures_util::future::BoxFuture;
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, DuplexStream},
-    sync::watch,
+    sync::{mpsc, watch},
 };
 
 use demi_command_package_mobile_protocol::live::{LiveCorners, LiveFrame, LiveModuleMessage};
@@ -56,6 +56,10 @@ pub struct FakeHelper {
     /// While true, the helper answers no side button press, nor anything
     /// after it, as a busy simulator does.
     pub held: watch::Sender<bool>,
+    /// The orientations the app in front refuses, as the helper names them.
+    refused: Arc<Mutex<Vec<String>>>,
+    /// Where the helper's unasked events go, once it serves.
+    events: Mutex<Option<mpsc::UnboundedSender<Value>>>,
     recording: usize,
 }
 
@@ -65,8 +69,35 @@ impl FakeHelper {
             heard: Arc::default(),
             ended: watch::Sender::new(0),
             held: watch::Sender::new(false),
+            refused: Arc::default(),
+            events: Mutex::default(),
             recording,
         })
+    }
+
+    /// The app in front refuses `orientation`, as the helper names it: a
+    /// turn to it leaves the screen as it is.
+    fn refuses(&self, orientation: &str) {
+        self.refused.lock().unwrap().push(orientation.to_owned());
+    }
+
+    /// The display of `udid` turned to `orientation` by itself, as when an
+    /// app that shows only across opens: the helper says so unasked.
+    fn turns(&self, udid: &str, orientation: &str) {
+        let events = self.events.lock().unwrap();
+        let events = events.as_ref().expect("the helper serves");
+        events.send(json!({ "event": "turned", "udid": udid, "screen": screen_json(orientation) })).unwrap();
+    }
+
+    /// Waits until the helper heard `count` requests of `method`.
+    async fn heard(&self, method: &str, count: usize) {
+        let mut heard = self.heard.lock().unwrap().count.subscribe();
+        loop {
+            if self.requests(method).len() >= count {
+                return;
+            }
+            heard.changed().await.unwrap();
+        }
     }
 
     fn requests(&self, method: &str) -> Vec<Value> {
@@ -102,13 +133,15 @@ impl Launch for FakeHelper {
         Box::pin(async move {
             let (driver_input, helper_input) = tokio::io::duplex(64 * 1024);
             let (helper_output, driver_output) = tokio::io::duplex(64 * 1024);
+            let (events, unasked) = mpsc::unbounded_channel();
+            *self.events.lock().unwrap() = Some(events);
             tokio::spawn(serve(
                 helper_input,
                 helper_output,
                 self.heard.clone(),
                 self.ended.clone(),
                 self.held.subscribe(),
-                self.recording,
+                Helped { recording: self.recording, refused: self.refused.clone(), unasked },
             ));
             Ok(Connection {
                 input: Box::new(driver_input),
@@ -121,6 +154,26 @@ impl Launch for FakeHelper {
     fn boots(&self) -> HashMap<String, u64> {
         HashMap::from([("UDID-A".into(), 1), ("UDID-B".into(), 1)])
     }
+}
+
+/// The screen of an iPhone 17 turned to `orientation`, as the helper
+/// answers it.
+fn screen_json(orientation: &str) -> Value {
+    let across = orientation.starts_with("landscape");
+    let (points, pixels) = if across { ((874, 402), (2622, 1206)) } else { ((402, 874), (1206, 2622)) };
+    json!({
+        "orientation": orientation,
+        "points": { "width": points.0, "height": points.1 },
+        "pixels": { "width": pixels.0, "height": pixels.1 },
+    })
+}
+
+/// What the helper does besides answering: its recording's size, the
+/// orientations the app refuses and the events it sends unasked.
+struct Helped {
+    recording: usize,
+    refused: Arc<Mutex<Vec<String>>>,
+    unasked: mpsc::UnboundedReceiver<Value>,
 }
 
 fn frame(kind: u8, payload: &[u8]) -> Vec<u8> {
@@ -156,9 +209,12 @@ async fn serve(
     heard: Arc<Mutex<Heard>>,
     ended: watch::Sender<usize>,
     mut held: watch::Receiver<bool>,
-    recording: usize,
+    mut helped: Helped,
 ) {
+    let recording = helped.recording;
     let mut buffer = BytesMut::new();
+    // Each device's orientation, portrait once attached.
+    let mut orientations: HashMap<String, String> = HashMap::new();
     // The field's text, and whether it has the focus, which a tap gives it.
     let mut field = String::new();
     let mut focused = false;
@@ -186,7 +242,17 @@ async fn serve(
             }
             let udid = params["udid"].as_str().unwrap_or_default().to_owned();
             let result = match method.as_str() {
-                "attach" => json!({ "points": { "width": 402, "height": 874 }, "pixels": { "width": 1206, "height": 2622 } }),
+                "attach" => {
+                    orientations.insert(udid.clone(), "portrait".into());
+                    screen_json("portrait")
+                }
+                "orient" => {
+                    let asked = params["orientation"].as_str().unwrap().to_owned();
+                    if !helped.refused.lock().unwrap().contains(&asked) {
+                        orientations.insert(udid.clone(), asked);
+                    }
+                    screen_json(&orientations[&udid])
+                }
                 "recordStart" => {
                     let path = params["path"].as_str().unwrap().to_owned();
                     let mut file = tokio::fs::File::create(&path).await.unwrap();
@@ -208,12 +274,13 @@ async fn serve(
                         break 'reading;
                     }
                     json!({
+                        "for": screen_json(&orientations[&udid]),
                         "width": 400, "height": 800,
                         "screen": { "x": 20.0, "y": 30.0, "width": 360.0, "height": 740.0 },
                         "pngBytes": 3,
                     })
                 }
-                "frame" => json!({ "corner": [] }),
+                "frame" => json!({ "for": screen_json(&orientations[&udid]), "corner": [] }),
                 "tap" => {
                     focused = true;
                     json!({})
@@ -239,9 +306,19 @@ async fn serve(
                 }
             }
         }
-        match input.read_buf(&mut buffer).await {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
+        tokio::select! {
+            read = input.read_buf(&mut buffer) => match read {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            },
+            Some(event) = helped.unasked.recv() => {
+                if let Some(turned) = event["screen"]["orientation"].as_str() {
+                    orientations.insert(event["udid"].as_str().unwrap().to_owned(), turned.to_owned());
+                }
+                if output.write_all(&frame(CONTROL, &serde_json::to_vec(&event).unwrap())).await.is_err() {
+                    break;
+                }
+            }
         }
     }
     ended.send_modify(|count| *count += 1);
@@ -268,8 +345,10 @@ async fn the_helper_ends_when_the_conversations_last_device_closes() {
         .unwrap();
 }
 
-/// Two devices of one conversation, watched at once, each show their own
-/// pictures.
+/// Two devices of one conversation, each on its own stream and looked at
+/// together, each show their own pictures, and one that is no longer looked
+/// at leaves the other streaming
+/// (`docs/decisions/0017-each-device-streams-on-its-own.md`).
 ///
 /// - The helper they share tells captures apart by number alone, so the numbers
 ///   are the helper's, not each device's.
@@ -279,11 +358,13 @@ async fn the_helper_ends_when_the_conversations_last_device_closes() {
 /// Planted defects this catches:
 ///
 /// - captures numbered per device, whose second takes the first one's pictures;
-/// - a key frame passed as the encoder made it.
+/// - a key frame passed as the encoder made it;
+/// - a stream no longer looked at that keeps its device's capture, or stops
+///   or restarts the other device's.
 ///
 /// Cost: one fake helper, two views, milliseconds.
 #[tokio::test]
-async fn devices_sharing_a_helper_each_show_their_own_pictures() {
+async fn devices_sharing_a_helper_each_show_their_own_pictures_at_once() {
     let helper = FakeHelper::new(0);
     let mobile = Mobile::start_ios(helper.clone()).await;
     let first = mobile.open(CHAT, "UDID-A").await;
@@ -291,9 +372,9 @@ async fn devices_sharing_a_helper_each_show_their_own_pictures() {
     let mut pages = Vec::new();
     for device in [&first, &second] {
         let mut page = Page::open(&mobile, CHAT).await;
-        page.send(json!({ "type": "hello", "platform": "mac" })).await;
-        page.send(json!({ "type": "watch", "device": device })).await;
-        page.send(json!({ "type": "shown", "device": device, "width": 1206, "height": 2622 })).await;
+        page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+        page.send(json!({ "type": "looked", "looked": true })).await;
+        page.send(json!({ "type": "shown", "width": 1206, "height": 2622 })).await;
         pages.push(page);
     }
     for (page, udid) in pages.iter_mut().zip(["UDID-A", "UDID-B"]) {
@@ -312,6 +393,22 @@ async fn devices_sharing_a_helper_each_show_their_own_pictures() {
         .collect();
     assert_eq!(captures.len(), 2);
     assert_ne!(captures[0], captures[1], "the helper's captures share a number");
+
+    // The first device is no longer looked at: its capture stops, and the
+    // second's goes on; looked at again, the first shows its own pictures.
+    pages[0].send(json!({ "type": "looked", "looked": false })).await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), helper.heard("captureStop", 1))
+        .await
+        .expect("the first device's capture stops");
+    pages[0].send(json!({ "type": "looked", "looked": true })).await;
+    pages[0].send(json!({ "type": "shown", "width": 1206, "height": 2622 })).await;
+    let data = tokio::time::timeout(std::time::Duration::from_secs(10), pages[0].video())
+        .await
+        .expect("the first device's picture arrives again");
+    assert!(data.ends_with(b"UDID-A"), "the first device's view shows another device's picture");
+    let started = |udid: &str| helper.requests("captureStart").iter().filter(|params| params["udid"] == udid).count();
+    assert_eq!((started("UDID-A"), started("UDID-B")), (2, 1), "the second device's capture was restarted");
+    assert_eq!(helper.requests("captureStop").len(), 1);
 }
 
 /// A recording larger than any frame of the helper's connection, 70 MiB,
@@ -366,12 +463,12 @@ async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
     let mobile = Mobile::start_ios(helper.clone()).await;
     let framed = mobile.open(CHAT, "UDID-A").await;
     let bare = mobile.open(CHAT, "UDID-B").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
     let mut frames = Vec::new();
     for device in [&framed, &bare] {
-        page.send(json!({ "type": "watch", "device": device })).await;
-        page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1200, "scale": 2.0 })).await;
+        let mut page = Page::open(&mobile, CHAT).await;
+        page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+        page.send(json!({ "type": "looked", "looked": true })).await;
+        page.send(json!({ "type": "frame", "width": 800, "height": 1200, "scale": 2.0 })).await;
         let LiveModuleMessage::Frame { frame, .. } =
             tokio::time::timeout(std::time::Duration::from_secs(10), page.until("frame")).await.expect("the frame arrives")
         else {
@@ -421,20 +518,20 @@ async fn the_viewers_typing_in_any_layout_or_input_method_reaches_an_iphones_fie
     let device = mobile.open(CHAT, "UDID-A").await;
     mobile.run(CHAT, "tap", json!({ "device": device, "at": ["200", "120"] })).await.json();
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": device })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
     let key = |action: &str, key: &str, code: &str| {
         let mut input = json!({ "type": "key", "action": action, "key": key, "code": code, "keyCode": 0, "modifiers": 0, "repeat": false, "location": 0, "altGraph": false });
         if action == "down" {
             input["text"] = json!(key);
         }
-        json!({ "type": "input", "device": device, "input": input })
+        json!({ "type": "input", "input": input })
     };
     page.send(key("down", "ü", "BracketLeft")).await;
     page.send(key("up", "ü", "BracketLeft")).await;
     page.send(key("down", "z", "KeyY")).await;
     page.send(key("up", "z", "KeyY")).await;
-    page.send(json!({ "type": "input", "device": device, "input": { "type": "text", "text": "東京" } })).await;
+    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
     let mut asked = helper.heard.lock().unwrap().count.subscribe();
     let entered = async {
         loop {
@@ -467,9 +564,9 @@ async fn the_view_says_when_its_text_has_no_focused_field() {
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "UDID-A").await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": device })).await;
-    page.send(json!({ "type": "input", "device": device, "input": { "type": "text", "text": "東京" } })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
     let notice = tokio::time::timeout(std::time::Duration::from_secs(10), page.until("notice"))
         .await
         .expect("the view is told");
@@ -504,13 +601,13 @@ async fn a_simulator_is_off_from_its_lock_until_the_next_input() {
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "iPhone 17").await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": device })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
     let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
     assert!(on(screen(&mut page).await));
     mobile.run(CHAT, "key", json!({ "device": device, "key": "lock" })).await.json();
     assert!(!on(screen(&mut page).await), "Lock turned the screen off");
-    page.send(json!({ "type": "input", "device": device, "input": { "type": "touch", "action": "start", "contacts": [{ "id": 0, "x": 100.0, "y": 200.0 }] } })).await;
+    page.send(json!({ "type": "input", "input": { "type": "touch", "action": "start", "contacts": [{ "id": 0, "x": 100.0, "y": 200.0 }] } })).await;
     assert!(on(screen(&mut page).await), "the tap woke it");
 }
 
@@ -528,16 +625,16 @@ async fn a_double_wake_on_a_simulator_presses_the_side_button_once() {
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "iPhone 17").await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": device })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
     let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
     assert!(on(screen(&mut page).await));
     mobile.run(CHAT, "key", json!({ "device": device, "key": "lock" })).await.json();
     assert!(!on(screen(&mut page).await), "Lock turned the screen off");
     // The first Wake's press is still on its way when the second comes.
     helper.held.send_replace(true);
-    page.send(json!({ "type": "wake", "device": device })).await;
-    page.send(json!({ "type": "wake", "device": device })).await;
+    page.send(json!({ "type": "wake" })).await;
+    page.send(json!({ "type": "wake" })).await;
     // The view takes this once it has taken the second Wake.
     page.send(json!({ "type": "release" })).await;
     helper.held.send_replace(false);
@@ -547,4 +644,50 @@ async fn a_double_wake_on_a_simulator_presses_the_side_button_once() {
     mobile.run(CHAT, "key", json!({ "device": device, "key": "home" })).await.json();
     let presses = helper.requests("button").iter().filter(|params| params["button"] == "lock").count();
     assert_eq!(presses, 2, "the agent's Lock and one Wake press the side button");
+}
+
+/// The screen shows the orientation its display took, whoever turned it: a
+/// turn the app in front refuses leaves it as it was, and Rotate says so,
+/// the next press turning on from how the device is held, and a turn the
+/// app makes itself shows on the device's stream
+/// (`crates/plugin-mobile/command/ios-sim/Sources/DemiIosSim/DeviceSession.swift`).
+/// Planted defect this catches: the orientation Demi asked for taken as the
+/// screen's, which showed an app that stayed across as turned upright. One
+/// fake helper, milliseconds.
+#[tokio::test]
+async fn the_screen_shows_the_orientation_its_display_took() {
+    let helper = FakeHelper::new(0);
+    let mobile = Mobile::start_ios(helper.clone()).await;
+    let device = mobile.open(CHAT, "UDID-A").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.until("state").await;
+    // The app turns but for upside down, as most iPhone apps do.
+    helper.refuses("portraitUpsideDown");
+    let mut turns = Vec::new();
+    for _ in 0..3 {
+        let turned = mobile.run(CHAT, "rotate", json!({ "device": device, "orientation": "right" })).await.json();
+        turns.push(turned["orientation"].as_str().unwrap().to_owned());
+    }
+    // The refused turn leaves the screen as it was, and the next press
+    // turns on from how the device is held, as Simulator.app does.
+    assert_eq!(turns, ["landscape-right", "landscape-right", "landscape-left"]);
+    assert_eq!(
+        helper.requests("orient").iter().map(|params| params["orientation"].as_str().unwrap().to_owned()).collect::<Vec<_>>(),
+        ["landscapeRight", "portraitUpsideDown", "landscapeLeft"]
+    );
+
+    helper.turns("UDID-A", "portrait");
+    let state = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let state = serde_json::to_value(page.until("state").await).unwrap();
+            if state["device"]["orientation"] == "portrait" {
+                return state;
+            }
+        }
+    })
+    .await
+    .expect("the view says the screen turned");
+    assert_eq!(state["device"]["orientation"], "portrait");
 }

@@ -332,7 +332,9 @@ pub async fn run(
                 )
             }
             (MobileOperation::Rotate(input), Some(open)) => {
-                let current = open.device.screen().borrow().orientation;
+                // Turned from how the device is held, as Simulator.app turns
+                // it, so a turn the app refused is passed by the next.
+                let current = open.device.held();
                 let next = match input.orientation {
                     Rotation::Portrait => Orientation::Portrait,
                     Rotation::Landscape if current.landscape() => current,
@@ -341,18 +343,31 @@ pub async fn run(
                     Rotation::Right => current.right(),
                 };
                 open.device.orient(next).await?;
-                let scale = Scale::of(&open.device.screen().borrow());
-                let text = format!(
-                    "Turned {} {}; screenshots are {}×{}.\n",
-                    open.handle,
-                    text::orientation(next),
-                    scale.width,
-                    scale.height
-                );
+                // What the screen shows, which the app in front may have kept.
+                let screen = *open.device.screen().borrow();
+                let scale = Scale::of(&screen);
+                let text = if screen.orientation == next {
+                    format!(
+                        "Turned {} {}; screenshots are {}×{}.\n",
+                        open.handle,
+                        text::orientation(next),
+                        scale.width,
+                        scale.height
+                    )
+                } else {
+                    format!(
+                        "{} stays {}: the app on screen does not turn {}; screenshots are {}×{}.\n",
+                        open.handle,
+                        text::orientation(screen.orientation),
+                        text::orientation(next),
+                        scale.width,
+                        scale.height
+                    )
+                };
                 Outcome::result(
                     RotateResult {
                         device: open.handle.clone(),
-                        orientation: next,
+                        orientation: screen.orientation,
                         width: scale.width,
                         height: scale.height,
                     },
@@ -390,7 +405,7 @@ pub async fn run(
                     let file = directory.join(format!("{}-recording-{}.mp4", open.handle, millis()));
                     open.device.record_start(&file).await?;
                     *open.recording.lock().expect("the recording is intact") = Some((file, Instant::now()));
-                    devices.recorded();
+                    open.recorded();
                     Outcome::result(
                         RecordResult {
                             device: open.handle.clone(),
@@ -405,7 +420,7 @@ pub async fn run(
                     let Some((file, _)) = open.recording.lock().expect("the recording is intact").take() else {
                         return Err(MobileError::NotRecording);
                     };
-                    devices.recorded();
+                    open.recorded();
                     let stopped = open.device.record_stop().await;
                     let recording = match stopped {
                         Ok(recording) => recording,

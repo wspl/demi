@@ -1,5 +1,7 @@
 //! What a viewer's page receives: control messages before video chunks, and a
-//! heartbeat whenever nothing else was sent for 250 ms.
+//! heartbeat whenever nothing else was sent for 250 ms, unless the viewer has
+//! the writer fall silent, as a stream nobody looks at does: then it sends no
+//! heartbeat, and the page expects none.
 //!
 //! The viewer's delivery hands chunks on at their paced times, within its
 //! window, so video waits here only behind control messages and the path's own
@@ -14,7 +16,10 @@ use std::{marker::PhantomData, time::Duration};
 
 use bytes::Bytes;
 use serde::Serialize;
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{
+    sync::{mpsc, watch},
+    time::Instant,
+};
 use tokio_util::sync::CancellationToken;
 
 use demi_command_sdk::Output;
@@ -54,6 +59,8 @@ pub struct Writer<M> {
     video: mpsc::UnboundedSender<Bytes>,
     /// Ends a wait for room in the control queue; never, for the viewer's own.
     ended: CancellationToken,
+    /// Whether the writer sends no heartbeat.
+    silent: std::sync::Arc<watch::Sender<bool>>,
     messages: PhantomData<fn(&M)>,
 }
 
@@ -63,6 +70,7 @@ impl<M> Clone for Writer<M> {
             control: self.control.clone(),
             video: self.video.clone(),
             ended: self.ended.clone(),
+            silent: self.silent.clone(),
             messages: PhantomData,
         }
     }
@@ -73,12 +81,14 @@ impl<M: ModuleMessage> Writer<M> {
         let (control, controls) = mpsc::channel(CONTROL_QUEUE);
         let (video, videos) = mpsc::unbounded_channel();
         let heartbeat = frames::control(&M::heartbeat(LiveHeartbeat {}));
-        let task = tokio::spawn(run(output, controls, videos, heartbeat));
+        let silent = std::sync::Arc::new(watch::Sender::new(false));
+        let task = tokio::spawn(run(output, controls, videos, heartbeat, silent.subscribe()));
         (
             Self {
                 control,
                 video,
                 ended: CancellationToken::new(),
+                silent,
                 messages: PhantomData,
             },
             task,
@@ -121,6 +131,12 @@ impl<M: ModuleMessage> Writer<M> {
         .await;
     }
 
+    /// Whether the writer stops sending heartbeats, as for a stream nobody
+    /// looks at, which says nothing until it is looked at again.
+    pub fn silent(&self, silent: bool) {
+        self.silent.send_if_modified(|current| std::mem::replace(current, silent) != silent);
+    }
+
     /// Queues a video chunk; one for a view that ended goes nowhere.
     pub fn video(&self, chunk: Bytes) {
         // The view ended, and its page with it.
@@ -133,10 +149,12 @@ async fn run(
     mut controls: mpsc::Receiver<Bytes>,
     mut videos: mpsc::UnboundedReceiver<Bytes>,
     heartbeat: Bytes,
+    mut silent: watch::Receiver<bool>,
 ) {
     let quiet = Duration::from_millis(HEARTBEAT_MS);
     let mut written = Instant::now();
     loop {
+        let beating = !*silent.borrow_and_update();
         let bytes = tokio::select! {
             biased;
             control = controls.recv() => match control {
@@ -147,7 +165,12 @@ async fn run(
                 Some(bytes) => bytes,
                 None => break,
             },
-            _ = tokio::time::sleep_until(written + quiet) => heartbeat.clone(),
+            _ = tokio::time::sleep_until(written + quiet), if beating => heartbeat.clone(),
+            // The writer's owner holds the sender as long as the writer.
+            _ = silent.changed() => {
+                written = Instant::now();
+                continue;
+            }
         };
         if output.stdout(bytes).await.is_err() {
             break;

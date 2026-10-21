@@ -28,7 +28,7 @@ use demi_live_view::stream::CaptureEvent;
 
 use crate::{
     driver::{
-        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, PixelRect, Png, Points,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, PixelRect, Png, Points,
         RawElement, Rect, Recording, Result, Screen, Simulator, TouchPhase,
     },
     keys,
@@ -287,7 +287,8 @@ impl Driver for Ios {
             let session = self.session(conversation).await?;
             let screen: Turned = session.helper.call("attach", json!({ "udid": native_id })).await?;
             let state = Arc::new(DeviceState {
-                screen: watch::Sender::new(screen.screen(Orientation::Portrait)),
+                screen: watch::Sender::new(screen.screen()),
+                held: Mutex::new(Orientation::Portrait),
                 drawn: watch::Sender::new(0),
                 awake: watch::Sender::new(true),
                 ended: session.helper.ended().child_token(),
@@ -315,6 +316,9 @@ struct Session {
 /// What the helper's events tell of a device.
 struct DeviceState {
     screen: watch::Sender<Screen>,
+    /// The orientation the device was last turned to, which the app in
+    /// front may have refused: portrait once attached.
+    held: Mutex<Orientation>,
     drawn: watch::Sender<u64>,
     /// Whether the screen is on, as the input Demi sent says: a simulator
     /// reports nothing of it.
@@ -334,6 +338,12 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
                     device.drawn.send_modify(|count| *count += 1);
                 }
             }
+            Event::Turned { udid, screen } => {
+                if let Some(device) = devices.get(&udid) {
+                    let screen = screen.screen();
+                    device.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
+                }
+            }
             Event::Lost { udid, reason } => {
                 tracing::info!("the iOS simulator {udid} went away: {reason}");
                 if let Some(device) = devices.get(&udid) {
@@ -346,29 +356,52 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
     }
 }
 
-/// The screen as the helper answers it, upright.
-#[derive(Deserialize)]
-struct Turned {
+/// The screen as the helper answers it, upright, in the orientation its
+/// display shows.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Turned {
+    orientation: HelperOrientation,
     points: Size,
     pixels: PixelSize,
 }
 
-#[derive(Deserialize)]
+/// An orientation as the helper names it.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum HelperOrientation {
+    Portrait,
+    LandscapeLeft,
+    PortraitUpsideDown,
+    LandscapeRight,
+}
+
+impl From<HelperOrientation> for Orientation {
+    fn from(orientation: HelperOrientation) -> Self {
+        match orientation {
+            HelperOrientation::Portrait => Self::Portrait,
+            HelperOrientation::LandscapeLeft => Self::LandscapeLeft,
+            HelperOrientation::PortraitUpsideDown => Self::PortraitUpsideDown,
+            HelperOrientation::LandscapeRight => Self::LandscapeRight,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct Size {
     width: f64,
     height: f64,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct PixelSize {
     width: u32,
     height: u32,
 }
 
 impl Turned {
-    fn screen(&self, orientation: Orientation) -> Screen {
+    fn screen(&self) -> Screen {
         Screen {
-            orientation,
+            orientation: self.orientation.into(),
             points: Points {
                 x: self.points.width,
                 y: self.points.height,
@@ -498,6 +531,10 @@ impl Device for IosDevice {
         self.state.screen.subscribe()
     }
 
+    fn held(&self) -> Orientation {
+        *self.state.held.lock().expect("the held orientation is intact")
+    }
+
     fn drawn(&self) -> watch::Receiver<u64> {
         self.state.drawn.subscribe()
     }
@@ -625,7 +662,10 @@ impl Device for IosDevice {
                 .await?;
             let turned: Turned = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the turned screen does not read: {error}")))?;
-            self.state.screen.send_replace(turned.screen(orientation));
+            *self.state.held.lock().expect("the held orientation is intact") = orientation;
+            // The orientation the screen took, which an app may have refused.
+            let screen = turned.screen();
+            self.state.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
             Ok(())
         })
     }
@@ -665,13 +705,13 @@ impl Device for IosDevice {
         })
     }
 
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Framed>>> {
         Box::pin(async move {
             #[derive(Deserialize)]
             #[serde(rename_all_fields = "camelCase", untagged)]
             enum Answered {
-                Drawn { width: u32, height: u32, screen: Placed, png_bytes: usize },
-                Undrawn { corner: Vec<LiveCornerPoint> },
+                Drawn { r#for: Turned, width: u32, height: u32, screen: Placed, png_bytes: usize },
+                Undrawn { r#for: Turned, corner: Vec<LiveCornerPoint> },
             }
             #[derive(Deserialize)]
             struct Placed {
@@ -684,7 +724,7 @@ impl Device for IosDevice {
             let answered: Answered = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the device's frame does not read: {error}")))?;
             Ok(Some(match answered {
-                Answered::Drawn { width, height, screen, png_bytes } => {
+                Answered::Drawn { r#for, width, height, screen, png_bytes } => {
                     // The blob is the frame's PNG, then the silhouette's.
                     let mut png = answer
                         .blob
@@ -693,21 +733,27 @@ impl Device for IosDevice {
                         return Err(DriverError::Failed("the iOS helper's frame lacks its silhouette".into()));
                     }
                     let silhouette = png.split_off(png_bytes);
-                    Frame::Image {
-                        png,
-                        width,
-                        height,
-                        screen: PixelRect {
-                            x: screen.x,
-                            y: screen.y,
-                            width: screen.width,
-                            height: screen.height,
+                    Framed {
+                        frame: Frame::Image {
+                            png,
+                            width,
+                            height,
+                            screen: PixelRect {
+                                x: screen.x,
+                                y: screen.y,
+                                width: screen.width,
+                                height: screen.height,
+                            },
+                            silhouette: Some(silhouette),
                         },
-                        silhouette: Some(silhouette),
+                        screen: r#for.screen(),
                     }
                 }
-                Answered::Undrawn { corner } => Frame::Drawn {
-                    corners: mask_corners(corner),
+                Answered::Undrawn { r#for, corner } => Framed {
+                    frame: Frame::Drawn {
+                        corners: mask_corners(corner),
+                    },
+                    screen: r#for.screen(),
                 },
             }))
         })

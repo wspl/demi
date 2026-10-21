@@ -152,6 +152,7 @@ export {
   LiveLink,
   REFUSED_FRAME,
   SILENT_STREAM,
+  UNANSWERED_STREAM,
   type LiveConnection,
   type LiveFrames,
   type LiveLinkHandlers,

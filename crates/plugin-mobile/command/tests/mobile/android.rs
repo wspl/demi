@@ -40,7 +40,7 @@ use demi_mobile::{
     testing::FakeDriver,
 };
 
-use crate::{CHAT, Mobile, live::{Page, screen}};
+use crate::{CHAT, Mobile, live::{Page, Said, screen}};
 
 /// The AVD the stub emulator runs: a Pixel 8, 1080 × 2400 at 420 dpi.
 const AVD: &str = "Pixel_8_API_36";
@@ -94,6 +94,9 @@ struct StubEmulator {
     keys: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
     /// The picture's rotation, quarter turns counterclockwise.
     rotation: watch::Sender<u8>,
+    /// While true, a rotation the emulator is asked for waits before its
+    /// pictures turn, as a real emulator's take a few frames.
+    turning_held: watch::Sender<bool>,
     /// Each new picture the screen draws.
     drawn: watch::Sender<u64>,
     /// Cancelled as the emulator shuts down.
@@ -206,8 +209,15 @@ impl EmulatorController for Served {
         self.signed(&request)?;
         let angle = request.into_inner().value.unwrap_or_default().data.get(2).copied().unwrap_or(0.0);
         self.hear(format!("rotate {angle}"))?;
-        self.rotation.send_replace(((angle as i32).rem_euclid(360) / 90) as u8);
-        self.drawn.send_modify(|count| *count += 1);
+        let rotation = self.rotation.clone();
+        let drawn = self.drawn.clone();
+        let mut held = self.turning_held.subscribe();
+        // The pictures turn once the test lets them, after the answer.
+        tokio::spawn(async move {
+            let _released = held.wait_for(|held| !*held).await;
+            rotation.send_replace(((angle as i32).rem_euclid(360) / 90) as u8);
+            drawn.send_modify(|count| *count += 1);
+        });
         Ok(tonic::Response::new(()))
     }
 
@@ -595,6 +605,7 @@ impl StubSdk {
             pictures_lost: CancellationToken::new(),
             keys: Arc::default(),
             rotation: watch::Sender::new(0),
+            turning_held: watch::Sender::new(false),
             drawn: watch::Sender::new(0),
             ended: CancellationToken::new(),
             streams: watch::Sender::new(0),
@@ -1020,10 +1031,10 @@ async fn the_live_view_shows_an_emulator_as_h264_in_its_drawn_frame() {
     let (mobile, _sdk) = start(true).await;
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
-    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
-    page.send(json!({ "type": "shown", "device": "m1", "width": 360, "height": 800 })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "frame", "width": 400, "height": 800, "scale": 2.0 })).await;
+    page.send(json!({ "type": "shown", "width": 360, "height": 800 })).await;
     let LiveModuleMessage::Frame { frame, .. } = page.framed().await else { unreachable!() };
     let frame = serde_json::to_value(&frame).unwrap();
     assert_eq!(frame["kind"], "drawn");
@@ -1043,9 +1054,9 @@ async fn the_live_view_shows_an_emulator_as_h264_in_its_drawn_frame() {
 async fn live_frame(mobile: &Mobile) -> (Page, Value) {
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
-    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "frame", "width": 400, "height": 800, "scale": 2.0 })).await;
     let LiveModuleMessage::Frame { frame, .. } = page.framed().await else { unreachable!() };
     (page, serde_json::to_value(&frame).unwrap())
 }
@@ -1155,20 +1166,20 @@ async fn the_view_goes_on_while_the_screens_corners_are_read() {
     sdk.guest.held.send_replace(true);
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
-    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "frame", "width": 400, "height": 800, "scale": 2.0 })).await;
     let sized = tokio::time::timeout(std::time::Duration::from_secs(10), page.until("frame")).await;
     let Ok(LiveModuleMessage::Frame { points_width, points_height, frame: None, .. }) = sized else {
         panic!("the screen's size waited for the corners: {sized:?}");
     };
     // The page shows the screen at the size the frame message said.
     assert!(points_width > 0.0 && points_height > 0.0);
-    page.send(json!({ "type": "shown", "device": "m1", "width": 360, "height": 800 })).await;
+    page.send(json!({ "type": "shown", "width": 360, "height": 800 })).await;
     let video = tokio::time::timeout(std::time::Duration::from_secs(10), page.video()).await;
     let video = video.expect("the picture waited for the corners");
     assert!(video.windows(5).any(|window| window[..4] == [0, 0, 0, 1] && window[4] & 0x1f == 5), "no key frame came");
-    page.send(json!({ "type": "input", "device": "m1", "input": { "type": "text", "text": "東京" } })).await;
+    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
     sdk.emulator.heard.until("clipboard 東京").await;
     sdk.guest.held.send_replace(false);
     let framed = tokio::time::timeout(std::time::Duration::from_secs(10), page.framed()).await;
@@ -1180,11 +1191,11 @@ async fn the_view_goes_on_while_the_screens_corners_are_read() {
     sdk.guest.held.send_replace(true);
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
-    page.send(json!({ "type": "frame", "device": "m1", "width": 400, "height": 800, "scale": 2.0 })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "frame", "width": 400, "height": 800, "scale": 2.0 })).await;
     // The view answers while the read is held.
-    page.send(json!({ "type": "input", "device": "m1", "input": { "type": "text", "text": "東京" } })).await;
+    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
     sdk.emulator.heard.until("clipboard 東京").await;
     let closed = tokio::time::timeout(std::time::Duration::from_secs(10), mobile.run(CHAT, "close", json!({ "device": "m1" })));
     closed.await.expect("closing waited for the corners").json();
@@ -1335,19 +1346,19 @@ async fn the_viewers_typing_in_any_layout_or_input_method_reaches_the_field() {
     let (mobile, sdk) = start(true).await;
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
     let from = sdk.heard().len();
     let key = |action: &str| {
         let mut key = json!({ "type": "key", "action": action, "key": "ü", "code": "BracketLeft", "keyCode": 186, "modifiers": 0, "repeat": false, "location": 0, "altGraph": false });
         if action == "down" {
             key["text"] = json!("ü");
         }
-        json!({ "type": "input", "device": "m1", "input": key })
+        json!({ "type": "input", "input": key })
     };
     page.send(key("down")).await;
     page.send(key("up")).await;
-    page.send(json!({ "type": "input", "device": "m1", "input": { "type": "text", "text": "東京" } })).await;
+    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
     sdk.emulator.heard.until("clipboard 東京").await;
     let mut restored = sdk.emulator.heard.count.subscribe();
     let both = async {
@@ -1739,14 +1750,14 @@ async fn the_view_says_when_an_emulators_display_turns_off_and_wake_turns_it_on(
     let (mobile, sdk) = start(true).await;
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
     let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
     assert!(on(screen(&mut page).await));
     mobile.run(CHAT, "key", json!({ "device": "m1", "key": "lock" })).await.json();
     assert!(!on(screen(&mut page).await), "Lock turned the display off");
     let before = sdk.heard().len();
-    page.send(json!({ "type": "wake", "device": "m1" })).await;
+    page.send(json!({ "type": "wake" })).await;
     assert!(on(screen(&mut page).await), "Wake turned it on");
     assert_eq!(since(&sdk, before), ["wake"], "Wake is the wake key, not Power");
 }
@@ -1762,8 +1773,8 @@ async fn the_view_hears_the_display_after_its_log_ends() {
     let (mobile, sdk) = start(true).await;
     mobile.open(CHAT, AVD).await;
     let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac" })).await;
-    page.send(json!({ "type": "watch", "device": "m1" })).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
     let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
     assert!(on(screen(&mut page).await));
     // The log ends, and the display turns off on the device afterwards.
@@ -1790,4 +1801,64 @@ async fn an_emulator_that_fails_to_open_leaves_nothing_running() {
         .expect("the picture stream ends with the failed open")
         .unwrap();
     assert!(sdk.heard().iter().any(|line| line == "guest closed"), "{:?}", sdk.heard());
+}
+
+/// A turned emulator's pictures come in the generation announced for their
+/// orientation only: the screen turns once the emulator's pictures show the
+/// turn, not when it is asked for, and a picture of the other shape, which a
+/// capture gets before it starts again, is not sent. Planted defect this
+/// catches: the screen taken as turned as Rotate asked, which captured the
+/// emulator's pictures from before the turn as the turned screen's, a
+/// portrait frame around a sideways picture. A stub emulator, OpenH264 at
+/// a small size, and the two seconds Rotate waits for pictures that do not
+/// turn.
+#[tokio::test]
+async fn a_turned_emulators_pictures_come_in_the_turned_generation_only() {
+    let (mobile, sdk) = start(true).await;
+    sdk.emulator.turning_held.send_replace(true);
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "shown", "width": 360, "height": 800 })).await;
+    let mut generations = std::collections::HashMap::new();
+    let mut turned = false;
+    let checked = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            match page.said().await {
+                Said::Message(LiveModuleMessage::Stream { generation, orientation, .. }) => {
+                    generations.insert(generation, orientation.landscape());
+                }
+                Said::Message(_) => {}
+                Said::Picture(picture) => {
+                    let across = picture.width > picture.height;
+                    assert_eq!(
+                        generations.get(&picture.generation),
+                        Some(&across),
+                        "a {}×{} picture in generation {}",
+                        picture.width,
+                        picture.height,
+                        picture.generation
+                    );
+                    if across {
+                        return;
+                    }
+                    page.ack(&picture).await;
+                    if !turned {
+                        turned = true;
+                        // The emulator's pictures do not turn while Rotate
+                        // runs: the screen is as they show it.
+                        let rotated = mobile.run(CHAT, "rotate", json!({ "device": "m1", "orientation": "left" })).await.json();
+                        assert_eq!(rotated["orientation"], "portrait", "the screen turned before its pictures did");
+                        // A picture the emulator draws before its turn shows,
+                        // then the turn.
+                        sdk.emulator.drawn.send_modify(|count| *count += 1);
+                        sdk.emulator.turning_held.send_replace(false);
+                    }
+                }
+            }
+        }
+    })
+    .await;
+    checked.expect("a picture of the turned screen came");
 }

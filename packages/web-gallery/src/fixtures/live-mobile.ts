@@ -6,8 +6,9 @@
  *
  * - The gallery's plugin, which gives each device the agent opens its `mobile`
  *   tab and closes a device whose tab is closed, as the backend's does.
- * - A live view that draws a device's screen in the frame the view draws,
- *   encodes it as the helper would and speaks the `mobile` protocol.
+ * - A live view per device, on a stream of its own, that draws the device's
+ *   screen in the frame the view draws, encodes it as the helper would and
+ *   speaks the `mobile` protocol.
  *
  * The panel's tabs, controls, touches and the agent's activity show here.
  */
@@ -201,6 +202,8 @@ export interface GalleryMobile {
   agentRecords(): void
   /** Each open device's screen turns off by itself, as a device's sleep turns it. */
   devicesSleep(): void
+  /** The Host sends each looked-at view a frame whose image does not decode, as a damaged frame would be. */
+  sendsBrokenFrames(): void
 }
 
 export function galleryMobile(panel: GalleryPanel): GalleryMobile {
@@ -208,9 +211,12 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
   let numbers = 0
   const views = new Set<MobileView>()
 
-  function changed(): void {
+  /** Device `id` changed: its own views say so, as the Host's do, and no other device's. */
+  function changed(id: string): void {
     for (const view of views) {
-      view.state()
+      if (view.watching === id) {
+        view.state()
+      }
     }
   }
 
@@ -254,7 +260,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       const data = { device: shown.id, nativeId: simulator.nativeId, name: simulator.name, platform: simulator.platform, model: simulator.model }
       panel.apply({ type: 'create', tab: { id: `mobile-${shown.id}`, kind: 'mobile', data } })
     }
-    changed()
+    changed(shown.id)
     return shown
   }
 
@@ -265,7 +271,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       for (const tab of panel.all.filter((each) => each.kind === 'mobile' && shows(each) === id)) {
         panel.apply({ type: 'remove', id: tab.id })
       }
-      changed()
+      changed(id)
     }
   }
 
@@ -281,6 +287,8 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
         const shown = device(id)
         const at = TURNS.indexOf(shown.orientation)
         shown.orientation = TURNS[(at + (turn === 'left' ? 1 : 3)) % 4] ?? 'portrait'
+        // The device's views hear of the turn in its state, as the Host's do.
+        changed(id)
         restart(id)
         const size = upright(shown)
         return { device: id, orientation: shown.orientation, width: size.width * SCALE, height: size.height * SCALE }
@@ -334,7 +342,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       throw new PluginCallError(start ? 'recording' : 'not_recording', 'the recording is not as asked', { type: 'status', status: '409 Conflict' })
     }
     shown.recording = start
-    changed()
+    changed(shown.id)
     return start
       ? { device: shown.id, recording: true }
       : { device: shown.id, recording: false, path: `${WORKSPACE_ROOT}/assets/demo.mp4`, durationMs: 4200 }
@@ -353,7 +361,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
 
   function restart(id: string): void {
     for (const view of views) {
-      if (view.watching === id) {
+      if (view.watching === id && view.looked) {
         view.restart()
       }
     }
@@ -410,6 +418,16 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       record(first, !first.recording)
       agentUsed(first)
     },
+    sendsBrokenFrames: () => {
+      const looked = [...views].filter((view) => view.looked)
+      if (looked.length === 0) {
+        productWould('No simulator’s view shows to send a frame to.')
+        return
+      }
+      for (const view of looked) {
+        view.brokenFrame()
+      }
+    },
     devicesSleep: () => {
       if (open.size === 0) {
         productWould('No simulator is open to sleep.')
@@ -422,9 +440,15 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
   }
 }
 
-/** One page's view of the gallery's devices, as a `demi-mobile` service serves it. */
+/**
+ * One device's stream of a page, as a `demi-mobile` service serves it: the
+ * device its hello names, and whether it is looked at, while which alone it
+ * speaks (`docs/decisions/0017-each-device-streams-on-its-own.md`).
+ */
 class MobileView {
+  /** The device the stream carries, once its hello named it. */
   watching: string | null = null
+  looked = false
   private encoder: VideoEncoder | null = null
   private painting: ReturnType<typeof setInterval> | null = null
   private readonly heartbeat: ReturnType<typeof setInterval>
@@ -442,7 +466,11 @@ class MobileView {
     private readonly devices: () => OpenDevice[],
     private readonly wake: (device: OpenDevice) => void,
   ) {
-    this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
+    this.heartbeat = setInterval(() => {
+      if (this.looked) {
+        this.send({ type: 'heartbeat' })
+      }
+    }, 250)
   }
 
   private send(value: LiveModuleMessage): void {
@@ -453,35 +481,43 @@ class MobileView {
     return this.devices().find((each) => each.id === this.watching) ?? null
   }
 
+  /** The device's state while it is looked at, or that it is gone, which ends the stream. */
   state(): void {
-    if (this.watching !== null && !this.device()) {
+    if (this.watching === null) {
+      return
+    }
+    const each = this.device()
+    if (!each) {
+      this.send({ type: 'gone' })
+      this.stop()
       this.watching = null
-      this.restart()
+      return
+    }
+    if (!this.looked) {
+      return
     }
     this.send({
       type: 'state',
-      devices: this.devices().map((each) => ({
-        id: each.id,
+      device: {
         name: each.simulator.name,
         platform: each.simulator.platform,
         os: each.simulator.os,
         model: each.simulator.model,
         recording: each.recording,
         orientation: each.orientation,
-      })),
-      watched: this.watching,
+      },
     })
   }
 
   activity(device: OpenDevice): void {
-    if (device.id === this.watching) {
-      this.send({ type: 'activity', device: device.id, activity: device.activity })
+    if (device.id === this.watching && this.looked) {
+      this.send({ type: 'activity', activity: device.activity })
     }
   }
 
   screen(device: OpenDevice): void {
-    if (device.id === this.watching) {
-      this.send({ type: 'screen', device: device.id, on: !device.off })
+    if (device.id === this.watching && this.looked) {
+      this.send({ type: 'screen', on: !device.off })
     }
   }
 
@@ -493,27 +529,33 @@ class MobileView {
     const value = JSON.parse(decoder.decode(bytes.subarray(5, 4 + length))) as LiveViewerMessage
     switch (value.type) {
       case 'hello':
-        this.state()
-        break
-      case 'watch':
         this.watching = value.device
-        this.area = null
-        this.restart()
-        this.state()
+        if (!this.device()) {
+          this.send({ type: 'gone' })
+        }
+        break
+      case 'looked':
+        this.looked = value.looked
+        if (value.looked) {
+          this.state()
+          this.restart()
+        } else {
+          this.pause()
+        }
         break
       case 'input':
         this.input(value.input)
         break
       case 'wake': {
         const device = this.device()
-        if (device && device.id === value.device) {
+        if (device && this.looked) {
           this.wake(device)
         }
         break
       }
       case 'frame':
-        if (value.device === this.watching) {
-          this.area = { width: value.width, height: value.height, scale: value.scale }
+        this.area = { width: value.width, height: value.height, scale: value.scale }
+        if (this.looked) {
           this.frame()
         }
         break
@@ -525,7 +567,7 @@ class MobileView {
     }
   }
 
-  /** The watched device's frame: no frame is installed here, so the view draws the frame itself. */
+  /** The device's frame: no frame is installed here, so the view draws the frame itself. */
   private frame(): void {
     const device = this.device()
     if (!device || !this.area) {
@@ -537,7 +579,31 @@ class MobileView {
       buttons: device.simulator.buttons.map((mark) => turned(mark, device.orientation)),
     }
     const points = upright(device)
-    this.send({ type: 'frame', device: device.id, ...this.area, orientation: device.orientation, pointsWidth: points.width, pointsHeight: points.height, frame })
+    this.send({ type: 'frame', ...this.area, orientation: device.orientation, pointsWidth: points.width, pointsHeight: points.height, frame })
+  }
+
+  /**
+   * A frame whose image does not decode, as a damaged installed frame's
+   * would not, drawn for the device turned a quarter: for the size the view
+   * asked, or, when the view asked for none, as its frame came from this
+   * browser's cache, for a size of its own.
+   */
+  brokenFrame(): void {
+    const device = this.device()
+    if (!device) {
+      return
+    }
+    const points = upright(device)
+    const [width, height] = [Math.round(points.height), Math.round(points.width)]
+    const orientation = TURNS[(TURNS.indexOf(device.orientation) + 1) % 4] ?? 'portrait'
+    this.send({
+      type: 'frame',
+      ...(this.area ?? { width: 1, height: 1, scale: 1 }),
+      orientation,
+      pointsWidth: points.height,
+      pointsHeight: points.width,
+      frame: { kind: 'image', png: 'AAAA', width, height, screen: { x: 0, y: 0, width, height }, silhouette: null },
+    })
   }
 
   /** A tap opens Settings from the home screen; a finger draws its ring where it touches. */
@@ -566,7 +632,8 @@ class MobileView {
     }
   }
 
-  restart(): void {
+  /** Nobody looks at the stream: its pictures stop. */
+  private pause(): void {
     if (this.painting !== null) {
       clearInterval(this.painting)
       this.painting = null
@@ -575,6 +642,10 @@ class MobileView {
       this.encoder.close()
     }
     this.encoder = null
+  }
+
+  restart(): void {
+    this.pause()
     const device = this.device()
     if (!device) {
       return
@@ -590,12 +661,11 @@ class MobileView {
     this.sequence = 0
     this.canvas.width = size.width
     this.canvas.height = size.height
-    this.send({ type: 'inputs', device: device.id, inputs: { pointer: 'touch' } })
-    this.send({ type: 'activity', device: device.id, activity: device.activity })
+    this.send({ type: 'inputs', inputs: { pointer: 'touch' } })
+    this.send({ type: 'activity', activity: device.activity })
     this.screen(device)
     this.send({
       type: 'stream',
-      device: device.id,
       generation: this.generation,
       width: size.width,
       height: size.height,
@@ -720,12 +790,6 @@ class MobileView {
 
   stop(): void {
     clearInterval(this.heartbeat)
-    if (this.painting !== null) {
-      clearInterval(this.painting)
-    }
-    if (this.encoder && this.encoder.state !== 'closed') {
-      this.encoder.close()
-    }
-    this.encoder = null
+    this.pause()
   }
 }

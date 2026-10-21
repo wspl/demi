@@ -118,6 +118,12 @@ impl AndroidCapture {
                     if width < 2 || height < 2 || image.image.len() < width * height * 3 {
                         continue;
                     }
+                    // A picture across where the capture is upright, or the
+                    // other way, is the emulator's from before a turn, which
+                    // the capture of the turned screen shows instead.
+                    if (width > height) != (size.0 > size.1) {
+                        continue;
+                    }
                     let picture = Arc::new(Picture {
                         rgb: image.image,
                         width,

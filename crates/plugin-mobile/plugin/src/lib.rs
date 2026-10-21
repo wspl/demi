@@ -4,7 +4,7 @@
 //!
 //! - the `demi mobile` group, every leaf bound to an operation of the
 //!   `demi.mobile` command package, which runs it on the Host;
-//! - the `mobile` user stream of the live view;
+//! - the `mobile` user stream of the live view, one per device a page shows;
 //! - the methods behind the panel's controls, each the operation of the command
 //!   that does the same;
 //! - the `mobile` kind's tabs on the backend.
@@ -82,12 +82,12 @@ fn live_stream() -> Stream {
     Stream::new::<live::LiveModuleMessage, live::LiveViewerMessage>(STREAM, operation)
         .constant(
             "LIVE_CAPTURE_FAILED",
-            "A notice's code when the watched device's capture failed.",
+            "A notice's code when the device's capture failed.",
             live::CAPTURE_FAILED,
         )
         .constant(
             "LIVE_CAPTURE_UNAVAILABLE",
-            "A notice's code when the Host cannot capture the watched device.",
+            "A notice's code when the Host cannot capture the device.",
             live::CAPTURE_UNAVAILABLE,
         )
         .constant(

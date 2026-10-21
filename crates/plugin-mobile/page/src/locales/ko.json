@@ -22,8 +22,11 @@
   },
   "region": {
     "connecting": "시뮬레이터에 연결하는 중…",
+    "frame": "기기 프레임을 불러오는 중…",
+    "screen": "화면을 기다리는 중…",
     "waiting": "기기를 기다리는 중…",
     "couldntShow": "시뮬레이터를 표시할 수 없음",
+    "frameFailed": "기기 프레임을 표시할 수 없습니다.",
     "unsupported": "이 브라우저에서는 실시간 비디오를 표시할 수 없습니다."
   },
   "failures": {

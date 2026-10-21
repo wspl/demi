@@ -29,18 +29,17 @@ const props = defineProps<{
 }>()
 
 const { files, errors, overlays } = usePage()
+/** The device's live view, on its own stream, which the conversation's simulators keep. */
+const device = props.session.device(props.data)
 /** Whether the device records, as the device says, whoever started it. */
-const recording = computed(() => props.session.session.recording(props.data.device))
+const recording = computed(() => device.recording)
 /**
- * The device's model as its driver reads it: the live list's once it lists
- * the device, the tab's until then; none when the driver knows none.
+ * The device's model as its driver reads it: the Host's once it said, the
+ * tab's until then; none when the driver knows none.
  */
-const model = computed(() => {
-  const listed = props.session.session.state.devices.find((device) => device.id === props.data.device)
-  return listed ? listed.model : props.data.model ?? null
-})
-/** The controls of the device's platform: Back on Android alone. */
-const controls = computed(() => deviceControls(props.session.session.platform(props.data.device)))
+const model = computed(() => device.model)
+/** The controls of the device's platform, the tab's until the Host says: Back on Android alone. */
+const controls = computed(() => deviceControls(device.platform ?? props.data.platform))
 
 /** The file a control left on the Host goes to the user's computer, as a download does. */
 function save(path: string | null): void {
@@ -111,6 +110,6 @@ const actions = computed<ToolbarAction[]>(() => controls.value.map((control) => 
     >
       {{ t('region.unsupported') }}
     </div>
-    <DeviceView v-else :session="session.session" :device="data.device" :shown="shown" />
+    <DeviceView v-else :session="device" :shown="shown" />
   </div>
 </template>

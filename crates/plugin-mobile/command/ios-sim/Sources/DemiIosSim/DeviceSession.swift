@@ -1,11 +1,17 @@
 // One attached simulator: its framebuffer, its HID connection, the
-// orientation demi-mobile set, its captures and its recording.
+// orientation its screen shows, its captures and its recording.
 //
 // The simulator turns its screen but not its framebuffer, which stays
 // portrait with the picture sideways, so every picture is turned upright
 // here and every point the caller gives, in the upright screen's points, is
 // turned back into the portrait points the HID takes
 // (`crates/plugin-mobile/command/src/ios/mod.rs`).
+//
+// The screen's orientation is the one its display shows, which the app in
+// front decides: turning the device asks for a turn, and an app that does
+// not allow it, as most iPhone apps refuse upside down, keeps the screen as
+// it was. The session follows the display and tells demi-mobile of each turn
+// it takes, whoever asked for it.
 
 import CoreImage
 import FBControlCore
@@ -44,6 +50,18 @@ enum Turn: String {
     }
   }
 
+  /// The orientation a display turned by `rotation` shows; none for a
+  /// rotation a later Xcode adds, which no phone's screen takes.
+  init?(_ rotation: SimulatorDisplayRotation) {
+    switch rotation {
+    case .upright: self = .portrait
+    case .clockwise: self = .landscapeRight
+    case .upsideDown: self = .portraitUpsideDown
+    case .counterclockwise: self = .landscapeLeft
+    @unknown default: return nil
+    }
+  }
+
   /// How the framebuffer's portrait picture is shown upright.
   var picture: CGImagePropertyOrientation {
     switch self {
@@ -65,7 +83,11 @@ final class DeviceSession: @unchecked Sendable {
   private let portraitPoints: CGSize
   private let lock = NSLock()
   private var surface: IOSurface?
+  /// The orientation the screen shows, as its display last said.
   private var turn = Turn.portrait
+  /// Those waiting for the screen to show an orientation, by their identity.
+  private var turnWaiters: [UUID: (Turn, CheckedContinuation<Void, Never>)] = [:]
+  private var followingTurns: Task<Void, Never>?
   private var captures: [UInt32: Encoder] = [:]
   private var recorder: Recorder?
   private var detached = false
@@ -113,38 +135,57 @@ final class DeviceSession: @unchecked Sendable {
     }
     let session = DeviceSession(
       simulator: simulator, output: output, hid: hid, attachment: attachment, portraitPoints: points)
+    session.follow()
     do {
-      // The simulator cannot say which way it is turned, so it starts from
-      // the orientation set here.
-      try await simulator.orientation.set(.portrait)
+      // The device is held upright, as a phone picked up is.
+      try await session.orient(.portrait)
     } catch {
       await session.detach()
       throw error
     }
-    session.follow()
     return session
   }
 
   /// The screen, upright: its points and its pixels.
   func screenJSON() -> [String: Any] {
-    let (points, pixels) = lock.withLock { () -> (CGSize, CGSize) in
-      let pixels = surface.map { CGSize(width: IOSurfaceGetWidth($0), height: IOSurfaceGetHeight($0)) } ?? .zero
-      return turn.landscape
-        ? (CGSize(width: portraitPoints.height, height: portraitPoints.width),
-          CGSize(width: pixels.height, height: pixels.width))
-        : (portraitPoints, pixels)
-    }
+    let (turn, surface) = lock.withLock { (self.turn, self.surface) }
+    return screenJSON(turn: turn, surface: surface)
+  }
+
+  /// The screen upright when turned `turn`: its orientation, its points
+  /// and its pixels.
+  private func screenJSON(turn: Turn, surface: IOSurface?) -> [String: Any] {
+    let pixels = surface.map { CGSize(width: IOSurfaceGetWidth($0), height: IOSurfaceGetHeight($0)) } ?? .zero
+    let (points, upright) =
+      turn.landscape
+      ? (CGSize(width: portraitPoints.height, height: portraitPoints.width),
+        CGSize(width: pixels.height, height: pixels.width))
+      : (portraitPoints, pixels)
     return [
+      "orientation": turn.rawValue,
       "points": ["width": points.width, "height": points.height],
-      "pixels": ["width": Int(pixels.width), "height": Int(pixels.height)],
+      "pixels": ["width": Int(upright.width), "height": Int(upright.height)],
     ]
   }
 
   // MARK: Pictures
 
   /// Follows the framebuffer: each new picture is drawn, encoded for each
-  /// capture and added to the recording; its end is the device's loss.
+  /// capture and added to the recording; its end is the device's loss. Follows
+  /// the display: each turn it takes is the screen's.
   private func follow() {
+    let display = SimulatorDisplayCommands(simulator: simulator)
+    let following = Task { [self] in
+      for await configuration in display.configurations() {
+        guard case .settled = configuration.phase, let geometry = try? configuration.activeGeometry(),
+          let turn = Turn(geometry.rotation)
+        else {
+          continue
+        }
+        turned(turn)
+      }
+    }
+    lock.withLock { followingTurns = following }
     Task { [self] in
       for await event in attachment.events {
         switch event {
@@ -224,6 +265,54 @@ final class DeviceSession: @unchecked Sendable {
     return try pictures.png(image, longSide: longSide)
   }
 
+  /// The display shows `turn`: the pictures, the points the caller gives
+  /// and the frame turn with it, demi-mobile hears of it, and those waiting
+  /// for it go on.
+  private func turned(_ turn: Turn) {
+    let (changed, surface, waiting) = lock.withLock { () -> (Bool, IOSurface?, [CheckedContinuation<Void, Never>]) in
+      let changed = self.turn != turn
+      self.turn = turn
+      let waiting = turnWaiters.filter { $0.value.0 == turn }
+      for id in waiting.keys { turnWaiters[id] = nil }
+      return (changed, self.surface, waiting.values.map { $0.1 })
+    }
+    if changed {
+      output.control(["event": "turned", "udid": udid, "screen": screenJSON(turn: turn, surface: surface)])
+      // The captures follow the new size; the picture they draw next is
+      // turned the new way.
+      drawn()
+    }
+    for waiter in waiting { waiter.resume() }
+  }
+
+  /// Returns once the screen shows `target`, or after `seconds`: the app in
+  /// front may refuse the turn.
+  private func screenShows(_ target: Turn, within seconds: Double) async {
+    await withTaskGroup(of: Void.self) { group in
+      group.addTask { [self] in await shows(target) }
+      group.addTask { try? await Task.sleep(for: .seconds(seconds)) }
+      await group.next()
+      group.cancelAll()
+    }
+  }
+
+  /// Returns once the screen shows `target`, or once the task is cancelled.
+  private func shows(_ target: Turn) async {
+    let id = UUID()
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        let now = lock.withLock { () -> Bool in
+          if turn == target || Task.isCancelled { return true }
+          turnWaiters[id] = (target, continuation)
+          return false
+        }
+        if now { continuation.resume() }
+      }
+    } onCancel: { [self] in
+      lock.withLock { turnWaiters.removeValue(forKey: id) }?.1.resume()
+    }
+  }
+
   // MARK: The frame
 
   /// The device's frame for a view of `area` pixels at `backing` pixels
@@ -231,12 +320,18 @@ final class DeviceSession: @unchecked Sendable {
   /// bounds the picture under it; the screen's corner alone, in the screen's
   /// points, for the frame the view draws, when Xcode installed no frame for
   /// the device type.
+  ///
+  /// The reply names the screen the frame was drawn for, its orientation and
+  /// size, read with what it is drawn from, so a turn meanwhile never pairs
+  /// a frame with another orientation.
   func frame(area: CGSize, backing: Double) throws -> ([String: Any], Data?) {
     let (turn, surface) = lock.withLock { (self.turn, self.surface) }
+    let screen = screenJSON(turn: turn, surface: surface)
     let looks = DeviceLooks(simulator: simulator)
     if let drawn = try drawFrame(looks: looks, screenPoints: portraitPoints, quarterTurns: turn.frameTurns, area: area, backing: backing) {
       return (
         [
+          "for": screen,
           "width": drawn.width, "height": drawn.height,
           "screen": [
             "x": drawn.screen.minX, "y": drawn.screen.minY, "width": drawn.screen.width,
@@ -250,7 +345,7 @@ final class DeviceSession: @unchecked Sendable {
     let pixels = surface.map { CGSize(width: IOSurfaceGetWidth($0), height: IOSurfaceGetHeight($0)) } ?? .zero
     let corner = looks.corner(pixels: pixels, screenPoints: portraitPoints, quarterTurns: turn.frameTurns)
     let scale = pixels.width > 0 ? portraitPoints.width / pixels.width : 0
-    return (["corner": cornerPoints(corner, scale: scale)], nil)
+    return (["for": screen, "corner": cornerPoints(corner, scale: scale)], nil)
   }
 
   /// `corner`'s points at `scale`, as the reply carries them.
@@ -336,15 +431,20 @@ final class DeviceSession: @unchecked Sendable {
 
   // MARK: The device
 
+  /// Turns the device to `name` and returns once the screen took the turn,
+  /// or once it is clear that the app in front refused it.
   func orient(_ name: String) async throws {
     guard let turn = Turn(rawValue: name) else {
       throw HelperError("\(name) is no orientation")
     }
+    try await orient(turn)
+  }
+
+  private func orient(_ turn: Turn) async throws {
     try await simulator.orientation.set(turn.device)
-    lock.withLock { self.turn = turn }
-    // The view and the captures follow the new size; the picture they
-    // draw next is turned the new way.
-    drawn()
+    // The display turns about half a second after the device; one that has
+    // not turned within twice that keeps its orientation.
+    await screenShows(turn, within: 1.5)
   }
 
   func appearance() async throws -> String {
@@ -443,6 +543,7 @@ final class DeviceSession: @unchecked Sendable {
         log("\(simulator.name): the UI automation mode could not be restored: \(describe(error))")
       }
     }
+    lock.withLock { followingTurns }?.cancel()
     await hid.close()
     attachment.cancel()
   }

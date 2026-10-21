@@ -50,7 +50,7 @@ const { createApp, h, nextTick } = await import('vue')
 const { LIVE_CONTROL_FRAME, SQUARE_CORNERS, encodeVideo } = await import('@demicodes/plugin-sdk')
 const { drawnFrameBezel } = await import('@demicodes/web-ui/live/drawn-frame')
 const { default: DeviceView } = await import('@demicodes/plugin-mobile/live/DeviceView.vue')
-const { MobileSession } = await import('@demicodes/plugin-mobile/live/session')
+const { DeviceSession } = await import('@demicodes/plugin-mobile/live/session')
 type LiveModuleMessage = import('@demicodes/plugin-mobile/generated/plugin').LiveModuleMessage
 type LiveViewerMessage = import('@demicodes/plugin-mobile/generated/plugin').LiveViewerMessage
 type LiveFrame = import('@demicodes/plugin-mobile/generated/plugin').LiveFrame
@@ -72,7 +72,8 @@ const DECODING = ['VideoDecoder', 'EncodedVideoChunk', 'requestAnimationFrame'] 
 
 /**
  * WebCodecs as the view uses it: each chunk decodes at once to a picture of
- * the size `size` gives then, painted at the next animation frame, at once.
+ * the size `size` gives then, painted at the next animation frame, which
+ * comes once the current task's microtasks ran.
  */
 function stubDecoding(size: () => { width: number; height: number }): void {
   class Chunk {
@@ -96,7 +97,8 @@ function stubDecoding(size: () => { width: number; height: number }): void {
       this.state = 'closed'
     }
   }
-  const values = { VideoDecoder: Decoder, EncodedVideoChunk: Chunk, requestAnimationFrame: (paint: () => void) => (paint(), 1) }
+  // A browser paints at its next refresh, after the task that asked.
+  const values = { VideoDecoder: Decoder, EncodedVideoChunk: Chunk, requestAnimationFrame: (paint: () => void) => (queueMicrotask(paint), 1) }
   for (const name of DECODING) {
     Object.defineProperty(globalThis, name, { configurable: true, value: values[name] })
   }
@@ -111,12 +113,18 @@ function framed(message: LiveModuleMessage): Uint8Array {
   return bytes
 }
 
-/** The view of device m1, a screen of 400 × 800 points in `frame`, in an area the test sizes; what it sends goes to `sent`. */
-async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] }) {
-  const sent: LiveViewerMessage[] = []
-  let heard: (() => void) | null = null
+/**
+ * Device `device`'s session, on a stream the test plays, whose sent
+ * messages go to `sent`, its frames' images decoded by `decodeImage`, at
+ * once unless the test says.
+ */
+function deviceSession(device: string, sent: LiveViewerMessage[], heard: () => void = () => {}, decodeImage = async () => {}) {
   const streams: UserStreamHandlers[] = []
-  const session = new MobileSession({
+  const session = new DeviceSession({
+    device,
+    model: 'iPhone 17',
+    nativeId: null,
+    decodeImage,
     open: (handlers) => {
       streams.push(handlers)
       return {
@@ -126,7 +134,7 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
             return
           }
           sent.push(JSON.parse(new TextDecoder().decode(bytes.subarray(5))) as LiveViewerMessage)
-          heard?.()
+          heard()
         },
         watched: () => {},
         close: () => {},
@@ -136,9 +144,26 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
     defect: (_, error) => { throw error },
   })
   session.enable()
+  return { session, stream: () => streams.at(-1)! }
+}
+
+/** Lets the frames' decoding under way complete and the view render. */
+async function settled(): Promise<void> {
+  for (let turn = 0; turn < 4; turn++) {
+    await Promise.resolve()
+  }
+  await nextTick()
+}
+
+/** The view of device m1, a screen of 400 × 800 points in `frame`, in an area the test sizes; what it sends goes to `sent`. */
+async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] }) {
+  const sent: LiveViewerMessage[] = []
+  let heard: (() => void) | null = null
+  const { session, stream } = deviceSession('m1', sent, () => heard?.())
+  const streams = [stream()]
   const root = document.createElement('div')
   document.body.append(root)
-  const app = createApp({ render: () => h(DeviceView, { session, device: 'm1', shown: true }) })
+  const app = createApp({ render: () => h(DeviceView, { session, shown: true }) })
   app.mount(root)
   unmount = () => {
     app.unmount()
@@ -154,12 +179,10 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
   await area(300, 500)
   streams[0]!.data(framed({
     type: 'state',
-    devices: [{ id: 'm1', name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' }],
-    watched: 'm1',
+    device: { name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' },
   }))
   streams[0]!.data(framed({
     type: 'frame',
-    device: 'm1',
     width: 300,
     height: 500,
     scale: 1,
@@ -168,7 +191,7 @@ async function viewing(frame: LiveFrame = { kind: 'drawn', corners: SQUARE_CORNE
     pointsHeight: 800,
     frame,
   }))
-  await nextTick()
+  await settled()
   const canvas = root.querySelector('canvas')!
   return {
     session,
@@ -199,7 +222,7 @@ test('a drag of the panel’s edge moves the picture at once and tells the Host 
   }
   const style = () => ({ width: parseFloat(view.screen.style.width), height: parseFloat(view.screen.style.height) })
   const first = style()
-  expect(view.shown()).toEqual([{ type: 'shown', device: 'm1', ...first }])
+  expect(view.shown()).toEqual([{ type: 'shown', ...first }])
 
   // The drag: the picture grows with each step; the Host hears nothing yet.
   const settled = view.next('shown')
@@ -211,8 +234,8 @@ test('a drag of the panel’s edge moves the picture at once and tells the Host 
   const last = style()
   await settled
   expect(view.shown()).toEqual([
-    { type: 'shown', device: 'm1', ...first },
-    { type: 'shown', device: 'm1', ...last },
+    { type: 'shown', ...first },
+    { type: 'shown', ...last },
   ])
 })
 
@@ -335,7 +358,7 @@ async function playing(frame?: LiveFrame) {
       const points = orientationPoints(orientation)
       size = { width: points.width * 2, height: points.height * 2 }
       view.stream.data(framed({
-        type: 'stream', device: 'm1', generation, width: size.width, height: size.height,
+        type: 'stream', generation, width: size.width, height: size.height,
         pointsWidth: points.width, pointsHeight: points.height, orientation, scale: 1,
       }))
       return nextTick()
@@ -346,16 +369,16 @@ async function playing(frame?: LiveFrame) {
         source: 'm1', generation, sequence: generation, key: true, timestamp: generation * 1000,
         width: size.width, height: size.height, data: new Uint8Array([0, 0, 0, 1, 0x65]),
       }))
-      return nextTick()
+      return settled()
     },
     /** The Host draws the device's frame, `drawn`, for `orientation`. */
     frame: (orientation: 'portrait' | 'landscape-right', drawn: LiveFrame) => {
       const points = orientationPoints(orientation)
       view.stream.data(framed({
-        type: 'frame', device: 'm1', width: 300, height: 500, scale: 1, orientation,
+        type: 'frame', width: 300, height: 500, scale: 1, orientation,
         pointsWidth: points.width, pointsHeight: points.height, frame: drawn,
       }))
-      return nextTick()
+      return settled()
     },
     /** The quarter turns, clockwise, the canvas's picture shows turned by, with the device's and its own. */
     turned: () => quartersOf(view.screen.parentElement) + quartersOf(view.canvas),
@@ -368,8 +391,9 @@ async function playing(frame?: LiveFrame) {
  * picture's shape, turned toward the new orientation, until the new picture
  * is painted.
  *
- * Planted defect this catches: the view laying out the announced pictures
- * at once, which stretches the old picture into the new shape.
+ * Planted defects this catch: the view laying out the announced pictures
+ * at once, which stretches the old picture into the new shape, and a new
+ * picture painted before its frame.
  */
 test('a picture keeps its shape, turned, until the device’s pictures in their new orientation are painted', async () => {
   const view = await playing()
@@ -386,7 +410,11 @@ test('a picture keeps its shape, turned, until the device’s pictures in their 
   expect(shape()).toBeCloseTo(0.5, 1)
   expect(view.turned()).toBe(1)
 
+  // Painted only once its orientation's frame is ready, so the two show together.
   await view.picture()
+  expect([view.canvas.width, view.canvas.height]).toEqual([800, 1600])
+  expect(view.turned()).toBe(1)
+  await view.frame('landscape-right', { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] })
   expect([view.canvas.width, view.canvas.height]).toEqual([1600, 800])
   expect(shape()).toBeCloseTo(2, 1)
   expect(view.turned()).toBe(0)
@@ -439,7 +467,7 @@ test.each([
   const portrait = deviceBoxes(view, area)
   for (let cycle = 0; cycle < 3; cycle++) {
     for (const [turn, orientation] of [['right', 'landscape-right'], ['left', 'portrait']] as const) {
-      view.session.turning('m1', turn)
+      view.session.turning(turn)
       await nextTick()
       const turned = deviceBoxes(view, area)
       expect(view.turned()).toBe(turn === 'right' ? 1 : -1)
@@ -478,8 +506,8 @@ test('quick turns back and forth never show the device without its frame', async
   const framedImage = () => view.screen.parentElement!.querySelector('img')?.getAttribute('src') ?? null
   const portrait = deviceBoxes(view, area)
   expect(framedImage()).toBe('data:image/png;base64,UE5H')
-  view.session.turning('m1', 'right')
-  view.session.turning('m1', 'left')
+  view.session.turning('right')
+  view.session.turning('left')
   await nextTick()
   const steps = [
     () => view.frame('landscape-right', IMAGE_FRAMES['landscape-right']),
@@ -495,4 +523,160 @@ test('quick turns back and forth never show the device without its frame', async
     expectSameBoxes(deviceBoxes(view, area), portrait)
   }
   expect(view.turned()).toBe(0)
+})
+
+const IPHONE_STATE = { name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' } as const
+
+/** Announces a generation of 400 × 800 points on `stream` and sends its first picture, of `width` × `height` pixels as `size` decodes it. */
+function deliver(stream: UserStreamHandlers, device: string, generation: number, width: number, height: number): void {
+  stream.data(framed({ type: 'stream', generation, width, height, pointsWidth: 400, pointsHeight: 800, orientation: 'portrait', scale: 1 }))
+  stream.data(encodeVideo({
+    source: device, generation, sequence: generation, key: true, timestamp: generation * 1000,
+    width, height, data: new Uint8Array([0, 0, 0, 1, 0x65]),
+  }))
+}
+
+/**
+ * The device shows its screen and its frame together or not at all: a
+ * picture that comes before its frame waits, and so does a frame whose
+ * image is not decoded yet.
+ *
+ * Planted defects this catches: a picture painted bare before its frame,
+ * and a frame shown before its image can draw, which shows the screen
+ * without its device around it.
+ */
+test('a device shows its frame and its picture together, never one without the other', async () => {
+  let size = { width: 800, height: 1600 }
+  stubDecoding(() => size)
+  const sent: LiveViewerMessage[] = []
+  const decoding: Array<() => void> = []
+  const { session, stream } = deviceSession('m1', sent, () => {}, () => new Promise<void>((resolve) => {
+    decoding.push(resolve)
+  }))
+  const root = document.createElement('div')
+  document.body.append(root)
+  const app = createApp({ render: () => h(DeviceView, { session, shown: true }) })
+  app.mount(root)
+  unmount = () => {
+    app.unmount()
+    session.close()
+  }
+  await nextTick()
+  for (const observer of observers) {
+    observer.report(300, 500)
+  }
+  await nextTick()
+  stream().data(framed({ type: 'state', device: IPHONE_STATE }))
+  deliver(stream(), 'm1', 1, 800, 1600)
+  await settled()
+  const showing = () => ({ device: root.querySelector('img') !== null, screen: session.canvas.isConnected && session.canvas.style.visibility !== 'hidden' })
+  // The picture came first: nothing shows, the view says it waits.
+  expect(showing()).toEqual({ device: false, screen: false })
+  expect(root.textContent).toContain('frame')
+
+  stream().data(framed({
+    type: 'frame', width: 300, height: 500, scale: 1, orientation: 'portrait', pointsWidth: 400, pointsHeight: 800,
+    frame: { kind: 'image', png: 'UE5H', silhouette: 'U0lM', width: 440, height: 860, screen: { x: 20, y: 30, width: 400, height: 800 } },
+  }))
+  await settled()
+  // The frame's images, its own and the screen's shape, are not decoded yet: still nothing.
+  expect(showing()).toEqual({ device: false, screen: false })
+  expect(decoding).toHaveLength(2)
+  decoding[0]!()
+  await settled()
+  expect(showing()).toEqual({ device: false, screen: false })
+  decoding[1]!()
+  await settled()
+  expect(showing()).toEqual({ device: true, screen: true })
+  expect([session.canvas.width, session.canvas.height]).toEqual([800, 1600])
+})
+
+/**
+ * Two device tabs switched every few milliseconds while each device's late
+ * pictures still arrive: each tab shows its own device's pictures only, a
+ * late picture paints on its own device's canvas, and each device's
+ * stream hears once of each change of whether it is looked at; with both
+ * shown at once, as side by side, both stream.
+ *
+ * Planted defects this catches: a late picture of the device left a moment
+ * ago painted into the new tab, which resizes its frame, and a switch that
+ * tells a device more than once, or tells it of the other's.
+ */
+test('switching device tabs fast shows each tab its own device, however late the other’s pictures come', async () => {
+  let size = { width: 800, height: 1600 }
+  stubDecoding(() => size)
+  const views = ['m1', 'm2'].map((device) => {
+    const sent: LiveViewerMessage[] = []
+    return { device, sent, ...deviceSession(device, sent) }
+  })
+  const { ref } = await import('vue')
+  const shown = ref<string[]>(['m1'])
+  const root = document.createElement('div')
+  document.body.append(root)
+  const app = createApp({
+    render: () => views.map((view) => h('div', { 'data-device': view.device }, [h(DeviceView, { session: view.session, shown: shown.value.includes(view.device) })])),
+  })
+  app.mount(root)
+  unmount = () => {
+    app.unmount()
+    for (const view of views) {
+      view.session.close()
+    }
+  }
+  await nextTick()
+  for (const observer of observers) {
+    observer.report(300, 500)
+  }
+  await nextTick()
+  // Each device's pictures have a size of their own: m1's 800 wide, m2's 600.
+  const width = { m1: 800, m2: 600 } as const
+  for (const view of views) {
+    view.stream().data(framed({ type: 'state', device: IPHONE_STATE }))
+    view.stream().data(framed({ type: 'frame', width: 300, height: 500, scale: 1, orientation: 'portrait', pointsWidth: 400, pointsHeight: 800, frame: { kind: 'drawn', corners: SQUARE_CORNERS, buttons: [] } }))
+  }
+  await settled()
+  const generations = { m1: 0, m2: 0 }
+  const picture = (device: 'm1' | 'm2') => {
+    const view = views.find((each) => each.device === device)!
+    generations[device] += 1
+    size = { width: width[device], height: width[device] * 2 }
+    deliver(view.stream(), device, generations[device], size.width, size.height)
+  }
+  const check = () => {
+    for (const view of views) {
+      const holder = root.querySelector(`[data-device="${view.device}"]`)!
+      const canvases = [...holder.querySelectorAll('canvas')]
+      // Each tab holds its own device's canvas, and that canvas only its device's pictures.
+      expect(canvases.every((canvas) => canvas === view.session.canvas)).toBe(true)
+      expect(view.session.canvas.width === 0 || view.session.canvas.width === width[view.device as 'm1' | 'm2'] || view.session.canvas.width === 300).toBe(true)
+      expect(view.session.state.look?.picture?.width ?? width[view.device as 'm1' | 'm2']).toBe(width[view.device as 'm1' | 'm2'])
+    }
+  }
+  picture('m1')
+  await settled()
+  check()
+  for (let switchTo = 0; switchTo < 6; switchTo++) {
+    const next = switchTo % 2 === 0 ? 'm2' : 'm1'
+    const left = next === 'm2' ? 'm1' : 'm2'
+    shown.value = [next]
+    await nextTick()
+    // The device left a moment ago still sends what was under way, then the new one its own.
+    picture(left)
+    picture(next)
+    await settled()
+    check()
+  }
+  const looks = (device: string) => views.find((view) => view.device === device)!.sent.flatMap((message) => message.type === 'looked' ? [message.looked] : [])
+  expect(looks('m1')).toEqual([true, false, true, false, true, false, true])
+  expect(looks('m2')).toEqual([true, false, true, false, true, false])
+
+  // Side by side: both are looked at, and each streams on its own.
+  shown.value = ['m1', 'm2']
+  await nextTick()
+  picture('m1')
+  picture('m2')
+  await settled()
+  check()
+  expect([looks('m1').at(-1), looks('m2').at(-1)]).toEqual([true, true])
+  expect(views.map((view) => view.session.state.look?.picture?.width)).toEqual([800, 600])
 })

@@ -65,7 +65,7 @@ closed_set! {
 }
 
 closed_set! {
-    /// Which way the device is turned, as `demi-mobile` last set it.
+    /// Which way the device's screen is turned, as it shows.
     pub enum Orientation {
         Portrait = "portrait",
         LandscapeLeft = "landscape-left",
@@ -587,8 +587,10 @@ device_input! {
 #[serde(deny_unknown_fields)]
 pub struct RotateResult {
     pub device: DeviceId,
+    /// The orientation the screen shows after the turn: the one asked for,
+    /// unless the app in front refused it.
     pub orientation: Orientation,
-    /// The screenshot's size in the new orientation.
+    /// The screenshot's size in that orientation.
     pub width: u32,
     pub height: u32,
 }

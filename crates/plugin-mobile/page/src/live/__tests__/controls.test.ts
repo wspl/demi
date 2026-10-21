@@ -4,18 +4,22 @@ import { computed, effectScope, shallowRef } from 'vue'
 import { waitFor } from '@demicodes/utils'
 import { pageContext, type PageHost } from '@demicodes/web-ui/plugins/page'
 import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
-import { LIVE_CONTROL_FRAME, definePage, pageReturned, type ConversationPlugin, type PluginCache, type PluginCallError, type UserStreamHandlers } from '@demicodes/plugin-sdk'
-import type { LiveDevice, LiveModuleMessage, LiveViewerMessage, Orientation } from '../../generated/plugin'
+import { LIVE_CONTROL_FRAME, UNANSWERED_STREAM, definePage, pageReturned, type ConversationPlugin, type PluginCache, type PluginCallError, type UserStreamHandlers } from '@demicodes/plugin-sdk'
+import type { LiveDevice, LiveFrame, LiveModuleMessage, LiveViewerMessage, Orientation } from '../../generated/plugin'
 import { mobileApi } from '../../devices'
 import { MobileDevicesController, noticeText } from '../controller'
 import { DEVICE_CONTROLS, deviceControls } from '../controls'
-import { MobileSession, type DeviceStream } from '../session'
+import { DeviceSession } from '../session'
+import type { MobileTabData } from '../kind'
 import { mobileStore } from '../store'
 
-// The device toolbar's controls and the agent's activity on the page's side
-// (`crates/plugin-mobile/page/src/index.ts`). The plugin's own tests show that each page
-// method runs the operation of its command; here, that each control calls
-// the method of the command that does the same. No page, a few ms.
+// The device toolbar's controls and each device's live view on the page's
+// side (`crates/plugin-mobile/page/src/index.ts`,
+// `docs/decisions/0017-each-device-streams-on-its-own.md`): its own stream,
+// whether it is looked at, its look and its frames. The plugin's own tests
+// show that each page method runs the operation of its command; here, that
+// each control calls the method of the command that does the same. No page,
+// a few ms each.
 
 /** What each method answers, as the plugin would for device m1. */
 const ANSWERS: Record<string, unknown> = {
@@ -114,205 +118,264 @@ function framed(message: LiveModuleMessage): Uint8Array {
   return bytes
 }
 
-test('the view follows the agent’s activity on the device it watches, and on no other', () => {
+const IPHONE: LiveDevice = { name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' }
+const PIXEL: LiveDevice = { name: 'Pixel 10', platform: 'android', os: 'Android 16', model: 'Pixel 10', recording: false, orientation: 'portrait' }
+const ROUND = { kind: 'round' as const, radius: 55 }
+const DRAWN = { kind: 'drawn' as const, corners: { topLeft: ROUND, topRight: ROUND, bottomRight: ROUND, bottomLeft: ROUND }, buttons: [] }
+const drawn = (radius: number) => ({ ...DRAWN, corners: { topLeft: { kind: 'round' as const, radius }, topRight: { kind: 'round' as const, radius }, bottomRight: { kind: 'round' as const, radius }, bottomLeft: { kind: 'round' as const, radius } } })
+
+/** A disk cache over a map, as the plugin's IndexedDB keeps it. */
+function mapCache(kept: Map<string, Uint8Array<ArrayBuffer>>): PluginCache {
+  return {
+    read: async (key) => kept.get(key) ?? null,
+    write: async (key, bytes) => void kept.set(key, bytes),
+  }
+}
+
+/** Lets the map cache's reads and the frames' decoding under way complete. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 6; turn++) {
+    await Promise.resolve()
+  }
+}
+
+/**
+ * Device `device`'s live view on a stream whose Host side is the last of
+ * `streams`, its sent messages in `sent` and what its stream was told of
+ * who watches it in `told`; enabled, as a browser that shows pictures does.
+ */
+function deviceView(device = 'm1', options: {
+  cache?: PluginCache
+  model?: string | null
+  gone?: () => void
+  decodeImage?: (src: string) => Promise<void>
+  defect?: (message: string, error: unknown) => void
+  now?: () => number
+} = {}) {
   const streams: UserStreamHandlers[] = []
-  const defects: unknown[] = []
-  const session = new MobileSession({
-    open: plugin([], streams).stream('mobile'),
+  const sent: LiveViewerMessage[] = []
+  const told: Array<boolean | 'closed'> = []
+  const session = new DeviceSession({
+    open: plugin([], streams, sent, undefined, told).stream('mobile'),
+    device,
+    model: options.model === undefined ? 'iPhone 17' : options.model,
+    nativeId: `native-${device}`,
+    cache: options.cache,
     platform: 'mac',
-    defect: (_, error) => void defects.push(error),
-  })
-  session.start()
-  const host = streams[0]!
-  const devices = [
-    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' as const },
-    { id: 'm2', name: 'iPad Air', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPad Air 11-inch (M3)', recording: false, orientation: 'portrait' as const },
-  ]
-  host.data(framed({ type: 'state', devices, watched: 'm1' }))
-  expect(session.state.activity).toEqual({ active: false })
-
-  host.data(framed({ type: 'activity', device: 'm1', activity: { active: true, point: { x: 100, y: 200 } } }))
-  expect(session.state.activity).toEqual({ active: true, point: { x: 100, y: 200 } })
-  // The agent's input on another device is not this view's.
-  host.data(framed({ type: 'activity', device: 'm2', activity: { active: false } }))
-  expect(session.state.activity.active).toBe(true)
-  host.data(framed({ type: 'activity', device: 'm1', activity: { active: false, point: { x: 100, y: 200 } } }))
-  expect(session.state.activity).toEqual({ active: false, point: { x: 100, y: 200 } })
-
-  // Watching another device starts with no activity, until the Host reports it.
-  host.data(framed({ type: 'activity', device: 'm1', activity: { active: true } }))
-  session.showing('m2')
-  expect(session.state.activity).toEqual({ active: false })
-  session.close()
-  expect(defects).toEqual([])
-})
-
-test('the view opens no stream until a device tab is shown, and opens it for the first one', async () => {
-  // A panel with no device tab shown opens none, once this web browser says it shows the pictures.
-  const panelStreams: UserStreamHandlers[] = []
-  const scope = effectScope()
-  const controller = scope.run(() => new MobileDevicesController(
-    mobileApi(plugin([], panelStreams)),
-    { report: (_, error) => { throw error }, defect: (_, error) => { throw error } },
-    { pictures: async () => true, platform: 'mac' },
-  ))!
-  await Promise.resolve()
-  await Promise.resolve()
-  expect(panelStreams).toHaveLength(0)
-  controller.session.showing('m1')
-  expect(panelStreams).toHaveLength(1)
-  controller.dispose()
-  scope.stop()
-
-  const streams: UserStreamHandlers[] = []
-  const session = new MobileSession({
-    open: plugin([], streams).stream('mobile'),
-    platform: 'mac',
-    defect: (_, error) => { throw error },
+    gone: options.gone,
+    defect: options.defect ?? ((_, error) => { throw error }),
+    decodeImage: options.decodeImage ?? (async () => {}),
+    now: options.now,
   })
   session.enable()
-  expect(streams).toHaveLength(0)
-  session.showing('m1')
-  expect(streams).toHaveLength(1)
-  session.showing('m2')
-  expect(streams).toHaveLength(1)
-  session.close()
+  const host = () => streams.at(-1)!
+  return {
+    session,
+    sent,
+    told,
+    streams,
+    host,
+    /** The Host says the device's state, as it does once the stream is looked at. */
+    state: (state: LiveDevice = IPHONE) => host().data(framed({ type: 'state', device: state })),
+    looks: () => sent.flatMap((message) => message.type === 'looked' ? [message.looked] : []),
+    frames: () => sent.filter((message) => message.type === 'frame'),
+    /** The Host draws the device's frame for an area of `width` × 1200 device pixels at `scale`. */
+    frame: (orientation: Orientation = 'portrait', frame: LiveFrame = DRAWN, width = 800, scale = 2) => {
+      const upright = orientation === 'portrait' || orientation === 'portrait-upside-down'
+      host().data(framed({
+        type: 'frame', width, height: 1200, scale, orientation,
+        pointsWidth: upright ? 402 : 874, pointsHeight: upright ? 874 : 402, frame,
+      }))
+    },
+  }
+}
 
-  // A device tab shown before this web browser has said it shows the pictures opens the stream once it has.
-  const later: UserStreamHandlers[] = []
-  const waiting = new MobileSession({ open: plugin([], later).stream('mobile'), platform: 'mac', defect: (_, error) => { throw error } })
-  waiting.showing('m1')
-  expect(later).toHaveLength(0)
+test('each device opens a stream of its own, once this browser shows pictures, saying which device it carries', () => {
+  const later = deviceView('m1')
+  const other = deviceView('m2')
+  expect(later.streams).toHaveLength(1)
+  expect(other.streams).toHaveLength(1)
+  // Its hello names its device; it is not looked at until a view of it shows.
+  expect(later.sent).toEqual([{ type: 'hello', platform: 'mac', device: 'm1' }])
+  expect(other.sent).toEqual([{ type: 'hello', platform: 'mac', device: 'm2' }])
+  expect(later.told).toEqual([false])
+  later.session.close()
+  other.session.close()
+
+  // A device shown before this web browser has said it shows the pictures opens its stream once it has.
+  const streams: UserStreamHandlers[] = []
+  const waiting = new DeviceSession({ open: plugin([], streams).stream('mobile'), device: 'm1', model: null, nativeId: null, platform: 'mac', defect: (_, error) => { throw error } })
+  waiting.showIn({}, true)
+  expect(streams).toHaveLength(0)
   waiting.enable()
-  expect(later).toHaveLength(1)
+  expect(streams).toHaveLength(1)
   waiting.close()
 })
 
-/** A started session on a stream whose sent messages `sent` keeps, its Host's side the first of `streams`. */
-function viewing(sent: LiveViewerMessage[], streams: UserStreamHandlers[] = []): MobileSession {
-  const session = new MobileSession({
-    open: plugin([], streams, sent).stream('mobile'),
-    platform: 'mac',
-    defect: (_, error) => { throw error },
-  })
-  session.enable()
-  return session
-}
-
-const watches = (sent: LiveViewerMessage[]) => sent.flatMap((message) => message.type === 'watch' ? [message.device] : [])
-
-test('the view lets a device go once none of its tabs is shown or the page is hidden, and never in a switch', async () => {
-  const sent: LiveViewerMessage[] = []
-  const session = viewing(sent)
-  session.showing('m1')
-  // A switch to m2's tab, its show before m1's hide, and back, its hide first.
-  session.showing('m2')
-  session.hiding('m1')
-  await Promise.resolve()
-  session.hiding('m2')
-  session.showing('m1')
-  await Promise.resolve()
-  expect(watches(sent)).toEqual(['m1', 'm2', 'm1'])
-
-  // The last shown tab is hidden, as when the panel shows a file: nobody watches,
-  // so the device gets its hour.
-  session.hiding('m1')
-  await Promise.resolve()
-  expect(watches(sent)).toEqual(['m1', 'm2', 'm1', null])
-  session.showing('m1')
-  session.visibility(false)
-  session.visibility(true)
-  expect(watches(sent)).toEqual(['m1', 'm2', 'm1', null, 'm1', null, 'm1'])
-  session.close()
+test('the view follows the agent’s activity on its device', () => {
+  const view = deviceView()
+  view.session.showIn({}, true)
+  view.state()
+  expect(view.session.state.activity).toEqual({ active: false })
+  view.host().data(framed({ type: 'activity', activity: { active: true, point: { x: 100, y: 200 } } }))
+  expect(view.session.state.activity).toEqual({ active: true, point: { x: 100, y: 200 } })
+  view.host().data(framed({ type: 'activity', activity: { active: false, point: { x: 100, y: 200 } } }))
+  expect(view.session.state.activity).toEqual({ active: false, point: { x: 100, y: 200 } })
+  view.session.close()
 })
 
-test('Record stops a recording the device announces, whoever started it', () => {
-  const streams: UserStreamHandlers[] = []
-  const session = viewing([], streams)
-  session.showing('m1')
-  const record = DEVICE_CONTROLS.at(-1)!
-  const recordingOf = (recording: boolean) => framed({
-    type: 'state',
-    devices: [{ id: 'm1', name: 'iPhone 17', platform: 'ios', os: 'iOS 26.5', model: 'iPhone 17', recording, orientation: 'portrait' as const }],
-    watched: 'm1',
-  })
-  expect(record.call('m1', { recording: session.recording('m1') }).params).toEqual({ device: 'm1', action: 'start' })
-  // The agent, or another window, started a recording.
-  streams[0]!.data(recordingOf(true))
-  expect(record.label({ recording: session.recording('m1') })).toBe('toolbar.stopRecording')
-  expect(record.call('m1', { recording: session.recording('m1') }).params).toEqual({ device: 'm1', action: 'stop' })
-  streams[0]!.data(recordingOf(false))
-  expect(record.label({ recording: session.recording('m1') })).toBe('toolbar.record')
-  session.close()
-})
-
-test('the view asks for the frame of its laid-out size and pixel ratio once, again for a new size, ratio or device, and keeps the watched device’s', () => {
-  const streams: UserStreamHandlers[] = []
-  const sent: LiveViewerMessage[] = []
-  const session = viewing(sent, streams)
-  const frames = () => sent.filter((message) => message.type === 'frame')
-  // No size yet: nothing to draw for.
-  session.showing('m1')
-  expect(frames()).toEqual([])
-  session.frame(800.4, 1200, 2)
-  session.frame(800, 1200, 2)
-  expect(frames()).toEqual([{ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2 }])
-  session.frame(1000, 1200, 2)
-  // The window moved to a screen of another pixel ratio, its size in device pixels the same.
-  session.frame(1000, 1200, 1)
-  session.showing('m2')
-  expect(frames()).toEqual([
-    { type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2 },
-    { type: 'frame', device: 'm1', width: 1000, height: 1200, scale: 2 },
-    { type: 'frame', device: 'm1', width: 1000, height: 1200, scale: 1 },
-    { type: 'frame', device: 'm2', width: 1000, height: 1200, scale: 1 },
-  ])
-  const round = { kind: 'round' as const, radius: 55 }
-  const drawnFrame = { kind: 'drawn' as const, corners: { topLeft: round, topRight: round, bottomRight: round, bottomLeft: round }, buttons: [] }
-  streams[0]!.data(framed({ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawnFrame }))
-  expect(session.state.frames).toEqual({})
-  streams[0]!.data(framed({ type: 'frame', device: 'm2', width: 1000, height: 1200, scale: 1, orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame }))
-  expect(session.state.frames).toEqual({ m2: { 'landscape-left': { device: 'm2', orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: drawnFrame } } })
-  session.close()
-})
-
-test('each device keeps its last frame across a switch of tabs until a newer one comes, and loses it when it closes', async () => {
-  // Over a far Host the frame asked for again on a return comes a round
-  // trip later: meanwhile the device shows the frame it had.
-  const streams: UserStreamHandlers[] = []
-  const sent: LiveViewerMessage[] = []
-  const session = viewing(sent, streams)
-  const round = (radius: number) => ({ kind: 'round' as const, radius })
-  const drawn = (radius: number) => ({
-    kind: 'drawn' as const,
-    corners: { topLeft: round(radius), topRight: round(radius), bottomRight: round(radius), bottomLeft: round(radius) },
-    buttons: [],
-  })
-  const frameOf = (device: string, radius: number) => framed({ type: 'frame', device, width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: drawn(radius) })
-  const devices = [
-    { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' as const },
-    { id: 'm2', name: 'Pixel 10', platform: 'android' as const, os: 'Android 16', model: 'Pixel 10', recording: false, orientation: 'portrait' as const },
+/**
+ * Whether a device's stream is looked at follows its own views and the
+ * page alone, in whatever order a tab's show, its hide and the page's
+ * visibility come, and each change is said once.
+ *
+ * Planted defects this catches: a device on screen in a visible page told
+ * that nobody looks at it after a hide and a show crossed, which lets it
+ * close as idle; a hidden page still looking; a change said twice.
+ */
+test('a device shown in a visible page is looked at, and one hidden is not, through every order of hides and shows', () => {
+  const orders: Array<Array<'show' | 'hide' | 'pageHidden' | 'pageVisible' | 'otherView' | 'otherGone'>> = [
+    ['show', 'hide', 'show'],
+    ['show', 'pageHidden', 'hide', 'pageVisible', 'show'],
+    ['show', 'otherView', 'hide', 'otherGone', 'show'],
+    ['pageHidden', 'show', 'pageVisible'],
+    ['show', 'pageHidden', 'pageVisible', 'pageHidden', 'pageVisible'],
+    ['otherView', 'show', 'otherGone', 'pageHidden', 'pageVisible'],
   ]
-  session.showing('m1')
-  session.frame(800, 1200, 2)
-  streams[0]!.data(framed({ type: 'state', devices, watched: 'm1' }))
-  streams[0]!.data(frameOf('m1', 55))
-  // Another tab, then m1's again.
-  session.hiding('m1')
-  await Promise.resolve()
-  expect(session.state.watched).toBeNull()
-  expect(session.state.frames.m1?.portrait?.frame).toEqual(drawn(55))
-  const asked = sent.filter((message) => message.type === 'frame').length
-  session.showing('m1')
-  expect(session.state.frames.m1?.portrait?.frame).toEqual(drawn(55))
-  // The frame is asked for again, and the newer one replaces the kept one.
-  expect(sent.filter((message) => message.type === 'frame')).toHaveLength(asked + 1)
-  streams[0]!.data(frameOf('m1', 60))
-  expect(session.state.frames.m1?.portrait?.frame).toEqual(drawn(60))
-  // m1 closes: its frame goes with it.
-  streams[0]!.data(framed({ type: 'state', devices: [devices[1]!], watched: null }))
-  expect(session.state.frames).toEqual({})
-  session.close()
+  for (const order of orders) {
+    const view = deviceView()
+    const tab = {}
+    const other = {}
+    let shown = new Set<object>()
+    let visible = true
+    for (const step of order) {
+      switch (step) {
+        case 'show': view.session.showIn(tab, true); shown.add(tab); break
+        case 'hide': view.session.showIn(tab, false); shown.delete(tab); break
+        case 'otherView': view.session.showIn(other, true); shown.add(other); break
+        case 'otherGone': view.session.showIn(other, false); shown.delete(other); break
+        case 'pageHidden': view.session.visibility(false); visible = false; break
+        case 'pageVisible': view.session.visibility(true); visible = true; break
+      }
+      const looked = visible && shown.size > 0
+      // The Host hears it in the stream, and the backend beside the stream.
+      expect([view.looks().at(-1) ?? false, view.told.at(-1)]).toEqual([looked, looked])
+    }
+    const said = view.looks()
+    expect(said.every((value, at) => at === 0 ? value : value !== said[at - 1])).toBe(true)
+    view.session.close()
+    shown = new Set()
+  }
+})
+
+/**
+ * Two devices looked at together each get their own stream's pictures and
+ * state, and one no longer looked at leaves the other looked at.
+ *
+ * Planted defect this catches: one device's look or Host state reaching
+ * another's view, as when the conversation's devices shared a stream.
+ */
+test('two devices looked at together stream each on its own, and one pausing leaves the other streaming', async () => {
+  const iphone = deviceView('m1')
+  const pixel = deviceView('m2', { model: 'Pixel 10' })
+  for (const view of [iphone, pixel]) {
+    view.session.showIn({}, true)
+    view.session.frame(800, 1200, 2)
+  }
+  iphone.state(IPHONE)
+  pixel.state(PIXEL)
+  iphone.frame('portrait', drawn(55))
+  pixel.frame('landscape-left', drawn(30))
+  await settle()
+  expect(iphone.session.state.device).toEqual(IPHONE)
+  expect(pixel.session.state.device).toEqual(PIXEL)
+  expect(iphone.session.state.frames.portrait?.frame).toEqual(drawn(55))
+  expect(iphone.session.state.frames['landscape-left']).toBeUndefined()
+  expect(pixel.session.state.frames['landscape-left']?.frame).toEqual(drawn(30))
+  expect(pixel.session.state.frames.portrait).toBeUndefined()
+
+  const tab = {}
+  iphone.session.showIn(tab, true)
+  pixel.session.visibility(true)
+  const pixelLooks = pixel.looks()
+  iphone.session.showIn(tab, false)
+  iphone.session.visibility(false)
+  expect(iphone.looks().at(-1)).toBe(false)
+  expect(pixel.looks()).toEqual(pixelLooks)
+  expect(pixel.looks().at(-1)).toBe(true)
+  iphone.session.close()
+  pixel.session.close()
+})
+
+test('Record follows a recording the device announces, whoever started it', () => {
+  const view = deviceView()
+  view.session.showIn({}, true)
+  const record = DEVICE_CONTROLS.at(-1)!
+  expect(record.call('m1', { recording: view.session.recording }).params).toEqual({ device: 'm1', action: 'start' })
+  // The agent, or another window, started a recording.
+  view.state({ ...IPHONE, recording: true })
+  expect(record.label({ recording: view.session.recording })).toBe('toolbar.stopRecording')
+  expect(record.call('m1', { recording: view.session.recording }).params).toEqual({ device: 'm1', action: 'stop' })
+  view.state({ ...IPHONE, recording: false })
+  expect(record.label({ recording: view.session.recording })).toBe('toolbar.record')
+  view.session.close()
+})
+
+/**
+ * Planted defects these catch: a frame asked for again at a size the Host
+ * drew, and one asked for though the disk cache keeps it.
+ */
+test('the view asks the Host for the frame of its size and pixel ratio once, and only when the disk cache lacks it', async () => {
+  const view = deviceView()
+  view.session.showIn({}, true)
+  view.state()
+  // No size yet: nothing to draw for.
+  expect(view.frames()).toEqual([])
+  view.session.frame(800.4, 1200, 2)
+  view.session.frame(800, 1200, 2)
+  expect(view.frames()).toEqual([{ type: 'frame', width: 800, height: 1200, scale: 2 }])
+  view.session.frame(1000, 1200, 2)
+  // The window moved to a screen of another pixel ratio, its size in device pixels the same.
+  view.session.frame(1000, 1200, 1)
+  expect(view.frames()).toEqual([
+    { type: 'frame', width: 800, height: 1200, scale: 2 },
+    { type: 'frame', width: 1000, height: 1200, scale: 2 },
+    { type: 'frame', width: 1000, height: 1200, scale: 1 },
+  ])
+  view.session.close()
+
+  const kept = new Map<string, Uint8Array<ArrayBuffer>>()
+  const first = deviceView('m1', { cache: mapCache(kept) })
+  first.session.showIn({}, true)
+  first.state()
+  first.session.frame(800, 1200, 2)
+  await settle()
+  expect(first.frames()).toHaveLength(1)
+  first.frame()
+  await settle()
+  first.session.close()
+  const again = deviceView('m1', { cache: mapCache(kept) })
+  again.session.showIn({}, true)
+  again.state()
+  again.session.frame(800, 1200, 2)
+  await settle()
+  expect(again.frames()).toEqual([])
+  expect(again.session.state.frames.portrait?.frame).toEqual(DRAWN)
+  again.session.close()
+})
+
+test('a device that closes ends its view, which no reconnect opens again', async () => {
+  let gone = 0
+  const view = deviceView('m1', { gone: () => void (gone += 1) })
+  view.session.showIn({}, true)
+  view.host().data(framed({ type: 'gone' }))
+  expect(gone).toBe(1)
+  expect(view.session.state.gone).toBe(true)
+  expect(view.told.at(-1)).toBe('closed')
+  view.session.visibility(false)
+  view.session.visibility(true)
+  await pageReturned()
+  expect(view.streams).toHaveLength(1)
 })
 
 test('text that found no focused field is told in the panel’s own words, quoting the viewer’s text', async () => {
@@ -326,7 +389,7 @@ test('text that found no focused field is told in the panel’s own words, quoti
   ))!
   await Promise.resolve()
   await Promise.resolve()
-  controller.session.showing('m1')
+  controller.device(TAB).showIn({}, true)
   streams[0]!.data(framed({ type: 'notice', code: 'no_focused_field', message: 'Grüße 東京' }))
   streams[0]!.data(framed({ type: 'notice', code: 'input_failed', message: 'the helper ended' }))
   controller.dispose()
@@ -340,48 +403,43 @@ test('text that found no focused field is told in the panel’s own words, quoti
   expect(reported[1]!.message).not.toContain('the helper ended')
 })
 
-test('the view says the size it shows the screen at once for each size, and again for the next device it watches', () => {
-  const sent: LiveViewerMessage[] = []
-  const session = viewing(sent)
-  const shown = () => sent.filter((message) => message.type === 'shown')
-  session.showing('m1')
-  session.showsScreenAt(860.2, 1868)
-  session.showsScreenAt(860, 1868)
-  session.showsScreenAt(600, 1304)
-  session.showing('m2')
-  session.showsScreenAt(600, 1304)
+test('the view says the size it shows the screen at once for each size', () => {
+  const view = deviceView()
+  view.session.showIn({}, true)
+  const shown = () => view.sent.filter((message) => message.type === 'shown')
+  view.session.showsScreenAt(860.2, 1868)
+  view.session.showsScreenAt(860, 1868)
+  view.session.showsScreenAt(600, 1304)
   expect(shown()).toEqual([
-    { type: 'shown', device: 'm1', width: 860, height: 1868 },
-    { type: 'shown', device: 'm1', width: 600, height: 1304 },
-    { type: 'shown', device: 'm2', width: 600, height: 1304 },
+    { type: 'shown', width: 860, height: 1868 },
+    { type: 'shown', width: 600, height: 1304 },
   ])
-  session.close()
+  view.session.close()
 })
 
-test('the view follows whether the watched device’s screen is off, and of no other device, and Wake asks the watched one to turn on', () => {
-  const streams: UserStreamHandlers[] = []
-  const sent: LiveViewerMessage[] = []
-  const session = viewing(sent, streams)
-  session.showing('m1')
-  streams[0]!.data(framed({ type: 'screen', device: 'm1', on: false }))
-  expect(session.state.screenOff).toBe(true)
-  streams[0]!.data(framed({ type: 'screen', device: 'm2', on: true }))
-  expect(session.state.screenOff).toBe(true)
-  streams[0]!.data(framed({ type: 'screen', device: 'm1', on: true }))
-  expect(session.state.screenOff).toBe(false)
-  session.wake()
-  expect(sent.filter((message) => message.type === 'wake')).toEqual([{ type: 'wake', device: 'm1' }])
-  session.close()
+test('the view follows whether the device’s screen is off, and Wake asks it to turn on', () => {
+  const view = deviceView()
+  view.session.showIn({}, true)
+  view.host().data(framed({ type: 'screen', on: false }))
+  expect(view.session.state.screenOff).toBe(true)
+  view.host().data(framed({ type: 'screen', on: true }))
+  expect(view.session.state.screenOff).toBe(false)
+  view.session.wake()
+  expect(view.sent.filter((message) => message.type === 'wake')).toEqual([{ type: 'wake' }])
+  view.session.close()
 })
+
+const TAB: MobileTabData = { device: 'm1', nativeId: 'native-m1', name: 'Pixel 10', platform: 'android', model: 'Pixel 10' }
 
 /**
- * A controller over a device m1 whose live view is open, and whose rotations
- * wait until the test answers each, in turn: `answer` gives the next one the
- * device's answer and waits for its press to end, `refuse` its refusal.
- * `reports` sends the device's notice that its pictures now come in an
- * orientation, as the module announces each generation, whoever turned it.
+ * A controller over a device m1 whose live view is open and looked at, its
+ * frame ready, and whose rotations wait until the test answers each, in
+ * turn: `answer` gives the next one the device's answer and waits for its
+ * press to end, `refuse` its refusal. `reports` sends the device's notice
+ * that its pictures now come in an orientation, as the module announces
+ * each generation, whoever turned it.
  */
-function rotating() {
+async function rotating() {
   const waiting: Array<{ resolve: (value: unknown) => void; reject: (error: Error) => void }> = []
   const streams: UserStreamHandlers[] = []
   const reported: unknown[] = []
@@ -395,25 +453,25 @@ function rotating() {
       waiting.push({ resolve, reject })
     }))),
     { report: (_, error) => void reported.push(error), defect: (_, error) => { throw error } },
-    { pictures: async () => false, platform: 'mac' },
+    { pictures: async () => true, platform: 'mac' },
   ))!
-  const session = controller.session
+  await waitFor(() => controller.pictures.value === 'supported')
+  const session = controller.device(TAB)
+  session.showIn({}, true)
+  session.frame(800, 1200, 2)
   const presses: Array<Promise<unknown>> = []
   let generation = 0
   const open = () => {
-    session.start()
-    streams.at(-1)!.data(framed({
-      type: 'state',
-      devices: [{ id: 'm1', name: 'Pixel 10', platform: 'android', os: 'Android 16', model: 'Pixel 10', recording: false, orientation: 'portrait' as const }],
-      watched: 'm1',
-    }))
+    streams.at(-1)!.data(framed({ type: 'state', device: PIXEL }))
+    streams.at(-1)!.data(framed({ type: 'frame', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 412, pointsHeight: 924, frame: DRAWN }))
   }
   open()
+  await settle()
   const reports = (orientation: Orientation) => {
     generation += 1
     const upright = orientation === 'portrait' || orientation === 'portrait-upside-down'
     streams.at(-1)!.data(framed({
-      type: 'stream', device: 'm1', generation,
+      type: 'stream', generation,
       width: upright ? 1080 : 2424, height: upright ? 2424 : 1080,
       pointsWidth: upright ? 412 : 924, pointsHeight: upright ? 924 : 412,
       orientation, scale: 1,
@@ -423,7 +481,8 @@ function rotating() {
     session,
     reported,
     reports,
-    /** The connection drops and opens again: its generations start over. */
+    streams,
+    /** The connection drops and opens again: its generations start over, and nothing it reported stays. */
     reconnect: async () => {
       const before = streams.length
       streams.at(-1)!.closed('the connection dropped')
@@ -431,17 +490,12 @@ function rotating() {
       // The page's return opens it again without the rest of its wait.
       await pageReturned()
       expect(streams).toHaveLength(before + 1)
-      streams.at(-1)!.data(framed({
-        type: 'state',
-        devices: [{ id: 'm1', name: 'Pixel 10', platform: 'android', os: 'Android 16', model: 'Pixel 10', recording: false, orientation: 'portrait' as const }],
-        watched: 'm1',
-      }))
     },
     rotate: (turn: 'left' | 'right') => {
       presses.push(controller.run({ method: 'rotate', params: { device: 'm1', turn } }))
     },
-    /** The quarter turns the view adds to the picture it has drawn, of `drawn`. */
-    quarters: (drawn: Orientation) => session.pendingQuarters('m1', drawn),
+    /** The quarter turns the view adds to what it draws, of `drawn`. */
+    quarters: (drawn: Orientation) => session.pendingQuarters(drawn),
     answer: async (orientation: Orientation) => {
       waiting.shift()!.resolve({ device: 'm1', orientation, width: 1, height: 1 })
       await presses.shift()
@@ -451,15 +505,14 @@ function rotating() {
       await presses.shift()
     },
     end: () => {
-      session.close()
       controller.dispose()
       scope.stop()
     },
   }
 }
 
-test('a rotation turns the drawn picture at once until a picture in the device’s new orientation is drawn, however late it answers', async () => {
-  const device = rotating()
+test('a rotation turns what the view shows at once until a picture in the device’s new orientation is drawn, however late it answers', async () => {
+  const device = await rotating()
   device.reports('portrait')
   // Rotate Right: a quarter clockwise before the device has answered.
   device.rotate('right')
@@ -477,7 +530,7 @@ test('a rotation turns the drawn picture at once until a picture in the device�
 })
 
 test('a refused rotation turns the picture back and shows the error', async () => {
-  const device = rotating()
+  const device = await rotating()
   device.reports('portrait')
   device.rotate('left')
   expect(device.quarters('portrait')).toBe(-1)
@@ -489,7 +542,7 @@ test('a refused rotation turns the picture back and shows the error', async () =
 })
 
 test('quick presses add up, a refused one among them comes off, and the device’s pictures end them', async () => {
-  const device = rotating()
+  const device = await rotating()
   device.reports('portrait')
   device.rotate('right')
   device.rotate('right')
@@ -510,7 +563,7 @@ test('quick presses add up, a refused one among them comes off, and the device�
 })
 
 test('the viewer and the agent turning the device together end where the device does', async () => {
-  const device = rotating()
+  const device = await rotating()
   device.reports('portrait')
   device.rotate('right')
   // The agent's turn right and then the viewer's come before the viewer's answer.
@@ -530,7 +583,7 @@ test('the viewer and the agent turning the device together end where the device 
 })
 
 test('a refused turn while the agent turned the device shows the device’s orientation', async () => {
-  const device = rotating()
+  const device = await rotating()
   device.reports('portrait')
   device.rotate('left')
   // The agent turns it right meanwhile.
@@ -543,15 +596,13 @@ test('a refused turn while the agent turned the device shows the device’s orie
 })
 
 test('a turn the device answered before a reconnect ends with the new connection’s pictures', async () => {
-  const device = rotating()
+  const device = await rotating()
   for (const orientation of ['portrait', 'landscape-right', 'portrait-upside-down', 'landscape-left', 'portrait'] as const) {
     device.reports(orientation)
   }
   device.rotate('right')
   await device.answer('landscape-right')
   await device.reconnect()
-  // Nothing the old connection reported turns the picture until the new one reports.
-  expect(device.quarters('portrait')).toBe(0)
   // The new connection's generations start at 1.
   device.reports('landscape-right')
   expect(device.quarters('landscape-right')).toBe(0)
@@ -559,20 +610,23 @@ test('a turn the device answered before a reconnect ends with the new connection
   device.end()
 })
 
-test('a press before the device reported its orientation leaves later presses alone', async () => {
-  const device = rotating()
-  device.rotate('right')
-  expect(device.quarters('portrait')).toBe(0)
+/**
+ * After a reconnect, before the new connection reports any orientation,
+ * a press still turns what the view shows at once, from the orientation it
+ * shows. Planted defect this catches: a rotation that turns only from the
+ * orientation the current connection's pictures reported, which a
+ * reconnect clears, so the press does nothing until the device answers.
+ */
+test('a rotation after a reconnect turns what the view shows at once', async () => {
+  const device = await rotating()
   device.reports('portrait')
+  await device.reconnect()
+  expect(device.session.state.reported).toBeNull()
   device.rotate('right')
-  expect(device.quarters('portrait')).toBe(1)
-  // The first press's answer is no answer to the second.
-  await device.answer('landscape-right')
   expect(device.quarters('portrait')).toBe(1)
   device.reports('landscape-right')
   await device.answer('landscape-right')
   expect(device.quarters('landscape-right')).toBe(0)
-  expect(device.session.state.turning).toEqual([])
   device.end()
 })
 
@@ -598,18 +652,13 @@ function storeHost(conversation: ConversationPlugin): PageHost {
   }
 }
 
-const IPHONE = { id: 'm1', name: 'iPhone 17', platform: 'ios' as const, os: 'iOS 26.5', model: 'iPhone 17', recording: false, orientation: 'portrait' as const }
-const PORTRAIT: DeviceStream = { device: 'm1', generation: 1, width: 804, height: 1748, pointsWidth: 402, pointsHeight: 874, orientation: 'portrait' }
-const ROUND = { kind: 'round' as const, radius: 55 }
-const DRAWN = { kind: 'drawn' as const, corners: { topLeft: ROUND, topRight: ROUND, bottomRight: ROUND, bottomLeft: ROUND }, buttons: [] }
-
 /**
  * Planted defects this catches: a conversation's simulators that end with
- * its panel, as the panel session did, which drop the picture and frame and
- * open a new connection on return, and a view that stays watched with no
- * device tab shown, which keeps the conversation awake.
+ * its panel, which drop each device's look and open new streams on return,
+ * and a device left looked at with no view of it shown, which keeps the
+ * conversation awake.
  */
-test('a return to a conversation shows its device’s kept picture and frame at once, on the connection it kept', async () => {
+test('a return to a conversation shows its device’s look at once, on the stream it kept', async () => {
   const streams: UserStreamHandlers[] = []
   const sent: LiveViewerMessage[] = []
   const told: Array<boolean | 'closed'> = []
@@ -619,125 +668,90 @@ test('a return to a conversation shows its device’s kept picture and frame at 
 
   // The panel shows the device's tab: its content watches the conversation's simulators.
   const shown = devices.watch('c1')
-  const session = shown.session.devices.session
   await waitFor(() => shown.session.devices.pictures.value === 'supported')
-  session.showing('m1')
+  const session = shown.session.devices.device(TAB)
+  const tab = {}
+  session.showIn(tab, true)
   session.frame(800, 1200, 2)
-  streams[0]!.data(framed({ type: 'state', devices: [IPHONE], watched: 'm1' }))
-  streams[0]!.data(framed({ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN }))
-  const picture = { image: { width: 804, height: 1748 } as never, stream: PORTRAIT }
-  // The user switches to another conversation: the content unmounts, handing on its picture.
-  session.keepPicture('m1', picture)
-  session.hiding('m1')
+  streams[0]!.data(framed({ type: 'state', device: PIXEL }))
+  streams[0]!.data(framed({ type: 'frame', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 412, pointsHeight: 924, frame: DRAWN }))
+  await waitFor(() => session.state.look !== null)
+  const look = session.state.look
+  // The user switches to another conversation: the content unmounts.
+  session.showIn(tab, false)
   shown.end()
-  await Promise.resolve()
-  expect(watches(sent).at(-1)).toBeNull()
-  expect(told).toEqual([false])
+  expect(told).toEqual([false, true, false])
   devices.watch('c2').end()
 
-  // And back: the same simulators, the picture and frame at once, and the same connection watching again.
+  // And back: the same device's view, its look at once, and the same stream looked at again.
   const back = devices.watch('c1')
-  expect(back.session.devices.session).toBe(session)
-  expect(session.keptPicture('m1')).toBe(picture)
-  expect(session.state.frames.m1?.portrait?.frame).toEqual(DRAWN)
-  session.showing('m1')
+  expect(back.session.devices.device(TAB)).toBe(session)
+  expect(session.state.look).toEqual(look)
+  session.showIn(tab, true)
   expect(streams).toHaveLength(1)
-  expect(told).toEqual([false, true])
-  expect(watches(sent).at(-1)).toBe('m1')
+  expect(told).toEqual([false, true, false, true])
   back.end()
-  // Turned off, the plugin's store ends the connection.
+  // Turned off, the plugin's store ends the stream.
   disposePluginStores(host.pinia, 'mobile')
   expect(told.at(-1)).toBe('closed')
 })
-
-/** A disk cache over a map, as the plugin's IndexedDB keeps it. */
-function mapCache(kept: Map<string, Uint8Array<ArrayBuffer>>): PluginCache {
-  return {
-    read: async (key) => kept.get(key) ?? null,
-    write: async (key, bytes) => void kept.set(key, bytes),
-  }
-}
-
-/**
- * A session over the disk cache `kept` that watches m1, a `device`, in an
- * area `size` × 1200 device pixels at `scale`, its pictures portrait, or
- * none announced yet without `pictures`.
- */
-function cachedSession(kept: Map<string, Uint8Array<ArrayBuffer>>, device: LiveDevice = IPHONE, size = 800, scale = 2, pictures = true) {
-  const streams: UserStreamHandlers[] = []
-  const session = new MobileSession({
-    open: plugin([], streams).stream('mobile'),
-    cache: mapCache(kept),
-    platform: 'mac',
-    defect: (_, error) => { throw error },
-  })
-  session.enable()
-  session.showing('m1')
-  session.frame(size, 1200, scale)
-  streams[0]!.data(framed({ type: 'state', devices: [device], watched: 'm1' }))
-  if (pictures) {
-    streams[0]!.data(framed({ type: 'stream', device: 'm1', generation: 1, width: 804, height: 1748, pointsWidth: 402, pointsHeight: 874, orientation: 'portrait', scale: 1 }))
-  }
-  return { session, host: streams[0]! }
-}
-
-/** Lets the map cache's reads under way complete. */
-async function cacheReads(): Promise<void> {
-  await Promise.resolve()
-  await Promise.resolve()
-}
 
 /**
  * Planted defects this catches: a frame cached under a key without the size,
  * the model or the orientation, which would show one device's frame drawn for
  * another size or model, and none read back at all.
  */
-test('a device shows the frame the disk cache keeps for its model, size, pixel ratio and orientation at once, after a reload', async () => {
+test('a device shows the frame the disk cache keeps for its model, size, pixel ratio and orientation, after a reload', async () => {
   const kept = new Map<string, Uint8Array<ArrayBuffer>>()
-  const open = (device = IPHONE, size = 800, scale = 2) => cachedSession(kept, device, size, scale)
-  const first = open()
-  expect(first.session.state.frames.m1).toBeUndefined()
-  first.host.data(framed({ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN }))
-  await waitFor(() => kept.size === 1)
+  const opened = (model = 'iPhone 17', size = 800, scale = 2) => {
+    const view = deviceView('m1', { cache: mapCache(kept), model })
+    view.session.showIn({}, true)
+    view.session.frame(size, 1200, scale)
+    return view
+  }
+  const first = opened()
+  first.state()
+  first.frame('portrait', DRAWN)
+  await waitFor(() => kept.size === 2)
   first.session.close()
+  const same = opened()
+  await waitFor(() => same.session.state.frames.portrait !== undefined)
+  expect(same.session.state.frames.portrait?.frame).toEqual(DRAWN)
+  same.session.close()
 
-  // A reload: the same model at the same size shows the frame before the Host draws it.
-  const again = open()
-  await waitFor(() => again.session.state.frames.m1 !== undefined)
-  expect(again.session.state.frames.m1?.portrait).toEqual({ device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN })
-  again.session.close()
   // Another size, pixel ratio or model waits for the Host's.
-  for (const other of [open(IPHONE, 1000), open(IPHONE, 800, 1), open({ ...IPHONE, model: 'iPhone 17 Pro' })]) {
-    await cacheReads()
-    expect(other.session.state.frames.m1).toBeUndefined()
+  for (const other of [opened('iPhone 17', 1000), opened('iPhone 17', 800, 1), opened('iPhone 17 Pro')]) {
+    await settle()
+    expect(other.session.state.frames.portrait).toBeUndefined()
     other.session.close()
   }
 })
 
 /**
- * A reloaded page's pictures start only once it laid the screen out, for
- * which it needs a frame, so the cached one shows before any picture, in the
- * orientation the device's screen reports, and the Host's own is still under
- * way. Planted defect this catches: a cached frame that waits for the
- * pictures' orientation, which leaves the view connecting until the Host
- * draws its frame.
+ * A reloaded page shows the device in its cached frame, in the orientation
+ * the cache kept, before the Host has said anything, and asks the Host for
+ * no frame. Planted defects this catch: a cached frame that waits for the
+ * Host's state or pictures before it shows, which leaves the view
+ * connecting for a round trip and more.
  */
-test('a reloaded view shows the cached frame before the device sends a picture or the Host its frame', async () => {
+test('a cached device shows in its frame before the Host answers', async () => {
   const kept = new Map<string, Uint8Array<ArrayBuffer>>()
-  const first = cachedSession(kept)
-  first.host.data(framed({ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN }))
-  await waitFor(() => kept.size === 1)
+  const first = deviceView('m1', { cache: mapCache(kept) })
+  first.session.showIn({}, true)
+  first.session.frame(800, 1200, 2)
+  first.state({ ...IPHONE, orientation: 'landscape-left' })
+  first.frame('landscape-left', DRAWN)
+  await waitFor(() => kept.size === 2)
   first.session.close()
 
-  const reloaded = cachedSession(kept, IPHONE, 800, 2, false)
-  await waitFor(() => reloaded.session.state.frames.m1 !== undefined)
-  expect(reloaded.session.state.frames.m1?.portrait).toEqual({ device: 'm1', orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN })
+  const reloaded = deviceView('m1', { cache: mapCache(kept) })
+  reloaded.session.showIn({}, true)
+  reloaded.session.frame(800, 1200, 2)
+  await waitFor(() => reloaded.session.state.look !== null)
+  expect(reloaded.session.state.look).toEqual({ orientation: 'landscape-left', pointsWidth: 874, pointsHeight: 402, frame: DRAWN, picture: null })
+  expect(reloaded.session.waiting).toBe('connecting')
+  expect(reloaded.frames()).toEqual([])
   reloaded.session.close()
-  // A device whose screen reports another orientation waits for the Host's frame.
-  const turned = cachedSession(kept, { ...IPHONE, orientation: 'landscape-left' as const }, 800, 2, false)
-  await cacheReads()
-  expect(turned.session.state.frames.m1).toBeUndefined()
-  turned.session.close()
 })
 
 /**
@@ -748,26 +762,166 @@ test('a reloaded view shows the cached frame before the device sends a picture o
  */
 test('a panel resized while a frame is under way keeps and shows each frame only for the size it was drawn for', async () => {
   const kept = new Map<string, Uint8Array<ArrayBuffer>>()
-  const resized = cachedSession(kept)
+  const resized = deviceView('m1', { cache: mapCache(kept) })
+  resized.session.showIn({}, true)
+  resized.state()
+  resized.session.frame(800, 1200, 2)
   resized.session.frame(1000, 1200, 2)
-  resized.host.data(framed({ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2, orientation: 'portrait', pointsWidth: 402, pointsHeight: 874, frame: DRAWN }))
-  await waitFor(() => kept.size === 1)
+  resized.frame('portrait', DRAWN, 800)
+  await waitFor(() => kept.has('frame:iPhone 17:800x1200@2:portrait'))
+  expect(kept.has('frame:iPhone 17:1000x1200@2:portrait')).toBe(false)
   resized.session.close()
+})
 
-  const wider = cachedSession(kept, IPHONE, 1000)
-  await cacheReads()
-  expect(wider.session.state.frames.m1).toBeUndefined()
-  wider.session.close()
+/** An installed frame's image, its screen upright or across. */
+const image = (across = false): LiveFrame => ({
+  kind: 'image', png: 'UE5H', width: across ? 800 : 400, height: across ? 400 : 800,
+  screen: across ? { x: 30, y: 20, width: 740, height: 360 } : { x: 20, y: 30, width: 360, height: 740 },
+  silhouette: null,
+})
 
-  // The read of the 800 pixels' frame is under way as the panel widens.
-  const widening = cachedSession(kept)
-  widening.session.frame(1000, 1200, 2)
-  await cacheReads()
-  expect(widening.session.state.frames.m1).toBeUndefined()
-  widening.session.close()
+/**
+ * A frame shows only for the orientation it was drawn for: before any
+ * picture, the device shows in the frame of the orientation it has, and a
+ * frame the Host drew for a screen that turned since is kept for its own
+ * orientation while the view asks again; a frame whose screen has the other
+ * orientation's shape never shows, nor is kept.
+ *
+ * Planted defects this catches: the view asking once per size whatever came
+ * back, which left it on its frame's wait for good; a frame kept and shown
+ * under an orientation whose shape its screen does not have.
+ */
+test('a frame shows only for the orientation it was drawn for, and the view asks again for the device’s own', async () => {
+  const kept = new Map<string, Uint8Array<ArrayBuffer>>()
+  const view = deviceView('m1', { cache: mapCache(kept) })
+  view.session.showIn({}, true)
+  view.session.frame(800, 1200, 2)
+  view.state({ ...IPHONE, orientation: 'portrait' })
+  await settle()
+  expect(view.frames()).toHaveLength(1)
+  // The Host drew the frame for a screen turned before it said so.
+  view.frame('landscape-left', DRAWN)
+  await settle()
+  expect(view.session.state.look).toBeNull()
+  expect(view.session.state.frames['landscape-left']?.frame).toEqual(DRAWN)
+  expect(view.frames()).toHaveLength(2)
+  view.frame('portrait', DRAWN)
+  await settle()
+  expect(view.session.state.look?.orientation).toBe('portrait')
+  view.session.close()
 
-  const same = cachedSession(kept)
-  await waitFor(() => same.session.state.frames.m1 !== undefined)
-  expect(same.session.state.frames.m1?.portrait?.frame).toEqual(DRAWN)
-  same.session.close()
+  // An installed frame named portrait whose screen lies across.
+  const reported: unknown[] = []
+  const wrong = deviceView('m2', { cache: mapCache(kept), model: 'iPhone Air', defect: (_, error) => void reported.push(error) })
+  wrong.session.showIn({}, true)
+  wrong.session.frame(800, 1200, 2)
+  wrong.state({ ...IPHONE, model: 'iPhone Air' })
+  await settle()
+  wrong.frame('portrait', image(true))
+  await settle()
+  expect(wrong.session.state.frames.portrait).toBeUndefined()
+  expect(wrong.session.state.look).toBeNull()
+  expect(kept.has('frame:iPhone Air:800x1200@2:portrait')).toBe(false)
+  expect(reported).toHaveLength(1)
+  wrong.session.close()
+})
+
+/**
+ * A frame whose image does not decode is kept nowhere, and the view says
+ * it could not show it rather than wait for it; Retry asks the Host for it
+ * again, and the frame it then sends shows.
+ *
+ * Planted defects this catches: a frame cached before it decoded, which
+ * every reload then failed on, and a failure that left the view loading
+ * the frame for good.
+ */
+test('a frame that cannot be shown says so, is not kept, and Retry asks for it again', async () => {
+  const kept = new Map<string, Uint8Array<ArrayBuffer>>()
+  let decodes = false
+  const reported: unknown[] = []
+  const view = deviceView('m1', {
+    cache: mapCache(kept),
+    decodeImage: async () => {
+      if (!decodes) {
+        throw new Error('the image does not decode')
+      }
+    },
+    defect: (_, error) => void reported.push(error),
+  })
+  view.session.showIn({}, true)
+  view.session.frame(800, 1200, 2)
+  view.state()
+  await settle()
+  view.frame('portrait', image())
+  await settle()
+  expect(view.session.waiting).toBe('frameFailed')
+  expect([...kept.keys()].some((key) => key.startsWith('frame:'))).toBe(false)
+  expect(view.frames()).toHaveLength(1)
+  decodes = true
+  view.session.retryFrame()
+  expect(view.session.waiting).not.toBe('frameFailed')
+  expect(view.frames()).toHaveLength(2)
+  view.frame('portrait', image())
+  await settle()
+  expect(view.session.state.look?.frame).toEqual(image())
+  expect(kept.has('frame:iPhone 17:800x1200@2:portrait')).toBe(true)
+  expect(reported).toHaveLength(1)
+  view.session.close()
+})
+
+/**
+ * A view shown again expects its device's state from the Host, which
+ * answers its look: a stream that does not answer within the time a page
+ * socket's pong may take, as one whose connection was lost silently while
+ * paused, opens again, and one that answers stays.
+ *
+ * Planted defect this catches: a paused stream's lost connection found
+ * only after the page's silence limit, a minute and more after the view
+ * showed again.
+ */
+test('a view shown again opens its stream anew when the Host does not answer in time', () => {
+  let now = 0
+  const view = deviceView('m1', { now: () => now })
+  const tab = {}
+  view.session.showIn(tab, true)
+  view.state()
+  view.session.showIn(tab, false)
+  now += 120_000
+  view.session.tick()
+  expect(view.streams).toHaveLength(1)
+  // Shown again: the Host answers in time.
+  view.session.showIn(tab, true)
+  now += 1_000
+  view.state()
+  now += 10_000
+  view.session.tick()
+  expect(view.session.state.ended).toBeNull()
+  view.session.showIn(tab, false)
+  // Shown again: nothing answers.
+  view.session.showIn(tab, true)
+  now += 4_000
+  view.session.tick()
+  expect(view.session.state.ended).toBeNull()
+  now += 2_000
+  view.session.tick()
+  expect(view.session.state.ended).toBe(UNANSWERED_STREAM)
+  view.session.close()
+})
+
+/**
+ * A press the device answers with the orientation it shows, as when the
+ * app in front refuses the turn, ends at once: nothing turns, and the view
+ * shows the device as it is. Planted defect this catches: such a press
+ * kept until pictures of the asked orientation came, which never did, so
+ * the view stayed turned a quarter from the device.
+ */
+test('a rotation the device answers with the orientation it shows turns nothing', async () => {
+  const device = await rotating()
+  device.reports('portrait')
+  device.rotate('right')
+  expect(device.quarters('portrait')).toBe(1)
+  await device.answer('portrait')
+  expect(device.quarters('portrait')).toBe(0)
+  expect(device.session.state.turning).toEqual([])
+  device.end()
 })

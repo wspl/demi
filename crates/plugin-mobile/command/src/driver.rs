@@ -205,6 +205,15 @@ pub enum Frame {
     Drawn { corners: LiveCorners },
 }
 
+/// A frame and the screen it was drawn for, read with what it was drawn
+/// from: a turn while it is drawn never pairs it with the other
+/// orientation (`crates/plugin-mobile/command/src/live.rs`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Framed {
+    pub frame: Frame,
+    pub screen: Screen,
+}
+
 /// A running capture of the device's screen for the live view; dropping it
 /// stops it.
 pub trait DeviceCapture: Send + 'static {
@@ -239,9 +248,9 @@ pub trait Driver: Send + Sync + 'static {
     /// hears that it was.
     fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>>;
     fn shutdown<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>>;
-    /// Attaches a booted simulator for `conversation`: turned portrait
-    /// where the platform cannot say how it is turned, as iOS cannot;
-    /// as it is where it can, as Android's emulator can.
+    /// Attaches a booted simulator for `conversation`: an iPhone turned
+    /// portrait, its screen as its display then shows; an emulator as it
+    /// is held.
     fn attach<'a>(
         &'a self,
         conversation: &'a str,
@@ -251,7 +260,8 @@ pub trait Driver: Send + Sync + 'static {
 
 /// An open device: what the commands and the live view do with it.
 pub trait Device: Send + Sync + 'static {
-    /// The screen as it shows now; it changes with each rotation.
+    /// The screen as it shows now; it changes with each turn the screen
+    /// takes, whoever asked for it.
     fn screen(&self) -> watch::Receiver<Screen>;
     /// Counts the pictures the device drew: a still screen draws none, so
     /// a count that stays tells a settled picture.
@@ -283,16 +293,26 @@ pub trait Device: Send + Sync + 'static {
     fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
     /// Sets the text of the field at `at` at once.
     fn set_value<'a>(&'a self, at: Points, text: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// Turns the device to `orientation`; returns once the screen took the
+    /// turn, which [`Self::screen`] then shows, or once it is clear that the
+    /// app in front refused it, the screen unchanged.
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>>;
     fn appearance(&self) -> BoxFuture<'_, Result<Appearance>>;
     fn set_appearance(&self, appearance: Appearance) -> BoxFuture<'_, Result<()>>;
     /// Records the screen into `file`, an MP4 that `record_stop` finishes.
     fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>>;
     fn record_stop(&self) -> BoxFuture<'_, Result<Recording>>;
-    /// The device's frame, fitted into `area`; none while what it needs is
-    /// still being read from the device, which [`Self::frame_changes`]
-    /// announces once known.
-    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Frame>>>;
+    /// The device's frame, fitted into `area`, with the screen it was drawn
+    /// for; none while what it needs is still being read from the device,
+    /// which [`Self::frame_changes`] announces once known.
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Framed>>>;
+    /// Which way the device is held, which Rotate Left and Right turn from:
+    /// as Simulator.app holds an iPhone, the last orientation it was turned
+    /// to, which its screen may have refused; the screen's on a device whose
+    /// screen always turns with it.
+    fn held(&self) -> Orientation {
+        self.screen().borrow().orientation
+    }
     /// Changes once each time the frame [`Self::frame`] gives changes other
     /// than by a turn of the screen; a device whose frame is known at once
     /// never announces one, its channel closed.

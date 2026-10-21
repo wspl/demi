@@ -72,6 +72,9 @@ pub struct OpenDevice {
     /// The recording under way: its file, in the conversation's scratch
     /// directory, and since when.
     pub recording: Mutex<Option<(std::path::PathBuf, Instant)>>,
+    /// Counts the changes of what the device's views say of it besides its
+    /// screen, such as its recording, which only its own views follow.
+    changes: watch::Sender<u64>,
     /// The commands that act on the device, the user's panel controls and
     /// the agent's taps, swipes, typing and keys, rotations and appearance,
     /// take turns in the order they arrive (`crates/plugin-mobile/command/src/live.rs`).
@@ -91,6 +94,18 @@ pub struct OpenDevice {
 }
 
 impl OpenDevice {
+    /// Follows the changes of what the device's views say of it besides its
+    /// screen.
+    pub fn changes(&self) -> watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
+    /// A recording started or stopped: the device's views say so on every
+    /// page, whoever started it.
+    pub fn recorded(&self) {
+        self.changes.send_modify(|changes| *changes += 1);
+    }
+
     /// A command used it now.
     pub fn used(&self) {
         self.used.send_replace(Instant::now());
@@ -175,12 +190,25 @@ enum Closing {
     Asked,
     /// The conversation was released.
     Released,
-    /// Nobody watched or used it for [`IDLE`].
+    /// Nobody looked at or used it for [`IDLE`].
     Idle,
     /// The device itself went away.
     Lost,
     /// The program ends: the device is let go and stays as it is.
     Ending,
+}
+
+impl Closing {
+    /// Why, as the Host's log says it.
+    fn words(self) -> &'static str {
+        match self {
+            Self::Asked => "closed by the agent or its tab",
+            Self::Released => "its conversation was released",
+            Self::Idle => "nobody looked at or used it for an hour",
+            Self::Lost => "it went away",
+            Self::Ending => "the service ends",
+        }
+    }
 }
 
 #[derive(Default)]
@@ -197,7 +225,9 @@ pub struct Devices {
     turns: tokio::sync::Mutex<()>,
     numbers: OnceLock<Numbers>,
     announcer: Announcer,
-    /// Counts the changes of the open devices, which the live views follow.
+    /// Counts the changes of the open devices, which the conversations'
+    /// pages hear of through the announcer and a test follows; a device's
+    /// views follow that device's own changes.
     revision: watch::Sender<u64>,
     tasks: TaskTracker,
     /// Cancelled once the service closes: its tasks end.
@@ -310,6 +340,7 @@ impl Devices {
     }
 
     /// Follows the changes of the open devices.
+    #[cfg(feature = "testing")]
     pub fn revisions(&self) -> watch::Receiver<u64> {
         self.revision.subscribe()
     }
@@ -485,6 +516,7 @@ impl Devices {
             }),
             agent: Mutex::default(),
             recording: Mutex::new(None),
+            changes: watch::Sender::new(0),
             saved: Mutex::default(),
             inputs: tokio::sync::Mutex::new(()),
             reads: tokio::sync::Mutex::new(()),
@@ -615,9 +647,21 @@ impl Devices {
         }
         let driver = self.driver(open.platform);
         let shut_down = open.booted && !matches!(why, Closing::Lost | Closing::Ending);
-        if why == Closing::Lost {
-            tracing::info!("{} ({}) went away", open.handle, open.name);
-        }
+        // Every close says why, so a tab that went can be told apart from
+        // another afterwards.
+        tracing::info!(
+            device = %open.handle,
+            name = %open.name,
+            conversation = %open.conversation,
+            reason = ?why,
+            viewers = *open.viewers.borrow(),
+            unused_secs = open.used.borrow().elapsed().as_secs(),
+            shut_down,
+            "{} ({}) closes: {}",
+            open.handle,
+            open.name,
+            why.words(),
+        );
         // A device that went away is let go as any other, so what attaching
         // started inside it ends; it is never shut down for going away.
         let failure = self.let_go(&driver, &open.device, &open.native_id, shut_down, &open.name).await;
@@ -710,7 +754,6 @@ impl Devices {
                     return;
                 }
                 _ = tokio::time::sleep_until(idle_until), if open.booted && !watched => {
-                    tracing::info!("{} ({}) shuts down after an hour unused", open.handle, open.name);
                     self.ending(&open, Closing::Idle).await;
                     return;
                 }
@@ -725,12 +768,6 @@ impl Devices {
     #[cfg(feature = "testing")]
     pub fn killed(&self) {
         self.stopping.cancel();
-    }
-
-    /// A recording started or stopped: the views say so on every page,
-    /// whoever started it.
-    pub fn recorded(&self) {
-        self.revision.send_modify(|revision| *revision += 1);
     }
 
     fn changed(&self, conversation: &str) {

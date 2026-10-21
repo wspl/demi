@@ -22,8 +22,11 @@
   },
   "region": {
     "connecting": "正在連接模擬器⋯",
+    "frame": "正在載入裝置外框⋯",
+    "screen": "正在等待螢幕⋯",
     "waiting": "正在等待裝置⋯",
     "couldntShow": "無法顯示模擬器",
+    "frameFailed": "無法顯示裝置外框。",
     "unsupported": "此瀏覽器無法顯示即時影片。"
   },
   "failures": {
