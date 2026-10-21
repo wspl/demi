@@ -265,6 +265,7 @@ export class BashEnvironment {
   private readonly captureLimitBytes: number
   private readonly shells = new Map<string, ShellSession>()
   private readonly defaultShellByAgentSessionId = new Map<string, string>()
+  private shellClaim: Promise<void> = Promise.resolve()
   private readonly commandsById = new Map<string, ShellCommandRecord>()
   private readonly artifacts: CommandArtifactStore
 
@@ -309,6 +310,20 @@ export class BashEnvironment {
       const stat = await this.host.fs.stat(input.cwd).catch(() => null)
       if (!stat?.isDirectory) throw new Error(`Shell exec cwd is not a directory: ${input.cwd}`)
     }
+    // Concurrent execs would otherwise both pick the same idle shell between its
+    // lookup and the moment runScript claims it.
+    const start = this.shellClaim.then(() => this.startScript({ ...input, timeoutMs }))
+    this.shellClaim = start.then(
+      () => {},
+      () => {},
+    )
+    return (await start).completion
+  }
+
+  /** Picks the shell and starts the script on it; runScript claims the shell synchronously. */
+  private async startScript(
+    input: ShellExecInput & { timeoutMs: number },
+  ): Promise<{ completion: Promise<ShellCommandStatus> }> {
     const session = input.shellId
       ? this.requireShell(input.shellId)
       : input.ephemeral
@@ -319,8 +334,7 @@ export class BashEnvironment {
       const commandId = session.activeCommandId ?? session.foreground?.commandId ?? 'unknown'
       throw new Error(`Shell session "${session.id}" is already running command "${commandId}"`)
     }
-
-    return this.runScript(session, input.script, { ...input, timeoutMs })
+    return { completion: this.runScript(session, input.script, input) }
   }
 
   async status(input: ShellStatusInput): Promise<ShellCommandStatus> {

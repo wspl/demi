@@ -57,8 +57,9 @@ export function createStandardAgentTools<State = unknown>(
   return [
     {
       name: 'shell_exec',
+      concurrent: true,
       description:
-        'Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own. Set timeoutMs to how long the command is expected to take, such as 30000 to 120000 for queries, log or API lookups, tests and builds, so its result returns in this call; a timeoutMs shorter than the command only adds shell_status round trips. Use a short timeoutMs only for a server, watcher or long job you intend to leave running. Commands that do not depend on each other go in one response as several shell_exec calls.',
+        'Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own. Set timeoutMs to how long the command is expected to take, such as 30000 to 120000 for queries, log or API lookups, tests and builds, so its result returns in this call; a timeoutMs shorter than the command only adds shell_status round trips. Use a short timeoutMs only for a server, watcher or long job you intend to leave running. Commands that do not depend on each other go in one response as several shell_exec calls, which run at the same time.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -91,6 +92,7 @@ export function createStandardAgentTools<State = unknown>(
     },
     {
       name: 'shell_status',
+      concurrent: true,
       description:
         'Read a running command handle status and any new budgeted output preview. Does not wait or write stdin.',
       inputSchema: {
@@ -115,6 +117,7 @@ export function createStandardAgentTools<State = unknown>(
     },
     {
       name: 'shell_write',
+      concurrent: true,
       description:
         'Write non-empty stdin to a running foreground command and return status with new budgeted output preview. Include a newline for line-oriented prompts.',
       inputSchema: {
@@ -140,6 +143,7 @@ export function createStandardAgentTools<State = unknown>(
     },
     {
       name: 'shell_abort',
+      concurrent: true,
       description:
         'Stop a running foreground command by commandId.',
       inputSchema: {
