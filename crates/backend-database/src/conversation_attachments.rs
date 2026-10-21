@@ -12,7 +12,8 @@
 //! - its blob;
 //! - the node of the agent that uploaded it, none for a file the user sent;
 //! - the file an upload was copied from, its device and its full path, which
-//!   the page opens in the copy's place while it can read it
+//!   which a card of a file that is no image or video opens in the Files panel
+//!   in the copy's place while the page can read it
 //!   (`docs/decisions/0003-attachment-opens-its-file.md`); none for a file the user
 //!   sent, and never in a share's snapshot, which shows only the copy.
 //!

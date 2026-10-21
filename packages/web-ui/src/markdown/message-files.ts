@@ -54,7 +54,7 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  *
  * - A click on an image the message shows, or on an attachment's image or video
  *   or its link, shows it large in `viewer`, where a video plays: an
- *   attachment's file while it opens in place of its copy (`attachmentMedium`).
+ *   attachment's own copy (`attachmentMedium`).
  *   `among` gives the media of the transcript it stands in.
  * - An image inside a link follows the link.
  * - A click on an agent's link opens the agent in the Agents window.
@@ -113,7 +113,7 @@ export function openMessageLink(
 function tileMedium(tile: Element, files: MessageFiles | undefined): ShownMedium {
   const id = tile.getAttribute(ATTACHMENT_ID_ATTRIBUTE)
   const lookup = id === null ? undefined : messageAttachment(files, id)
-  const medium = id !== null && lookup?.state === 'found' ? attachmentMedium(id, lookup.attachment, files) : null
+  const medium = lookup?.state === 'found' ? attachmentMedium(lookup.attachment) : null
   if (medium)
     return medium
   const video = tile.getAttribute('data-attachment-video')

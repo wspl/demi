@@ -33,8 +33,8 @@ const { FileBrowserError } = await import('@demicodes/web-ui/files/types')
 
 const CONVERSATION = '6a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 const BLOB = 'b'.repeat(64)
-/** The version of an attachment's file the stubbed backend describes. */
-const FILE_VERSION = 'W/"4-19b7c0e5a50"'
+/** The blob of attachment `a16`, which differs from the others'. */
+const OTHER_BLOB = 'c'.repeat(64)
 const realFetch = globalThis.fetch
 // Each test plays the page's channels anew, which the last one's restore ended.
 let channels = playChannels()
@@ -52,13 +52,12 @@ afterEach(() => {
  * Answers the attachment route from `stored`, by number, and keeps the numbers
  * the page asked for; each is `held`, a PNG unless the test says. An
  * attachment's file check (`…/attachments/:id/file`) answers whether its
- * source's path is in `onHost`, the files of the Host it came from, with the
- * file's description and whether it holds the copy's bytes, as `held` says
- * when asked, and is kept in `checked`.
+ * source's path is in `onHost`, the files of the Host it came from, and is
+ * kept in `checked`.
  */
 function stubBackend(
   stored: Set<string>,
-  held: { name: string; mediaType: string; source?: { host: string; path: string }; sameAsCopy?: boolean } = { name: 'concept-28.png', mediaType: 'image/png' },
+  held: { name: string; mediaType: string; source?: { host: string; path: string } } = { name: 'concept-28.png', mediaType: 'image/png' },
   onHost: Set<string> = new Set(),
   checked: string[] = [],
 ): string[] {
@@ -72,17 +71,13 @@ function stubBackend(
     if (checking) {
       checked.push(checking[1]!)
       return stored.has(checking[1]!) && held.source && onHost.has(held.source.path)
-        ? Response.json(
-          { size: 4, modifiedAt: '2026-01-02T03:04:05.000Z', version: FILE_VERSION, sameAsCopy: held.sameAsCopy ?? false },
-          { headers: { 'x-demi-read-at': 'memory.0' } },
-        )
+        ? new Response(null, { status: 204 })
         : Response.json({ requestId: 'req_test000000000002', code: 'not_found', message: 'No file' }, { status: 404 })
     }
     const id = path.slice(prefix.length)
     asked.push(id)
-    const { sameAsCopy: _held, ...attachment } = held
     return stored.has(id)
-      ? Response.json({ id, ...attachment, size: 4, ...(held.mediaType.startsWith('image/') ? { width: 4, height: 3 } : {}), blob: BLOB })
+      ? Response.json({ id, ...held, size: 4, ...(held.mediaType.startsWith('image/') ? { width: 4, height: 3 } : {}), blob: id === 'a16' ? OTHER_BLOB : BLOB })
       : Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No attachment ${id}` }, { status: 404 })
   }) as typeof fetch
   return asked
@@ -434,28 +429,25 @@ test('an attachment\'s card opens its file while the conversation\'s Host has it
 }, 2000)
 
 // A picture the agent uploaded opens in the work panel's Media tab beside the
-// reply: the file it was uploaded from while the Host has it, from the
-// description the check answered, before the kept files' own read of it
-// answers; from the copy's
-// address the reply loaded while the Host finds the file holds the copy's
-// bytes; and its copy once the Host is offline, which is then not asked.
-// Planted defects this catches: the tab showing the copy of a file the Host
-// has, the picture waiting for the file's description read again, a file of the
-// copy's bytes loaded again from the Host, and the window opening over the
-// tab. A few milliseconds.
-test('a picture attachment opens in the Media tab, its file while the Host has it and its copy otherwise', async () => {
+// reply as its own copy, the bytes its thumbnail shows, with no request about
+// the file it was uploaded from, whatever became of that file, and going back
+// to a picture already shown asks nothing either. Planted defects this
+// catches: the opening that asks the backend whether the file is there, the
+// tab showing the Host's file in the copy's place, a read of the file's
+// description, and the window opening over the tab. A few milliseconds.
+test('a picture attachment opens in the Media tab as its copy, asking nothing about its file', async () => {
   const present = new Set(['/work/chart.png'])
   const checked: string[] = []
-  const held = { name: 'chart.png', mediaType: 'image/png', source: { host: 'dev-1', path: '/work/chart.png' }, sameAsCopy: false }
-  stubBackend(new Set(['a15']), held, present, checked)
+  const held = { name: 'chart.png', mediaType: 'image/png', source: { host: 'dev-1', path: '/work/chart.png' } }
+  const asked = stubBackend(new Set(['a15', 'a16']), held, present, checked)
   const pinia = createPinia()
   const product = useProduct(pinia)
   // The conversations follow the product state from its first, as on the page.
   useConversations(pinia)
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
-  showMetadata(CONVERSATION, { lastAttachment: 15 })
-  const { host, contents, described } = openingHost(present, { answers: false })
+  showMetadata(CONVERSATION, { lastAttachment: 16 })
+  const { host, contents, described } = openingHost(present)
   let revealed = 0
   const page = document.createElement('div')
   document.body.append(page)
@@ -475,35 +467,42 @@ test('a picture attachment opens in the Media tab, its file while the Host has i
         attachmentOrigin: (id, attachment) => attachmentOrigin(id, attachment, host),
       }))
       return () => [
-        h(StreamedMarkdown, { content: 'The chart:\n\n<attachment id="a15" />' }),
+        h(StreamedMarkdown, { content: 'The charts:\n\n<attachment id="a15" />\n\n<attachment id="a16" />' }),
         h(MediaView, { shown: true }),
       ]
     },
   })
   app.use(pinia)
-  const shown = changed(page, () => page.querySelector('a[data-attachment-id="a15"]') !== null)
+  const shown = changed(page, () => page.querySelector('a[data-attachment-id="a16"]') !== null)
   app.mount(page)
   await shown
+  await settle()
   const pictureIn = () => page.querySelector('[data-media-view] img')?.getAttribute('src')
+  const open = async (id: string) => {
+    page.querySelector<HTMLElement>(`a[data-attachment-id="${id}"]`)!.click()
+    await settle()
+  }
+  /** What the page asked of the backend and the Host, which an opening adds nothing to. */
+  const requests = () => [asked.length, checked.length, described.length]
   try {
-    page.querySelector<HTMLElement>('a[data-attachment-id="a15"]')!.click()
-    await settle()
+    const before = requests()
+    await open('a15')
     expect(revealed).toBe(1)
-    expect(pictureIn()).toBe('/raw?path=/work/chart.png')
+    expect(pictureIn()).toContain(BLOB)
     expect(page.querySelector('[data-media-view]')!.textContent).toContain('chart.png')
-    expect(described).toEqual(['/work/chart.png'])
 
-    held.sameAsCopy = true
-    page.querySelector<HTMLElement>('a[data-attachment-id="a15"]')!.click()
-    await settle()
+    // The file is gone from the Host, and the picture is still its copy.
+    present.delete('/work/chart.png')
+    await open('a15')
     expect(pictureIn()).toContain(BLOB)
 
+    await open('a16')
+    expect(pictureIn()).toContain(OTHER_BLOB)
     host.online = false
-    page.querySelector<HTMLElement>('a[data-attachment-id="a15"]')!.click()
-    await settle()
-    expect(revealed).toBe(3)
+    await open('a15')
+    expect(revealed).toBe(4)
     expect(pictureIn()).toContain(BLOB)
-    expect(checked).toEqual(['a15', 'a15'])
+    expect(requests()).toEqual(before)
   } finally {
     app.unmount()
     product.stop()

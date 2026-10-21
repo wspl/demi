@@ -16,28 +16,25 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use demi_backend_database::conversation_index::{ConversationRecord, Creation};
 use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
-use demi_backend_host_access::access::ConversationHost;
 use demi_backend_remote_host::OpenedRead;
 use demi_host_interface::ByteRange;
-use demi_runner_protocol::wire::FileHash;
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationBatch, ConversationDetail, ConversationPatch, CreatedConversation,
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest,
 };
-use demi_web_api_protocol::attachments::{AttachmentFile, AttachmentSourceDto, ConversationAttachment, ConversationAttachmentQuery};
+use demi_web_api_protocol::attachments::{AttachmentSourceDto, ConversationAttachment, ConversationAttachmentQuery};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
 use super::AppState;
 use super::body::{JsonBody, page_socket};
 use super::error::ApiError;
-use super::files::read_answer;
 use super::gate::{AuthUser, CurrentSession};
 use super::hosts;
 use super::page_client::PageClient;
@@ -167,18 +164,15 @@ pub(super) async fn attachment(
     Ok(Json(attachment_answer(row)))
 }
 
-/// `GET /conversations/:id/attachments/:attachment/file`: the file the
-/// attachment was uploaded from, while it is there to open in its copy's place
-/// (`docs/decisions/0003-attachment-opens-its-file.md`), asked once each time the
-/// page opens the attachment.
+/// `GET /conversations/:id/attachments/:attachment/file`: whether the file the
+/// attachment was uploaded from is there to open in the Files panel in its
+/// copy's place (`docs/decisions/0003-attachment-opens-its-file.md`), asked
+/// once each time the page opens a card of the attachment.
 ///
-/// It answers the file's description while the file is a regular file on the
-/// conversation's primary Host, and that Host is the device the attachment
-/// was uploaded from: one answer the page shows the file from, read with no
-/// byte of it. For an image of the attachment's size the Host hashes the file
-/// too, and the answer says whether it holds the copy's bytes, which the page
-/// then shows from the copy it loaded already. It answers 404 `not_found` for
-/// an attachment the conversation does not have or that names no file, for a
+/// It answers 204 while the file is a regular file on the conversation's
+/// primary Host, and that Host is the device the attachment was uploaded
+/// from; no byte of the file is read. It answers 404 `not_found` for an
+/// attachment the conversation does not have or that names no file, for a
 /// file that is not there, and while the conversation runs on another Host. It
 /// is a look, admitted as a user stream is (`look_at_host_on`): a stopped Cloud
 /// answers 409 `host_stopped` and is not woken, and an offline device answers
@@ -214,42 +208,17 @@ pub(super) async fn attachment_file(
             shard
                 .host_shard()
                 .look_at_host_on(&conversation, &source.host, &cancel, async |host| {
-                    // A read of no bytes describes the file at the Host's
-                    // number, as a `HEAD` of `fs/raw` does; a path that is no
-                    // regular file fails it.
+                    // A read of no bytes opens the file, as a `HEAD` of
+                    // `fs/raw` does; a path that is no regular file fails it.
                     let empty = ByteRange { offset: 0, length: Some(0) };
-                    let OpenedRead { stat, version, read_at, .. } =
-                        host.host.read_pipe(&source.path, empty).await.ok()?;
-                    let same_as_copy = row.media_type.starts_with("image/")
-                        && stat.size == row.size
-                        && holds(host, &source.path, &row).await;
-                    Some((stat, version, read_at, same_as_copy))
+                    host.host.read_pipe(&source.path, empty).await.ok().map(|_: OpenedRead| ())
                 })
                 .await
                 .map_err(ApiError::from)
         })
         .await??;
-    let (stat, version, read_at, same_as_copy) = found.flatten().ok_or_else(no_file)?;
-    let file = AttachmentFile {
-        size: stat.size,
-        modified_at: stat.modified,
-        version,
-        same_as_copy,
-    };
-    Ok(read_answer(&read_at, Json(file)))
-}
-
-/// Whether the file at `path` holds the bytes of the attachment `row`: the
-/// same SHA-256, which the Host hashes without sending a byte.
-///
-/// A hash that fails, or a file that grew past the attachment's size since it
-/// was described, says no, and the page shows the file itself, which is never
-/// wrong, only slower.
-async fn holds(host: &ConversationHost, path: &str, row: &AttachmentRow) -> bool {
-    match host.host.hash_file_in(&host.root, path, row.size).await {
-        Ok(FileHash::Hashed { size, sha256, .. }) => size == row.size && sha256 == row.blob,
-        Ok(FileHash::TooLarge { .. }) | Err(_) => false,
-    }
+    found.flatten().ok_or_else(no_file)?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// An attachment's row as an attachment route answers it.

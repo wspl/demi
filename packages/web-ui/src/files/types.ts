@@ -114,12 +114,6 @@ export interface FileContents {
   /** Shows the file's description until released, kept current as its source keeps it. */
   showDescription(path: string): Showing<FileDescription>
   /**
-   * Takes a description of the file read another way, such as the one an
-   * attachment's question carries, as one more reading of the kept files,
-   * which keep it only while it is the newest (`HostFiles.offer`).
-   */
-  offerDescription(path: string, answered: Answered<FileDescription>): void
-  /**
    * The file's first `length` bytes, or all of a shorter file, at `version`
    * when given; absent when the source reads no part of a file. A text file
    * too large to read whole shows them.

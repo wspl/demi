@@ -18,7 +18,6 @@ const contents: FileContents = {
   url: (path) => `/raw?path=${path}`,
   describe: () => new Promise(() => {}),
   showDescription: () => { throw new Error('Listing pictures shows no file') },
-  offerDescription: () => { throw new Error('Listing pictures shows no file') },
 }
 
 const files: MessageFiles = {

@@ -10,8 +10,9 @@ export const GALLERY_HOST = 'host-1'
  * upload` numbered them (`crates/backend-host-access/src/attachment_commands.rs`), over the
  * gallery's blobs, each with its file's size. The guide, the build, the demo
  * and the chart were uploaded from the workspace's files, the chart from a
- * version its file has changed since; the release notes from a file the
- * workspace no longer has; the others before uploads recorded their file.
+ * version its file has changed since, which its viewer does not show: it shows
+ * its copy; the release notes from a file the workspace no longer has; the
+ * others before uploads recorded their file.
  */
 const attachments: Record<string, { name: string; mediaType: string; size: number; blob: string; source?: AttachmentOrigin }> = {
   a1: { name: 'login.png', mediaType: 'image/png', size: 15822, blob: galleryBlobs.screenshot },
@@ -139,7 +140,7 @@ The demo on its own:
 /**
  * The frame's last reply, which answers the user's screenshot with the run's
  * pictures and recordings: with the transcript's own, they are the series the
- * Media tab steps through. The chart was uploaded before its file changed.
+ * Media tab steps through.
  */
 export const frameMediaMarkdown = `The run, step by step, with the chart before the fix:
 

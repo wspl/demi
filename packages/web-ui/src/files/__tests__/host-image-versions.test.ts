@@ -1,20 +1,19 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, jest, test } from 'bun:test'
 
-// An agent's picture attachment opens its Host file in the Media tab, and the
-// answer of whether it does carries the file's description, read at the
-// Host's number, and whether that version holds the copy's bytes. The page's
-// kept files own the file's description: the answer enters them as one more
-// reading, so whatever order the answer, the kept files' own reads and the
-// Host's change reports come in, the newest reading decides what shows, and
-// the copy shows only for the version it was answered for.
+// A Host image opens in the work panel's Media tab at the version of its file
+// the page's kept files hold: the Host's number orders the kept files' own
+// readings and its change reports, so no order of them shows an older version
+// than the newest the page has heard of, a file the Host reported changed
+// opens only once its new reading arrives, and each opening waits for its own
+// picture.
 //
-// The tab is MediaView on a page of happy-dom, the medium the one a click on
-// the attachment opens (`attachmentMedium`); the Host's file is a version the
-// test sets, its description read when the test lets it, and its watch the
-// simulated one. Planted defects this catches: the answer used in place of
-// the kept files' read, which shows an outdated version, or the copy of one,
-// in each of the three orders below. A few milliseconds.
+// The tab is MediaView on a page of happy-dom, the medium a Host image's file;
+// the Host's file is a version the test sets, its description read when the
+// test lets it, and its watch the simulated one. Planted defects this
+// catches: a description read before a change report shown as the file's
+// version, and an opening that counts the picture of the last one as loaded.
+// A few milliseconds.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -25,10 +24,8 @@ const { HostFiles } = await import('../file-cache')
 const { keptContents } = await import('../kept-source')
 const { SimulatedWatch } = await import('../memory-source')
 const { WatchChannel } = await import('../watch-channel')
-const { attachmentMedium } = await import('../../markdown/render')
 
 const PATH = '/work/chart.png'
-const COPY = '/blobs/chart'
 
 let unmount: (() => void) | null = null
 afterEach(() => {
@@ -63,13 +60,7 @@ function theHost(mode: 'live' | 'unavailable' = 'live') {
       return { value: { size: 9, modifiedAt: null, version }, readAt }
     },
   }, { files: kept, watch: new WatchChannel(kept, watched.open) })
-  /** What the Host answers of the file now, as the attachment's question carries it. */
-  const answer = (sameAsCopy: boolean) => ({
-    path: PATH,
-    described: { value: { size: 9, modifiedAt: null, version: host.version }, readAt: watched.readAt() },
-    sameAsCopy,
-  })
-  return { host, watched, contents, answer }
+  return { host, watched, contents }
 }
 
 /** The Media tab, shown while `shown` holds. */
@@ -90,45 +81,22 @@ function mountTab() {
   return { viewer: viewer!, shown, picture }
 }
 
-/** The attachment's medium, whose question answers what `answer` gives when asked. */
-function attachment(contents: ReturnType<typeof theHost>['contents'], answer: () => ReturnType<ReturnType<typeof theHost>['answer']>) {
-  return attachmentMedium('a1', {
-    name: 'chart.png', mediaType: 'image/png', sha256: 'c'.repeat(64), url: COPY, size: 9, width: 4, height: 3,
-    source: { host: 'dev-1', path: PATH },
-  }, { cwd: '/work', contents, attachmentOrigin: async () => answer() })!
+/** The Host image's medium, which shows its file at the version the kept files hold. */
+function hostImage(contents: ReturnType<typeof theHost>['contents']) {
+  return { kind: 'image' as const, name: 'chart.png', file: { path: PATH, contents } }
 }
 
-test('an answer newer than the kept description shows its version, though the kept one counts as current', async () => {
-  const { host, watched, contents, answer } = theHost()
-  // A Host image of a message shows the file, so the kept files hold v1 as current.
+test('a file the Host already reported changed never shows its old version first', async () => {
+  const { host, watched, contents } = theHost()
   const message = contents.showDescription(PATH)
   await settle()
-  expect(message.entry.value?.version).toBe('v1')
-  // The file changes, and the Host answers the attachment's question before its
-  // change report reaches the page.
-  host.version = 'v2'
-  watched.change('/elsewhere/other.txt')
-  const tab = mountTab()
-  tab.viewer.show(attachment(contents, () => answer(false)))
-  await settle()
-  expect(tab.picture()).toBe(`/raw?path=${PATH}&version=v2`)
-  message.release()
-})
-
-test('an answer the Host already reported changed never shows its copy first', async () => {
-  const { host, watched, contents, answer } = theHost()
-  const message = contents.showDescription(PATH)
-  await settle()
-  // Answered while the file still held the copy's bytes, then it changed, and
-  // the change report arrived before the answer.
-  // Its reading again is still on its way.
-  const stale = answer(true)
+  // The change report arrived, and the file's reading again is still on its way.
   host.version = 'v2'
   host.held = true
   watched.change(PATH)
   await settle()
   const tab = mountTab()
-  tab.viewer.show(attachment(contents, () => stale))
+  tab.viewer.show(hostImage(contents))
   await settle()
   expect(tab.picture()).toBeNull()
   host.release()
@@ -138,11 +106,11 @@ test('an answer the Host already reported changed never shows its copy first', a
 })
 
 test('a file changed while its tab was away shows its new version when the tab shows again, with no change report', async () => {
-  const { host, contents, answer } = theHost('unavailable')
+  const { host, contents } = theHost('unavailable')
   const tab = mountTab()
-  tab.viewer.show(attachment(contents, () => answer(true)))
+  tab.viewer.show(hostImage(contents))
   await settle()
-  expect(tab.picture()).toBe(COPY)
+  expect(tab.picture()).toBe(`/raw?path=${PATH}&version=v1`)
   tab.shown.value = false
   await settle()
   host.version = 'v2'
@@ -151,17 +119,16 @@ test('a file changed while its tab was away shows its new version when the tab s
   expect(tab.picture()).toBe(`/raw?path=${PATH}&version=v2`)
 })
 
-// Each opening waits for its own picture: opening the same attachment again
-// after its file changed shows Loading until the new version's picture has
-// loaded, not only until the question is answered, and no address of the
-// version the first answer described is ever asked for, which the Host
-// refuses once the file changed. Planted defects this catches: the first
-// opening's loaded picture counted for the second, and the first answer's
-// description shown again before the second's.
-test('opening the same attachment again after its file changed shows Loading until the new picture loads', async () => {
+// Each opening waits for its own picture: opening the same image again after
+// its file changed shows Loading until the new version's picture has loaded,
+// and no address of the old version is asked for
+// again, which the Host refuses once the file changed. Planted defects this
+// catches: the first opening's loaded picture counted for the second, and the
+// old version shown again before the new one's.
+test('opening the same image again after its file changed shows Loading until the new picture loads', async () => {
   jest.useFakeTimers()
   try {
-    const { host, watched, contents, answer } = theHost()
+    const { host, watched, contents } = theHost()
     const tab = mountTab()
     const asked = new Set<string>()
     const observer = new MutationObserver(() => {
@@ -176,19 +143,20 @@ test('opening the same attachment again after its file changed shows Loading unt
       Object.defineProperty(image, 'naturalHeight', { value: 3, configurable: true })
       image.dispatchEvent(new Event('load'))
     }
-    tab.viewer.show(attachment(contents, () => answer(true)))
+    tab.viewer.show(hostImage(contents))
     await settle()
     load()
     await settle()
     jest.advanceTimersByTime(1000)
     await settle()
-    expect([tab.picture(), loading()]).toEqual([COPY, false])
+    expect([tab.picture(), loading()]).toEqual([`/raw?path=${PATH}&version=v1`, false])
 
-    // The file changes; the Host answers the question at a later number,
-    // before its change report reaches the page.
+    // The file changes, and the Host reports it.
+    asked.clear()
     host.version = 'v2'
-    watched.change('/elsewhere/other.txt')
-    tab.viewer.show(attachment(contents, () => answer(false)))
+    watched.change(PATH)
+    await settle()
+    tab.viewer.show(hostImage(contents))
     await settle()
     jest.advanceTimersByTime(1000)
     await settle()

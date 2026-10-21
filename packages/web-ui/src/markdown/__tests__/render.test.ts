@@ -19,7 +19,6 @@ const contents: FileContents = {
   url: (path) => `/raw?path=${encodeURIComponent(path)}`,
   describe: () => new Promise(() => {}),
   showDescription: () => { throw new Error('Rendering shows no file') },
-  offerDescription: () => { throw new Error('Rendering shows no file') },
 }
 
 const files: MessageFiles = {
