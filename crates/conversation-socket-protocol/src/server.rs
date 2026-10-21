@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{
-    Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingSteer,
-    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, RequestId, TurnId,
+    Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId,
+    ProviderErrorDiagnostics, ProviderFailureFacts, RequestId, TurnId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -122,16 +122,6 @@ pub enum ServerFrame {
         #[garde(dive)]
         agent: AgentEntry,
     },
-    /// The whole queue.
-    Queue {
-        #[garde(dive)]
-        queue: Vec<QueuedMessage>,
-    },
-    /// The complete list of pending steers.
-    PendingSteers {
-        #[garde(dive)]
-        pending_steers: Vec<PendingSteer>,
-    },
     /// The output of the request the root agent runs, or null when its turn
     /// has none: sent at once when a request starts or ends and when the
     /// turn ends, at most every 500 ms while it streams, and with each
@@ -149,8 +139,9 @@ pub enum ServerFrame {
         #[garde(dive)]
         outcome: SteerOutcome,
     },
-    /// Answers `cancel_pending_steer` and `dequeue_message`, after the list
-    /// frame the removal changed.
+    /// Answers `cancel_pending_steer` and `dequeue_message`. `at` is the
+    /// agents' version of the step that shows the outcome, which the page
+    /// holds before it takes the removal as done; null when no tree runs.
     RemoveResult {
         /// The steer's or the queued message's id, as the request named it.
         #[schemars(length(min = 1))]
@@ -158,6 +149,23 @@ pub enum ServerFrame {
         id: String,
         #[garde(skip)]
         outcome: RemoveOutcome,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<Version>")]
+        #[garde(dive)]
+        at: Option<Version>,
+    },
+    /// Answers a `send` the session took: queued, started as the running
+    /// turn's starting message, or taken already under its id. `at` is the
+    /// agents' version of the step that shows it, which the page holds before
+    /// it takes the message as delivered; null when no tree runs. A refused
+    /// send is answered by `rejected`.
+    SendResult {
+        #[garde(skip)]
+        message_id: TurnId,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<Version>")]
+        #[garde(dive)]
+        at: Option<Version>,
     },
     /// Answers `abort`, in request order.
     AbortResult {
@@ -285,8 +293,17 @@ pub enum RemoveOutcome {
     rename_all_fields = "camelCase"
 )]
 pub enum SteerOutcome {
-    /// The steer is pending until the next continuation boundary.
-    Accepted,
+    /// The steer is pending until the next continuation boundary, or was
+    /// taken already under its id. `at` is the agents' version of the step
+    /// that shows it, which the page holds before it takes the steer as
+    /// delivered; null when no tree runs, and nothing is to wait for
+    /// (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    Accepted {
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<Version>")]
+        #[garde(dive)]
+        at: Option<Version>,
+    },
     Rejected {
         #[serde(flatten)]
         #[garde(skip)]

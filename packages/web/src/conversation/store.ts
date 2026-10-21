@@ -444,6 +444,7 @@ export const useConversations = defineStore('conversations', () => {
       phase: 'idle',
       queue: [],
       pendingSteers: [],
+      starting: null,
       pendingCalls: [],
       waitingSince: null,
       requestOutput: null,

@@ -359,7 +359,7 @@ async fn a_chatty_command_fills_no_outbox_and_shows_output_beyond_its_first_32_k
             reply("chatting"),
         ]);
         let config = ServerConfig {
-            outbox_frames: 64,
+            outbox_steps: 64,
             ..ServerConfig::default()
         };
         let fixture = Fixture::start_with(&script, config).await;

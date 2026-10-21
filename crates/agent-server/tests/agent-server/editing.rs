@@ -932,11 +932,11 @@ async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
         .await;
     let pending: Vec<_> = answered
         .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::PendingSteers { pending_steers } => Some(pending_steers.clone()),
-            _ => None,
-        })
-        .flatten()
+        .filter_map(|frame| demi_agent_server::testing::root_entry(frame))
+        .filter(|entry| !entry.pending_steers.is_empty())
+        .last()
+        .into_iter()
+        .flat_map(|entry| entry.pending_steers.clone())
         .map(|steer| steer.comments)
         .collect();
     assert_eq!(pending, [comments.clone()]);

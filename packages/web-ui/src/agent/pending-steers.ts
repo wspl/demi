@@ -1,6 +1,6 @@
 import type { WorkGroupBlock } from './work-groups'
 import type { HeldBlock } from '@demicodes/conversation-client'
-import type { MessageComment, PendingCall, UserContentBlock } from '@demicodes/protocol'
+import type { MessageComment, PendingCall, QueuedMessage, UserContentBlock } from '@demicodes/protocol'
 import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -78,6 +78,11 @@ export type MessageListBlock =
    * which reads as the user's next message.
    */
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState; startsTurn: boolean } |
+  /**
+   * The message the running turn started with, which the server holds and the
+   * turn has not written yet: the user's message, as it will read.
+   */
+  { type: 'starting_message'; id: string; message: QueuedMessage } |
   /**
    * The edge of a window that does not reach its transcript's start or end,
    * which shows its next page coming.

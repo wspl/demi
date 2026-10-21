@@ -192,6 +192,14 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       :editable="false"
     />
     <UserBlock
+      v-else-if="block.type === 'starting_message'"
+      v-bind="attrs"
+      :content="block.message.content"
+      :comments="block.message.comments"
+      :origin="originOf(block.message.automation)"
+      :editable="false"
+    />
+    <UserBlock
       v-else-if="block.type === 'steer'"
       v-bind="attrs"
       :content="block.content"

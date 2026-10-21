@@ -27,6 +27,8 @@ export interface MessageRowsSource {
   waitingSince?: number | null
   pendingSteers: readonly PendingSteerMessage[]
   queue: readonly QueuedMessage[]
+  /** The message the running turn started with, until the turn writes it. */
+  starting?: QueuedMessage | null
   phase: SessionPhase
   load?: SessionLoad
   backendAway?: boolean
@@ -144,7 +146,7 @@ export function useMessageRows(
     const shown = new Set(blocks.value.flatMap((block) =>
       block.type === 'user' ? [block.turnId] : block.type === 'steer' ? [block.id] : []))
     if (input.latest) {
-      for (const message of [...input.pendingSteers, ...input.queue]) {
+      for (const message of [...input.pendingSteers, ...input.queue, ...(input.starting ? [input.starting] : [])]) {
         shown.add(message.id)
       }
       for (const submission of input.pendingSubmissions ?? []) {
@@ -169,6 +171,7 @@ export function useMessageRows(
       pendingCalls: input.pendingCalls ?? [],
       pendingSteers: input.pendingSteers,
       queue: input.queue,
+      starting: input.starting,
       pendingSubmissions: input.pendingSubmissions ?? [],
       removing: input.removing,
       elsewhere: new Set([...undelivered.value].flatMap(([id, place]) => place === 'end' ? [] : [id])),

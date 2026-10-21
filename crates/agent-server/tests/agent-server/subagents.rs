@@ -33,7 +33,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-        AGENT_CALL, CommandRun, Fixture, Gate, LiveHosts, Model, ScriptedShells, TestProduct, agent, agent_call, conversation, held, is_pending_steers, listed_model, named_node, request_text, scripted_host_server, scripted_host_server_in, send, shell_call, shell_command, texts, until,
+        AGENT_CALL, CommandRun, Fixture, Gate, LiveHosts, Model, ScriptedShells, TestProduct, agent, agent_call, conversation, held, is_request_output, listed_model, named_node, request_text, scripted_host_server, scripted_host_server_in, send, shell_call, shell_command, texts, until,
     };
 
 pub(crate) fn said(text: &str) -> Turn {
@@ -202,6 +202,40 @@ async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() 
     assert!(frames.iter().any(|frame| waits(frame, false)), "{frames:?}");
 }
 
+/// A shutdown while a child's start waits for its parent's runtime, which the
+/// parent's turn holds and does not give back, ends: every session stops
+/// before the shutdown waits for the start, so the parent's turn is cancelled
+/// and the start fails as its owner closes. (The shutdown waited for the
+/// start, the start for the parent's turn, and the turn for the shutdown's
+/// later step that would have cancelled it: the backend never stopped.)
+// One shutdown of a scripted tree: a few milliseconds; it hung before.
+#[tokio::test(flavor = "local")]
+async fn a_shutdown_ends_while_a_childs_start_waits_for_its_parents_runtime() {
+    let model = Model::default();
+    model.root([Turn::pending()]);
+    let fixture = fixture(&model, TestProduct::default());
+    let client = fixture.opened().await;
+    client.send(send("m1", "start")).await;
+    until(|| model.root_requests().len() == 1).await;
+    let start = {
+        let server = fixture.server.clone();
+        tokio::task::spawn_local(async move {
+            agent(&server, &root(), "spawn", json!({ "prompt": "Read notes.md", "description": "reader" })).await
+        })
+    };
+    // The start runs up to its wait for the root's runtime.
+    for _ in 0..50 {
+        tokio::task::yield_now().await;
+    }
+
+    tokio::time::timeout(Duration::from_secs(5), fixture.server.shutdown())
+        .await
+        .expect("the shutdown ends");
+    let run = start.await.unwrap();
+    assert_ne!(run.code, 0, "{run:?}");
+    assert_eq!(model.root_requests().len(), 1);
+}
+
 /// Whether `frame` carries the child `child`'s transcript.
 fn transcript_of(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
     move |frame| {
@@ -234,7 +268,9 @@ async fn a_page_receives_a_childs_transcript_only_once_it_shows_the_child() {
     )
     .await;
     let waits = |frame: &ServerFrame| entry_in(frame, &child).is_some_and(|entry| entry.waited_ms.is_some());
-    let unshown = client.next_until(waits).await;
+    // The rest of the step that showed the wait comes with it.
+    let mut unshown = client.next_until(waits).await;
+    unshown.extend(client.received());
 
     client.subscribe(&child).await;
     let shown = client.received();
@@ -1109,7 +1145,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
     page.open().await;
-    page.next_until(is_pending_steers).await;
+    page.next_until(is_request_output).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
     let child = named_node(&store, &spawned);
     // The page shows the child, so it hears of the child's commands.
@@ -1238,7 +1274,7 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
     page.open().await;
-    page.next_until(is_pending_steers).await;
+    page.next_until(is_request_output).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
     let child = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;
@@ -1295,7 +1331,7 @@ async fn a_status_that_shows_the_end_leaves_no_end_report() {
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
     page.open().await;
-    page.next_until(is_pending_steers).await;
+    page.next_until(is_request_output).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
     let child = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;
@@ -1725,7 +1761,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
             .ends_with("Instructions for this subagent:\n\nretired prompt")
     );
     let frames = client.received();
-    assert!(frames.iter().any(is_pending_steers));
+    assert!(frames.iter().any(is_request_output));
 }
 
 // A restore of two closed children and one edit; well under a second.
@@ -2503,7 +2539,7 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
     let server = scripted_host_server_in(providers, shells.clone(), store.clone(), hosts.clone());
     let mut page = TestClient::connect(&server, &root());
     page.open().await;
-    page.next_until(is_pending_steers).await;
+    page.next_until(is_request_output).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task stay" })).await;
     let child = named_node(&store, &spawned);
     let session = server.node(&root(), &child).expect("the child is live").session().clone();

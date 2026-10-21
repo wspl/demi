@@ -28,7 +28,7 @@ use demi_shared_types::{
 use serde_json::json;
 
 use crate::support::{
-        is_agents, Fixture, Gate, LiveHosts, Model, ScriptedShells, agent, conversation, held, is_context_usage, is_pending_steers, kinds, named_node, request_text, scripted_host_server, send, session_of, until, is_root_reset,
+        is_agents, Fixture, Gate, LiveHosts, Model, ScriptedShells, agent, conversation, held, is_context_usage, is_request_output, kinds, named_node, request_text, scripted_host_server, send, session_of, until, is_root_reset,
     };
 
 /// The test model's window, which `model_of` gives every scripted model.
@@ -242,7 +242,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
     let (server, store) = tree_server(&model);
     let mut client = TestClient::connect(&server, &conversation());
     client.open().await;
-    client.next_until(is_pending_steers).await;
+    client.next_until(is_request_output).await;
     let session = server
         .node(&conversation(), &conversation())
         .expect("the root is live")
@@ -328,7 +328,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
     let server = scripted_host_server(providers, Rc::new(ScriptedShells::default()), store.clone());
     let mut page = TestClient::connect(&server, &conversation());
     page.open().await;
-    page.next_until(is_pending_steers).await;
+    page.next_until(is_request_output).await;
     let spawned = agent(&server, &conversation(), "spawn", json!({ "prompt": "task serve" })).await;
     let child = named_node(&store, &spawned);
 
@@ -442,7 +442,7 @@ async fn a_childs_working_directory_is_told_again_after_a_pass() {
     let (server, store) = tree_server(&model);
     let mut client = TestClient::connect(&server, &conversation());
     client.open().await;
-    client.next_until(is_pending_steers).await;
+    client.next_until(is_request_output).await;
     let spawned = agent(
         &server,
         &conversation(),

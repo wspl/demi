@@ -16,6 +16,12 @@
 //!
 //! The epoch is new at each open of the tree, so a page that held the agents
 //! before a restart of the backend reads them whole.
+//!
+//! A step of a session, one change of it, changes each entry once: what it
+//! changes of one entry, such as its starting message and its phase, goes as
+//! one `agent` frame at one revision when the step ends ([`Agents::step`]),
+//! so no page sees an entry half changed
+//! (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
 
 use std::{
     cell::{Cell, RefCell},
@@ -67,6 +73,10 @@ pub(crate) struct Agents {
     /// Where the conversation worked when last read, which a child's entry
     /// names its directory by (`crates/agent-server/src/node/mod.rs`).
     placement: RefCell<Option<Placement>>,
+    /// The entries the step under way changed, announced when it ends.
+    staged: RefCell<Vec<AgentEntry>>,
+    /// How deep the steps under way nest.
+    depth: Cell<usize>,
     sink: Rc<FrameSink>,
 }
 
@@ -80,6 +90,8 @@ impl Agents {
             cards: RefCell::default(),
             announced: RefCell::default(),
             placement: RefCell::new(None),
+            staged: RefCell::default(),
+            depth: Cell::new(0),
             sink,
         })
     }
@@ -102,6 +114,36 @@ impl Agents {
             side.title = card.title;
             side.folded = card.folded;
         }
+        if self.depth.get() > 0 {
+            let mut staged = self.staged.borrow_mut();
+            match staged.iter_mut().find(|each| each.id == entry.id) {
+                Some(each) => *each = entry,
+                None => staged.push(entry),
+            }
+            return;
+        }
+        self.announce(entry);
+    }
+
+    /// Runs `deliver`, the delivery of one step of a session, and announces
+    /// each entry it changed once, when the step ends, among the step's frames.
+    pub(crate) fn step(&self, deliver: impl FnOnce()) {
+        self.sink.step(|| {
+            self.depth.set(self.depth.get() + 1);
+            deliver();
+            self.depth.set(self.depth.get() - 1);
+            if self.depth.get() == 0 {
+                let staged = std::mem::take(&mut *self.staged.borrow_mut());
+                for entry in staged {
+                    self.announce(entry);
+                }
+            }
+        });
+    }
+
+    /// Keeps `entry` at the next revision and sends it, unless it is the entry
+    /// held already.
+    fn announce(&self, entry: AgentEntry) {
         let unchanged = self
             .entries
             .borrow()
@@ -132,8 +174,10 @@ impl Agents {
         self.put(entry);
     }
 
+    /// The entry of the agent `id` as the step under way leaves it.
     pub(crate) fn entry(&self, id: &NodeId) -> Option<AgentEntry> {
-        self.entries.borrow().get(id).map(|kept| kept.entry.clone())
+        let staged = self.staged.borrow().iter().find(|each| &each.id == id).cloned();
+        staged.or_else(|| self.entries.borrow().get(id).map(|kept| kept.entry.clone()))
     }
 
     /// What the product kept when the tree opened: a cost a row announced
@@ -261,6 +305,9 @@ pub(crate) fn resting(id: NodeId, role: AgentRole) -> AgentEntry {
         pending_calls: Vec::new(),
         context: None,
         cost: AgentCost::default(),
+        queue: Vec::new(),
+        pending_steers: Vec::new(),
+        starting: None,
     }
 }
 

@@ -25,7 +25,7 @@ use demi_provider_common::{
 use serde_json::json;
 
 use crate::support::{
-        ScriptedShell, ScriptedShells, conversation, is_pending_steers, request_text, scripted_host_server_telling, send, until,
+        ScriptedShell, ScriptedShells, conversation, is_request_output, request_text, scripted_host_server_telling, send, until,
     };
 
 /// How often the commands report: the least interval a call can ask for.
@@ -58,7 +58,7 @@ async fn serving(
     });
     let mut page = TestClient::connect(&server, &conversation());
     page.open().await;
-    page.next_until(is_pending_steers).await;
+    page.next_until(is_request_output).await;
     (server, shells, page, told)
 }
 

@@ -54,7 +54,7 @@ use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::{
     SteerOutcome,
     ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal, RemoveOutcome,
-    SavedDelivery, ServerFrame, TranscriptPatch, decode_client_frame,
+    SavedDelivery, ServerFrame, TranscriptPatch, Version, decode_client_frame,
 };
 use demi_shared_gates::Purpose;
 use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
@@ -232,15 +232,15 @@ impl Shard {
                         Some(Ok(Message::Close(_)) | Err(_)) | None => break Ending::Gone,
                     },
                     outgoing = frames.recv() => match outgoing {
-                        Outgoing::Frame(frame) => {
-                            // The frames the outbox holds at once, as a
-                            // turn's end, go in one message, which the page
-                            // applies as one change.
-                            let mut batch = vec![frame];
+                        Outgoing::Frames(step) => {
+                                // Every step the outbox holds goes in one
+                                // message, never a step in two: the page
+                                // applies a message as one change.
+                            let mut batch = step;
                             let mut after = None;
                             while let Some(next) = frames.try_recv() {
                                 match next {
-                                    Outgoing::Frame(frame) => batch.push(frame),
+                                    Outgoing::Frames(step) => batch.extend(step),
                                     Outgoing::Lagged => {
                                         after = Some(Ending::Lagged);
                                         break;
@@ -424,7 +424,8 @@ impl Shard {
                     }
                     Ok(None) => match control.sent_as(conversation.clone(), id).await {
                         Ok(Some(turn)) if turn == turn_id => {
-                            return Handled::Replies(sent_again(turn_id, delivery));
+                            let at = self.agent().tree(&root_of(conversation)).map(|tree| tree.agents_version());
+                            return Handled::Replies(sent_again(turn_id, delivery, at));
                         }
                         Ok(_) => match content {
                             Some(content) => (saved_frame(content, turn_id, delivery), None, true, Some(sending)),
@@ -792,10 +793,12 @@ fn refused_frame(frame: ClientFrame, command: ClientFrameKind, code: ErrorCode, 
         ClientFrame::CancelPendingSteer { steer_id } => ServerFrame::RemoveResult {
             id: steer_id.into_string(),
             outcome: RemoveOutcome::GoneOn,
+            at: None,
         },
         ClientFrame::DequeueMessage { message_id } => ServerFrame::RemoveResult {
             id: message_id.into_string(),
             outcome: RemoveOutcome::GoneOn,
+            at: None,
         },
         _ => refusal(code, message),
     }
@@ -838,13 +841,14 @@ fn remote_file_refused(refusal: RemoteFileRefusal) -> ContentError {
 
 /// What a send of a saved message a send already took as `turn` answers: the
 /// session holds the turn, whose frames went out with the first send and
-/// come with every opening, and a steer is accepted.
-fn sent_again(turn: TurnId, delivery: SavedDelivery) -> Vec<ServerFrame> {
+/// come with every opening, so the message or the steer is answered as taken
+/// at `at`, the agents' version now, which shows it.
+fn sent_again(turn: TurnId, delivery: SavedDelivery, at: Option<Version>) -> Vec<ServerFrame> {
     match delivery {
-        SavedDelivery::Message | SavedDelivery::Queue => Vec::new(),
+        SavedDelivery::Message | SavedDelivery::Queue => vec![ServerFrame::SendResult { message_id: turn, at }],
         SavedDelivery::Steer => vec![ServerFrame::SteerResult {
             steer_id: BlockId::try_from(turn.into_string()).expect("a turn id is not empty"),
-            outcome: SteerOutcome::Accepted,
+            outcome: SteerOutcome::Accepted { at },
         }],
     }
 }

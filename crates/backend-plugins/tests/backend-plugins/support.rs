@@ -194,7 +194,7 @@ impl Fixture {
     pub async fn opened(&self) -> TestClient<DeviceHost> {
         let mut client = self.attach().await;
         let handshake = client
-            .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+            .next_until(|frame| matches!(frame, ServerFrame::RequestOutput { .. }))
             .await;
         assert_eq!(
             handshake.first(),

@@ -44,7 +44,7 @@ const text = computed(() => (language.value === 'edge' ? EDGE_CASES : LONG_TEXT[
 const createdAt = new Date(Date.now() - 120_000).toISOString()
 const conversation = computed<ChatSessionState>(() => ({
   id: `long-text-${language.value}`, cwd: WORKSPACE_ROOT, title: 'Sync Stall', phase: 'idle',
-  load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], pendingCalls: [],
+  load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
   waitingSince: null, requestOutput: null, turnSpeed: null,
   scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
   history: wholeHistory([

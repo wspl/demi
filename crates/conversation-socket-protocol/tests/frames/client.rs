@@ -27,7 +27,7 @@ fn every_client_frame_decodes_from_its_wire_shape() {
     }
     kinds.sort_by_key(|kind| kind.to_string());
     kinds.dedup();
-    assert_eq!(kinds.len(), 22, "one fixture of every frame");
+    assert_eq!(kinds.len(), 23, "one fixture of every frame");
 }
 
 /// `value` with the field at `pointer` set to `field`, adding it if absent.

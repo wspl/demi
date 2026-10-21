@@ -31,6 +31,13 @@
     "node": "child-1"
   },
   {
+    "type": "agents_since",
+    "held": {
+      "epoch": "agents-1",
+      "revision": 6
+    }
+  },
+  {
     "type": "send",
     "messageId": "msg-1",
     "content": [

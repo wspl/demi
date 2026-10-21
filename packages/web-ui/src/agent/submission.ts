@@ -2,16 +2,17 @@ import type { ConversationState } from './types'
 import { latestBlocks } from './history'
 
 /**
- * Admission is visible in the transcript or the server queue for a message,
- * and in the transcript or the pending steers for a steer, which a message
- * sent as a steer keeps its id for.
+ * Admission is visible in the transcript, the server queue or as the running
+ * turn's starting message for a message, and in the transcript or the pending
+ * steers for a steer, which a message sent as a steer keeps its id for.
  */
 export function hasAcceptedSubmission(
-  state: Pick<ConversationState, 'history' | 'queue' | 'pendingSteers'>,
+  state: Pick<ConversationState, 'history' | 'queue' | 'pendingSteers' | 'starting'>,
   id: string,
 ): boolean {
   return isWritten(state, id) ||
     state.queue.some((message) => message.id === id) ||
+    state.starting?.id === id ||
     state.pendingSteers.some((steer) => steer.id === id)
 }
 

@@ -75,7 +75,7 @@ pub mod testing {
 
 use tracing::Instrument as _;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashSet,
     future::Future,
     pin::Pin,
@@ -393,6 +393,11 @@ pub enum SessionEvent {
     PendingSteersChanged {
         pending_steers: Vec<PendingSteer>,
     },
+    /// The message the running turn started with, which it has not written
+    /// yet, changed: none once its `user` block is written or the turn ends.
+    StartingChanged {
+        starting: Option<QueuedMessage>,
+    },
     /// The calls the model is writing changed.
     PendingCallsChanged {
         pending_calls: Vec<PendingCall>,
@@ -530,6 +535,9 @@ pub(crate) struct SessionShared {
     persist_wake: Rc<Notify>,
     /// Tells a waiting fork that the runtime is back in its slot.
     runtime_returned: Notify,
+    /// Whether a dispose saved, or is saving, the final checkpoint: only the
+    /// first does.
+    finalized: Cell<bool>,
     runtime: Rc<dyn SessionRuntime>,
     store: Rc<dyn SessionStore>,
     ids: Rc<dyn IdSource>,
@@ -797,6 +805,7 @@ impl AgentSession {
             work: Rc::new(Notify::new()),
             persist_wake: Rc::new(Notify::new()),
             runtime_returned: Notify::new(),
+            finalized: Cell::new(false),
             runtime: deps.runtime,
             store: deps.store,
             ids: deps.ids,
@@ -944,6 +953,12 @@ impl AgentSession {
     /// The human steers accepted and not yet written.
     pub fn pending_steers(&self) -> Vec<PendingSteer> {
         self.shared.read(SessionCore::pending_steers)
+    }
+
+    /// The message the running turn started with, until its `user` block is
+    /// written.
+    pub fn starting(&self) -> Option<QueuedMessage> {
+        self.shared.read(SessionCore::starting)
     }
 
     /// The calls the model is writing.
@@ -1498,24 +1513,32 @@ impl AgentSession {
         persist::flush(&self.shared).await
     }
 
-    /// Disposes the session: refuses new actions, stops a running one as a
-    /// shutdown, keeps the queue, the waiting input and the commands that
-    /// report to it, saves the final checkpoint and closes the provider
-    /// runtimes.
+    /// Stops the session for good, at once and without waiting: it refuses
+    /// new actions, its running one is cancelled as by a shutdown, and a fork
+    /// waiting for its runtime learns it is closing. A close stops what it
+    /// owns this way before it waits for anything
+    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`); `dispose`
+    /// then saves the final checkpoint.
+    pub fn stop(&self) {
+        self.shared.update(SessionCore::begin_dispose);
+        self.shared.runtime_returned.notify_waiters();
+    }
+
+    /// Disposes the session: stops it ([`AgentSession::stop`]), keeps the
+    /// queue, the waiting input and the commands that report to it, saves the
+    /// final checkpoint and closes the provider runtimes.
     ///
     /// The error is a final checkpoint that could not be saved.
     pub async fn dispose(&self) -> Result<(), StoreError> {
-        let first = self.shared.update(SessionCore::begin_dispose);
+        self.stop();
         let mut status = self.shared.status.subscribe();
         // The sender lives in the session this handle keeps alive.
         let _ = status
             .wait_for(|status| status.settle == Settle::Closed)
             .await;
-        if !first {
+        if self.shared.finalized.replace(true) {
             return Ok(());
         }
-        // A fork waiting for the runtime learns the session is closing.
-        self.shared.runtime_returned.notify_waiters();
         let saved = {
             let _turn = self.shared.persist_gate.acquire().await;
             // With the order held, the persister is between saves.
@@ -1535,14 +1558,26 @@ impl AgentSession {
         saved
     }
 
-    /// Calls `listener` with every event from now on, until the subscription
-    /// is dropped.
-    pub fn subscribe(&self, listener: impl FnMut(&SessionEvent) + 'static) -> Subscription {
+    /// Calls `listener` with every event from now on, step after step
+    /// (`bus`), until the subscription is dropped.
+    pub fn subscribe(&self, mut listener: impl FnMut(&SessionEvent) + 'static) -> Subscription {
+        self.subscribe_steps(move |step| step.iter().for_each(&mut listener))
+    }
+
+    /// Calls `listener` with the events of each step, one change of the
+    /// session, which a client applies together (`bus`).
+    pub fn subscribe_steps(&self, listener: impl FnMut(&[SessionEvent]) + 'static) -> Subscription {
         let id = self.shared.bus.subscribe(Box::new(listener));
         Subscription {
             session: Rc::downgrade(&self.shared),
             id,
         }
+    }
+
+    /// Resolves once every change made before the call reached the listeners;
+    /// at once unless the end of a turn holds them (`bus`).
+    pub async fn delivered(&self) {
+        self.shared.bus.delivered().await;
     }
 
     pub fn status_watch(&self) -> watch::Receiver<Status> {

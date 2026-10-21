@@ -1098,8 +1098,6 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         [
             "opened",
             "agents",
-            "queue",
-            "pending_steers",
             "request_output",
             "transcript_reset"
         ]
@@ -1411,7 +1409,7 @@ async fn a_users_context_limit_on_a_model_applies_to_each_of_their_conversations
 async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the_running_tree() {
     let vendor = MockVendor::start().await;
     let mut harness = Harness::new();
-    harness.conversations.outbox_frames = 16;
+    harness.conversations.outbox_steps = 16;
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -1570,6 +1568,7 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
             ServerFrame::RemoveResult {
                 id: id.into(),
                 outcome: RemoveOutcome::GoneOn,
+                at: None,
             }
         );
     }
@@ -2268,7 +2267,7 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
         .expect("the conversation is listed");
     assert_eq!(facts(listed), before);
     let handshake = socket
-        .until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
+        .until(|frame| matches!(frame, ServerFrame::RequestOutput { .. }))
         .await;
     assert_eq!(handshake.first(), Some(&ServerFrame::Opened), "{handshake:?}");
     backend.close().await;

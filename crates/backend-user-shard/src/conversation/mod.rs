@@ -127,7 +127,7 @@ pub(crate) fn conversation_parts(
         })
     };
     let config = ServerConfig {
-        outbox_frames: services.conversation_tuning.outbox_frames,
+        outbox_steps: services.conversation_tuning.outbox_steps,
         interval_floor_ms: services.conversation_tuning.interval_floor_ms,
         ..ServerConfig::default()
     };

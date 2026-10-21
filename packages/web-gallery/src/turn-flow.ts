@@ -179,6 +179,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     phase: 'idle',
     queue: [],
     pendingSteers: [],
+    starting: null,
     pendingCalls: [],
     waitingSince: null, requestOutput: null, turnSpeed: null,
     model: {
@@ -922,6 +923,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
     at(run, ADMIT_MS, () => {
       state.phase = 'running'
+      admitMessage()
     })
     deliveredBy = Math.max(deliveredBy, Date.now() + CONFIRM_MS)
     at(run, CONFIRM_MS, () => {
@@ -938,11 +940,25 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return pendingSubmissions.value.find((pending) => pending.error === null && pending.way === 'send')
   }
 
-  /** The turn's message is written, under the id it was sent with: the message is no longer pending. */
-  function confirmMessage(): void {
+  /**
+   * The session took the turn's message: until the turn writes it, it is the
+   * turn's starting message, which the server's state holds, and the page's
+   * own row gives way to it, as the product's does.
+   */
+  function admitMessage(): void {
     const pending = turnMessage()
     if (pending) {
-      append(userBlock(dropSubmission(pending.id), pending.id, pending.comments))
+      state.starting = { id: pending.id, content: dropSubmission(pending.id), comments: [...pending.comments ?? []] }
+    }
+  }
+
+  /** The turn's message is written, under the id it was sent with: it is no longer the turn's starting message. */
+  function confirmMessage(): void {
+    admitMessage()
+    const starting = state.starting
+    if (starting) {
+      append(userBlock(starting.content, starting.id, starting.comments))
+      state.starting = null
     }
   }
 
@@ -1315,6 +1331,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     // A play starts over: what waited for the last one goes with it.
     state.pendingSteers = []
     state.queue = []
+    state.starting = null
 
     if (kind === 'stream') {
       // Thinking is the tail from the first running frame, so nothing is waited for.

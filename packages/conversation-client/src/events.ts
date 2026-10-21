@@ -3,6 +3,7 @@ import type {
   BlockVersions,
   PendingSteer,
   ProviderFailureFacts,
+  QueuedMessage,
   ServerFrame,
   TranscriptPatch,
   Version,
@@ -32,7 +33,8 @@ export type Failures = Record<string, ProviderFailureFacts>
 
 /**
  * What a `ConversationClient` tells its listeners. Most events are the
- * server frame as it arrived. The transcript events carry what the frame
+ * server frame as it arrived. The queue and the pending steers are the root's
+ * agent entry's, told as they change and with each `agents` frame. The transcript events carry what the frame
  * brought of a node, which the page applies to the parts of that node's
  * transcript it holds; a patch carries no revision, which the client keeps.
  */
@@ -41,8 +43,8 @@ export type ClientSessionEvent =
   | ServerFrameOf<'closed'>
   | ServerFrameOf<'edit_result'>
   | ServerFrameOf<'rejected'>
-  | ServerFrameOf<'queue'>
   | ServerFrameOf<'steer_result'>
+  | ServerFrameOf<'send_result'>
   | ServerFrameOf<'remove_result'>
   | ServerFrameOf<'abort_result'>
   | ServerFrameOf<'shell_output'>
@@ -84,8 +86,18 @@ export type ClientSessionEvent =
       failures: Failures
     }
   | {
+      type: 'queue'
+      /** The root's queued messages, as its agent entry lists them. */
+      queue: QueuedMessage[]
+    }
+  | {
+      type: 'starting'
+      /** The message the root's running turn started with, until its turn writes it; null otherwise. */
+      starting: QueuedMessage | null
+    }
+  | {
       type: 'pending_steers'
-      /** The accepted steers not yet in the transcript. */
+      /** The accepted steers not yet in the transcript, as the root's agent entry lists them. */
       pendingSteers: PendingSteer[]
     }
   | {

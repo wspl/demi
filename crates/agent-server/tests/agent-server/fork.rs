@@ -418,7 +418,7 @@ async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_n
     let server = scripted_host_server(providers, shells.clone(), store.clone());
     let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
     page.open().await;
-    page.next_until(crate::support::is_pending_steers).await;
+    page.next_until(crate::support::is_request_output).await;
     page.send(crate::support::send("m1", "Serve.")).await;
     page.until_idle().await;
     shells.last().lose();

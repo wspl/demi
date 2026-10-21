@@ -990,7 +990,7 @@ impl<H: HostResolver> Tree<H> {
         let node = Rc::new(node);
         let now = self.clock.now().as_millisecond();
         let child = Rc::new_cyclic(|child: &Weak<Child<H>>| {
-            let events = node.session().subscribe({
+            let events = node.session().subscribe_steps({
                 let child = child.clone();
                 let sink = self.sink.clone();
                 let agents = self.agents.clone();
@@ -998,7 +998,8 @@ impl<H: HostResolver> Tree<H> {
                 let id = node.id().clone();
                 let paths = self.paths.clone();
                 let activity = self.activity.clone();
-                move |event| {
+                // A step's frames go to each page as one change.
+                move |step: &[SessionEvent]| agents.step(|| for event in step {
                     cut_path(&paths, event);
                     note_activity(&activity, event);
                     note_agent(&agents, &id, event);
@@ -1028,7 +1029,7 @@ impl<H: HostResolver> Tree<H> {
                         }
                         _ => {}
                     }
-                }
+                })
             });
             Child {
                 node: node.clone(),

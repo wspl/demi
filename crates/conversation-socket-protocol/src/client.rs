@@ -51,6 +51,14 @@ pub enum ClientFrame {
         #[garde(skip)]
         node: NodeId,
     },
+    /// Asks for the agents' changes since `held`, the version the page
+    /// holds, after a change arrived that does not follow it. The answer is
+    /// an `agents` frame: the entries changed since, or all of them when the
+    /// server holds another epoch.
+    AgentsSince {
+        #[garde(dive)]
+        held: Version,
+    },
     /// Submit a message; its id becomes its turn's id and its queue entry's.
     Send {
         #[garde(skip)]
@@ -175,6 +183,7 @@ pub enum ClientFrameKind {
     Open,
     Subscribe,
     Unsubscribe,
+    AgentsSince,
     Send,
     EditAndSend,
     Regenerate,
@@ -206,6 +215,7 @@ impl ClientFrame {
             Self::Open { .. } => ClientFrameKind::Open,
             Self::Subscribe { .. } => ClientFrameKind::Subscribe,
             Self::Unsubscribe { .. } => ClientFrameKind::Unsubscribe,
+            Self::AgentsSince { .. } => ClientFrameKind::AgentsSince,
             Self::Send { .. } => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Regenerate { .. } => ClientFrameKind::Regenerate,

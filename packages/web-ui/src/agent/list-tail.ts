@@ -38,6 +38,8 @@ export interface ListTailInput {
   pendingCalls: readonly PendingCall[]
   pendingSteers: readonly PendingSteerMessage[]
   queue: readonly QueuedMessage[]
+  /** The message the running turn started with, until the turn writes it. */
+  starting?: QueuedMessage | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
@@ -79,7 +81,8 @@ export interface ListTail {
  * - Steers that arrive during a compaction wait outside what it summarizes, so
  *   they follow its divider.
  * - A message the session holds already shows there alone, in the transcript,
- *   as a steer or in the queue. The row it was waiting in becomes that one
+ *   as a steer, in the queue or as the turn's starting message until the turn
+ *   writes it. The row it was waiting in becomes that one
  *   (`row-key.ts`), so it never shows twice, whichever of the two the server
  *   tells first.
  * - A message whose Recall is on its way shows nowhere.
@@ -96,7 +99,13 @@ export function listTailBlocks(input: ListTailInput): ListTail {
   const removing = new Set(input.removing)
   const steers = input.pendingSteers.filter((steer) => !written.has(steer.id) && !removing.has(steer.id))
   const queue = input.queue.filter((message) => !written.has(message.id) && !removing.has(message.id))
-  const held = new Set([...written, ...input.pendingSteers.map((steer) => steer.id), ...input.queue.map((message) => message.id)])
+  const started = input.starting && !written.has(input.starting.id) ? input.starting : null
+  const held = new Set([
+    ...written,
+    ...input.pendingSteers.map((steer) => steer.id),
+    ...input.queue.map((message) => message.id),
+    ...(input.starting ? [input.starting.id] : []),
+  ])
   const sending = (input.pendingSubmissions ?? []).filter((submission) =>
     !held.has(submission.id) && !removing.has(submission.id) && !input.elsewhere?.has(submission.id))
   const starting = turnStartingMessage(input.phase, input.pendingSubmissions ?? [])
@@ -111,6 +120,7 @@ export function listTailBlocks(input: ListTailInput): ListTail {
       ...(input.phase === 'compacting'
         ? [{ type: 'compaction_progress', id: 'compaction-progress' } as const]
         : []),
+      ...(started ? [{ type: 'starting_message', id: `starting:${started.id}`, message: started } as const] : []),
       ...pendingCallsToRenderBlocks(input.pendingCalls, input.blocks),
       ...rows((submission) => submission.way === 'send' || startsTurn(submission)),
     ],
@@ -154,6 +164,8 @@ export function rowMessageId(row: MessageListBlock): string | undefined {
       return row.queueId
     case 'pending_submission':
       return row.submission.id
+    case 'starting_message':
+      return row.message.id
     default:
       return undefined
   }

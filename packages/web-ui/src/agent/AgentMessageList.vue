@@ -72,6 +72,8 @@ const props = withDefaults(defineProps<{
   waitingSince?: number | null
   pendingSteers: PendingSteerMessage[]
   queue: QueuedMessage[]
+  /** The message the running turn started with, until the turn writes it. */
+  starting?: QueuedMessage | null
   phase: SessionPhase
   bottomOffset: number
   persistedScrollState: PersistedScrollState | undefined
