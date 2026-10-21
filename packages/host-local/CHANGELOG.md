@@ -1,5 +1,15 @@
 # @demicodes/host-local
 
+## 0.25.13
+
+### Patch Changes
+
+- Updated dependencies
+  - @demicodes/agent@0.25.13
+  - @demicodes/provider@0.25.13
+  - @demicodes/shell@0.25.13
+  - @demicodes/utils@0.25.13
+
 ## 0.25.12
 
 ### Patch Changes

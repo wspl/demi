@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.25.13
+
+### Patch Changes
+
+- Ship the shell_exec timeoutMs guidance from 0.25.12 to npm: the registry rejected @demicodes/agent and @demicodes/coding-agent 0.25.12 as a previously staged version that has no staged entry, so the release group moves to 0.25.13.
+  - @demicodes/core@0.25.13
+  - @demicodes/provider@0.25.13
+  - @demicodes/shell@0.25.13
+  - @demicodes/utils@0.25.13
+
 ## 0.25.12
 
 ### Patch Changes
