@@ -39,6 +39,8 @@ import type { GalleryPlugin } from './plugins'
 import { WORKSPACE_ROOT } from './workspace'
 
 const FPS = 10
+/** How long the gallery's runner takes to restart. */
+const RESTART_MS = 6000
 /** A screen's pixels per point. */
 const SCALE = 3
 const decoder = new TextDecoder()
@@ -204,6 +206,13 @@ export interface GalleryMobile {
   devicesSleep(): void
   /** The Host sends each looked-at view a frame whose image does not decode, as a damaged frame would be. */
   sendsBrokenFrames(): void
+  /**
+   * The Host's runner restarts: every device's stream ends and cannot open
+   * again for a few seconds, while the devices and their tabs stay, as the
+   * Host's service keeps them
+   * (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+   */
+  runnerRestarts(): void
 }
 
 export function galleryMobile(panel: GalleryPanel): GalleryMobile {
@@ -367,8 +376,14 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
     }
   }
 
+  /** While the runner restarts, no stream opens. */
+  let restartingUntil = 0
+
   const stream: OpenUserStream = (handlers) => {
     const view = new MobileView(handlers, () => [...open.values()], (shown) => power(shown, true))
+    if (performance.now() < restartingUntil) {
+      setTimeout(() => view.dropped('the runner is restarting'), 0)
+    }
     views.add(view)
     return {
       send: (bytes) => view.receive(bytes),
@@ -426,6 +441,16 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
       }
       for (const view of looked) {
         view.brokenFrame()
+      }
+    },
+    runnerRestarts: () => {
+      if (open.size === 0) {
+        productWould('No simulator is open to lose its connection.')
+        return
+      }
+      restartingUntil = performance.now() + RESTART_MS
+      for (const view of [...views]) {
+        view.dropped('the runner restarted')
       }
     },
     devicesSleep: () => {
@@ -507,6 +532,12 @@ class MobileView {
         orientation: each.orientation,
       },
     })
+  }
+
+  /** The connection ends, as a restarted runner's does: the page opens another when it can. */
+  dropped(reason: string): void {
+    this.stop()
+    this.handlers.closed(reason)
   }
 
   activity(device: OpenDevice): void {

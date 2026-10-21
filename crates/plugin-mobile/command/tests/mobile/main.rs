@@ -51,6 +51,9 @@ pub struct Mobile {
     _server: AbortOnDropHandle<Result<(), demi_command_sdk::ServiceError>>,
     pub root: tempfile::TempDir,
     _home: Option<tempfile::TempDir>,
+    /// The installation's `scratch`, where the runner makes a conversation's
+    /// directory at its first job.
+    scratch: Option<std::path::PathBuf>,
 }
 
 /// One command's answer.
@@ -150,6 +153,15 @@ impl Mobile {
             _server: server,
             root: tempfile::tempdir().unwrap(),
             _home: home,
+            scratch: mobile.parent().map(|home| home.join("scratch")),
+        }
+    }
+
+    /// A job of `conversation` starts: the runner has made its scratch
+    /// directory, which says the conversation is on this Host.
+    pub fn job_starts(&self, conversation: &str) {
+        if let Some(scratch) = &self.scratch {
+            std::fs::create_dir_all(scratch.join(conversation)).unwrap();
         }
     }
 
@@ -201,6 +213,7 @@ impl Mobile {
         caller: CommandCaller,
         json: Option<bool>,
     ) -> (demi_command_sdk::CommandInput, demi_command_sdk::CommandOutput) {
+        self.job_starts(conversation);
         let request = Invocation {
             operation: format!("mobile.{operation}"),
             invocation_id: format!("{conversation}-{operation}-{}", rand_id()),
@@ -302,6 +315,7 @@ pub fn element(role: &str, label: &str, frame: (f64, f64, f64, f64)) -> RawEleme
 impl Mobile {
     /// Opens the `mobile` stream as the page does.
     pub async fn live(&self, conversation: &str) -> (demi_command_sdk::CommandInput, demi_command_sdk::CommandOutput) {
+        self.job_starts(conversation);
         let request = Invocation {
             operation: "mobile.live".into(),
             invocation_id: format!("{conversation}-live-{}", rand_id()),

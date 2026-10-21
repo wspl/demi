@@ -150,6 +150,26 @@ impl Page {
         }
     }
 
+    /// The view's completion, once it ends; a `gone` message before it fails
+    /// the test.
+    pub(crate) async fn ends_without_gone(&mut self) -> demi_command_protocol::Completion {
+        loop {
+            while let Some(frame) = self.next_frame() {
+                if frame[4] == demi_live_view_protocol::CONTROL_FRAME {
+                    let message: LiveModuleMessage = serde_json::from_slice(&frame[5..]).unwrap();
+                    assert_ne!(serde_json::to_value(&message).unwrap()["type"], "gone", "the view said the device is gone");
+                }
+            }
+            match self.output.next().await.unwrap() {
+                Some(Record::Stdout(bytes)) => self.buffered.extend_from_slice(&bytes),
+                Some(Record::InputPull) => {}
+                Some(Record::Completion(completion)) => return completion,
+                Some(_) => {}
+                None => panic!("the view ended without a completion"),
+            }
+        }
+    }
+
     /// Takes the view's next record.
     async fn record(&mut self) {
         match self.output.next().await.unwrap() {
@@ -275,6 +295,29 @@ async fn a_stream_of_a_device_that_closed_says_it_is_gone_and_ends() {
     late.until("gone").await;
 }
 
+/// A device whose connection ended while its simulator runs is not gone: the
+/// view ends without saying so, the page opens another stream, and that one
+/// is answered once the device is attached again. Planted defect this
+/// catches: the view told the device is gone, which the page never opens
+/// again. One fake device, a paused clock.
+#[tokio::test(start_paused = true)]
+async fn a_stream_of_a_device_whose_connection_ended_ends_without_saying_gone() {
+    let mobile = Mobile::start().await;
+    let device = mobile.open(CHAT, "iPhone 17").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.until("state").await;
+    mobile.driver.device("UDID-1").lose();
+    let completion = page.ends_without_gone().await;
+    assert!(completion.error.is_some() || completion.exit_code != 0, "{completion:?}");
+
+    let mut again = Page::open(&mobile, CHAT).await;
+    again.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
+    again.send(json!({ "type": "looked", "looked": true })).await;
+    again.until("state").await;
+}
+
 /// The view says the agent uses a device from the start of its command on it
 /// until three seconds after its last one ends, a running command keeping it
 /// on, and marks where the agent taps. The panel's controls are the user's and
@@ -294,7 +337,8 @@ async fn the_agent_uses_a_device_until_three_seconds_after_its_last_command() {
     let open = mobile
         .service
         .devices()
-        .get(CHAT, &DeviceId::numbered(device[1..].parse().unwrap()))
+        .get(CHAT, &DeviceId::numbered(device[1..].parse().unwrap()), &tokio_util::sync::CancellationToken::new())
+        .await
         .unwrap();
     let activity = || *open.activity.borrow();
     assert!(activity().active, "opening it is the agent's use");

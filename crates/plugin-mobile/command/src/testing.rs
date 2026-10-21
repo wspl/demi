@@ -38,6 +38,12 @@ pub struct FakeDriver {
     held: Mutex<Option<Arc<HeldBoots>>>,
     /// Why a shutdown fails, while it does.
     shutdown_fails: Mutex<Option<String>>,
+    /// While set, an attach that started waits for the test to let it end.
+    attach_held: Mutex<Option<Arc<HeldAttaches>>>,
+    /// Why an attach fails, while it does.
+    attach_fails: Mutex<Option<String>>,
+    /// Why the list fails, while it does.
+    list_fails: Mutex<Option<String>>,
     pub log: Log,
 }
 
@@ -53,6 +59,9 @@ impl FakeDriver {
             boots: std::sync::atomic::AtomicU64::new(100),
             held: Mutex::default(),
             shutdown_fails: Mutex::default(),
+            attach_held: Mutex::default(),
+            attach_fails: Mutex::default(),
+            list_fails: Mutex::default(),
             log: Log::default(),
         })
     }
@@ -66,6 +75,50 @@ impl FakeDriver {
         });
         *self.held.lock().unwrap() = Some(held.clone());
         held
+    }
+
+    /// Attaches from now on take as long as the test lets them: each one
+    /// that starts says so, then waits for a permit.
+    pub fn hold_attaches(&self) -> Arc<HeldAttaches> {
+        let held = Arc::new(HeldAttaches {
+            started: tokio::sync::Notify::new(),
+            permits: tokio::sync::Semaphore::new(0),
+        });
+        *self.attach_held.lock().unwrap() = Some(held.clone());
+        held
+    }
+
+    /// Attaches fail with `reason` from now on, or succeed again with none.
+    pub fn fail_attaches(&self, reason: Option<&str>) {
+        *self.attach_fails.lock().unwrap() = reason.map(str::to_owned);
+    }
+
+    /// The list fails with `reason` from now on, or answers again with none.
+    pub fn fail_lists(&self, reason: Option<&str>) {
+        *self.list_fails.lock().unwrap() = reason.map(str::to_owned);
+    }
+
+    /// `native_id` is still booting: it lists as booting, in a boot of its
+    /// own, until `finish_boot`.
+    pub fn start_booting(&self, native_id: &str) {
+        self.log(format!("{native_id} starts booting"));
+        let boot = self.boots.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        for simulator in self.simulators.lock().unwrap().iter_mut() {
+            if simulator.native_id == native_id {
+                simulator.state = PowerState::Booting;
+                simulator.boot = Some(boot);
+            }
+        }
+    }
+
+    /// `native_id`'s boot ends: it lists as booted.
+    pub fn finish_boot(&self, native_id: &str) {
+        self.log(format!("{native_id} finishes booting"));
+        for simulator in self.simulators.lock().unwrap().iter_mut() {
+            if simulator.native_id == native_id {
+                simulator.state = PowerState::Booted;
+            }
+        }
     }
 
     /// Shutdowns fail with `reason` from now on, or succeed again with none.
@@ -102,6 +155,18 @@ impl FakeDriver {
         self.set_state(native_id, PowerState::Booted);
     }
 
+    /// The user shuts `native_id` down, outside Demi.
+    pub fn shutdown_now(&self, native_id: &str) {
+        self.log(format!("user shuts down {native_id}"));
+        self.set_state(native_id, PowerState::ShutDown);
+    }
+
+    /// The user deletes the simulator `native_id`, outside Demi.
+    pub fn delete(&self, native_id: &str) {
+        self.log(format!("user deletes {native_id}"));
+        self.simulators.lock().unwrap().retain(|simulator| simulator.native_id != native_id);
+    }
+
     /// The device attached for `native_id`, once it is.
     pub fn device(&self, native_id: &str) -> Arc<FakeDevice> {
         self.devices.lock().unwrap()[native_id].clone()
@@ -134,7 +199,12 @@ impl Driver for FakeDriver {
     }
 
     fn list(&self) -> BoxFuture<'_, Result<Vec<Simulator>>> {
-        Box::pin(async { Ok(self.simulators.lock().unwrap().clone()) })
+        Box::pin(async {
+            if let Some(reason) = self.list_fails.lock().unwrap().clone() {
+                return Err(DriverError::Failed(reason));
+            }
+            Ok(self.simulators.lock().unwrap().clone())
+        })
     }
 
     fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
@@ -174,6 +244,14 @@ impl Driver for FakeDriver {
     ) -> BoxFuture<'a, Result<Arc<dyn Device>>> {
         Box::pin(async move {
             self.log(format!("attach {native_id} for {conversation}"));
+            let held = self.attach_held.lock().unwrap().clone();
+            if let Some(held) = held {
+                held.started.notify_one();
+                let _permit = held.permits.acquire().await.expect("the test keeps its gate");
+            }
+            if let Some(reason) = self.attach_fails.lock().unwrap().clone() {
+                return Err(DriverError::Failed(reason));
+            }
             let (points, pixels) = self.portrait;
             let device = Arc::new(FakeDevice {
                 native_id: native_id.into(),
@@ -204,6 +282,13 @@ impl Driver for FakeDriver {
             Ok(device as Arc<dyn Device>)
         })
     }
+}
+
+/// Attaches the test holds: each one that starts says so, and ends once the
+/// test adds a permit.
+pub struct HeldAttaches {
+    pub started: tokio::sync::Notify,
+    pub permits: tokio::sync::Semaphore,
 }
 
 /// Boots the test holds: each one that starts says so, and ends once the

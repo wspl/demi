@@ -88,6 +88,9 @@ impl Ios {
             .expect("the sessions are intact")
             .get(conversation)
             .and_then(Weak::upgrade)
+            // A helper that ended serves nothing: the devices that attach
+            // again, as after a lost connection, get a new one.
+            .filter(|session| !session.helper.ended().is_cancelled())
         {
             return Ok(session);
         }

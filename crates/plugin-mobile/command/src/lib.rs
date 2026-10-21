@@ -41,12 +41,12 @@
 //! linked into the runner.
 
 pub mod android;
-mod booted;
 pub mod devices;
 pub mod driver;
 mod error;
 mod frame;
 pub mod ios;
+pub mod kept;
 mod keys;
 mod live;
 mod operations;
@@ -87,7 +87,7 @@ impl DemiMobile {
     /// The service with this Host's drivers.
     pub fn new() -> Self {
         // The installation's `mobile/`, where the simulators Demi booted
-        // are kept across the program's ends (`crates/plugin-mobile/command/src/devices.rs`).
+        // and the open devices are kept across the program's ends (`crates/plugin-mobile/command/src/devices.rs`).
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
         Self::with_drivers(host_drivers(home.as_deref()), home.as_deref())
     }
@@ -97,8 +97,18 @@ impl DemiMobile {
     /// conversation's files in `home/scratch/<conversation>`.
     pub fn with_drivers(drivers: Vec<Arc<dyn Driver>>, home: Option<&std::path::Path>) -> Self {
         let mobile = home.map(|home| home.join("mobile"));
+        // A conversation is still on this Host while its scratch directory
+        // is: the runner removes the directories of the conversations the
+        // backend no longer lists as it connects
+        // (`crates/runner-jobs/src/scratch.rs`).
+        let scratch = home.map(|home| home.join("scratch"));
+        let exists = Box::new(move |conversation: &str| {
+            scratch
+                .as_ref()
+                .is_none_or(|scratch| scratch.join(conversation).is_dir())
+        });
         Self {
-            devices: Devices::new(drivers, booted::Booted::load(mobile.as_deref())),
+            devices: Devices::new(drivers, kept::Kept::load(mobile.as_deref()), exists),
             hub: Arc::default(),
             home: home.map(std::path::Path::to_owned),
         }
@@ -168,7 +178,7 @@ impl Handler for DemiMobile {
                     Bytes::from_static(b"{}")
                 }
                 ConversationRequest::Status {} => Bytes::from(serde_json::to_vec(&ConversationStatus {
-                    conversations: devices.conversations(),
+                    conversations: devices.conversations().await,
                 })?),
             };
             context.output.stdout(body).await?;
@@ -197,6 +207,7 @@ impl Handler for DemiMobile {
         let hub = self.hub.clone();
         let installed = self.home.is_some();
         let scratch = self.scratch(&context.request.context.conversation);
+        devices.reached(&context.request.context.conversation);
         Box::pin(async move {
             let operation = match Operation::parse(&context.request.operation, context.request.args.clone()) {
                 Ok(Operation::Live) => return live::serve(devices, hub, context).await,

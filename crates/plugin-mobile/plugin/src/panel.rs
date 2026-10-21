@@ -2,8 +2,12 @@
 //! one tab for each device the conversation has open on its own Host.
 //!
 //! - A tab is added when the agent opens the device.
-//! - A tab is removed when the device closes, is lost, or goes with the
-//!   package's state on the Host.
+//! - A tab is removed when the device closes or is lost, that is, when the
+//!   Host no longer lists it as open
+//!   (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`). A
+//!   service that starts again, an update or a stopped Host loses no tab: the
+//!   Host's service takes its devices back under their handles, and a stopped
+//!   Host's tabs stay as they were until it lists them again.
 //! - Closing a tab closes its device, as `demi mobile close` does.
 //! - A device the agent opens on an attached Host has no tab: the panel shows
 //!   the conversation's Host's devices alone.
@@ -82,16 +86,6 @@ impl Work {
         }
     }
 
-    /// What the package kept on a Host ended: the panel shows what the
-    /// conversation's Host has open now, which loses the tabs of the
-    /// devices that went with it; a stopped Host has none open.
-    pub async fn lost(&self, conversation: &ConversationId, port: &PluginPort) -> Result<(), PluginError> {
-        let lock = self.lock(conversation);
-        let _turn = lock.lock().await;
-        let open = page::list(port).await?.map(|listed| listed.devices).unwrap_or_default();
-        self.show(port, &open).await
-    }
-
     /// Reads the Host's devices and updates the panel: a tab for each device
     /// this conversation has open that has none, and each tab whose device
     /// is no longer open removed.
@@ -103,7 +97,7 @@ impl Work {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
         // A stopped Host's devices are as the panel last showed them, until
-        // its package's loss says otherwise.
+        // it lists them again.
         let Some(listed) = page::list(port).await? else {
             return Ok(());
         };

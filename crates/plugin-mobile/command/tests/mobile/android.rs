@@ -1464,28 +1464,33 @@ async fn an_element_is_tapped_at_its_place_on_the_glass_in_every_orientation() {
     }
 }
 
-/// An emulator whose pictures stop while it runs is let go as a lost
-/// device: what Demi started inside it ends, and the emulator stays up and
-/// Demi's, for the hour. Planted defects this catches: the helper left
-/// running inside the emulator, or the emulator shut down for it. A stub
-/// emulator, milliseconds.
+/// An emulator whose pictures stop while it runs loses its connection, not
+/// its device: what Demi started inside it ends, the emulator stays up and
+/// Demi's, and the device keeps its handle, its place in the record and its
+/// tab, which say it reconnects
+/// (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+/// Planted defects this catches: the helper left running inside the
+/// emulator, the emulator shut down for it, or the device closed as lost
+/// with its handle. A stub emulator, milliseconds.
 #[tokio::test]
-async fn a_lost_picture_stream_lets_the_helper_go_and_leaves_the_emulator_up() {
+async fn a_lost_picture_stream_lets_the_helper_go_and_keeps_the_device() {
     let (mobile, sdk) = start(false).await;
-    mobile.open(CHAT, AVD).await;
+    let handle = mobile.open(CHAT, AVD).await;
     sdk.emulator.pictures_lost.cancel();
     sdk.emulator.heard.until("guest closed").await;
     assert!(!sdk.heard().iter().any(|line| line.starts_with("vm")), "{:?}", sdk.heard());
     let listed = mobile.run(CHAT, "list", json!({})).await.json();
     let avd = listed["devices"].as_array().unwrap().iter().find(|each| each["nativeId"] == AVD).unwrap().clone();
-    assert_eq!((avd["state"].as_str(), avd.get("open")), (Some("booted"), None), "{avd}");
-    assert!(std::fs::read_to_string(mobile.home().join("mobile/booted.json")).unwrap().contains(AVD));
+    assert_eq!((avd["state"].as_str(), avd["open"].as_str()), (Some("booted"), Some(handle.as_str())), "{avd}");
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(mobile.home().join("mobile/kept.json")).unwrap()).unwrap();
+    assert_eq!(kept["simulators"][0]["nativeId"], AVD);
+    assert_eq!(kept["devices"][0]["nativeId"], AVD);
 }
 
 /// An emulator Demi started is Demi's from the moment its process runs. A boot
 /// that fails, as one that never says where it listens, ends that process by
 /// its id and start and leaves no record. One whose process does not end stays
-/// in the record, to be shut down later.
+/// in the record.
 ///
 /// Planted defects this catches:
 ///
@@ -1500,17 +1505,17 @@ async fn a_failed_boot_ends_the_process_it_started_or_stays_demis() {
     let (_, message) = mobile.run(CHAT, "open", json!({ "device": AVD })).await.failure();
     assert!(message.contains("did not start in 120 s"), "{message}");
     assert_eq!(sdk.heard(), ["launch Pixel_8_API_36", "terminate 4242 1000"]);
-    let record = mobile.home().join("mobile/booted.json");
+    let record = mobile.home().join("mobile/kept.json");
     assert!(!std::fs::read_to_string(&record).unwrap_or_default().contains(AVD));
 
     let (mobile, sdk) = start(false).await;
     *sdk.silent.lock().unwrap() = true;
     *sdk.unkillable.lock().unwrap() = true;
     mobile.run(CHAT, "open", json!({ "device": AVD })).await.failure();
-    let record = mobile.home().join("mobile/booted.json");
+    let record = mobile.home().join("mobile/kept.json");
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(&record).unwrap()).unwrap();
     assert_eq!(kept["simulators"], json!([{ "platform": "android", "nativeId": AVD, "boot": 1000 }]));
-    // The list says it is still booting, so the hour's shutdown ends it.
+    // The list says it is still booting.
     let listed = mobile.run(CHAT, "list", json!({})).await.json();
     let avd = listed["devices"].as_array().unwrap().iter().find(|each| each["nativeId"] == AVD).unwrap().clone();
     assert_eq!(avd["state"], "booting");

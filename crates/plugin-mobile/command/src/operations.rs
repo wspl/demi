@@ -100,22 +100,22 @@ pub async fn run(
     call: &Call<'_>,
     operation: MobileOperation,
 ) -> Result<Outcome, MobileError> {
+    // A close needs no connection: a device being taken back closes at once.
     let open = match operation.device() {
-        Some(handle) => Some(devices.get(call.conversation, handle)?),
-        None => None,
+        Some(handle) if !matches!(operation, MobileOperation::Close(_)) => {
+            Some(devices.get(call.conversation, handle, call.cancel).await?)
+        }
+        _ => None,
     };
-    // Commands on one device take turns in their lane, and each is its use.
-    // The agent's uses it from its start, the wait for its turn included.
+    // Commands on one device take turns in their lane. The agent uses it
+    // from its start, the wait for its turn included.
     let turn_of = open.clone();
     let _agent = match &turn_of {
         Some(open) if call.agent => Some(open.agent_uses()),
         _ => None,
     };
     let _turn = match &turn_of {
-        Some(open) => {
-            open.used();
-            Some(turn(open, lane(&operation)).await)
-        }
+        Some(open) => Some(turn(open, lane(&operation)).await),
         None => None,
     };
     let done = async {
@@ -132,12 +132,11 @@ pub async fn run(
                 Ok(outcome)
             }
             (MobileOperation::Open(input), _) => open_device(devices, call, &input.device).await,
-            (MobileOperation::Close(input), Some(open)) => {
-                drop(open);
+            (MobileOperation::Close(input), _) => {
                 let ended = devices.close(call.conversation, &input.device).await?;
                 let text = match (&ended.failure, ended.shut_down) {
                     (Some(failure), _) => format!(
-                        "Closed {}, but it did not shut down: {failure}. Demi shuts it down after an hour unused.\n",
+                        "Closed {}, but it did not shut down: {failure}. It stays booted; shut it down with the platform's own tools.\n",
                         input.device
                     ),
                     (None, true) => format!("Closed {} and shut it down.\n", input.device),

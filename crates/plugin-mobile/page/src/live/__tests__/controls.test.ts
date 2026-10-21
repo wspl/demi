@@ -611,6 +611,30 @@ test('a turn the device answered before a reconnect ends with the new connection
 })
 
 /**
+ * A stream that ended, as with the runner's restart, leaves the session and
+ * its device as they are: the view says it reconnects, not that it connects,
+ * until the stream answers again
+ * (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+ */
+test('a view whose stream ended says it reconnects until the stream is back', async () => {
+  const device = await rotating()
+  expect(device.session.state.connection).toBe('live')
+  expect(device.session.reconnecting).toBe(false)
+  device.streams.at(-1)!.closed('the runner restarted')
+  expect(device.session.state.gone).toBe(false)
+  expect(device.session.reconnecting).toBe(true)
+  expect(device.session.waiting).toBe('reconnecting')
+  await pageReturned()
+  expect(device.streams).toHaveLength(2)
+  // Opened again, it still waits for the Host's answer.
+  expect(device.session.reconnecting).toBe(true)
+  device.streams.at(-1)!.data(framed({ type: 'state', device: PIXEL }))
+  expect(device.session.reconnecting).toBe(false)
+  expect(device.session.state.connection).toBe('live')
+  device.end()
+})
+
+/**
  * After a reconnect, before the new connection reports any orientation,
  * a press still turns what the view shows at once, from the orientation it
  * shows. Planted defect this catches: a rotation that turns only from the

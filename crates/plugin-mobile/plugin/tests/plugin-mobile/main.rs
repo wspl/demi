@@ -196,14 +196,14 @@ async fn a_devices_tab_carries_the_model_its_driver_reads() {
     assert_eq!(model("mobile-m2"), None, "a device of no known model has none");
 }
 
-/// When what the package kept on a Host ends, the panel shows what the
-/// conversation's Host has open now: an attached Host's loss leaves the
-/// tabs, the Host's own stop loses them. Planted defect this catches:
-/// every tab removed whichever Host's package ended. One loopback,
-/// milliseconds.
+/// When what the package kept on a Host ends, as when the runner restarts,
+/// the panel keeps the tabs of the devices the Host lists as open and of a
+/// stopped Host, and loses the tab of a device the Host no longer has.
+/// Planted defect this catches: every tab removed as the package was lost.
+/// One loopback, milliseconds.
 #[tokio::test(flavor = "local")]
-async fn a_hosts_lost_package_loses_the_tabs_of_its_devices_alone() {
-    let open = Rc::new(RefCell::new(Some(vec![("m1", "UDID-1")])));
+async fn a_lost_package_loses_the_tab_of_a_device_that_is_gone_alone() {
+    let open = Rc::new(RefCell::new(Some(vec![("m1", "UDID-1"), ("m2", "UDID-2")])));
     let demi = host(open.clone());
     let plugin = loopback(Mobile::new().instance());
     let lost = || Request::PackageLost {
@@ -221,9 +221,16 @@ async fn a_hosts_lost_package_loses_the_tabs_of_its_devices_alone() {
         )
         .await
         .unwrap();
+    assert_eq!(tabs(&demi), ["mobile-m1", "mobile-m2"]);
+    // The service started again and took both devices back.
     plugin.call(lost(), demi.port()).await.unwrap();
-    assert_eq!(tabs(&demi), ["mobile-m1"], "an attached Host's loss took the tab");
+    assert_eq!(tabs(&demi), ["mobile-m1", "mobile-m2"], "a restart took a tab");
+    // A stopped Host lists nothing, and its devices keep their tabs.
     *open.borrow_mut() = None;
     plugin.call(lost(), demi.port()).await.unwrap();
-    assert!(tabs(&demi).is_empty(), "the stopped Host's device keeps its tab");
+    assert_eq!(tabs(&demi), ["mobile-m1", "mobile-m2"], "a stopped Host took a tab");
+    // The Host started again, and one device no longer exists.
+    *open.borrow_mut() = Some(vec![("m1", "UDID-1")]);
+    plugin.call(lost(), demi.port()).await.unwrap();
+    assert_eq!(tabs(&demi), ["mobile-m1"], "a device that is gone kept its tab");
 }

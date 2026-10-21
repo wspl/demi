@@ -187,6 +187,8 @@ const mark = computed(() => {
   return point && screen.value && placement.value ? areaPoint(point, screen.value, placement.value) : null
 })
 const stalled = computed(() => props.session.state.connection === 'stalled')
+/** The stream ended and opens again, while the view still shows the last picture. */
+const reconnecting = computed(() => props.session.reconnecting && !!look.value?.picture)
 const painted = computed(() => !!look.value?.picture)
 const screenOff = computed(() => painted.value && props.session.state.screenOff)
 /** What the view waits for, in words, while it shows no picture. */
@@ -194,6 +196,8 @@ const waitingLabel = computed(() => {
   switch (props.session.waiting) {
     case 'connecting':
       return t('region.connecting')
+    case 'reconnecting':
+      return t('region.reconnecting')
     case 'frame':
       return t('region.frame')
     case 'screen':
@@ -518,8 +522,8 @@ function composed(event: CompositionEvent): void {
       @blur="session.release()"
     >
     <LiveActivityOverlay :active="activity.active" :label="t('activity')" :mark="mark" />
-    <div v-if="stalled" class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
-      <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">{{ t('region.waiting') }}</span>
+    <div v-if="stalled || reconnecting" role="status" class="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center p-2">
+      <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">{{ reconnecting ? t('region.reconnecting') : t('region.waiting') }}</span>
     </div>
   </div>
 </template>

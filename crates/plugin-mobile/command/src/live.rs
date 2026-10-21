@@ -58,7 +58,8 @@ use demi_live_view_protocol::{
 };
 
 use crate::{
-    devices::{Devices, OpenDevice, Watching},
+    error::MobileError,
+    devices::{Devices, OpenDevice},
     driver::{DeviceCapture, FrameArea, Framed, KeyPress, Points, Screen, TouchPhase},
     keys,
 };
@@ -471,7 +472,6 @@ struct Watched {
     /// Announces a frame the device came to know, until the device says
     /// it announces none.
     reframes: Option<watch::Receiver<()>>,
-    _watching: Watching,
 }
 
 /// A frame drawn for the page, in a task of its own, so neither the page's
@@ -586,9 +586,16 @@ async fn view(
             None => return Ok(()),
         },
     };
-    let Ok(open) = devices.get(conversation, &device) else {
-        writer.control(&LiveModuleMessage::Gone {}).await;
-        return Ok(());
+    let open = match devices.get(conversation, &device, &cancellation).await {
+        Ok(open) => open,
+        Err(MobileError::Cancelled) => return Err(None),
+        // The device is not this conversation's here, or is gone.
+        Err(MobileError::NotOpen(_)) => {
+            writer.control(&LiveModuleMessage::Gone {}).await;
+            return Ok(());
+        }
+        // Not taken back yet: the view ends and opens again.
+        Err(error) => return Err(Some(error.to_string())),
     };
     let tasks = TaskTracker::new();
     let ended = CancellationToken::new();
@@ -641,8 +648,14 @@ async fn view(
         tokio::select! {
             _ = cancellation.cancelled() => break Err(None),
             () = open.closed.cancelled() => {
-                writer.control(&LiveModuleMessage::Gone {}).await;
-                break Ok(());
+                // Only a device that is over is gone; one whose connection
+                // was lost, or that another service took over, is
+                // reconnected to by the view's next stream.
+                if open.gone.is_cancelled() {
+                    writer.control(&LiveModuleMessage::Gone {}).await;
+                    break Ok(());
+                }
+                break Err(Some("the device's connection ended".into()));
             }
             message = inbound.recv() => match message.transpose() {
                 Err(error) => break Err(Some(error)),
@@ -862,7 +875,6 @@ async fn look(
     awake.borrow_and_update();
     let watched = Watched {
         source: SourceId::try_from(open.handle.as_str()).expect("a handle fits a picture's source"),
-        _watching: open.watched(),
         handle,
         fit,
         stream,

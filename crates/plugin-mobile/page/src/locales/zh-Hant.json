@@ -22,6 +22,7 @@
   },
   "region": {
     "connecting": "正在連接模擬器⋯",
+    "reconnecting": "正在重新連線至模擬器⋯",
     "frame": "正在載入裝置外框⋯",
     "screen": "正在等待螢幕⋯",
     "waiting": "正在等待裝置⋯",

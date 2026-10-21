@@ -22,6 +22,7 @@
   },
   "region": {
     "connecting": "正在连接模拟器…",
+    "reconnecting": "正在重新连接模拟器…",
     "frame": "正在载入设备外框…",
     "screen": "正在等待屏幕…",
     "waiting": "正在等待设备…",

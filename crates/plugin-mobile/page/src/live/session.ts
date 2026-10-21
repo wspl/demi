@@ -25,6 +25,9 @@
  *   orientation, with the device's last orientation, so the device shows its
  *   frame at once, before the Host answers, even after a reload; the Host is
  *   asked only for a frame the cache lacks.
+ * - A stream that ended opens again, and its view says it reconnects until
+ *   it does, over the picture it last showed; the device's tab stays, as
+ *   the Host keeps the device across its service's restarts.
  * - A view shown again asks its stream to answer, which the Host does with
  *   the device's state: a stream that does not answer in time, as one whose
  *   connection was lost silently while nobody looked, opens again.
@@ -117,10 +120,10 @@ export type PicturelessReason = typeof LIVE_CAPTURE_UNAVAILABLE | typeof LIVE_CA
 
 /**
  * What a view of the device waits for, from the steps that run: the
- * stream, the frame, the first picture; or that the frame it waits for
- * could not be shown.
+ * stream, or its return after it ended, the frame, the first picture; or
+ * that the frame it waits for could not be shown.
  */
-export type DeviceWait = 'connecting' | 'frame' | 'screen' | 'frameFailed' | null
+export type DeviceWait = 'connecting' | 'reconnecting' | 'frame' | 'screen' | 'frameFailed' | null
 
 /**
  * A press of Rotate Left or Right, until the device has shown its effect:
@@ -385,9 +388,19 @@ export class DeviceSession {
       return null
     }
     if (this.state.connection !== 'live') {
-      return 'connecting'
+      return this.reconnecting ? 'reconnecting' : 'connecting'
     }
     return this.state.look ? 'screen' : 'frame'
+  }
+
+  /**
+   * Whether the stream ended, as with the runner's restart or a dropped
+   * connection, and opens again: the device stays, and its view keeps its
+   * last picture until the stream returns
+   * (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+   */
+  get reconnecting(): boolean {
+    return this.state.connection === 'opening' && this.state.ended !== null
   }
 
   /**
