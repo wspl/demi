@@ -1,6 +1,7 @@
 //! Each conversation's scratch directory, for the files only the agent needs (a
-//! screenshot it looks at, a probe script): `<DEMI_HOME>/scratch/<conversation
-//! id>/`, made at the conversation's first job on the Host.
+//! screenshot it looks at, a probe script): `<DEMI_HOME>/scratch/<first 12
+//! digits of the conversation's id>/` ([`scratch_name`]), made at the
+//! conversation's first job on the Host.
 //!
 //! It shows in no pill and no Change view, and it is still there an hour later,
 //! which `/tmp` does not promise.
@@ -35,7 +36,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_command_protocol::CommandCaller;
+use demi_command_protocol::{CommandCaller, scratch_name};
 
 /// The variable that names a job's scratch directory.
 pub const SCRATCH_ENV: &str = "DEMI_SCRATCH";
@@ -63,7 +64,7 @@ impl Scratch {
     /// name the wire checked (`crates/command-protocol/src/invocation.rs`), made
     /// when it is not there.
     pub async fn create(&self, conversation: &str, caller: &CommandCaller) -> io::Result<PathBuf> {
-        let mut directory = self.root.join(conversation);
+        let mut directory = self.root.join(scratch_name(conversation));
         if let Some(folder) = caller.scratch_folder() {
             directory.push(folder);
         }
@@ -79,7 +80,7 @@ impl Scratch {
     /// alone, and a directory that cannot be removed stays until the next
     /// connection tries again.
     pub async fn keep_only(&self, existing: &[String]) -> io::Result<()> {
-        let existing: HashSet<&str> = existing.iter().map(String::as_str).collect();
+        let existing: HashSet<String> = existing.iter().map(|id| scratch_name(id)).collect();
         let mut entries = match tokio::fs::read_dir(&self.root).await {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),

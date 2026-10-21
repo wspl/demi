@@ -165,8 +165,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         Err(error) => return unstartable(format!("the installation's configuration cannot be read: {error}")),
     };
     if let Some(saved) = &saved
-        && crate::state::instance_id(&saved.backend_url)
-            != crate::state::instance_id(options.backend.url())
+        && saved.backend_url != *options.backend.url()
     {
         return unstartable(format!(
             "the installation is registered to another backend, {}",

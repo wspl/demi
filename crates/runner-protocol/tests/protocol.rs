@@ -10,6 +10,7 @@ use demi_runner_protocol::files::{
     Effect, FileWatchMessage, MAX_OUTSIDE_SUBSCRIPTIONS, MAX_PAGE_SUBSCRIPTIONS, PageSubscription,
     PageSubscriptions, RefusedReason, Subject, SubscriptionKind,
 };
+use demi_runner_protocol::installation::installation_name;
 use demi_runner_protocol::manifest::Manifest;
 use demi_runner_protocol::wire::{
     self, Inbound, KeptRecord, LogLine, Outbound, OutputStream, Timestamp, WireBytes,
@@ -716,4 +717,76 @@ fn a_changed_too_large_for_one_message_is_split_without_losing_a_key() {
         heard.extend(changes);
     }
     assert_eq!(heard, changes);
+}
+
+/// An installation's directory is named after its backend's host, then its
+/// port when it is not the scheme's default, then its path's segments, and
+/// last four hex digits of the SHA-256 of the whole URL. The readable part is
+/// a file name on every system: an IPv6 host's colons and a percent-encoded
+/// byte are replaced, and a very long path is cut.
+#[test]
+fn an_installation_is_named_after_its_backends_host_port_and_path() {
+    let cases = [
+        ("https://demi.example.com/", "demi.example.com-748c"),
+        ("https://demi.example.com:443/", "demi.example.com-748c"),
+        ("https://demi.example.com", "demi.example.com-748c"),
+        ("http://127.0.0.1:3310/", "127.0.0.1-3310-825d"),
+        ("https://example.com/team/a/", "example.com-team-a-"),
+        ("http://[::1]:3310/", "__1-3310-e0f6"),
+        ("https://[2001:db8::7]/", "2001_db8__7-59e2"),
+        ("https://example.com/a%20b", "example.com-a_20b-f785"),
+        ("https://example.com/what*", "example.com-what_-"),
+    ];
+    for (url, expected) in cases {
+        let name = installation_name(&url::Url::parse(url).unwrap());
+        assert!(name.starts_with(expected), "{url}: {name}");
+        assert!(
+            name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')),
+            "{name}"
+        );
+    }
+}
+
+/// Backends that read alike have names of their own, so that each installs on
+/// one machine beside the others; the name of a backend does not depend on how
+/// its URL is spelled where the spelling means the same.
+#[test]
+fn backends_that_read_alike_have_installations_of_their_own() {
+    let pairs = [
+        ("http://example.com/", "https://example.com/"),
+        ("https://example.com/team-a", "https://example.com/team/a"),
+        ("http://example.com:3310/", "http://example.com/3310"),
+        ("https://example.com/a%20b", "https://example.com/a_20b"),
+        ("https://example.com/Team", "https://example.com/team"),
+    ];
+    for (first, second) in pairs {
+        let first_name = installation_name(&url::Url::parse(first).unwrap());
+        let second_name = installation_name(&url::Url::parse(second).unwrap());
+        assert_ne!(first_name, second_name, "{first} and {second}");
+        // A case-insensitive file system tells them apart too.
+        assert_ne!(first_name.to_lowercase(), second_name.to_lowercase(), "{first} and {second}");
+    }
+}
+
+/// A legal but very long path does not make a name a file system refuses: the
+/// readable part is cut, and the hash still tells the backends apart.
+#[test]
+fn a_very_long_backend_path_still_names_an_installable_directory() {
+    let long = |tail: &str| format!("https://example.com/{}{tail}", "a".repeat(250));
+    let first = installation_name(&url::Url::parse(&long("x")).unwrap());
+    let second = installation_name(&url::Url::parse(&long("y")).unwrap());
+    assert!(first.len() <= 101 && second.len() <= 101, "{first}");
+    assert_ne!(first, second);
+    assert!(first.starts_with("example.com-aaaa"));
+}
+
+/// A conversation's scratch directory is named by the first 12 hex digits of
+/// its id.
+#[test]
+fn a_scratch_directory_is_named_by_twelve_digits_of_the_conversation_id() {
+    assert_eq!(
+        demi_command_protocol::scratch_name("5b2c9e41-7a3d-4f08-9c6e-1d8b3a7f2e90"),
+        "5b2c9e417a3d"
+    );
+    assert_eq!(demi_command_protocol::scratch_name("5b2c9e41"), "5b2c9e41");
 }

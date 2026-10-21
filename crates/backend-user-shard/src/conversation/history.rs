@@ -945,7 +945,10 @@ async fn save<A>(
             }
             // The directory the runner makes for the calling agent, named
             // as the job's command context names it, which its job made.
-            let mut scratch = identity.paths.join(&identity.scratch_root, &invocation.context.conversation);
+            let mut scratch = identity.paths.join(
+                &identity.scratch_root,
+                &demi_command_protocol::scratch_name(&invocation.context.conversation),
+            );
             if let Some(folder) = invocation.context.caller.scratch_folder() {
                 scratch = identity.paths.join(&scratch, &folder);
             }

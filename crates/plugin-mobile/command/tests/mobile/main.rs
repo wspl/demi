@@ -161,7 +161,7 @@ impl Mobile {
     /// directory, which says the conversation is on this Host.
     pub fn job_starts(&self, conversation: &str) {
         if let Some(scratch) = &self.scratch {
-            std::fs::create_dir_all(scratch.join(conversation)).unwrap();
+            std::fs::create_dir_all(scratch.join(demi_command_protocol::scratch_name(conversation))).unwrap();
         }
     }
 

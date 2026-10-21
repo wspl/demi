@@ -460,7 +460,7 @@ async fn a_conversation_that_is_gone_is_released_as_the_service_starts() {
     first.open(CHAT, "iPhone 17").await;
     first.kill();
     // The runner removed the conversation's scratch directory as it connected.
-    std::fs::remove_dir_all(home.path().join("scratch").join(CHAT)).unwrap();
+    std::fs::remove_dir_all(home.path().join("scratch").join("chata")).unwrap();
 
     let second = Mobile::start_on(driver.clone(), &mobile, None).await;
     tokio::time::timeout(Duration::from_secs(10), async {
