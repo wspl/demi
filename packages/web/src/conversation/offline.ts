@@ -176,8 +176,15 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
     due.clear()
   }
 
-  /** Forgets conversation `id`, which the page let go: what it wrote stays on disk. */
+  /**
+   * Forgets conversation `id`, which the page lets go, once what is due of it
+   * is written: what it wrote stays on disk.
+   */
   function released(id: string): void {
+    if (due.has(id)) {
+      // Each write reports its own failure: the copy is a convenience.
+      void keep()
+    }
     watches.get(id)?.()
     watches.delete(id)
     for (const node of written.get(id)?.keys() ?? []) {

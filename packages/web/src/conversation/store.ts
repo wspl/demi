@@ -1,6 +1,6 @@
 import { computed, markRaw, reactive, type Raw, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { SerialQueue, deferred, moveBefore } from '@demicodes/utils'
+import { SerialQueue, deferred, isAbortError, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
@@ -248,7 +248,7 @@ export const useConversations = defineStore('conversations', () => {
 
   // A failed operation is a toast; server state is never replaced by a message.
   function report(title: HeadlineText, error: unknown, options: ReportErrorOptions = {}): void {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isAbortError(error)) {
       return
     }
     if (!lifetime.signal.aborted) {
@@ -1107,7 +1107,14 @@ export const useConversations = defineStore('conversations', () => {
       cache.delete(previous.id)
     }
     product.activeConversationId = id
+    if (previous && previous.id !== id) {
+      history.release(previous)
+    }
     const conversation = items.value.find((item) => item.id === id)
+    if (id) {
+      shownRecently.splice(0, shownRecently.length, id, ...shownRecently.filter((each) => each !== id))
+      letGoBeyondKept()
+    }
     if (!conversation) {
       // The first load opens the conversation its address names by its id,
       // before the channel's first state names it, but not a new
@@ -1258,27 +1265,40 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Shows what the disk keeps of the conversation, its root's latest run,
-   * its metadata and its agents, unless the backend's answer came first.
+   * its metadata and its agents, unless the backend's answer came first; a
+   * cold opening with no copy to show shows Loading.
    */
   async function showFromDisk(conversation: Conversation, signal: AbortSignal): Promise<void> {
+    let shown = false
+    try {
+      shown = await showCopy(conversation, signal)
+    } finally {
+      if (!shown && conversation.load === 'reading') {
+        conversation.load = 'loading'
+      }
+    }
+  }
+
+  /** Shows the conversation's copy on disk; answers whether it did. */
+  async function showCopy(conversation: Conversation, signal: AbortSignal): Promise<boolean> {
     const userId = session.user?.id
     if (!userId) {
-      return
+      return false
     }
     const [copy, root] = await Promise.all([
       readConversationCopy(userId, conversation.id),
       readNodeCopy(userId, conversation.id),
     ])
     signal.throwIfAborted()
-    if (conversation.load !== 'loading') {
-      return
+    if (conversation.load !== 'reading') {
+      return false
     }
     if (copy && conversation.metadata.read.value === null) {
       takeMetadata(conversation, copy.metadata)
     }
     // The agents show with the transcript, never over the loading pane.
     if (!root || latestBlocks(root.transcript).length === 0 || conversation.history.windows.length > 0) {
-      return
+      return false
     }
     if (copy && conversation.agentsHeld === null) {
       takeAgents(conversation, copy.agents.entries, copy.agents.version, Date.now(), true)
@@ -1294,6 +1314,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.instructions = root.instructions
     conversation.summaries = root.summaries
     conversation.load = 'opening'
+    return true
   }
 
   /**
@@ -1411,12 +1432,13 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Shows the conversation loading, as an opening begins: nothing of an
-   * earlier attempt shows meanwhile, neither its transcript and agents nor
-   * its session or its failure.
+   * Begins a cold opening: nothing of an earlier attempt shows, neither its
+   * transcript and agents nor its session or its failure, and nothing at all
+   * while the copy on disk is read, which shows next, or Loading without one
+   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
    */
   function startLoading(conversation: Conversation): void {
-    conversation.load = 'loading'
+    conversation.load = 'reading'
     conversation.history = EMPTY_TRANSCRIPT
     conversation.shownAt = null
     conversation.failures = {}
@@ -1440,6 +1462,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.phase = 'idle'
     conversation.queue = []
     conversation.pendingSteers = []
+    conversation.starting = null
     conversation.pendingCalls = []
     conversation.waitingSince = null
     conversation.requestOutput = null
@@ -1476,6 +1499,42 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /** How many conversations shown most recently stay open, the one shown among them. */
+  const KEPT_CONVERSATIONS = 3
+  /** The conversations shown, most recent first. */
+  const shownRecently: string[] = []
+
+  /**
+   * Lets go the conversations beyond the `KEPT_CONVERSATIONS` shown most
+   * recently: their connection closes and their transcripts leave memory,
+   * which their copies on disk keep, so showing one again opens it from its
+   * copy. One with a message still on its way stays open, as its delivery
+   * needs its session
+   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   */
+  function letGoBeyondKept(): void {
+    for (const id of shownRecently.slice(KEPT_CONVERSATIONS)) {
+      const conversation = items.value.find((item) => item.id === id)
+      if (conversation && conversation.pendingSends.length > 0) {
+        continue
+      }
+      shownRecently.splice(shownRecently.indexOf(id), 1)
+      if (!conversation || !cache.get(id)) {
+        continue
+      }
+      cache.delete(id)
+      copies.released(id)
+      // Its children's copies show again when their windows open.
+      for (const child of conversation.subagents) {
+        childrenRead.delete(child.id)
+      }
+      closedChildren.delete(id)
+      startLoading(conversation)
+      // Not open now: the next showing opens it.
+      conversation.load = 'loading'
+    }
+  }
+
   /** The children whose transcripts the page holds in memory once their windows close, the most recent. */
   const KEPT_CHILDREN = 8
   /** The children whose windows closed, most recent last, whose transcripts the page still holds. */
@@ -1506,6 +1565,7 @@ export const useConversations = defineStore('conversations', () => {
     for (const child of dropped) {
       delete conversation.charts[child]
       childrenRead.delete(child)
+      history.release(conversation, child)
     }
     for (const id of ids.filter((each) => !childrenRead.has(each))) {
       void showChildFromDisk(conversation, id).finally(() => {

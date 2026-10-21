@@ -927,6 +927,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     startedAt: '2026-09-13T00:00:00.000Z',
     pendingCalls: [],
     history: EMPTY_TRANSCRIPT,
+    shownAt: null,
     failures: {},
     contextUsage: null,
     cwd: '/work',
@@ -3498,7 +3499,7 @@ test('a conversation opened during a turn shows its transcript with its steer an
   ])
   stop()
   // The transcript shows with the session's turn, its steer and its wait, in one change.
-  expect(shown.filter((state) => state !== 'loading')).toEqual(['running, steer-1, waited 11s'])
+  expect(shown.filter((state) => state !== 'reading' && state !== 'loading')).toEqual(['running, steer-1, waited 11s'])
   expect(shownRows(conversation()).waiting).toEqual(['message:steer-1'])
 })
 
@@ -3980,6 +3981,49 @@ test('switching between opened sessions performs no reads or load reset', async 
 
 /** The sockets the page opened to conversation `id`. */
 const socketsOf = (id: string) => pageSockets.filter((socket) => socket.url.includes(`/conversations/${id}/stream`))
+
+// The page keeps the conversations shown most recently open. One shown
+// before them is let go: its socket closes and its transcript leaves memory,
+// which the disk keeps; shown again, it shows that copy at once, never
+// Loading, and opens again. Cost: five openings, no wait.
+test('a conversation shown before the few most recent is let go, and shown again shows its copy at once, never Loading', async () => {
+  const signOut = signIn()
+  const FOURTH = '00000000-0000-4000-8000-000000000004'
+  for (const id of [THIRD, FOURTH]) {
+    records.push(record(id, id))
+    metaOf(id).model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+    await changed(id)
+  }
+  rootBlocks.set(FIRST, [shownBlock])
+  const store = useConversations()
+  await store.activate(FIRST)
+  const first = store.items.find((item) => item.id === FIRST)!
+  await waitFor(() => first.load === 'ready', () => `it is ${first.load}`)
+  await store.activate(SECOND)
+  await store.activate(THIRD)
+  expect(socketsOf(FIRST)[0]!.closed).toBe(false)
+
+  await store.activate(FOURTH)
+  expect(socketsOf(FIRST)[0]!.closed).toBe(true)
+  expect(first.history.windows).toEqual([])
+
+  const again = playPageSockets()
+  const loads: string[] = []
+  const stop = watch(() => first.load, (load) => loads.push(load), { flush: 'sync' })
+  try {
+    void store.activate(FIRST)
+    await openSent(again)
+    // The copy shows before the socket answers.
+    expect([first.load, latestBlocks(first.history).map((block) => block.id)]).toEqual(['opening', ['shown']])
+    deliver(again[0]!, backendOpening(FIRST, again[0]!.sent.find((frame) => frame.type === 'open')!, [FIRST]))
+    await waitFor(() => first.load === 'ready', () => `it is ${first.load}`)
+  } finally {
+    stop()
+  }
+  expect(loads).not.toContain('loading')
+  expect(latestBlocks(first.history).map((block) => block.id)).toEqual(['shown'])
+  signOut()
+})
 
 test('output that advances an open conversation\'s revision reads nothing; a raised hosts revision reads and shows its hosts without opening it again', async () => {
   const store = useConversations()

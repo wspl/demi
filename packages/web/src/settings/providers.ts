@@ -3,7 +3,7 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
 import { fileExtensionSchema } from '@demicodes/protocol'
-import { SerialQueue } from '@demicodes/utils'
+import { SerialQueue, isAbortError } from '@demicodes/utils'
 import { errorMessage, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
@@ -108,7 +108,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   /** The one toast of a provider operation that failed, titled by what failed. */
   function report(title: HeadlineText, error: unknown): void {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isAbortError(error)) {
       return
     }
     if (!lifetime.signal.aborted) {

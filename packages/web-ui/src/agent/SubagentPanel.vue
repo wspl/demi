@@ -3,6 +3,7 @@ import { t } from './locales/text'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Bot, CircleStop, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
+import { isAbortError } from '@demicodes/utils'
 import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
 import RegionStatus from '../ui/RegionStatus.vue'
 import AgentMessageList from './AgentMessageList.vue'
@@ -74,6 +75,13 @@ const emit = defineEmits<{
    * reader nears its start.
    */
   read: [id: string]
+  /**
+   * Read the page of the child's transcript after the window shown, as the
+   * reader nears its end, for a window that does not reach the transcript's.
+   */
+  readAfter: [id: string]
+  /** The block of the child's transcript in view, or null for its latest. */
+  shown: [id: string, blockId: string | null]
   /** The block `reveal` names is in view. */
   revealed: []
   /** Compact in the shown child's context card: that child's context. */
@@ -97,9 +105,9 @@ const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
 const active = computed(() => tabs.value.find((agent) => agent.id === activeId.value) ?? null)
 const commandOf = useCallTerminals(() => props.terminals)
 provideLiveCalls((toolUseId) => active.value ? commandOf(active.value.id, toolUseId) : undefined)
-// A child's transcript shows its latest window, and earlier pages as the reader
-// scrolls up.
-const shown = computed(() => active.value ? shownWindow(active.value.history, null) : null)
+// A child's transcript shows the window around the block in view, its latest
+// at first, and the pages beside it as the reader scrolls.
+const shown = computed(() => active.value ? shownWindow(active.value.history, active.value.shownAt) : null)
 const shownEdges = computed(() => active.value && shown.value ? windowEdges(active.value.history, shown.value) : null)
 /**
  * Each child's read of its latest page while it runs, or once it failed, by the
@@ -117,7 +125,13 @@ function readLatest(id: string): Promise<void> | undefined {
       reads.delete(id)
     },
     (error: unknown) => {
-      reads.set(id, { phase: 'failed', error: shownError(error) })
+      // A read stopped as the panel no longer showed the child is read
+      // again when the child shows.
+      if (isAbortError(error)) {
+        reads.delete(id)
+      } else {
+        reads.set(id, { phase: 'failed', error: shownError(error) })
+      }
     },
   )
 }
@@ -273,7 +287,7 @@ function closeTab(id: string): void {
         :cwd="active.cwd"
         :blocks="shown?.blocks ?? []"
         :at-start="shownEdges?.atStart ?? true"
-        :at-end="true"
+        :at-end="shownEdges?.atEnd ?? true"
         :pending-calls="active.pendingCalls"
         :waiting-since="active.waitingSince"
         :failures="active.failures"
@@ -286,6 +300,8 @@ function closeTab(id: string): void {
         :reveal-block-id="reveal?.node === active.id ? reveal.blockId : null"
         @revealed="emit('revealed')"
         @read-before="emit('read', active.id)"
+        @read-after="emit('readAfter', active.id)"
+        @shown="(block) => emit('shown', active!.id, block)"
       />
       <AgentStatusBar
         :run="active"

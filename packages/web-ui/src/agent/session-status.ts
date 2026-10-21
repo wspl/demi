@@ -11,6 +11,10 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  * How far the conversation's opening has come, and the state of its connection
  * since:
  *
+ * - `reading`: a cold opening that reads the conversation's copy on disk.
+ *   Nothing shows for the moment it takes, neither Loading nor the transcript;
+ *   it turns `opening` with the copy shown, or `loading` without one
+ *   (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
  * - `loading`: its history or its agents are not read yet. The pane says it
  *   loads.
  * - `opening`: the first step. The transcript and everything that names its
@@ -26,7 +30,7 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  * - `offline`: the opening cannot reach the backend and the page keeps no copy
  *   of the conversation for opening offline. It opens once the backend answers.
  */
-export type SessionLoad = ListLoad | 'opening' | 'connecting' | 'reconnecting' | 'offline'
+export type SessionLoad = ListLoad | 'reading' | 'opening' | 'connecting' | 'reconnecting' | 'offline'
 
 /**
  * Whether the session has told the conversation's turn, which the Resume
@@ -43,7 +47,7 @@ export function sessionShown(load: SessionLoad): boolean {
  * of a message in it, unless its opening failed.
  */
 export function transcriptShown(load: SessionLoad): boolean {
-  return load !== 'loading' && load !== 'failed' && load !== 'offline'
+  return load !== 'reading' && load !== 'loading' && load !== 'failed' && load !== 'offline'
 }
 
 /**
@@ -51,7 +55,7 @@ export function transcriptShown(load: SessionLoad): boolean {
  * now is not new.
  */
 export function isOpening(load: SessionLoad): boolean {
-  return load === 'loading' || load === 'opening' || load === 'connecting' || load === 'offline'
+  return load === 'reading' || load === 'loading' || load === 'opening' || load === 'connecting' || load === 'offline'
 }
 
 /**
@@ -80,6 +84,10 @@ export function sessionPaneStatus(
 ): SessionStatusKind | null {
   if (load === 'loading') {
     return 'loading'
+  }
+  // The copy on disk is being read: nothing shows for the moment it takes.
+  if (load === 'reading') {
+    return null
   }
   if (load === 'offline') {
     return 'offline'

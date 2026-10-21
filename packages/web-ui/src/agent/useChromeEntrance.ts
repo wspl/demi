@@ -53,6 +53,7 @@ export function useChromeEntrance(
       if (
         currentScope !== previousScope
         || currentLoad === 'loading'
+        || currentLoad === 'reading'
         || isOpening(previousLoad)
         || currentLoad === 'failed'
       ) {

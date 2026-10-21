@@ -246,6 +246,53 @@ export function addWindow<B extends Held>(
   return heldTranscript(live ? held.length : page.length, joined(held.windows, { start: page.start, blocks: page.blocks }, 'held'), held.version)
 }
 
+/**
+ * The transcript with only the blocks a view needs: at most `half` blocks on
+ * each side of the block `anchor` in the window that holds it, and the last
+ * `half` blocks of the latest window, which the stream keeps live and the
+ * conversation's status reads; for an `anchor` null or not held, the latest
+ * window's alone, else the last window's. Every other window and block
+ * leaves memory, as Telegram's history views drop what falls outside them and
+ * its chat list keeps each chat's top message
+ * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+ * One already within the bound is returned as it is.
+ */
+export function boundedTranscript<B extends Held>(held: HeldTranscript<B>, anchor: string | null, half: number): HeldTranscript<B> {
+  const tail = latestWindow(held) ?? held.windows.at(-1)
+  if (!tail) {
+    return held
+  }
+  /** The ranges kept of each window, as offsets from its start. */
+  const kept = new Map<TranscriptWindow<B>, [number, number][]>()
+  const keep = (window: TranscriptWindow<B>, from: number, to: number) => {
+    kept.set(window, [...kept.get(window) ?? [], [from, to]])
+  }
+  keep(tail, Math.max(0, tail.blocks.length - half), tail.blocks.length)
+  const anchored = anchor === null ? undefined : windowOf(held, anchor)
+  if (anchored) {
+    const at = anchored.blocks.findIndex((block) => block.id === anchor)
+    keep(anchored, Math.max(0, at - half), Math.min(anchored.blocks.length, at + half + 1))
+  }
+  const windows = held.windows.flatMap((window) => {
+    const ranges = (kept.get(window) ?? []).sort((a, b) => a[0] - b[0])
+    // Ranges of one window that meet are one run; apart, a gap lies between them.
+    const runs = ranges.reduce<[number, number][]>((joined, range) => {
+      const last = joined.at(-1)
+      if (last && range[0] <= last[1]) {
+        last[1] = Math.max(last[1], range[1])
+      } else {
+        joined.push([...range])
+      }
+      return joined
+    }, [])
+    return runs.map(([from, to]) => ({ start: window.start + from, blocks: window.blocks.slice(from, to) }))
+  })
+  if (windows.length === held.windows.length && windows.every((window, index) => window.blocks.length === held.windows[index]!.blocks.length)) {
+    return held
+  }
+  return heldTranscript(held.length, windows, held.version)
+}
+
 /** The transcript with `block` whole in place of the held one of its id. */
 export function withWholeBlock(held: HeldTranscript, block: Block): HeldTranscript {
   return heldTranscript(held.length, held.windows.map((window) => {

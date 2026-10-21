@@ -339,6 +339,17 @@ const emit = defineEmits<{
    */
   readSubagent: [id: string]
   /**
+   * Read the page of a subagent's transcript after the window its panel
+   * shows, which does not reach the transcript's end.
+   */
+  readSubagentAfter: [id: string]
+  /**
+   * The block in view of the agent `node`'s transcript, the root's for null,
+   * or null for its latest: what of it the page holds follows it
+   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   */
+  shown: [node: string | null, blockId: string | null]
+  /**
    * The children whose transcripts the page shows, the whole set, at first and
    * whenever it changes. They are the child the Agents window shows, or none
    * while it is closed (`crates/agent-server/src/server/tree.rs`).
@@ -639,7 +650,7 @@ const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerm
   useSessionPanels(
     () => shownAgents.value,
     () => terminals.value,
-    () => (props.conversation.load === 'loading' ? null : props.conversation.id),
+    () => (props.conversation.load === 'loading' || props.conversation.load === 'reading' ? null : props.conversation.id),
   )
 // A receipt's name opens the Agents window on its sender's tab. A finished
 // sender is picked as Completed picks it. The host brings the block the receipt
@@ -941,6 +952,7 @@ watch(
             @retry-load="emit('retryLoad')"
             @read-before="emit('readBefore')"
             @read-after="emit('readAfter')"
+            @shown="(block) => emit('shown', null, block)"
           />
         </div>
         <template #dock>
@@ -1026,6 +1038,8 @@ watch(
             :read-latest="readSubagentLatest"
             :streamed="subagentsStreamed"
             @read="(id) => emit('readSubagent', id)"
+            @read-after="(id) => emit('readSubagentAfter', id)"
+            @shown="(id, block) => emit('shown', id, block)"
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
             :agent-cost="subagentCost"

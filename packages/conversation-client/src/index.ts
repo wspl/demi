@@ -15,6 +15,7 @@ export {
   addPage,
   addWindow,
   applyTranscriptPatches,
+  boundedTranscript,
   heldBlocks,
   heldEdge,
   latestWindow,

@@ -44,6 +44,7 @@ function child(phase: 'running' | 'completed'): SubagentRecord {
     forkedFrom: null,
     startedAt: createdAt,
     history: EMPTY_TRANSCRIPT,
+    shownAt: null,
     sessionPhase: phase === 'running' ? 'running' : 'idle',
     pendingCalls: [],
     waitingSince: null,

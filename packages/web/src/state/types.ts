@@ -201,6 +201,8 @@ export interface SideRecord {
   /** Whether an entry of the conversation's agents named it. */
   listed: boolean
   history: HeldTranscript
+  /** The block its view shows, which bounds what of its history the page holds; null for the latest. */
+  shownAt: string | null
   failures: Record<string, ProviderFailureFacts>
   sessionPhase: SessionPhase
   pendingCalls: PendingCall[]
