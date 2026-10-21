@@ -15,17 +15,20 @@
 
 use demi_agent_tools::testing::field;
 use demi_backend_blobs::counting::ObjectCounts;
+use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, BlockId, ToolView};
 use demi_web_api_protocol::attachments::ConversationAttachment;
 use demi_web_api_protocol::conversations::{ConversationStatus, ForkAnswer};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
+use jiff::SignedDuration;
 use serde_json::{Value, json};
+use tokio::sync::watch;
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, THIRD, answer, anthropic, choose, create, kinds, last_text, on_device,
-    send, summaries, tool_result, tool_use, transcript,
+    FIRST, SECOND, Socket, THIRD, answer, anthropic, choose, create, events, kinds, last_text, message_start,
+    metadata, on_device, send, summaries, text_block, tool_result, tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
 use crate::work::edit_sides;
@@ -230,6 +233,52 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
             "abort"
         ]
     );
+    backend.close().await;
+}
+
+/// A Fork has run no turn of its own, so it shows no speed until its first
+/// turn keeps one, though its source kept a speed of a turn after the chosen
+/// text (`docs/decisions/0012-live-output-tokens.md`). One backend, two turns
+/// and a Fork against the mock vendor, about a second.
+#[tokio::test]
+async fn a_fork_starts_with_no_turn_speed_though_its_source_kept_one() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut source = Socket::connect(&backend, &master, FIRST).await;
+    source.open().await;
+    vendor.respond(answer(&["A1"], 1, 1));
+    source.chat("m1", "U1").await;
+    // The second turn streams for two seconds of the backend's clock, so
+    // the source keeps its speed.
+    let (open, opened) = watch::channel(false);
+    let mut start = vec![message_start(json!({ "input_tokens": 1, "output_tokens": 0 }))];
+    start.extend(text_block(0, &["A2 ", "streams on"]));
+    let end = [
+        json!({ "type": "content_block_stop", "index": 0 }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 80 } }),
+        json!({ "type": "message_stop" }),
+    ];
+    vendor.respond(MockResponse::event_stream(events(&start)).then_held(opened).chunk(events(&end)));
+    source.send(&send("m2", "U2")).await;
+    source
+        .until(|frame| matches!(frame, ServerFrame::RequestOutput { output: Some(output) } if output.tokens > 0))
+        .await;
+    harness.clock.advance(SignedDuration::from_secs(2));
+    open.send_replace(true);
+    source.until_idle().await;
+    assert!(metadata(&backend, &master, FIRST).await.turn_speed.is_some());
+
+    let first_text = texts(&transcript(&backend, &master, FIRST).await.blocks)[0].clone();
+    let created = backend
+        .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(SECOND, &first_text))
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    assert_eq!(created.json::<ForkAnswer>().metadata.turn_speed, None);
+    assert_eq!(metadata(&backend, &master, SECOND).await.turn_speed, None);
     backend.close().await;
 }
 

@@ -528,6 +528,8 @@ pub struct MockResponse {
     ending: Ending,
     /// Holds the answer until it reads true.
     gate: Option<watch::Receiver<bool>>,
+    /// Holds the chunks from this one on until it reads true.
+    pause: Option<(usize, watch::Receiver<bool>)>,
 }
 
 /// What a response does after its chunks.
@@ -552,6 +554,7 @@ impl MockResponse {
             chunks: Vec::new(),
             ending: Ending::Complete,
             gate: None,
+            pause: None,
         }
     }
 
@@ -594,6 +597,14 @@ impl MockResponse {
     /// test that makes something happen while the client waits for it.
     pub fn held(mut self, open: watch::Receiver<bool>) -> Self {
         self.gate = Some(open);
+        self
+    }
+
+    /// Holds the chunks added after this call until `open` reads true, once
+    /// the ones before went: for a test that makes something happen while
+    /// the client reads a body that streams.
+    pub fn then_held(mut self, open: watch::Receiver<bool>) -> Self {
+        self.pause = Some((self.chunks.len(), open));
         self
     }
 
@@ -760,7 +771,22 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
         // connection closes when the client leaves or the vendor stops.
         return std::future::pending().await;
     }
-    let chunks = stream::iter(scripted.chunks.into_iter().map(Ok::<_, std::io::Error>));
+    let mut before = scripted.chunks;
+    let (after, pause) = match scripted.pause {
+        Some((at, open)) => (before.split_off(at), Some(open)),
+        None => (Vec::new(), None),
+    };
+    let held = stream::once(async move {
+        if let Some(mut open) = pause {
+            // A gate whose sender is gone stays shut, as the test left it.
+            if open.wait_for(|open| *open).await.is_err() {
+                std::future::pending::<()>().await;
+            }
+        }
+        stream::iter(after)
+    })
+    .flatten();
+    let chunks = stream::iter(before).chain(held).map(Ok::<_, std::io::Error>);
     let body: BoxStream<'static, Result<Bytes, std::io::Error>> = match scripted.ending {
         Ending::Complete | Ending::Silent => chunks.boxed(),
         Ending::Open => {

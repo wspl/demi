@@ -363,6 +363,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.workflow = shown.workflow
     conversation.pluginsChanged = shown.pluginsChanged
     conversation.onlyWaitsForHost = shown.onlyWaitsForHost
+    conversation.turnSpeed = shown.turnSpeed
     conversation.shares = shown.shares
     if (shown.model) {
       conversation.model = { ...shown.model }
@@ -433,6 +434,7 @@ export const useConversations = defineStore('conversations', () => {
       cwd: local.cwd ?? '',
       pluginsChanged: false,
       onlyWaitsForHost: false,
+      turnSpeed: null,
       shares: [],
       history: EMPTY_TRANSCRIPT,
       shownAt: null,

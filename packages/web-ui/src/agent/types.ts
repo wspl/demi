@@ -1,4 +1,4 @@
-import type { ContextUsage, InstructionEntry, MessageComment, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { ContextUsage, InstructionEntry, MessageComment, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase, TurnSpeed } from '@demicodes/protocol'
 import type { ShownError } from '../infra/errors'
 import type { HeldTranscript, RequestOutputReading } from '@demicodes/conversation-client'
 import type { PendingAction } from './activity-slot'
@@ -139,4 +139,6 @@ export interface ChatSessionState
   scroll: PersistedScrollState | null
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]
+  /** The speed of the root's last turn, as the conversation's metadata brings it; null before its first. */
+  turnSpeed: TurnSpeed | null
 }

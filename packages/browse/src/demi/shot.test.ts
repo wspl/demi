@@ -66,6 +66,20 @@ test.skipIf(!existsSync(chromium.executablePath()))(
   },
 )
 
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a shot of an element taller than the viewport, in a pane that scrolls, fails and says why',
+  async () => {
+    const slotPage = await browser.page()
+    // As the gallery lays out: a fixed header over a pane whose content scrolls.
+    await slotPage.setContent(`<body style="margin: 0; height: 100vh; overflow: hidden">
+<header style="position: fixed; top: 0; height: 40px; width: 100%; background: #00f"></header>
+<main style="height: 100%; overflow: auto"><div id="tall" style="height: 5000px; background: #f00"></div></main>
+</body>`)
+    await expect(shot(tool, join(root, 'tall'), { element: slotPage.locator('#tall') }))
+      .rejects.toThrow('past the viewport')
+  },
+)
+
 test.skipIf(!existsSync(chromium.executablePath()) || !existsSync(webkit.executablePath()))(
   'a shot of a WebKit page shows that page at the slot\'s pixel ratio, whether named by page or by element',
   async () => {

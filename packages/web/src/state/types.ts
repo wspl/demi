@@ -1,5 +1,5 @@
 import type { CallsState } from '@demicodes/web-ui/agent/context-cost'
-import type { AgentCost, Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, Version } from '@demicodes/protocol'
+import type { AgentCost, Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
@@ -61,6 +61,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pluginsChanged: boolean
   /** The backend says the agent only waits for the conversation's offline device: a move stops nothing. */
   onlyWaitsForHost: boolean
+  /** The speed of the root's last turn, which the chips row shows once no reading does. */
+  turnSpeed: TurnSpeed | null
   /** The conversation's shares, its own and its answers'. */
   shares: ConversationShare[]
   createdAt: string

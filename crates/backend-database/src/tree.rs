@@ -31,7 +31,7 @@ use demi_agent_store::{
     Placement, Rows, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
-use demi_conversation_socket_protocol::{BlockVersions, PageAt, least_light_bytes, page};
+use demi_conversation_socket_protocol::{BlockVersions, PageAt, TurnSpeed, least_light_bytes, page};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
@@ -1528,14 +1528,15 @@ fn integer(value: u64) -> i64 {
 
 /// What a conversation's summary is built from: the root's phase and output
 /// revision, the kind of its latest terminal block and its latest ended
-/// turn, read without loading the transcript, and the number of its latest
-/// attachment.
+/// turn, read without loading the transcript, the speed its checkpoint
+/// keeps, and the number of its latest attachment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryFacts {
     pub phase: SessionPhase,
     pub revision: u64,
     pub last: Option<Terminal>,
     pub last_turn: Option<EndedTurn>,
+    pub turn_speed: Option<TurnSpeed>,
     pub last_attachment: u64,
 }
 
@@ -1547,6 +1548,7 @@ impl SummaryFacts {
         revision: 0,
         last: None,
         last_turn: None,
+        turn_speed: None,
         last_attachment: 0,
     };
 }
@@ -1699,6 +1701,7 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
         revision: decode("nodes", "output_revision", u64::try_from(revision))?,
         last: walk.last,
         last_turn,
+        turn_speed: state.turn_speed,
         last_attachment,
     })
 }
@@ -2636,6 +2639,7 @@ pub(crate) mod tests {
             model: test_model(),
             edits: Vec::new(),
             account: None,
+            turn_speed: None,
         }
     }
 

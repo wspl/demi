@@ -87,7 +87,7 @@ const NO_COST = {
 /** An idle Cloud conversation's metadata as its socket carries it, with `parts` replacing its fields. */
 export function conversationMetadata(id: string, parts: Partial<ConversationMetadata> = {}): ConversationMetadata {
   return {
-    id, model: null, workflow: { type: 'default' }, cwd: '/home/demi', lastTurn: null, pluginsChanged: false,
+    id, model: null, workflow: { type: 'default' }, cwd: '/home/demi', lastTurn: null, turnSpeed: null, pluginsChanged: false,
     onlyWaitsForHost: false, otherCost: NO_COST, saved: 0, savedRevision: 0, panelRevision: 0, hostsRevision: 0,
     workflowsRevision: 0, lastAttachment: 0, pluginRevisions: [], permissionsRevision: 0, shares: [], ...parts,
   }

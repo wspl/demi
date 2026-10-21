@@ -1630,10 +1630,16 @@ pub(crate) const CONVERSATION: Schema = Schema {
     ],
 };
 
-/// From 0.1.38's conversation schema, of transcript block format 13, to the
-/// current one, of format 14: a `compaction_boundary` keeps each of the user's
-/// messages as text that names the message it came from
-/// ([`named_kept_messages`]), and so names no blob of the images it kept.
+/// From 0.1.38's conversation schema, of transcript block format 13 and
+/// checkpoint state format 6, to the current one, of block format 14 and state
+/// format 7.
+///
+/// - A `compaction_boundary` keeps each of the user's messages as text that
+///   names the message it came from ([`named_kept_messages`]), and so names no
+///   blob of the images it kept.
+/// - A checkpoint state may keep the speed of the agent's last turn. One stored
+///   before keeps none, as an agent whose turns have not streamed long enough,
+///   so none is rewritten.
 fn conversation_from_0_1_38(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     named_kept_messages(transaction)
 }
@@ -4795,7 +4801,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 6
+  -- nodes.state: checkpoint state format 7
   state            TEXT NOT NULL,
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that

@@ -857,6 +857,7 @@ fn session_copy(s: &Rc<SessionShared>, history: Vec<Block>, media: HeldMedia) ->
         // The summary request extends the history the agent's account has
         // cached.
         account: core.account.clone(),
+        turn_speed: None,
         one_request: true,
         // The summary request belongs to the turn the pass runs in, which
         // its usage ledger row names.

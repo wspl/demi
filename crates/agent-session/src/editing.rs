@@ -517,6 +517,9 @@ pub async fn fork_seed(
         next_turn_reports: Vec::new(),
         intervals: Vec::new(),
         edits: Vec::new(),
+        // The Fork has run no turn of its own: a kept speed would be of a
+        // turn after its end, or of one its history does not hold.
+        turn_speed: None,
         ..state
     };
     let seed = |length: usize, transcript: Vec<Block>, prefix: Option<StoredPrefix>| ForkSeed {

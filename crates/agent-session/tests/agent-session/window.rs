@@ -45,6 +45,7 @@ fn idle() -> CheckpointState {
         model: test_model(),
         edits: Vec::new(),
         account: None,
+        turn_speed: None,
     }
 }
 

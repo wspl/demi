@@ -545,6 +545,21 @@ pub struct RequestOutput {
     pub ended: bool,
 }
 
+/// The speed of an agent's last turn that streamed for a second or more
+/// (`docs/decisions/0012-live-output-tokens.md`): the output tokens of its
+/// requests over the time they streamed, each from its first token to its
+/// end, so the time between them, such as a tool's, does not count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TurnSpeed {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub tokens: u64,
+    /// At least a second: a turn that streamed for less keeps the speed
+    /// before it (`crates/agent-session/src/core.rs`).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub streamed_ms: u64,
+}
+
 /// A command as the pages see it, whatever its status
 /// (`crates/agent-server/src/server/tree/live.rs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

@@ -40,11 +40,21 @@ server sees tool calls' arguments as they stream, which the page does not.
 * The reading goes out with the agent's state, at most twice a second and
   at once when a request starts or ends, and the conversation's snapshot
   carries it. It is gone when the turn ends.
+* When a turn of the root agent ends, the server keeps the turn's speed: the
+  output tokens of the turn's requests over the time they streamed, from
+  each request's first token to its end, so the time spent running tools
+  does not count. It is a fact of the conversation, kept with it and sent
+  with its metadata, so every page shows the same speed after a reload or
+  days later. A turn that streamed for less than a second keeps the speed
+  before it.
 
 ### What the page shows
 
 ```text
+ while a turn runs:
  [2 Agents] [1 Running] (↓)                  ↓ 1.2K tokens · 48 tok/s
+ after it:
+ [2 Agents] (↓)                                               52 tok/s
  ┌──────────────────────────────────────────────────────────────────────┐
  │ Ask anything…                                                     ■ │
  └──────────────────────────────────────────────────────────────────────┘
@@ -58,10 +68,13 @@ server sees tool calls' arguments as they stream, which the page does not.
 * Within a request the count rolls to each new value over about half a
   second, up or down; with reduced motion it changes at once. A new request,
   or another conversation's reading, shows at once, with no roll.
-* When the turn ends, the last reading stays for 3 seconds, then leaves in
-  a short fade.
+* When the turn ends, the last reading stays for 3 seconds; then the count
+  leaves in a short fade, and the speed stays, now the last turn's speed,
+  in a dimmer color. It stays until the next request's reading takes its
+  place. A conversation with no turn's speed shows none.
 * On a row too narrow for the chips, the scroll control and the reading,
   the speed goes first, then the whole reading; the chips keep their room.
+  The last turn's speed alone goes when the row cannot hold it.
 * The scroll-to-bottom control moves to the left part of the row, right
   after the chips; with no chip it stands at the row's left end.
 

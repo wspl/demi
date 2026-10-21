@@ -1171,6 +1171,7 @@ pub mod store_contract {
                 model: test_model(),
                 edits: Vec::new(),
                 account: None,
+                turn_speed: None,
             },
             block_count: blocks.len(),
             changed_blocks: blocks.into_iter().enumerate().collect(),

@@ -25,7 +25,7 @@ use demi_agent_transcript::{
     estimate::{OutputEstimate, anchor_tokens, blocks_tokens, context_anchor},
     replay,
 };
-use demi_conversation_socket_protocol::{AbortTarget, RequestOutput};
+use demi_conversation_socket_protocol::{AbortTarget, RequestOutput, TurnSpeed};
 use demi_provider_common::{
     Ahead, EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
@@ -130,6 +130,11 @@ pub(crate) struct SessionCore {
     /// The output of the turn's latest request, from its start until the
     /// turn ends; live only, like the wait.
     output: Option<StreamedOutput>,
+    /// What the turn's requests before the latest streamed; live only.
+    turn_output: TurnOutput,
+    /// The speed of the last turn that streamed for [`TURN_SPEED_AFTER_MS`]
+    /// or more, which the checkpoint keeps.
+    turn_speed: Option<TurnSpeed>,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
     /// The node's runtime, which knows which commands' ends a look showed it.
@@ -357,6 +362,33 @@ struct StreamedOutput {
     ended_at: Option<Timestamp>,
 }
 
+impl StreamedOutput {
+    /// The output tokens: the response's own count once it reported one,
+    /// else the estimate.
+    fn tokens(&self) -> u64 {
+        self.reported.unwrap_or_else(|| self.estimate.tokens())
+    }
+
+    /// How long it streamed from its first token until its end, or until
+    /// `now` while it streams; none before its first token.
+    fn streamed_ms(&self, now: Timestamp) -> Option<u64> {
+        let until = self.ended_at.unwrap_or(now);
+        self.first_at
+            .map(|first| u64::try_from(until.as_millisecond() - first.as_millisecond()).unwrap_or(0))
+    }
+}
+
+/// How long a turn streams, at least, for its speed to be kept: over less,
+/// a few tokens read as thousands a second, so the speed before it stays.
+const TURN_SPEED_AFTER_MS: u64 = 1_000;
+
+/// The output tokens and streaming time of a turn's requests so far.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct TurnOutput {
+    tokens: u64,
+    streamed_ms: u64,
+}
+
 /// What a complete change leaves to do after the core is released.
 pub(super) struct Effects {
     pub(super) events: Vec<SessionEvent>,
@@ -418,6 +450,9 @@ pub(super) struct CoreParts {
     pub(super) watched: Watched,
     pub(super) edits: Vec<EditReceipt>,
     pub(super) account: Option<AgentAccount>,
+    /// The speed of its last turn that streamed long enough, as its
+    /// checkpoint keeps it.
+    pub(super) turn_speed: Option<TurnSpeed>,
     /// Whether the session sends one request per turn and runs no tool, as
     /// a session copy does.
     pub(super) one_request: bool,
@@ -463,6 +498,8 @@ impl SessionCore {
             outbox: Vec::new(),
             waiting_since: None,
             output: None,
+            turn_output: TurnOutput::default(),
+            turn_speed: parts.turn_speed,
             ids: parts.ids,
             clock: parts.clock,
             requests: Requests::default(),
@@ -916,7 +953,7 @@ impl SessionCore {
             self.mark_state_changed();
         }
         self.stop_waiting();
-        self.output = None;
+        self.end_turn_output();
         self.editing = None;
         self.inputs.discard_steers();
         self.release_media();
@@ -1679,8 +1716,10 @@ impl SessionCore {
     }
 
     /// A new request starts: its output counts from zero, whatever the
-    /// request before it in the turn, a failed attempt included, wrote.
+    /// request before it in the turn, a failed attempt included, wrote,
+    /// which counts for the turn's speed.
     pub(super) fn start_output(&mut self, request_id: String) {
+        self.add_to_turn_output();
         self.output = Some(StreamedOutput {
             request_id,
             estimate: OutputEstimate::default(),
@@ -1749,16 +1788,44 @@ impl SessionCore {
         }
     }
 
+    /// Adds the latest request's output to the turn's, when it streamed.
+    fn add_to_turn_output(&mut self) {
+        let now = self.clock.now();
+        let Some(output) = &self.output else {
+            return;
+        };
+        if let Some(streamed_ms) = output.streamed_ms(now) {
+            self.turn_output.tokens += output.tokens();
+            self.turn_output.streamed_ms += streamed_ms;
+        }
+    }
+
+    /// The turn ends: its output goes, and its speed is kept when it
+    /// streamed long enough to tell one.
+    fn end_turn_output(&mut self) {
+        self.add_to_turn_output();
+        self.output = None;
+        let turn = mem::take(&mut self.turn_output);
+        if turn.streamed_ms < TURN_SPEED_AFTER_MS {
+            return;
+        }
+        let speed = Some(TurnSpeed {
+            tokens: turn.tokens,
+            streamed_ms: turn.streamed_ms,
+        });
+        if speed != self.turn_speed {
+            self.turn_speed = speed;
+            self.mark_state_changed();
+        }
+    }
+
     /// The output of the turn's latest request as the pages see it now.
     pub(super) fn request_output(&self) -> Option<RequestOutput> {
         let output = self.output.as_ref()?;
-        let until = output.ended_at.unwrap_or_else(|| self.clock.now());
         Some(RequestOutput {
             request_id: output.request_id.clone(),
-            tokens: output.reported.unwrap_or_else(|| output.estimate.tokens()),
-            streamed_ms: output
-                .first_at
-                .map(|first| u64::try_from(until.as_millisecond() - first.as_millisecond()).unwrap_or(0)),
+            tokens: output.tokens(),
+            streamed_ms: output.streamed_ms(self.clock.now()),
             ended: output.ended_at.is_some(),
         })
     }
@@ -2343,6 +2410,7 @@ impl SessionCore {
             model: self.model.clone(),
             edits: self.edits.clone(),
             account: self.account.clone(),
+            turn_speed: self.turn_speed,
         }
     }
 

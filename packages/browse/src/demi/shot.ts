@@ -8,6 +8,7 @@
 //   area in CSS pixels, and `pad` widens either.
 // - `zoom` renders the area magnified rather than enlarging its pixels,
 //   without changing the page's own pixel ratio.
+// - A clip past the viewport fails, since the browser paints nothing there.
 // - `now` takes the picture at once. Otherwise it waits first, up to two
 //   seconds, for the page's transitions and finite animations to end, such
 //   as a dialog that is still fading in, so the picture shows where the
@@ -78,6 +79,9 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
   if (clip && pad > 0) {
     clip = { x: Math.max(0, clip.x - pad), y: Math.max(0, clip.y - pad), width: clip.width + 2 * pad, height: clip.height + 2 * pad }
   }
+  if (clip) {
+    await withinViewport(page, clip, options.element === undefined ? 'the region' : `${options.element}`)
+  }
   const path = shotPath(tool.slot, name)
   writeFileSync(path, own
     ? await tool.browser.capture({ clip, scale: options.zoom ?? 1, full: options.full })
@@ -85,6 +89,28 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
     : await page.screenshot({ clip, fullPage: options.full, caret: 'initial' }))
   tool.wrote({ kind: 'shot', path, detail: pngSize(path) })
   return path
+}
+
+/**
+ * Fails when `clip` reaches past the viewport. The browser paints only what
+ * the viewport shows: past it a picture holds blank space, or, where the
+ * content scrolls in a pane of its own as the gallery's does, whatever the
+ * page draws there instead, such as a header over the pane. A clip of
+ * `what` is checked in the viewport's CSS pixels, a pixel's rounding aside.
+ */
+async function withinViewport(page: Page, clip: Clip, what: string): Promise<void> {
+  const [width, height] = await page.evaluate(() => [window.innerWidth, window.innerHeight])
+  const right = clip.x + clip.width
+  const bottom = clip.y + clip.height
+  if (clip.x > -1 && clip.y > -1 && right < width + 1 && bottom < height + 1) {
+    return
+  }
+  const area = (x: number, y: number, w: number, h: number) => `${Math.round(w)}×${Math.round(h)} at ${Math.round(x)},${Math.round(y)}`
+  throw new Failure(
+    `${what} spans ${area(clip.x, clip.y, clip.width, clip.height)}, past the viewport's ${width}×${height}, `
+    + 'and the browser paints nothing past the viewport: take it in regions the viewport shows, '
+    + 'or make the viewport larger with demi.emulate({ viewport })',
+  )
 }
 
 /**
