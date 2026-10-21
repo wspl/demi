@@ -416,6 +416,7 @@ async fn conversation(family: Family) -> Vec<String> {
     .await;
     session
         .update_model(ModelSwitch {
+            compaction_blocked: None,
             model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
             runtime: None,
         })
@@ -470,6 +471,7 @@ async fn conversation(family: Family) -> Vec<String> {
     });
     session
         .update_model(ModelSwitch {
+            compaction_blocked: None,
             model: Box::new(deeper),
             runtime: None,
         })

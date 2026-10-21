@@ -158,7 +158,7 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<Vec<NodeRecord>, StoreError>>;
 
     /// Every subagent of the tree, at any depth, live and closed, in the order
-    /// of their numbers, each with the model selection its checkpoint saved.
+    /// of their numbers.
     ///
     /// It is what a tree that opens keeps of its children
     /// (`crates/agent-server/src/server/tree.rs`). A side question is no
@@ -207,13 +207,16 @@ pub trait AgentTreeStore {
 
     /// Makes a closed node live again in one commit: a new round, which
     /// starts at `started_at`, and the reviving message, if any, queued in
-    /// its checkpoint; a side question's Retry revives it with none.
+    /// its checkpoint; a side question's Retry revives it with none. A
+    /// `reprofile` replaces the profile, with what it chose, that the node
+    /// runs on from this round on.
     fn reopen_node<'a>(
         &'a self,
         id: &'a NodeId,
         round: u64,
         started_at: Timestamp,
         message: Option<QueuedMessage>,
+        reprofile: Option<Reprofile>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Changes the child `id`'s working directory to `cwd`, as `demi agent
@@ -364,11 +367,11 @@ pub struct NodeRecord {
     /// The name of the profile the node was spawned with; none for the root
     /// and for a node that inherits its parent's setup.
     pub profile: Option<String>,
-    /// The instructions its profile added to its system prompt when it was
-    /// spawned.
+    /// The instructions added to its system prompt when it was spawned: its
+    /// profile's, or its parent's own when it inherited.
     ///
-    /// None when its profile added none, or it has its parent's prompt. Restore
-    /// and resume read them here, never from the user's profiles.
+    /// None when none were added. Every round, restore and resume read them
+    /// here, never from the user's profiles or the parent now.
     pub instructions: Option<String>,
     /// The Context its profile chose, in tokens.
     ///
@@ -377,6 +380,15 @@ pub struct NodeRecord {
     /// none for the user's limit. Kept here as the instructions are, so restore
     /// and resume use what it was spawned with.
     pub context_limit: Option<u32>,
+    /// The model selection a child's rounds run on: its profile's, or its
+    /// parent's at its spawn. It is the one owner of what a child runs on.
+    ///
+    /// The checkpoint's selection is only what its history was last
+    /// requested with, so a child whose record names another selection
+    /// switches to this one at its next request, whatever started it.
+    /// None for the root, whose model the conversation's record holds, and
+    /// for a side question, which keeps its checkpoint's.
+    pub model: Option<ModelSelection>,
     /// The node's current round: 1 for its first run, one more at each
     /// resume.
     pub round: u64,
@@ -405,6 +417,17 @@ pub struct NodeRecord {
     /// root does, and its can-spawn is the root's, so that its commands and its
     /// system prompt are the root's.
     pub side: Option<SideOf>,
+}
+
+/// The profile a resume moves a node to: the fields of its record a profile
+/// chooses, which replace the ones the node was spawned with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reprofile {
+    pub name: String,
+    pub model: ModelSelection,
+    pub instructions: Option<String>,
+    pub context_limit: Option<u32>,
+    pub can_spawn_subagents: bool,
 }
 
 /// What a side question asks about.
@@ -504,6 +527,7 @@ impl NodeRecord {
             profile: None,
             instructions: None,
             context_limit: None,
+            model: None,
             round: 1,
             started_at: now,
             can_spawn_subagents: true,
@@ -820,14 +844,22 @@ pub struct CheckpointUpdate {
 
 /// A subagent as the store holds it (`crates/agent-server/src/server/tree.rs`).
 ///
-/// It holds its record, the model selection its checkpoint saved, and whether
-/// the call that started it is on its parent's current path, which a child no
-/// call started is.
+/// It holds its record and whether the call that started it is on its
+/// parent's current path, which a child no call started is.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredSubagent {
     pub record: NodeRecord,
-    pub model: ModelSelection,
     pub started_on_path: bool,
+}
+
+impl StoredSubagent {
+    /// What the subagent runs on, its record's selection.
+    pub fn model(&self) -> &ModelSelection {
+        self.record
+            .model
+            .as_ref()
+            .expect("a stored subagent is a child, whose record names its model")
+    }
 }
 
 /// What a switch of versions made current: the path from `from`, the place

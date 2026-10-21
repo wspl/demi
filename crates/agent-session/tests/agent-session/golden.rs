@@ -118,6 +118,7 @@ async fn request_after_a_pass(builder: Builder) -> InferenceRequest {
     model.model.context_window = 2_000;
     session
         .update_model(ModelSwitch {
+            compaction_blocked: None,
             model: Box::new(model),
             runtime: None,
         })

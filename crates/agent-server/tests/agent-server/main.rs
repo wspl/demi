@@ -9,6 +9,7 @@ mod fork;
 mod live;
 mod output;
 mod profiles;
+mod resume;
 mod sides;
 mod subagents;
 mod support;

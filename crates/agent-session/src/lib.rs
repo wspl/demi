@@ -178,6 +178,12 @@ pub struct ModelSwitch {
     /// A new runtime when the model belongs to another provider than the
     /// selection before it.
     pub runtime: Option<Box<dyn ProviderRuntime>>,
+    /// Why the model the history was last requested with cannot compact it,
+    /// when the runtime that serves it could not be had: the session then
+    /// runs on the switch's runtime from the start, and a switch that needs
+    /// a compaction first fails with this instead of requesting from the
+    /// wrong provider. None when that model can be asked.
+    pub compaction_blocked: Option<String>,
 }
 
 impl std::fmt::Debug for ModelSwitch {
@@ -186,6 +192,7 @@ impl std::fmt::Debug for ModelSwitch {
             .debug_struct("ModelSwitch")
             .field("model", &self.model)
             .field("runtime", &self.runtime.is_some())
+            .field("compaction_blocked", &self.compaction_blocked)
             .finish()
     }
 }

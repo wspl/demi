@@ -421,7 +421,7 @@ impl<H: HostResolver> Tree<H> {
             .await
             .map_err(AssembleError::from)?;
         let subagents = store.subagents().await.map_err(AssembleError::from)?;
-        let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model.clone()).collect();
+        let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model().clone()).collect();
         let models = deps.subagents.runs_on(&selections).await;
         let mut summaries = BTreeMap::new();
         for (stored, runs_on) in subagents.into_iter().zip(models) {
@@ -478,6 +478,7 @@ impl<H: HostResolver> Tree<H> {
             // restored is not closing, so it takes the switch, which holds no
             // runtime to close either way.
             let _ = session.update_model(ModelSwitch {
+                compaction_blocked: None,
                 model: Box::new(model),
                 runtime: None,
             });

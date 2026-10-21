@@ -59,7 +59,8 @@
 //!   `setsid`), which left a process no command stands for.
 //! - A fork runs on the profile the caller names or inherits the caller's,
 //!   never the source's, so it carries no configuration the caller did not ask
-//!   for. `resume` takes no profile, so changing profile is a fork.
+//!   for. A fork is a second child from what one knows; `resume` with a
+//!   profile is the same child going on, on that profile.
 //! - `show` and `list` are supervisor reads and never messages to the target. A
 //!   stuck child cannot report on itself, since a steer waits for a boundary
 //!   that a hung tool never reaches.
@@ -86,7 +87,7 @@ use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, ForkError, ForkSeed, ModelSwitch, SessionEvent, Settle,
     Subscription,
 };
-use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement};
+use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, Reprofile};
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
@@ -108,7 +109,7 @@ use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{StoppingShells, Tree, agents, cut_path, note_agent, unended_views};
-use super::profiles::Limits;
+use super::profiles::{Limits, SetupFor};
 use crate::{
     Node,
     node::{self, Instructions, NodeRole, NodeSpec, Origin},
@@ -194,9 +195,12 @@ pub(crate) enum StartInput {
         /// caller's own.
         cwd: Option<String>,
     },
+    /// `demi agent resume`; `profile_name` moves the child to another
+    /// profile for this round on, none keeps the one it runs on.
     Resume {
         id: NodeId,
         message: String,
+        profile_name: Option<String>,
     },
     /// `demi agent fork`: the caller's child the model knows by `source`.
     Fork {
@@ -442,7 +446,11 @@ impl<H: HostResolver> Tree<H> {
                     tree.spawn(&owner, prompt, profile_name, description, cwd)
                         .await
                 }
-                StartInput::Resume { id, message } => tree.reopen(&owner, id, message).await,
+                StartInput::Resume {
+                    id,
+                    message,
+                    profile_name,
+                } => tree.reopen(&owner, id, message, profile_name).await,
                 StartInput::Fork {
                     source,
                     message,
@@ -480,7 +488,7 @@ impl<H: HostResolver> Tree<H> {
         }
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         let setup = self
-            .spawn_setup(&server, owner, profile_name.as_deref())
+            .spawn_setup(&server, owner, profile_name.as_deref(), SetupFor::Spawn)
             .await?;
         let now = owner.placement().await.map_err(|error| error.to_string())?;
         let cwd = match cwd {
@@ -506,6 +514,7 @@ impl<H: HostResolver> Tree<H> {
             profile: profile_name,
             instructions: setup.instructions,
             context_limit: setup.context_limit,
+            model: Some(setup.model.clone()),
             round: 1,
             started_at: self.clock.now(),
             can_spawn_subagents: setup.can_spawn,
@@ -558,7 +567,7 @@ impl<H: HostResolver> Tree<H> {
         };
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         let setup = self
-            .spawn_setup(&server, owner, profile_name.as_deref())
+            .spawn_setup(&server, owner, profile_name.as_deref(), SetupFor::Spawn)
             .await?;
         let mut seed = self.fork_seed(&source).await?;
         // A fork starts where its parent works, as a spawn does.
@@ -572,24 +581,10 @@ impl<H: HostResolver> Tree<H> {
         // The child starts on the source's model, which compacts what the
         // profile's model cannot hold, and switches at its first request.
         let from = seed.checkpoint.state.model.clone();
-        let runtime = self
-            .child_runtime(&server, owner, &from)
+        let (runtime, switch) = self
+            .runtime_for(&server, owner, &from, &setup.model)
             .await
             .map_err(RuntimeError::reason)?;
-        let switch = if setup.model == from {
-            None
-        } else {
-            let runtime = if setup.model.provider_id == from.provider_id {
-                None
-            } else {
-                let built = self.child_runtime(&server, owner, &setup.model).await;
-                Some(built.map_err(RuntimeError::reason)?)
-            };
-            Some(ModelSwitch {
-                model: Box::new(setup.model),
-                runtime,
-            })
-        };
         let number = self
             .store
             .next_number(Sequence::Agent)
@@ -608,6 +603,7 @@ impl<H: HostResolver> Tree<H> {
             profile: profile_name,
             instructions: setup.instructions,
             context_limit: setup.context_limit,
+            model: Some(setup.model.clone()),
             round: 1,
             started_at: self.clock.now(),
             can_spawn_subagents: setup.can_spawn,
@@ -623,6 +619,52 @@ impl<H: HostResolver> Tree<H> {
         self.start_child(&server, owner, origin, runtime, switch, Some(slot))
             .await?;
         Ok(number)
+    }
+
+    /// The provider runtime a child starts on, and the switch that lands the
+    /// model `to` its record names, for a child whose history was last
+    /// requested with `from`; no switch when they are one selection.
+    ///
+    /// The runtime serves `from` while the history may need compacting with it
+    /// first, and the switch brings `to`'s when `to` belongs to another
+    /// provider entry. `from`'s entry is not a condition of going on, since
+    /// the child's work is on `to`: when it is gone, the child starts on `to`'s
+    /// runtime and the switch says why the history cannot be compacted first,
+    /// which fails the round only if the history needs it. `to`'s own entry
+    /// failing refuses the start.
+    async fn runtime_for(
+        &self,
+        server: &AgentServer<H>,
+        owner: &Node<H>,
+        from: &ModelSelection,
+        to: &ModelSelection,
+    ) -> Result<(Box<dyn ProviderRuntime>, Option<ModelSwitch>), RuntimeError> {
+        if to == from {
+            return Ok((self.child_runtime(server, owner, from).await?, None));
+        }
+        let landing = |runtime, compaction_blocked| ModelSwitch {
+            model: Box::new(to.clone()),
+            runtime,
+            compaction_blocked,
+        };
+        if to.provider_id == from.provider_id {
+            let runtime = self.child_runtime(server, owner, from).await?;
+            return Ok((runtime, Some(landing(None, None))));
+        }
+        match self.child_runtime(server, owner, from).await {
+            Ok(mut old) => match self.child_runtime(server, owner, to).await {
+                Ok(new) => Ok((old, Some(landing(Some(new), None)))),
+                Err(error) => {
+                    old.close().await;
+                    Err(error)
+                }
+            },
+            Err(RuntimeError::Unbuilt(reason)) => {
+                let new = self.child_runtime(server, owner, to).await?;
+                Ok((new, Some(landing(None, Some(reason)))))
+            }
+            Err(error) => Err(error),
+        }
     }
 
     /// The history a fork of the child `source` starts from: captured from
@@ -672,11 +714,20 @@ impl<H: HostResolver> Tree<H> {
     /// Revives an archived child of `owner` in one commit, a new round with
     /// the message queued, and restores it from its preserved transcript.
     /// Answers its number.
+    ///
+    /// With `profile_name` the child moves to that profile: the record takes
+    /// its model, instructions, Context and spawning right in the same commit.
+    /// The round switches from the model its history was last requested with
+    /// to the record's at its first request, compacting first as a fork's
+    /// does. The profile is resolved, and the runtime of its model built,
+    /// before anything changes, so a refused one leaves the child archived as
+    /// it was. The switches that guard a spawn do not guard a resume.
     async fn reopen(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
         id: NodeId,
         message: String,
+        profile_name: Option<String>,
     ) -> Result<u64, String> {
         let stored = self
             .store
@@ -702,23 +753,53 @@ impl<H: HostResolver> Tree<H> {
             return Err("The previous completion is not saved by the parent yet; retry resume after receiving it".to_owned());
         }
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
-        let slot = self.reserve_live(&server, self.limits(&server).await?)?;
-        // The runtime comes first: a child whose provider entry is gone
-        // stays archived.
+        let setup = match profile_name.as_deref() {
+            Some(name) => Some(self.spawn_setup(&server, owner, Some(name), SetupFor::Resume).await?),
+            None => None,
+        };
+        let limits = match &setup {
+            Some(setup) => setup.limits,
+            None => self.limits(&server).await?,
+        };
+        let slot = self.reserve_live(&server, limits)?;
+        // The runtimes come first: a child whose model's provider entry is
+        // gone stays archived.
         let archived = self.stored(&id).await?;
-        let runtime = self
-            .child_runtime(&server, owner, archived.model())
+        // What the round runs on is the record's: the profile's when one is
+        // named, else the one the record holds.
+        let target = match &setup {
+            Some(setup) => &setup.model,
+            None => archived.target(),
+        };
+        let (runtime, switch) = self
+            .runtime_for(&server, owner, archived.model(), target)
             .await
             .map_err(RuntimeError::reason)?;
+        let reprofile = match (setup, profile_name) {
+            (Some(setup), Some(name)) => Some(Reprofile {
+                name,
+                model: setup.model,
+                instructions: setup.instructions,
+                context_limit: setup.context_limit,
+                can_spawn_subagents: setup.can_spawn,
+            }),
+            _ => None,
+        };
         let round = record.round + 1;
         let started_at = self.clock.now();
         self.store
-            .reopen_node(&id, round, started_at, Some(self.text_message(message)))
+            .reopen_node(
+                &id,
+                round,
+                started_at,
+                Some(self.text_message(message)),
+                reprofile,
+            )
             .await
             .map_err(|error| error.to_string())?;
         // The reopen queued the message in its checkpoint.
         let reopened = self.stored(&id).await?;
-        self.start_child(&server, owner, reopened, runtime, None, Some(slot))
+        self.start_child(&server, owner, reopened, runtime, switch, Some(slot))
             .await?;
         Ok(number)
     }
@@ -751,7 +832,8 @@ impl<H: HostResolver> Tree<H> {
     /// 1. The child's node from the assembly, new with its first message queued
     ///    in the create commit or from the store, on `runtime`, with what it
     ///    was spawned with.
-    /// 2. The model `switch` a fork lands at its first request.
+    /// 2. The model `switch` that lands the record's model, when the history
+    ///    was last requested with another, at its first request.
     /// 3. Its place in the directory and its frames.
     /// 4. What it has yet to run, its own children, and its supervision.
     ///
@@ -768,20 +850,17 @@ impl<H: HostResolver> Tree<H> {
         slot: Option<LiveSlot<H>>,
     ) -> Result<NodeId, String> {
         let deps = &server.deps;
-        // A fork's round runs on the model it switches to at its first
-        // request.
-        let model = switch.as_ref().map_or(origin.model(), |switch| &switch.model);
-        let runs_on = runs_on(deps.subagents.as_ref(), model).await;
+        // A round runs on the record's model, which the switch lands at its
+        // first request.
+        let runs_on = runs_on(deps.subagents.as_ref(), origin.target()).await;
         let activity = self.admission.enter(Purpose::Demand).await;
         let record = origin.record();
-        // A profile's child has the product's prompt with what its profile
-        // added; the inherit profile's copies its parent's whole.
-        let instructions = match &record.profile {
-            Some(_) => Instructions {
-                identity: deps.instructions.clone(),
-                added: record.instructions.as_deref().map(Rc::from),
-            },
-            None => owner.instructions().clone(),
+        // A child has the product's prompt with what its record says its
+        // profile added, or what its parent's had when it inherited: never what
+        // its parent has now.
+        let instructions = Instructions {
+            identity: deps.instructions.clone(),
+            added: record.instructions.as_deref().map(Rc::from),
         };
         let inherited = owner.inherited_commands();
         let can_spawn = record.can_spawn_subagents;
@@ -1118,18 +1197,20 @@ impl<H: HostResolver> Tree<H> {
                         continue;
                     }
                 };
-                let runtime = match self.child_runtime(&server, owner, origin.model()).await {
-                    Ok(runtime) => runtime,
+                // A child whose round ended before its first request landed
+                // its switch still has the record's model to land.
+                let (runtime, switch) = match self.runtime_for(&server, owner, origin.model(), origin.target()).await {
+                    Ok(started) => started,
                     // The owner is going away; the child stays live in the
                     // store for the next restore.
                     Err(RuntimeError::OwnerClosing) => return,
                     Err(RuntimeError::Unbuilt(reason)) => {
-                        let runs_on = runs_on(server.deps.subagents.as_ref(), origin.model()).await;
+                        let runs_on = runs_on(server.deps.subagents.as_ref(), origin.target()).await;
                         self.close_unbuilt(owner, record, runs_on, reason).await;
                         continue;
                     }
                 };
-                if let Err(error) = self.start_child(&server, owner, origin, runtime, None, None).await {
+                if let Err(error) = self.start_child(&server, owner, origin, runtime, switch, None).await {
                     self.close_unrebuilt(owner, record, error).await;
                     continue;
                 }

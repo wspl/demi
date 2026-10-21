@@ -201,6 +201,7 @@ impl<H: HostResolver> Tree<H> {
                 profile: None,
                 instructions: None,
                 context_limit: root.record().context_limit,
+                model: None,
                 round: 1,
                 started_at: now,
                 can_spawn_subagents: root.record().can_spawn_subagents,
@@ -289,7 +290,7 @@ impl<H: HostResolver> Tree<H> {
         let server = self.server.upgrade().ok_or_else(|| AskError::Failed("the agent server is gone".to_owned()))?;
         if record.closed.is_some() {
             self.store
-                .reopen_node(id, record.round + 1, self.clock.now(), message)
+                .reopen_node(id, record.round + 1, self.clock.now(), message, None)
                 .await
                 .map_err(failed)?;
         }

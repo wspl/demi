@@ -470,10 +470,21 @@ pub(super) async fn compact_to_fit(
     s: &Rc<SessionShared>,
     target: &ModelSelection,
     limits: RequestLimits,
+    blocked: Option<&str>,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
     if over_threshold_of(s, target, limits, cancel).await?.is_none() {
         return Ok(false);
+    }
+    if let Some(reason) = blocked {
+        let from = s.read(|core| core.model.model.id.clone());
+        return Err(TurnError::refused(
+            AgentCode::FrameFailed,
+            format!(
+                "The history is too long for {}, and {from}, which would compact it first, cannot be asked: {reason}",
+                target.model.id
+            ),
+        ));
     }
     compacting(s, async {
         let mut compacted = false;

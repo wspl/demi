@@ -1534,6 +1534,15 @@ async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
 }
 
 pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
+    checkpoint_on(test_model(), queue, blocks)
+}
+
+/// A checkpoint whose history was last requested with `model`.
+pub(crate) fn checkpoint_on(
+    model: demi_shared_types::ModelSelection,
+    queue: Vec<QueuedMessage>,
+    blocks: Vec<Block>,
+) -> CheckpointUpdate {
     CheckpointUpdate {
         state: CheckpointState {
             phase: SessionPhase::Idle,
@@ -1542,7 +1551,7 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             reports: Vec::new(),
             next_turn_reports: Vec::new(),
             intervals: Vec::new(),
-            model: test_model(),
+            model,
             edits: Vec::new(),
             account: None,
             turn_speed: None,
@@ -1569,6 +1578,7 @@ pub(crate) fn child_record(
         profile: profile.map(str::to_owned),
         instructions: None,
         context_limit: None,
+        model: Some(test_model()),
         round: 1,
         started_at: Timestamp::UNIX_EPOCH,
         can_spawn_subagents: true,
@@ -1587,7 +1597,7 @@ pub(crate) fn child_record(
     }
 }
 
-fn user(id: &str, words: &str) -> Block {
+pub(crate) fn user(id: &str, words: &str) -> Block {
     Block::User(UserBlock {
         comments: Vec::new(),
         entries: Vec::new(),
@@ -1602,7 +1612,7 @@ fn user(id: &str, words: &str) -> Block {
     })
 }
 
-fn answer(id: &str, words: &str) -> Block {
+pub(crate) fn answer(id: &str, words: &str) -> Block {
     Block::Text(TextBlock {
         entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
