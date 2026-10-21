@@ -103,15 +103,17 @@ use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
 use demi_backend_database::conversation_index::ConversationChange;
+use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_shared_types::{Clock, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
+use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use futures_util::future::LocalBoxFuture;
 
 use self::access::Conversations;
 use self::plugin_files::{DirectorySets, PluginInstalls};
-use self::transition::ChangeRefusal;
+use self::transition::{ChangeRefusal, Switched};
 
 /// What host access needs of its user's shard: the handles its operations
 /// use, and the conversation's idle watch, which every Host admission starts.
@@ -165,8 +167,18 @@ pub trait HostShard {
     /// change of a fact it carries that no `transition` makes, such as a new
     /// attachment.
     fn summary_changed(&self, conversation: &ConversationId);
-    /// Makes the conversation's pending changes, a move or a detach an agent
-    /// asked for, once its tree is next idle (`crates/backend-host-access/src/transition.rs`).
+    /// Moves the conversation to `to` at once, through the one operation a
+    /// page's move takes too; answers the move made, none when it runs there
+    /// already (`crates/backend-host-access/src/transition.rs`). `cancel`
+    /// ends it until its commit starts.
+    fn move_conversation<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        to: ConversationTarget,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<Option<Switched>, ChangeRefusal>>;
+    /// Makes the detaches an agent asked for once the conversation's tree is
+    /// next idle (`crates/backend-user-shard/src/conversation/pending.rs`).
     fn settle_when_idle(&self, conversation: &ConversationId);
     /// The user's port forwards, as `demi host forward list` names them.
     fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>>;

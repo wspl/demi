@@ -12,7 +12,7 @@ use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationChange;
 use demi_backend_database::conversations::ConversationDb;
-use demi_backend_host_access::transition::ChangeRefusal;
+use demi_backend_host_access::transition::{ChangeRefusal, Switched};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
@@ -24,6 +24,7 @@ use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_types::Clock;
+use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::task::TaskTracker;
@@ -118,6 +119,15 @@ impl HostShard for Shard {
 
     fn summary_changed(&self, conversation: &ConversationId) {
         self.mark(Part::Conversation(conversation.clone()));
+    }
+
+    fn move_conversation<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        to: ConversationTarget,
+        cancel: &'a tokio_util::sync::CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<Option<Switched>, ChangeRefusal>> {
+        Box::pin(Shard::move_to(self, conversation, to, cancel))
     }
 
     fn settle_when_idle(&self, conversation: &ConversationId) {

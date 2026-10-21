@@ -20,7 +20,6 @@ use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::automations::FiledRun;
 use demi_web_api_protocol::conversations::{ConversationTarget, ModelChoice};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
-use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
@@ -284,39 +283,6 @@ impl TargetColumns {
                 device: Some(device_id.as_str().to_owned()),
                 path: Some(path.clone()),
                 workspace: None,
-            },
-        }
-    }
-}
-
-/// A destination as the pending move's typed columns hold it.
-struct DestinationColumns {
-    kind: &'static str,
-    device: Option<String>,
-    path: Option<String>,
-    workspace: Option<String>,
-}
-
-impl DestinationColumns {
-    fn of(target: &ConversationTarget) -> Self {
-        match target {
-            ConversationTarget::Cloud { path } => Self {
-                kind: "cloud",
-                device: None,
-                path: path.clone(),
-                workspace: None,
-            },
-            ConversationTarget::Device { device_id, path } => Self {
-                kind: "device",
-                device: Some(device_id.as_str().to_owned()),
-                path: Some(path.clone()),
-                workspace: None,
-            },
-            ConversationTarget::Workspace { workspace_id } => Self {
-                kind: "workspace",
-                device: None,
-                path: None,
-                workspace: Some(workspace_id.as_str().to_owned()),
             },
         }
     }
@@ -1025,8 +991,8 @@ impl ControlService {
     /// so of two switches from one selection exactly one wins.
     ///
     /// The winner records the switch for every node's next context block and
-    /// advances the execution-context revision, which it answers. When it makes the
-    /// pending move `pending`, it clears it.
+    /// advances the execution-context revision, which it answers. An archived
+    /// conversation does not move.
     pub async fn switch_conversation_target(
         &self,
         id: ConversationId,
@@ -1034,7 +1000,6 @@ impl ControlService {
         from: ExecutionTarget,
         to: ConversationTarget,
         ends: SwitchEnds,
-        pending: Option<String>,
     ) -> Result<SwitchWrite, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -1063,8 +1028,8 @@ impl ControlService {
                 "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
                    target_workspace_id = ?5, last_switch = ?6, last_switch_revision = context_version + 1,
                    context_version = context_version + 1, updated_at = ?7
-                 WHERE id = ?1 AND target_kind = ?8 AND target_device_id IS ?9 AND target_path IS ?10
-                   AND target_workspace_id IS ?11
+                 WHERE id = ?1 AND archived = 0 AND target_kind = ?8 AND target_device_id IS ?9
+                   AND target_path IS ?10 AND target_workspace_id IS ?11
                  RETURNING context_version",
                 params![
                     id.as_str(),
@@ -1113,9 +1078,6 @@ impl ControlService {
             if attached {
                 raise_hosts_revision(&transaction, &id)?;
             }
-            if let Some(pending) = &pending {
-                clear_pending_move(&transaction, &id, pending)?;
-            }
             transaction.commit()?;
             Ok(SwitchWrite::Switched { switch, revision, made })
         })
@@ -1125,7 +1087,7 @@ impl ControlService {
 
 /// Archives the conversation `id`. An archive withdraws the permission
 /// requests, decided ones whose message was not delivered among them, and
-/// keeps the grants; it drops the move and the detaches an agent asked for as well
+/// keeps the grants; it drops the detaches an agent asked for as well
 /// (`crates/backend-host-access/src/transition.rs`).
 pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result<(), StorageError> {
     connection.execute(
@@ -1133,12 +1095,7 @@ pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result
         [id.as_str()],
     )?;
     connection.execute("DELETE FROM permission_requests WHERE conversation_id = ?1", [id.as_str()])?;
-    connection.execute(
-        "UPDATE conversations SET archived = 1, pending_id = NULL, pending_kind = NULL,
-           pending_device_id = NULL, pending_path = NULL, pending_workspace_id = NULL
-         WHERE id = ?1",
-        [id.as_str()],
-    )?;
+    connection.execute("UPDATE conversations SET archived = 1 WHERE id = ?1", [id.as_str()])?;
     Ok(())
 }
 
@@ -1164,66 +1121,20 @@ fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> R
     super::devices::set_selection(connection, id, &selected.selection)
 }
 
-/// A move an agent asked for, which waits for its conversation's tree to be
-/// idle (`crates/backend-host-access/src/transition.rs`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PendingMove {
-    pub id: String,
-    pub target: ConversationTarget,
-}
-
-/// What waits for a conversation's tree to be idle: the move an agent asked
-/// for, and the attached devices an agent asked to detach.
+/// What waits for a conversation's tree to be idle: the attached devices an
+/// agent asked to detach.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PendingChanges {
-    pub moving: Option<PendingMove>,
     pub detaching: Vec<DeviceId>,
 }
 
 impl PendingChanges {
     pub fn is_empty(&self) -> bool {
-        self.moving.is_none() && self.detaching.is_empty()
+        self.detaching.is_empty()
     }
 }
 
 impl ControlService {
-    /// Records the move to `target` an agent asked for, in place of the one
-    /// that waited, and answers its id; an archived conversation takes none.
-    pub async fn set_pending_move(
-        &self,
-        id: ConversationId,
-        target: ConversationTarget,
-    ) -> Result<Result<String, ChangeOutcome>, StorageError> {
-        self.call(move |connection, _| {
-            let pending = uuid::Uuid::new_v4().to_string();
-            let columns = DestinationColumns::of(&target);
-            let set = connection.execute(
-                "UPDATE conversations SET pending_id = ?2, pending_kind = ?3, pending_device_id = ?4,
-                   pending_path = ?5, pending_workspace_id = ?6
-                 WHERE id = ?1 AND archived = 0",
-                params![
-                    id.as_str(),
-                    pending,
-                    columns.kind,
-                    columns.device,
-                    columns.path,
-                    columns.workspace
-                ],
-            )?;
-            if set == 1 {
-                return Ok(Ok(pending));
-            }
-            let archived: Option<bool> = connection
-                .query_row("SELECT archived FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
-                .optional()?;
-            Ok(Err(match archived {
-                Some(_) => ChangeOutcome::Archived,
-                None => ChangeOutcome::Missing,
-            }))
-        })
-        .await
-    }
-
     /// Marks the attached `device` to detach once the conversation's tree is
     /// idle, as an agent's `demi host detach` asks; answers whether it is
     /// attached, false marking nothing.
@@ -1246,58 +1157,6 @@ impl ControlService {
     /// What waits for the conversation's tree to be idle.
     pub async fn pending_changes(&self, id: ConversationId) -> Result<PendingChanges, StorageError> {
         self.call(move |connection, _| {
-            const TABLE: &str = "conversations";
-            let moving = connection
-                .query_row(
-                    "SELECT pending_id, pending_kind, pending_device_id, pending_path, pending_workspace_id
-                     FROM conversations WHERE id = ?1 AND pending_id IS NOT NULL",
-                    [id.as_str()],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, Option<String>>(2)?,
-                            row.get::<_, Option<String>>(3)?,
-                            row.get::<_, Option<String>>(4)?,
-                        ))
-                    },
-                )
-                .optional()?;
-            let moving = match moving {
-                None => None,
-                Some((pending, kind, device, path, workspace)) => {
-                    let target = match kind.as_str() {
-                        "cloud" => ConversationTarget::Cloud { path },
-                        "device" => ConversationTarget::Device {
-                            device_id: decode(
-                                TABLE,
-                                "pending_device_id",
-                                DeviceId::try_from(device.unwrap_or_default()),
-                            )?,
-                            path: path.unwrap_or_default(),
-                        },
-                        "workspace" => ConversationTarget::Workspace {
-                            workspace_id: decode(
-                                TABLE,
-                                "pending_workspace_id",
-                                WorkspaceId::try_from(workspace.unwrap_or_default()),
-                            )?,
-                        },
-                        other => {
-                            return Err(StorageError::Corrupt {
-                                table: TABLE,
-                                column: "pending_kind",
-                                reason: format!("unknown target kind {other}"),
-                            });
-                        }
-                    };
-                    decode(TABLE, "pending_path", target.validate())?;
-                    Some(PendingMove {
-                        id: pending,
-                        target,
-                    })
-                }
-            };
             let detaching = connection
                 .prepare_cached(
                     "SELECT device_id FROM conversation_hosts
@@ -1312,20 +1171,9 @@ impl ControlService {
                     )
                 })
                 .collect::<Result<_, _>>()?;
-            Ok(PendingChanges { moving, detaching })
+            Ok(PendingChanges { detaching })
         })
         .await
-    }
-
-    /// Drops the pending move `pending`, as one that failed when it was
-    /// made; a newer one that replaced it stays.
-    pub async fn drop_pending_move(
-        &self,
-        id: ConversationId,
-        pending: String,
-    ) -> Result<(), StorageError> {
-        self.call(move |connection, _| clear_pending_move(connection, &id, &pending))
-            .await
     }
 
     /// The conversations of every user that hold a pending change, with
@@ -1334,9 +1182,9 @@ impl ControlService {
         self.call(move |connection, _| {
             connection
                 .prepare_cached(
-                    "SELECT user_id, id FROM conversations WHERE archived = 0 AND (pending_id IS NOT NULL
-                       OR EXISTS (SELECT 1 FROM conversation_hosts
-                                  WHERE conversation_id = conversations.id AND detaching = 1))",
+                    "SELECT user_id, id FROM conversations WHERE archived = 0
+                       AND EXISTS (SELECT 1 FROM conversation_hosts
+                                   WHERE conversation_id = conversations.id AND detaching = 1)",
                 )?
                 .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
                 .map(|row| {
@@ -1350,21 +1198,6 @@ impl ControlService {
         })
         .await
     }
-}
-
-/// Clears the conversation's pending move when it is still `pending`.
-fn clear_pending_move(
-    connection: &Connection,
-    id: &ConversationId,
-    pending: &str,
-) -> Result<(), StorageError> {
-    connection.execute(
-        "UPDATE conversations SET pending_id = NULL, pending_kind = NULL, pending_device_id = NULL,
-           pending_path = NULL, pending_workspace_id = NULL
-         WHERE id = ?1 AND pending_id = ?2",
-        params![id.as_str(), pending],
-    )?;
-    Ok(())
 }
 
 /// The conversation's attached hosts, first attached first, each by its device's
@@ -1844,7 +1677,7 @@ mod tests {
         let to = ConversationTarget::Cloud { path: Some("/home/demi".into()) };
         let ends = SwitchEnds { departed: None, arriving: None };
         let switched = control
-            .switch_conversation_target(id.clone(), before.target.clone(), from, to, ends, None)
+            .switch_conversation_target(id.clone(), before.target.clone(), from, to, ends)
             .await
             .unwrap();
         assert!(matches!(switched, SwitchWrite::Switched { .. }), "the switch wins");
@@ -1893,7 +1726,7 @@ mod tests {
                 departed: None,
                 arriving: Some(laptop.clone()),
             };
-            control.switch_conversation_target(id.clone(), cloud.clone(), from.clone(), to, ends, None)
+            control.switch_conversation_target(id.clone(), cloud.clone(), from.clone(), to, ends)
         };
         let (first, second) = tokio::join!(switch_to("/first"), switch_to("/second"));
         let revisions = [first.unwrap(), second.unwrap()].map(|write| match write {
@@ -1923,11 +1756,11 @@ mod tests {
     }
 
     /// An archive drops what an agent asked for to happen once its
-    /// conversation's work ends: the pending move and the pending detaches
-    /// (`crates/backend-host-access/src/transition.rs`). A restore
-    /// brings neither back.
+    /// conversation's work ends, the pending detaches
+    /// (`crates/backend-host-access/src/transition.rs`). A restore does
+    /// not bring them back.
     #[tokio::test]
-    async fn an_archive_drops_the_pending_move_and_the_pending_detaches() {
+    async fn an_archive_drops_the_pending_detaches() {
         let data = tempfile::tempdir().unwrap();
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
@@ -1959,14 +1792,9 @@ mod tests {
             cwd: None,
         });
         control.change_conversation(id.clone(), attach).await.unwrap();
-        let to = ConversationTarget::Device {
-            device_id: laptop.clone(),
-            path: "/work".into(),
-        };
-        control.set_pending_move(id.clone(), to).await.unwrap().unwrap();
         assert!(control.mark_detach(id.clone(), laptop.clone()).await.unwrap());
         let pending = control.pending_changes(id.clone()).await.unwrap();
-        assert!(pending.moving.is_some() && pending.detaching == [laptop.clone()], "{pending:?}");
+        assert_eq!(pending.detaching, [laptop.clone()]);
 
         for archived in [true, false] {
             control

@@ -480,7 +480,7 @@ mod tests {
         };
         let expected = control.conversation(id.clone()).await.unwrap().unwrap().target;
         let switched = control
-            .switch_conversation_target(id.clone(), expected, left, to, ends, None)
+            .switch_conversation_target(id.clone(), expected, left, to, ends)
             .await
             .unwrap();
         assert!(matches!(switched, SwitchWrite::Switched { .. }), "the switch wins");
@@ -568,7 +568,7 @@ mod tests {
         };
         let expected = control.conversation(fork.clone()).await.unwrap().unwrap().target;
         let switched = control
-            .switch_conversation_target(fork.clone(), expected, left, to, ends, None)
+            .switch_conversation_target(fork.clone(), expected, left, to, ends)
             .await
             .unwrap();
         assert!(matches!(switched, SwitchWrite::Switched { .. }), "the switch wins");

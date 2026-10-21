@@ -14,6 +14,8 @@ use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::output::Table;
 use demi_web_api_protocol::conversations::TITLE_MAX;
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::ids::DeviceId;
 use demi_web_api_protocol::text::Trimmed;
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
@@ -164,4 +166,16 @@ async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result
     }
     port.stdout(table.render()).await?;
     Ok(0)
+}
+
+impl Shard {
+    /// A device's name, or Cloud for the user's Cloud, as Demi's commands
+    /// name it.
+    pub(crate) async fn host_name(&self, device: &DeviceId) -> String {
+        match self.services().control.device(device.clone()).await {
+            Ok(Some(record)) if record.kind == DeviceKind::Managed => "Cloud".to_owned(),
+            Ok(Some(record)) => record.name,
+            _ => device.to_string(),
+        }
+    }
 }

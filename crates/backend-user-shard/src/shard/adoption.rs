@@ -664,13 +664,14 @@ impl Shard {
             platform: demi_runner_protocol::wire::RunnerPlatform::Darwin,
             home: home.to_owned(),
             resolve: Box::new(|path| Some(path.to_owned())),
+            silent: false,
         };
         self.play_host_for_tests(device, host, on_release).await
     }
 
     /// [`Shard::play_runner_for_tests`] for the Host `host`, which also
-    /// answers what a path resolves to, as `host` resolves it, and that
-    /// what a path resolves to is a directory; any other path is not there.
+    /// answers what a path resolves to, as `host` resolves it, and names it
+    /// a directory; any other path is not there.
     pub(crate) async fn play_host_for_tests(
         self: &Rc<Self>,
         device: &DeviceId,
@@ -720,29 +721,16 @@ impl Shard {
                             None => played_missing(id, &path),
                         }
                     }
-                    Ok(Inbound::FsStat { id, path, .. }) => {
-                        if (host.resolve)(&path).as_deref() == Some(path.as_str()) {
-                            Outbound::FsOk(FsOk {
+                    // A silent Host takes the question and never answers it.
+                    Ok(Inbound::FsDirectory { .. }) if host.silent => continue,
+                    Ok(Inbound::FsDirectory { id, path, .. }) => {
+                        match (host.resolve)(&path) {
+                            Some(real) => Outbound::FsOk(FsOk {
                                 id,
                                 read_at: played_read_at(),
-                                result: FsResult::Stat(wire::FileStat {
-                                    is_file: false,
-                                    is_directory: true,
-                                    is_symbolic_link: false,
-                                    mode: 0o755,
-                                    size: 0,
-                                    mtime: wire::Timestamp(0),
-                                    uid: None,
-                                    gid: None,
-                                    ino: None,
-                                    dev: None,
-                                    nlink: None,
-                                    is_character_device: None,
-                                    is_fifo: None,
-                                }),
-                            })
-                        } else {
-                            played_missing(id, &path)
+                                result: FsResult::Directory(real),
+                            }),
+                            None => played_missing(id, &path),
                         }
                     }
                     _ => continue,
@@ -763,6 +751,8 @@ pub(crate) struct PlayedHost {
     pub platform: demi_runner_protocol::wire::RunnerPlatform,
     pub home: String,
     pub resolve: Box<dyn Fn(&str) -> Option<String>>,
+    /// Whether it leaves the question what a directory is unanswered.
+    pub silent: bool,
 }
 
 #[cfg(test)]

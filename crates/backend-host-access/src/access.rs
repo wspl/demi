@@ -119,6 +119,15 @@ pub struct ConversationSlot {
     /// The admissions its running shell jobs hold, each with its job's
     /// device.
     jobs: RefCell<Vec<Rc<JobAdmission>>>,
+    /// One gate per device the conversation reaches: every admission on the
+    /// device holds a lease of it, and the release of a device a move left
+    /// reserves it (`crates/backend-host-access/src/transition.rs`), so no
+    /// work starts there between the check that none runs and the release.
+    hosts: RefCell<HashMap<DeviceId, ActivityGate>>,
+    /// The boundary of the changes of where the conversation runs and what
+    /// it reaches, a move, an archive, a restore and a detach: each reads
+    /// the record it changes and what it releases while it holds it.
+    pub changes: SerialGate,
     /// The agent's jobs whose start waits for the conversation's primary
     /// device to come back (§ Host operations).
     waiting: RefCell<Vec<Rc<WaitingJob>>>,
@@ -214,6 +223,11 @@ impl ConversationSlot {
         drop(left);
     }
 
+    /// The gate of the conversation's admissions on `device`.
+    pub fn host_gate(&self, device: &DeviceId) -> ActivityGate {
+        self.hosts.borrow_mut().entry(device.clone()).or_default().clone()
+    }
+
     /// Registers a job as waiting for `device`, the conversation's offline
     /// primary device.
     fn wait_for_device(self: &Rc<Self>, device: DeviceId) -> HeldWait {
@@ -260,6 +274,8 @@ impl Conversations {
                     settings: SerialGate::new(),
                     saved: SerialGate::new(),
                     jobs: RefCell::default(),
+                    hosts: RefCell::default(),
+                    changes: SerialGate::new(),
                     waiting: RefCell::default(),
                 })
             })
@@ -371,11 +387,12 @@ pub struct ConversationHost {
 }
 
 /// An admitted operation's hold. The fields drop in order: the Host, the
-/// file lease, then the Cloud's admission.
+/// file lease, the Cloud's admission, then the lease of the device's gate.
 pub struct Admitted {
     pub host: ConversationHost,
     _files: FileLease,
     _cloud: Option<CloudAdmission>,
+    _device: GateLease,
 }
 
 /// What an admission that never wakes the Host is to the conversation's
@@ -561,6 +578,9 @@ impl dyn HostShard + '_ {
         // until the admission ends, so that a move decided while the job
         // came back to the file gate still fails it.
         let mut waiting: Option<HeldWait> = None;
+        // The lease of the selected device's gate, which waits while the
+        // device is released, holding no file lease.
+        let mut device_lease: Option<(DeviceId, GateLease)> = None;
         loop {
             let files = waits.wait(slot.files.enter(Purpose::Demand)).await?;
             if let Some(reason) = waiting.as_ref().and_then(HeldWait::failed) {
@@ -626,12 +646,28 @@ impl dyn HostShard + '_ {
                 cloud = Some(waits.wait(self.enter_cloud(&selected.device)).await??);
                 continue;
             }
+            if device_lease.as_ref().is_none_or(|(device, _)| *device != selected.device.id) {
+                let gate = slot.host_gate(&selected.device.id);
+                device_lease = match gate.try_enter(Purpose::Demand) {
+                    Some(lease) => Some((selected.device.id.clone(), lease)),
+                    None => {
+                        drop(files);
+                        let lease = waits.wait(gate.enter(Purpose::Demand)).await?;
+                        device_lease = Some((selected.device.id.clone(), lease));
+                        continue;
+                    }
+                };
+            }
+            let Some((_, device)) = device_lease else {
+                unreachable!("the lease of the selected device was taken above");
+            };
             let host = self.open_host(&files, &selected, cloud.as_ref()).await?;
             self.track_idle(&record.id);
             return Ok(Admitted {
                 host,
                 _files: files,
                 _cloud: cloud,
+                _device: device,
             });
         }
     }

@@ -114,6 +114,9 @@ impl ReadBlob for NoBlobs {
 /// - 0.1.36's, which 0.1.33 to 0.1.35 shipped too, before a saved message was
 ///   edited in place.
 /// - 0.1.37's, before an automation repeated on a cycle with tasks in it.
+/// - 0.1.44's, which 0.1.39 to 0.1.43 shipped too, before a move applied at
+///   once instead of waiting, as an agent's did, for its conversation's work to
+///   end.
 ///
 /// The schemas with the subagent limits, without Detect Title, with the kept
 /// limits and with the plugins' secrets and read states no server keeps, but
@@ -277,10 +280,14 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.37.sql"),
             migration: Migration::Code(control_from_0_1_37),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.44.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_44),
+        },
     ],
 };
 
-/// From 0.1.37's control schema to the current one.
+/// From 0.1.37's control schema to 0.1.44's.
 ///
 /// - An automation's trigger is format 2: a daily schedule is a repeat with
 ///   one task at its time, carrying the automation's prompt, Every Day when
@@ -385,6 +392,20 @@ fn automation_target_2(text: &str) -> rusqlite::Result<demi_web_api_protocol::au
 ///   with their answers.
 const CONTROL_FROM_0_1_36: &str = "
 DROP TABLE saved_edits;
+";
+
+/// From 0.1.44's control schema, which 0.1.39 to 0.1.43 shipped too, to the
+/// current one.
+///
+/// - A move applies at once, so no conversation keeps a move that waits for
+///   its work to end; one an agent asked for before the upgrade is not made.
+///   Each column goes on its own, the one whose CHECK names the others first.
+const CONTROL_FROM_0_1_44: &str = "
+ALTER TABLE conversations DROP COLUMN pending_workspace_id;
+ALTER TABLE conversations DROP COLUMN pending_kind;
+ALTER TABLE conversations DROP COLUMN pending_id;
+ALTER TABLE conversations DROP COLUMN pending_device_id;
+ALTER TABLE conversations DROP COLUMN pending_path;
 ";
 
 const CONTROL_FROM_0_1_37: &str = "
@@ -837,19 +858,21 @@ CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path
     // which cascades while foreign keys are on, as they are in a migration's
     // transaction. Its columns stay as they are, so its text changes in place, the
     // procedure SQLite gives for a change of constraints alone
-    // (lang_altertable.html § 7), to the current schema's own text.
+    // (lang_altertable.html § 7), to 0.1.44's text, whose columns it has and
+    // which the later steps start from.
     //
     // The rows the new CHECK refuses are rewritten next, and the integrity check,
     // which tests CHECK constraints, proves none is left.
-    let start = CONTROL_V1
+    let shipped = include_str!("schema/control-0.1.44.sql");
+    let start = shipped
         .find("CREATE TABLE conversations (")
         .expect("the control schema makes the conversations table");
-    let end = start + CONTROL_V1[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
+    let end = start + shipped[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
     let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
     transaction.pragma_update(None, "writable_schema", true)?;
     transaction.execute(
         "UPDATE sqlite_schema SET sql = ?1 WHERE type = 'table' AND name = 'conversations'",
-        [&CONTROL_V1[start..end]],
+        [&shipped[start..end]],
     )?;
     transaction.pragma_update(None, "schema_version", version + 1)?;
     transaction.pragma_update(None, "writable_schema", false)?;
@@ -4352,24 +4375,6 @@ CREATE TABLE conversations (
   -- The revision of its attached hosts, raised by each change of them; 0
   -- before the first.
   hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
-  -- The pending move an agent asked for (sessions-and-targets.md § Switch
-  -- the primary target): its id and its target, typed as the target is; all
-  -- null while none waits.
-  pending_id           TEXT,
-  pending_kind         TEXT CHECK (pending_kind IN ('cloud', 'device', 'workspace')),
-  pending_device_id    TEXT,
-  pending_path         TEXT,
-  pending_workspace_id TEXT CHECK (
-    (pending_kind IS NULL
-      AND pending_id IS NULL AND pending_device_id IS NULL AND pending_path IS NULL
-      AND pending_workspace_id IS NULL)
-    OR (pending_kind = 'cloud' AND pending_id IS NOT NULL
-      AND pending_device_id IS NULL AND pending_workspace_id IS NULL)
-    OR (pending_kind = 'device' AND pending_id IS NOT NULL
-      AND pending_device_id IS NOT NULL AND pending_path IS NOT NULL AND pending_workspace_id IS NULL)
-    OR (pending_kind = 'workspace' AND pending_id IS NOT NULL
-      AND pending_workspace_id IS NOT NULL AND pending_device_id IS NULL AND pending_path IS NULL)
-  ),
   -- Its Workflow menu choice (subagents.md § Workflows of a project): the
   -- user's settings, No Subagents, or the workflow whose file is
   -- .demi/workflows/<workflow_id>.yaml.

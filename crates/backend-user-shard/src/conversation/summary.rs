@@ -82,7 +82,6 @@ impl Shard {
     /// What a page shows of `record` while it shows the conversation.
     pub async fn conversation_metadata(&self, record: ConversationRecord) -> Result<ConversationMetadata, StorageError> {
         let tree = self.agent().tree(&root_of(&record.id));
-        let only_waits_for_host = tree.as_ref().is_some_and(|tree| tree.only_waits());
         let plugins_changed = match &tree {
             Some(tree) => tree.toolset() != self.plugins().revision().await?,
             None => false,
@@ -120,7 +119,6 @@ impl Shard {
             last_turn: facts.last_turn.as_ref().map(last_turn),
             turn_speed: facts.turn_speed,
             plugins_changed,
-            only_waits_for_host,
             other_cost,
             saved: record.saved,
             saved_revision: record.saved_revision,

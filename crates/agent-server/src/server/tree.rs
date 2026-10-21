@@ -41,7 +41,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_agent_session::{Continuation, Execution, ModelSwitch, Reset, SessionEvent, Settle, Status, Subscription};
+use demi_agent_session::{Continuation, ModelSwitch, Reset, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
@@ -50,7 +50,7 @@ use demi_conversation_socket_protocol::{
 };
 use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
-use demi_shared_types::{Block, Clock, CommandId, ModelSelection, NodeId};
+use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -125,9 +125,6 @@ pub struct Tree<H: HostResolver> {
     /// Changes when a path of the tree is cut, by an edit, a Regenerate, a
     /// switch of versions, a retry or any other rewrite.
     pub(super) paths: watch::Sender<u64>,
-    /// Changes when a node's phase changes or a call of it starts or ends,
-    /// which may change whether the tree only waits.
-    pub(super) activity: watch::Sender<u64>,
     /// Tells the pages which children a cut path moved on or off the
     /// current path.
     _paths: AbortOnDropHandle<()>,
@@ -486,7 +483,6 @@ impl<H: HostResolver> Tree<H> {
             });
         }
         let paths = watch::Sender::new(0);
-        let activity = watch::Sender::new(0);
         agents.put(agents::resting(root.clone(), AgentRole::Root));
         agents.change(root, |entry| {
             entry.phase = session.phase();
@@ -504,11 +500,9 @@ impl<H: HostResolver> Tree<H> {
             let status_changed = deps.status_changed.clone();
             let root = root.clone();
             let paths = paths.clone();
-            let activity = activity.clone();
             // A step's frames go to each page as one change.
             move |step: &[SessionEvent]| agents.step(|| for event in step {
                 cut_path(&paths, event);
-                note_activity(&activity, event);
                 note_agent(&agents, &root, event);
                 if let SessionEvent::OutputChanged { output } = event {
                     reading.changed(output);
@@ -543,8 +537,6 @@ impl<H: HostResolver> Tree<H> {
                 tree.clone(),
                 session.status_watch(),
                 changes.subscribe(),
-                activity.subscribe(),
-                live.watch_held(),
                 deps.status_changed.clone(),
             ));
             let sending = tokio::task::spawn_local(live::send_changes(live.clone()));
@@ -580,7 +572,6 @@ impl<H: HostResolver> Tree<H> {
                 _live: AbortOnDropHandle::new(sending),
                 _reading: AbortOnDropHandle::new(reading),
                 paths,
-                activity,
                 _paths: AbortOnDropHandle::new(following),
             }
         });
@@ -804,37 +795,6 @@ impl<H: HostResolver> Tree<H> {
         !self.children.borrow().is_empty()
             || !self.starting.borrow().is_empty()
             || !quiescent(&self.root.session().status())
-    }
-
-    /// Whether the tree works, and only waits for its primary device.
-    ///
-    /// No child starts, and every node that runs (the root while it runs or
-    /// waits to run, and each live child) is running its tools, each of its
-    /// calls still executing a command whose start waits for its Host, as for
-    /// the conversation's offline device. A provider request, a call that runs
-    /// or a child at other work is work
-    /// (`crates/backend-host-access/src/transition.rs`). The conversation's
-    /// summary announces it.
-    pub fn only_waits(&self) -> bool {
-        if !self.works() || !self.starting.borrow().is_empty() {
-            return false;
-        }
-        let waiting = |node: &Node<H>, subagent: Option<&NodeId>| {
-            if node.session().execution() != Execution::ToolExecuting {
-                return false;
-            }
-            let held = self.live.held_calls(subagent);
-            let calls = node.session().executing_calls();
-            !calls.is_empty() && calls.iter().all(|call| held.contains(call))
-        };
-        let root = &self.root;
-        let root_waits = quiescent(&root.session().status()) || waiting(root, None);
-        root_waits
-            && self
-                .children
-                .borrow()
-                .values()
-                .all(|child| waiting(child.node(), Some(child.node().id())))
     }
 
     /// Ends every command of the tree's nodes whose start still waits for
@@ -1228,26 +1188,21 @@ async fn follow_paths<H: HostResolver>(tree: Weak<Tree<H>>, mut paths: watch::Re
 }
 
 /// Tells the product, through `status_changed`, that the tree opened, and
-/// each time it starts or stops working by itself, or starts or stops only
-/// waiting for its primary device ([`Tree::only_waits`]).
+/// each time it starts or stops working by itself.
 async fn report_working<H: HostResolver>(
     tree: Weak<Tree<H>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
-    mut activity: watch::Receiver<u64>,
-    mut held: watch::Receiver<BTreeMap<CommandId, (Option<NodeId>, String)>>,
     status_changed: Rc<dyn Fn(&NodeId)>,
 ) {
     let mut reported = None;
     loop {
         status.mark_unchanged();
         changes.mark_unchanged();
-        activity.mark_unchanged();
-        held.mark_unchanged();
         let Some(live) = tree.upgrade() else {
             return;
         };
-        let state = (live.works(), live.only_waits());
+        let state = live.works();
         if reported != Some(state) {
             reported = Some(state);
             status_changed(live.root.id());
@@ -1257,29 +1212,7 @@ async fn report_working<H: HostResolver>(
         tokio::select! {
             changed = status.changed() => if changed.is_err() { return },
             changed = changes.changed() => if changed.is_err() { return },
-            changed = activity.changed() => if changed.is_err() { return },
-            changed = held.changed() => if changed.is_err() { return },
         }
-    }
-}
-
-/// Marks in `activity` what `event` changes of whether the tree only
-/// waits: a node's phase, or a call that starts or ends, as a block that
-/// is added or replaced.
-pub(super) fn note_activity(activity: &watch::Sender<u64>, event: &SessionEvent) {
-    let changed = match event {
-        SessionEvent::PhaseChanged { .. } => true,
-        SessionEvent::TranscriptChanged { patches, .. } => patches.iter().any(|patch| {
-            matches!(
-                patch,
-                TranscriptPatch::Add { value: Block::ToolCall(_), .. }
-                    | TranscriptPatch::ReplaceBlock { value: Block::ToolCall(_), .. }
-            )
-        }),
-        _ => false,
-    };
-    if changed {
-        activity.send_modify(|count| *count = count.wrapping_add(1));
     }
 }
 

@@ -350,6 +350,10 @@ pub trait HostFs {
     /// The absolute path with every symbolic link resolved.
     fn realpath<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>>;
 
+    /// The directory at `path` as [`realpath`](Self::realpath) names it, in
+    /// one exchange; `ENOTDIR` when it is no directory.
+    fn directory<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>>;
+
     fn utimes<'a>(
         &'a self,
         path: &'a str,

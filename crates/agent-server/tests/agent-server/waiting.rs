@@ -6,8 +6,6 @@
 //! - It sends no interval report while it waits.
 //! - A turn that ends leaves it waiting, and the user's Stop of any later turn
 //!   ends it.
-//! - The tree says, when it only waits for the device, that a move stops
-//!   nothing (§ Switch the primary target).
 //!
 //! The commands run in scripted shell environments ([`ScriptedShells`]) that
 //! the test marks waiting, on Tokio's paused clock.
@@ -83,42 +81,6 @@ fn state_of(shells: &ScriptedShells, command: &str) -> PageState {
         .find(|view| view.command_id.as_str() == command)
         .map(|view| view.state)
         .expect("the command started")
-}
-
-// Two parallel calls, then the device's absence and return for each: a
-// few milliseconds on the paused clock.
-#[tokio::test(flavor = "local", start_paused = true)]
-async fn the_tree_only_waits_once_every_call_still_running_waits_for_the_device_and_says_so() {
-    let script = ScriptedRuntime::new([
-        Turn::Events(vec![shell("call-1", "test"), shell("call-2", "build"), event::response(1, 1)]),
-        said("done"),
-    ]);
-    let (server, shells, page, told) = serving(&script).await;
-    page.send(send("m1", "Test and build.")).await;
-    until(|| holding(&shells, 2).is_some()).await;
-    let tree = server.tree(&conversation()).unwrap();
-    let shell = holding(&shells, 2).unwrap();
-
-    // One call waits for the device while the other runs there: the agent
-    // works, so a move would stop it.
-    shell.wait_for("1", Some("MacBook Pro"));
-    until(|| state_of(&shells, "1") == PageState::Waiting { host: "MacBook Pro".into() }).await;
-    assert!(!tree.only_waits());
-
-    // Both wait: the tree only waits, and the product hears of it, as it
-    // does when one comes back and runs.
-    let before = told.get();
-    shell.wait_for("2", Some("MacBook Pro"));
-    until(|| tree.only_waits() && told.get() > before).await;
-    let before = told.get();
-    shell.wait_for("1", None);
-    until(|| !tree.only_waits() && told.get() > before).await;
-
-    shell.exit("1");
-    shell.exit("2");
-    let mut page = page;
-    page.until_idle().await;
-    assert!(!tree.only_waits(), "a tree at rest does not wait");
 }
 
 // Three minutes of paused time: a few milliseconds.

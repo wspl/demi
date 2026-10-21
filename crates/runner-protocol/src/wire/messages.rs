@@ -661,6 +661,19 @@ pub enum Inbound {
         )]
         cwd: Option<String>,
     },
+    /// The directory at `path` as its Host names it, which a move checks
+    /// in one exchange (`crates/backend-host-access/src/directories.rs`):
+    /// its real path, or `ENOTDIR` when it is no directory.
+    FsDirectory {
+        id: String,
+        path: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        cwd: Option<String>,
+    },
     FsUtimes {
         id: String,
         path: String,
@@ -894,6 +907,7 @@ impl Inbound {
             | Self::FsLink { id, .. }
             | Self::FsReadlink { id, .. }
             | Self::FsRealpath { id, .. }
+            | Self::FsDirectory { id, .. }
             | Self::FsUtimes { id, .. } => Some(id),
             _ => None,
         }

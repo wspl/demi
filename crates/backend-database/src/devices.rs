@@ -619,10 +619,6 @@ impl ControlService {
                             "UPDATE conversations SET target_workspace_id = ?2, target_path = ?3 WHERE target_workspace_id = ?1",
                             params![id, survivor, directory],
                         )?;
-                        transaction.execute(
-                            "UPDATE conversations SET pending_workspace_id = ?2 WHERE pending_workspace_id = ?1",
-                            params![id, survivor],
-                        )?;
                         transaction.execute("DELETE FROM workspaces WHERE id = ?1", [&id])?;
                         settled.projects_changed = true;
                     }
@@ -642,12 +638,6 @@ impl ControlService {
                     for conversation in &conversations {
                         set_selection(&transaction, conversation, &Selection::Home { device_id: device.id.clone() })?;
                     }
-                    transaction.execute(
-                        "UPDATE conversations SET pending_kind = 'device', pending_device_id = ?2, pending_path = ?3,
-                           pending_workspace_id = NULL
-                         WHERE pending_workspace_id = ?1",
-                        params![id, device.id.as_str(), real],
-                    )?;
                     transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id])?;
                     settled.projects_changed = true;
                     settled.moved.extend(conversations);

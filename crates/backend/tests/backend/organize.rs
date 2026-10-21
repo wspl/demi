@@ -10,11 +10,10 @@
 //! - `demi host attach` attaches a device at once, which the next context
 //!   block announces.
 //! - `demi host move` asks once for a host the conversation may not reach,
-//!   checks its directory and waits, as `demi host detach` does, until the
-//!   conversation's work ends. They are then made in one transition, and the
-//!   directory decides the project it lands in.
-//! - A move that fails then leaves the conversation where it was and wakes the
-//!   root with Demi's notice of the reason.
+//!   checks its directory and moves the conversation at once, while its own
+//!   turn runs, and answers once it moved; the directory decides the project it
+//!   lands in, and the turn's next request names it.
+//! - `demi host detach` waits until the conversation's work ends.
 //! - Deleting a project archives its conversations, unless one works.
 //! - A device's first home report after the upgrade puts the conversations the
 //!   earlier release left in its directories where those directories say.
@@ -26,13 +25,12 @@
 
 use std::sync::Arc;
 
-use demi_shared_types::{AgentMessageEvent, Block};
 use reqwest::StatusCode;
 use serde_json::json;
 
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 
-use crate::conversations::{FIRST, SECOND, THIRD, Socket, choose, create, transcript, working_on};
+use crate::conversations::{FIRST, SECOND, THIRD, Socket, choose, create, working_on};
 use rusqlite::OptionalExtension;
 use crate::permissions::{decide, host_of, permissions, settled};
 use crate::subagents::{Scripts, WAIT, background, say, shell, tree_on};
@@ -100,18 +98,6 @@ fn attached(harness: &Harness, id: &str) -> Vec<String> {
         .unwrap()
 }
 
-/// Whether a move waits for the conversation, as storage holds it.
-fn pending(harness: &Harness, id: &str) -> bool {
-    harness
-        .control_database()
-        .query_row(
-            "SELECT pending_id IS NOT NULL FROM conversations WHERE id = ?1",
-            [id],
-            |row| row.get(0),
-        )
-        .unwrap()
-}
-
 /// Grants the conversation Organize Conversations, as an allow stores it.
 fn grant_organize(harness: &Harness, id: &str) {
     harness
@@ -156,7 +142,7 @@ fn last_asked(scripts: &Scripts, id: &str) -> String {
 
 // Several seconds: two real devices, and one runs the shell jobs of a turn.
 #[tokio::test]
-async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_ends() {
+async fn an_attach_and_a_move_apply_at_once_and_a_detach_waits_until_the_work_ends() {
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, laptop, _, _) = tree_on(&scripts, Harness::new()).await;
     let studio = backend.pair(&master, "studio").await;
@@ -185,8 +171,9 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
     let after_attach = &asked[1];
     assert!(after_attach.contains("Attached studio as studio"), "{after_attach}");
     assert!(after_attach.contains("[Attached hosts changed]"), "{after_attach}");
-    // The detach and the move waited: studio was still attached, and the
-    // conversation still ran in its directory, for the turn's next command.
+    // The move applied at once, while the turn that asked for it ran, and
+    // the detach waited: studio was still attached for the turn's next
+    // command, which ran in the new project.
     let after_waits = &asked[3];
     // The hosts and projects as tables, and as JSON: an array for a list,
     // an object for the one host.
@@ -197,7 +184,7 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
         "{after_waits}"
     );
     assert!(
-        after_waits.contains(&format!(r#"\n{{\"name\":\"laptop\",\"id\":\"{laptop_id}\",\"status\":\"online\",\"project\":\"work\",\"directory\":"#)),
+        after_waits.contains(&format!(r#"\n{{\"name\":\"laptop\",\"id\":\"{laptop_id}\",\"status\":\"online\",\"project\":\"notes\",\"directory\":"#)),
         "{after_waits}"
     );
     assert!(
@@ -211,23 +198,17 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
         "{after_waits}"
     );
     assert!(
-        after_waits.contains(&format!("The move to laptop ({}) applies", project_path(&laptop, "notes"))),
+        after_waits.contains(&format!("Moved to laptop ({}).", project_path(&laptop, "notes"))),
         "{after_waits}"
     );
     assert!(after_waits.contains("  attached  "), "{after_waits}");
-    // Nor did the turn's next request learn of a change: the attach's block
-    // is the last it holds.
-    assert!(after_waits.contains("[Execution context 1]"), "{after_waits}");
-    assert!(!after_waits.contains("[Execution context 2]"), "{after_waits}");
-    assert!(after_waits.contains("Project: work\\n"), "{after_waits}");
+    // The turn's next request named the new project.
+    assert!(after_waits.contains("[Execution context 2]"), "{after_waits}");
+    assert!(after_waits.contains("Project: notes\\n"), "{after_waits}");
+    assert_eq!(target_of(&harness, FIRST), ("workspace".to_owned(), Some(notes.clone())));
 
-    // Once the turn ended both were made, in one transition.
-    eventually("the move and the detach are made", || async {
-        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(notes.clone()))
-            && attached(&harness, FIRST).is_empty()
-    })
-    .await;
-    assert!(!pending(&harness, FIRST));
+    // Once the turn ended the detach was made.
+    eventually("the detach is made", || async { attached(&harness, FIRST).is_empty() }).await;
     backend.close().await;
 }
 
@@ -343,77 +324,6 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
     backend.close().await;
 }
 
-// Several seconds: two real devices, and one runs the shell jobs of two
-// turns.
-#[tokio::test]
-async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_with_the_reason() {
-    let scripts = Arc::new(Scripts::default());
-    let (harness, backend, master, _laptop, root, _) = tree_on(&scripts, Harness::new()).await;
-    let studio = backend.pair(&master, "studio").await;
-    let site = format!("{}/site", studio.runner.home());
-    std::fs::create_dir_all(&site).unwrap();
-    reach(&harness, FIRST, &studio);
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
-
-    // The device is revoked while the turn that asked for the move runs.
-    scripts.root(
-        FIRST,
-        vec![
-            shell("t1", &format!("demi host move studio {site}; {WAIT}")),
-            say("asked"),
-        ],
-    );
-    scripts.root(FIRST, vec![say("noted")]);
-    socket
-        .send(&crate::conversations::send("m1", "Move to the studio"))
-        .await;
-    eventually("the move waits", || async { pending(&harness, FIRST) }).await;
-    let revoked = backend
-        .delete(&format!("/api/devices/{}", studio.id()), &master)
-        .await;
-    assert_eq!(revoked.status, StatusCode::OK);
-    std::fs::write(format!("{root}/go"), "").unwrap();
-    eventually("the root is told", || async {
-        last_asked(&scripts, FIRST).contains("Demi could not make the move")
-    })
-    .await;
-    let told = last_asked(&scripts, FIRST);
-    assert!(
-        told.contains(&format!(
-            "Demi could not make the move this conversation's agent asked for: the device is no longer paired. The conversation still runs on laptop ({root})."
-        )),
-        "{told}"
-    );
-    assert!(told.contains("\\\"sender\\\":\\\"demi\\\""), "{told}");
-    socket.until_idle().await;
-    assert_eq!(target_of(&harness, FIRST).0, "workspace");
-    assert!(!pending(&harness, FIRST));
-    let history = transcript(&backend, &master, FIRST).await;
-    let notice = history
-        .blocks
-        .iter()
-        .find_map(|block| match block {
-            Block::AgentMessage(message) => Some(&message.message),
-            _ => None,
-        })
-        .expect("the notice is in the transcript");
-    assert!(notice.id.as_str().starts_with("move-failed:"), "{notice:?}");
-    // The receipt row says why after Move failed, worded by the page from
-    // the refusal's code; the model reads the reason in the message.
-    assert!(
-        matches!(
-            &notice.event,
-            AgentMessageEvent::MoveFailed { reason, code }
-                if notice.content.contains(reason.as_str())
-                    && code.as_deref() == Some("device_not_found")
-        ),
-        "{notice:?}"
-    );
-    assert_eq!(notice.sender, None);
-    backend.close().await;
-}
-
 /// The workspace selection of `id` as storage holds it: the project's
 /// name and directory; none outside a project.
 fn project_of(harness: &Harness, id: &str) -> Option<(String, String)> {
@@ -472,7 +382,8 @@ async fn a_host_move_puts_the_conversation_in_its_directorys_project_and_the_hom
         scripts.root(id, vec![shell("t", &format!("demi host move laptop {path}")), say("moved")]);
         socket.chat(&format!("m{turn}"), "Move").await;
         let expected = landed.map(|(name, directory)| (name.to_owned(), format!("{home}/{directory}")));
-        eventually("the move is made", || async { project_of(&harness, id) == expected && !pending(&harness, id) }).await;
+        // The command answered once the move was made.
+        assert_eq!(project_of(&harness, id), expected, "{id}");
         // The second conversation moved to `site` joins the first's project.
         let workspace = target_of(&harness, id).1;
         if directory == "site" {
@@ -692,8 +603,7 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     );
 
     // Once allowed, the waiting move runs: a directory that is none there
-    // fails at once with nothing pending, and the move to one waits until
-    // the work ends.
+    // fails and changes nothing, and the move to one applies at once.
     let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     let missing = settled(
@@ -705,32 +615,25 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     )
     .await;
     assert!(missing.contains(&format!("{app}/missing is not a directory on studio")), "{missing}");
-    assert!(!pending(&harness, FIRST));
+    assert_eq!(primary(&harness, FIRST).0.as_deref(), Some(laptop.id()));
     // A socket of its own, which no frame of the woken turns precedes.
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     scripts.root_anew(FIRST, vec![shell("t3", &format!("demi host move studio {app}")), say("moving")]);
     socket.chat("m2", "Move to the app").await;
-    eventually("the move is made", || async {
-        primary(&harness, FIRST) == (Some(studio.id().to_owned()), Some(app.clone()))
-    })
-    .await;
+    assert_eq!(primary(&harness, FIRST), (Some(studio.id().to_owned()), Some(app.clone())));
     assert!(
-        last_asked(&scripts, FIRST).contains(&format!("The move to studio ({app}) applies when this conversation's work ends")),
+        last_asked(&scripts, FIRST).contains(&format!("Moved to studio ({app}).")),
         "{}",
         last_asked(&scripts, FIRST)
     );
     assert_eq!(attached(&harness, FIRST), ["laptop"]);
-    assert!(!pending(&harness, FIRST));
 
     // The host it left and the one it was allowed stay reachable: moving
     // back, detaching studio and attaching it again ask nothing.
     scripts.root(FIRST, vec![shell("t5", &format!("demi host move laptop {root}")), say("back")]);
     socket.chat("m3", "Go back").await;
-    eventually("the move back is made", || async {
-        primary(&harness, FIRST) == (Some(laptop.id().to_owned()), Some(root.clone()))
-    })
-    .await;
+    assert_eq!(primary(&harness, FIRST), (Some(laptop.id().to_owned()), Some(root.clone())));
     scripts.root(FIRST, vec![shell("t6", "demi host detach studio"), say("detached")]);
     socket.chat("m4", "Let go of the studio").await;
     eventually("the detach is made", || async { attached(&harness, FIRST).is_empty() }).await;
@@ -741,37 +644,6 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     })
     .await;
     assert!(permissions(&backend, &master, FIRST).await.requests.is_empty());
-    backend.close().await;
-}
-
-// Several seconds: the backend starts twice over the same data, and the
-// project's device is a runner that has not reconnected.
-#[tokio::test]
-async fn a_move_a_restart_cut_off_is_made_at_the_next_start_even_to_an_offline_device() {
-    let scripts = Arc::new(Scripts::default());
-    let (harness, backend, master, _laptop, _, _) = tree_on(&scripts, Harness::new()).await;
-    let mut studio = backend.pair(&master, "studio").await;
-    let website = project(&backend, &master, &studio, "website").await;
-    studio.runner.stop().await;
-    let address = backend.address();
-    backend.close().await;
-
-    // The command recorded the move, and the backend stopped before the
-    // tree was idle: the move as storage holds it.
-    harness
-        .control_database()
-        .execute(
-            "UPDATE conversations SET pending_id = 'm1', pending_kind = 'workspace', pending_workspace_id = ?2
-             WHERE id = ?1",
-            [FIRST, website.as_str()],
-        )
-        .unwrap();
-    let backend = harness.start_at(address).await;
-    eventually("the move is made", || async {
-        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(website.clone()))
-    })
-    .await;
-    assert!(!pending(&harness, FIRST));
     backend.close().await;
 }
 

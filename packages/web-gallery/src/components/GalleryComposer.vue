@@ -20,7 +20,7 @@ import { beginSavedEdit, type MessageEditContent, type MessageEditState, type Sa
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion, type WorkToStop } from '@demicodes/web-ui/hosts/move-question'
+import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
@@ -98,8 +98,8 @@ const props = withDefaults(
      * moves the specimen's conversation, whose card then goes.
      */
     offlineHost?: OfflineHost | null
-    /** The agent works, so Move to Another Host… asks to stop it first, naming what stops. */
-    working?: WorkToStop
+    /** The conversation has messages, so Move to Another Host… asks first, as the product's does. */
+    hasMessages?: boolean
     /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
     onCompact?: () => void
     /** Steers the specimen's running turn; without it, a toast says what the product would do. */
@@ -211,18 +211,18 @@ function moveHost(host: HostChoice) {
     ? 'Cloud'
     : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
   const from = offlineHost.value
-  const carryOut = async (tell: boolean) => {
+  const carryOut = async () => {
     offlineHost.value = null
     emit('moved', host, to ?? host.kind)
-    productWould(`${props.working ? 'Stop the Agent and ' : ''}Move the Conversation to ${to}${tell ? ' and Tell the Agent' : ''}`)
+    productWould(`Move the Conversation to ${to}`)
     return true
   }
-  if (!props.working || !from || !to) {
-    void carryOut(false)
+  if (!props.hasMessages || !from || !to) {
+    void carryOut()
     return
   }
   void moveQuestion.ask(
-    { host: to, directory: host.kind === 'cloud' ? null : '~', from: from.name, fromCloud: false, stops: props.working },
+    { host: to, directory: host.kind === 'cloud' ? null : '~', from: from.name, fromCloud: false },
     carryOut,
   )
 }
@@ -278,7 +278,7 @@ const composerProps = computed(() => {
     flow: _flow,
     sendWhileRunning: _sendWhileRunning,
     offlineHost: _offlineHost,
-    working: _working,
+    hasMessages: _hasMessages,
     saved: _saved,
     savedOpen: _savedOpen,
     messageEdit: _messageEdit,

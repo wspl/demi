@@ -194,6 +194,27 @@ pub async fn call(
                 .map_err(std::io::Error::other)??;
             FsResult::Realpath(real.to_string_lossy().into_owned())
         }
+        // The real path as `FsRealpath` names it, of a directory only: one
+        // question where a move asked two.
+        FsDirectory {
+            path: value, cwd, ..
+        } => {
+            let path = path(value, cwd)?;
+            let real = tokio::task::spawn_blocking(move || {
+                let real = dunce::canonicalize(path)?;
+                if std::fs::metadata(&real)?.is_dir() {
+                    Ok(real)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotADirectory,
+                        format!("{} is not a directory", real.display()),
+                    ))
+                }
+            })
+            .await
+            .map_err(std::io::Error::other)??;
+            FsResult::Directory(real.to_string_lossy().into_owned())
+        }
         FsUtimes {
             path: value,
             cwd,

@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion, workToStop } from '@demicodes/web-ui/hosts/move-question'
+import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ConversationTarget } from '../api/generated/web-api'
@@ -18,9 +18,9 @@ import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 /**
  * The header's place: the Host the conversation runs on and its directory.
  * Every move the two menus start, to another Host or another directory, comes
- * through `move`, which asks first when the conversation has messages, and to
- * stop the agent first while it works; so does one the offline primary Host's
- * card above the composer starts, through `choose`.
+ * through `move`, which asks first when the conversation has messages; so does
+ * one the offline primary Host's card above the composer starts, through
+ * `choose`. A move stops nothing (`docs/decisions/0027-a-move-applies-at-once.md`).
  */
 const props = defineProps<{
   project?: Project
@@ -82,10 +82,8 @@ function sameTarget(a: ConversationTarget, b: ConversationTarget): boolean {
 }
 
 /**
- * Moves the conversation to `target`: at once while it has sent nothing and
- * is idle, otherwise once the user answers the dialog; while the agent works
- * the answer stops it first, and the move follows once the session is idle.
- * Answers whether it moved.
+ * Moves the conversation to `target`: at once while it has sent nothing,
+ * otherwise once the user answers the dialog. Answers whether it moved.
  */
 function move(target: ConversationTarget): Promise<boolean> {
   if (locked.value !== undefined) {
@@ -95,8 +93,7 @@ function move(target: ConversationTarget): Promise<boolean> {
   if (sameTarget(target, props.conversation.target)) {
     return Promise.resolve(true)
   }
-  const stops = workToStop(props.conversation)
-  if (!stops && props.conversation.persistence !== 'synced') {
+  if (props.conversation.persistence !== 'synced') {
     return conversations.switchTarget(props.conversation.id, target)
   }
   return moveQuestion.ask(
@@ -104,11 +101,8 @@ function move(target: ConversationTarget): Promise<boolean> {
       ...place(target),
       from: execution.value.name,
       fromCloud: execution.value.kind === 'cloud',
-      ...(stops ? { stops } : {}),
     },
-    (tell) => stops
-      ? conversations.switchTargetAfterStop(props.conversation, target, tell)
-      : conversations.switchTarget(props.conversation.id, target, tell),
+    () => conversations.switchTarget(props.conversation.id, target),
   )
 }
 

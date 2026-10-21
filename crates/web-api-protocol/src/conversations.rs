@@ -59,8 +59,8 @@ pub enum ConversationTarget {
 
 /// `POST /conversations`: the id the web app chose for a new conversation,
 /// and what it starts with, so creating it is one request: the fields
-/// [`ConversationPatch`] takes except `archived` and `notifyAgent`. They
-/// apply as part of the creation, and one that is refused refuses it.
+/// [`ConversationPatch`] takes except `archived`. They apply as part of the
+/// creation, and one that is refused refuses it.
 #[derive(
     Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
@@ -223,11 +223,6 @@ pub struct ConversationMetadata {
     /// user has since turned on or off, so a reload would change them
     /// (`crates/backend-plugins/src/lib.rs`).
     pub plugins_changed: bool,
-    /// Whether the conversation's agent works only by waiting for its
-    /// primary Host, a paired device whose runner is away: every running
-    /// agent's remaining work is a command whose start waits for it. A move
-    /// then stops nothing (`crates/backend-host-access/src/transition.rs`).
-    pub only_waits_for_host: bool,
     /// What the conversation's rows of no agent cost, such as its titles';
     /// each agent's own is its entry's, and the conversation's is their sum.
     #[garde(dive)]
@@ -563,23 +558,6 @@ pub struct ConversationPatch {
     #[schemars(with = "ConversationTarget")]
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
-    /// With `target`, tells the agent of the switch once it is made: the
-    /// user's message wakes the root (`crates/backend-host-access/src/transition.rs`).
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[garde(custom(names_a_switch(&self.target)))]
-    pub notify_agent: bool,
-}
-
-/// Only a switch can be told to the agent.
-fn names_a_switch(
-    target: &Option<ConversationTarget>,
-) -> impl FnOnce(&bool, &()) -> garde::Result + '_ {
-    move |notify, _| {
-        if *notify && target.is_none() {
-            return Err(garde::Error::new("notifyAgent tells the agent of a target switch, and the patch names none"));
-        }
-        Ok(())
-    }
 }
 
 /// A provider entry of the user's scope and one of its models.

@@ -15,22 +15,11 @@
   },
   "move": {
     "title": "將此對話移到 {host}？",
-    "titleStop": "停止智慧體並將此對話移到 {host}？",
     "runsHome": "它將在該處的主目錄中執行。",
     "runsIn": "它將在 {directory} 中執行。",
     "runsOwn": "它將在該處的專屬目錄中執行。",
     "filesStay": "{host} 上的檔案會保留在原處。",
-    "agentLearns": "智慧體會在下次工作時得知此移動，或在你告知時立即得知。",
-    "stopAndMove": "停止並移動",
-    "move": "移動",
-    "stopMoveTell": "停止、移動並告知智慧體",
-    "moveAndTell": "移動並告知智慧體"
-  },
-  "stop": {
-    "agent": "智慧體",
-    "subagents": "{count} 個子智慧體",
-    "commands": "{count} 個指令",
-    "sentence": "{list}將停止。"
+    "move": "移動"
   },
   "project": {
     "title": "新增專案",

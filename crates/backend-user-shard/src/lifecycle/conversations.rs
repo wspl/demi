@@ -23,9 +23,12 @@
 //! removes its profile).
 //!
 //! It can be sent without checking what runs there because no job of the
-//! conversation runs when it arrives: it is sent only while the backend holds
-//! the conversation's file gate, and every job runs in a lease of that gate.
-//! Repeating one is harmless, and it never starts a service.
+//! conversation runs there when it arrives: an archive, a detach and the idle
+//! clock send it only while the backend holds the conversation's file gate,
+//! and every job runs in a lease of that gate; a move sends it once the jobs
+//! of the conversation on the device it left ended
+//! (`crates/backend-host-access/src/transition.rs`). Repeating one is
+//! harmless, and it never starts a service.
 //!
 //! It is never sent to a stopped Cloud or an offline device, nor later: the stop
 //! or the connection loss already ended every service's state.
@@ -46,7 +49,7 @@
 //! - A service that failed is retired and so ends what it held.
 //! - One that answers too late finishes all the same.
 //!
-//! An archive, a target switch and a detach are the user's changes to their own
+//! An archive, a move and a detach are the user's changes to their own
 //! conversation, and failing one because a Host's cleanup failed would leave a
 //! refusal to retry that changes nothing on the Host. So the watch ends after its
 //! release however a Host answered.
@@ -496,9 +499,11 @@ mod tests {
                 };
                 operate().await;
                 tokio::time::sleep(WINDOW / 2).await;
-                // The switch releases the old device, once.
+                // The switch releases the old device, once, as nothing of
+                // the conversation runs there.
                 let switched = Instant::now();
                 shard.transition(&id, on(&new)).await.unwrap();
+                until_released(&released, 1).await;
                 let devices: Vec<DeviceId> = released
                     .borrow()
                     .iter()

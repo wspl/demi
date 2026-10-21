@@ -41,9 +41,6 @@ import {
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission, isWritten } from '@demicodes/web-ui/agent/submission'
-import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
-import { workToStop } from '@demicodes/web-ui/hosts/move-question'
-import { runningTerminals } from '@demicodes/web-ui/agent/terminals'
 import { agentWorks, chooseSendWay, markSent, markWithdrawn, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
   applyAttachmentUpdate,
@@ -92,7 +89,6 @@ import { startingChoices, startingWorkflow, type RememberedChoices } from '@demi
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
 import { useResources } from '../state/resources'
-import { executionFor } from '../targets/execution'
 import { useProduct, type ProductChange } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
@@ -362,7 +358,6 @@ export const useConversations = defineStore('conversations', () => {
     conversation.cwd = shown.cwd
     conversation.workflow = shown.workflow
     conversation.pluginsChanged = shown.pluginsChanged
-    conversation.onlyWaitsForHost = shown.onlyWaitsForHost
     conversation.turnSpeed = shown.turnSpeed
     conversation.shares = shown.shares
     if (shown.model) {
@@ -433,7 +428,6 @@ export const useConversations = defineStore('conversations', () => {
       agentsHeld: null,
       cwd: local.cwd ?? '',
       pluginsChanged: false,
-      onlyWaitsForHost: false,
       turnSpeed: null,
       shares: [],
       history: EMPTY_TRANSCRIPT,
@@ -1732,18 +1726,6 @@ export const useConversations = defineStore('conversations', () => {
     return failed.length === 0
   }
 
-  /** A move into a project shows its directory, where the conversation will run. */
-  function shownDirectory(
-    state: ProductState,
-    target: ConversationSummary['target'] | undefined,
-    conversation: Conversation,
-  ): string {
-    const path = target?.kind === 'workspace'
-      ? state.workspaces.find((workspace) => workspace.id === target.workspaceId)?.path
-      : undefined
-    return path ?? conversation.cwd
-  }
-
   async function changeConversations<T>(
     ids: string[],
     action: () => Promise<T>,
@@ -1766,21 +1748,19 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Changes the conversations' `changes`: a draft's at once, and those with
+   * Changes the conversations' `fields`: a draft's at once, and those with
    * a record by a write, after the earlier writes of each of them. With
    * `shown`, the change shows at once and the write lands it; without, it shows
-   * once answered, as a move to another Host does. A refused item is reported
+   * once answered, as a move does. A refused item is reported
    * with why, in a toast that says it could not `action` it, and only its own
    * change leaves. Answers whether every one changed, and the ones that did.
    */
   async function applyBatch(
     ids: string[],
-    changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
+    fields: Pick<ConversationPatch, 'pinned' | 'archived' | 'target'>,
     shown: boolean,
     action: RefusedAction,
   ): Promise<{ success: boolean; changed: string[] }> {
-    // A draft has no agent to tell: the first send creates what the user sees.
-    const { notifyAgent: _told, ...fields } = changes
     for (const conversation of items.value) {
       if (
         ids.includes(conversation.id) &&
@@ -1814,19 +1794,6 @@ export const useConversations = defineStore('conversations', () => {
       ? ids.map((id) => [id, product.change(`conversation:${id}`, (state) =>
           withConversation(state, id, (record) => ({ ...record, ...fields })))])
       : [])
-    // A move into a project shows its directory at once, which the
-    // conversation's metadata then says.
-    const directoryChanges = new Map(shown && fields.target && product.snapshot
-      ? ids.flatMap((id) => {
-          const conversation = items.value.find((item) => item.id === id)
-          if (!conversation) {
-            return []
-          }
-          const cwd = shownDirectory(product.snapshot!, fields.target, conversation)
-          const change = conversation.metadata.change((metadata) => ({ ...metadata, cwd }))
-          return [[id, { conversation, change }] as const]
-        })
-      : [])
     const signal = lifetime.signal
     try {
       return await writes.run(ids, async () => {
@@ -1842,7 +1809,7 @@ export const useConversations = defineStore('conversations', () => {
             method: 'POST',
             signal,
             ...jsonBody({
-              items: chunk.map((id) => ({ id, patch: changes })),
+              items: chunk.map((id) => ({ id, patch: fields })),
             } satisfies ConversationBatch),
           })
           const result = await readResponse(response, batchAnswerSchema)
@@ -1854,10 +1821,8 @@ export const useConversations = defineStore('conversations', () => {
             // A refusal names the conversation as the list shows it now: its title may have come meanwhile.
             const listed = items.value.find((conversation) => conversation.id === item.id)
             const title = listed ? conversationTitle(listed.title) : item.id
-            const directory = directoryChanges.get(item.id)
             if (item.status === 'refused') {
               change?.drop()
-              directory?.change.drop()
               // A conversation another page deleted meanwhile has nothing
               // left to change, and the channel takes its row away.
               if (item.code !== 'conversation_not_found') {
@@ -1873,13 +1838,6 @@ export const useConversations = defineStore('conversations', () => {
               change.drop(answer)
             } else {
               change.land(answer)
-            }
-            if (directory) {
-              if (failed.length) {
-                directory.change.drop()
-              } else {
-                directory.change.land()
-              }
             }
             if (failed.length) {
               refusals.push({ title, reasons: failed.map((field) => field.message), requestId })
@@ -1901,12 +1859,6 @@ export const useConversations = defineStore('conversations', () => {
       // A change the answer did not name, or one whose write failed, leaves.
       for (const change of shownChanges.values()) {
         change.drop()
-      }
-      // A directory the answer showed stays until the metadata says it.
-      for (const { change } of directoryChanges.values()) {
-        if (change.status !== 'landed') {
-          change.drop()
-        }
       }
       landed.resolve()
       for (const id of ids) {
@@ -3417,86 +3369,17 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Resolves true once the conversation runs nothing: its root is idle and
-   * its subagents and commands have ended, as their phases announce; false
-   * when the store stops first.
+   * Moves the conversation to run on `target`, at once whatever its agent does
+   * (`docs/decisions/0027-a-move-applies-at-once.md`), and answers whether it
+   * moved once the backend made the move: the sidebar shows it in its new
+   * place with the answer.
    */
-  function untilIdle(conversation: Conversation): Promise<boolean> {
-    const active = () => workToStop(conversation) !== null
-    if (!active()) {
-      return Promise.resolve(true)
-    }
-    const signal = lifetime.signal
-    return new Promise((resolve) => {
-      const unwatch = watch(active, (now) => {
-        if (!now) {
-          settle(true)
-        }
-      }, { flush: 'sync' })
-      const onAbort = () => settle(false)
-      signal.addEventListener('abort', onAbort, { once: true })
-      function settle(idle: boolean): void {
-        unwatch()
-        signal.removeEventListener('abort', onAbort)
-        resolve(idle)
-      }
-    })
-  }
-
-  /**
-   * Stops what the conversation's agent does, its running subagents and
-   * commands included, and answers once the session says it is idle; a
-   * conversation that is idle already answers at once. False when a stop was
-   * refused or the store stopped before the session was idle.
-   */
-  async function stopWork(conversation: Conversation): Promise<boolean> {
-    if (runningSubagents(conversation.subagents).length > 0
-      && !await attempt(conversation, (runtime) => runtime.abortSubagents())) {
-      return false
-    }
-    for (const terminal of runningTerminals(conversation.terminals)) {
-      if (!await attempt(conversation, (runtime) => runtime.abortTerminal(terminal.id))) {
-        return false
-      }
-    }
-    if (conversation.phase !== 'idle' && !await stop(conversation)) {
-      return false
-    }
-    return untilIdle(conversation)
-  }
-
-  /**
-   * Moves the conversation to run on `target`; with `notifyAgent`, the backend
-   * tells its agent.
-   */
-  function switchTarget(id: string, target: ConversationSummary['target'], notifyAgent = false): Promise<boolean> {
-    const conversation = items.value.find((item) => item.id === id)
-    // A move into a project on the Host it runs on shows at once, as a
-    // change of the conversation's record; the write follows. Any other move waits
-    // for its Host.
-    if (conversation?.persistence === 'synced' && target.kind === 'workspace'
-      && executionFor({ target, cwd: '' }).deviceId === executionFor(conversation).deviceId) {
-      void applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, true, 'move')
-      return Promise.resolve(true)
-    }
+  function switchTarget(id: string, target: ConversationSummary['target']): Promise<boolean> {
     return changeConversations(
       [id],
-      async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, 'move')).success,
+      async () => (await applyBatch([id], { target }, false, 'move')).success,
       false,
     )
-  }
-
-  /**
-   * Moves a conversation whose agent works: stops the work, and sends the
-   * move only once the session says it is idle, since the backend refuses a
-   * move while the tree is busy. A turn that ended meanwhile moves at once.
-   */
-  async function switchTargetAfterStop(
-    conversation: Conversation,
-    target: ConversationSummary['target'],
-    notifyAgent: boolean,
-  ): Promise<boolean> {
-    return await stopWork(conversation) && switchTarget(conversation.id, target, notifyAgent)
   }
 
   function stopAll(): void {
@@ -3547,7 +3430,6 @@ export const useConversations = defineStore('conversations', () => {
     restore,
     remove,
     switchTarget,
-    switchTargetAfterStop,
     pendingChanges,
     detachHost: (conversation: Conversation, deviceId: string) =>
       changeConversations(
