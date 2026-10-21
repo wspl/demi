@@ -341,7 +341,7 @@ async fn resume_after_a_failure_that_followed_a_tool_continues_after_its_result(
         ]
     );
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     assert_eq!(runs.get(), 1);
     assert_eq!(
@@ -378,7 +378,7 @@ async fn resume_of_a_turn_that_produced_nothing_reruns_it_without_a_resume_block
     let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
     assert!(session.send(text("go"), turn("t1")).unwrap().await.is_err());
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     let blocks = session.transcript().blocks;
     assert_eq!(kinds(&blocks), ["user", "text", "response"]);
@@ -418,7 +418,7 @@ async fn retry_reruns_the_last_input_turn_with_its_steers_as_one_replacement() {
         }
     });
 
-    session.retry(None).unwrap().await.unwrap();
+    session.retry().unwrap().await.unwrap();
 
     let blocks = session.transcript().blocks;
     assert_eq!(kinds(&blocks), ["user", "steer", "text", "response"]);
@@ -473,7 +473,7 @@ async fn resume_after_a_stop_marks_the_stop_resumed_and_continues_the_turn() {
     session.abort().await;
     running.await.unwrap();
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     let blocks = session.transcript().blocks;
     assert_eq!(
@@ -517,7 +517,7 @@ async fn a_stop_while_resume_saves_its_unwind_leaves_the_unwind_and_one_marker()
     session.flush().await.unwrap();
     let gate = store.hold_saves();
 
-    let resuming = session.resume(None, None).unwrap();
+    let resuming = session.resume(None).unwrap();
     until(|| gate.waiting() == 1).await;
     let stopping = session.abort();
     tokio::pin!(stopping);

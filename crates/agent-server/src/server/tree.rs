@@ -491,7 +491,6 @@ impl<H: HostResolver> Tree<H> {
         agents.change(root, |entry| {
             entry.phase = session.phase();
             entry.waited_ms = session.waited_ms();
-            entry.wait_action = session.wait_action();
             entry.pending_calls = session.pending_calls();
             entry.queue = session.queued_messages();
             entry.pending_steers = session.pending_steers();
@@ -1171,10 +1170,7 @@ pub(super) fn note_agent(agents: &Agents, id: &NodeId, event: &SessionEvent) {
         }
         SessionEvent::StartingChanged { starting } => agents.change(id, |entry| entry.starting = starting.clone()),
         SessionEvent::PhaseChanged { phase } => agents.change(id, |entry| entry.phase = *phase),
-        SessionEvent::WaitingChanged { waited_ms, action } => agents.change(id, |entry| {
-            entry.waited_ms = *waited_ms;
-            entry.wait_action = action.clone();
-        }),
+        SessionEvent::WaitingChanged { waited_ms } => agents.change(id, |entry| entry.waited_ms = *waited_ms),
         SessionEvent::PendingCallsChanged { pending_calls } => {
             agents.change(id, |entry| entry.pending_calls = pending_calls.clone());
         }

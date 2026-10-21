@@ -194,7 +194,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
         let changes = changes.clone();
         move |event| match event {
             SessionEvent::PhaseChanged { phase } => changes.borrow_mut().push(format!("{phase:?}")),
-            SessionEvent::WaitingChanged { waited_ms, .. } => changes
+            SessionEvent::WaitingChanged { waited_ms } => changes
                 .borrow_mut()
                 .push(if waited_ms.is_some() { "waits" } else { "waits no more" }.to_owned()),
             _ => {}
@@ -716,7 +716,7 @@ async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_kee
         ]
     );
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     // The failure left nothing but its record, so the turn reruns from its
     // message, after the summary; the compaction stays where it was.
@@ -1180,7 +1180,7 @@ async fn a_send_whose_switch_fails_to_compact_keeps_its_message_in_a_turn_that_r
     };
     assert!(!error.outside_turn, "{error:?}");
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     // Resume lands the switch again, and the message reaches the new model.
     let requests = provider.requests();
@@ -1504,7 +1504,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         .unwrap();
     let session = restore_compacting(&store, &provider).await;
 
-    session.retry(None).unwrap().await.unwrap();
+    session.retry().unwrap().await.unwrap();
 
     // Rewound to its message, the history is over the threshold: the pass asks
     // with the rerun's request and the instruction joined to its message, and
@@ -1550,7 +1550,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
     );
 
     let stopped_session = restore_compacting(&store, &provider).await;
-    let retrying = stopped_session.retry(None).unwrap();
+    let retrying = stopped_session.retry().unwrap();
     until(|| provider.requests().len() == 5).await;
     let stopped = stopped_session.abort().await;
 
@@ -1599,7 +1599,7 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     running.await.unwrap();
     let session = restore_compacting(&store, &provider).await;
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     // No request was answered since the last pass, so the window ends before
     // the stopped message: the pass summarizes the summary and the answer kept
@@ -1661,7 +1661,7 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     assert!(matches!(&blocks[8], Block::Abort(abort) if abort.is_resumed));
 
     let stopped_session = restore_compacting(&store, &provider).await;
-    let resuming = stopped_session.resume(None, None).unwrap();
+    let resuming = stopped_session.resume(None).unwrap();
     until(|| provider.requests().len() == 6).await;
     let stopped = stopped_session.abort().await;
 
@@ -1804,7 +1804,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
         })
         .unwrap();
 
-    session.resume(None, None).unwrap().await.unwrap();
+    session.resume(None).unwrap().await.unwrap();
 
     // One pass, with the model before the switch; the new model continues.
     let requests = provider.requests();

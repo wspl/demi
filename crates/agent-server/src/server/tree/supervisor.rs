@@ -1051,7 +1051,6 @@ impl<H: HostResolver> Tree<H> {
         self.agents.change(child.id(), |entry| {
             entry.phase = session.phase();
             entry.waited_ms = session.waited_ms();
-            entry.wait_action = session.wait_action();
             entry.pending_calls = session.pending_calls();
         });
         self.bump();

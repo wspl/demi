@@ -161,7 +161,7 @@ for (const ending of ['rejected', 'disconnected'] as const) {
 // yet stays uncertain, and fails with the connection's own error.
 test('a connection that ends fails the wait of an action the session took apart from one it has not answered', async () => {
   const h = harness()
-  const answered = h.client.resume('resume-1').catch((error: unknown) => error)
+  const answered = h.client.resume().catch((error: unknown) => error)
   h.phase('running')
   const unanswered = h.client.compact().catch((error: unknown) => error)
   const lost = new Error('The agent socket went silent')
@@ -431,14 +431,14 @@ test('retry, resume and compact resolve when their action ends, and a busy sessi
   h.phase('running')
   h.phase('idle')
   await retry
-  const resume = h.client.resume('resume-1')
+  const resume = h.client.resume()
   const compact = h.client.compact().catch((error: unknown) => error)
   h.phase('running')
   h.receive({ type: 'rejected', command: 'compact', code: 'session_busy', reason: 'Session is busy (running)' })
   expect(await compact).toMatchObject({ message: 'Session is busy (running)', code: 'session_busy' })
   h.phase('idle')
   await resume
-  expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume', id: 'resume-1' }, { type: 'compact' }])
+  expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume' }, { type: 'compact' }])
 })
 
 // A child's context card compacts that child: the frame names it, and the wait

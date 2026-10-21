@@ -325,7 +325,7 @@ pub(super) async fn compacting<T>(
     work: impl Future<Output = Result<T, TurnError>>,
 ) -> Result<T, TurnError> {
     let (before, waiting) = s.update(|core| {
-        let paused = (core.stage(), core.waited_ms().map(|_| core.wait_action()));
+        let paused = (core.stage(), core.waited_ms().is_some());
         core.set_stage(TurnStage::Compacting);
         core.stop_waiting();
         paused
@@ -334,8 +334,8 @@ pub(super) async fn compacting<T>(
     if let Some(stage) = before {
         s.update(|core| {
             core.set_stage(stage);
-            if let Some(action) = waiting {
-                core.start_waiting(action);
+            if waiting {
+                core.start_waiting();
             }
         });
     }

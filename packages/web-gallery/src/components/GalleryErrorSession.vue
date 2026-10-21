@@ -6,7 +6,6 @@ import { reactive } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
-import { waitClock } from '@demicodes/web-ui/agent/wait-clock'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
@@ -160,12 +159,11 @@ function state(
     queue: [],
     pendingSteers: [], starting: null,
     pendingCalls: [],
-    waitingSince: null, waitAction: null, requestOutput: null, turnSpeed: null,
+    waitingSince: null, requestOutput: null, turnSpeed: null,
     phase: 'idle',
     load: 'ready',
     lastError: null,
     pendingAction: null,
-    waitClock: waitClock(),
     failures: {},
     archived: false,
     scroll: null,

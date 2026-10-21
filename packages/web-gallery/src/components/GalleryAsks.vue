@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { pressed, serverWaits, waitClock, type WaitClock } from '@demicodes/web-ui/agent/wait-clock'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { Block, MessageComment } from '@demicodes/protocol'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -64,10 +63,6 @@ interface GallerySide {
   working: boolean
   /** When its turn began to wait for the model, as the server would tell it; null when it waits for none. */
   waitingSince: number | null
-  /** The action whose start began that wait, as the server would tell it; null for none. */
-  waitAction: string | null
-  /** The presses of its question, follow-ups and Retries, whose waits the specimen's server tells at once. */
-  waitClock: WaitClock
   script: AskScript
   turns: number
 }
@@ -98,24 +93,18 @@ function sideOf(id: string): GallerySide | undefined {
   return sides.value.find((side) => side.question.id === id)
 }
 
-/** The server tells the side's wait, begun by the page's action `action` or by none. */
-function tellWait(side: GallerySide, since: number | null, action: string | null = null): void {
+/** The server tells the side's wait, from `since`, or that it waits for none. */
+function tellWait(side: GallerySide, since: number | null): void {
   side.waitingSince = since
-  side.waitAction = since === null ? null : action
-  serverWaits(side.waitClock, side.waitAction)
 }
 
-/**
- * The page's action `action` on the side question `id`: its turn works
- * through its script's steps, then answers, or fails when `fails`.
- */
-function work(id: string, action: string, fails = false): void {
+/** Its turn works through its script's steps, then answers, or fails when `fails`. */
+function work(id: string, fails = false): void {
   const side = sideOf(id)
   if (!side)
     return
-  pressed(side.waitClock, action)
   side.working = true
-  tellWait(side, Date.now(), action)
+  tellWait(side, Date.now())
   const turn = side.turns - 1
   // The small model titles the side conversation from its first question while the answer is made.
   if (side.question.title === null)
@@ -140,8 +129,6 @@ function start(question: NewSideQuestion): GallerySide {
     blocks: [...askHistory()],
     working: false,
     waitingSince: null,
-    waitAction: null,
-    waitClock: waitClock(),
     script: askScript(question.question, asked++),
     turns: 1,
   }
@@ -160,15 +147,13 @@ const asking: ReplyAsking = {
       activity: {
         pendingCalls: [],
         waitingSince: side.waitingSince,
-        waitAction: side.waitAction,
-        waitClock: side.waitClock,
-        sentAction: null,
+        actionSent: false,
       },
     }))
   },
   ask: (question) => {
     start(question)
-    work(question.id, question.id)
+    work(question.id)
   },
   followUp: (id, text) => {
     const side = sideOf(id)
@@ -177,14 +162,14 @@ const asking: ReplyAsking = {
     side.blocks.push(askMessage(id, side.turns, side.question.quote, text))
     side.turns += 1
     side.script = askScript(text, asked++)
-    work(id, `follow-up-${asked}`)
+    work(id)
   },
   retry: (id) => {
     const side = sideOf(id)
     if (!side)
       return
     side.blocks = side.blocks.filter((block) => block.type !== 'error')
-    work(id, `retry-${asked++}`)
+    work(id)
   },
   fold: (id, folded) => {
     const side = sideOf(id)

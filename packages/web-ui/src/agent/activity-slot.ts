@@ -13,10 +13,9 @@ export type ActivityKind = 'connecting' | 'requesting'
 
 /**
  * An action the client sent whose acknowledgement (the next `phase` event)
- * has not arrived, with the id the page named it by. The tail row says
- * Requesting meanwhile.
+ * has not arrived. The tail row says Requesting meanwhile, with no time.
  */
-export type PendingAction = { kind: 'resume', id: string } | null
+export type PendingAction = 'resume' | null
 
 export interface ActivitySlotInput {
   load: SessionLoad
@@ -29,7 +28,7 @@ export interface ActivitySlotInput {
   /**
    * An action of this page's own other than a message, a recovery or a side
    * question's question, follow-up or Retry, is on its way: the server has
-   * not shown that it has it yet.
+   * not answered it yet.
    */
   actionSent: boolean
   /**

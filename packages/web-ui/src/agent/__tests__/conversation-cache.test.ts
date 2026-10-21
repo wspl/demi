@@ -3,13 +3,12 @@ import { deferred } from '@demicodes/utils'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { ConversationCache } from '../conversation-cache'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
-import { waitClock } from '../wait-clock'
 import { agentsFrame, clientHarness, rootEntry } from './agent-harness'
 
 function fixture(id: string) {
   const state: RuntimeState = {
     id, history: EMPTY_TRANSCRIPT, shownAt: null, phase: 'idle', queue: [], pendingSteers: [], starting: null, pendingCalls: [], waitingSince: null, requestOutput: null,
-    lastError: null, load: 'loading', pendingAction: null, waitClock: waitClock(), waitAction: null,
+    lastError: null, load: 'loading', pendingAction: null,
     failures: {}, contextUsage: null,
   }
   const harnesses: ReturnType<typeof clientHarness>[] = []

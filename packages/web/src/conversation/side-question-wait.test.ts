@@ -16,6 +16,7 @@ const { default: SideQuestionWindow } = await import('@demicodes/web-ui/agent/co
 const { default: DockWindowArea } = await import('@demicodes/web-ui/agent/DockWindowArea.vue')
 const { drawn, settled, tailRow } = await import('@demicodes/web-ui/agent/__tests__/drawn-list')
 const { providerWaitLabel } = await import('@demicodes/web-ui/agent/thinking-label')
+const { t } = await import('@demicodes/web-ui/agent/locales/text')
 const { NO_COST } = await import('@demicodes/web-ui/agent/context-cost')
 const { conversationSummary, productState } = await import('../__tests__/product-state')
 const { playChannels } = await import('../__tests__/sync-channel')
@@ -80,7 +81,7 @@ const question = { ...words, title: null, folded: false, askedAt: '2026-10-21T08
 /** The side question's entry among the conversation's agents. */
 function entry(parts: Partial<AgentEntry> = {}): AgentEntry {
   return {
-    id: SIDE, role: { kind: 'side', ...question }, phase: 'idle', waitedMs: null, waitAction: null, pendingCalls: [],
+    id: SIDE, role: { kind: 'side', ...question }, phase: 'idle', waitedMs: null, pendingCalls: [],
     context: null, cost: NO_COST, queue: [], pendingSteers: [], starting: null, ...parts,
   }
 }
@@ -91,7 +92,7 @@ const taken = () => Promise.resolve(Response.json({ id: SIDE, sideQuestion: ques
 /** The user asks the side question, and the backend takes it. */
 async function asked(shown: Conversation): Promise<void> {
   useSideQuestions().asking(shown, () => {}).ask(newQuestion)
-  await waitFor(() => shown.sides[0]?.sent?.heldWhenTaken != null, () => 'the backend took the question')
+  await waitFor(() => shown.sides[0]?.sent?.taken === true, () => 'the backend took the question')
 }
 
 /** The conversation as the page holds it, its agents at revision 1, without the side question. */
@@ -134,14 +135,20 @@ function openWindow(shown: Conversation): { row: () => Promise<string | null>, t
 // The window opened right after the press, before the backend answered and
 // before the page holds any of the side question's transcript. Before, the
 // window drew no list until its first question was held, so the Requesting
-// row had nowhere to show.
-test('a side question\'s window opened right after the press says Requesting from the press', async () => {
+// row had nowhere to show. It shows no time until the server tells the wait,
+// then the server's.
+test('a side question\'s window opened right after the press says Requesting, then the server\'s count', async () => {
   const shown = conversation()
   answers.push(() => new Promise(() => {}))
   now.mockReturnValue(PRESS)
   useSideQuestions().asking(shown, () => {}).ask(newQuestion)
   now.mockReturnValue(PRESS + 2_000)
-  expect(await openWindow(shown).row()).toBe(providerWaitLabel(2_000))
+  const window = openWindow(shown)
+  expect(await window.row()).toBe(t('transcript.thinking.requesting'))
+
+  now.mockReturnValue(PRESS + 5_000)
+  takeAgents(shown, [entry({ phase: 'running', waitedMs: 3_000 })], { epoch: 'e', revision: 2 }, Date.now(), true)
+  expect(await window.row()).toBe(providerWaitLabel(3_000))
 })
 
 // The question goes while the socket is away, the backend takes it, and its
@@ -155,9 +162,9 @@ test('a side question whose whole turn ran while the socket was away shows no Re
   now.mockReturnValue(PRESS)
   await asked(shown)
   const window = openWindow(shown)
-  // Taken, though the socket has not shown it yet: Requesting from the press.
-  now.mockReturnValue(PRESS + 1_000)
-  expect(await window.row()).toBe(providerWaitLabel(1_000))
+  // Taken, though the socket has not shown it yet: Requesting, without a time.
+  now.mockReturnValue(PRESS + 5_000)
+  expect(await window.row()).toBe(t('transcript.thinking.requesting'))
 
   now.mockReturnValue(PRESS + 40_000)
   takeAgents(shown, [entry()], { epoch: 'e', revision: 4 }, Date.now(), true)

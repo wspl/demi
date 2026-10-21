@@ -45,7 +45,6 @@ import { runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { workToStop } from '@demicodes/web-ui/hosts/move-question'
 import { runningTerminals } from '@demicodes/web-ui/agent/terminals'
 import { agentWorks, chooseSendWay, markSent, markWithdrawn, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
-import { pressed, refused, waitClock } from '@demicodes/web-ui/agent/wait-clock'
 import {
   applyAttachmentUpdate,
   composerAttachmentFromFile,
@@ -447,7 +446,6 @@ export const useConversations = defineStore('conversations', () => {
       starting: null,
       pendingCalls: [],
       waitingSince: null,
-      waitAction: null,
       requestOutput: null,
       model: local.model ?? initialModelSettings(),
       workflow: local.workflow ?? { type: 'default' },
@@ -471,7 +469,6 @@ export const useConversations = defineStore('conversations', () => {
       terminals: [],
       load: 'loading',
       pendingAction: null,
-      waitClock: waitClock(),
       failures: {},
       contextUsage: null,
       cost: NO_COST,
@@ -954,11 +951,9 @@ export const useConversations = defineStore('conversations', () => {
     }
     // Each message still on its way goes again with its id once the session
     // is open, which takes it once: one the backend already holds is not
-    // sent twice, and only its answer ends it, taken or refused. The press
-    // went with the page that made it: each is pressed now.
+    // sent twice, and only its answer ends it, taken or refused.
     for (const pending of conversation.pendingSends) {
       if (pending.error === null) {
-        pressed(conversation.waitClock, pending.id)
         void deliverInOrder(conversation, pending)
       }
     }
@@ -1471,7 +1466,6 @@ export const useConversations = defineStore('conversations', () => {
     conversation.starting = null
     conversation.pendingCalls = []
     conversation.waitingSince = null
-    conversation.waitAction = null
     conversation.requestOutput = null
     conversation.contextUsage = null
     conversation.terminals = []
@@ -2819,10 +2813,6 @@ export const useConversations = defineStore('conversations', () => {
    */
   function sentNow(conversation: Conversation, id: string): void {
     markSent(conversation.pendingSends, id, (message) => message.followers.some((each) => isWritten(conversation, each)))
-    // Each message is pressed: one that starts a turn, at once or once the
-    // turn before it ended, as a steer still on its way then does, makes the
-    // agent wait from its press.
-    pressed(conversation.waitClock, id)
   }
 
   /** Delivers the message once the conversation's messages sent before it are delivered or failed. */
@@ -2897,8 +2887,6 @@ export const useConversations = defineStore('conversations', () => {
             pending.requestId = requestId
           }
         }
-        // A message that starts the turn in its place waits from its own press.
-        refused(conversation.waitClock, pending.id)
       }
     }
     if (!signal.aborted) {

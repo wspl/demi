@@ -535,13 +535,14 @@ impl<H: HostResolver> Connection<H> {
                     tree.abort_child(&subagent_id).await;
                 }
             }
-            ClientFrame::Retry {} => self.recover(session, kind, None).await,
-            ClientFrame::Resume { id } => self.recover(session, kind, id).await,
+            ClientFrame::Retry {} | ClientFrame::Resume {} => {
+                self.recover(session, kind).await;
+            }
             // A subagent's context card compacts that child, the root's the root.
             ClientFrame::Compact { node } => match node {
-                None => self.recover(session, kind, None).await,
+                None => self.recover(session, kind).await,
                 Some(id) => match tree.node(&id) {
-                    Some(node) => self.recover(node.session(), kind, None).await,
+                    Some(node) => self.recover(node.session(), kind).await,
                     None => self.reject(kind, agent_ended()),
                 },
             },
@@ -601,9 +602,8 @@ impl<H: HostResolver> Connection<H> {
 
 impl<H: HostResolver> Connection<H> {
     /// Retries or resumes the root's session, or compacts a node's,
-    /// refusing while it is busy; a resume runs as the action `id` its
-    /// frame named, if any.
-    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind, id: Option<TurnId>) {
+    /// refusing while it is busy; a resume carries `reason` to the model.
+    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind) {
         if let Some(refusal) = busy(session) {
             self.reject(kind, refusal);
             return;
@@ -622,8 +622,8 @@ impl<H: HostResolver> Connection<H> {
             }
         }
         let admitted = match kind {
-            ClientFrameKind::Retry => session.retry(None),
-            ClientFrameKind::Resume => session.resume(None, id),
+            ClientFrameKind::Retry => session.retry(),
+            ClientFrameKind::Resume => session.resume(None),
             _ => session.compact(),
         };
         if let Err(error) = admitted {

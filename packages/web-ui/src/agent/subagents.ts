@@ -103,7 +103,7 @@ export function agentCompaction(agent: SubagentRecord): { compacting: boolean, u
  * of its own, so no wait of it counts from a press of the page's.
  */
 export function subagentActivity(agent: Pick<SubagentRecord, 'pendingCalls' | 'waitingSince'>): AgentActivity {
-  return { pendingCalls: agent.pendingCalls, waitingSince: agent.waitingSince, waitAction: null, sentAction: null }
+  return { pendingCalls: agent.pendingCalls, waitingSince: agent.waitingSince, actionSent: false }
 }
 
 /** What a child's entry sets on its record: all of it but what the page holds of its transcript. */

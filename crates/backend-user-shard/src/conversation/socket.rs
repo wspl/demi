@@ -367,7 +367,7 @@ impl Shard {
     /// conversation; it refuses it, for example, for an archived
     /// conversation.
     pub(crate) async fn resume_admitted(&self, conversation: &ConversationId) -> Result<bool, StorageError> {
-        let prepared = self.prepare_frame(conversation, &ClientFrame::Resume { id: None }).await?;
+        let prepared = self.prepare_frame(conversation, &ClientFrame::Resume {}).await?;
         Ok(matches!(prepared, Prepared::Deliver))
     }
 

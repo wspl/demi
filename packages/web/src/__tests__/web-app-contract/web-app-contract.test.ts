@@ -724,7 +724,7 @@ test('Stop ends the running turn with its pending steer written, and Continue go
     // Continue is admitted once the session is idle, after the stopped
     // turn's save; the answer to Stop comes before.
     await stopped
-    await client.resume(crypto.randomUUID())
+    await client.resume()
     const blocks = transcriptOf(client)
     expect(blocks.find((block) => block.type === 'abort')).toMatchObject({ isResumed: true })
     expect(blocks.at(-2)).toMatchObject({ type: 'text', text: 'Continuing with the steer.' })

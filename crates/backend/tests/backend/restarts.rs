@@ -204,7 +204,7 @@ async fn with_the_preference_off_the_root_waits_for_the_users_resume_and_its_chi
     })
     .await;
     assert_eq!(world.root_asked().len(), 2, "the root waits for the user");
-    socket.send(&ClientFrame::Resume { id: None }).await;
+    socket.send(&ClientFrame::Resume {}).await;
     socket.until_idle().await;
     let asked = world.root_asked();
     assert_eq!(asked.len(), 3);

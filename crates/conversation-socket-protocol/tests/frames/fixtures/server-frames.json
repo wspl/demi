@@ -216,7 +216,6 @@
         },
         "phase": "running",
         "waitedMs": 1500,
-        "waitAction": "turn-1",
         "pendingCalls": [],
         "context": {
           "tokens": 23000,
@@ -345,7 +344,6 @@
         },
         "phase": "idle",
         "waitedMs": null,
-        "waitAction": null,
         "pendingCalls": [],
         "context": null,
         "cost": {
@@ -383,7 +381,6 @@
         },
         "phase": "idle",
         "waitedMs": null,
-        "waitAction": null,
         "pendingCalls": [],
         "context": null,
         "cost": {
@@ -441,7 +438,6 @@
         },
         "phase": "idle",
         "waitedMs": null,
-        "waitAction": null,
         "pendingCalls": [],
         "context": null,
         "cost": {
@@ -476,7 +472,6 @@
       },
       "phase": "running",
       "waitedMs": 1500,
-      "waitAction": "turn-1",
       "pendingCalls": [],
       "context": {
         "tokens": 23000,

@@ -403,11 +403,9 @@ pub enum SessionEvent {
         pending_calls: Vec<PendingCall>,
     },
     /// The node began to wait for the model's answer, with how long it has
-    /// waited and the action whose start began it, if any
-    /// ([`AgentSession::wait_action`]), or its wait ended.
+    /// waited, or its wait ended.
     WaitingChanged {
         waited_ms: Option<u64>,
-        action: Option<TurnId>,
     },
     /// The output of the turn's latest request changed: it started, it
     /// streamed more, it ended, or the turn ended, which leaves none.
@@ -859,16 +857,6 @@ impl AgentSession {
         self.shared.read(SessionCore::waited_ms)
     }
 
-    /// The action whose start began the wait, while the node waits: a
-    /// message's id, or the id a retry's or a resume's request named, when
-    /// the action started as it was admitted. The page that sent it counts
-    /// the wait from its own press. None for a wait within a turn, as after
-    /// a call's result or a steer sent now, and for an action that waited
-    /// behind another.
-    pub fn wait_action(&self) -> Option<TurnId> {
-        self.shared.read(SessionCore::wait_action)
-    }
-
     /// The output of the turn's latest request, while a turn runs.
     pub fn request_output(&self) -> Option<RequestOutput> {
         self.shared.read(SessionCore::request_output)
@@ -1061,27 +1049,21 @@ impl AgentSession {
         self.shared.update(|core| core.admit_send(message))
     }
 
-    /// Rewinds the last input turn and runs it again, as the action `id`
-    /// when the request named one ([`AgentSession::wait_action`]).
-    pub fn retry(&self, id: Option<TurnId>) -> Result<ActionHandle, AdmissionError> {
-        self.shared.update(|core| core.admit(ActionKind::Retry, id))
+    /// Rewinds the last input turn and runs it again.
+    pub fn retry(&self) -> Result<ActionHandle, AdmissionError> {
+        self.shared.update(|core| core.admit(ActionKind::Retry))
     }
 
-    /// Unwinds the unfinished turn to its resume point and continues it, as
-    /// the action `id` when the request named one
-    /// ([`AgentSession::wait_action`]).
+    /// Unwinds the unfinished turn to its resume point and continues it.
     ///
     /// `reason`, when given, is what the model reads before it goes on: Demi's
     /// own for a resume of its own, such as a subagent's after a backend
     /// restart.
-    pub fn resume(&self, reason: Option<&str>, id: Option<TurnId>) -> Result<ActionHandle, AdmissionError> {
+    pub fn resume(&self, reason: Option<&str>) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| {
-            core.admit(
-                ActionKind::Resume {
-                    reason: reason.map(str::to_owned),
-                },
-                id,
-            )
+            core.admit(ActionKind::Resume {
+                reason: reason.map(str::to_owned),
+            })
         })
     }
 
@@ -1127,7 +1109,7 @@ impl AgentSession {
 
     /// Runs one compaction pass.
     pub fn compact(&self) -> Result<ActionHandle, AdmissionError> {
-        self.shared.update(|core| core.admit(ActionKind::Compact, None))
+        self.shared.update(|core| core.admit(ActionKind::Compact))
     }
 
     pub fn dequeue_message(&self, id: &TurnId) -> bool {

@@ -6,7 +6,6 @@ import type { SessionLoad } from '../session-status'
 import { turnStartingMessage } from '../send-way'
 import type { PendingSubmissionState } from '../types'
 import { useActivitySlot, type ActivitySlotSources } from '../useActivitySlot'
-import { pressed, refused, serverWaits, waitClock, type WaitClock } from '../wait-clock'
 
 function kind(options: {
   load?: SessionLoad
@@ -69,9 +68,7 @@ interface Conversation {
   load: SessionLoad
   pendingSubmissions: PendingSubmissionState[]
   waitingSince: number | null
-  waitAction: string | null
-  sentAction: string | null
-  clock: WaitClock
+  actionSent: boolean
 }
 
 function slotOver(phase: SessionPhase, opened = 0) {
@@ -81,9 +78,7 @@ function slotOver(phase: SessionPhase, opened = 0) {
     load: 'ready',
     pendingSubmissions: [],
     waitingSince: null,
-    waitAction: null,
-    sentAction: null,
-    clock: waitClock(),
+    actionSent: false,
   })
   const scope = effectScope()
   const { slot } = scope.run(() => useActivitySlot(sourcesOf(conversation)))!
@@ -107,9 +102,7 @@ function sourcesOf(conversation: Conversation): ActivitySlotSources {
     activity: () => ({
       pendingCalls: [],
       waitingSince: conversation.waitingSince,
-      waitAction: conversation.waitAction,
-      waitClock: conversation.clock,
-      sentAction: conversation.sentAction,
+      actionSent: conversation.actionSent,
     }),
   }
 }
@@ -118,25 +111,11 @@ function sent(id = 'turn-1', error: string | null = null): PendingSubmissionStat
   return { id, way: 'send', text: 'hello', attachments: [], error }
 }
 
-// What the page's actors do, which the row reads: the store presses each
-// message as it is sent, and again at its Retry, and the runtime takes the
-// wait the server tells, with the action that began it.
 function sending(conversation: Conversation, messages: PendingSubmissionState[]): void {
-  for (const message of messages) {
-    const before = conversation.pendingSubmissions.find((each) => each.id === message.id)
-    if (message.error === null && (before === undefined || before.error !== null)) {
-      pressed(conversation.clock, message.id)
-    }
-  }
   conversation.pendingSubmissions = messages
 }
-function serverTells(conversation: Conversation, since: number | null, action: string | null = null): void {
-  conversation.waitingSince = since
-  conversation.waitAction = since === null ? null : action
-  serverWaits(conversation.clock, conversation.waitAction)
-}
 
-test('a message sent to an idle conversation says Requesting from the press, through its confirmation, on one clock', async () => {
+test('a message sent to an idle conversation says Requesting without a time until the server tells its wait, then the server\'s', async () => {
   using session = slotOver('idle')
   const { conversation, slot, at } = session
   expect(slot.value).toBeNull()
@@ -144,28 +123,29 @@ test('a message sent to an idle conversation says Requesting from the press, thr
   at(5_000)
   sending(conversation, [sent()])
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
-
-  // The backend starts the turn, and its wait, which names the message,
-  // before it writes the message.
-  at(6_000)
-  conversation.phase = 'running'
-  serverTells(conversation, 5_400, 'turn-1')
+  expect(slot.value).toEqual({ kind: 'requesting', since: null })
+  at(7_000)
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: null })
+
+  // The backend starts the turn, and its wait, before it writes the message.
+  conversation.phase = 'running'
+  conversation.waitingSince = 5_400
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_400 })
 
   // The message's block confirms it; the page drops the pending message.
   at(8_000)
   conversation.pendingSubmissions = []
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_400 })
 })
 
 test('a view shown during a wait counts from the start the server tells, not from when it opened', async () => {
   // A subagent's request had waited eight minutes when its view opened.
   using session = slotOver('running', 600_000)
   const { conversation, slot, at } = session
-  serverTells(conversation, 120_000)
+  conversation.waitingSince = 120_000
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 120_000 })
 
@@ -182,119 +162,54 @@ test('a running turn the server tells no wait for shows no Requesting', async ()
   const { conversation, slot } = session
   await nextTick()
   expect(slot.value).toBeNull()
-  serverTells(conversation, 0)
+  conversation.waitingSince = 0
   await nextTick()
   expect(slot.value?.kind).toBe('requesting')
-  serverTells(conversation, null)
+  conversation.waitingSince = null
   await nextTick()
   expect(slot.value).toBeNull()
 })
 
-// The request after a call's result, and the one a steer sent now starts
-// again, are waits no press began: the server names no action for them, and
-// the row counts from its start, as every other page does.
-test('a wait within the turn counts from the server\'s start, the message\'s from its press', async () => {
+test('a recovery this page asked for says Requesting without a time until the server tells its wait', async () => {
   using session = slotOver('idle')
-  const { conversation, slot, at } = session
-  at(5_000)
-  sending(conversation, [sent()])
-  at(6_000)
-  conversation.phase = 'running'
-  serverTells(conversation, 5_400, 'turn-1')
-  conversation.pendingSubmissions = []
+  const { conversation, slot } = session
+  conversation.actionSent = true
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
-
-  at(9_000)
-  serverTells(conversation, null)
-  await nextTick()
-  expect(slot.value).toBeNull()
-  at(20_100)
-  serverTells(conversation, 20_000)
-  await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 20_000 })
-  at(79_400)
-  serverTells(conversation, 79_400)
-  await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 79_400 })
-})
-
-// Switching to another conversation and back draws the list again. Before,
-// each list counted a wait it was not told the start of from when it was
-// drawn, so the clock went back to 0s at every return, while the same
-// request went on.
-test('a list drawn again during a wait counts on from the wait\'s start', async () => {
-  using session = slotOver('idle')
-  const { conversation, at } = session
-  const drawn = async (ms: number) => {
-    at(ms)
-    const scope = effectScope()
-    const { slot } = scope.run(() => useActivitySlot(sourcesOf(conversation)))!
-    await nextTick()
-    const shown = slot.value
-    scope.stop()
-    return shown
-  }
-  at(5_000)
-  sending(conversation, [sent()])
-  expect(await drawn(5_000)).toEqual({ kind: 'requesting', since: 5_000 })
-  expect(await drawn(7_000)).toEqual({ kind: 'requesting', since: 5_000 })
-  conversation.phase = 'running'
-  serverTells(conversation, 5_400, 'turn-1')
-  expect(await drawn(8_000)).toEqual({ kind: 'requesting', since: 5_000 })
-  conversation.pendingSubmissions = []
-  expect(await drawn(30_000)).toEqual({ kind: 'requesting', since: 5_000 })
-  serverTells(conversation, 40_000)
-  expect(await drawn(52_000)).toEqual({ kind: 'requesting', since: 40_000 })
-})
-
-test('a recovery this page asked for counts from the press, also once the server tells its wait', async () => {
-  using session = slotOver('idle')
-  const { conversation, slot, at } = session
-  at(3_000)
-  pressed(conversation.clock, 'resume-1')
-  conversation.sentAction = 'resume-1'
-  await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 3_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: null })
   // The root's entry acknowledges it: the runtime takes its phase and its
   // wait, then settles the action.
-  at(3_500)
   conversation.phase = 'running'
-  serverTells(conversation, 3_200, 'resume-1')
-  conversation.sentAction = null
+  conversation.waitingSince = 3_200
+  conversation.actionSent = false
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 3_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 3_200 })
 })
 
-test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
+test('a failed delivery ends the wait, and Retry says Requesting again', async () => {
   using session = slotOver('idle')
-  const { conversation, slot, at } = session
+  const { conversation, slot } = session
   sending(conversation, [sent()])
   await nextTick()
-  conversation.pendingSubmissions = [sent('turn-1', 'Connection closed before confirmation')]
-  refused(conversation.clock, 'turn-1')
+  sending(conversation, [sent('turn-1', 'Connection closed before confirmation')])
   await nextTick()
   expect(slot.value).toBeNull()
 
-  at(9_000)
   sending(conversation, [sent()])
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 9_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: null })
 })
 
-test('a message sent while the socket reconnects says Connecting, and Requesting from the press once the socket is back', async () => {
+test('a message sent while the socket reconnects says Connecting, and Requesting once the socket is back', async () => {
   using session = slotOver('idle')
-  const { conversation, slot, at } = session
+  const { conversation, slot } = session
   conversation.load = 'reconnecting'
-  at(5_000)
   sending(conversation, [sent()])
   await nextTick()
   expect(slot.value).toEqual({ kind: 'connecting' })
 
-  at(12_000)
   conversation.load = 'ready'
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: null })
 })
 
 // Back-to-back sends 400 ms apart, the first one failing. The composer's Stop
