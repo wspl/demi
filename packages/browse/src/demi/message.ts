@@ -66,6 +66,11 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
       throw new Failure(`The composer did not take every file of ${files.join(', ')}; the page says why`)
     })
   }
+  // The rows of messages on their way (`list-tail.ts`), each by its submission's id, which the
+  // row of its delivery failure carries too. Those the list shows before the send are earlier
+  // messages'; this one's is the newest after it.
+  const pending = page.locator(`[data-block-id^="${PENDING}"]`)
+  const earlier = new Set(await blockIds(pending))
   await composer.press('Enter')
   await conversationAddress(page)
   const id = conversationId(page)
@@ -75,13 +80,23 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
   if (options.wait === false) {
     return { conversation: id, turn: null }
   }
-  // The notice a message the page could not deliver shows (`AgentMessageVirtualBlock`).
-  const undelivered = page.locator('[data-delivery-failure]').getByRole('alert')
+  // This message's submission, once its row showed; a message delivered before its row was
+  // seen has none, and no failure to tell.
+  let submission: string | null = null
   const end = await waitSummary(slot, page, id, {
     ended: (summary) => summary.lastTurn !== null && summary.lastTurn.id !== before,
     what: 'the turn of the message to end',
     timeoutMs: options.timeout ?? TURN_MS,
     check: async () => {
+      submission ??= (await blockIds(pending)).filter((row) => !earlier.has(row)).at(-1)?.slice(PENDING.length) ?? null
+      if (submission === null) {
+        return
+      }
+      // The notice a message the page could not deliver shows (`AgentMessageVirtualBlock`).
+      const undelivered = page
+        .locator(`[data-block-id=${JSON.stringify(`${UNDELIVERED}${submission}`)}]`)
+        .locator('[data-delivery-failure]')
+        .getByRole('alert')
       if (await undelivered.isVisible()) {
         throw new Failure(`Conversation ${id}: ${await noticeText(undelivered)}`)
       }
@@ -96,6 +111,15 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
       : `The turn of the message failed in conversation ${id}, and the page shows no error for it`)
   }
   return { conversation: id, turn: end }
+}
+
+/** What the list's row ids of a message on its way and of its delivery failure start with (`list-tail.ts`). */
+const PENDING = 'pending-submission:'
+const UNDELIVERED = 'delivery-failure:'
+
+/** The list's row ids of `rows`, in the list's order. */
+function blockIds(rows: Locator): Promise<string[]> {
+  return rows.evaluateAll((elements) => elements.map((element) => element.getAttribute('data-block-id') ?? ''))
 }
 
 /** A notice's text on one line: its sentence and the reason under it, without its controls' labels. */

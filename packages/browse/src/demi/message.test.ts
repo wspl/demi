@@ -23,11 +23,15 @@ const HELPING = '00000000-0000-4000-8000-000000000003'
 const ON_ITS_WAY = '00000000-0000-4000-8000-000000000004'
 const ATTACHING = '00000000-0000-4000-8000-000000000005'
 const DRAFTED = '00000000-0000-4000-8000-000000000006'
+const RETRIED = '00000000-0000-4000-8000-000000000007'
+const UNMOUNTED = '00000000-0000-4000-8000-000000000008'
 
 /** What the backend holds: a conversation is there once its message was delivered. */
 const conversations = new Map<string, { summary: ConversationSummary, lastTurn: LastTurn }>([
   held(HELPING, 'Helping', { revision: 1 }, { id: 'block-1', outcome: 'finished' }),
   held(ON_ITS_WAY, 'On its way', { revision: 1 }, { id: 'block-1', outcome: 'finished' }),
+  held(RETRIED, 'Retried', { revision: 1 }, { id: 'block-1', outcome: 'finished' }),
+  held(UNMOUNTED, 'Unmounted', { revision: 1 }, { id: 'block-1', outcome: 'finished' }),
 ])
 
 /** A conversation the backend holds, with its root's latest ended turn. */
@@ -41,26 +45,36 @@ function held(
 }
 
 /**
- * The page of a conversation: a composer whose Enter sends, the Requesting
- * row and the composer's Stop from the send until the backend answers, and
- * the notice the send answers with.
+ * The page of a conversation: a composer whose Enter sends, the message's
+ * row on its way with its submission's id as the list's rows carry it, the
+ * Requesting row and the composer's Stop from the send until the backend
+ * answers, and the notice the send answers with, in which `SUBMISSION`
+ * stands for the message's submission. A row marked
+ * `data-unmounted-on-send` leaves the page at the send, as the list unmounts
+ * a row that scrolls out of view.
  */
 const PAGE = `<!doctype html>
 <div><textarea data-composer aria-label="メッセージ"></textarea></div>
 <div id="flow"></div>
+<div id="wait"></div>
 <script>
   const composer = document.querySelector('textarea')
   composer.addEventListener('keydown', async (event) => {
     if (event.key !== 'Enter') return
     event.preventDefault()
+    const submission = crypto.randomUUID()
     const flow = document.getElementById('flow')
+    const wait = document.getElementById('wait')
+    for (const row of document.querySelectorAll('[data-unmounted-on-send]')) row.remove()
+    flow.insertAdjacentHTML('beforeend', '<div data-block-id="pending-submission:' + submission + '"></div>')
     const stop = document.createElement('button')
     stop.setAttribute('aria-label', '停止')
     stop.setAttribute('data-composer-stop', '')
     composer.after(stop)
-    flow.innerHTML = '<div data-transcript-wait="requesting"><span>リクエスト中</span></div>'
+    wait.innerHTML = '<div data-transcript-wait="requesting"><span>リクエスト中</span></div>'
     const answer = await fetch(location.pathname + '/send', { method: 'POST', body: composer.value })
-    flow.innerHTML = await answer.text()
+    wait.innerHTML = ''
+    flow.insertAdjacentHTML('beforeend', (await answer.text()).replaceAll('SUBMISSION', submission))
     stop.remove()
   })
 </script>`
@@ -119,6 +133,11 @@ function notice(label: string, detail: string, action: string): string {
   return `<div role="alert"><p>${label}</p><p>${detail}</p><button>${action}</button><button aria-label="Copy"></button></div>`
 }
 
+/** The list's row of the delivery failure of the message `submission`, for `detail`; `marks` go on the row. */
+function failureRow(submission: string, detail: string, marks = ''): string {
+  return `<div data-block-id="delivery-failure:${submission}" ${marks}><div data-delivery-failure>${notice('このメッセージは送信されませんでした。', detail, '再試行')}</div></div>`
+}
+
 const server = Bun.serve({
   port: 0,
   hostname: '127.0.0.1',
@@ -149,7 +168,7 @@ const server = Bun.serve({
     }
     if (path === `/chat/${UNDELIVERED}/send`) {
       // The backend refused the creation: it holds no conversation, and the page says so.
-      return new Response(`<div data-delivery-failure>${notice('このメッセージは送信されませんでした。', 'That device is the conversation’s primary host', '再試行')}</div>`)
+      return new Response(failureRow('SUBMISSION', 'That device is the conversation’s primary host'))
     }
     if (path === `/chat/${FAILING}/send`) {
       conversations.set(...held(FAILING, 'Failing', { revision: 1 }, { id: 'block-1', outcome: 'failed' }))
@@ -162,6 +181,21 @@ const server = Bun.serve({
     if (path.endsWith('/send') && (path.includes(ATTACHING) || path.includes(DRAFTED))) {
       sentMessages.set(path.split('/')[2]!, await request.json())
       messageSent()
+      return new Response('')
+    }
+    if (path === `/chat/${RETRIED}` || path === `/chat/${UNMOUNTED}`) {
+      // An earlier message of the conversation was not delivered, and the page still says so;
+      // in UNMOUNTED its rows scroll out of view at the send.
+      const marks = path.endsWith(UNMOUNTED) ? 'data-unmounted-on-send' : ''
+      const earlier = `<div data-block-id="pending-submission:earlier" ${marks}></div>`
+        + failureRow('earlier', 'No available model for this conversation.', marks)
+      return new Response(PAGE.replace('<div id="flow"></div>', `<div id="flow">${earlier}</div>`), { headers: { 'content-type': 'text/html' } })
+    }
+    if (path === `/chat/${UNMOUNTED}/send`) {
+      return new Response(failureRow('SUBMISSION', 'The device is offline.'))
+    }
+    if (path === `/chat/${RETRIED}/send`) {
+      conversations.set(...held(RETRIED, 'Retried', { revision: 2 }, { id: 'block-2', outcome: 'finished' }))
       return new Response('')
     }
     if (path === `/chat/${HELPING}/send`) {
@@ -226,6 +260,31 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     expect(await failure(FAILING)).toBe(
       `The turn of the message failed in conversation ${FAILING}: プロバイダがエラーを返しました。 Rate limit exceeded`,
     )
+  },
+)
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a message ends with its turn in a conversation that still shows an earlier message not delivered',
+  async () => {
+    const page = await browser!.newPage()
+    await page.goto(`http://127.0.0.1:${server.port}/chat/${RETRIED}`)
+    const end = await messageOn(slot, page, 'Hello again')
+    expect(end).toEqual({
+      conversation: RETRIED,
+      turn: { status: 'idle', revision: 2, lastTurn: { id: 'block-2', outcome: 'finished' } },
+    })
+  },
+)
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a message not delivered fails the call at once though an earlier notice left the list as it appeared',
+  async () => {
+    const page = await browser!.newPage()
+    await page.goto(`http://127.0.0.1:${server.port}/chat/${UNMOUNTED}`)
+    // Waiting for a turn would run into this timeout, with another failure.
+    const failure = await messageOn(slot, page, 'Hello again', { timeout: 3000 })
+      .then(() => 'answered', (error: unknown) => error instanceof Failure ? error.message : String(error))
+    expect(failure).toBe(`Conversation ${UNMOUNTED}: このメッセージは送信されませんでした。 The device is offline.`)
   },
 )
 
