@@ -1353,7 +1353,7 @@ impl AgentSession {
     ///
     /// The seed is captured in one step, with the model a switch the session
     /// accepted would use. The blocks before the window are named as the
-    /// store's rows, which the destination's store copies, under the session's
+    /// store's rows, which the destination's store copies or starts from, under the session's
     /// save order, so no rewrite before the window comes between the capture
     /// and the naming.
     pub async fn prepare_fork(&self, end: ForkEnd<'_>) -> Result<ForkSeed, ForkError> {

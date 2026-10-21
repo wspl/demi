@@ -4,6 +4,12 @@
 //! first block to the leaf, which `path_runs` keeps so a range of positions reads
 //! a range of rows. The runs are derived from the rows and the leaf, and written
 //! with the leaf in the same transaction.
+//!
+//! A node that starts where another node's path is (a side question) has first
+//! runs that name that node's rows, each with its `source`, then runs of its own
+//! rows. The rows before the first of its own are settled, so nothing rewrites
+//! them, their versions are their node's, and a row of its own that follows none
+//! starts at the position where its own rows begin ([`Path::base`]).
 
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -15,12 +21,16 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use super::StorageError;
 use super::columns::decode;
 
+/// The node whose `blocks` rows a run `run` names: the node it starts from
+/// for a run of the rows before the node's own, the node itself otherwise.
+pub(crate) const RUN_NODE: &str = "coalesce(run.source, run.node_id)";
+
 /// The rows of the current path of the node `run.node_id`, as the `FROM` of
 /// a query that names them `run` and `blocks`, each at the position
 /// [`POSITION`]. The runs come first, so a query ordered by `run.start`
 /// and `blocks.idx` reads them in the path's order.
 pub(crate) const PATH_ROWS: &str = "path_runs AS run CROSS JOIN blocks
-  ON blocks.node_id = run.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length";
+  ON blocks.node_id = coalesce(run.source, run.node_id) AND blocks.idx >= run.first AND blocks.idx < run.first + run.length";
 
 /// The position on the path of a row of [`PATH_ROWS`].
 pub(crate) const POSITION: &str = "(run.start + blocks.idx - run.first)";
@@ -29,13 +39,14 @@ pub(crate) const POSITION: &str = "(run.start + blocks.idx - run.first)";
 pub(crate) const PATH_LENGTH: &str =
     "(SELECT coalesce(max(own.start + own.length), 0) FROM path_runs AS own WHERE own.node_id = nodes.id)";
 
-/// One run: the rows `first` to `first + length - 1` at the positions from
-/// `start`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Run {
+/// One run: the rows `first` to `first + length - 1`, of the node's own or of
+/// `source`'s, at the positions from `start`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Run {
     start: i64,
     first: i64,
     length: i64,
+    source: Option<String>,
 }
 
 impl Run {
@@ -54,12 +65,21 @@ pub(crate) struct Path {
     changed_from: Option<i64>,
 }
 
+/// The rows at the positions from `start` that one run of a path holds: the
+/// node that holds them, and their numbers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Segment<'a> {
+    pub start: i64,
+    pub node: &'a str,
+    pub rows: Range<i64>,
+}
+
 impl Path {
     /// The node's path as its runs hold it; runs that do not join are
     /// corrupt data.
     pub(crate) fn read(connection: &Connection, node: &str) -> Result<Self, StorageError> {
-        let mut statement =
-            connection.prepare_cached("SELECT start, first, length FROM path_runs WHERE node_id = ?1 ORDER BY start")?;
+        let mut statement = connection
+            .prepare_cached("SELECT start, first, length, source FROM path_runs WHERE node_id = ?1 ORDER BY start")?;
         let mut rows = statement.query([node])?;
         let mut runs: Vec<Run> = Vec::new();
         while let Some(row) = rows.next()? {
@@ -67,12 +87,20 @@ impl Path {
                 start: row.get(0)?,
                 first: row.get(1)?,
                 length: row.get(2)?,
+                source: row.get(3)?,
             };
             if run.start != runs.last().map_or(0, Run::end) {
                 return Err(StorageError::Corrupt {
                     table: "path_runs",
                     column: "start",
                     reason: format!("the path of node {node} has a gap before position {}", run.start),
+                });
+            }
+            if run.source.is_some() && runs.last().is_some_and(|last| last.source.is_none()) {
+                return Err(StorageError::Corrupt {
+                    table: "path_runs",
+                    column: "source",
+                    reason: format!("the path of node {node} has rows of another node after its own at position {}", run.start),
                 });
             }
             runs.push(run);
@@ -84,41 +112,123 @@ impl Path {
         })
     }
 
+    /// The path of the new node `node`, which holds none of its own rows yet
+    /// and starts where `prefix`'s first `length` positions end, at the row
+    /// `leaf` of the node `prefix`: those positions name the source's rows,
+    /// and nothing is copied.
+    ///
+    /// The source's current path names them when it still ends there. When
+    /// its path has changed since the prefix was named, they are the chain of
+    /// rows that `leaf` follows. A refusal says why the source has no such
+    /// prefix.
+    pub(crate) fn starting_at(
+        connection: &Connection,
+        node: &str,
+        prefix: &str,
+        leaf: i64,
+        length: i64,
+    ) -> Result<Result<Self, String>, StorageError> {
+        let held = Self::read(connection, prefix)?;
+        let named = held.segments(prefix, 0..length);
+        let current = held.len() >= length
+            && named.last().is_some_and(|last| last.node == prefix && last.rows.end - 1 == leaf);
+        let mut runs: Vec<Run> = Vec::new();
+        let mut take = |start: i64, first: i64, length: i64, source: &str| match runs.last_mut() {
+            Some(last) if last.source.as_deref() == Some(source) && last.first + last.length == first => {
+                last.length += length;
+            }
+            _ => runs.push(Run {
+                start,
+                first,
+                length,
+                source: Some(source.to_owned()),
+            }),
+        };
+        if current {
+            for segment in &named {
+                take(segment.start, segment.rows.start, segment.rows.end - segment.rows.start, segment.node);
+            }
+        } else {
+            let mut statement = connection.prepare_cached(
+                "WITH RECURSIVE chain (idx, follows, depth) AS (
+                   SELECT idx, follows, 0 FROM blocks WHERE node_id = ?1 AND idx = ?2
+                   UNION ALL
+                   SELECT row.idx, row.follows, chain.depth + 1 FROM blocks AS row
+                     JOIN chain ON row.node_id = ?1 AND row.idx = chain.follows
+                 )
+                 SELECT idx FROM chain ORDER BY depth DESC",
+            )?;
+            let rows = statement
+                .query_map(params![prefix, leaf], |row| row.get::<_, i64>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            if i64::try_from(rows.len()) != Ok(length) {
+                return Ok(Err(format!("the prefix of node {prefix} is not {length} rows")));
+            }
+            for (position, row) in (0..).zip(rows) {
+                take(position, row, 1, prefix);
+            }
+        }
+        Ok(Ok(Self {
+            node: node.to_owned(),
+            runs,
+            changed_from: Some(0),
+        }))
+    }
+
     /// How many blocks the path holds.
     pub(crate) fn len(&self) -> i64 {
         self.runs.last().map_or(0, Run::end)
     }
 
-    /// The row at `position`.
+    /// How many of the path's first positions hold the rows of the node it
+    /// starts from; 0 for a node that starts nowhere else.
+    pub(crate) fn base(&self) -> i64 {
+        self.runs.iter().take_while(|run| run.source.is_some()).last().map_or(0, Run::end)
+    }
+
+    /// The node's own row at `position`; none for a position before its own
+    /// rows or past its path.
     pub(crate) fn row_at(&self, position: i64) -> Option<i64> {
-        let run = self.runs.iter().find(|run| run.start <= position && position < run.end())?;
+        let run = self
+            .runs
+            .iter()
+            .find(|run| run.source.is_none() && run.start <= position && position < run.end())?;
         Some(run.first + position - run.start)
     }
 
-    /// The position of `row`, when the path holds it.
+    /// The position of the node's own `row`, when the path holds it.
     pub(crate) fn position_of(&self, row: i64) -> Option<i64> {
         let run = self
             .runs
             .iter()
-            .find(|run| run.first <= row && row < run.first + run.length)?;
+            .find(|run| run.source.is_none() && run.first <= row && row < run.first + run.length)?;
         Some(run.start + row - run.first)
     }
 
-    /// The leaf: the row at the path's last position.
+    /// The leaf: the node's own row at the path's last position; none when
+    /// the path holds none of its own.
     pub(crate) fn leaf(&self) -> Option<i64> {
-        self.runs.last().map(|run| run.first + run.length - 1)
+        self.runs
+            .last()
+            .filter(|run| run.source.is_none())
+            .map(|run| run.first + run.length - 1)
     }
 
     /// The rows at the positions `range`, each run's as a range of rows
-    /// after the position of its first.
-    pub(crate) fn segments(&self, range: Range<i64>) -> Vec<(i64, Range<i64>)> {
+    /// after the position of its first, with the node that holds them, which
+    /// is `own` for the node's own.
+    pub(crate) fn segments<'a>(&'a self, own: &'a str, range: Range<i64>) -> Vec<Segment<'a>> {
         self.runs
             .iter()
             .filter(|run| run.start < range.end && range.start < run.end())
             .map(|run| {
                 let from = range.start.max(run.start);
                 let to = range.end.min(run.end());
-                (from, run.first + from - run.start..run.first + to - run.start)
+                Segment {
+                    start: from,
+                    node: run.source.as_deref().unwrap_or(own),
+                    rows: run.first + from - run.start..run.first + to - run.start,
+                }
             })
             .collect()
     }
@@ -139,7 +249,7 @@ impl Path {
     pub(crate) fn push(&mut self, row: i64) {
         let end = self.len();
         match self.runs.last_mut() {
-            Some(last) if last.first + last.length == row => {
+            Some(last) if last.source.is_none() && last.first + last.length == row => {
                 last.length += 1;
                 let start = last.start;
                 self.changed(start);
@@ -149,6 +259,7 @@ impl Path {
                     start: end,
                     first: row,
                     length: 1,
+                    source: None,
                 });
                 self.changed(end);
             }
@@ -168,9 +279,9 @@ impl Path {
             .prepare_cached("DELETE FROM path_runs WHERE node_id = ?1 AND start >= ?2")?
             .execute(params![self.node, from])?;
         let mut insert = transaction
-            .prepare_cached("INSERT INTO path_runs (node_id, start, first, length) VALUES (?1, ?2, ?3, ?4)")?;
+            .prepare_cached("INSERT INTO path_runs (node_id, start, first, length, source) VALUES (?1, ?2, ?3, ?4, ?5)")?;
         for run in self.runs.iter().filter(|run| run.start >= from) {
-            insert.execute(params![self.node, run.start, run.first, run.length])?;
+            insert.execute(params![self.node, run.start, run.first, run.length, run.source])?;
         }
         transaction
             .prepare_cached("UPDATE nodes SET leaf = ?2 WHERE id = ?1")?
@@ -239,11 +350,11 @@ impl Path {
         Ok(versions)
     }
 
-    /// The position of the place after `parent` on this path, the first
-    /// for none; none when the path does not hold `parent`.
+    /// The position of the place after `parent` on this path, where its own
+    /// rows begin for none; none when the path does not hold `parent`.
     fn place_of(&self, parent: Option<i64>) -> Option<i64> {
         match parent {
-            None => Some(0),
+            None => Some(self.base()),
             Some(parent) => self.position_of(parent).map(|position| position + 1),
         }
     }
@@ -264,10 +375,7 @@ impl Path {
             return Ok(None);
         };
         let shown = self.versions(connection, position..position + 1)?;
-        let own = match position {
-            0 => None,
-            _ => self.row_at(position - 1),
-        };
+        let own = if position == self.base() { None } else { self.row_at(position - 1) };
         // The place the versions shown at `position` are of: its own, or
         // the one its block was carried from.
         let parent = if shown.is_empty() || self.versions_here(connection, own, row)? {

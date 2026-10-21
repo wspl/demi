@@ -1281,10 +1281,12 @@ pub(crate) async fn assemble<H: HostResolver>(
             (session, Some(continuation))
         }
         Origin::Forked { seed, .. } => {
-            // Its rows before the seed's blocks are its tree's own.
+            // Its rows before the seed's blocks are its tree's own, which its
+            // path starts with.
             seed.create(&*store, record.clone(), None).await?;
-            // It restores as a stored node does: the copied rows are the
-            // store's, and its window starts at its last boundary.
+            // It restores as a stored node does: the rows before the seed's
+            // blocks are the store's, and its window starts at its last
+            // boundary.
             let checkpoint = match seed.prefix {
                 None => seed.checkpoint,
                 Some(_) => store

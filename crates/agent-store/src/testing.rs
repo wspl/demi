@@ -845,7 +845,8 @@ impl AgentTreeStore for MemoryTreeStore {
     }
 
     /// One store holds every tree a test makes, so the rows of `prefix`
-    /// are this store's whatever `root` they belong to.
+    /// are this store's whatever `root` they belong to. It copies them, which
+    /// no reader of the store can tell from a path that starts with them.
     fn create_node_after<'a>(
         &'a self,
         record: NodeRecord,
