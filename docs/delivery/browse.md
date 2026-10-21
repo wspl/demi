@@ -267,6 +267,14 @@ The following helpers drive the product itself:
     the backend at another address, such as a local proxy that stands in for a
     CDN's edge.
 
+### WebKit's capabilities
+
+`demi.webkit()` uses Playwright's WebKit, not the Safari app. Its pages do not
+advertise push notifications: the native endpoint is disabled, even though
+Playwright exposes the JavaScript API. Push notifications need an actual Safari
+check; the rest of a WebKit check still uses service workers and offline storage
+normally.
+
 ## One browser per slot
 
 The first call of a slot starts a browser that lives between calls:
