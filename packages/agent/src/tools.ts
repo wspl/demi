@@ -58,7 +58,7 @@ export function createStandardAgentTools<State = unknown>(
     {
       name: 'shell_exec',
       description:
-        'Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own.',
+        'Start a shell script and observe it for up to timeoutMs. timeoutMs is an observation window, not a kill deadline: at timeoutMs the command keeps running and a command handle (commandId) is returned. Completed short output is returned directly. shell_exec never ends the turn or schedules a wakeup on its own. Set timeoutMs to how long the command is expected to take, such as 30000 to 120000 for queries, log or API lookups, tests and builds, so its result returns in this call; a timeoutMs shorter than the command only adds shell_status round trips. Use a short timeoutMs only for a server, watcher or long job you intend to leave running. Commands that do not depend on each other go in one response as several shell_exec calls.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
