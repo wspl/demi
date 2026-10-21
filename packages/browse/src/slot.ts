@@ -4,7 +4,7 @@
 // slot's browser, state and output, so two slots never share anything.
 import { basename, dirname, join, resolve } from 'node:path'
 
-/** The ports of slot n's servers (AGENTS.md § Parallel Development Mode). */
+/** The ports of slot n's servers (`.demi/workflows/parallel.yaml`, Slots and git). */
 export interface SlotPorts {
   backend: number
   web: number
