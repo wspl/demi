@@ -62,6 +62,22 @@ impl CommandCaller {
     }
 }
 
+/// The name of `conversation`'s scratch directory under the installation's
+/// `scratch/`: the first 12 characters of its id, hyphens not counted, which
+/// are 12 hex digits for the UUID a conversation has
+/// (`crates/runner-jobs/src/scratch.rs`). Every writer of a scratch directory,
+/// the runner and the backend alike, names it with this.
+pub fn scratch_name(conversation: &str) -> String {
+    conversation
+        .chars()
+        .filter(|character| *character != '-')
+        .take(SCRATCH_NAME_CHARS)
+        .collect()
+}
+
+/// How many characters of a conversation's id name its scratch directory.
+const SCRATCH_NAME_CHARS: usize = 12;
+
 /// An IANA time zone and BCP 47 language tags in preference order. The
 /// web app reports it as a user preference (web-api), so its schema is part
 /// of the web app's contract too.

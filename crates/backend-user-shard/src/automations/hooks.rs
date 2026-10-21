@@ -350,7 +350,7 @@ impl Shard {
                 if identity.scratch_root.is_empty() {
                     return Err("the Host has not named its scratch directory".to_owned());
                 }
-                let scratch = identity.paths.join(&identity.scratch_root, conversation.as_str());
+                let scratch = identity.paths.join(&identity.scratch_root, &demi_command_protocol::scratch_name(conversation.as_str()));
                 let mut written = Vec::with_capacity(calls.len());
                 let short: String = run.as_str().chars().take(8).collect();
                 for (index, call) in calls.iter().enumerate() {

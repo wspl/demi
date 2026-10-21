@@ -78,7 +78,7 @@ use crate::{devices::Devices, driver::Driver, live::Hub, operations::Produced};
 pub struct DemiMobile {
     devices: Arc<Devices>,
     hub: Arc<Hub>,
-    /// The installation, `DEMI_HOME`, whose `scratch/<conversation>` is each
+    /// The installation, `DEMI_HOME`, whose `scratch/<12 digits of the conversation's id>` is each
     /// conversation's scratch directory; none for a service without one.
     home: Option<std::path::PathBuf>,
 }
@@ -94,7 +94,7 @@ impl DemiMobile {
 
     /// The service with `drivers`, such as a test's, in the installation
     /// `home`: it keeps the simulators it boots in `home/mobile`, and each
-    /// conversation's files in `home/scratch/<conversation>`.
+    /// conversation's files in `home/scratch/<12 digits of the conversation's id>`.
     pub fn with_drivers(drivers: Vec<Arc<dyn Driver>>, home: Option<&std::path::Path>) -> Self {
         let mobile = home.map(|home| home.join("mobile"));
         // A conversation is still on this Host while its scratch directory
@@ -105,7 +105,7 @@ impl DemiMobile {
         let exists = Box::new(move |conversation: &str| {
             scratch
                 .as_ref()
-                .is_none_or(|scratch| scratch.join(conversation).is_dir())
+                .is_none_or(|scratch| scratch.join(demi_command_protocol::scratch_name(conversation)).is_dir())
         });
         Self {
             devices: Devices::new(drivers, kept::Kept::load(mobile.as_deref()), exists),
@@ -121,7 +121,7 @@ impl DemiMobile {
             .clone()
             .unwrap_or_else(std::env::temp_dir)
             .join("scratch")
-            .join(conversation)
+            .join(demi_command_protocol::scratch_name(conversation))
     }
 
     pub fn devices(&self) -> &Arc<Devices> {

@@ -227,7 +227,7 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
 const TOKEN: &str = "test-token";
 
 /// The conversation the tests' jobs belong to.
-const CONVERSATION: &str = "conversation";
+const CONVERSATION: &str = "5b2c9e41-7a3d-4f08-9c6e-1d8b3a7f2e90";
 
 /// A command context for jobs that run no declared command.
 fn context() -> CommandContext {

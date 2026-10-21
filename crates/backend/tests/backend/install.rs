@@ -153,19 +153,24 @@ impl Installations {
 
     /// The installation state of the backend at `url`.
     fn state(&self, url: &str) -> PathBuf {
-        let state = self
-            .home
-            .path()
-            .join(".demi/instances")
-            .join(sha(url.as_bytes()));
+        // The installation is named after the backend's host and port and the first
+        // four digits of its URL's SHA-256.
+        let name = format!(
+            "{}-{}",
+            url.trim_start_matches("http://")
+                .trim_end_matches('/')
+                .replace(':', "-"),
+            &sha(url.as_bytes())[..4]
+        );
+        let state = self.home.path().join(".demi/runner").join(name);
         self.runners.watch(&state);
         state
     }
 
-    /// The installation state `.demi/instances/<id>` in the home, which an
+    /// The installation state `.demi/runner/<id>` in the home, which an
     /// installer makes there when `DEMI_HOME` names it.
     fn state_named(&self, id: &str) -> PathBuf {
-        let state = self.home.path().join(".demi/instances").join(id);
+        let state = self.home.path().join(".demi/runner").join(id);
         self.runners.watch(&state);
         state
     }
@@ -974,7 +979,7 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     // drop stops it.
     let devices = backend.devices(&master).await;
     let command = devices[0].start_command.clone().expect("a paired device has a start command");
-    assert_eq!(command, "~/.demi/instances/elsewhere/run start");
+    assert_eq!(command, "~/.demi/runner/elsewhere/run start");
     let started = installations.shell().arg("-c").arg(&command).output().await.unwrap();
     assert!(started.status.success(), "{started:?}");
     assert!(backend.online(&master, id.as_str()).await);
@@ -989,7 +994,7 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
 }
 
 /// An installer run with `DEMI_HOME` installs the runner into the directory it
-/// names, not under `~/.demi/instances` (`crates/runner/src/console.rs`): the
+/// names, not under `~/.demi/runner` (`crates/runner/src/console.rs`): the
 /// removal command it shows and the start command the paired device shows name
 /// that directory's launcher.
 // Several seconds: the installer downloads this build's runner (170 MB) and

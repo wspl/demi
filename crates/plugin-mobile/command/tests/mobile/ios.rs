@@ -425,7 +425,7 @@ async fn a_recording_larger_than_a_frame_is_saved_whole() {
 
     mobile.run(CHAT, "record", json!({ "device": device, "action": "start" })).await.json();
     let file = std::path::PathBuf::from(helper.requests("recordStart")[0]["path"].as_str().unwrap());
-    assert!(file.starts_with(mobile.home().join("scratch").join(CHAT)), "{} is outside the conversation's scratch", file.display());
+    assert!(file.starts_with(mobile.home().join("scratch").join("chata")), "{} is outside the conversation's scratch", file.display());
     let saved = mobile
         .run(CHAT, "record", json!({ "device": device, "action": "stop", "output": "clip.mp4" }))
         .await

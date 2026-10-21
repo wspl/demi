@@ -30,10 +30,10 @@
 use std::path::Path;
 
 use demi_runner_protocol::console::{HANDED_OVER, NO_AUTOSTART, PAIRED, PAIRING_CODE, REMOVAL};
+use demi_runner_protocol::installation::installation_name;
 use demi_runner_protocol::release::{ReleaseError, RunnerRelease};
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::devices::InstallCommands;
-use sha2::{Digest, Sha256};
 use url::Url;
 
 /// A backend URL an installer cannot name: not HTTP or HTTPS, or with a
@@ -54,13 +54,6 @@ pub fn backend_url(url: &Url) -> Result<Url, InvalidBackendUrl> {
     } else {
         Err(InvalidBackendUrl(url.to_string()))
     }
-}
-
-/// The installation a backend's scripts install into unless the user names
-/// another: the SHA-256 of its URL, so that each backend's runner has its
-/// own.
-fn registration(backend: &Url) -> String {
-    hex::encode(Sha256::digest(backend.as_str().as_bytes()))
 }
 
 /// The commands that install and start the runner of `backend` on each
@@ -108,7 +101,7 @@ pub fn start_command(
 ) -> String {
     let windows = platform == RunnerPlatform::Win32;
     let separator = if windows { '\\' } else { '/' };
-    let default = format!(".demi{separator}instances{separator}{}", registration(backend));
+    let default = format!(".demi{separator}runner{separator}{}", installation_name(backend));
     let place = match installation {
         None => Place::Home(default),
         Some(installation) => {
@@ -236,7 +229,7 @@ pub fn shell_script(backend: &Url, release: &RunnerRelease) -> String {
     SHELL_SCRIPT
         .replace("@BACKEND@", &sh(backend.as_str()))
         .replace("@RELEASE@", &sh(&release.release))
-        .replace("@REGISTRATION@", &sh(&registration(backend)))
+        .replace("@INSTALLATION@", &sh(&installation_name(backend)))
         .replace("@BASE@", &sh(&backend.origin().ascii_serialization()))
         .replace("@PAIRING@", &sh(PAIRING_CODE))
         .replace("@PAIRED@", &sh(PAIRED))
@@ -269,7 +262,7 @@ pub fn powershell_script(backend: &Url, release: &RunnerRelease) -> String {
             &powershell(&backend.origin().ascii_serialization()),
         )
         .replace("@RELEASE@", &powershell(&release.release))
-        .replace("@REGISTRATION@", &powershell(&registration(backend)))
+        .replace("@INSTALLATION@", &powershell(&installation_name(backend)))
         .replace("@PAIRING@", &powershell(PAIRING_CODE))
         .replace("@PAIRED@", &powershell(PAIRED))
         .replace("@REMOVAL@", &powershell(REMOVAL))
@@ -282,7 +275,7 @@ const SHELL_SCRIPT: &str = r#"#!/bin/sh
 set -eu
 backend=@BACKEND@
 release=@RELEASE@
-registration=@REGISTRATION@
+installation=@INSTALLATION@
 base=@BASE@
 pairing_prefix=@PAIRING@
 paired_prefix=@PAIRED@
@@ -307,18 +300,27 @@ case "$target" in
     ;;
 esac
 # The installation's directory: the one DEMI_HOME names, else this backend's
-# own under ~/.demi/instances (`crates/runner/src/console.rs`). Everything below, the launcher, the runner's service
+# own under ~/.demi/runner (`crates/runner/src/console.rs`). Everything below, the launcher, the runner's service
 # registration and its removal command, finds the installation from here.
 if [ -n "${DEMI_HOME:-}" ]; then
   state=$DEMI_HOME
 else
-  case "$registration" in
-    ''|*[!a-zA-Z0-9_-]*)
+  case "$installation" in
+    ''|*[!a-zA-Z0-9._-]*)
       echo 'Invalid installation ID' >&2
       exit 1
       ;;
   esac
-  state="$HOME/.demi/instances/$registration"
+  state="$HOME/.demi/runner/$installation"
+fi
+# Whose installation this is, before anything in it changes: the backend it
+# records, compared as written.
+if [ -f "$state/backend-url" ]; then
+  IFS= read -r existing_backend < "$state/backend-url"
+  if [ "$existing_backend" != "$backend" ]; then
+    echo 'Installation belongs to another backend' >&2
+    exit 1
+  fi
 fi
 # The installation's files are the user's alone; the runner works with the
 # mask of the shell this installer runs in (`crates/runner-shell/src/process_builtins.rs`).
@@ -328,13 +330,6 @@ mkdir -p "$state/releases"
 # Absolute, as the runner and the lines this installer shows name it.
 state=$(CDPATH= cd -- "$state" && pwd)
 bin="$state/releases/$release"
-if [ -f "$state/backend-url" ]; then
-  IFS= read -r existing_backend < "$state/backend-url"
-  if [ "$existing_backend" != "$backend" ]; then
-    echo 'Installation belongs to another backend' >&2
-    exit 1
-  fi
-fi
 if ! mkdir "$state/install.lock" 2>/dev/null; then
   echo 'Another installer is active for this installation' >&2
   exit 1
@@ -538,7 +533,7 @@ $ErrorActionPreference = 'Stop'
 $demiBackend = @BACKEND@
 $demiBase = @BASE@
 $demiRelease = @RELEASE@
-$demiRegistration = @REGISTRATION@
+$demiInstallation = @INSTALLATION@
 $demiPairingPrefix = @PAIRING@
 $demiPairedPrefix = @PAIRED@
 $demiRemovalPrefix = @REMOVAL@
@@ -560,21 +555,27 @@ switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToSt
 if (-not $demiArtifacts.ContainsKey($demiTarget)) { throw "This server has no Demi runner for $demiTarget." }
 $demiHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath('UserProfile') }
 # The installation's directory: the one DEMI_HOME names, else this backend's
-# own under ~/.demi/instances (`crates/runner/src/console.rs`). Everything below, the launcher, the runner's service
+# own under ~/.demi/runner (`crates/runner/src/console.rs`). Everything below, the launcher, the runner's service
 # registration and its removal command, finds the installation from here.
 if ($env:DEMI_HOME) {
   # Absolute, as the runner and the lines this installer shows name it; a
   # relative one is read against this session's location.
   $demiState = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($env:DEMI_HOME)
 } else {
-  if ($demiRegistration -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Invalid installation ID' }
-  $demiState = Join-Path $demiHome ".demi/instances/$demiRegistration"
+  if ($demiInstallation -notmatch '^[a-zA-Z0-9._-]+$') { throw 'Invalid installation ID' }
+  $demiState = Join-Path $demiHome ".demi/runner/$demiInstallation"
+}
+$demiBackendFile = Join-Path $demiState 'backend-url'
+# Whose installation this is, before anything in it changes: the backend it
+# records, compared as written (`-cne`: `-ne` ignores case, and a path's case
+# can name another backend).
+if ((Test-Path $demiBackendFile) -and ([IO.File]::ReadAllText($demiBackendFile).Trim() -cne $demiBackend)) {
+  throw 'Installation belongs to another backend'
 }
 $demiReleases = Join-Path $demiState 'releases'
 $demiBin = Join-Path $demiReleases $demiRelease
 $demiExe = Join-Path $demiBin 'demi-runner.exe'
 [IO.Directory]::CreateDirectory($demiReleases) | Out-Null
-$demiBackendFile = Join-Path $demiState 'backend-url'
 $demiLockFile = Join-Path $demiState 'install.lock'
 $demiLock = [IO.File]::Open($demiLockFile, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::Write, [IO.FileShare]::None)
 $demiStage = Join-Path $demiReleases ('.download-' + [Guid]::NewGuid().ToString('N'))
@@ -692,9 +693,6 @@ function Invoke-DemiControl([string]$Action) {
 }
 try {
   try {
-    if ((Test-Path $demiBackendFile) -and ([IO.File]::ReadAllText($demiBackendFile).Trim() -ne $demiBackend)) {
-      throw 'Installation belongs to another backend'
-    }
     [IO.Directory]::CreateDirectory($demiStage) | Out-Null
     $demiDownload = Join-Path $demiStage 'demi-runner.exe'
     Write-Output "Downloading runner for $demiTarget..."
@@ -864,9 +862,8 @@ mod tests {
     #[test]
     fn the_start_command_names_the_reported_installation_from_the_home() {
         let backend = Url::parse("https://demi.example.com/").unwrap();
-        let id = registration(&backend);
         let cases: [(Option<&str>, Option<&str>, RunnerPlatform, String); 6] = [
-            (None, None, RunnerPlatform::Darwin, format!("~/.demi/instances/{id}/run start")),
+            (None, None, RunnerPlatform::Darwin, "~/.demi/runner/demi.example.com-748c/run start".into()),
             (
                 Some("/Users/ana/.demi/instances/work"),
                 Some("/Users/ana"),
@@ -922,6 +919,75 @@ mod tests {
                 backend_url(&Url::parse(refused).unwrap()).is_err(),
                 "{refused}"
             );
+        }
+    }
+
+    /// Both installers put the runner in the directory named after the
+    /// backend's host, port and path, the one the runner derives
+    /// (`crates/runner/tests/runner/registration.rs` pins the same names),
+    /// and the start command of a runner that has not reported its
+    /// installation names it too.
+    #[test]
+    fn both_installers_and_the_start_command_name_the_installation_after_its_backend() {
+        let release = RunnerRelease {
+            release: "r1".into(),
+            wire: 1,
+            command_protocol: 1,
+            targets: Default::default(),
+        };
+        for (url, name) in [
+            ("https://demi.example.com/", "demi.example.com-748c"),
+            ("http://127.0.0.1:3310/", "127.0.0.1-3310-825d"),
+            ("https://example.com/team/a", "example.com-team-a-c824"),
+            ("https://example.com/team-a", "example.com-team-a-c9e5"),
+            ("http://[::1]:3310/", "__1-3310-e0f6"),
+            ("http://example.com/", "example.com-2a1b"),
+            ("https://example.com/", "example.com-0f11"),
+        ] {
+            let backend = Url::parse(url).unwrap();
+            assert!(
+                shell_script(&backend, &release).contains(&format!("\ninstallation={name}\n")),
+                "{url}"
+            );
+            assert!(
+                powershell_script(&backend, &release)
+                    .contains(&format!("$demiInstallation = '{name}'\n")),
+                "{url}"
+            );
+            assert_eq!(installation_name(&backend), name, "{url}");
+            assert_eq!(
+                start_command(&backend, None, None, RunnerPlatform::Linux),
+                format!("~/.demi/runner/{name}/run start")
+            );
+            assert_eq!(
+                start_command(&backend, None, None, RunnerPlatform::Win32),
+                format!("powershell -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.demi\\runner\\{name}\\run.ps1\" start")
+            );
+        }
+    }
+
+    /// Each installer decides whose installation it is before it changes
+    /// anything in the directory: the shell installer before it makes the
+    /// directory's `releases`, the PowerShell one before it makes it or opens
+    /// its lock, and comparing case-sensitively, since `-ne` ignores the case
+    /// of a path that can name another backend.
+    #[test]
+    fn each_installer_checks_whose_installation_it_is_before_it_changes_anything() {
+        let release = RunnerRelease {
+            release: "r1".into(),
+            wire: 1,
+            command_protocol: 1,
+            targets: Default::default(),
+        };
+        let backend = Url::parse("https://example.com/Team").unwrap();
+        let shell = shell_script(&backend, &release);
+        let checked = shell.find("\"$existing_backend\" != \"$backend\"").unwrap();
+        assert!(checked < shell.find("mkdir -p \"$state/releases\"").unwrap());
+        let powershell = powershell_script(&backend, &release);
+        let checked = powershell.find("-cne $demiBackend").unwrap();
+        assert!(!powershell.contains("-ne $demiBackend"));
+        for change in ["CreateDirectory($demiReleases)", "[IO.File]::Open($demiLockFile"] {
+            assert!(checked < powershell.find(change).unwrap(), "{change}");
         }
     }
 }

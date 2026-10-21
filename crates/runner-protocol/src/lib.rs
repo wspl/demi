@@ -23,6 +23,7 @@ pub mod exposure;
 pub mod files;
 pub mod forward;
 pub mod image;
+pub mod installation;
 pub mod manifest;
 pub mod release;
 pub mod values;

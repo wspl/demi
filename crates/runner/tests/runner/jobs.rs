@@ -564,15 +564,15 @@ async fn a_move_out_of_tmp_carries_the_files_edits_and_a_made_and_removed_file_i
 
 /// Each agent of a conversation finds its own scratch directory made and
 /// named by `DEMI_SCRATCH` (`crates/runner-jobs/src/scratch.rs`): the root
-/// agent's is the conversation's, each subagent's its `agent-<number>`
-/// folder inside it, so two subagents that save one relative name keep
+/// agent's is the conversation's, named by the first 12 hex digits of its
+/// id, each subagent's its `agent-<number>` folder inside it, so two subagents that save one relative name keep
 /// their own files. Under a second: three short jobs, one after another.
 #[tokio::test]
 async fn each_agent_finds_its_own_scratch_directory_made_and_named() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
         let working = tempfile::tempdir_in("/tmp").unwrap();
-        let conversation = host.state().join("scratch").join(crate::CONVERSATION);
+        let conversation = host.state().join("scratch").join("5b2c9e417a3d");
         for (number, expected) in [
             (0, conversation.clone()),
             (4, conversation.join("agent-4")),
@@ -611,9 +611,10 @@ async fn each_agent_finds_its_own_scratch_directory_made_and_named() {
 }
 
 /// A runner that connects removes the scratch directory of a conversation
-/// the backend's welcome no longer names, a deleted one's, and keeps those
-/// of the conversations it names, and anything under `scratch` that is no
-/// directory (`crates/runner-jobs/src/scratch.rs`). About a second: the runner
+/// the backend's welcome no longer names, a deleted one's, and one under a
+/// conversation's whole id, as an earlier runner named it, and keeps those
+/// of the conversations it names by their first 12 hex digits, and anything
+/// under `scratch` that is no directory (`crates/runner-jobs/src/scratch.rs`). About a second: the runner
 /// starts twice and runs two jobs.
 #[tokio::test]
 async fn a_reconnect_removes_the_scratch_directory_of_a_deleted_conversation_only() {
@@ -626,19 +627,21 @@ async fn a_reconnect_removes_the_scratch_directory_of_a_deleted_conversation_onl
         start_job(&mut host, "before", "true").await;
         reported(&mut host, "before").await;
         let root = host.state().join("scratch");
-        for conversation in ["kept", "deleted"] {
+        let kept = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+        for conversation in ["0a1b2c3d4e5f", "ffeeddccbbaa", kept] {
             std::fs::create_dir_all(root.join(conversation)).unwrap();
             std::fs::write(root.join(conversation).join("page.png"), "png").unwrap();
         }
         std::fs::write(root.join("notes"), "not a conversation's").unwrap();
 
         host.restart().await;
-        host.welcome(&["kept", crate::CONVERSATION]).await;
+        host.welcome(&[kept, crate::CONVERSATION]).await;
         // The runner removes them before it starts the next job.
         start_job(&mut host, "after", "true").await;
         reported(&mut host, "after").await;
-        assert!(!root.join("deleted").exists());
-        assert!(root.join("kept").join("page.png").exists());
+        assert!(!root.join("ffeeddccbbaa").exists());
+        assert!(!root.join(kept).exists());
+        assert!(root.join("0a1b2c3d4e5f").join("page.png").exists());
         assert!(root.join("notes").exists());
         host.close().await;
     })
