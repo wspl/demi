@@ -260,7 +260,7 @@ export function subagentParentBlocks(): Block[] {
         sender: { id: SUBAGENT, number: 1, description: 'Rename the cookie', round: 1 },
         recipientId: 'root',
         timestamp: ago(275_000),
-        content: 'Renamed the cookie to session.',
+        content: '',
         event: { type: 'completion', outcome: 'completed' },
       },
     }),

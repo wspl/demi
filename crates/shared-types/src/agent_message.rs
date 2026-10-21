@@ -2,7 +2,7 @@
 //!
 //! The input is one of:
 //!
-//! - an explicit message, or a child's completion receipt;
+//! - an explicit message, or the notice of a child's end;
 //! - the user's decision on a permission request, which reaches the agent that
 //!   asked the same way;
 //! - the user's move of the conversation, which the user tells the root of;
@@ -16,8 +16,10 @@
 //! text prefix.
 //!
 //! A completion's ID names the child and the round, so it identifies exactly
-//! one round of one child. Editing and Fork are not offered on a receipt, and
-//! compaction keeps what it tells as context, never as a human instruction.
+//! one round of one child. A completion is only a notice of how the round ended:
+//! it carries no word the child wrote, and a failed one the reason Demi gives for
+//! the failure. Editing and Fork are not offered on a receipt, and compaction
+//! keeps what it tells as context, never as a human instruction.
 
 use std::{fmt, str::FromStr};
 
@@ -48,17 +50,19 @@ pub struct AgentMessage {
     /// When the message was sent; for a completion, when the child closed.
     #[garde(skip)]
     pub timestamp: Timestamp,
-    /// The body: a completion's result for `completed`, otherwise its failure
-    /// text, which can be empty. An explicit message is never empty.
+    /// The body: a failed completion's failure reason, which can be empty, and
+    /// nothing for another completion, which an earlier release gave the
+    /// child's last answer. An explicit message is never empty.
     #[garde(custom(has_body_when_explicit(&self.event)))]
     pub content: String,
     #[garde(dive)]
     pub event: AgentMessageEvent,
     /// The block of the sender's transcript the message came from, which the
     /// receipt row's name brings into view: for an explicit message, the call
-    /// that ran `demi agent send`; for a completion, the child's last answer.
-    /// None for a round that ended without an answer and for a message no agent
-    /// sent.
+    /// that ran `demi agent send`; for a failed completion, the child's failure
+    /// record, which an earlier release also named for a finished one, as its
+    /// last answer. None for any other completion, for a failure with no record
+    /// and for a message no agent sent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(custom(comes_from_its_sender(&self.sender)))]
     pub origin: Option<BlockId>,
@@ -87,7 +91,7 @@ pub struct Sender {
 pub enum AgentMessageEvent {
     /// An explicit communication between live agents.
     Message {},
-    /// A supervisor's receipt of a child's end.
+    /// A supervisor's notice of a child's end.
     Completion {
         #[garde(skip)]
         outcome: CompletionOutcome,

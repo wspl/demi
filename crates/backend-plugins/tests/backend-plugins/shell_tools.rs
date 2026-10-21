@@ -33,7 +33,7 @@ use demi_conversation_socket_protocol::{AgentRole, JobPhase};
 use demi_host_interface::{RpcInvocation, testing::MemoryPort};
 use demi_agent_store::testing::model_reading;
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, FileExtension, NodeId, Sender, Timestamp, ToolView,
+    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionOutcome, FileExtension, NodeId, Sender, Timestamp, ToolView,
 };
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -869,11 +869,12 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
             })
             .await;
         client.until_idle().await;
-        // Its result is its last answer, which the root heard.
+        // The root heard only that it finished, with none of its words.
         let root = fixture.server.tree(&conversation()).unwrap().root().session().transcript();
         assert!(
             root.blocks.iter().any(|block| matches!(block, Block::AgentMessage(receipt)
-                if format!("{:?}", receipt.message).contains("The server stopped."))),
+                if receipt.message.content.is_empty()
+                    && matches!(receipt.message.event, AgentMessageEvent::Completion { outcome: CompletionOutcome::Completed }))),
             "{root:?}"
         );
         assert_eq!(script.remaining(), 0);

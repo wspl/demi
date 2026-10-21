@@ -118,3 +118,18 @@ fn a_rule_break_names_the_field() {
     let error = decode_value(&value).unwrap_err().to_string();
     assert!(error.contains("must be the message's id, m1"), "{error}");
 }
+
+/// 0.1.47 wrote a finished child's last answer as the body of its completion
+/// and named the block it came from: what a release wrote is valid whatever
+/// the current code writes, so such a receipt decodes and keeps its words.
+#[test]
+fn a_completion_an_earlier_release_wrote_keeps_the_report_it_carried() {
+    let stored = with(
+        with(fixture("subagent:child-1:1"), "/message/content", json!("The cache read is fixed.")),
+        "/message/event/outcome",
+        json!("completed"),
+    );
+    let stored = with(stored, "/message/origin", json!("last-answer"));
+    let block = decode_value(&stored).unwrap_or_else(|error| panic!("{stored}: {error}"));
+    assert_eq!(serde_json::to_value(&block).unwrap(), stored);
+}

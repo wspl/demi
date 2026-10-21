@@ -1654,8 +1654,72 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.46.sql"),
             migration: Migration::Code(conversation_from_0_1_46),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.47.sql"),
+            migration: Migration::Code(conversation_from_0_1_47),
+        },
     ],
 };
+
+/// From 0.1.47's conversation schema to the current one.
+///
+/// A closed child keeps no result: its completion is only a notice of how it
+/// ended, so the column and the CHECK that names it go. SQLite refuses to drop a
+/// column a table CHECK names, so the CHECK is first removed from the table's
+/// stored SQL, as SQLite's documentation describes for removing a constraint.
+///
+/// A finished child whose parent has not taken its completion yet had its
+/// result as the completion's body. The result moves into the parent's state as
+/// the waiting input it would be had the parent admitted it, and the child is
+/// marked delivered as a save of that state marks it.
+fn conversation_from_0_1_47(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let untaken: Vec<(String, i64, String, i64, i64, String, String)> = transaction
+        .prepare(
+            "SELECT id, number, description, round, closed_at, result, parent_id FROM nodes
+               WHERE closed_phase = 'completed' AND delivered = 0 AND result <> '' AND parent_id IS NOT NULL
+               ORDER BY closed_at, number",
+        )?
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    for (id, number, description, round, closed_at, result, parent) in untaken {
+        let state: String = transaction.query_row("SELECT state FROM nodes WHERE id = ?1", [&parent], |row| row.get(0))?;
+        let mut state: serde_json::Value = serde_json::from_str(&state).map_err(corrupt)?;
+        let message_id = format!("subagent:{id}:{round}");
+        let at = Timestamp::from_millisecond(closed_at).map_err(|error| corrupt_text(&error.to_string()))?;
+        let input = serde_json::json!({
+            "turnId": message_id,
+            "model": state["model"],
+            "message": {
+                "id": message_id,
+                "sender": { "id": id, "number": number, "description": description, "round": round },
+                "recipientId": parent,
+                "timestamp": at,
+                "content": result,
+                "event": { "type": "completion", "outcome": "completed" },
+            },
+        });
+        state["agentInputs"].as_array_mut().ok_or_else(|| corrupt_text("a node's state holds no list of waiting input"))?.push(input);
+        transaction.execute(
+            "UPDATE nodes SET state = ?2 WHERE id = ?1",
+            rusqlite::params![parent, state.to_string()],
+        )?;
+        transaction.execute("UPDATE nodes SET delivered = 1 WHERE id = ?1", [&id])?;
+    }
+    transaction.execute_batch("PRAGMA writable_schema = ON;")?;
+    let removed = transaction.execute(
+        "UPDATE sqlite_schema
+           SET sql = replace(sql, 'CHECK (result IS NULL OR closed_phase = ''completed''),', '')
+           WHERE type = 'table' AND name = 'nodes'",
+        [],
+    )?;
+    transaction.execute_batch("PRAGMA writable_schema = OFF;")?;
+    if removed != 1 {
+        return Err(corrupt_text("the nodes table does not state the CHECK on its result"));
+    }
+    transaction.execute_batch("ALTER TABLE nodes DROP COLUMN result;")
+}
 
 /// From 0.1.46's conversation schema to the current one.
 ///
@@ -3672,11 +3736,14 @@ pub mod testing {
     /// The columns a shipped schema has that this build's dropped, each with
     /// the value of a row of this build's that it holds: a node's block
     /// count is the length of its current path.
-    const DROPPED: &[(&str, &str, &str)] = &[(
-        "nodes",
-        "block_count",
-        "(SELECT coalesce(max(own.start + own.length), 0) FROM current.path_runs AS own WHERE own.node_id = id)",
-    )];
+    const DROPPED: &[(&str, &str, &str)] = &[
+        (
+            "nodes",
+            "block_count",
+            "(SELECT coalesce(max(own.start + own.length), 0) FROM current.path_runs AS own WHERE own.node_id = id)",
+        ),
+        ("nodes", "result", "CASE WHEN closed_phase = 'completed' THEN '' END"),
+    ];
 
     /// Whether the shipped schema's `table` has `column`.
     fn shipped_has(connection: &rusqlite::Connection, table: &str, column: &str) -> bool {
@@ -4839,7 +4906,6 @@ CREATE TABLE nodes (
   can_spawn        INTEGER NOT NULL CHECK (can_spawn IN (0, 1)),
   closed_phase     TEXT CHECK (closed_phase IN ('completed', 'aborted', 'error')),
   closed_at        INTEGER,
-  result           TEXT,
   failure          TEXT,
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
@@ -4883,7 +4949,6 @@ CREATE TABLE nodes (
   -- nodes.model: model selection, as in checkpoint state format 7
   model            TEXT,
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
-  CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')
 ) STRICT;
 -- One root per tree.
@@ -8019,6 +8084,82 @@ mod tests {
             ))
             .unwrap();
         (directory, path, connection)
+    }
+
+    /// A finished child of 0.1.47, which stored its result, is still finished once
+    /// migrated and no row keeps a result; the table's other CHECKs still hold.
+    ///
+    /// A report its parent had not taken yet is not lost: it waits in the
+    /// parent's state as the completion's body, the child marked delivered, and
+    /// a report the parent had taken stays out of it.
+    #[test]
+    fn a_finished_child_of_0_1_47_stays_finished_and_its_untaken_report_waits_in_its_parent() {
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.47.sql"));
+        let state = serde_json::json!({
+            "phase": "idle", "queue": [], "agentInputs": [], "reports": [], "intervals": [], "edits": [],
+            "model": { "providerId": "p1", "model": { "id": "m1" } },
+        })
+        .to_string();
+        for (id, number, parent) in
+            [("root", 0, None), ("done", 1, Some("root")), ("taken", 2, Some("root")), ("broken", 3, Some("root"))]
+        {
+            connection
+                .execute(
+                    "INSERT INTO nodes (id, number, parent_id, description, round, started_at, can_spawn, delivered, state, output_revision)
+                     VALUES (?1, ?2, ?3, ?1, 2, 0, 1, 0, ?4, 0)",
+                    rusqlite::params![id, number, parent, state],
+                )
+                .unwrap();
+        }
+        connection
+            .execute("UPDATE nodes SET closed_phase = 'completed', closed_at = 7000, result = 'It works.' WHERE id = 'done'", [])
+            .unwrap();
+        connection
+            .execute(
+                "UPDATE nodes SET closed_phase = 'completed', closed_at = 6000, result = 'Taken.', delivered = 1 WHERE id = 'taken'",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute("UPDATE nodes SET closed_phase = 'error', closed_at = 8000, failure = 'refused' WHERE id = 'broken'", [])
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let closed = |id: &str| -> (String, i64, Option<String>, bool) {
+            connection
+                .query_row("SELECT closed_phase, closed_at, failure, delivered FROM nodes WHERE id = ?1", [id], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                })
+                .unwrap()
+        };
+        assert_eq!(closed("done"), ("completed".to_owned(), 7000, None, true));
+        assert_eq!(closed("taken"), ("completed".to_owned(), 6000, None, true));
+        assert_eq!(closed("broken"), ("error".to_owned(), 8000, Some("refused".to_owned()), false));
+        let results: i64 = connection
+            .query_row("SELECT count(*) FROM pragma_table_info('nodes') WHERE name = 'result'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(results, 0);
+        // The CHECKs that remain: a failure belongs to an error close alone, and
+        // a close has its time.
+        assert!(connection.execute("UPDATE nodes SET failure = 'x' WHERE id = 'done'", []).is_err());
+        assert!(connection.execute("UPDATE nodes SET closed_at = NULL WHERE id = 'done'", []).is_err());
+        // It is this build's schema, which a fresh database has as it is.
+        let version: i32 = connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        assert_eq!(version, CONVERSATION.version());
+
+        let parent: String = connection.query_row("SELECT state FROM nodes WHERE id = 'root'", [], |row| row.get(0)).unwrap();
+        let parent: serde_json::Value = serde_json::from_str(&parent).unwrap();
+        let waiting = parent["agentInputs"].as_array().unwrap();
+        assert_eq!(waiting.len(), 1, "{parent}");
+        assert_eq!(waiting[0]["turnId"], "subagent:done:2");
+        assert_eq!(waiting[0]["model"], parent["model"]);
+        let message = demi_shared_types::decode::<demi_shared_types::AgentMessage>(&waiting[0]["message"].to_string())
+            .expect("the waiting completion is a valid message");
+        assert_eq!(
+            (message.id.as_str(), message.content.as_str(), message.recipient_id.as_str(), message.sender.unwrap().round),
+            ("subagent:done:2", "It works.", "root", 2)
+        );
     }
 
     /// A child stored by 0.1.38 or by 0.1.46, which 0.1.45 and 0.1.46 shipped,

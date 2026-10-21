@@ -6,9 +6,9 @@
 //! frame carries it whole, or the entries changed since a revision the page
 //! holds, and each `agent` frame one changed entry with the revision one past
 //! the previous. A page that meets a gap asks for the changes since the
-//! revision it holds (`agents_since`). An entry carries no result: a child's
-//! result is its transcript's last answer, and its parent's transcript holds
-//! it as delivered.
+//! revision it holds (`agents_since`). An entry carries no result: a child
+//! reports to its parent by message, and its parent's transcript holds the
+//! messages and the notice of its end.
 //!
 //! An entry also carries the agent's waiting inputs, its queue and its
 //! pending steers, so a command that changes them settles on the entry, never

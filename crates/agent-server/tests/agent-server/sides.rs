@@ -121,7 +121,7 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
     until(|| closed_phase(&fixture, &side()).is_some()).await;
     assert_eq!(
         closed_phase(&fixture, &side()),
-        Some(ClosePhase::Completed { result: String::new() })
+        Some(ClosePhase::Completed)
     );
     client.send(send("m2", "Fix it.")).await;
     until(|| model.root_requests().len() == 2).await;

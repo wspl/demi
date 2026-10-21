@@ -756,7 +756,7 @@ fn command(call: &ToolCallBlock) -> Option<String> {
     }
 }
 
-/// A subagent's report as one line: who, and how its round ended.
+/// The notice of a subagent's end as one line: who, and how its round ended.
 fn report_line(at: usize, message: &demi_shared_types::AgentMessageBlock) -> String {
     let who = message
         .message
@@ -764,9 +764,9 @@ fn report_line(at: usize, message: &demi_shared_types::AgentMessageBlock) -> Str
         .as_ref()
         .map_or_else(|| "a subagent".to_owned(), |sender| format!("agent {} ({})", sender.number, sender.description));
     let AgentMessageEvent::Completion { outcome } = &message.message.event else {
-        unreachable!("a report is a completion")
+        unreachable!("a notice of an end is a completion")
     };
-    format!("[{at} report of {who} · {outcome}]")
+    format!("[{at} end of {who} · {outcome}]")
 }
 
 /// What `open` names: a block, or a file of a message.

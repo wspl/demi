@@ -58,8 +58,8 @@ async fn a_save_delivers_a_completion_it_holds_as_waiting_input() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn children_list_in_spawn_order_and_a_close_keeps_its_result() {
-    store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(
+async fn children_list_in_spawn_order_and_a_close_keeps_its_phase() {
+    store_contract::children_list_in_spawn_order_and_a_close_keeps_its_phase(
         &*MemoryTreeStore::new(),
     )
     .await;

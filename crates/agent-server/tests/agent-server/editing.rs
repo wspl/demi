@@ -828,9 +828,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
         .await
         .unwrap();
     let close = NodeClose {
-        phase: ClosePhase::Completed {
-            result: "notes say 42".into(),
-        },
+        phase: ClosePhase::Completed,
         at: Timestamp::UNIX_EPOCH,
     };
     store.close_node(&child, close).await.unwrap();

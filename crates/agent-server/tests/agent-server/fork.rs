@@ -140,20 +140,20 @@ async fn a_fork_of_an_archived_child_continues_its_history_on_another_profiles_m
     assert_eq!(record.model.as_ref().map(|model| model.model.id.as_str()), Some("other-model"));
     assert_eq!(
         closed_phase(&fixture, &child),
-        Some(ClosePhase::Completed { result: "Fixed the cache read.".into() })
+        Some(ClosePhase::Completed)
     );
-    // Its result reaches the root as any child's does.
+    // Its end reaches the root as a notice, as any child's does.
     until(|| root_receipts(&fixture).len() == 2).await;
     let receipt = &root_receipts(&fixture)[1];
     assert_eq!(receipt.sender.clone().unwrap().id, child);
-    assert_eq!(receipt.content, "Fixed the cache read.");
+    assert_eq!(receipt.content, "");
     // The source asked nothing more and stays archived in its round.
     assert_eq!(model.requests_of("task trace the estimate").len(), 1);
     let source_record = fixture.store.record(&source).unwrap();
     assert_eq!(source_record.round, 1);
     assert_eq!(
         closed_phase(&fixture, &source),
-        Some(ClosePhase::Completed { result: "The card reads a stale cache.".into() })
+        Some(ClosePhase::Completed)
     );
 }
 
@@ -203,7 +203,7 @@ async fn a_fork_of_a_running_child_ends_at_its_newest_completed_text_and_leaves_
     assert!(text.ends_with("Apply what you found."), "{text}");
     assert!(!text.contains("Final finding."), "{text}");
     assert_eq!(fixture.store.record(&child).unwrap().description, "apply the finding");
-    // The source went on running, and completes with what it found after.
+    // The source went on running, and finishes after.
     assert!(fixture.store.record(&source).unwrap().closed.is_none());
     gate.open();
     client.next_until(is_closed(&source)).await;
@@ -212,7 +212,7 @@ async fn a_fork_of_a_running_child_ends_at_its_newest_completed_text_and_leaves_
         .into_iter()
         .find(|receipt| receipt.sender.as_ref().unwrap().id == source)
         .unwrap();
-    assert_eq!(source_receipt.content, "Final finding.");
+    assert_eq!(source_receipt.content, "");
     assert!(model.is_done());
 }
 
@@ -317,7 +317,7 @@ async fn a_fork_has_none_of_its_sources_running_commands() {
 
     assert_eq!(
         store.record(&child).and_then(|record| record.closed).map(|close| close.phase),
-        Some(ClosePhase::Completed { result: "I started nothing.".into() })
+        Some(ClosePhase::Completed)
     );
     assert!(store.running_commands(&child).await.unwrap().is_empty());
     let saved = store.session_store(&child).load().await.unwrap().unwrap();
@@ -375,9 +375,11 @@ async fn a_fork_onto_a_smaller_window_compacts_with_the_sources_model_first() {
     let text = request_text(&asked[0]);
     assert!(text.contains("Summary: the card reads a stale cache."), "{text}");
     assert!(!text.contains(&long), "{text}");
-    // The message comes last, then where the fork works.
+    // The message comes last, then how the fork's parent hears from it and
+    // where it works.
+    assert!(text.contains("Fix it.\nYour parent receives only what you send it with `demi agent send parent`"), "{text}");
     assert!(
-        text.ends_with("Fix it.\nYour working directory is /workspace: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."),
+        text.ends_with("\nYour working directory is /workspace: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."),
         "{text}"
     );
     // The source's own history is as it was.

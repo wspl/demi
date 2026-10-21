@@ -54,13 +54,15 @@ test('a row that does not open says all there is in its words: a failed move say
 })
 
 test('a receipt opens the block it names in its sender’s transcript, the root’s as the conversation’s own', () => {
-  // An update names the call that sent it; a completion the child's last
-  // answer.
+  // An update names the call that sent it; a failed completion the child's
+  // failure record; a notice that a child finished or stopped, none.
   expect(receiptOrigin(fromAgent({ type: 'message' }, 'send-call')))
     .toEqual({ node: 'ag-3', blockId: 'send-call' })
-  expect(receiptOrigin(fromAgent({ type: 'completion', outcome: 'completed' }, 'last-answer')))
-    .toEqual({ node: 'ag-3', blockId: 'last-answer' })
-  // A round that gave no answer opens the agent's tab alone.
+  expect(receiptOrigin(fromAgent({ type: 'completion', outcome: 'failed' }, 'failure-record')))
+    .toEqual({ node: 'ag-3', blockId: 'failure-record' })
+  // A notice that names no block opens the agent's tab alone.
+  expect(receiptOrigin(fromAgent({ type: 'completion', outcome: 'completed' })))
+    .toEqual({ node: 'ag-3', blockId: null })
   expect(receiptOrigin(fromAgent({ type: 'completion', outcome: 'aborted' })))
     .toEqual({ node: 'ag-3', blockId: null })
   expect(receiptOrigin(fromAgent({ type: 'message' }, 'root-call', 0)))

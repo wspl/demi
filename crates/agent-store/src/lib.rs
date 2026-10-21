@@ -551,10 +551,7 @@ pub struct NodeClose {
 /// The phase a node closed in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClosePhase {
-    /// With the child's bounded last assistant text.
-    Completed {
-        result: String,
-    },
+    Completed,
     Aborted,
     /// With the failure's text.
     Error {
@@ -566,7 +563,7 @@ impl ClosePhase {
     /// The phase a closed job shows.
     pub fn job_phase(&self) -> JobPhase {
         match self {
-            Self::Completed { .. } => JobPhase::Completed,
+            Self::Completed => JobPhase::Completed,
             Self::Aborted => JobPhase::Aborted,
             Self::Error { .. } => JobPhase::Error,
         }

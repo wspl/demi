@@ -17,6 +17,7 @@ fn completion() -> AgentMessage {
         event: AgentMessageEvent::Completion {
             outcome: CompletionOutcome::Completed,
         },
+        content: String::new(),
         ..agent_message("done")
     }
 }
