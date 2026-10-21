@@ -2086,7 +2086,9 @@ export const useConversations = defineStore('conversations', () => {
     takeMetadata(conversation, result.metadata)
     if (result.firstMessage?.type === 'refused') {
       const { refusal } = result.firstMessage
-      throw Object.assign(coded(new Error(refusal.reason), refusal.code, refusal.params), {
+      // A refusal's parameters are the strings and numbers its message names.
+      const params = refusal.params as Readonly<Record<string, string | number>> | undefined
+      throw Object.assign(coded(new Error(refusal.reason), refusal.code, params), {
         requestId: response.headers.get(REQUEST_ID_HEADER),
       })
     }

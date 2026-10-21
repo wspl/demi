@@ -385,7 +385,7 @@ beforeEach(async () => {
       if (first && !refuseFirstMessage) {
         rootBlocks.set(body.id, [{
           type: 'user', id: `user-${first.messageId}`, turnId: first.messageId, createdAt: '2026-10-11T00:00:00.000Z',
-          model, content: first.content, preamble: null,
+          model, content: first.content as never, preamble: null,
         }])
       }
       const answered = refuseFirstMessage
