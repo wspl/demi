@@ -223,60 +223,79 @@ export class ProviderTurnLoop<State> {
     const pending = this.host.transcript.pendingToolCalls()
     if (pending.length === 0) return { executed: false, stopAfterToolResult: false }
 
-    const tools = this.currentTools()
-    const toolsByName = new Map(tools.map((tool) => [tool.name, tool]))
+    const toolsByName = new Map(this.currentTools().map((tool) => [tool.name, tool]))
     let stopAfterToolResult = false
     const previousActivePhase = this.host.getActiveTurnPhase()
     this.host.setActiveTurnPhase('tool_executing')
 
     try {
-      for (const toolCall of pending) {
+      for (const batch of toolCallBatches(pending, toolsByName)) {
         throwIfAborted(this.host.currentSignal())
-        const steerContinuationBeforeTool = this.host.steerContinuationCount
-
-        const tool = toolsByName.get(toolCall.toolName)
-        if (!tool) {
-          this.host.transcript.completeToolCall(
-            toolCall.toolUseId,
-            [{ type: 'text', text: `Tool not found: ${toolCall.toolName}` }],
-            true,
-          )
-          await this.host.commitTranscript()
-          if (!options.deferSteerMaterialization) {
-            await this.host.materializeSteersArrivedSince(steerContinuationBeforeTool)
-          }
-          continue
-        }
-
-        const input = parseJsonOrString(toolCall.input)
-        const result = await this.invokeToolAsResult(tool, toolCall.toolUseId, input)
-        this.host.transcript.completeToolCall(
-          toolCall.toolUseId,
-          filterCorruptImages(result.output),
-          result.isError ?? false,
-          result.view ?? null,
-        )
-        await this.host.runtime.lifecycle?.({
-          type: 'after_tool_call',
-          agentSessionId: this.host.agentSessionId,
-          state: this.host.agentState,
-          transcript: this.host.transcript,
-          toolCallId: toolCall.toolUseId,
-          toolName: toolCall.toolName,
-          result,
-          metadata: this.host.metadata,
-        })
-        await this.host.commitTranscript()
+        const steerContinuationBeforeBatch = this.host.steerContinuationCount
+        const results = await this.runToolCallBatch(batch, toolsByName)
         if (!options.deferSteerMaterialization) {
-          await this.host.materializeSteersArrivedSince(steerContinuationBeforeTool)
+          await this.host.materializeSteersArrivedSince(steerContinuationBeforeBatch)
         }
-        stopAfterToolResult ||= result.stopAfterToolResult === true
+        stopAfterToolResult ||= results.some((result) => result.stopAfterToolResult === true)
       }
     } finally {
       this.host.setActiveTurnPhase(previousActivePhase)
     }
 
     return { executed: true, stopAfterToolResult }
+  }
+
+  /**
+   * Starts every call of the batch at once and records each result as soon as it
+   * arrives, one at a time, so transcript commits never overlap. Waits for every
+   * call to settle before rethrowing an abort, so no call records after the turn ends.
+   */
+  private async runToolCallBatch(
+    batch: PendingToolCall[],
+    toolsByName: Map<string, AgentTool<State>>,
+  ): Promise<AgentToolInvokeResult[]> {
+    let recording = Promise.resolve()
+    const outcomes = await Promise.allSettled(
+      batch.map(async (toolCall) => {
+        const tool = toolsByName.get(toolCall.toolName)
+        const result = tool
+          ? await this.invokeToolAsResult(tool, toolCall.toolUseId, parseJsonOrString(toolCall.input))
+          : { output: [{ type: 'text' as const, text: `Tool not found: ${toolCall.toolName}` }], isError: true }
+        const recorded = recording.then(() => this.recordToolResult(toolCall, result, tool !== undefined))
+        recording = recorded.catch(() => {})
+        await recorded
+        return result
+      }),
+    )
+    const failure = outcomes.find((outcome) => outcome.status === 'rejected')
+    if (failure) throw failure.reason
+    return outcomes.map((outcome) => (outcome as PromiseFulfilledResult<AgentToolInvokeResult>).value)
+  }
+
+  private async recordToolResult(
+    toolCall: PendingToolCall,
+    result: AgentToolInvokeResult,
+    isKnownTool: boolean,
+  ): Promise<void> {
+    this.host.transcript.completeToolCall(
+      toolCall.toolUseId,
+      filterCorruptImages(result.output),
+      result.isError ?? false,
+      result.view ?? null,
+    )
+    if (isKnownTool) {
+      await this.host.runtime.lifecycle?.({
+        type: 'after_tool_call',
+        agentSessionId: this.host.agentSessionId,
+        state: this.host.agentState,
+        transcript: this.host.transcript,
+        toolCallId: toolCall.toolUseId,
+        toolName: toolCall.toolName,
+        result,
+        metadata: this.host.metadata,
+      })
+    }
+    await this.host.commitTranscript()
   }
 
   private async invokeTool(tool: AgentTool<State>, toolCallId: string, input: unknown): Promise<AgentToolInvokeResult> {
@@ -364,6 +383,23 @@ export class ProviderTurnLoop<State> {
     )
     return usedTokens >= threshold
   }
+}
+
+type PendingToolCall = ReturnType<TranscriptLog['pendingToolCalls']>[number]
+
+/** Groups adjacent calls of concurrent tools; every other call forms a batch of its own. */
+function toolCallBatches<State>(
+  pending: PendingToolCall[],
+  toolsByName: Map<string, AgentTool<State>>,
+): PendingToolCall[][] {
+  const batches: { isConcurrent: boolean; calls: PendingToolCall[] }[] = []
+  for (const toolCall of pending) {
+    const isConcurrent = toolsByName.get(toolCall.toolName)?.concurrent === true
+    const last = batches.at(-1)
+    if (isConcurrent && last?.isConcurrent) last.calls.push(toolCall)
+    else batches.push({ isConcurrent, calls: [toolCall] })
+  }
+  return batches.map((batch) => batch.calls)
 }
 
 function toToolDefinition(tool: AgentTool<unknown>): ToolDefinition {

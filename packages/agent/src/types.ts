@@ -154,6 +154,12 @@ export interface AbortResult {
 }
 
 export interface AgentTool<State = unknown> extends ToolDefinition {
+  /**
+   * Calls of this tool that a response requests next to each other run at the
+   * same time. A tool without it runs alone, after every earlier call of the
+   * response has finished and before any later one starts.
+   */
+  concurrent?: boolean
   invoke(ctx: AgentToolInvokeContext<State>, input: unknown): Promise<AgentToolInvokeResult> | AgentToolInvokeResult
 }
 
