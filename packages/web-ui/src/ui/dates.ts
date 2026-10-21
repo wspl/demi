@@ -134,6 +134,24 @@ export function formatClockAgo(timestamp: string, now: Date | number): string {
 }
 
 /**
+ * When a stretch of a timeline ran, as a chart's tip says it: from its first
+ * moment's clock time to its last's, with the day when either is not `now`'s,
+ * and one moment when both fall in the same minute.
+ *
+ * Examples: "1:17 – 1:52 PM", "Sep 2, 1:17 – 2:05 PM",
+ * "Sep 1, 11:40 PM – Sep 2, 12:10 AM".
+ */
+export function formatClockRange(from: string, to: string, now: Date | number): string {
+  const start = new Date(from)
+  const end = new Date(to)
+  const at = new Date(now)
+  const options: Intl.DateTimeFormatOptions = sameDay(start, at) && sameDay(end, at)
+    ? { hour: 'numeric', minute: '2-digit' }
+    : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+  return new Intl.DateTimeFormat(pageLanguage(), options).formatRange(start, end)
+}
+
+/**
  * A calendar date with no time of day, `YYYY-MM-DD` such as a model's
  * release, as the day it names wherever the reader is: "Apr 21, 2026".
  */

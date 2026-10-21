@@ -6,7 +6,7 @@ import { niceTicks } from '@demicodes/utils'
 import { pageLanguage } from '../i18n/text'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { showAbove } from '../overlay/stacking'
-import { formatClockAgo } from '../ui/dates'
+import { formatClockAgo, formatClockRange } from '../ui/dates'
 import { formatDollars } from '../ui/numbers'
 import { formatTokens } from '../ui/token-count'
 import { type CallGroup, callHitRate, hitRate } from './context-cost'
@@ -306,7 +306,10 @@ watch(shown, () => {
           </div>
         </template>
         <template v-else>
-          <div class="mb-1 font-medium text-fg-emphasis tabular-nums">#{{ tipGroup.first }}–#{{ lastOf(tipGroup) }}</div>
+          <div class="mb-0.5 font-medium text-fg-emphasis tabular-nums">#{{ tipGroup.first }}–#{{ lastOf(tipGroup) }}</div>
+          <div class="mb-1 text-fg-subtle tabular-nums">
+            {{ formatClockRange(tipGroup.calls[0]!.startedAt, tipGroup.calls.at(-1)!.startedAt, now) }}
+          </div>
           <div class="cost-tip-row">
             <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
             <span class="font-medium text-fg-emphasis tabular-nums">{{ percent.format(hitRate(tipGroup.calls) ?? 0) }}</span>

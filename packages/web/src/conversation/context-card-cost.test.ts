@@ -224,7 +224,7 @@ test('a point keeps its calls as new calls arrive, and its tip names their numbe
   missed[127] = call(0, 'cache_expired')
   const group = await chartOf(missed, 127)
   expect(group.misses).toBe(1)
-  expect(group.tip).toBe('#126–#130Cache hit rate72%Cache miss · Cache expiredEquivalent API price$2.50')
+  expect(group.tip).toBe('#126–#130Sep 13 at 12:00 AMCache hit rate72%Cache miss · Cache expiredEquivalent API price$2.50')
   // One call a point: the call's own tip.
   expect((await chartOf(calls(12), 4)).tip).toStartWith('Request #5')
 })
