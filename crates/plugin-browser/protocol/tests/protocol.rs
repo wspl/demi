@@ -8,7 +8,7 @@ use demi_command_package_browser_protocol::{
         BrowserOperation, BrowserQuery, BrowserTarget, ErrorDetails, ExportedAsset, Load,
         MouseButton, NodeRef, OPERATIONS, ReadResult, ResolvedElement, TabId,
     },
-    capture::{CaptureEvent, FrameHeader},
+    capture::{CaptureCommand, CaptureEvent, Changed, FrameHeader},
     live::{FileHeader, LiveViewerMessage},
     release::BrowserRelease,
 };
@@ -36,6 +36,7 @@ fn every_operation_decodes_its_smallest_input() {
             "check" => json!({"tab": TAB, "value": true}),
             "upload" => json!({"tab": TAB, "file": ["a.txt"]}),
             "eval" => json!({"tab": TAB, "expression": "1"}),
+            "record" => json!({"target": TAB, "action": "start"}),
             "viewport.set" => json!({"tab": TAB, "width": 800, "height": 600}),
             "cdp.send" => json!({"tab": TAB, "method": "Page.enable", "params": "{}"}),
             "assets.export" => json!({"tab": TAB, "inventory": "i", "output-dir": "out"}),
@@ -54,6 +55,27 @@ fn every_operation_decodes_its_smallest_input() {
         parse("unknown", json!({})),
         Err(OperationError::Unserved(_))
     ));
+}
+
+/// `record` names a tab to start and a recording for every other action, and
+/// refuses what no recording can be: a longer time than two minutes, a
+/// target that is neither, frames that are not numbers.
+#[test]
+fn record_names_a_tab_to_start_and_a_recording_for_the_rest() {
+    let start = parse("record", json!({"target": "t3", "action": "start", "duration": "1m30s"})).unwrap();
+    assert_eq!(start.tab().map(ToString::to_string), Some("t3".to_owned()));
+    let stop = parse("record", json!({"target": "r2", "action": "stop"})).unwrap();
+    assert!(stop.tab().is_none(), "a recording is no tab");
+    parse("record", json!({"target": "r2", "action": "export", "frames": "f005-f010,f020", "region": "0,0,40,30", "mp4": false})).unwrap();
+    for (args, why) in [
+        (json!({"target": "t3", "action": "start", "duration": "121s"}), "longer than two minutes"),
+        (json!({"target": "x3", "action": "stop"}), "neither a tab nor a recording"),
+        (json!({"target": "r2", "action": "frames", "frames": "5-10"}), "frames without f"),
+        (json!({"target": "r2", "action": "export", "region": "1,2,3"}), "a region of three numbers"),
+        (json!({"target": "r2", "action": "rewind"}), "an action no recording has"),
+    ] {
+        assert!(parse("record", args).is_err(), "{why}");
+    }
 }
 
 #[test]
@@ -320,7 +342,17 @@ fn frame_headers_have_their_documented_layout() {
         (frame.timestamp, frame.width, frame.height),
         (2.5, 1280, 720)
     );
+    assert_eq!(frame.changed, None, "a live picture says no area");
     assert_eq!(data, [0, 0, 0, 1]);
+    // A recorded picture's flag 2 says the area that changed follows.
+    capture[8] = 2;
+    capture[24..32].copy_from_slice(&[0, 10, 0, 20, 0, 30, 0, 40]);
+    let (frame, _) = FrameHeader::split(&capture).unwrap();
+    assert_eq!(
+        frame.changed,
+        Some(Changed { x: 10, y: 20, width: 30, height: 40 })
+    );
+    assert!(!frame.key);
     assert!(FrameHeader::split(&capture[..31]).is_err());
 }
 
@@ -337,7 +369,40 @@ fn capture_events_decode_and_unknown_events_are_refused() {
             message: "no track".into()
         },
     );
+    assert_eq!(
+        CaptureEvent::decode(r#"{"type":"missed","capture":4,"count":3}"#).unwrap(),
+        CaptureEvent::Missed { capture: 4, count: 3 },
+    );
+    assert_eq!(
+        serde_json::to_value(CaptureCommand::Record {
+            capture: 5,
+            target: "page".into(),
+            width: 1280,
+            height: 720,
+            key_interval: 120,
+        })
+        .unwrap(),
+        json!({"type": "record", "capture": 5, "target": "page", "width": 1280, "height": 720, "keyInterval": 120}),
+    );
+    assert_eq!(
+        serde_json::to_value(CaptureCommand::Start {
+            capture: 6,
+            target: "page".into(),
+            width: 640,
+            height: 360,
+            source_width: 1280,
+            source_height: 720,
+            fps: 30,
+            bitrate: 1_000_000,
+        })
+        .unwrap(),
+        json!({
+            "type": "start", "capture": 6, "target": "page", "width": 640, "height": 360,
+            "sourceWidth": 1280, "sourceHeight": 720, "fps": 30, "bitrate": 1_000_000,
+        }),
+    );
     for invalid in [
+        r#"{"type":"missed","capture":1}"#,
         r#"{"type":"paused","capture":1}"#,
         r#"{"type":"started"}"#,
         r#"{"type":"started","capture":1,"extra":true}"#,

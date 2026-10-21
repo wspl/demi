@@ -88,6 +88,7 @@ pub async fn execute(
             | BrowserOperation::Stop(_)
             | BrowserOperation::Close(_)
             | BrowserOperation::Screenshot(_)
+            | BrowserOperation::Record(_)
             | BrowserOperation::Capabilities(_)
     ) {
         return Err(BrowserError::Configuration(
@@ -893,6 +894,7 @@ pub async fn command_admitted(
             | BrowserOperation::Stop(_)
             | BrowserOperation::Close(_)
             | BrowserOperation::Screenshot(_)
+            | BrowserOperation::Record(_)
             | BrowserOperation::Capabilities(_)
             | BrowserOperation::Upload(_)
             | BrowserOperation::Download(_)

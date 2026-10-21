@@ -31,10 +31,15 @@ use crate::values::DeviceToken;
 pub enum Inbound {
     /// Ends what the runner's services hold for the conversation
     /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
+    ///
+    /// `over` says the conversation is archived or deleted, which also ends
+    /// what the runner itself keeps for it besides its services' state: its
+    /// recordings.
     ConversationRelease {
         id: String,
         #[garde(custom(conversation_name))]
         conversation_id: String,
+        over: bool,
     },
     /// Stops the services of `packages`, by their ids, which ends what they
     /// hold for every conversation: their plugin was turned off
@@ -46,13 +51,16 @@ pub enum Inbound {
     },
     /// The device the hello's token names, by its id and the name the
     /// user sees, and the user's conversations that still exist, archived
-    /// ones included, whose scratch directories the runner keeps
+    /// ones included, whose scratch directories the runner keeps, and which of
+    /// them are archived, whose recordings it removes
     /// (`crates/runner-jobs/src/scratch.rs`).
     HelloOk {
         device_id: String,
         device_name: String,
         #[garde(inner(custom(conversation_name)))]
         conversations: Vec<String>,
+        #[garde(inner(custom(conversation_name)))]
+        archived: Vec<String>,
     },
     ClaimPending {
         claim_token: String,

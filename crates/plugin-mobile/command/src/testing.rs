@@ -19,7 +19,7 @@ use demi_command_package_mobile_protocol::{
 
 use crate::driver::{
     Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, Png, Points, RawElement,
-    Recording, Result, Screen, Simulator, TouchPhase,
+    Result, Screen, Simulator, TouchPhase,
 };
 
 /// What reached the devices and the driver, in order.
@@ -270,7 +270,7 @@ impl Driver for FakeDriver {
                 captures: watch::Sender::new(Vec::new()),
                 swipes: watch::Sender::new(Vec::new()),
                 appearance: Mutex::new(Appearance::Light),
-                recording: Mutex::default(),
+                recording: Arc::default(),
                 unseen: Mutex::default(),
                 refused: Mutex::default(),
                 log: self.log.clone(),
@@ -315,8 +315,8 @@ pub struct FakeDevice {
     /// Each swipe, where it started and ended.
     swipes: watch::Sender<Vec<(Points, Points)>>,
     appearance: Mutex<Appearance>,
-    /// The file the recording under way writes.
-    recording: Mutex<Option<std::path::PathBuf>>,
+    /// The recording under way and what its source holds.
+    recording: Arc<Mutex<Option<Source>>>,
     /// The screen the device draws its frame for, turned before it says so.
     unseen: Mutex<Option<Screen>>,
     /// The orientations the app in front refuses.
@@ -366,6 +366,24 @@ impl FakeDevice {
     /// The device draws a new picture.
     pub fn draw(&self) {
         self.drawn.send_modify(|count| *count += 1);
+    }
+
+    /// The device draws `drawn`: a recording under way takes it as a source
+    /// does, coding it unless it is the picture before. Says whether the
+    /// recording kept it.
+    pub async fn draws(&self, drawn: Drawn) -> bool {
+        use demi_shared_openh264::Codec as _;
+        let load = demi_shared_openh264::Built.library().await.expect("OpenH264 builds");
+        let mut recording = self.recording.lock().unwrap();
+        recording.as_mut().is_some_and(|source| source.draw(drawn, &load))
+    }
+
+    /// The recording under way ends for `reason`, as at the limit of its time
+    /// or its size.
+    pub fn recording_ends(&self, reason: demi_shared_recording_protocol::EndReason) {
+        if let Some(source) = self.recording.lock().unwrap().as_ref() {
+            source.sink.end(reason, None);
+        }
     }
 
     /// The size of each capture asked for, which a test waits on.
@@ -536,24 +554,27 @@ impl Device for FakeDevice {
         })
     }
 
-    fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>> {
+    fn record(&self, sink: demi_shared_recording::Sink) -> BoxFuture<'_, Result<Box<dyn Send>>> {
         Box::pin(async move {
             self.log("record start".into());
-            std::fs::write(file, b"fake mp4").map_err(|error| DriverError::Failed(error.to_string()))?;
-            *self.recording.lock().unwrap() = Some(file.to_owned());
-            Ok(())
-        })
-    }
-
-    fn record_stop(&self) -> BoxFuture<'_, Result<Recording>> {
-        Box::pin(async {
-            self.log("record stop".into());
-            self.recording
-                .lock()
-                .unwrap()
-                .take()
-                .ok_or_else(|| DriverError::Failed("the fake device is not recording".into()))?;
-            Ok(Recording { duration_ms: 1500 })
+            // The fake codes each picture as it is drawn, so it holds none at
+            // a stop.
+            let handover = sink.handover().clone();
+            let handing = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+                handover.requested().cancelled().await;
+                handover.done();
+            }));
+            *self.recording.lock().unwrap() = Some(Source {
+                sink,
+                encoder: None,
+                before: None,
+            });
+            Ok(Box::new(FakeRecording {
+                source: self.recording.clone(),
+                log: self.log.clone(),
+                native_id: self.native_id.clone(),
+                _handing: handing,
+            }) as Box<dyn Send>)
         })
     }
 
@@ -593,14 +614,65 @@ impl Device for FakeDevice {
     }
 }
 
-/// OpenH264 built from its source, which the tests encode with instead of
-/// downloading Cisco's build.
-pub struct BuiltOpenH264;
+/// A picture a fake device draws: RGBA, and when, in microseconds.
+pub struct Drawn {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
+    pub at_us: u64,
+}
 
-impl crate::android::Codec for BuiltOpenH264 {
-    fn library(&self) -> BoxFuture<'_, Result<crate::android::Load>> {
-        Box::pin(async {
-            Ok(std::sync::Arc::new(|| Ok(openh264::OpenH264API::from_source())) as crate::android::Load)
-        })
+/// What a source of a recording does with the pictures its screen draws.
+struct Source {
+    sink: demi_shared_recording::Sink,
+    encoder: Option<Box<dyn demi_shared_h264::Encoder>>,
+    before: Option<Vec<u8>>,
+}
+
+impl Source {
+    fn draw(&mut self, drawn: Drawn, load: &demi_shared_openh264::Load) -> bool {
+        use demi_shared_h264::{PixelFormat, Raw, Rate, Settings};
+        let raw = |pixels| Raw { width: drawn.width, height: drawn.height, format: PixelFormat::Rgba, pixels };
+        let changed = match &self.before {
+            Some(before) => demi_shared_recording::changed(&raw(&drawn.pixels), &raw(before)),
+            None => Some(demi_shared_recording_protocol::Area::whole(drawn.width, drawn.height)),
+        };
+        let Some(changed) = changed else {
+            return false;
+        };
+        let first = self.before.is_none();
+        let settings = Settings { width: drawn.width, height: drawn.height, rate: Rate::Quality };
+        let encoder = self
+            .encoder
+            .get_or_insert_with(|| Box::new(demi_shared_h264::software(settings, load).expect("OpenH264 starts")));
+        let coded = encoder.encode(raw(&drawn.pixels), drawn.at_us, first).expect("a picture encodes");
+        let mut taken = true;
+        for coded in coded {
+            taken &= self.sink.push_picture(demi_shared_recording::Picture {
+                data: coded.data,
+                key: coded.key,
+                at_us: coded.time_us as f64,
+                width: drawn.width,
+                height: drawn.height,
+                changed,
+            });
+        }
+        self.before = Some(drawn.pixels);
+        taken
+    }
+}
+
+/// The capture a fake recording holds: dropping it stops the recording.
+struct FakeRecording {
+    source: Arc<Mutex<Option<Source>>>,
+    log: Log,
+    native_id: String,
+    _handing: tokio_util::task::AbortOnDropHandle<()>,
+}
+
+impl Drop for FakeRecording {
+    fn drop(&mut self) {
+        self.log.lock().unwrap().push(format!("{}: record stop", self.native_id));
+        *self.source.lock().unwrap() = None;
     }
 }

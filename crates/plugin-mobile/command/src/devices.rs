@@ -53,6 +53,8 @@ use demi_command_package_mobile_protocol::mobile::{
 use demi_command_protocol::ServiceSequence;
 use demi_command_sdk::{Messages, Numbers};
 use demi_live_view_protocol::{LiveActivity, LivePoint};
+use demi_shared_recording::Live;
+use demi_shared_recording_protocol::{EndReason, RecordingId};
 
 use crate::{
     driver::{Device, Driver, DriverError},
@@ -77,6 +79,13 @@ const BOOT_POLL: Duration = Duration::from_secs(1);
 /// The longest wait between two tries of a failed step.
 const RETRY_LAST: Duration = Duration::from_secs(30);
 
+/// A recording of a device and the capture that feeds it, which stops when
+/// the recording is dropped.
+struct Recording {
+    live: Live,
+    _capture: Box<dyn Send>,
+}
+
 /// One open device.
 pub struct OpenDevice {
     pub handle: DeviceId,
@@ -97,9 +106,12 @@ pub struct OpenDevice {
     /// The agent's commands on the device that run, and which of its uses
     /// the last one ended.
     agent: Mutex<AgentUse>,
-    /// The recording under way: its file, in the conversation's scratch
-    /// directory, and since when.
-    pub recording: Mutex<Option<(std::path::PathBuf, Instant)>>,
+    /// The recording of the device under way, if any.
+    recording: Mutex<Option<Recording>>,
+    /// The recording the panel started and has not taken the video of: the
+    /// panel's Stop takes it whether the recording still runs or ended by
+    /// itself, at its limit.
+    panel_recording: Mutex<Option<RecordingId>>,
     /// Counts the changes of what the device's views say of it besides its
     /// screen, such as its recording, which only its own views follow.
     changes: watch::Sender<u64>,
@@ -149,6 +161,7 @@ impl OpenDevice {
             }),
             agent: Mutex::default(),
             recording: Mutex::new(None),
+            panel_recording: Mutex::new(None),
             changes: watch::Sender::new(0),
             saved: Mutex::default(),
             inputs: tokio::sync::Mutex::new(()),
@@ -164,10 +177,56 @@ impl OpenDevice {
         self.changes.subscribe()
     }
 
-    /// A recording started or stopped: the device's views say so on every
-    /// page, whoever started it.
-    pub fn recorded(&self) {
+    /// The recording of the device that still runs.
+    pub fn recording(&self) -> Option<Live> {
+        let recording = self.recording.lock().expect("the recording is intact");
+        recording.as_ref().map(|recording| recording.live.clone()).filter(|live| !live.ended().is_cancelled())
+    }
+
+    /// The panel started the recording `id`.
+    pub fn panel_started(&self, id: RecordingId) {
+        *self.panel_recording.lock().expect("the panel's recording is intact") = Some(id);
+    }
+
+    /// The recording the panel started, which its Stop takes the video of;
+    /// none once taken.
+    pub fn panel_takes(&self) -> Option<RecordingId> {
+        self.panel_recording.lock().expect("the panel's recording is intact").take()
+    }
+
+    /// Ends the recording of the device, if one runs, for `reason`, and
+    /// answers once its files are complete.
+    pub async fn finish_recording(&self, reason: EndReason) {
+        let live = self.recording.lock().expect("the recording is intact").as_ref().map(|recording| recording.live.clone());
+        if let Some(live) = live {
+            // The source hands over the pictures it holds first.
+            let _info = live.stop(reason).await;
+        }
+    }
+
+    /// `live` records the device, and `capture` hands it the device's
+    /// pictures until dropped. The device's views say so on every page,
+    /// whoever started it, and say when it ends, whatever ends it: the
+    /// recording's own end, or the device's.
+    pub fn record(self: &Arc<Self>, live: Live, capture: Box<dyn Send>) {
+        *self.recording.lock().expect("the recording is intact") = Some(Recording {
+            live: live.clone(),
+            _capture: capture,
+        });
         self.changes.send_modify(|changes| *changes += 1);
+        let open = self.clone();
+        tokio::spawn(async move {
+            if let Some(reason) = live.over(&open.closed).await {
+                let _info = live.stop(reason).await;
+            }
+            live.ended().cancelled().await;
+            let mut recording = open.recording.lock().expect("the recording is intact");
+            if recording.as_ref().is_some_and(|recording| recording.live.id() == live.id()) {
+                *recording = None;
+            }
+            drop(recording);
+            open.changes.send_modify(|changes| *changes += 1);
+        });
     }
 
     /// The agent uses the device until the guard drops and for
@@ -1093,11 +1152,14 @@ impl Devices {
             open.gone.cancel();
         }
         open.closed.cancel();
-        let mut saved = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
-        // A recording nobody stopped goes with the device.
-        if let Some((file, _)) = open.recording.lock().expect("the recording is intact").take() {
-            saved.push(file);
-        }
+        // The recording ends with every frame it holds kept, before the device
+        // is let go and the service may end.
+        let reason = match why {
+            Closing::Ending | Closing::Taken => EndReason::Interrupted,
+            _ => EndReason::Closed,
+        };
+        open.finish_recording(reason).await;
+        let saved = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
         if !matches!(why, Closing::Taken | Closing::Ending) {
             for path in saved {
                 // A file the user already moved or removed is gone as asked.
@@ -1204,10 +1266,7 @@ impl Devices {
             match state.open.get(&open.native_id) {
                 Some(current) if Arc::ptr_eq(current, open) && !state.closing => {
                     state.open.remove(&open.native_id);
-                    let mut carried = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
-                    if let Some((file, _)) = open.recording.lock().expect("the recording is intact").take() {
-                        carried.push(file);
-                    }
+                    let carried = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
                     state.resuming.insert(
                         open.native_id.clone(),
                         Resuming {

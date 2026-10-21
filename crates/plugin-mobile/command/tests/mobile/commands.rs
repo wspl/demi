@@ -161,16 +161,21 @@ async fn every_command_acts_in_screenshot_pixels() {
     let waited = mobile.run(CHAT, "wait", json!({ "device": device, "gone": still, "timeout": 2 })).await;
     assert_eq!(waited.failure().0, "timeout");
 
-    // record: start, then stop into a file.
-    mobile.run(CHAT, "record", json!({ "device": device, "action": "start" })).await.json();
-    let stopped = mobile
-        .run(CHAT, "record", json!({ "device": device, "action": "stop", "output": "clip.mp4" }))
-        .await
-        .json();
-    assert_eq!(stopped["durationMs"], 1500);
-    assert_eq!(std::fs::read(mobile.root.path().join("clip.mp4")).unwrap(), b"fake mp4");
-    let again = mobile.run(CHAT, "record", json!({ "device": device, "action": "stop" })).await;
-    assert_eq!(again.failure().0, "not_recording");
+    // record: start, then stop; the recording's commands are in record.rs.
+    let started = mobile.run(CHAT, "record", json!({ "target": device, "action": "start" })).await.json();
+    assert_eq!(started["recording"]["id"], "r1");
+    let stopped = mobile.run(CHAT, "record", json!({ "target": "r1", "action": "stop" })).await.json();
+    assert_eq!(stopped["recording"]["running"], false);
+    let again = mobile.run(CHAT, "record", json!({ "target": device, "action": "stop" })).await;
+    assert_eq!(again.failure().0, "recording_not_found");
+    // The device's capture is let go once the recording ended.
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !mobile.log().contains(&"UDID-1: record stop".to_owned()) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the device lets its recording go");
 
     // close: Demi booted it, so it shuts down.
     let closed = mobile.run(CHAT, "close", json!({ "device": device })).await.json();

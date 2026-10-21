@@ -25,16 +25,17 @@ use demi_command_package_mobile_protocol::{
     mobile::{Appearance, Orientation, MobilePlatform, PowerState, SCREENSHOT_LONG_SIDE},
 };
 use demi_live_view::stream::CaptureEvent;
+use demi_shared_recording::Sink;
 
 use crate::{
     driver::{
         Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, PixelRect, Png, Points,
-        RawElement, Rect, Recording, Result, Screen, Simulator, TouchPhase,
+        RawElement, Rect, Result, Screen, Simulator, TouchPhase,
     },
     keys,
 };
 
-pub use helper::{CONTROL, Connection, VIDEO, BLOB, HEADER_BYTES};
+pub use helper::{BLOB, CONTROL, Connection, HEADER_BYTES, PICTURE, PICTURE_HEADER_BYTES, VIDEO};
 use helper::{Event, Helper};
 
 /// How the driver reaches `demi-ios-sim`: one-shot runs for listing,
@@ -354,7 +355,7 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
                 }
             }
             // The helper ended the capture itself; its frames stopped.
-            Event::Capture { .. } => {}
+            Event::Capture { .. } | Event::Recording { .. } | Event::Missed { .. } => {}
         }
     }
 }
@@ -488,11 +489,6 @@ impl IosDevice {
 
     async fn done(&self, method: &str, params: Value) -> Result<()> {
         self.call(method, params).await.map(drop)
-    }
-
-    async fn call_as<T: serde::de::DeserializeOwned>(&self, method: &str, mut params: Value) -> Result<T> {
-        params["udid"] = Value::String(self.udid.clone());
-        self.session.helper.call(method, params).await
     }
 
     /// Sends the input `method`, after which the screen is on: input wakes
@@ -690,21 +686,41 @@ impl Device for IosDevice {
         Box::pin(self.done("setAppearance", json!({ "appearance": appearance })))
     }
 
-    fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>> {
-        Box::pin(self.done("recordStart", json!({ "path": file })))
-    }
-
-    fn record_stop(&self) -> BoxFuture<'_, Result<Recording>> {
+    fn record(&self, sink: Sink) -> BoxFuture<'_, Result<Box<dyn Send>>> {
         Box::pin(async move {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            struct Stopped {
-                duration_ms: u64,
+            let helper = self.session.helper.clone();
+            let recording = helper.next_capture();
+            helper.pictures(recording, sink.clone());
+            let started = self
+                .done("recordStart", json!({ "recording": recording, "keyInterval": demi_shared_recording::KEY_INTERVAL }))
+                .await;
+            if let Err(error) = started {
+                helper.forget_pictures(recording);
+                return Err(error);
             }
-            let stopped: Stopped = self.call_as("recordStop", json!({})).await?;
-            Ok(Recording {
-                duration_ms: stopped.duration_ms,
-            })
+            // A stop asks the helper to code the pictures its encoder holds;
+            // they arrive before its answer.
+            let handing = {
+                let (helper, udid, sink) = (helper.clone(), self.udid.clone(), sink);
+                tokio::spawn(async move {
+                    tokio::select! {
+                        () = sink.handover().requested().cancelled() => {
+                            let params = json!({ "recording": recording, "udid": udid });
+                            if let Err(error) = helper.ask("recordStop", params).await {
+                                tracing::info!("the iOS helper's recordStop: {error}");
+                            }
+                        }
+                        () = sink.ended().cancelled() => {}
+                    }
+                    sink.handover().done();
+                })
+            };
+            Ok(Box::new(IosRecording {
+                helper,
+                udid: self.udid.clone(),
+                recording,
+                handing,
+            }) as Box<dyn Send>)
         })
     }
 
@@ -845,6 +861,29 @@ impl DeviceCapture for IosCapture {
 
     fn encoding(&self, bitrate: u32, fps: u32) {
         self.tell("captureEncoding", json!({ "bitrate": bitrate, "fps": fps }));
+    }
+}
+
+/// A recording the helper feeds, which stops as it is dropped.
+struct IosRecording {
+    helper: Arc<Helper>,
+    udid: String,
+    recording: u32,
+    /// Hands over what the helper's encoder holds when a stop asks.
+    handing: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for IosRecording {
+    fn drop(&mut self) {
+        self.handing.abort();
+        self.helper.forget_pictures(self.recording);
+        let helper = self.helper.clone();
+        let params = json!({ "recording": self.recording, "udid": self.udid });
+        tokio::spawn(async move {
+            if let Err(error) = helper.ask("recordStop", params).await {
+                tracing::info!("the iOS helper's recordStop: {error}");
+            }
+        });
     }
 }
 

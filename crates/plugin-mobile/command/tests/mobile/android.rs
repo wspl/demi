@@ -33,7 +33,8 @@ use demi_mobile::{
         proto::{
             EmulatorStatus, Entry, EntryList, Image, ImageFormat, KeyboardEvent, Notification, PhysicalModelValue,
             Rotation, TouchEvent, VmRunState, emulator_controller_server::{EmulatorController, EmulatorControllerServer},
-            image_format::ImgFormat, keyboard_event::KeyEventType, notification, rotation::SkinRotation,
+            image_format::ImgFormat, image_transport::TransportChannel, keyboard_event::KeyEventType, notification,
+            rotation::SkinRotation,
         },
     },
     driver::{DriverError, Result},
@@ -99,6 +100,8 @@ struct StubEmulator {
     turning_held: watch::Sender<bool>,
     /// Each new picture the screen draws.
     drawn: watch::Sender<u64>,
+    /// The grey every pixel of the next pictures has.
+    shade: Arc<std::sync::atomic::AtomicU8>,
     /// Cancelled as the emulator shuts down.
     ended: CancellationToken,
     /// The picture streams the emulator sends, until their reader drops them.
@@ -160,7 +163,8 @@ impl StubEmulator {
     /// pixel, as the emulator's are (asked 706 × 1568 of a 1080 × 2424
     /// screen it draws 698 × 1568, asked 698 × 1568 it draws 698 × 1566);
     /// the whole panel when no size is asked.
-    fn picture(panel: (u32, u32), rotation: u8, width: u32, height: u32) -> Image {
+    fn picture(panel: (u32, u32), rotation: u8, asked: &ImageFormat, shade: u8) -> Image {
+        let (width, height) = (asked.width, asked.height);
         let (panel_width, panel_height) = if rotation % 2 == 1 { (panel.1, panel.0) } else { panel };
         // The side whose factor is smaller is the box's; the other is cut
         // down in whole numbers.
@@ -186,7 +190,7 @@ impl StubEmulator {
                 height,
                 ..ImageFormat::default()
             }),
-            image: Bytes::from(vec![0x80; (width * height * 3) as usize]),
+            image: Bytes::from(vec![shade; (width * height * if asked.format() == ImgFormat::Rgb888 { 3 } else { 4 }) as usize]),
             ..Image::default()
         }
     }
@@ -277,7 +281,7 @@ impl EmulatorController for Served {
         self.signed(&request)?;
         let asked = request.into_inner();
         self.hear(format!("screenshot {} {}x{}", asked.format().as_str_name(), asked.width, asked.height))?;
-        let mut image = StubEmulator::picture(*self.panel.lock().unwrap(), *self.rotation.borrow(), asked.width, asked.height);
+        let mut image = StubEmulator::picture(*self.panel.lock().unwrap(), *self.rotation.borrow(), &asked, 0x80);
         if asked.format() == ImgFormat::Png {
             let format = image.format.as_mut().unwrap();
             if *self.rounds_otherwise.lock().unwrap() {
@@ -302,11 +306,20 @@ impl EmulatorController for Served {
         let ended = self.ended.clone();
         let lost = self.pictures_lost.clone();
         let streams = self.streams.clone();
+        let shade = self.shade.clone();
         streams.send_modify(|count| *count += 1);
         tokio::spawn(async move {
             loop {
                 drawn.borrow_and_update();
-                if sender.send(Ok(StubEmulator::picture(panel, *rotation.borrow(), asked.width, asked.height))).is_err() {
+                let mut picture = StubEmulator::picture(panel, *rotation.borrow(), &asked, shade.load(std::sync::atomic::Ordering::Relaxed));
+                // Asked to write the pixels into a file, the emulator does,
+                // and sends the picture without them.
+                if let Some(transport) = asked.transport.as_ref().filter(|transport| transport.channel() == TransportChannel::Mmap) {
+                    let path = transport.handle.strip_prefix("file://").expect("a file handle");
+                    std::fs::write(path, &picture.image).expect("the file the reader made is writable");
+                    picture.image = Bytes::new();
+                }
+                if sender.send(Ok(picture)).is_err() {
                     break;
                 }
                 tokio::select! {
@@ -517,17 +530,6 @@ impl Guest for StubGuest {
         Box::pin(async { Ok(()) })
     }
 
-    fn record_start(&self) -> BoxFuture<'_, Result<()>> {
-        Box::pin(async { Ok(()) })
-    }
-
-    fn record_stop<'a>(&'a self, file: &'a Path) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move {
-            tokio::fs::write(file, b"MP4").await.unwrap();
-            Ok(())
-        })
-    }
-
     /// The corners the test gives, once the test lets the read go on.
     fn resource<'a>(&'a self, package: &'a str, name: &'a str) -> BoxFuture<'a, Result<Resolved>> {
         Box::pin(async move {
@@ -607,6 +609,7 @@ impl StubSdk {
             rotation: watch::Sender::new(0),
             turning_held: watch::Sender::new(false),
             drawn: watch::Sender::new(0),
+            shade: Arc::new(std::sync::atomic::AtomicU8::new(0x80)),
             ended: CancellationToken::new(),
             streams: watch::Sender::new(0),
             panel: Mutex::new((1080, 2400)),
@@ -1040,11 +1043,13 @@ async fn the_live_view_shows_an_emulator_as_h264_in_its_drawn_frame() {
     assert_eq!(frame["kind"], "drawn");
     assert!(frame["buttons"].as_array().unwrap().iter().all(|button| button["side"] == "right"), "{frame}");
     let video = page.video().await;
-    // Annex B: the parameter sets, then an IDR picture.
+    // Annex B: the parameter sets, then an IDR picture; a hardware encoder
+    // puts an SEI between them.
     let types: Vec<u8> = video
         .windows(5)
         .filter(|window| window[..4] == [0, 0, 0, 1])
         .map(|window| window[4] & 0x1f)
+        .filter(|kind| *kind != 6)
         .collect();
     assert_eq!(&types[..3], [7, 8, 5], "{types:?}");
 }
@@ -1698,45 +1703,6 @@ async fn the_helper_says_when_another_client_holds_the_ui_automation() {
     assert_eq!(refused, demi_mobile::android::guest::TAKEN);
 }
 
-/// The encoder is Cisco's build, downloaded as it is first needed and
-/// used only when it matches its pinned hash: a file the server sends
-/// that does not is refused, kept nowhere, and asked for again next time.
-/// Planted defect this catches: the download used unchecked. A stub server
-/// on a local port, milliseconds.
-#[tokio::test]
-async fn an_encoder_that_is_not_ciscos_build_is_refused() {
-    use demi_mobile::android::{Codec, openh264::Cisco};
-    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-    let mut compressed = Vec::new();
-    std::io::Read::read_to_end(&mut bzip2::read::BzEncoder::new(&b"not Cisco's library"[..], bzip2::Compression::fast()), &mut compressed).unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let origin = format!("http://{}", listener.local_addr().unwrap());
-    let asked = Arc::new(Mutex::new(Vec::new()));
-    let heard = asked.clone();
-    let _server = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
-        while let Ok((mut stream, _)) = listener.accept().await {
-            let mut request = vec![0u8; 4096];
-            let read = stream.read(&mut request).await.unwrap();
-            let line = String::from_utf8_lossy(&request[..read]).lines().next().unwrap_or_default().to_owned();
-            heard.lock().unwrap().push(line);
-            let header = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", compressed.len());
-            stream.write_all(header.as_bytes()).await.unwrap();
-            stream.write_all(&compressed).await.unwrap();
-        }
-    }));
-    let directory = tempfile::tempdir().unwrap();
-    let cisco = Cisco::from_origin(directory.path().to_owned(), origin);
-    for _ in 0..2 {
-        let refused = cisco.library().await.err().expect("a library that is not Cisco's is refused").to_string();
-        assert!(refused.contains("does not match its pinned hash"), "{refused}");
-    }
-    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0, "the refused file was kept");
-    let asked = asked.lock().unwrap().clone();
-    assert_eq!(asked.len(), 2);
-    assert!(asked.iter().all(|line| line.starts_with("GET /libopenh264-2.6.0-") && line.contains(".bz2 ")), "{asked:?}");
-    assert_eq!(asked[0], asked[1], "the second use asks for the same file again");
-}
-
 /// An emulator's display that turns off, by the panel's Lock here, is told to
 /// the view as Android announces it. The viewer's Wake turns it on with the
 /// wake key, never the power key, which would turn a lit one off.
@@ -1787,6 +1753,51 @@ async fn the_view_hears_the_display_after_its_log_ends() {
     log.cancel();
     sdk.guest.power().await.unwrap();
     assert!(!on(screen(&mut page).await), "the display turned off after its log ended");
+}
+
+/// A recording of an emulator keeps the pictures that differ, read from the
+/// file the emulator writes its pixels into, and shares the emulator's one
+/// picture stream with the live view. Planted defects this catches: a picture
+/// equal to the one before kept, pixels not read from the file, and a second
+/// stream opened for the live view. A stub emulator and OpenH264 at a small
+/// size; under a second.
+#[tokio::test]
+async fn an_emulator_recording_keeps_the_pictures_that_differ_from_the_one_stream() {
+    let (mobile, sdk) = start(true).await;
+    mobile.open(CHAT, AVD).await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
+    page.send(json!({ "type": "looked", "looked": true })).await;
+    page.send(json!({ "type": "frame", "width": 400, "height": 800, "scale": 2.0 })).await;
+    page.send(json!({ "type": "shown", "width": 360, "height": 800 })).await;
+    page.video().await;
+    // The streams open while the live view looks: the one that follows the
+    // screen's turns and draws, and the one of its pictures.
+    let streams = sdk.emulator.streams.subscribe();
+    let before = *streams.borrow();
+    let started = mobile.run(CHAT, "record", json!({ "target": "m1", "action": "start" })).await.json();
+    let id = started["recording"]["id"].as_str().unwrap().to_owned();
+    assert_eq!(*streams.borrow(), before, "the recording shares the live view's stream of pictures");
+    let draw = async |shade: u8| {
+        sdk.emulator.shade.store(shade, std::sync::atomic::Ordering::Relaxed);
+        sdk.emulator.drawn.send_modify(|count| *count += 1);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    };
+    draw(0x80).await;
+    draw(0x80).await;
+    draw(0x40).await;
+    draw(0x40).await;
+    let stopped = mobile.run(CHAT, "record", json!({ "target": id, "action": "stop" })).await.json();
+    assert_eq!(stopped["recording"]["frames"], 2, "only the two pictures that differ are frames");
+    // The live view alone had the stream drawn at its own size; the recording
+    // starts from the pictures at the size it needs.
+    let own = demi_shared_h264::hardware();
+    assert_eq!(stopped["recording"]["size"]["width"].as_u64().unwrap() >= 1000, own, "{stopped}");
+    let exported = mobile.run(CHAT, "record", json!({ "target": id, "action": "export", "frames": "f002" })).await.json();
+    let png = image::open(exported["images"][0]["path"].as_str().unwrap()).unwrap().to_rgba8();
+    // A Host without a hardware encoder records at the screen's logical size.
+    let own = demi_shared_h264::hardware();
+    assert_eq!(png.width() >= 1080, own, "the recording is at the screen's own pixels where the Host can encode them: {}", png.width());
 }
 
 /// An emulator whose display cannot be followed does not open, and what

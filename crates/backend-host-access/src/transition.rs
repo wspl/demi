@@ -327,7 +327,7 @@ impl dyn HostShard + '_ {
             let mut changed = gate.subscribe();
             if let Some(_released) = gate.try_reserve() {
                 if !self.runs_on(id, device).await {
-                    self.release_on(id.as_str(), device).await;
+                    self.release_on(id.as_str(), device, false).await;
                 }
                 return;
             }
@@ -359,7 +359,7 @@ impl dyn HostShard + '_ {
     /// The held archive: the conversation release on every Host the
     /// conversation reaches, then the commit.
     pub async fn archive(&self, record: &ConversationRecord) -> Result<(), ChangeRefusal> {
-        self.release_everywhere(record).await?;
+        self.release_everywhere(record, true).await?;
         self.commit(&record.id, RecordChange::Archived(true)).await
     }
 
@@ -372,21 +372,22 @@ impl dyn HostShard + '_ {
     ) -> Result<(), ChangeRefusal> {
         let attached = self.control().attached_hosts(record.id.clone()).await?;
         if attached.iter().any(|host| host.device == device) {
-            self.release_on(record.id.as_str(), &device).await;
+            self.release_on(record.id.as_str(), &device, false).await;
         }
         self.commit(&record.id, RecordChange::Detach(device)).await
     }
 
     /// The conversation release on every Host the conversation reaches, primary
-    /// and attached, for an archive and for its idle watch. Only reading the
-    /// Hosts fails it: a Host that did not take the release is not sent it
-    /// again (`release_on`).
+    /// and attached, for an archive (`over`) and for its idle watch. Only
+    /// reading the Hosts fails it: a Host that did not take the release is not
+    /// sent it again (`release_on`).
     pub async fn release_everywhere(
         &self,
         record: &ConversationRecord,
+        over: bool,
     ) -> Result<(), StorageError> {
         let devices = self.release_devices(record).await?;
-        self.release_on_each(&record.id, &devices).await;
+        self.release_on_each(&record.id, &devices, over).await;
         Ok(())
     }
 
@@ -405,9 +406,9 @@ impl dyn HostShard + '_ {
 
     /// The conversation release on each of `devices`, as an archive sends it
     /// (`release_on`).
-    pub async fn release_on_each(&self, conversation: &ConversationId, devices: &[DeviceId]) {
+    pub async fn release_on_each(&self, conversation: &ConversationId, devices: &[DeviceId], over: bool) {
         for device in devices {
-            self.release_on(conversation.as_str(), device).await;
+            self.release_on(conversation.as_str(), device, over).await;
         }
     }
 }

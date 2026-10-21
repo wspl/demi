@@ -72,6 +72,9 @@ use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Messages
 pub use error::MobileError;
 pub use operations::{QUIET, SETTLE_LIMIT};
 
+use demi_shared_openh264::{Cisco, Codec};
+use demi_shared_recording::Library;
+
 use crate::{devices::Devices, driver::Driver, live::Hub, operations::Produced};
 
 /// The service.
@@ -81,6 +84,9 @@ pub struct DemiMobile {
     /// The installation, `DEMI_HOME`, whose `scratch/<12 digits of the conversation's id>` is each
     /// conversation's scratch directory; none for a service without one.
     home: Option<std::path::PathBuf>,
+    codec: Arc<dyn Codec>,
+    /// Each conversation's recordings, in the conversation's scratch directory.
+    libraries: std::sync::Mutex<std::collections::HashMap<String, Arc<Library>>>,
 }
 
 impl DemiMobile {
@@ -89,13 +95,14 @@ impl DemiMobile {
         // The installation's `mobile/`, where the simulators Demi booted
         // and the open devices are kept across the program's ends (`crates/plugin-mobile/command/src/devices.rs`).
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
-        Self::with_drivers(host_drivers(home.as_deref()), home.as_deref())
+        let codec: Arc<dyn Codec> = Arc::new(Cisco::in_installation(home.as_deref()));
+        Self::with_drivers(host_drivers(home.as_deref(), codec.clone()), home.as_deref(), codec)
     }
 
     /// The service with `drivers`, such as a test's, in the installation
     /// `home`: it keeps the simulators it boots in `home/mobile`, and each
     /// conversation's files in `home/scratch/<12 digits of the conversation's id>`.
-    pub fn with_drivers(drivers: Vec<Arc<dyn Driver>>, home: Option<&std::path::Path>) -> Self {
+    pub fn with_drivers(drivers: Vec<Arc<dyn Driver>>, home: Option<&std::path::Path>, codec: Arc<dyn Codec>) -> Self {
         let mobile = home.map(|home| home.join("mobile"));
         // A conversation is still on this Host while its scratch directory
         // is: the runner removes the directories of the conversations the
@@ -111,6 +118,8 @@ impl DemiMobile {
             devices: Devices::new(drivers, kept::Kept::load(mobile.as_deref()), exists),
             hub: Arc::default(),
             home: home.map(std::path::Path::to_owned),
+            codec,
+            libraries: std::sync::Mutex::default(),
         }
     }
 
@@ -122,6 +131,21 @@ impl DemiMobile {
             .unwrap_or_else(std::env::temp_dir)
             .join("scratch")
             .join(demi_command_protocol::scratch_name(conversation))
+    }
+
+    /// `conversation`'s recordings on this Host.
+    fn library(&self, conversation: &str) -> Arc<Library> {
+        self.libraries
+            .lock()
+            .expect("the libraries are intact")
+            .entry(conversation.to_owned())
+            .or_insert_with(|| {
+                Arc::new(Library::new(
+                    demi_command_protocol::recordings_directory(self.home.as_deref(), conversation),
+                    self.codec.clone(),
+                ))
+            })
+            .clone()
     }
 
     pub fn devices(&self) -> &Arc<Devices> {
@@ -137,8 +161,8 @@ impl Default for DemiMobile {
 
 /// The drivers this Host has: iOS on a Mac, Android where its SDK is. An
 /// emulator Demi boots writes its log into the installation's
-/// `mobile/android`, which keeps Cisco's OpenH264 too.
-fn host_drivers(home: Option<&std::path::Path>) -> Vec<Arc<dyn Driver>> {
+/// `mobile/android`.
+fn host_drivers(home: Option<&std::path::Path>, codec: Arc<dyn Codec>) -> Vec<Arc<dyn Driver>> {
     vec![
         #[cfg(target_os = "macos")]
         Arc::new(ios::Ios::new()),
@@ -147,7 +171,7 @@ fn host_drivers(home: Option<&std::path::Path>) -> Vec<Arc<dyn Driver>> {
             platform: demi_command_package_mobile_protocol::mobile::MobilePlatform::Ios,
             reason: "iOS simulators need a Mac".into(),
         }),
-        Arc::new(android::Android::new(home.map(|home| home.join("mobile").join("android")))),
+        Arc::new(android::Android::new(home.map(|home| home.join("mobile").join("android")), codec)),
     ]
 }
 
@@ -174,6 +198,9 @@ impl Handler for DemiMobile {
         Box::pin(async move {
             let body = match &context.request {
                 ConversationRequest::Release { conversation } => {
+                    // Its devices close, and their recordings end complete with
+                    // them; the recordings are kept until the conversation is
+                    // archived or deleted.
                     devices.release(conversation).await;
                     Bytes::from_static(b"{}")
                 }
@@ -207,6 +234,7 @@ impl Handler for DemiMobile {
         let hub = self.hub.clone();
         let installed = self.home.is_some();
         let scratch = self.scratch(&context.request.context.conversation);
+        let library = self.library(&context.request.context.conversation);
         devices.reached(&context.request.context.conversation);
         Box::pin(async move {
             let operation = match Operation::parse(&context.request.operation, context.request.args.clone()) {
@@ -226,7 +254,12 @@ impl Handler for DemiMobile {
                 // downloads it from; the agent's files go where it says.
                 scratch: (installed && context.request.context.caller.agent_number().is_none())
                     .then(|| scratch.clone()),
-                recordings: scratch.clone(),
+                library,
+                caller_scratch: context
+                    .request
+                    .env
+                    .get("DEMI_SCRATCH")
+                    .map_or_else(|| scratch.clone(), std::path::PathBuf::from),
                 agent: context.request.context.caller.agent_number().is_some(),
                 cancel: &context.cancellation,
             };

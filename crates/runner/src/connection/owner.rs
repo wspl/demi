@@ -359,11 +359,12 @@ impl Owner<'_> {
                 device_id,
                 device_name,
                 conversations,
+                archived,
             } => {
                 // Before any job of this connection starts, so a
                 // conversation made since the backend listed them keeps the
                 // directory its first job makes.
-                if let Err(error) = registered.scratch.keep_only(&conversations).await {
+                if let Err(error) = registered.scratch.keep_only(&conversations, &archived).await {
                     // The next connection tries again.
                     tracing::warn!("the scratch directories could not be listed: {error}");
                 }
@@ -499,8 +500,10 @@ impl Owner<'_> {
             Inbound::ConversationRelease {
                 id,
                 conversation_id,
+                over,
             } => {
                 let services = self.registered.services.clone();
+                let scratch = self.registered.scratch.clone();
                 let control = self.live.control.clone();
                 let closed = self.live.closed.clone();
                 self.work.spawn(async move {
@@ -510,6 +513,12 @@ impl Owner<'_> {
                         _ = closed.cancelled() => return Work::Done,
                         result = services.release_conversation(&conversation_id) => result,
                     };
+                    // Its recordings end with their devices and tabs, complete,
+                    // as the services release; an archived or deleted
+                    // conversation then loses them.
+                    if over {
+                        scratch.forget_recordings(&conversation_id).await;
+                    }
                     match wire::encode(&wire::Outbound::ConversationReleased {
                         id,
                         error: result.err(),

@@ -106,7 +106,7 @@ impl Shard {
         self.stop_idle(&id);
         // Step 2: its Hosts let go of what they hold for it, its Chrome with
         // its tabs among them.
-        host.release_on_each(&id, &devices).await;
+        host.release_on_each(&id, &devices, true).await;
         // The conversation is gone for every request already, so a failure
         // of what is left refuses nothing: the deletion stays pending.
         if let Err(error) = self.finish_deletion(&id).await {

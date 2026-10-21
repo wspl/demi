@@ -1,8 +1,8 @@
 OpenH264 Video Codec provided by Cisco Systems, Inc.
 
 Demi downloads Cisco's binary of OpenH264 from Cisco the first time an
-Android emulator is viewed; that binary is licensed under Cisco's binary
-license, https://www.openh264.org/BINARY_LICENSE.txt. OpenH264's source is
+Android emulator is viewed or a recording is made; that binary is licensed
+under Cisco's binary license, https://www.openh264.org/BINARY_LICENSE.txt. OpenH264's source is
 under the license below.
 
 Copyright (c) 2013, Cisco Systems

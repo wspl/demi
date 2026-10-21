@@ -4,20 +4,16 @@
 //! - the UI tree with its display rotation, a field's text and the clipboard,
 //!   through openatx's `u2.jar`, which `demi-mobile` carries and runs with
 //!   `app_process` as a shell process, not an installed app;
-//! - appearance and recording, through the shell.
+//! - appearance, through the shell.
 
-use std::{
-    path::Path,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use futures_util::{StreamExt as _, future::BoxFuture, stream::BoxStream};
 use http_body_util::{BodyExt as _, Full};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio_util::sync::CancellationToken;
 
 use super::adb::Adb;
@@ -47,8 +43,6 @@ const PORT: u16 = 9018;
 /// Where the helper's process id is kept, so the next program stops the
 /// helper this one left.
 const PID_FILE: &str = "/data/local/tmp/demi-u2.pid";
-/// The recording's file while it runs.
-const RECORDING: &str = "/data/local/tmp/demi-recording.mp4";
 /// How long the helper takes to start.
 const STARTING: Duration = Duration::from_secs(30);
 /// What the helper prints once it listens.
@@ -97,9 +91,6 @@ pub trait Guest: Send + Sync + 'static {
     /// Whether the dark appearance is on.
     fn night(&self) -> BoxFuture<'_, Result<bool>>;
     fn set_night(&self, dark: bool) -> BoxFuture<'_, Result<()>>;
-    fn record_start(&self) -> BoxFuture<'_, Result<()>>;
-    /// Ends the recording and writes its MP4 to `file`.
-    fn record_stop<'a>(&'a self, file: &'a Path) -> BoxFuture<'a, Result<()>>;
     /// A resource of `package` as Android resolves it, its overlays
     /// included (`cmd overlay lookup`), with the APK it resolves to.
     fn resource<'a>(&'a self, package: &'a str, name: &'a str) -> BoxFuture<'a, Result<Resolved>>;
@@ -120,19 +111,11 @@ struct Server {
     reader: tokio::task::JoinHandle<()>,
 }
 
-/// A recording running inside the emulator.
-struct Recording {
-    pid: u32,
-    /// Ends with the recording's process.
-    finished: tokio::task::JoinHandle<()>,
-}
-
 /// The emulator `serial`, reached through the adb server.
 pub struct U2 {
     adb: Adb,
     serial: String,
     server: tokio::sync::Mutex<Option<Server>>,
-    recording: Mutex<Option<Recording>>,
     /// The input method's package, read once.
     keyboard: tokio::sync::OnceCell<Option<String>>,
 }
@@ -143,7 +126,6 @@ impl U2 {
             adb,
             serial,
             server: tokio::sync::Mutex::default(),
-            recording: Mutex::default(),
             keyboard: tokio::sync::OnceCell::new(),
         })
     }
@@ -438,60 +420,8 @@ impl Guest for U2 {
         })
     }
 
-    fn record_start(&self) -> BoxFuture<'_, Result<()>> {
-        Box::pin(async move {
-            let stream = self
-                .adb
-                .open(&self.serial, &format!("shell:echo $$; exec screenrecord --time-limit 0 {RECORDING} 2>&1"))
-                .await?;
-            let mut reader = BufReader::new(stream);
-            let mut first = String::new();
-            reader
-                .read_line(&mut first)
-                .await
-                .map_err(|error| DriverError::Failed(format!("the recording did not start: {error}")))?;
-            let pid = first
-                .trim()
-                .parse()
-                .map_err(|_| DriverError::Failed(format!("the recording did not start: {}", first.trim())))?;
-            let finished = tokio::spawn(async move {
-                let mut rest = Vec::new();
-                // What screenrecord says as it ends is the Host log's.
-                if reader.read_to_end(&mut rest).await.is_ok() && !rest.is_empty() {
-                    tracing::info!("screenrecord: {}", String::from_utf8_lossy(&rest).trim());
-                }
-            });
-            *self.recording.lock().expect("the recording is intact") = Some(Recording { pid, finished });
-            Ok(())
-        })
-    }
-
-    fn record_stop<'a>(&'a self, file: &'a Path) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move {
-            let recording = self
-                .recording
-                .lock()
-                .expect("the recording is intact")
-                .take()
-                .ok_or_else(|| DriverError::Failed("no recording runs".into()))?;
-            // An interrupted screenrecord finishes its MP4, then ends.
-            self.adb.shell(&self.serial, &format!("kill -INT {}", recording.pid)).await?;
-            let _finished = recording.finished.await;
-            let pulled = self.adb.pull(&self.serial, RECORDING, file).await;
-            self.adb.shell(&self.serial, &format!("rm -f {RECORDING}")).await?;
-            pulled
-        })
-    }
-
     fn close(&self) -> BoxFuture<'_, ()> {
         Box::pin(async move {
-            let recording = self.recording.lock().expect("the recording is intact").take();
-            if let Some(recording) = recording {
-                recording.finished.abort();
-                if let Err(error) = self.adb.shell(&self.serial, &format!("kill {}; rm -f {RECORDING}", recording.pid)).await {
-                    tracing::info!("the recording did not stop: {error}");
-                }
-            }
             if let Some(server) = self.server.lock().await.take() {
                 server.reader.abort();
                 if let Err(error) = self.stop_left().await {

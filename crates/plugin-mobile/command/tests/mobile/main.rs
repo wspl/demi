@@ -9,6 +9,7 @@ mod live;
 mod lifetime;
 mod android;
 mod frames;
+mod record;
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -109,7 +110,7 @@ impl Mobile {
         let home = tempfile::tempdir().unwrap();
         let mobile = home.path().join("mobile");
         let ios = FakeDriver::ios(simulators);
-        let drivers: Vec<Arc<dyn Driver>> = vec![ios.clone(), Arc::new(demi_mobile::android::Android::with_sdk(sdk, Arc::new(demi_mobile::testing::BuiltOpenH264)))];
+        let drivers: Vec<Arc<dyn Driver>> = vec![ios.clone(), Arc::new(demi_mobile::android::Android::with_sdk(sdk, Arc::new(demi_shared_openh264::Built)))];
         Self::start_with(drivers, ios, &mobile, Some(home)).await
     }
 
@@ -136,7 +137,7 @@ impl Mobile {
         home: Option<tempfile::TempDir>,
     ) -> Self {
         let (client_io, server_io) = tokio::io::duplex(256 * 1024);
-        let service = Arc::new(DemiMobile::with_drivers(drivers, mobile.parent()));
+        let service = Arc::new(DemiMobile::with_drivers(drivers, mobile.parent(), Arc::new(demi_shared_openh264::Built)));
         let server = AbortOnDropHandle::new(tokio::spawn(serve(server_io, service.clone())));
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let connection = AbortOnDropHandle::new(tokio::spawn(async move {

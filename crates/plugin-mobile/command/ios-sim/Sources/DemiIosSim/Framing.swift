@@ -1,6 +1,7 @@
 // demi-mobile's framing (`ios/helper.rs`): a four-byte big-endian length,
 // a kind and the payload. Control frames are JSON, video frames a capture's
-// pictures, blob frames a reply's file.
+// pictures, blob frames a reply's file, picture frames a recording's coded
+// pictures.
 
 import Foundation
 
@@ -8,6 +9,7 @@ enum FrameKind: UInt8 {
   case control = 1
   case video = 2
   case blob = 3
+  case picture = 4
 }
 
 /// Writes frames to standard output, one whole frame at a time.
@@ -56,6 +58,34 @@ final class Output: @unchecked Sendable {
     payload.appendBigEndian(UInt16(clamping: height))
     payload.append(bytes)
     write(.video, payload)
+  }
+}
+
+extension Output {
+  /// A recording's picture: its header, then the H.264 Annex B bytes. The
+  /// header is big-endian: the recording (u32), how many draws the helper
+  /// missed before this picture (u32), flags (u8, 1 = key frame) and three
+  /// reserved bytes, the timestamp in microseconds (f64), the width and the
+  /// height (u16 each), and where it differs from the picture before, x, y,
+  /// width and height (u16 each).
+  func picture(
+    recording: UInt32, missed: UInt32, key: Bool, timestamp: Double, width: Int, height: Int, changed: Changed,
+    _ bytes: Data
+  ) {
+    var payload = Data(capacity: 32 + bytes.count)
+    payload.appendBigEndian(recording)
+    payload.appendBigEndian(missed)
+    payload.append(key ? 1 : 0)
+    payload.append(contentsOf: [0, 0, 0])
+    payload.appendBigEndian(timestamp.bitPattern)
+    payload.appendBigEndian(UInt16(clamping: width))
+    payload.appendBigEndian(UInt16(clamping: height))
+    payload.appendBigEndian(UInt16(clamping: changed.x))
+    payload.appendBigEndian(UInt16(clamping: changed.y))
+    payload.appendBigEndian(UInt16(clamping: changed.width))
+    payload.appendBigEndian(UInt16(clamping: changed.height))
+    payload.append(bytes)
+    write(.picture, payload)
   }
 }
 

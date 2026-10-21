@@ -22,7 +22,7 @@ import {
   type PanelButton,
   type PanelReason,
   type PressButton,
-  type RecordAction,
+  type PanelRecord,
   type RecordDevice,
   type RotateResult,
   type RecordResult,
@@ -60,7 +60,7 @@ export interface MobileApi {
   toggleAppearance(device: string): Promise<void>
   press(device: string, button: PanelButton): Promise<void>
   screenshot(device: string): Promise<Saved>
-  record(device: string, action: RecordAction): Promise<RecordResult>
+  record(device: string, action: PanelRecord): Promise<RecordResult>
   stream: OpenUserStream
 }
 

@@ -27,6 +27,15 @@
 //! Host that was offline when a conversation was deleted therefore cleans up as
 //! soon as it connects, with nothing to remember in between.
 //!
+//! The conversation's recordings (`crates/shared-recording`), in a directory
+//! of their own inside it, go sooner: when the conversation is archived or
+//! deleted. The release the backend sends then says so
+//! ([`Scratch::forget_recordings`]), and the hello's answer names the
+//! conversations that are archived, so a Host that was offline then removes
+//! them as it connects. Neither depends on a service running: a recording
+//! outlives every device and tab it recorded, and the conversation's idleness,
+//! its move to another Host and the detaching of a device end none.
+//!
 //! A backend that cannot read the conversations drops the connection rather
 //! than name none, which would remove every directory.
 
@@ -73,13 +82,13 @@ impl Scratch {
     }
 
     /// Removes the scratch directory of every conversation not in `existing`,
-    /// and says which it removed.
+    /// and the recordings of those `archived`.
     ///
     /// It removes the directories under the root whose name no existing
     /// conversation has. Anything else there, such as a file or a link, is left
     /// alone, and a directory that cannot be removed stays until the next
     /// connection tries again.
-    pub async fn keep_only(&self, existing: &[String]) -> io::Result<()> {
+    pub async fn keep_only(&self, existing: &[String], archived: &[String]) -> io::Result<()> {
         let existing: HashSet<String> = existing.iter().map(|id| scratch_name(id)).collect();
         let mut entries = match tokio::fs::read_dir(&self.root).await {
             Ok(entries) => entries,
@@ -104,6 +113,23 @@ impl Scratch {
                 ),
             }
         }
+        for conversation in archived {
+            self.forget_recordings(conversation).await;
+        }
         Ok(())
+    }
+
+    /// Removes `conversation`'s recordings: it was archived or deleted. One
+    /// that cannot be removed stays until the next time the runner connects.
+    pub async fn forget_recordings(&self, conversation: &str) {
+        let directory = demi_command_protocol::recordings_in(&self.root, conversation);
+        match tokio::fs::remove_dir_all(&directory).await {
+            Ok(()) => tracing::info!(
+                "removed the recordings {} of an archived or deleted conversation",
+                directory.display()
+            ),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => tracing::warn!("the recordings {} could not be removed: {error}", directory.display()),
+        }
     }
 }

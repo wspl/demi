@@ -922,11 +922,14 @@ impl Link {
     }
 
     /// Asks the runner to release what its services hold for
-    /// `conversation`. It admits no work and waits at most six minutes.
-    pub async fn release_conversation(&self, conversation: &str) -> Result<(), HostError> {
+    /// `conversation`, and with `over`, since the conversation is archived or
+    /// deleted, what it keeps itself: its recordings. It admits no work and
+    /// waits at most six minutes.
+    pub async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
         let release = self.call(Expected::Release, |id| Inbound::ConversationRelease {
             id,
             conversation_id: conversation.into(),
+            over,
         });
         match tokio::time::timeout(RELEASE_TIMEOUT, release).await {
             Ok(result) => result.map(|_| ()),

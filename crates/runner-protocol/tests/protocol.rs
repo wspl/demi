@@ -184,7 +184,7 @@ fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
         let job = json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
             "cwd": "/", "env": {}});
         let release =
-            json!({"type": "conversation_release", "id": "release", "conversationId": name});
+            json!({"type": "conversation_release", "id": "release", "conversationId": name, "over": false});
         for message in [job, release] {
             assert_eq!(
                 wire::decode::<Inbound>(&msgpack(&message)).is_ok(),

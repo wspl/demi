@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Toolbar, downloadUrl, usePage, type ToolbarAction } from '@demicodes/plugin-sdk'
 import DeviceView from './DeviceView.vue'
 import type { MobileDevicesController } from './controller'
@@ -34,6 +34,18 @@ const device = props.session.device(props.data)
 /** Whether the device records, as the device says, whoever started it. */
 const recording = computed(() => device.recording)
 /**
+ * Whether this panel started the recording that runs. A recording it started
+ * that ends without its Stop, at the limit of its time or its size, gives it
+ * the video all the same.
+ */
+const startedHere = ref(false)
+watch(recording, (now, was) => {
+  if (was && !now && startedHere.value) {
+    startedHere.value = false
+    void props.session.collect(props.data.device).then(save)
+  }
+})
+/**
  * The device's model as its driver reads it: the Host's once it said, the
  * tab's until then; none when the driver knows none.
  */
@@ -62,6 +74,10 @@ function save(path: string | null): void {
  */
 function act(control: DeviceControl): Promise<void> | undefined {
   const call = control.call(props.data.device, { recording: recording.value })
+  if (call.method === 'record') {
+    // Stop takes the video itself; only a start leaves one to come.
+    startedHere.value = call.params.action === 'start'
+  }
   if (call.method === 'screenshot' || call.method === 'record') {
     return props.session.run(call).then(save)
   }

@@ -829,7 +829,7 @@ async fn state(open: &OpenDevice, writer: &Writer<LiveModuleMessage>) {
         platform: open.platform,
         os: open.os.clone(),
         model: (!open.model.is_empty()).then(|| open.model.clone()),
-        recording: open.recording.lock().expect("the recording is intact").is_some(),
+        recording: open.recording().is_some(),
         orientation: open.device.screen().borrow().orientation,
     };
     writer.control(&LiveModuleMessage::State { device }).await;

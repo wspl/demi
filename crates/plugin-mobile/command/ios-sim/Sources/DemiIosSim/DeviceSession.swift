@@ -1,5 +1,5 @@
 // One attached simulator: its framebuffer, its HID connection, the
-// orientation its screen shows, its captures and its recording.
+// orientation its screen shows, its captures and its recordings.
 //
 // The simulator turns its screen but not its framebuffer, which stays
 // portrait with the picture sideways, so every picture is turned upright
@@ -89,7 +89,7 @@ final class DeviceSession: @unchecked Sendable {
   private var turnWaiters: [UUID: (Turn, CheckedContinuation<Void, Never>)] = [:]
   private var followingTurns: Task<Void, Never>?
   private var captures: [UInt32: Encoder] = [:]
-  private var recorder: Recorder?
+  private var taps: [UInt32: RecordingTap] = [:]
   private var detached = false
   /// The UI automation mode before the guest bridge first turned it on,
   /// which detaching restores: nil while the bridge was never used.
@@ -171,7 +171,7 @@ final class DeviceSession: @unchecked Sendable {
   // MARK: Pictures
 
   /// Follows the framebuffer: each new picture is drawn, encoded for each
-  /// capture and added to the recording; its end is the device's loss. Follows
+  /// capture and recording; its end is the device's loss. Follows
   /// the display: each turn it takes is the screen's.
   private func follow() {
     let display = SimulatorDisplayCommands(simulator: simulator)
@@ -226,9 +226,9 @@ final class DeviceSession: @unchecked Sendable {
   }
 
   private func drawn() {
-    let (encoders, recorder) = lock.withLock { (Array(captures.values), self.recorder) }
+    let (encoders, taps) = lock.withLock { (Array(captures.values), Array(self.taps.values)) }
     for encoder in encoders { encoder.drawn() }
-    recorder?.drawn()
+    for tap in taps { tap.drawn() }
     tellDrawn()
   }
 
@@ -476,7 +476,7 @@ final class DeviceSession: @unchecked Sendable {
     }
   }
 
-  // MARK: Captures and the recording
+  // MARK: Captures and the recordings
 
   func captureStart(capture: UInt32, width: Int, height: Int, fps: Int, bitrate: Int) throws {
     let encoder = try Encoder(
@@ -501,41 +501,34 @@ final class DeviceSession: @unchecked Sendable {
     lock.withLock { captures.removeValue(forKey: capture) }?.stop()
   }
 
-  /// Records into `path`, which demi-mobile chose in the conversation's
-  /// scratch directory and takes once the recording stops.
-  func recordStart(path: String) throws {
-    guard let image = upright() else { throw HelperError("\(simulator.name) shows no picture") }
-    let recorder = try Recorder(size: image.extent.size, url: URL(fileURLWithPath: path), session: self)
-    lock.withLock { self.recorder = recorder }
-    recorder.drawn()
+  /// Hands demi-mobile every picture the device draws that differs from the
+  /// one before, coded at the screen's own pixels, tagged `recording`; the
+  /// current picture first.
+  func recordStart(recording: UInt32, keyInterval: Int) {
+    let tap = RecordingTap(recording: recording, session: self, output: output, keyInterval: keyInterval)
+    lock.withLock { taps[recording] = tap }
+    tap.drawn()
   }
 
-  /// Ends the recording; answers its length in milliseconds.
-  func recordStop() async throws -> Int {
-    guard let recorder = lock.withLock({ () -> Recorder? in
-      defer { self.recorder = nil }
-      return self.recorder
-    }) else {
-      throw HelperError("\(simulator.name) is not recording")
-    }
-    return try await recorder.finish()
+  func recordStop(recording: UInt32) {
+    lock.withLock { taps.removeValue(forKey: recording) }?.stop()
   }
 
-  /// Lets the device go: its captures and recording stop, the automation
+  /// Lets the device go: its captures and recordings stop, the automation
   /// mode the bridge changed is restored, the HID and the framebuffer
   /// disconnect.
   func detach() async {
-    let (encoders, recorder, automation) = lock.withLock {
-      () -> ([Encoder], Recorder?, AutomationBefore?) in
+    let (encoders, taps, automation) = lock.withLock {
+      () -> ([Encoder], [RecordingTap], AutomationBefore?) in
       detached = true
       defer {
         captures.removeAll()
-        self.recorder = nil
+        self.taps.removeAll()
       }
-      return (Array(captures.values), self.recorder, automationBefore)
+      return (Array(captures.values), Array(self.taps.values), automationBefore)
     }
     for encoder in encoders { encoder.stop() }
-    if let recorder { await recorder.discard() }
+    for tap in taps { tap.stop() }
     if let automation {
       do {
         try await AutomationMode(simulator: simulator).restore(automation)

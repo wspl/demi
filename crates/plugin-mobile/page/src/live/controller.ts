@@ -123,6 +123,23 @@ export class MobileDevicesController {
   }
 
   /**
+   * The video of a recording this panel started that ended without a press of
+   * Stop, at its limit: the file on the Host that the content saves on the
+   * user's computer. None when the Host holds none, as after the device
+   * reconnected.
+   */
+  async collect(device: string): Promise<string | null> {
+    try {
+      return (await this.api.record(device, 'stop')).path ?? null
+    } catch (error) {
+      if (MobileError.of(error).reason !== 'recording_not_found') {
+        this.errors.report(t('failures.control'), error)
+      }
+      return null
+    }
+  }
+
+  /**
    * Runs a toolbar control's call; answers the file on the Host that
    * Screenshot or a stopped Record left, which the content saves on the
    * user's computer. A refusal is a toast. Whether a device records is the

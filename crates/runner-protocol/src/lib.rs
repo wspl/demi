@@ -4,7 +4,8 @@
 //! once.
 //!
 //! - A job's and a service stream's messages carry the command context.
-//! - `conversation_release` is the one generic release of a conversation,
+//! - `conversation_release` is the one generic release of a conversation, which
+//!   says whether the conversation is over, archived or deleted,
 //!   `package_release` the one of a package's services for every
 //!   conversation, and `numbers_reserve` the one generic request for a
 //!   conversation's numbers.

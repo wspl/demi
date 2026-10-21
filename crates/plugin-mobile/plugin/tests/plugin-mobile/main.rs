@@ -31,8 +31,11 @@ fn world() -> (Rc<dyn Plugin>, Rc<TestDemi>, Calls) {
             "mobile.appearance" => json!({ "device": "m1", "appearance": "dark" }),
             "mobile.key" => json!({ "device": "m1", "key": args["key"] }),
             "mobile.screenshot" => json!({ "device": "m1", "path": "/scratch/mobile/m1.png", "width": 723, "height": 1568, "settled": true }),
-            "mobile.record" if args["action"] == "start" => json!({ "device": "m1", "recording": true }),
-            "mobile.record" => json!({ "device": "m1", "recording": false, "path": "/scratch/mobile/m1.mp4", "durationMs": 4200 }),
+            "mobile.record" if args["action"] == "start" => json!({ "recording": { "id": "r1", "target": "m1", "running": true, "durationMs": 0, "frames": 0, "missed": 0 } }),
+            "mobile.record" => json!({
+                "recording": { "id": "r1", "target": "m1", "running": false, "ended": "stopped", "durationMs": 4200, "frames": 37, "missed": 0 },
+                "path": "/scratch/mobile/m1.mp4",
+            }),
             "mobile.close" => json!({ "device": "m1", "shutDown": false }),
             other => panic!("the panel ran {other}"),
         })
@@ -71,8 +74,8 @@ async fn each_panel_control_runs_its_commands_operation() {
         ("press", json!({ "device": "m1", "button": "volume-up" }), "key", json!({ "device": "m1", "key": "volume-up" })),
         ("press", json!({ "device": "m1", "button": "volume-down" }), "key", json!({ "device": "m1", "key": "volume-down" })),
         ("screenshot", json!({ "device": "m1" }), "screenshot", json!({ "device": "m1" })),
-        ("record", json!({ "device": "m1", "action": "start" }), "record", json!({ "device": "m1", "action": "start" })),
-        ("record", json!({ "device": "m1", "action": "stop" }), "record", json!({ "device": "m1", "action": "stop" })),
+        ("record", json!({ "device": "m1", "action": "start" }), "record", json!({ "target": "m1", "action": "start" })),
+        ("record", json!({ "device": "m1", "action": "stop" }), "record", json!({ "target": "m1", "action": "stop" })),
         ("close", json!({ "device": "m1" }), "close", json!({ "device": "m1" })),
     ];
     for (method, params, operation, args) in controls {

@@ -81,6 +81,12 @@ pub enum BrowserError {
     NavigationFailed(String),
     #[error("output already exists: {0}")]
     OutputExists(String),
+    #[error("{0} is recording already")]
+    Recording(String),
+    #[error("{0}")]
+    NoRecording(String),
+    #[error("five recordings are running, so no other can start; stop one with demi browser record <r> stop")]
+    TooManyRecordings,
     /// A payload, an image or a counter past what a command can hold, such as
     /// the clipboard's text or picture.
     #[error("the content is larger than a command can hold")]
@@ -337,6 +343,9 @@ impl BrowserError {
             Self::HistoryBoundary => BrowserErrorCode::HistoryBoundary,
             Self::NavigationFailed(_) => BrowserErrorCode::NavigationFailed,
             Self::OutputExists(_) => BrowserErrorCode::OutputExists,
+            Self::Recording(_) => BrowserErrorCode::Recording,
+            Self::NoRecording(_) => BrowserErrorCode::RecordingNotFound,
+            Self::TooManyRecordings => BrowserErrorCode::TooManyRecordings,
             Self::ResultTooLarge
             | Self::MessageTooLarge(_)
             | Self::CaptureTooLarge(_) => BrowserErrorCode::ResultTooLarge,
@@ -395,6 +404,21 @@ impl BrowserError {
                 ..ErrorDetails::default()
             },
             _ => ErrorDetails::default(),
+        }
+    }
+}
+
+impl From<demi_shared_recording::Error> for BrowserError {
+    fn from(error: demi_shared_recording::Error) -> Self {
+        use demi_shared_recording::Error;
+        match error {
+            Error::NoRecording(_) | Error::Removed(_) => Self::NoRecording(error.to_string()),
+            Error::TooManyRunning => Self::TooManyRecordings,
+            Error::Unavailable(reason) => Self::Unavailable(reason),
+            Error::BadRequest(reason) => Self::Configuration(reason),
+            Error::Exists(path) => Self::OutputExists(path.display().to_string()),
+            Error::Io(reason) => Self::Connection(reason),
+            Error::Corrupt(_) | Error::Failed(_) => Self::InvalidResult(error.to_string()),
         }
     }
 }

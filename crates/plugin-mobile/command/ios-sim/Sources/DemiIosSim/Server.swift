@@ -145,11 +145,13 @@ final class Server: @unchecked Sendable {
       try await session.setAppearance(params["appearance"] as? String ?? "")
       return ([:], nil)
     case "recordStart":
-      guard let path = params["path"] as? String else { throw HelperError("recordStart names no path") }
-      try session.recordStart(path: path)
+      session.recordStart(
+        recording: UInt32((params["recording"] as? NSNumber)?.uint32Value ?? 0),
+        keyInterval: (params["keyInterval"] as? NSNumber)?.intValue ?? 120)
       return ([:], nil)
     case "recordStop":
-      return (["durationMs": try await session.recordStop()], nil)
+      session.recordStop(recording: UInt32((params["recording"] as? NSNumber)?.uint32Value ?? 0))
+      return ([:], nil)
     case "frame":
       return try session.frame(
         area: CGSize(width: double(params["width"]), height: double(params["height"])), backing: double(params["scale"]))

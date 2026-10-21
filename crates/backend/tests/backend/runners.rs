@@ -1291,8 +1291,9 @@ async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
 
 /// A runner's welcome names the user's conversations that still exist,
 /// archived ones included and deleted ones not, whose scratch directories
-/// the runner keeps (`crates/runner-jobs/src/scratch.rs`). About a second: a
-/// runner pairs.
+/// the runner keeps, and which of them are archived, whose recordings it
+/// removes (`crates/runner-jobs/src/scratch.rs`). About a second: a runner
+/// pairs.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_runners_welcome_names_the_conversations_that_still_exist() {
     let harness = Harness::new();
@@ -1320,12 +1321,13 @@ async fn a_runners_welcome_names_the_conversations_that_still_exist() {
 
     let mut runner = RawRunner::connect(&backend).await;
     runner.send(&hello(wire::VERSION, Some(&token), None)).await;
-    let Some(Inbound::HelloOk { mut conversations, .. }) = runner.next().await else {
+    let Some(Inbound::HelloOk { mut conversations, archived: named, .. }) = runner.next().await else {
         panic!("expected a welcome");
     };
     conversations.sort();
-    let mut existing = vec![active, archived];
+    let mut existing = vec![active, archived.clone()];
     existing.sort();
     assert_eq!(conversations, existing);
+    assert_eq!(named, [archived], "only the archived conversation's recordings go");
     backend.close().await;
 }

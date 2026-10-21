@@ -2006,7 +2006,7 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
     }
     // What a service holds for a conversation goes when it is released.
     call("retain", None).await.unwrap();
-    host.release_conversation(&user_context().conversation)
+    host.release_conversation(&user_context().conversation, false)
         .await
         .unwrap();
     assert!(

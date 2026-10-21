@@ -61,6 +61,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_package_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_protocol::{Completion, Invocation};
+use demi_shared_openh264::{Cisco, Codec};
 use demi_command_sdk::{
     Artifacts, ConversationContext, Handler, InvocationContext, Messages, Numbers, ServiceError,
 };
@@ -86,8 +87,16 @@ impl DemiBrowser {
 
     /// The service, whose browsers start `chrome`.
     pub fn with_chrome(chrome: Chrome) -> Self {
+        let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
+        let codec = Arc::new(Cisco::in_installation(home.as_deref()));
+        Self::with_recording(chrome, home, codec)
+    }
+
+    /// The service, whose browsers start `chrome`, and whose recordings are
+    /// kept in the installation `home`, coded and decoded with `codec`.
+    pub fn with_recording(chrome: Chrome, home: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
         Self {
-            browsers: Arc::new(conversations::Conversations::new(chrome.clone())),
+            browsers: Arc::new(conversations::Conversations::new(chrome.clone(), home, codec)),
             chrome,
         }
     }

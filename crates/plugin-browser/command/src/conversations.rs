@@ -71,8 +71,11 @@ use demi_command_protocol::{
 use demi_command_sdk::{ConversationContext, InvocationContext, Messages, Numbers, ServiceError};
 use demi_command_package_browser_protocol::browser::{BrowserMessage, TabsChange};
 
+use demi_shared_openh264::Codec;
+use demi_shared_recording::{Answer, Library, Live, Reading};
+
 use crate::protocol::{
-    self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
+    self, ActionProgress, RecordAction, RecordInput, RecordTarget, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
     CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
     OpenResult, ScreenshotResult, ShowResult, TabsResult,
 };
@@ -82,9 +85,14 @@ const REQUESTS: usize = 64;
 /// Lines of an install's progress not printed yet; a full queue holds back
 /// the install until the output takes them.
 const PROGRESS_LINES: usize = 16;
+/// The most bytes of standard output one write carries.
+const OUTPUT_CHUNK: usize = 256 * 1024;
 
 enum CommandOutput {
     Json(serde_json::Value),
+    /// A recording's video without `--output`: its MP4's file, which is
+    /// removed once read, and what it holds for stderr.
+    Video { file: std::path::PathBuf, about: String },
     /// A screenshot without `--output`: its PNG's bytes for stdout, and what it captured for
     /// stderr.
     Image { captured: String, png: Vec<u8> },
@@ -128,6 +136,17 @@ struct ConversationBrowser {
     /// The conversation's tab numbers and its tabs closed on purpose, which
     /// outlast each browser.
     numbers: TabNumbers,
+    /// The conversation's recordings, which outlast each browser, and the
+    /// tabs the running ones record.
+    recordings: Recordings,
+}
+
+/// The conversation's recordings on this Host.
+struct Recordings {
+    library: Arc<Library>,
+    /// The recording each tab has, held while one starts so that a tab has
+    /// one at a time.
+    running: tokio::sync::Mutex<HashMap<String, Live>>,
 }
 
 /// What starts a conversation's browser: the starting caller's locale and
@@ -164,6 +183,7 @@ impl ConversationBrowser {
         conversation: String,
         numbers: TabNumbers,
         messages: watch::Receiver<Option<Messages>>,
+        library: Arc<Library>,
     ) -> Arc<Self> {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let (published, lifecycle) = watch::channel(Lifecycle::Absent);
@@ -193,6 +213,10 @@ impl ConversationBrowser {
             cancellation,
             commands: TaskTracker::new(),
             numbers,
+            recordings: Recordings {
+                library,
+                running: tokio::sync::Mutex::default(),
+            },
         })
     }
 
@@ -786,6 +810,22 @@ pub(crate) struct Conversations {
     chrome: Chrome,
 }
 
+/// Makes a conversation's library of recordings.
+#[derive(Clone)]
+struct Libraries {
+    home: Option<std::path::PathBuf>,
+    codec: Arc<dyn Codec>,
+}
+
+impl Libraries {
+    fn of(&self, conversation: &str) -> Arc<Library> {
+        Arc::new(Library::new(
+            demi_command_protocol::recordings_directory(self.home.as_deref(), conversation),
+            self.codec.clone(),
+        ))
+    }
+}
+
 /// The conversations' owner: it maps each conversation to its browser. It
 /// answers every request at once, so the runner's `status` never waits for
 /// a browser's start or retirement.
@@ -795,6 +835,7 @@ async fn serve(
     chrome: Chrome,
     numbers: watch::Receiver<Option<Numbers>>,
     messages: watch::Receiver<Option<Messages>>,
+    libraries: Libraries,
 ) {
     let mut browsers: HashMap<String, Arc<ConversationBrowser>> = HashMap::new();
     // A requester that left needs no answer.
@@ -809,7 +850,8 @@ async fn serve(
                     .or_insert_with(|| {
                         let tabs =
                             TabNumbers::from_source(numbers.borrow().clone(), conversation.clone());
-                        ConversationBrowser::start(&tasks, chrome.clone(), conversation, tabs, messages.clone())
+                        let library = libraries.of(&conversation);
+                        ConversationBrowser::start(&tasks, chrome.clone(), conversation, tabs, messages.clone(), library)
                     })
                     .clone();
                 let _gone = reply.send(browser);
@@ -851,12 +893,13 @@ async fn serve(
 impl Conversations {
     /// Starts the owner on the current Tokio runtime; the browsers start
     /// `chrome`.
-    pub(crate) fn new(chrome: Chrome) -> Self {
+    pub(crate) fn new(chrome: Chrome, home: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
         let (messages, sender) = watch::channel(None);
-        tasks.spawn(serve(receiver, tasks.clone(), chrome.clone(), source, sender));
+        let libraries = Libraries { home, codec };
+        tasks.spawn(serve(receiver, tasks.clone(), chrome.clone(), source, sender, libraries));
         Self {
             requests,
             tasks,
@@ -976,6 +1019,11 @@ impl Conversations {
             match produced {
                 CommandOutput::Json(value) => Ok((output::render(&command, value, json)?, None)),
                 CommandOutput::Image { captured, png } => Ok((png, Some(captured))),
+                CommandOutput::Video { file, about } => {
+                    let bytes = tokio::fs::read(&file).await;
+                    let _removed = tokio::fs::remove_file(&file).await;
+                    Ok((bytes.map_err(BrowserError::Io)?, Some(about)))
+                }
             }
         }
         .await;
@@ -984,7 +1032,17 @@ impl Conversations {
                 if let Some(captured) = captured {
                     context.output.stderr(Bytes::from(captured)).await?;
                 }
-                context.output.stdout(Bytes::from(stdout)).await?;
+                // A video is larger than a frame of the output.
+                let stdout = Bytes::from(stdout);
+                let mut at = 0;
+                while at < stdout.len() {
+                    let end = (at + OUTPUT_CHUNK).min(stdout.len());
+                    context.output.stdout(stdout.slice(at..end)).await?;
+                    at = end;
+                }
+                if stdout.is_empty() {
+                    context.output.stdout(stdout).await?;
+                }
                 Ok(Completion {
                     exit_code: 0,
                     error: None,
@@ -1093,6 +1151,12 @@ impl Conversations {
             return Err(BrowserError::Configuration(
                 "stop is the user's: an agent's command waits for its page instead".into(),
             ));
+        }
+        // Reading a recording needs no browser: it outlasts its tab.
+        if let BrowserOperation::Record(input) = command
+            && demi_command_package_browser_protocol::browser::BrowserInput::tab(input).is_none()
+        {
+            return record(browser, context, input).await;
         }
         let starts = matches!(
             command,
@@ -1230,6 +1294,9 @@ impl Conversations {
             return Ok(CommandOutput::Json(output::value(ShowResult {
                 tab: tab.id().clone(),
             })?));
+        }
+        if let BrowserOperation::Record(input) = command {
+            return start_recording(browser, &environment, tab, input).await;
         }
         if matches!(command, BrowserOperation::Stop(_)) {
             let operation = tab.operation(cancellation, deadline);
@@ -1516,6 +1583,7 @@ impl Conversations {
                     .flatten();
                 // An unknown conversation is harmless to release.
                 if let Some(browser) = browser {
+                    // The browser's recordings end, complete, before it goes.
                     let released = browser.release().await;
                     let forget = Find::Forget {
                         conversation: conversation.clone(),
@@ -1556,4 +1624,114 @@ impl Conversations {
             None => Ok(()),
         }
     }
+}
+
+/// `record` of a recording: stops it, lists its frames, or exports them. The
+/// recording is the conversation's on this Host, and outlasts its tab and
+/// its browser. `stop` also takes the tab the recording runs on, as a device's
+/// does.
+async fn record(
+    browser: &ConversationBrowser,
+    context: &InvocationContext,
+    input: &RecordInput,
+) -> Result<CommandOutput> {
+    let id = match (&input.target, input.action) {
+        (RecordTarget::Recording(id), _) => id.clone(),
+        (RecordTarget::Tab(tab), RecordAction::Stop) => {
+            let running = browser.recordings.running.lock().await;
+            match running.get(tab.as_str()).filter(|live| !live.ended().is_cancelled()) {
+                Some(live) => live.id().clone(),
+                None => return Err(BrowserError::NoRecording(format!("{tab} is not recording"))),
+            }
+        }
+        _ => {
+            return Err(BrowserError::Configuration(format!(
+                "{} works on a recording, such as demi browser record r1 {}; start returns its ID",
+                input.action, input.action
+            )));
+        }
+    };
+    let id = &id;
+    if input.action == RecordAction::Start {
+        return Err(BrowserError::Configuration(
+            "start records a tab, such as demi browser record t1 start".into(),
+        ));
+    }
+    let output = match &input.output {
+        Some(output) => Some(
+            demi_command_sdk::paths::resolve(&context.request.cwd, output)
+                .map_err(|error| BrowserError::Configuration(error.to_string()))?,
+        ),
+        None => None,
+    };
+    if input.mp4 == Some(true) && output.is_none() && context.request.json == Some(true) {
+        return Err(BrowserError::Configuration(
+            "record export --mp4 --json requires --output".into(),
+        ));
+    }
+    let library = &browser.recordings.library;
+    // Where the images go unless told: the caller's scratch directory, which
+    // the job's environment names.
+    let scratch = match context.request.env.get("DEMI_SCRATCH") {
+        Some(scratch) => std::path::PathBuf::from(scratch),
+        None => library.directory().parent().map_or_else(std::env::temp_dir, std::path::Path::to_path_buf),
+    };
+    let reading = Reading {
+        command: "demi browser record",
+        frames: input.frames.as_ref(),
+        whole: input.whole == Some(true),
+        region: input.region,
+        mp4: input.mp4 == Some(true),
+        output: output.as_deref(),
+        overwrite: input.overwrite == Some(true),
+        scratch: &scratch,
+    };
+    let answer = match input.action {
+        RecordAction::Start => unreachable!("start was refused above"),
+        RecordAction::Stop => library.stop(id).await?,
+        RecordAction::Frames => library.frames(id, &reading).await?,
+        RecordAction::Export => library.export(id, &reading).await?,
+    };
+    Ok(match answer {
+        Answer::Result { result, .. } => CommandOutput::Json(output::value(result)?),
+        Answer::Video { file, about } => CommandOutput::Video { file, about },
+    })
+}
+
+/// `record <tab> start`: begins recording the tab, which ends by itself at the
+/// duration, the limits, or when the tab closes.
+async fn start_recording(
+    browser: &ConversationBrowser,
+    environment: &BrowserEnvironment,
+    tab: &demi_command_package_browser_chrome::tabs::tab::BrowserTab,
+    input: &RecordInput,
+) -> Result<CommandOutput> {
+    if input.action != RecordAction::Start {
+        return Err(BrowserError::Configuration(format!(
+            "{} works on a recording, such as demi browser record r1 {}; start returns its ID",
+            input.action, input.action
+        )));
+    }
+    let recordings = &browser.recordings;
+    let mut running = recordings.running.lock().await;
+    if running.get(tab.id().as_str()).is_some_and(|live| !live.ended().is_cancelled()) {
+        return Err(BrowserError::Recording(tab.id().to_string()));
+    }
+    let live = recordings
+        .library
+        .begin(tab.id().as_str(), input.duration.map(|duration| duration.get()))
+        .await?;
+    running.insert(tab.id().to_string(), live.clone());
+    drop(running);
+    environment.recording(live.clone());
+    demi_command_package_browser_chrome::live::record::start(
+        tab.clone(),
+        environment.captures().clone(),
+        live.clone(),
+        environment.tasks(),
+    );
+    let Answer::Result { result, .. } = demi_shared_recording::started("demi browser record", &live)? else {
+        unreachable!("start answers a result")
+    };
+    Ok(CommandOutput::Json(output::value(result)?))
 }

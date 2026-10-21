@@ -19,7 +19,7 @@ test = false
 [features]
 # A driver the tests script (`testing`), and the iOS helper's framing for
 # a test that plays the helper.
-testing = ["tonic/server", "tonic/router", "openh264/source"]
+testing = ["tonic/server", "tonic/router", "demi-shared-h264/testing", "demi-shared-openh264/testing", "demi-shared-recording/testing"]
 
 [dependencies]
 bytes.workspace = true
@@ -29,6 +29,10 @@ demi-command-sdk = { path = "../../command-sdk" }
 demi-live-view = { path = "../../live-view" }
 demi-live-view-protocol = { path = "../../live-view-protocol" }
 demi-shared-artifacts = { path = "../../shared-artifacts" }
+demi-shared-h264 = { path = "../../shared-h264" }
+demi-shared-openh264 = { path = "../../shared-openh264" }
+demi-shared-recording = { path = "../../shared-recording" }
+demi-shared-recording-protocol = { path = "../../shared-recording-protocol" }
 demi-shared-cli = { path = "../../shared-cli", features = ["host-allocator"] }
 demi-shared-types = { path = "../../shared-types" }
 base64.workspace = true
@@ -43,12 +47,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 # The Android driver (`crates/plugin-mobile/command/src/android/mod.rs`): the
 # emulator's gRPC interface,
-# its JWT signed with ES256, the UI tree's XML, and Cisco's OpenH264 for its
-# frames, loaded at run time once downloaded from Cisco and checked; the
-# tests build OpenH264 from its source instead (`testing`).
+# its JWT signed with ES256, and the UI tree's XML. Its pictures are coded by
+# `demi-shared-h264`, and scaled for the live view by `fast_image_resize`.
 aws-lc-rs = "1"
-bzip2 = "0.6"
-openh264 = { version = "0.9", default-features = false, features = ["libloading"] }
 prost = "0.14"
 http.workspace = true
 http-body-util = "0.1"
@@ -61,6 +62,7 @@ roxmltree = "0.21"
 # read from its APK, copied to a
 # temporary file and read by its central directory, its path's shape, and
 # Android Studio's device art, decoded and drawn.
+fast_image_resize = "6"
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 kurbo = "0.13"
 tempfile = "3"
@@ -94,7 +96,7 @@ protox = "0.10"
 tonic-prost-build = "0.14"
 
 [dev-dependencies]
-bzip2 = "0.6"
+demi-shared-openh264 = { path = "../../shared-openh264", features = ["testing"] }
 demi-command-package-mobile-protocol = { path = "../protocol" }
 demi-command-sdk = { path = "../../command-sdk", features = ["testing"] }
 demi-mobile = { path = ".", features = ["testing"] }

@@ -11,6 +11,10 @@
 //!
 //! # Rules
 //!
+//! - A tab has one capture in Chrome, which the extension shares between the
+//!   live view and a recording of the tab; a recording is a capture of its own
+//!   here, whose pictures are coded in the extension at a fixed quality and
+//!   all handed over ([`Recording`]).
 //! - The extension works in an offscreen document, which Chrome lists as a
 //!   background page, so it never enters the tab registry.
 //! - Frames travel over the socket, not CDP. Base64 and JSON would inflate
@@ -113,6 +117,22 @@ fn sme_without_sve(hwcap: u64, hwcap2: u64) -> bool {
 /// One encoded picture of a capture, and what a capture reports: the live
 /// view's (`demi_live_view::stream`), which every source of pictures shares.
 pub use demi_live_view::stream::{CaptureEvent, EncodedFrame as Frame};
+
+/// What a recording's capture reports.
+#[derive(Debug)]
+pub enum RecordEvent {
+    Started,
+    /// No picture arrived: the page stopped painting before capture began.
+    Stalled,
+    /// One coded picture, with where it differs from the one before; none is
+    /// ever dropped, since the next needs it.
+    Picture(Frame, extension::Changed),
+    /// The extension did not code this many frames, being behind.
+    Missed(u32),
+    Failed(String),
+    /// The capture ended, and every picture it coded came before.
+    Stopped,
+}
 
 /// How many captures of one page Chrome holds, and how many resizes of it
 /// are under way; the two exclude each other.
@@ -289,13 +309,24 @@ enum ChannelRequest {
     Connected(Box<WebSocketStream<TcpStream>>),
     Start {
         target: String,
-        width: u32,
-        height: u32,
+        /// What the live view's pictures are sent at, and the tab's own pixels.
+        send: (u32, u32),
+        source: (u32, u32),
         fps: u32,
         bitrate: u32,
         hold: CaptureHold,
         reply: oneshot::Sender<Result<(u32, mpsc::Receiver<CaptureEvent>)>>,
     },
+    /// A recording of the tab of CDP target `target`.
+    Record {
+        target: String,
+        width: u32,
+        height: u32,
+        hold: CaptureHold,
+        reply: oneshot::Sender<Result<(u32, mpsc::UnboundedReceiver<RecordEvent>)>>,
+    },
+    /// Ends a recording once the pictures it coded are delivered.
+    Finish { capture: u32 },
     /// An ack, a key frame request or an encoding for a capture.
     Command(CaptureCommand),
     /// A capture waited for the extension in vain.
@@ -306,7 +337,7 @@ enum ChannelRequest {
 
 /// What an extension connection's reader hands the owner.
 enum Inbound {
-    Frame(u32, Frame),
+    Frame(u32, Frame, Option<extension::Changed>),
     Event(extension::CaptureEvent),
     /// The connection closed, or sent a message that did not decode.
     Ended,
@@ -366,24 +397,46 @@ impl CaptureChannel {
         let _ended = self.requests.send(ChannelRequest::Retry).await;
     }
 
-    /// Captures the tab of CDP `target` at `width` × `height` pixels, once the
-    /// extension has connected, which it does as Chrome starts.
+    /// Records the tab of CDP `target`. Where the tab's capture runs, the
+    /// recording takes its frames; otherwise it opens the capture at the
+    /// tab's own `width` × `height` pixels. Waits for the extension like
+    /// [`CaptureChannel::start`], and `hold` lasts until Chrome released the
+    /// capture.
+    pub async fn record(
+        &self,
+        target: &str,
+        width: u32,
+        height: u32,
+        hold: CaptureHold,
+        cancel: &CancellationToken,
+    ) -> Result<Recording> {
+        self.connect(cancel).await?;
+        let (reply, answer) = oneshot::channel();
+        self.requests
+            .send(ChannelRequest::Record {
+                target: target.into(),
+                width,
+                height,
+                hold,
+                reply,
+            })
+            .await
+            .map_err(|_| BrowserError::Closed)?;
+        let (id, events) = answer.await.map_err(|_| BrowserError::Closed)??;
+        Ok(Recording {
+            id,
+            requests: self.requests.clone(),
+            events,
+        })
+    }
+
+    /// Waits for the extension's connection, which it makes as Chrome starts.
     ///
     /// - An extension that does not connect in time is recreated for the next
     ///   attempt.
     /// - None starts once even a recreation failed, until
     ///   [`CaptureChannel::retry`].
-    /// - `hold` lasts until Chrome released the capture.
-    pub async fn start(
-        &self,
-        target: &str,
-        width: u32,
-        height: u32,
-        fps: u32,
-        bitrate: u32,
-        hold: CaptureHold,
-        cancel: &CancellationToken,
-    ) -> Result<Capture> {
+    async fn connect(&self, cancel: &CancellationToken) -> Result<()> {
         if let Some(reason) = unavailable() {
             return Err(BrowserError::UnsupportedCapability(reason.into()));
         }
@@ -410,13 +463,36 @@ impl CaptureChannel {
                 "the capture extension did not connect".into(),
             ));
         };
-        connection?;
+        connection
+    }
+
+    /// Captures the tab of CDP target `target` for the live view, whose
+    /// pictures are `send` pixels wide and high where the tab's own are
+    /// `source`, once the extension has connected, which it does as Chrome
+    /// starts.
+    ///
+    /// - An extension that does not connect in time is recreated for the next
+    ///   attempt.
+    /// - None starts once even a recreation failed, until
+    ///   [`CaptureChannel::retry`].
+    /// - `hold` lasts until Chrome released the capture.
+    pub async fn start(
+        &self,
+        target: &str,
+        send: (u32, u32),
+        source: (u32, u32),
+        fps: u32,
+        bitrate: u32,
+        hold: CaptureHold,
+        cancel: &CancellationToken,
+    ) -> Result<Capture> {
+        self.connect(cancel).await?;
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(ChannelRequest::Start {
                 target: target.into(),
-                width,
-                height,
+                send,
+                source,
                 fps,
                 bitrate,
                 hold,
@@ -469,6 +545,23 @@ impl Capture {
     }
 }
 
+/// One tab's recording; dropping it stops the recording without waiting for
+/// the pictures still being coded, which [`Recording::finish`] does.
+pub struct Recording {
+    id: u32,
+    requests: mpsc::Sender<ChannelRequest>,
+    pub events: mpsc::UnboundedReceiver<RecordEvent>,
+}
+
+impl Recording {
+    /// Asks the extension to end the recording: it codes the pictures it
+    /// holds, and `events` ends with [`RecordEvent::Stopped`] after them.
+    pub async fn finish(&self) {
+        // The owner ended with the environment, which has no recording left.
+        let _ended = self.requests.send(ChannelRequest::Finish { capture: self.id }).await;
+    }
+}
+
 /// The extension's connection as the owner keeps it.
 struct Extension {
     commands: mpsc::Sender<CaptureCommand>,
@@ -478,13 +571,21 @@ struct Extension {
 
 type Closing = Pin<Box<dyn Future<Output = u32> + Send>>;
 
+/// Where a capture's events go.
+enum Route {
+    /// The live view's, which loses the newest pictures when behind.
+    Live(mpsc::Sender<CaptureEvent>),
+    /// A recording's, which loses none.
+    Record(mpsc::UnboundedSender<RecordEvent>),
+}
+
 struct Owner {
     tasks: TaskTracker,
     ended: CancellationToken,
     connection: Option<Extension>,
     /// Counts the connections, so messages of a replaced one are ignored.
     generation: u64,
-    routes: HashMap<u32, mpsc::Sender<CaptureEvent>>,
+    routes: HashMap<u32, Route>,
     /// The holds of the captures Chrome has not released yet: those that
     /// run, and those stopped until the extension reports them stopped.
     holds: HashMap<u32, CaptureHold>,
@@ -533,16 +634,37 @@ impl Owner {
             ChannelRequest::Connected(socket) => self.connected(*socket),
             ChannelRequest::Start {
                 target,
-                width,
-                height,
+                send,
+                source,
                 fps,
                 bitrate,
                 hold,
                 reply,
             } => {
-                let started = self.start(target, width, height, fps, bitrate, hold);
+                let started = self.start(target, send, source, fps, bitrate, hold);
                 // A requester that left drops the capture, which stops it.
                 let _left = reply.send(started);
+            }
+            ChannelRequest::Record {
+                target,
+                width,
+                height,
+                hold,
+                reply,
+            } => {
+                let started = self.record(target, width, height, hold);
+                let _left = reply.send(started);
+            }
+            ChannelRequest::Finish { capture } => {
+                if self.routes.contains_key(&capture)
+                    && let Some(connection) = &self.connection
+                    && connection
+                        .commands
+                        .try_send(CaptureCommand::Stop { capture })
+                        .is_err()
+                {
+                    self.recreate("it is not keeping up");
+                }
             }
             ChannelRequest::Command(command) => {
                 if let Some(connection) = &self.connection {
@@ -582,8 +704,8 @@ impl Owner {
     fn start(
         &mut self,
         target: String,
-        width: u32,
-        height: u32,
+        send: (u32, u32),
+        source: (u32, u32),
         fps: u32,
         bitrate: u32,
         hold: CaptureHold,
@@ -598,8 +720,10 @@ impl Owner {
         let command = CaptureCommand::Start {
             capture: id,
             target,
-            width,
-            height,
+            width: send.0,
+            height: send.1,
+            source_width: source.0,
+            source_height: source.1,
             fps,
             bitrate,
         };
@@ -610,7 +734,44 @@ impl Owner {
             ));
         }
         let (sender, events) = mpsc::channel(FRAME_QUEUE);
-        self.routes.insert(id, sender.clone());
+        self.routes.insert(id, Route::Live(sender.clone()));
+        self.holds.insert(id, hold);
+        self.closings.push(Box::pin(async move {
+            sender.closed().await;
+            id
+        }));
+        Ok((id, events))
+    }
+
+    fn record(
+        &mut self,
+        target: String,
+        width: u32,
+        height: u32,
+        hold: CaptureHold,
+    ) -> Result<(u32, mpsc::UnboundedReceiver<RecordEvent>)> {
+        let Some(connection) = &self.connection else {
+            return Err(BrowserError::Capture(
+                "the capture extension is not connected".into(),
+            ));
+        };
+        let id = self.next;
+        self.next = self.next.wrapping_add(1);
+        let command = CaptureCommand::Record {
+            capture: id,
+            target,
+            width,
+            height,
+            key_interval: demi_shared_recording::KEY_INTERVAL,
+        };
+        if connection.commands.try_send(command).is_err() {
+            self.recreate("it is not keeping up");
+            return Err(BrowserError::Capture(
+                "the capture extension is not keeping up".into(),
+            ));
+        }
+        let (sender, events) = mpsc::unbounded_channel();
+        self.routes.insert(id, Route::Record(sender.clone()));
         self.holds.insert(id, hold);
         self.closings.push(Box::pin(async move {
             sender.closed().await;
@@ -639,21 +800,44 @@ impl Owner {
     fn routed(&mut self, message: Inbound) {
         match message {
             // A consumer that is behind loses the newest pictures, not the socket.
-            Inbound::Frame(capture, frame) => self.deliver(capture, CaptureEvent::Frame(frame)),
+            Inbound::Frame(capture, frame, changed) => match self.routes.get(&capture) {
+                Some(Route::Live(events)) => {
+                    let _behind = events.try_send(CaptureEvent::Frame(frame));
+                }
+                Some(Route::Record(events)) => {
+                    // A recording's picture says where it differs.
+                    let _gone = events.send(match changed {
+                        Some(changed) => RecordEvent::Picture(frame, changed),
+                        None => RecordEvent::Failed("the extension coded a recorded picture without its area".into()),
+                    });
+                }
+                None => {}
+            },
             Inbound::Event(event) => match event {
                 extension::CaptureEvent::Ready {} => {}
                 extension::CaptureEvent::Stopped { capture } => {
                     self.holds.remove(&capture);
+                    // A recording that asked to finish has all its pictures.
+                    if let Some(Route::Record(events)) = self.routes.remove(&capture) {
+                        let _gone = events.send(RecordEvent::Stopped);
+                    }
+                }
+                extension::CaptureEvent::Missed { capture, count } => {
+                    if let Some(Route::Record(events)) = self.routes.get(&capture) {
+                        let _gone = events.send(RecordEvent::Missed(count));
+                    }
                 }
                 extension::CaptureEvent::Started { capture } => {
-                    self.deliver(capture, CaptureEvent::Started)
+                    self.deliver(capture, CaptureEvent::Started, RecordEvent::Started)
                 }
                 extension::CaptureEvent::Stalled { capture } => {
-                    self.deliver(capture, CaptureEvent::Stalled)
+                    self.deliver(capture, CaptureEvent::Stalled, RecordEvent::Stalled)
                 }
-                extension::CaptureEvent::Error { capture, message } => {
-                    self.deliver(capture, CaptureEvent::Failed(message))
-                }
+                extension::CaptureEvent::Error { capture, message } => self.deliver(
+                    capture,
+                    CaptureEvent::Failed(message.clone()),
+                    RecordEvent::Failed(message),
+                ),
                 extension::CaptureEvent::Recreate {} => {
                     self.recreate("Chrome keeps a capture it cannot release")
                 }
@@ -664,9 +848,15 @@ impl Owner {
 
     /// Hands an event to the capture's consumer, if it still runs; one that
     /// is behind loses it.
-    fn deliver(&self, capture: u32, event: CaptureEvent) {
-        if let Some(events) = self.routes.get(&capture) {
-            let _behind = events.try_send(event);
+    fn deliver(&self, capture: u32, event: CaptureEvent, recorded: RecordEvent) {
+        match self.routes.get(&capture) {
+            Some(Route::Live(events)) => {
+                let _behind = events.try_send(event);
+            }
+            Some(Route::Record(events)) => {
+                let _gone = events.send(recorded);
+            }
+            None => {}
         }
     }
 
@@ -712,10 +902,16 @@ impl Owner {
         }
         self.holds.clear();
         self.connected.send_replace(false);
-        for (_, events) in self.routes.drain() {
-            let _gone = events.try_send(CaptureEvent::Failed(
-                "capture extension disconnected".into(),
-            ));
+        for (_, route) in self.routes.drain() {
+            let reason = "capture extension disconnected";
+            match route {
+                Route::Live(events) => {
+                    let _gone = events.try_send(CaptureEvent::Failed(reason.into()));
+                }
+                Route::Record(events) => {
+                    let _gone = events.send(RecordEvent::Failed(reason.into()));
+                }
+            }
         }
     }
 }
@@ -807,6 +1003,7 @@ fn frame(bytes: &Bytes) -> std::result::Result<Inbound, DecodeError> {
             height: header.height,
             data: bytes.slice_ref(data),
         },
+        header.changed,
     ))
 }
 
@@ -844,7 +1041,7 @@ mod tests {
         let gate = CaptureGate::default();
         let hold = gate.capture().expect("no resize is under way");
         let started = channel
-            .start("target", 800, 600, 30, 1_000_000, hold, &CancellationToken::new())
+            .start("target", (800, 600), (800, 600), 30, 1_000_000, hold, &CancellationToken::new())
             .await;
         assert!(matches!(started, Err(BrowserError::Capture(_))));
         let recreation = tokio::time::timeout(Duration::from_secs(1), recreations.recv()).await;

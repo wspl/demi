@@ -648,3 +648,68 @@ async fn a_reconnect_removes_the_scratch_directory_of_a_deleted_conversation_onl
     .await
     .unwrap();
 }
+
+/// A conversation's recordings go when it is archived or deleted, and not
+/// before: the release the backend sends then says the conversation is over,
+/// and a runner that connects after it was offline then removes the archived
+/// conversations' recordings, whatever services run. An idle conversation's
+/// release, a move's and a detach's do not remove them
+/// (`crates/runner-jobs/src/scratch.rs`). About a second: the runner starts
+/// twice and runs two jobs.
+#[tokio::test]
+async fn a_conversations_recordings_go_when_it_is_archived_or_deleted_and_not_before() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        start_job(&mut host, "before", "true").await;
+        reported(&mut host, "before").await;
+        let root = host.state().join("scratch");
+        let (idle, over, offline) = (
+            "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+            "11223344-5566-4a6b-8c7d-9e0f1a2b3c4d",
+            "ffeeddcc-bbaa-4a6b-8c7d-9e0f1a2b3c4d",
+        );
+        let recordings = |name: &str| root.join(name).join(".recordings").join("r1");
+        for name in ["0a1b2c3d4e5f", "112233445566", "ffeeddccbbaa"] {
+            std::fs::create_dir_all(recordings(name)).unwrap();
+            std::fs::write(recordings(name).join("recording.json"), "{}").unwrap();
+            std::fs::write(root.join(name).join("page.png"), "png").unwrap();
+        }
+        let release = |id: &str, conversation: &str, over: bool| Inbound::ConversationRelease {
+            id: id.into(),
+            conversation_id: conversation.into(),
+            over,
+        };
+        async fn released(host: &mut Host, answered: &str) {
+            loop {
+                if let Outbound::ConversationReleased { id, .. } = host.frame().await
+                    && id == answered
+                {
+                    return;
+                }
+            }
+        }
+        // A release that does not say the conversation is over keeps them.
+        host.send(release("idle", idle, false)).await;
+        released(&mut host, "idle").await;
+        assert!(recordings("0a1b2c3d4e5f").exists());
+        // One that does removes them, and only them.
+        host.send(release("over", over, true)).await;
+        released(&mut host, "over").await;
+        assert!(!root.join("112233445566").join(".recordings").exists());
+        assert!(root.join("112233445566").join("page.png").exists(), "archiving keeps the scratch directory");
+        assert!(recordings("0a1b2c3d4e5f").exists());
+
+        // A conversation archived while the Host was offline loses its
+        // recordings when the Host connects.
+        host.restart().await;
+        host.welcome_archived(&[idle, over, offline, crate::CONVERSATION], &[offline, over]).await;
+        start_job(&mut host, "after", "true").await;
+        reported(&mut host, "after").await;
+        assert!(!root.join("ffeeddccbbaa").join(".recordings").exists());
+        assert!(root.join("ffeeddccbbaa").join("page.png").exists());
+        assert!(recordings("0a1b2c3d4e5f").exists(), "a conversation that is not archived keeps them");
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}

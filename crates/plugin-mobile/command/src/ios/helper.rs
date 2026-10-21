@@ -5,8 +5,11 @@
 //! - Requests and their replies are JSON, as are the events the helper sends
 //!   unasked.
 //! - A capture's pictures are video frames.
-//! - A reply that carries a file, a PNG or an MP4, comes after its bytes in a
-//!   blob frame.
+//! - A recording's pictures are coded frames: H.264 Annex B at the screen's
+//!   own pixels, each with where it differs from the one before and how many
+//!   draws the helper could not take before it.
+//! - A reply that carries a file, a PNG, comes after its bytes in a blob
+//!   frame.
 //!
 //! ```text
 //! demi-mobile                         demi-ios-sim serve
@@ -37,6 +40,8 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use demi_live_view::stream::{CaptureEvent, EncodedFrame};
+use demi_shared_recording::{Picture, Sink};
+use demi_shared_recording_protocol::{Area, EndReason};
 
 use crate::driver::DriverError;
 
@@ -46,6 +51,8 @@ pub const CONTROL: u8 = 1;
 pub const VIDEO: u8 = 2;
 /// A reply's file: the request's id (u32), then its bytes.
 pub const BLOB: u8 = 3;
+/// A recording's picture: [`PICTURE_HEADER_BYTES`], then H.264 Annex B.
+pub const PICTURE: u8 = 4;
 /// The largest frame after its length.
 const MAX_FRAME: usize = 64 * 1024 * 1024;
 
@@ -53,6 +60,13 @@ const MAX_FRAME: usize = 64 * 1024 * 1024;
 /// (u32), flags (u8, 1 = key frame), three reserved bytes, the timestamp in
 /// microseconds (f64), the width and the height (u16 each).
 pub const HEADER_BYTES: usize = 24;
+
+/// A recording's picture's header, big-endian: the recording (u32), how many
+/// draws the helper missed before this picture (u32), flags (u8, 1 = key
+/// frame) and three reserved bytes, the timestamp in microseconds (f64), the
+/// width and the height (u16 each), and where the picture differs from the one
+/// before: x, y, width and height (u16 each).
+pub const PICTURE_HEADER_BYTES: usize = 32;
 
 /// What the helper says unasked.
 #[derive(Debug, Clone, Deserialize)]
@@ -70,6 +84,11 @@ pub enum Event {
         #[serde(default)]
         failed: Option<String>,
     },
+    /// A recording's encoder failed.
+    Recording { recording: u32, failed: String },
+    /// A recording's encoder dropped pictures after the last it gave, which no
+    /// later picture carries the count of.
+    Missed { recording: u32, missed: u32 },
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,6 +155,8 @@ struct Shared {
     pending: Pending,
     /// The captures' frames, by capture.
     captures: Mutex<HashMap<u32, mpsc::Sender<CaptureEvent>>>,
+    /// The recordings' sinks, by recording.
+    recordings: Mutex<HashMap<u32, Sink>>,
     /// Cancelled once the helper ended.
     ended: CancellationToken,
     /// Why it ended.
@@ -186,6 +207,9 @@ impl Helper {
                 let _gone = waiting.send(Err(DriverError::Lost(ended.clone())));
             }
             reading.captures.lock().expect("the captures are intact").clear();
+            for (_, sink) in reading.recordings.lock().expect("the recordings are intact").drain() {
+                sink.end(EndReason::Closed, Some(ended.clone()));
+            }
         });
         Arc::new(Self {
             input: tokio::sync::Mutex::new(connection.input),
@@ -261,6 +285,16 @@ impl Helper {
             .expect("the captures are intact")
             .insert(capture, sender);
         frames
+    }
+
+    /// The pictures of recording `recording` go to `sink` until the helper
+    /// says the recording failed or the helper ends.
+    pub fn pictures(&self, recording: u32, sink: Sink) {
+        self.shared.recordings.lock().expect("the recordings are intact").insert(recording, sink);
+    }
+
+    pub fn forget_pictures(&self, recording: u32) {
+        self.shared.recordings.lock().expect("the recordings are intact").remove(&recording);
     }
 
     pub fn forget(&self, capture: u32) {
@@ -351,6 +385,37 @@ async fn read(
                         }));
                     }
                 }
+                PICTURE => {
+                    if payload.len() < PICTURE_HEADER_BYTES {
+                        return "the iOS helper sent a picture shorter than its header".into();
+                    }
+                    let mut header = payload.split_to(PICTURE_HEADER_BYTES);
+                    let recording = header.get_u32();
+                    let missed = header.get_u32();
+                    let key = header.get_u8() & 1 == 1;
+                    header.advance(3);
+                    let at_us = header.get_f64();
+                    let width = u32::from(header.get_u16());
+                    let height = u32::from(header.get_u16());
+                    let changed = Area {
+                        x: u32::from(header.get_u16()),
+                        y: u32::from(header.get_u16()),
+                        width: u32::from(header.get_u16()),
+                        height: u32::from(header.get_u16()),
+                    };
+                    let sink = helper.recordings.lock().expect("the recordings are intact").get(&recording).cloned();
+                    if let Some(sink) = sink {
+                        sink.miss(missed);
+                        sink.push_picture(Picture {
+                            data: payload.to_vec(),
+                            key,
+                            at_us,
+                            width,
+                            height,
+                            changed,
+                        });
+                    }
+                }
                 BLOB => {
                     if payload.len() < 4 {
                         return "the iOS helper sent a blob shorter than its id".into();
@@ -388,6 +453,18 @@ fn control(
                 .remove(capture);
             if let (Some(sender), Some(failed)) = (sender, failed) {
                 let _gone = sender.try_send(CaptureEvent::Failed(failed.clone()));
+            }
+        }
+        if let Event::Recording { recording, failed } = &event {
+            let sink = helper.recordings.lock().expect("the recordings are intact").remove(recording);
+            if let Some(sink) = sink {
+                sink.end(EndReason::Failed, Some(failed.clone()));
+            }
+        }
+        if let Event::Missed { recording, missed } = &event {
+            let sink = helper.recordings.lock().expect("the recordings are intact").get(recording).cloned();
+            if let Some(sink) = sink {
+                sink.miss(*missed);
             }
         }
         // The driver is gone once the service stops.

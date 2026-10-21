@@ -52,6 +52,9 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
         BrowserOperation::Find(_) => find(&typed(value)?),
         BrowserOperation::Read(_) => read(&typed(value)?),
         BrowserOperation::Screenshot(_) => screenshot(&typed(value)?),
+        BrowserOperation::Record(input) => {
+            demi_shared_recording_protocol::text::record(input.action, "demi browser record", &typed(value)?)
+        }
         BrowserOperation::Probe(_) => probe(&typed(value)?),
         BrowserOperation::Click(_)
         | BrowserOperation::Move(_)

@@ -75,6 +75,21 @@ pub fn scratch_name(conversation: &str) -> String {
         .collect()
 }
 
+/// Where a conversation's recordings are on a Host (`crates/shared-recording`):
+/// beside its scratch files, in the installation `home`, or the system's
+/// temporary directory for a program without one. Every program that records
+/// for a conversation names it with this; the runner removes it when the
+/// conversation is archived or deleted (`crates/runner-jobs/src/scratch.rs`).
+pub fn recordings_directory(home: Option<&std::path::Path>, conversation: &str) -> std::path::PathBuf {
+    recordings_in(&home.map_or_else(std::env::temp_dir, std::path::Path::to_path_buf).join("scratch"), conversation)
+}
+
+/// [`recordings_directory`] where the installation's scratch directories are
+/// kept, `scratch_root`, which the runner knows by that name.
+pub fn recordings_in(scratch_root: &std::path::Path, conversation: &str) -> std::path::PathBuf {
+    scratch_root.join(scratch_name(conversation)).join(".recordings")
+}
+
 /// How many characters of a conversation's id name its scratch directory.
 const SCRATCH_NAME_CHARS: usize = 12;
 

@@ -1,0 +1,33 @@
+[package]
+name = "demi-shared-openh264"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# Its test serves a stub download through the library's own interface, so it
+# is a unit test and the crate has no integration tests (`ARCHITECTURE.md`).
+doctest = false
+bench = false
+
+[features]
+# OpenH264 built from its source, for a test that encodes without Cisco's
+# download.
+testing = ["openh264/source"]
+
+[dependencies]
+# Cisco's binary is checked against its pinned SHA-256 (`aws-lc-rs`), unpacked
+# from bzip2 and loaded at run time (`libloading`).
+aws-lc-rs = "1"
+bzip2 = "0.6"
+demi-shared-artifacts = { path = "../shared-artifacts" }
+futures-util.workspace = true
+openh264 = { version = "0.9", default-features = false, features = ["libloading"] }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+bzip2 = "0.6"
+tempfile = "3"

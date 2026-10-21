@@ -2518,7 +2518,11 @@ dependencies = [
  "demi-command-sdk",
  "demi-live-view-protocol",
  "demi-shared-cli",
+ "demi-shared-openh264",
+ "demi-shared-recording",
+ "demi-shared-recording-protocol",
  "futures-util",
+ "image",
  "libc",
  "png",
  "regex",
@@ -2580,6 +2584,8 @@ dependencies = [
  "demi-live-view",
  "demi-live-view-protocol",
  "demi-shared-artifacts",
+ "demi-shared-recording",
+ "demi-shared-recording-protocol",
  "demi-shared-types",
  "futures-util",
  "garde",
@@ -2609,6 +2615,7 @@ version = "0.1.60"
 dependencies = [
  "base64 0.22.1",
  "demi-live-view-protocol",
+ "demi-shared-recording-protocol",
  "demi-shared-types",
  "garde",
  "regex",
@@ -2663,6 +2670,7 @@ name = "demi-command-package-mobile-protocol"
 version = "0.1.60"
 dependencies = [
  "demi-live-view-protocol",
+ "demi-shared-recording-protocol",
  "demi-shared-types",
  "garde",
  "schemars",
@@ -2905,7 +2913,6 @@ dependencies = [
  "aws-lc-rs",
  "base64 0.22.1",
  "bytes",
- "bzip2",
  "demi-command-package-mobile-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
@@ -2914,7 +2921,12 @@ dependencies = [
  "demi-mobile",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-shared-h264",
+ "demi-shared-openh264",
+ "demi-shared-recording",
+ "demi-shared-recording-protocol",
  "demi-shared-types",
+ "fast_image_resize",
  "flate2",
  "futures-util",
  "garde",
@@ -2926,7 +2938,6 @@ dependencies = [
  "kqueue",
  "kurbo",
  "notify",
- "openh264",
  "prost",
  "protox",
  "roxmltree",
@@ -3670,6 +3681,64 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-shared-h264"
+version = "0.1.60"
+dependencies = [
+ "demi-shared-openh264",
+ "openh264",
+ "openh264-sys2",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "windows 0.62.2",
+ "yuv",
+]
+
+[[package]]
+name = "demi-shared-openh264"
+version = "0.1.60"
+dependencies = [
+ "aws-lc-rs",
+ "bzip2",
+ "demi-shared-artifacts",
+ "futures-util",
+ "openh264",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "demi-shared-recording"
+version = "0.1.60"
+dependencies = [
+ "demi-shared-h264",
+ "demi-shared-openh264",
+ "demi-shared-recording-protocol",
+ "demi-shared-types",
+ "image",
+ "openh264",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "demi-shared-recording-protocol"
+version = "0.1.60"
+dependencies = [
+ "demi-shared-types",
+ "schemars",
+ "serde",
+ "serde_with",
+]
+
+[[package]]
 name = "demi-shared-types"
 version = "0.1.60"
 dependencies = [
@@ -3925,6 +3994,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "442039f5147480ba31067cb00ada1adae6892028e40e45fc5de7b7df6dcc1b5f"
 dependencies = [
  "const-random",
+]
+
+[[package]]
+name = "document-features"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
+dependencies = [
+ "litrs",
 ]
 
 [[package]]
@@ -4191,6 +4269,18 @@ dependencies = [
  "bit-set",
  "regex-automata",
  "regex-syntax",
+]
+
+[[package]]
+name = "fast_image_resize"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9c50201dc184ba6553da1695aac20a042efffbe2d84542cee31917c86c3ab1e"
+dependencies = [
+ "cfg-if",
+ "document-features",
+ "num-traits",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -7215,6 +7305,12 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "litrs"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4744e383959f0db86ede514b809b1c53251889093803c05267acc7d4e7030d70"
 
 [[package]]
 name = "lock_api"
@@ -12907,6 +13003,15 @@ dependencies = [
  "quote",
  "syn 2.0.119",
  "synstructure",
+]
+
+[[package]]
+name = "yuv"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a295923535c00a4e72a50a0a1130097f93160b39892dd4d2d006b1e2b90d6bf9"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]

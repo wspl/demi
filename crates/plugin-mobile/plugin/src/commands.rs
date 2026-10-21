@@ -45,7 +45,7 @@ operations! {
     "rotate" => RotateInput, RotateResult, ["device", "orientation"], "Turn the device portrait or landscape, or a quarter turn left or right; screenshots and coordinates follow it.";
     "appearance" => AppearanceInput, AppearanceResult, ["device", "appearance"], "Switch the system to light or dark, or toggle it.";
     "wait" => WaitInput, WaitResult, ["device"], "Wait until an element shows --text, an element ref appears (--element) or is gone (--gone), re-reading the tree; 30 s by default.";
-    "record" => RecordInput, RecordResult, ["device", "action"], "Start recording what the device shows, or stop and write the MP4 to stdout, or to a new file with --output.";
+    "record" => RecordInput, RecordResult, ["target", "action"], record_about("device", "m1");
 }
 
 fn operation(name: &str) -> NativeOperation {
@@ -76,7 +76,7 @@ fn leaf<I: schemars::JsonSchema, R: schemars::JsonSchema>(
             "screenshot" => {
                 "the PNG's bytes on stdout and what it captured on stderr, so pipe it into demi file view to see it or redirect it to save it; with --output, the file saved; --json requires --output"
             }
-            "record" => "for stop, the MP4's bytes on stdout, or with --output the file saved",
+            "record" => "start and stop: the recording's ID and state; frames: the changed frames as a table; export: one image path per line, or with --mp4 the video's bytes on stdout, or with --output the file saved",
             _ => SUCCESS,
         })
         .failure_output(FAILURE)

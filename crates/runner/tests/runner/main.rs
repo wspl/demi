@@ -97,10 +97,16 @@ impl Host {
     /// Accepts the current connection's registration with the
     /// conversations of the user that still exist.
     pub async fn welcome(&mut self, conversations: &[&str]) {
+        self.welcome_archived(conversations, &[]).await;
+    }
+
+    /// [`Host::welcome`] naming which of the conversations are archived.
+    pub async fn welcome_archived(&mut self, conversations: &[&str], archived: &[&str]) {
         self.send(Inbound::HelloOk {
             device_id: "device".into(),
             device_name: "fixture".into(),
             conversations: conversations.iter().map(|&name| name.to_owned()).collect(),
+            archived: archived.iter().map(|&name| name.to_owned()).collect(),
         })
         .await;
     }

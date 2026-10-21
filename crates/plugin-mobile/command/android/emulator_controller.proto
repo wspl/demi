@@ -164,6 +164,22 @@ message ImageFormat {
     uint32 width = 3;
     uint32 height = 4;
     uint32 display = 5;
+    // How the pixels reach the reader: in the message, or in a file both
+    // map.
+    ImageTransport transport = 6;
+}
+
+message ImageTransport {
+    enum TransportChannel {
+        // The pixels are in the message.
+        TRANSPORT_CHANNEL_UNSPECIFIED = 0;
+        // The emulator writes the pixels into the file `handle` names,
+        // before it sends the message.
+        MMAP = 1;
+    }
+    TransportChannel channel = 1;
+    // `file://` and the file's path.
+    string handle = 2;
 }
 
 message Image {

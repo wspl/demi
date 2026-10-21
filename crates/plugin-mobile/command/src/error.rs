@@ -35,10 +35,12 @@ pub enum MobileError {
     Timeout(String),
     #[error("{0}")]
     Unavailable(String),
-    #[error("the device is not recording; start with demi mobile record <m> start")]
-    NotRecording,
-    #[error("the device is recording already")]
-    Recording,
+    #[error("{0} is recording already")]
+    Recording(DeviceId),
+    #[error("{0}")]
+    NoRecording(String),
+    #[error("five recordings are running, so no other can start; stop one with demi mobile record <r> stop")]
+    TooManyRecordings,
     #[error("{0} exists; pass --overwrite to replace it")]
     OutputExists(String),
     #[error("{0}")]
@@ -83,8 +85,9 @@ impl MobileError {
             Self::StaleRef(_) => MobileErrorCode::StaleRef,
             Self::Timeout(_) => MobileErrorCode::Timeout,
             Self::Unavailable(_) => MobileErrorCode::Unavailable,
-            Self::NotRecording => MobileErrorCode::NotRecording,
-            Self::Recording => MobileErrorCode::Recording,
+            Self::Recording(_) => MobileErrorCode::Recording,
+            Self::NoRecording(_) => MobileErrorCode::RecordingNotFound,
+            Self::TooManyRecordings => MobileErrorCode::TooManyRecordings,
             Self::OutputExists(_) => MobileErrorCode::OutputExists,
             Self::Io(_) => MobileErrorCode::IoError,
             Self::Failed(_) => MobileErrorCode::DriverError,
@@ -108,5 +111,20 @@ impl MobileError {
 impl From<std::io::Error> for MobileError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error.to_string())
+    }
+}
+
+impl From<demi_shared_recording::Error> for MobileError {
+    fn from(error: demi_shared_recording::Error) -> Self {
+        use demi_shared_recording::Error;
+        match error {
+            Error::NoRecording(_) | Error::Removed(_) => Self::NoRecording(error.to_string()),
+            Error::TooManyRunning => Self::TooManyRecordings,
+            Error::Unavailable(reason) => Self::Unavailable(reason),
+            Error::BadRequest(reason) => Self::Usage(reason),
+            Error::Exists(path) => Self::OutputExists(path.display().to_string()),
+            Error::Io(reason) => Self::Io(reason),
+            Error::Corrupt(_) | Error::Failed(_) => Self::Failed(error.to_string()),
+        }
     }
 }

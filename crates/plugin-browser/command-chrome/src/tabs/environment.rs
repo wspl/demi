@@ -65,6 +65,7 @@ use tokio_util::{
 };
 
 use crate::driver::capture::CaptureChannel;
+use demi_shared_recording::Live;
 use crate::driver::{
     installation::Installation,
     numbers::TabNumbers,
@@ -400,6 +401,9 @@ pub struct BrowserEnvironment {
     /// Why the browser connection ended, once it ended on its own.
     report_failure: watch::Sender<Option<String>>,
     pub(crate) tasks: TaskTracker,
+    /// The recordings of the browser's tabs that still run, which end with
+    /// every frame kept before the browser does.
+    recordings: Recordings,
     pub(crate) download_directory: PathBuf,
     /// Files the user chose in the live view, until the browser retires.
     pub(crate) upload_directory: PathBuf,
@@ -491,6 +495,7 @@ where
     let (failure, _) = watch::channel(None);
     let ended = CancellationToken::new();
     let observers = TaskTracker::new();
+    let recordings = Recordings::default();
     let calls = TaskTracker::new();
     let handle = BrowserHandle {
         browser: Arc::downgrade(&browser),
@@ -583,6 +588,7 @@ where
                 tabs,
                 report_failure: failure.clone(),
                 tasks: observers.clone(),
+                recordings: recordings.clone(),
                 download_directory,
                 upload_directory,
                 captures,
@@ -592,6 +598,10 @@ where
             work(environment).await
         } => result,
     };
+    // The recordings end first, while the browser still answers: each takes
+    // what the capture extension holds, and its files are complete before the
+    // browser goes, whatever ends it.
+    recordings.finish().await;
     // Every task of the environment ends with it: the tabs' debugging
     // owners close their connections as they end.
     ended.cancel();
@@ -735,6 +745,27 @@ async fn remove_present(directory: &Path) -> Result<()> {
     }
 }
 
+/// The recordings of an environment's tabs that run.
+#[derive(Clone, Default)]
+struct Recordings(Arc<std::sync::Mutex<Vec<Live>>>);
+
+impl Recordings {
+    fn add(&self, live: Live) {
+        let mut recordings = self.0.lock().expect("the recordings are intact");
+        recordings.retain(|live| !live.ended().is_cancelled());
+        recordings.push(live);
+    }
+
+    /// Ends every recording that runs, for the browser closing, and answers
+    /// once their files are complete.
+    async fn finish(&self) {
+        let running: Vec<Live> = self.0.lock().expect("the recordings are intact").drain(..).collect();
+        for live in running {
+            let _ended = live.stop(demi_shared_recording_protocol::EndReason::Closed).await;
+        }
+    }
+}
+
 impl BrowserEnvironment {
     /// The browser connection, which commands share.
     pub fn browser(&self) -> &BrowserHandle {
@@ -750,6 +781,12 @@ impl BrowserEnvironment {
     /// environment and no command waits for runs on them.
     pub fn tasks(&self) -> &TaskTracker {
         &self.tasks
+    }
+
+    /// `live` records one of the environment's tabs: the browser does not end
+    /// before it has, with every frame kept.
+    pub fn recording(&self, live: Live) {
+        self.recordings.add(live);
     }
 
     /// Where Chrome saves downloads.

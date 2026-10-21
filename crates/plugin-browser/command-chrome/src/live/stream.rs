@@ -116,9 +116,12 @@ impl stream::Source for TabSource {
         let Some(hold) = self.tab.state().capture.capture() else {
             return Ok(None);
         };
+        // The capture is at the tab's own pixels, whatever the stream sends:
+        // a recording of the tab keeps them.
+        let source = pixels(&self.viewport.borrow().current, 1.0);
         match self
             .captures
-            .start(self.tab.target_id(), size.0, size.1, fps, bitrate, hold, stop)
+            .start(self.tab.target_id(), size, source, fps, bitrate, hold, stop)
             .await
         {
             Ok(capture) => Ok(Some(capture)),

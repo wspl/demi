@@ -81,7 +81,8 @@ impl Shard {
             }
         };
         // The user's conversations, archived ones included, whose scratch
-        // directories the runner keeps (`crates/runner-jobs/src/scratch.rs`).
+        // directories the runner keeps, and which of them are archived, whose
+        // recordings it removes (`crates/runner-jobs/src/scratch.rs`).
         // Without them the runner would remove every one, so a runner whose
         // welcome cannot name them is dropped and connects again.
         let conversations = match self
@@ -93,6 +94,13 @@ impl Shard {
             Ok(conversations) => conversations.iter().map(ToString::to_string).collect(),
             Err(error) => {
                 tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the user's conversations could not be read; the runner connects again");
+                return;
+            }
+        };
+        let archived = match self.services().control.conversations(self.user().clone(), true).await {
+            Ok(archived) => archived.iter().map(|record| record.id.to_string()).collect(),
+            Err(error) => {
+                tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the user's archived conversations could not be read; the runner connects again");
                 return;
             }
         };
@@ -136,6 +144,7 @@ impl Shard {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
             conversations,
+            archived,
         };
         // A runner that started anew kept nothing of its packages' state
         // (`crates/command-protocol/src/messages.rs`).
@@ -647,8 +656,8 @@ impl Shard {
     /// Connects `device` through a runner the test plays, working in `home`.
     ///
     /// It answers each ping, and each conversation release once `on_release` ran
-    /// for the released conversation, so what that reads is the state before the
-    /// release was answered. The answer says what the runner says of its own
+    /// for the released conversation and whether it is over, so what that reads
+    /// is the state before the release was answered. The answer says what the runner says of its own
     /// accord.
     pub(crate) async fn play_runner_for_tests(
         self: &Rc<Self>,
@@ -656,6 +665,7 @@ impl Shard {
         home: &str,
         on_release: impl Fn(
             demi_web_api_protocol::ids::ConversationId,
+            bool,
         ) -> futures_util::future::LocalBoxFuture<'static, ()>
         + 'static,
     ) -> PlayedRunner {
@@ -678,6 +688,7 @@ impl Shard {
         host: PlayedHost,
         on_release: impl Fn(
             demi_web_api_protocol::ids::ConversationId,
+            bool,
         ) -> futures_util::future::LocalBoxFuture<'static, ()>
         + 'static,
     ) -> PlayedRunner {
@@ -704,11 +715,12 @@ impl Shard {
                     Ok(Inbound::ConversationRelease {
                         id,
                         conversation_id,
+                        over,
                     }) => {
                         let conversation =
                             demi_web_api_protocol::ids::ConversationId::try_from(conversation_id)
                                 .expect("a release names a conversation");
-                        on_release(conversation).await;
+                        on_release(conversation, over).await;
                         Outbound::ConversationReleased { id, error: None }
                     }
                     Ok(Inbound::FsRealpath { id, path, .. }) => {

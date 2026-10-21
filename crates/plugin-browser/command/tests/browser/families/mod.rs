@@ -307,6 +307,46 @@ pub fn test_browser() -> DemiBrowser {
     service
 }
 
+/// [`with_browser_fixture`] whose service keeps its recordings in the
+/// fixture's directory, coded with OpenH264 built from its source. The
+/// `browser-processes` binary shares this module and records nothing.
+#[allow(dead_code)]
+pub async fn with_recording_fixture<F, W>(exercise: F)
+where
+    F: FnOnce(BrowserFixture) -> W,
+    W: Future<Output = BrowserFixture>,
+{
+    let _turn = browser_turn().await;
+    let root = Arc::new(tempfile::tempdir().unwrap());
+    let service = DemiBrowser::with_recording(
+        demi_command_package_browser_chrome::driver::installation::Chrome::default(),
+        Some(root.path().join("home")),
+        Arc::new(demi_shared_openh264::Built),
+    );
+    service.artifacts(demi_command_sdk::testing::artifacts_from(answer_chrome));
+    service.numbers(demi_command_sdk::testing::counting_numbers());
+    let fixture = BrowserFixture {
+        service: Arc::new(service),
+        root,
+        caller: 1,
+        conversation: uuid::Uuid::new_v4().to_string(),
+        env: BTreeMap::new(),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+        color_scheme: demi_command_protocol::ColorScheme::Light,
+        json: true,
+    };
+    let result = std::panic::AssertUnwindSafe(exercise(fixture.clone())).catch_unwind().await;
+    // The service ends with its browser and the recordings that run on it.
+    let released = fixture.service.close().await;
+    if let Err(panic) = result {
+        std::panic::resume_unwind(panic);
+    }
+    released.expect("release the fixture's browser");
+}
+
 pub async fn with_browser_fixture<F, W>(exercise: F)
 where
     F: FnOnce(BrowserFixture) -> W,

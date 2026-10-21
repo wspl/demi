@@ -924,7 +924,9 @@ impl dyn HostShard + '_ {
 
     /// Lifecycle access (§ Lifecycle access): sends the release of
     /// `conversation`, by the name the runner knows it by, to `device` while
-    /// its runner is connected, a paired device's or a running Cloud's.
+    /// its runner is connected, a paired device's or a running Cloud's. `over`
+    /// says the conversation is archived or deleted, which the runner takes as
+    /// the time to remove its recordings.
     ///
     /// It takes no file gate and wakes nothing: a device whose runner is not
     /// connected, a stopped Cloud among them, lost the conversation's services
@@ -932,11 +934,11 @@ impl dyn HostShard + '_ {
     /// logged with the Host and the reason, and fails nothing that sent it,
     /// since nothing is left for it
     /// (`crates/backend-user-shard/src/lifecycle/conversations.rs`).
-    pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId) {
+    pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId, over: bool) {
         let Some(link) = self.devices().link(device) else {
             return;
         };
-        if let Err(error) = link.release_conversation(conversation).await {
+        if let Err(error) = link.release_conversation(conversation, over).await {
             tracing::warn!(device = %device, conversation, "the conversation release failed: {error}");
         }
     }

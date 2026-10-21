@@ -386,8 +386,8 @@ command-sdk -> shared-artifacts, command-protocol
 command-declarations -> none
 command-package-file-protocol -> shared-types
 command-package-fetch-protocol -> shared-types
-command-package-browser-protocol -> shared-types, live-view-protocol
-command-package-mobile-protocol -> shared-types, live-view-protocol
+command-package-browser-protocol -> shared-types, live-view-protocol, shared-recording-protocol
+command-package-mobile-protocol -> shared-types, live-view-protocol, shared-recording-protocol
 live-view-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
@@ -395,6 +395,10 @@ machine-manager-protocol -> command-protocol, runner-protocol
 web-api-protocol -> conversation-socket-protocol, command-protocol, shared-types, runner-protocol
 shared-gates -> none
 shared-artifacts -> none
+shared-recording-protocol -> shared-types
+shared-openh264 -> shared-artifacts
+shared-h264 -> shared-openh264
+shared-recording -> shared-h264, shared-openh264, shared-recording-protocol, shared-types
 shared-cli -> none
 provider-common -> shared-types, shared-gates, shared-artifacts
 provider-anthropic-api -> shared-types, provider-common
@@ -432,7 +436,7 @@ runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runn
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
 live-view -> command-sdk, live-view-protocol, shared-types
-command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-types
+command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-recording, shared-recording-protocol, shared-types
 backend-page-sync -> backend-database, web-api-protocol
 backend-database -> agent-store, conversation-socket-protocol, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-blobs -> agent-store, shared-types, web-api-protocol
@@ -452,9 +456,9 @@ server -> backend-database, machine-manager-protocol, runner-protocol, shared-ar
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
 command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types, shared-artifacts
-command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
+command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli, shared-openh264, shared-recording, shared-recording-protocol
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
-command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-types
+command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-h264, shared-openh264, shared-recording, shared-recording-protocol, shared-types
 xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, backend-providers, provider-common, plugin-interface
 ```
 

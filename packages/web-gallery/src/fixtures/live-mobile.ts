@@ -93,6 +93,8 @@ interface OpenDevice {
   touch: { x: number; y: number; at: number } | null
   activity: LiveActivity
   recording: boolean
+  /** Whether the panel's Record started the running or last recording, whose video its next Stop takes even after the agent ended it. */
+  panelRecording: boolean
 }
 
 /** Settings' rows, in groups, longer than a screen so the wheel scrolls them. */
@@ -262,7 +264,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
     let shown = [...open.values()].find((each) => each.simulator === simulator)
     if (!shown) {
       numbers += 1
-      shown = { id: `m${numbers}`, simulator, orientation: 'portrait', dark: false, screen: 'home', scrolled: 0, off: false, touch: null, activity: { active: false }, recording: false }
+      shown = { id: `m${numbers}`, simulator, orientation: 'portrait', dark: false, screen: 'home', scrolled: 0, off: false, touch: null, activity: { active: false }, recording: false, panelRecording: false }
       open.set(shown.id, shown)
     }
     if (!panel.all.some((tab) => tab.kind === 'mobile' && shows(tab) === shown.id)) {
@@ -339,6 +341,12 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
         const { device: id, action } = recordDeviceSchema.parse(params)
         const shown = device(id)
         await beat(action === 'stop' ? 600 : 200)
+        // A recording the panel started that ended by itself still gives the panel its video.
+        if (action === 'stop' && !shown.recording && shown.panelRecording) {
+          shown.panelRecording = false
+          return stoppedRecording(shown)
+        }
+        shown.panelRecording = action === 'start'
         return record(shown, action === 'start')
       }
     }
@@ -348,13 +356,19 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
   /** Starts or stops recording `shown`; every view hears it, as each window would. */
   function record(shown: OpenDevice, start: boolean): object {
     if (shown.recording === start) {
-      throw new PluginCallError(start ? 'recording' : 'not_recording', 'the recording is not as asked', { type: 'status', status: '409 Conflict' })
+      throw new PluginCallError(start ? 'recording' : 'recording_not_found', 'the recording is not as asked', { type: 'status', status: '409 Conflict' })
     }
     shown.recording = start
     changed(shown.id)
-    return start
-      ? { device: shown.id, recording: true }
-      : { device: shown.id, recording: false, path: `${WORKSPACE_ROOT}/assets/demo.mp4`, durationMs: 4200 }
+    return start ? { recording: { id: 'r1', target: shown.id, running: true, durationMs: 0, frames: 0, missed: 0 } } : stoppedRecording(shown)
+  }
+
+  /** The Host's answer to a stop: the recording and its video. */
+  function stoppedRecording(shown: OpenDevice): object {
+    return {
+      recording: { id: 'r1', target: shown.id, running: false, ended: 'stopped', durationMs: 4200, frames: 37, missed: 0 },
+      path: `${WORKSPACE_ROOT}/assets/demo.mp4`,
+    }
   }
 
   /** Turns `shown`'s screen on or off; every view of it hears, as the Host tells each. */

@@ -416,6 +416,7 @@ async fn adopt(
         device_id: TEST_DEVICE.into(),
         device_name: "fixture".into(),
         conversations: Vec::new(),
+        archived: Vec::new(),
     };
     let frame = wire::encode(&welcome)
         .expect("a valid welcome")

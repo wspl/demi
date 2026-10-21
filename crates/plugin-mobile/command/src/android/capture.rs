@@ -1,7 +1,8 @@
 //! One capture of the live view for an emulator
-//! (`crates/plugin-mobile/command/src/android/mod.rs`): the emulator's
-//! pictures at the size the view asked for, which the emulator scales and turns
-//! upright, encoded with OpenH264 as H.264, Annex B, in real time.
+//! (`crates/plugin-mobile/command/src/android/mod.rs`): the emulator's one
+//! stream of pictures (`screen.rs`), each scaled to the size the view asked
+//! for and encoded as H.264, Annex B, in real time, by the Host's hardware
+//! encoder where it has one.
 //!
 //! The emulator sends a picture only when its screen changed, so a still screen
 //! sends no frame. A key frame asked for is sent at once, of the picture as it
@@ -13,29 +14,16 @@ use std::{
 };
 
 use bytes::Bytes;
+use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::{Image, ImageRef}};
 use futures_util::future::BoxFuture;
-use openh264::{
-    encoder::{BitRate, Encoder, EncoderConfig, FrameRate, FrameType, RateControlMode, UsageType},
-    formats::{RgbSliceU8, YUVBuffer, YUVSource as _},
-};
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 use demi_live_view::stream::{CaptureEvent, EncodedFrame};
+use demi_shared_h264::{Encoder, PixelFormat, Raw, Rate, Settings};
+use demi_shared_openh264::Load;
 
-use super::{
-    emulator::Client,
-    openh264::Load,
-    proto::{ImageFormat, image_format::ImgFormat},
-};
-use crate::driver::{DeviceCapture, DriverError, Result};
-
-/// One picture from the emulator: RGB, rows from the top.
-struct Picture {
-    rgb: Bytes,
-    width: usize,
-    height: usize,
-}
+use super::screen::{Event, Picture, Screen, Subscription};
+use crate::driver::{DeviceCapture, DriverError};
 
 /// What the encoder's thread is asked to do.
 #[derive(Default)]
@@ -75,78 +63,47 @@ impl Shared {
 pub struct AndroidCapture {
     frames: mpsc::Receiver<CaptureEvent>,
     shared: Arc<Shared>,
-    stop: CancellationToken,
+    _subscription: Subscription,
 }
 
 impl AndroidCapture {
     /// Starts capturing the emulator's pictures at most `size`, encoding
-    /// them with the library `load` reaches.
-    pub fn start(mut client: Client, load: Load, size: (u32, u32), fps: u32, bitrate: u32) -> Self {
+    /// them with the hardware encoder or else with the library `load`
+    /// reaches.
+    pub fn start(screen: &Arc<Screen>, load: Load, size: (u32, u32), fps: u32, bitrate: u32) -> Self {
         let (events, frames) = mpsc::channel(8);
         let shared = Arc::new(Shared {
             asked: Mutex::new(Asked::default()),
             wake: Condvar::new(),
         });
-        let stop = CancellationToken::new();
         let encoder = shared.clone();
         let encoded = events.clone();
         std::thread::Builder::new()
             .name("demi-mobile-h264".into())
-            .spawn(move || encode(&encoder, &encoded, &load, fps, bitrate))
+            .spawn(move || encode(&encoder, &encoded, &load, size, fps, bitrate))
             .expect("the encoder's thread starts");
         let pictures = shared.clone();
-        let stopping = stop.clone();
-        tokio::spawn(async move {
-            let request = ImageFormat {
-                format: ImgFormat::Rgb888.into(),
-                width: size.0,
-                height: size.1,
-                ..ImageFormat::default()
-            };
-            let streamed = async {
-                let mut stream = client
-                    .stream_screenshot(request)
-                    .await
-                    .map_err(|status| status.message().to_owned())?
-                    .into_inner();
-                while let Some(image) = stream.message().await.map_err(|status| status.message().to_owned())? {
-                    let (width, height) = image
-                        .format
-                        .as_ref()
-                        .map_or((0, 0), |format| (format.width as usize, format.height as usize));
-                    // An empty picture says the display is off.
-                    if width < 2 || height < 2 || image.image.len() < width * height * 3 {
-                        continue;
-                    }
-                    // A picture across where the capture is upright, or the
-                    // other way, is the emulator's from before a turn, which
-                    // the capture of the turned screen shows instead.
-                    if (width > height) != (size.0 > size.1) {
-                        continue;
-                    }
-                    let picture = Arc::new(Picture {
-                        rgb: image.image,
-                        width,
-                        height,
-                    });
+        let subscription = screen.subscribe(size.0.max(size.1), move |event| match event {
+            Event::Picture(picture, _) => {
+                // A picture across where the capture is upright, or the other
+                // way, is from before a turn, which the capture of the
+                // turned screen shows instead.
+                if (picture.width > picture.height) == (size.0 > size.1) {
                     pictures.ask(|asked| asked.newest = Some(picture));
                 }
-                Ok::<(), String>(())
-            };
-            tokio::select! {
-                () = stopping.cancelled() => {}
-                streamed = streamed => {
-                    let reason = match streamed {
-                        Ok(()) => "the emulator stopped sending its screen".to_owned(),
-                        Err(reason) => format!("the emulator's screen: {reason}"),
-                    };
-                    // The view hears of it unless it left already.
-                    let _ = events.try_send(CaptureEvent::Failed(reason));
-                }
             }
-            pictures.ask(|asked| asked.stopped = true);
+            Event::Missed(_) => {}
+            Event::Ended(reason) => {
+                // The view hears of it unless it left already.
+                let _ = events.try_send(CaptureEvent::Failed(reason));
+                pictures.ask(|asked| asked.stopped = true);
+            }
         });
-        Self { frames, shared, stop }
+        Self {
+            frames,
+            shared,
+            _subscription: subscription,
+        }
     }
 }
 
@@ -170,46 +127,48 @@ impl DeviceCapture for AndroidCapture {
 
 impl Drop for AndroidCapture {
     fn drop(&mut self) {
-        self.stop.cancel();
         self.shared.ask(|asked| asked.stopped = true);
     }
 }
 
-fn encoder(load: &Load, bitrate: u32, fps: u32) -> Result<Encoder> {
-    let config = EncoderConfig::new()
-        .usage_type(UsageType::ScreenContentRealTime)
-        .rate_control_mode(RateControlMode::Bitrate)
-        // Neither works for screen content, which OpenH264 says each time
-        // an encoder starts.
-        .adaptive_quantization(false)
-        .background_detection(false)
-        .bitrate(BitRate::from_bps(bitrate))
-        .max_frame_rate(FrameRate::from_hz(fps.max(1) as f32))
-        // Rate control holds the bit rate only by skipping pictures; a
-        // skipped one is encoded again at the next interval, so the last
-        // picture of a change still shows.
-        .skip_frames(true);
-    Encoder::with_api_config(load()?, config)
-        .map_err(|error| DriverError::Failed(format!("the video encoder did not start: {error}")))
+fn started(load: &Load, width: u32, height: u32, bitrate: u32, fps: u32) -> Result<Box<dyn Encoder>, DriverError> {
+    // Rate control holds the bit rate only by skipping pictures; a skipped one
+    // is encoded again at the next interval, so the last picture of a change
+    // still shows.
+    demi_shared_h264::open(
+        Settings {
+            width,
+            height,
+            rate: Rate::Bitrate {
+                bits_per_second: bitrate,
+                fps: fps.max(1),
+            },
+        },
+        load,
+    )
+    .map_err(|error| DriverError::Failed(format!("the video encoder did not start: {error}")))
+}
+
+/// The size `picture` is drawn at inside `size`: scaled down to fit, never
+/// up, with even sides, which H.264 needs.
+fn fitted(picture: &Picture, size: (u32, u32)) -> (u32, u32) {
+    let factor = (f64::from(size.0) / f64::from(picture.width)).min(f64::from(size.1) / f64::from(picture.height)).min(1.0);
+    let side = |side: u32| (((f64::from(side) * factor).round() as u32) & !1).max(2);
+    (side(picture.width), side(picture.height))
 }
 
 /// The encoder's thread: encodes the newest picture at most `fps` times a
 /// second, so the last picture of a change is always sent, until stopped.
-fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, fps: u32, bitrate: u32) {
+fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, size: (u32, u32), fps: u32, bitrate: u32) {
     let mut interval = Duration::from_secs_f64(1.0 / f64::from(fps.max(1)));
-    let mut current = match encoder(load, bitrate, fps) {
-        Ok(encoder) => encoder,
-        Err(error) => {
-            let _ = events.try_send(CaptureEvent::Failed(error.to_string()));
-            return;
-        }
-    };
-    let started = Instant::now();
+    let mut rate = (bitrate, fps);
+    let mut current: Option<(Box<dyn Encoder>, (u32, u32))> = None;
+    let started_at = Instant::now();
     let mut last: Option<Arc<Picture>> = None;
     let mut encoded_at: Option<Instant> = None;
     let mut sequence: u32 = 0;
     let mut force_key = true;
-    let mut yuv: Option<YUVBuffer> = None;
+    let mut resizer = Resizer::new();
     loop {
         let picture = {
             let mut asked = shared.asked.lock().expect("the capture's state is intact");
@@ -217,17 +176,15 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, fps
                 if asked.stopped {
                     return;
                 }
-                if let Some((bitrate, fps)) = asked.encoding.take() {
-                    // OpenH264's safe interface sets the bit rate only as
-                    // an encoder starts: a new one takes over, from a key
-                    // frame.
-                    match encoder(load, bitrate, fps) {
-                        Ok(encoder) => {
-                            current = encoder;
-                            force_key = true;
-                            interval = Duration::from_secs_f64(1.0 / f64::from(fps.max(1)));
+                if let Some(changed) = asked.encoding.take() {
+                    // A new bit rate takes over from a key frame.
+                    rate = changed;
+                    interval = Duration::from_secs_f64(1.0 / f64::from(changed.1.max(1)));
+                    if let Some((encoder, _)) = &mut current {
+                        match encoder.set_rate(changed.0, changed.1.max(1)) {
+                            Ok(()) => force_key = true,
+                            Err(error) => tracing::warn!("the encoding did not change: {error}"),
                         }
-                        Err(error) => tracing::warn!("the encoding did not change: {error}"),
                     }
                 }
                 if asked.key_frame {
@@ -254,57 +211,75 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, fps
         };
         encoded_at = Some(Instant::now());
         last = Some(picture.clone());
-        // H.264 needs even sides: an odd last row or column is left out.
-        let (width, height) = (picture.width & !1, picture.height & !1);
-        let rgb = even_rgb(&picture, width, height);
-        let buffer = match &mut yuv {
-            Some(buffer) if buffer.dimensions() == (width, height) => buffer,
-            slot => slot.insert(YUVBuffer::new(width, height)),
-        };
-        buffer.read_rgb8(RgbSliceU8::new(&rgb, (width, height)));
-        if force_key {
-            current.force_intra_frame();
-            force_key = false;
+        let (width, height) = fitted(&picture, size);
+        if current.as_ref().is_none_or(|(_, at)| *at != (width, height)) {
+            match started(load, width, height, rate.0, rate.1) {
+                Ok(encoder) => {
+                    tracing::debug!("the live view of an emulator is coded by {}", encoder.name());
+                    current = Some((encoder, (width, height)));
+                    force_key = true;
+                }
+                Err(error) => {
+                    let _ = events.try_send(CaptureEvent::Failed(error.to_string()));
+                    return;
+                }
+            }
         }
-        let stream = match current.encode(buffer) {
-            Ok(stream) => stream,
+        let scaled = match scaled(&mut resizer, &picture, width, height) {
+            Ok(scaled) => scaled,
+            Err(error) => {
+                let _ = events.try_send(CaptureEvent::Failed(format!("a frame did not scale: {error}")));
+                return;
+            }
+        };
+        let raw = Raw {
+            width,
+            height,
+            format: PixelFormat::Rgba,
+            pixels: scaled.as_ref().map_or(&picture.rgba[..], |scaled| scaled.buffer()),
+        };
+        let (encoder, _) = current.as_mut().expect("an encoder is started");
+        let time = u64::try_from(started_at.elapsed().as_micros()).unwrap_or(u64::MAX);
+        let coded = match encoder.encode(raw, time, std::mem::take(&mut force_key)) {
+            Ok(coded) => coded,
             Err(error) => {
                 let _ = events.try_send(CaptureEvent::Failed(format!("a frame did not encode: {error}")));
                 return;
             }
         };
-        let key = matches!(stream.frame_type(), FrameType::IDR | FrameType::I);
-        let data = stream.to_vec();
-        if stream.frame_type() == FrameType::Skip || data.is_empty() {
+        if coded.is_empty() {
+            // Skipped for the bit rate, or still in the encoder: the picture
+            // is offered again at the next interval.
             shared.ask(|asked| {
                 asked.newest.get_or_insert(picture);
             });
             continue;
         }
-        sequence = sequence.wrapping_add(1);
-        let data = Bytes::from(data);
-        // A stream that has not taken the frame before is behind; its
-        // viewers resume from a key frame.
-        let _behind = events.try_send(CaptureEvent::Frame(EncodedFrame {
-            sequence,
-            key,
-            timestamp: started.elapsed().as_secs_f64() * 1_000_000.0,
-            width: width as u16,
-            height: height as u16,
-            data: if key { crate::pictures::without_reordering(data) } else { data },
-        }));
+        for coded in coded {
+            sequence = sequence.wrapping_add(1);
+            let data = Bytes::from(coded.data);
+            // A stream that has not taken the frame before is behind; its
+            // viewers resume from a key frame.
+            let _behind = events.try_send(CaptureEvent::Frame(EncodedFrame {
+                sequence,
+                key: coded.key,
+                timestamp: coded.time_us as f64,
+                width: width as u16,
+                height: height as u16,
+                data: if coded.key { crate::pictures::without_reordering(data) } else { data },
+            }));
+        }
     }
 }
 
-/// The picture's RGB cut to `width` × `height`, its own bytes when it is
-/// that size already.
-fn even_rgb(picture: &Picture, width: usize, height: usize) -> std::borrow::Cow<'_, [u8]> {
-    if width == picture.width && height == picture.height {
-        return std::borrow::Cow::Borrowed(&picture.rgb[..width * height * 3]);
+/// `picture` at `width` × `height`; none when it is that size already.
+fn scaled(resizer: &mut Resizer, picture: &Picture, width: u32, height: u32) -> Result<Option<Image<'static>>, String> {
+    if (picture.width, picture.height) == (width, height) {
+        return Ok(None);
     }
-    let mut cut = Vec::with_capacity(width * height * 3);
-    for row in picture.rgb.chunks_exact(picture.width * 3).take(height) {
-        cut.extend_from_slice(&row[..width * 3]);
-    }
-    std::borrow::Cow::Owned(cut)
+    let source = ImageRef::new(picture.width, picture.height, &picture.rgba, PixelType::U8x4).map_err(|error| error.to_string())?;
+    let mut target = Image::new(width, height, PixelType::U8x4);
+    let options = ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Bilinear)).use_alpha(false);
+    resizer.resize(&source, &mut target, &options).map_err(|error| error.to_string())?;
+    Ok(Some(target))
 }

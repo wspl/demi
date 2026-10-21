@@ -483,8 +483,8 @@ async fn another_devices_change_sends_nothing_on_a_devices_stream() {
     page.send(json!({ "type": "hello", "platform": "mac", "device": first })).await;
     page.send(json!({ "type": "looked", "looked": true })).await;
     page.until("state").await;
-    mobile.run(CHAT, "record", json!({ "device": second, "action": "start" })).await.json();
-    mobile.run(CHAT, "record", json!({ "device": first, "action": "start" })).await.json();
+    mobile.run(CHAT, "record", json!({ "target": second, "action": "start" })).await.json();
+    mobile.run(CHAT, "record", json!({ "target": first, "action": "start" })).await.json();
     let next = serde_json::to_value(tokio::time::timeout(Duration::from_secs(10), page.until("state")).await.unwrap()).unwrap();
     assert_eq!(next["device"]["recording"], true, "the stream's next state is its own device's recording");
 }
@@ -517,11 +517,11 @@ async fn a_recording_the_agent_starts_shows_on_the_view() {
     page.send(json!({ "type": "looked", "looked": true })).await;
     let first = serde_json::to_value(page.until("state").await).unwrap();
     assert_eq!(first["device"]["recording"], false);
-    mobile.run(CHAT, "record", json!({ "device": device, "action": "start" })).await.json();
+    mobile.run(CHAT, "record", json!({ "target": device, "action": "start" })).await.json();
     tokio::time::timeout(Duration::from_secs(10), recording_is(&mut page, true))
         .await
         .expect("the view says the device records");
-    mobile.run(CHAT, "record", json!({ "device": device, "action": "stop", "output": "clip.mp4" })).await.json();
+    mobile.run(CHAT, "record", json!({ "target": "r1", "action": "stop" })).await.json();
     tokio::time::timeout(Duration::from_secs(10), recording_is(&mut page, false))
         .await
         .expect("the view says the recording stopped");

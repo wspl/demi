@@ -2024,7 +2024,7 @@ async fn a_capture_extension_that_stops_running_is_recreated_and_the_pages_stay(
                     let hold = tab.state().capture.capture().expect("no resize is under way");
                     match environment
                         .captures()
-                        .start(tab.target_id(), size.0, size.1, 30, 4_000_000, hold, &cancel)
+                        .start(tab.target_id(), size, size, 30, 4_000_000, hold, &cancel)
                         .await
                     {
                         Ok(mut capture) => {
@@ -2152,7 +2152,7 @@ async fn captures_stop_when_the_capture_extension_cannot_be_recreated_until_aske
             let hold = tab.state().capture.capture().expect("no resize is under way");
             environment
                 .captures()
-                .start(tab.target_id(), size.0, size.1, 30, 4_000_000, hold, &cancel)
+                .start(tab.target_id(), size, size, 30, 4_000_000, hold, &cancel)
         };
         // Captures that start meanwhile fail with the connection; well within
         // the 10 s a capture would wait for the extension, none starts.
@@ -2186,6 +2186,65 @@ async fn captures_stop_when_the_capture_extension_cannot_be_recreated_until_aske
         })
         .await;
         assert!(pictured.is_ok(), "no picture after the viewer asked again");
+        Ok(())
+    })
+    .await;
+}
+
+/// A recording keeps the tab's own pixels beside a live view that is sent
+/// less: the viewer's stream shrinks with a slow network, and the recording
+/// does not follow it.
+///
+/// Planted defect this catches: a tab's capture opened at the size the live
+/// view is sent, which the recording then takes as it is, so that a viewer's
+/// window or network changes what a recording keeps.
+///
+/// Cost: one Chrome, about five seconds.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_recording_keeps_the_tabs_own_size_beside_a_live_view_that_is_sent_smaller() {
+    use demi_command_package_browser_chrome::driver::capture::CaptureEvent;
+    use demi_shared_openh264::Built;
+    use demi_shared_recording::Library;
+    use demi_shared_recording_protocol::{EndReason, FrameSize};
+    crate::fixture::with_fixture(|environment, base| async move {
+        let cancel = CancellationToken::new();
+        let tab = environment.open(&base, &cancel, Duration::from_secs(30)).await?;
+        let size = demi_command_package_browser_chrome::tabs::viewport::pixels(&tab.state().viewport.borrow().current, 1.0);
+        let half = (size.0 / 2 & !1, size.1 / 2 & !1);
+        let hold = tab.state().capture.capture().expect("no resize is under way");
+        let mut capture = environment
+            .captures()
+            .start(tab.target_id(), half, size, 30, 4_000_000, hold, &cancel)
+            .await?;
+        // The live view's pictures are the size it is sent.
+        let frame = tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                match capture.events.recv().await {
+                    Some(CaptureEvent::Frame(frame)) => return frame,
+                    Some(_) => {}
+                    None => panic!("the live capture ended"),
+                }
+            }
+        })
+        .await
+        .expect("the live view has a picture");
+        assert_eq!((u32::from(frame.width), u32::from(frame.height)), half);
+        // A recording that starts beside it takes the tab's own pixels.
+        let directory = tempfile::tempdir().unwrap();
+        let library = Library::new(directory.path().to_owned(), std::sync::Arc::new(Built));
+        let live = library.begin("t1", None).await.expect("the recording begins");
+        demi_command_package_browser_chrome::live::record::start(
+            tab.clone(),
+            environment.captures().clone(),
+            live.clone(),
+            environment.tasks(),
+        );
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        live.stop(EndReason::Stopped).await.expect("the recording stops");
+        let info = library.stored(live.id()).await.unwrap().info().unwrap();
+        assert!(info.frames >= 1, "{info:?}");
+        assert_eq!(info.size, Some(FrameSize { width: size.0, height: size.1 }), "{info:?}");
         Ok(())
     })
     .await;
@@ -2326,6 +2385,73 @@ async fn the_users_menus_downloads_and_returning_pages_reach_the_viewer() {
             message["type"] == "controls" && message["controls"].as_array().is_some_and(|controls| controls.len() == 1)
         })
         .await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// A recording of a watched tab takes the capture the view has,
+/// and neither disturbs the other: the view's pictures keep coming while the
+/// recording runs and after it, a resize of the tab, which waits for every
+/// capture to be released, is not held back by the recording, and the
+/// recording goes on at the tab's new size.
+///
+/// Planted defects this catches: a recording that holds the tab's capture
+/// through a resize, so the resize never ends; a live capture that stops
+/// with the recording's stop; a recording that ends with the resize.
+///
+/// Cost: one Chrome, about ten seconds.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_recording_runs_beside_the_live_view_and_follows_a_resize() {
+    crate::families::with_recording_fixture(|fixture| async move {
+        let site = site().await;
+        let tab = fixture
+            .call("browser.open", json!({"url": site.base, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "linux");
+        view.message("state").await;
+        let generation = watch(&mut view, &tab).await;
+        let started = fixture.call("browser.record", json!({"target": tab, "action": "start"})).await;
+        let id = started["recording"]["id"].as_str().unwrap().to_owned();
+        // The view's pictures keep coming while the recording runs.
+        view.picture(generation).await;
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        let resized = tokio::time::timeout(
+            Duration::from_secs(30),
+            fixture.call("browser.viewport.set", json!({"tab": tab, "width": 600, "height": 400})),
+        )
+        .await
+        .expect("the resize is not held back by the recording");
+        assert_eq!(resized["viewport"]["width"], 600);
+        // The view has pictures of the new size.
+        let newest = view.until("stream", |stream| stream["width"] == 600 && stream["height"] == 400).await;
+        view.picture(newest["generation"].as_u64().unwrap()).await;
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        let stopped = fixture.call("browser.record", json!({"target": id, "action": "stop"})).await;
+        assert_eq!(stopped["recording"]["ended"], "stopped", "{stopped}");
+        let frames = stopped["recording"]["frames"].as_u64().unwrap();
+        assert!(frames > 40, "the page animates through the resize: {stopped}");
+        // The recording has both sizes: the view's first, the tab's new one.
+        let listed = fixture.call("browser.record", json!({"target": id, "action": "frames"})).await;
+        let rows = listed["frames"].as_array().unwrap();
+        let whole: Vec<u64> = rows.iter().filter(|row| row["whole"] == true).map(|row| row["frame"].as_u64().unwrap()).collect();
+        assert!(whole.len() >= 2, "the first frame and the first at the new size are whole: {listed}");
+        let width = |frame: u64| {
+            let exported = fixture.call("browser.record", json!({"target": id, "action": "export", "frames": format!("f{frame:03}"), "whole": true}));
+            async move {
+                let exported = exported.await;
+                image::image_dimensions(exported["images"][0]["path"].as_str().unwrap()).unwrap().0
+            }
+        };
+        assert_eq!(width(1).await, 1600);
+        assert_eq!(width(frames).await, 600);
+        // The view still has its tab.
         assert_eq!(view.close().await.exit_code, 0);
         fixture
     })

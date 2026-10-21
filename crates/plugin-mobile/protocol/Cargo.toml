@@ -13,6 +13,7 @@ bench = false
 
 [dependencies]
 demi-live-view-protocol = { path = "../../live-view-protocol" }
+demi-shared-recording-protocol = { path = "../../shared-recording-protocol" }
 demi-shared-types = { path = "../../shared-types" }
 garde.workspace = true
 schemars.workspace = true

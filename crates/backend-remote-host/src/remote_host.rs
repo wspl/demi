@@ -854,9 +854,9 @@ impl RemoteHost {
     /// Asks the runner to release what its services hold for
     /// `conversation`. It admits no work and wakes nothing: without a
     /// connected runner there is nothing to release.
-    pub async fn release_conversation(&self, conversation: &str) -> Result<(), HostError> {
+    pub async fn release_conversation(&self, conversation: &str, over: bool) -> Result<(), HostError> {
         match self.link() {
-            Ok(link) => link.release_conversation(conversation).await,
+            Ok(link) => link.release_conversation(conversation, over).await,
             Err(_) => Ok(()),
         }
     }

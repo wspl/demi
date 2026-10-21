@@ -11,6 +11,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
+pub use demi_shared_recording_protocol::{
+    RecordAction, RecordResult, RecordingDuration, FrameSet, Region, record_input, recording_target,
+};
+pub use demi_shared_recording_protocol::text::about as record_about;
+
 /// The prefix of every operation's name, such as `mobile.open`.
 pub const PREFIX: &str = "mobile.";
 
@@ -141,14 +146,6 @@ closed_set! {
         Delete = "delete",
         Tab = "tab",
         Escape = "escape",
-    }
-}
-
-closed_set! {
-    /// What `record` does.
-    pub enum RecordAction {
-        Start = "start",
-        Stop = "stop",
     }
 }
 
@@ -645,40 +642,27 @@ pub struct WaitResult {
     pub waited_ms: u64,
 }
 
-device_input! {
-    /// `record`: starts recording what the device shows, or stops it and
-    /// writes the MP4.
+recording_target! {
+    /// What `record`'s first operand names: the device `start` records, or
+    /// the recording every other action works on.
+    pub enum RecordTarget { Device(DeviceId), "m", "a device handle such as m1, or a recording such as r1" }
+}
+
+record_input! {
+    /// `record`: records every picture a device draws, and reads what it kept.
     pub struct RecordInput {
-        /// start or stop
-        #[garde(skip)]
-        pub action: RecordAction,
-        /// For stop: a new output file on this Host; without it the MP4 goes to stdout
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "String")]
-        #[garde(length(chars, min = 1, max = NAME_LENGTH))]
-        pub output: Option<String>,
-        /// Replace an existing output file
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "bool")]
-        #[garde(skip)]
-        pub overwrite: Option<bool>,
+        target: RecordTarget, "For start, the device handle open returned, such as m1; for every other action, the recording's ID, such as r1";
+        output_length: NAME_LENGTH;
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RecordResult {
-    pub device: DeviceId,
-    /// Whether it records now.
-    pub recording: bool,
-    /// The MP4 `stop --output` saved.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    pub path: Option<String>,
-    /// How long the recording is, once stopped.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "u64", range(max = demi_shared_types::MAX_SAFE_INTEGER))]
-    pub duration_ms: Option<u64>,
+impl DeviceInput for RecordInput {
+    fn device(&self) -> Option<&DeviceId> {
+        match (&self.target, self.action) {
+            (RecordTarget::Device(device), RecordAction::Start | RecordAction::Stop) => Some(device),
+            _ => None,
+        }
+    }
 }
 
 closed_set! {
@@ -696,8 +680,12 @@ closed_set! {
         Timeout = "timeout",
         /// This Host cannot run the platform's simulators, or not yet.
         Unavailable = "unavailable",
-        NotRecording = "not_recording",
+        /// The device already records.
         Recording = "recording",
+        /// The recording is not on this Host, or was removed.
+        RecordingNotFound = "recording_not_found",
+        /// Five recordings run, so no other starts.
+        TooManyRecordings = "too_many_recordings",
         OutputExists = "output_exists",
         IoError = "io_error",
         DriverError = "driver_error",

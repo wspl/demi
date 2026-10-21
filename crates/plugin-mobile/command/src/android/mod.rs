@@ -27,8 +27,9 @@ pub mod capture;
 pub mod corners;
 pub mod emulator;
 pub mod guest;
-pub mod openh264;
 pub mod process;
+pub mod record;
+pub mod screen;
 pub mod sdk;
 
 pub mod proto {
@@ -39,13 +40,15 @@ pub mod proto {
 
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    sync::Arc,
+    time::Duration,
 };
 
 use futures_util::future::BoxFuture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+
+use demi_shared_recording::Sink;
 
 use demi_command_package_mobile_protocol::{
     mobile::{Appearance, MobilePlatform, Orientation, PowerState, SCREENSHOT_LONG_SIDE},
@@ -54,7 +57,7 @@ use demi_command_package_mobile_protocol::{
 use crate::{
     driver::{
         Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, Framed, KeyPress, Png, Points,
-        RawElement, Rect, Recording, Result, Screen, Simulator, TouchPhase,
+        RawElement, Rect, Result, Screen, Simulator, TouchPhase,
     },
     keys,
 };
@@ -62,7 +65,7 @@ use crate::{
 pub use adb::Adb;
 pub use emulator::Discovery;
 pub use guest::Guest;
-pub use openh264::{Codec, Load};
+pub use demi_shared_openh264::{Codec, Load};
 pub use process::Process;
 use proto::{
     ImageFormat, KeyboardEvent, ParameterValue, PhysicalModelValue, Touch, TouchEvent, VmRunState,
@@ -168,14 +171,9 @@ pub struct Android {
 
 impl Android {
     /// The SDK of this Host; an emulator Demi starts writes its log into
-    /// `directory`, which keeps Cisco's OpenH264 too, or the system's
-    /// temporary directory for a program without an installation.
-    pub fn new(directory: Option<std::path::PathBuf>) -> Self {
-        let codec = directory
-            .clone()
-            .unwrap_or_else(|| std::env::temp_dir().join("demi-mobile"))
-            .join("openh264");
-        Self::with_sdk(Arc::new(sdk::Installed::new(directory)), Arc::new(openh264::Cisco::new(codec)))
+    /// `directory`, which encodes its emulators' pictures with `codec`.
+    pub fn new(directory: Option<std::path::PathBuf>, codec: Arc<dyn Codec>) -> Self {
+        Self::with_sdk(Arc::new(sdk::Installed::new(directory)), codec)
     }
 
     pub fn with_sdk(sdk: Arc<dyn Sdk>, codec: Arc<dyn Codec>) -> Self {
@@ -353,8 +351,15 @@ impl Driver for Android {
             let guest = self.sdk.guest(&serial).await?;
             let geometry = Geometry { panel, density };
             let ended = CancellationToken::new();
+            let first = geometry.screen(0);
             let device = Arc::new(AndroidDevice {
                 _emulator: connected,
+                pictures: screen::Screen::new(
+                    client.clone(),
+                    first.pixels,
+                    (first.points.x.round() as u32, first.points.y.round() as u32),
+                    demi_shared_h264::hardware(),
+                ),
                 client,
                 guest,
                 serial,
@@ -365,7 +370,6 @@ impl Driver for Android {
                 awake: watch::Sender::new(true),
                 ended: ended.clone(),
                 watching: CancellationToken::new(),
-                recording: Mutex::default(),
                 art_folder: art,
                 art: tokio::sync::OnceCell::new(),
                 corners: Arc::default(),
@@ -522,6 +526,8 @@ struct AndroidDevice {
     /// adb's name of the emulator.
     serial: String,
     codec: Arc<dyn Codec>,
+    /// The emulator's pictures, which the live view and a recording share.
+    pictures: Arc<screen::Screen>,
     geometry: Geometry,
     screen: watch::Sender<Screen>,
     drawn: watch::Sender<u64>,
@@ -530,8 +536,6 @@ struct AndroidDevice {
     ended: CancellationToken,
     /// Stops following the pictures as the device is let go.
     watching: CancellationToken,
-    /// The recording under way: the file its MP4 goes to, and since when.
-    recording: Mutex<Option<(PathBuf, Instant)>>,
     /// Android Studio's device art for the device, where the Host has it.
     art_folder: Option<PathBuf>,
     /// The art, read the first time it is drawn; none when it does not read.
@@ -1147,25 +1151,12 @@ impl Device for AndroidDevice {
         Box::pin(self.guest.set_night(appearance == Appearance::Dark))
     }
 
-    fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>> {
+    fn record(&self, sink: Sink) -> BoxFuture<'_, Result<Box<dyn Send>>> {
         Box::pin(async move {
-            self.guest.record_start().await?;
-            *self.recording.lock().expect("the recording is intact") = Some((file.to_owned(), Instant::now()));
-            Ok(())
-        })
-    }
-
-    fn record_stop(&self) -> BoxFuture<'_, Result<Recording>> {
-        Box::pin(async move {
-            let (file, since) = self
-                .recording
-                .lock()
-                .expect("the recording is intact")
-                .take()
-                .ok_or_else(|| DriverError::Failed("no recording runs".into()))?;
-            let duration_ms = u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX);
-            self.guest.record_stop(&file).await?;
-            Ok(Recording { duration_ms })
+            // The first recording of an emulator fetches the encoder, which a
+            // Host without a hardware one needs.
+            let load = self.codec.library().await.map_err(|error| DriverError::Failed(error.to_string()))?;
+            Ok(Box::new(record::start(&self.pictures, load, sink)) as Box<dyn Send>)
         })
     }
 
@@ -1209,11 +1200,10 @@ impl Device for AndroidDevice {
     }
 
     fn capture(&self, size: (u32, u32), fps: u32, bitrate: u32) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>> {
-        let client = self.client.clone();
         Box::pin(async move {
             // The first view of an emulator fetches the encoder.
-            let load = self.codec.library().await?;
-            Ok(Box::new(capture::AndroidCapture::start(client, load, size, fps, bitrate)) as Box<dyn DeviceCapture>)
+            let load = self.codec.library().await.map_err(|error| DriverError::Failed(error.to_string()))?;
+            Ok(Box::new(capture::AndroidCapture::start(&self.pictures, load, size, fps, bitrate)) as Box<dyn DeviceCapture>)
         })
     }
 

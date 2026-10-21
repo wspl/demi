@@ -19,6 +19,7 @@ use demi_command_package_mobile_protocol::{
     mobile::{Appearance, Orientation, MobilePlatform, PowerState},
 };
 use demi_live_view::stream::CaptureEvent;
+use demi_shared_recording::Sink;
 
 /// Why a driver could not do what it was asked.
 #[derive(Debug, Clone, thiserror::Error)]
@@ -159,12 +160,6 @@ pub struct Png {
     pub height: u32,
 }
 
-/// A recording that stopped: its MP4 at the path its start named.
-#[derive(Debug, Clone)]
-pub struct Recording {
-    pub duration_ms: u64,
-}
-
 /// A rectangle of a picture, in its pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct PixelRect {
@@ -299,9 +294,12 @@ pub trait Device: Send + Sync + 'static {
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>>;
     fn appearance(&self) -> BoxFuture<'_, Result<Appearance>>;
     fn set_appearance(&self, appearance: Appearance) -> BoxFuture<'_, Result<()>>;
-    /// Records the screen into `file`, an MP4 that `record_stop` finishes.
-    fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>>;
-    fn record_stop(&self) -> BoxFuture<'_, Result<Recording>>;
+    /// Hands `sink` every picture the device draws from now on that differs
+    /// from the one before, coded as H.264 at the screen's own pixels, until
+    /// the guard returned is dropped. The capture ends the recording as the
+    /// device goes away, and hands over the pictures it holds when the sink's
+    /// handover asks for them.
+    fn record(&self, sink: Sink) -> BoxFuture<'_, Result<Box<dyn Send>>>;
     /// The device's frame, fitted into `area`, with the screen it was drawn
     /// for; none while what it needs is still being read from the device,
     /// which [`Self::frame_changes`] announces once known.

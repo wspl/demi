@@ -1,16 +1,15 @@
-//! The H.264 encoder of an emulator's live view: Cisco's own build of OpenH264,
-//! which Cisco pays the patent royalties for, as Firefox uses it.
+//! The H.264 encoder and decoder of the Host's pictures: Cisco's own build of
+//! OpenH264, which Cisco pays the patent royalties for, as Firefox uses it.
 //!
 //! Cisco pays for its binary only, not for a build Demi would make and ship
-//! from the source, so Demi does not ship it. The first view of an emulator
+//! from the source, so Demi does not ship it. The first use on a Host
 //! downloads it from Cisco and checks it against its pinned hash before the
 //! program loads it, and keeps it for the next.
 //!
-//! It encodes every emulator's pictures, on a Mac too, rather than using
-//! VideoToolbox. The iOS helper's encoder lives inside the helper, which needs
-//! Xcode, so a Mac with only Android Studio could not use it. A second
-//! VideoToolbox encoder for Android alone would be the same thing written
-//! twice.
+//! It is the software H.264 coder: `demi-shared-h264` codes with the Host's
+//! hardware encoder where there is one, and with this where there is none, and
+//! the decoder of every recording's export is this one, so that an exported
+//! frame is the same on every Host.
 
 use std::{
     path::{Path, PathBuf},
@@ -20,7 +19,12 @@ use std::{
 use futures_util::future::BoxFuture;
 use openh264::OpenH264API;
 
-use crate::driver::{DriverError, Result};
+/// Why the library could not be had.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("{0}")]
+pub struct Error(pub String);
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Makes an encoder's interface to the library, once for each encoder.
 pub type Load = Arc<dyn Fn() -> Result<OpenH264API> + Send + Sync>;
@@ -90,6 +94,14 @@ impl Cisco {
         Self::from_origin(directory, CISCO.to_owned())
     }
 
+    /// Cisco's build as the installation `home`, `DEMI_HOME`, keeps it, one
+    /// copy for every program of the Host; the system's temporary directory
+    /// stands in for a program without an installation.
+    pub fn in_installation(home: Option<&Path>) -> Self {
+        let directory = home.map_or_else(|| std::env::temp_dir().join("demi"), Path::to_owned).join("openh264");
+        Self::new(directory)
+    }
+
     /// Cisco's build as `origin` serves it, such as a test's server.
     pub fn from_origin(directory: PathBuf, origin: String) -> Self {
         Self {
@@ -103,7 +115,7 @@ impl Cisco {
     /// is not Cisco's.
     async fn fetch(&self) -> Result<PathBuf> {
         let binary = BINARY.as_ref().ok_or_else(|| {
-            DriverError::Failed("Cisco builds no OpenH264 for this system, so an emulator cannot be shown".into())
+            Error("Cisco builds no OpenH264 for this system, so no picture can be encoded".into())
         })?;
         let path = self.directory.join(binary.file);
         if let Ok(kept) = tokio::fs::read(&path).await
@@ -113,7 +125,7 @@ impl Cisco {
         }
         let url = format!("{}/{}.bz2", self.origin, binary.file);
         let failed = |error: &dyn std::fmt::Display| {
-            DriverError::Failed(format!("Cisco's OpenH264 did not download from {url}: {error}"))
+            Error(format!("Cisco's OpenH264 did not download from {url}: {error}"))
         };
         // The library is checked against its pinned hash once unpacked, so
         // neither plain HTTP nor a redirect can change what is kept.
@@ -137,13 +149,13 @@ impl Cisco {
         .map_err(|error| failed(&error))?
         .map_err(|error| failed(&error))?;
         if sha256(&library) != binary.sha256 {
-            return Err(DriverError::Failed(format!(
+            return Err(Error(format!(
                 "Cisco's OpenH264 from {url} does not match its pinned hash, so it is not used"
             )));
         }
         keep(&self.directory, &path, &library)
             .await
-            .map_err(|error| DriverError::Failed(format!("Cisco's OpenH264 was not kept in {}: {error}", path.display())))?;
+            .map_err(|error| Error(format!("Cisco's OpenH264 was not kept in {}: {error}", path.display())))?;
         Ok(path)
     }
 }
@@ -173,8 +185,74 @@ impl Codec for Cisco {
             // it loads it, so a file changed since is refused.
             Ok(Arc::new(move || {
                 OpenH264API::from_blob_path(&path)
-                    .map_err(|error| DriverError::Failed(format!("Cisco's OpenH264 did not load: {error}")))
+                    .map_err(|error| Error(format!("Cisco's OpenH264 did not load: {error}")))
             }) as Load)
         })
+    }
+}
+
+/// OpenH264 built from its source, which the tests use instead of
+/// downloading Cisco's build.
+#[cfg(feature = "testing")]
+pub struct Built;
+
+#[cfg(feature = "testing")]
+impl Codec for Built {
+    fn library(&self) -> BoxFuture<'_, Result<Load>> {
+        Box::pin(async { Ok(Arc::new(|| Ok(OpenH264API::from_source())) as Load) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    use super::*;
+
+    /// The encoder is Cisco's build, downloaded as it is first needed and
+    /// used only when it matches its pinned hash: a file the server sends
+    /// that does not is refused, kept nowhere, and asked for again next time.
+    /// Planted defect this catches: the download used unchecked. A stub server
+    /// on a local port, milliseconds.
+    #[tokio::test]
+    async fn an_encoder_that_is_not_ciscos_build_is_refused() {
+        let mut compressed = Vec::new();
+        std::io::Read::read_to_end(
+            &mut bzip2::read::BzEncoder::new(&b"not Cisco's library"[..], bzip2::Compression::fast()),
+            &mut compressed,
+        )
+        .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let heard = asked.clone();
+        let _server = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut request = vec![0u8; 4096];
+                let read = stream.read(&mut request).await.unwrap();
+                let line = String::from_utf8_lossy(&request[..read]).lines().next().unwrap_or_default().to_owned();
+                heard.lock().unwrap().push(line);
+                let header =
+                    format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", compressed.len());
+                stream.write_all(header.as_bytes()).await.unwrap();
+                stream.write_all(&compressed).await.unwrap();
+            }
+        }));
+        let directory = tempfile::tempdir().unwrap();
+        let cisco = Cisco::from_origin(directory.path().to_owned(), origin);
+        for _ in 0..2 {
+            let refused = cisco.library().await.err().expect("a library that is not Cisco's is refused").to_string();
+            assert!(refused.contains("does not match its pinned hash"), "{refused}");
+        }
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0, "the refused file was kept");
+        let asked = asked.lock().unwrap().clone();
+        assert_eq!(asked.len(), 2);
+        assert!(
+            asked.iter().all(|line| line.starts_with("GET /libopenh264-2.6.0-") && line.contains(".bz2 ")),
+            "{asked:?}"
+        );
+        assert_eq!(asked[0], asked[1], "the second use asks for the same file again");
     }
 }

@@ -9,6 +9,10 @@ members = [
   "crates/agent-tools",
   "crates/agent-transcript",
   "crates/shared-artifacts",
+  "crates/shared-openh264",
+  "crates/shared-h264",
+  "crates/shared-recording",
+  "crates/shared-recording-protocol",
   "crates/shared-cli",
   "crates/backend",
   "crates/backend-accounts",
@@ -142,6 +146,24 @@ opt-level = 3
 # holds a 1080 × 2400 view far below
 # the emulator's 60 frames a second.
 [profile.dev.package.openh264]
+opt-level = 3
+
+# A screen's pictures, 1080 × 2424 pixels at the emulator's 60 a second, are
+# compared, scaled, converted and handed to the hardware encoder by these
+# crates (`crates/shared-h264/src/lib.rs`). Measured on an emulator scrolled
+# for 20 seconds at 1080 × 2424: unoptimized, 299 of the 1,126 pictures it drew
+# were recorded and the program used 88% of a core; optimized, all 1,211 were,
+# at 23%. A test or a check of a device would not show what the program does.
+[profile.dev.package.demi-shared-h264]
+opt-level = 3
+
+[profile.dev.package.demi-shared-recording]
+opt-level = 3
+
+[profile.dev.package.yuv]
+opt-level = 3
+
+[profile.dev.package.fast_image_resize]
 opt-level = 3
 
 # Small executables, since every paired device downloads each one

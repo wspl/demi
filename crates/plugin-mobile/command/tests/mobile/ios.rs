@@ -19,7 +19,7 @@ use tokio::{
 use demi_command_package_mobile_protocol::live::{LiveCorners, LiveFrame, LiveModuleMessage};
 use demi_mobile::{
     driver::Result,
-    ios::{BLOB, CONTROL, Connection, Launch, VIDEO},
+    ios::{BLOB, CONTROL, Connection, Launch, PICTURE, VIDEO},
 };
 
 use crate::{CHAT, Mobile, live::{Page, screen}};
@@ -46,8 +46,8 @@ pub struct Heard {
 }
 
 /// A helper the test plays: two booted iPhones, each of whose captures
-/// sends one key frame naming its simulator, and a recording of
-/// `recording` bytes.
+/// sends one key frame naming its simulator, and each of whose recordings
+/// gets three pictures.
 pub struct FakeHelper {
     pub heard: Arc<Mutex<Heard>>,
     /// Counts the connections that ended, which the driver ends by closing
@@ -60,18 +60,16 @@ pub struct FakeHelper {
     refused: Arc<Mutex<Vec<String>>>,
     /// Where the helper's unasked events go, once it serves.
     events: Mutex<Option<mpsc::UnboundedSender<Value>>>,
-    recording: usize,
 }
 
 impl FakeHelper {
-    pub fn new(recording: usize) -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         Arc::new(Self {
             heard: Arc::default(),
             ended: watch::Sender::new(0),
             held: watch::Sender::new(false),
             refused: Arc::default(),
             events: Mutex::default(),
-            recording,
         })
     }
 
@@ -141,7 +139,7 @@ impl Launch for FakeHelper {
                 self.heard.clone(),
                 self.ended.clone(),
                 self.held.subscribe(),
-                Helped { recording: self.recording, refused: self.refused.clone(), unasked },
+                Helped { refused: self.refused.clone(), unasked },
             ));
             Ok(Connection {
                 input: Box::new(driver_input),
@@ -168,10 +166,8 @@ fn screen_json(orientation: &str) -> Value {
     })
 }
 
-/// What the helper does besides answering: its recording's size, the
-/// orientations the app refuses and the events it sends unasked.
+/// What the helper does besides answering: the orientations the app refuses and the events it sends unasked.
 struct Helped {
-    recording: usize,
     refused: Arc<Mutex<Vec<String>>>,
     unasked: mpsc::UnboundedReceiver<Value>,
 }
@@ -182,6 +178,24 @@ fn frame(kind: u8, payload: &[u8]) -> Vec<u8> {
     frame.put_u8(kind);
     frame.put_slice(payload);
     frame.to_vec()
+}
+
+/// A recording's coded picture as the helper sends it: its header, then a
+/// slice that stands for the coded picture. The picture is 16×16 and differs
+/// from the one before in `area`, x, y, width and height.
+fn picture_frame(recording: u32, missed: u32, timestamp: f64, key: bool, area: [u16; 4]) -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&recording.to_be_bytes());
+    payload.extend_from_slice(&missed.to_be_bytes());
+    payload.extend_from_slice(&[u8::from(key), 0, 0, 0]);
+    payload.extend_from_slice(&timestamp.to_be_bytes());
+    payload.extend_from_slice(&16u16.to_be_bytes());
+    payload.extend_from_slice(&16u16.to_be_bytes());
+    for side in area {
+        payload.extend_from_slice(&side.to_be_bytes());
+    }
+    payload.extend_from_slice(&[0, 0, 0, 1, if key { 0x65 } else { 0x41 }, 0x88]);
+    frame(PICTURE, &payload)
 }
 
 /// A key frame as the encoder makes it, its picture's slice holding the
@@ -211,7 +225,6 @@ async fn serve(
     mut held: watch::Receiver<bool>,
     mut helped: Helped,
 ) {
-    let recording = helped.recording;
     let mut buffer = BytesMut::new();
     // Each device's orientation, portrait once attached.
     let mut orientations: HashMap<String, String> = HashMap::new();
@@ -253,19 +266,6 @@ async fn serve(
                     }
                     screen_json(&orientations[&udid])
                 }
-                "recordStart" => {
-                    let path = params["path"].as_str().unwrap().to_owned();
-                    let mut file = tokio::fs::File::create(&path).await.unwrap();
-                    let chunk = vec![7u8; 1024 * 1024];
-                    let mut left = recording;
-                    while left > 0 {
-                        let part = left.min(chunk.len());
-                        file.write_all(&chunk[..part]).await.unwrap();
-                        left -= part;
-                    }
-                    json!({})
-                }
-                "recordStop" => json!({ "durationMs": 2000 }),
                 // UDID-A's model has a frame installed, UDID-B's has none.
                 "frame" if udid == "UDID-A" => {
                     let mut blob = u32::try_from(id.as_u64().unwrap()).unwrap().to_be_bytes().to_vec();
@@ -299,6 +299,20 @@ async fn serve(
             if output.write_all(&frame(CONTROL, &reply)).await.is_err() {
                 break 'reading;
             }
+            if method == "recordStart" {
+                // The first picture, one drawn after the helper missed two
+                // draws, and a third.
+                let recording = u32::try_from(params["recording"].as_u64().unwrap()).unwrap();
+                for (missed, at, key, area) in [
+                    (0u32, 1_000_000.0f64, true, [0u16, 0, 16, 16]),
+                    (2, 1_016_000.0, false, [3, 4, 5, 6]),
+                    (0, 1_033_000.0, false, [0, 0, 1, 1]),
+                ] {
+                    if output.write_all(&picture_frame(recording, missed, at, key, area)).await.is_err() {
+                        break 'reading;
+                    }
+                }
+            }
             if method == "captureStart" {
                 let capture = u32::try_from(params["capture"].as_u64().unwrap()).unwrap();
                 if output.write_all(&key_frame(capture, &udid)).await.is_err() {
@@ -331,7 +345,7 @@ async fn serve(
 /// helper, milliseconds.
 #[tokio::test]
 async fn the_helper_ends_when_the_conversations_last_device_closes() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let first = mobile.open(CHAT, "UDID-A").await;
     let second = mobile.open(CHAT, "UDID-B").await;
@@ -365,7 +379,7 @@ async fn the_helper_ends_when_the_conversations_last_device_closes() {
 /// Cost: one fake helper, two views, milliseconds.
 #[tokio::test]
 async fn devices_sharing_a_helper_each_show_their_own_pictures_at_once() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let first = mobile.open(CHAT, "UDID-A").await;
     let second = mobile.open(CHAT, "UDID-B").await;
@@ -411,39 +425,40 @@ async fn devices_sharing_a_helper_each_show_their_own_pictures_at_once() {
     assert_eq!(helper.requests("captureStop").len(), 1);
 }
 
-/// A recording larger than any frame of the helper's connection, 70 MiB,
-/// is saved whole and streamed whole, and its file in the conversation's
-/// scratch directory goes once it was taken; the device answers on after
-/// it. Planted defect this catches: a recording left behind in the scratch
-/// directory. One fake helper, 140 MiB of files, a second or two.
+/// A recording of an iOS simulator keeps the coded pictures the helper sends
+/// with where each differs, counts the draws it missed, and tells the helper to
+/// stop when it ends. Planted defects this catches: a picture read with the
+/// capture's header, missed draws not counted, and a recording whose end the
+/// helper is not told.
+/// Cost: one fake helper, three 16×16 pictures; milliseconds.
 #[tokio::test]
-async fn a_recording_larger_than_a_frame_is_saved_whole() {
-    const SIZE: usize = 70 * 1024 * 1024;
-    let helper = FakeHelper::new(SIZE);
+async fn an_ios_recording_keeps_the_helpers_coded_pictures() {
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "UDID-A").await;
 
-    mobile.run(CHAT, "record", json!({ "device": device, "action": "start" })).await.json();
-    let file = std::path::PathBuf::from(helper.requests("recordStart")[0]["path"].as_str().unwrap());
-    assert!(file.starts_with(mobile.home().join("scratch").join("chata")), "{} is outside the conversation's scratch", file.display());
-    let saved = mobile
-        .run(CHAT, "record", json!({ "device": device, "action": "stop", "output": "clip.mp4" }))
-        .await
-        .json();
-    assert_eq!(std::fs::metadata(mobile.root.path().join("clip.mp4")).unwrap().len(), SIZE as u64);
-    assert_eq!(saved["durationMs"], 2000);
-    assert!(!file.exists(), "the recording's file stays in the scratch directory");
-
-    mobile.run(CHAT, "record", json!({ "device": device, "action": "start" })).await.json();
-    let mut args = json!({ "device": device, "action": "stop" });
-    args.as_object_mut().unwrap().remove("output");
-    let streamed = mobile.run(CHAT, "record", args).await;
-    assert_eq!(streamed.exit_code, 0, "{}", streamed.stderr);
-    assert_eq!(streamed.stdout.len(), SIZE);
-    let second = std::path::PathBuf::from(helper.requests("recordStart")[1]["path"].as_str().unwrap());
-    assert!(!second.exists(), "the streamed recording's file stays in the scratch directory");
-
-    mobile.run(CHAT, "key", json!({ "device": device, "key": "home" })).await.json();
+    let started = mobile.run(CHAT, "record", json!({ "target": device, "action": "start" })).await.json();
+    let id = started["recording"]["id"].as_str().unwrap().to_owned();
+    let request = &helper.requests("recordStart")[0];
+    assert!(request.get("longSide").is_none(), "the helper codes at the screen's own pixels");
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let listed = mobile.run(CHAT, "record", json!({ "target": id, "action": "frames" })).await.json();
+            if listed["recording"]["frames"] == 3 {
+                return listed;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the helper's pictures arrive");
+    let stopped = mobile.run(CHAT, "record", json!({ "target": id, "action": "stop" })).await.json();
+    assert_eq!(stopped["recording"]["frames"], 3, "every picture the helper sent is a frame");
+    assert_eq!(stopped["recording"]["missed"], 2);
+    let listed = mobile.run(CHAT, "record", json!({ "target": id, "action": "frames" })).await.json();
+    assert_eq!(listed["frames"][1]["changed"], json!({ "x": 3, "y": 4, "width": 5, "height": 6 }));
+    helper.heard("recordStop", 1).await;
+    assert_eq!(helper.requests("recordStop")[0]["recording"], request["recording"]);
 }
 
 /// The view gets the frame the helper draws for a model whose frame Xcode
@@ -459,7 +474,7 @@ async fn a_recording_larger_than_a_frame_is_saved_whole() {
 /// Cost: one fake helper, one view, milliseconds.
 #[tokio::test]
 async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let framed = mobile.open(CHAT, "UDID-A").await;
     let bare = mobile.open(CHAT, "UDID-B").await;
@@ -513,7 +528,7 @@ async fn the_view_gets_the_frame_the_helper_draws_or_draws_its_own() {
 /// Cost: one fake helper, milliseconds.
 #[tokio::test]
 async fn the_viewers_typing_in_any_layout_or_input_method_reaches_an_iphones_field() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "UDID-A").await;
     mobile.run(CHAT, "tap", json!({ "device": device, "at": ["200", "120"] })).await.json();
@@ -560,7 +575,7 @@ async fn the_viewers_typing_in_any_layout_or_input_method_reaches_an_iphones_fie
 #[tokio::test]
 async fn the_view_says_when_its_text_has_no_focused_field() {
     use demi_command_package_mobile_protocol::live::NO_FOCUSED_FIELD;
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "UDID-A").await;
     let mut page = Page::open(&mobile, CHAT).await;
@@ -582,7 +597,7 @@ async fn the_view_says_when_its_text_has_no_focused_field() {
 /// helper, milliseconds.
 #[tokio::test]
 async fn text_without_us_keys_needs_a_focused_field_on_an_iphone() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "UDID-A").await;
     let (_, message) = mobile.run(CHAT, "type", json!({ "device": device, "text": "東京" })).await.failure();
@@ -597,7 +612,7 @@ async fn text_without_us_keys_needs_a_focused_field_on_an_iphone() {
 /// after the user's tap woke it. One fake helper, milliseconds.
 #[tokio::test]
 async fn a_simulator_is_off_from_its_lock_until_the_next_input() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "iPhone 17").await;
     let mut page = Page::open(&mobile, CHAT).await;
@@ -621,7 +636,7 @@ async fn a_simulator_is_off_from_its_lock_until_the_next_input() {
 /// Cost: one fake helper, milliseconds.
 #[tokio::test]
 async fn a_double_wake_on_a_simulator_presses_the_side_button_once() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "iPhone 17").await;
     let mut page = Page::open(&mobile, CHAT).await;
@@ -656,7 +671,7 @@ async fn a_double_wake_on_a_simulator_presses_the_side_button_once() {
 /// fake helper, milliseconds.
 #[tokio::test]
 async fn the_screen_shows_the_orientation_its_display_took() {
-    let helper = FakeHelper::new(0);
+    let helper = FakeHelper::new();
     let mobile = Mobile::start_ios(helper.clone()).await;
     let device = mobile.open(CHAT, "UDID-A").await;
     let mut page = Page::open(&mobile, CHAT).await;

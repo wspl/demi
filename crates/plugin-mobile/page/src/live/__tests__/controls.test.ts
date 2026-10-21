@@ -6,7 +6,7 @@ import { pageContext, type PageHost } from '@demicodes/web-ui/plugins/page'
 import { disposePluginStores } from '@demicodes/web-ui/plugins/stores'
 import { LIVE_CONTROL_FRAME, UNANSWERED_STREAM, definePage, pageReturned, type ConversationPlugin, type PluginCache, type PluginCallError, type UserStreamHandlers } from '@demicodes/plugin-sdk'
 import type { LiveDevice, LiveFrame, LiveModuleMessage, LiveViewerMessage, Orientation } from '../../generated/plugin'
-import { mobileApi } from '../../devices'
+import { MobileError, mobileApi } from '../../devices'
 import { MobileDevicesController, noticeText } from '../controller'
 import { DEVICE_CONTROLS, deviceControls } from '../controls'
 import { DeviceSession } from '../session'
@@ -27,7 +27,7 @@ const ANSWERS: Record<string, unknown> = {
   toggleAppearance: { device: 'm1', appearance: 'dark' },
   press: { device: 'm1', key: 'home' },
   screenshot: { path: '/scratch/mobile/m1.png' },
-  record: { device: 'm1', recording: true },
+  record: { recording: { id: 'r1', target: 'm1', running: true, durationMs: 0, frames: 0, missed: 0 } },
 }
 
 /** The conversation's plugin, keeping each call it gets and each message its streams send. */
@@ -305,6 +305,31 @@ test('two devices looked at together stream each on its own, and one pausing lea
   expect(pixel.looks().at(-1)).toBe(true)
   iphone.session.close()
   pixel.session.close()
+})
+
+test('a recording that ended by itself gives the panel its video once, and none when the Host holds none', async () => {
+  const calls: Array<[string, object]> = []
+  const reported: unknown[] = []
+  let held: unknown = { ...(ANSWERS.record as object), path: '/scratch/mobile/m1.mp4' }
+  const scope = effectScope()
+  const controller = scope.run(() => new MobileDevicesController(
+    mobileApi(plugin(calls, [], [], async (method) => {
+      if (held === null) {
+        throw new MobileError('recording_not_found', null, 'The simulator isn’t recording.')
+      }
+      return method === 'record' ? held : ANSWERS[method]
+    })),
+    { report: (_, error) => void reported.push(error), defect: (_, error) => void reported.push(error) },
+    { pictures: async () => false, platform: 'mac' },
+  ))!
+  expect(await controller.collect('m1')).toBe('/scratch/mobile/m1.mp4')
+  expect(calls).toEqual([['record', { device: 'm1', action: 'stop' }]])
+  // The Host holds none, as after the device reconnected: no toast, no file.
+  held = null
+  expect(await controller.collect('m1')).toBeNull()
+  expect(reported).toEqual([])
+  controller.dispose()
+  scope.stop()
 })
 
 test('Record follows a recording the device announces, whoever started it', () => {

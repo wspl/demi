@@ -11,15 +11,21 @@ use demi_shared_types::DecodeError;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CaptureCommand {
-    /// Capture the tab of CDP target `target` at `width` × `height` pixels.
-    /// Chrome delivers even sides, which H.264 4:2:0 needs: for an odd side
-    /// it scales the tab to the nearest even size of the same shape, so the
-    /// frames' own size is the picture's.
+    /// Capture the tab of CDP target `target` for the live view, and send it
+    /// at `width` × `height` pixels. The tab's one capture is at the tab's
+    /// own pixels, `source_width` × `source_height`, whichever consumer opens
+    /// it, and the encoder scales the live view's pictures from it. Chrome
+    /// delivers even sides, which H.264 4:2:0 needs: for an odd side it scales
+    /// the tab to the nearest even size of the same shape.
     Start {
         capture: u32,
         target: String,
         width: u32,
         height: u32,
+        #[serde(rename = "sourceWidth")]
+        source_width: u32,
+        #[serde(rename = "sourceHeight")]
+        source_height: u32,
         fps: u32,
         bitrate: u32,
     },
@@ -39,6 +45,21 @@ pub enum CaptureCommand {
         bitrate: u32,
         fps: u32,
     },
+    /// Record the tab of CDP target `target`: every frame it draws, coded
+    /// at a fixed quality with the browser's own encoder, as pictures that
+    /// each tell their size, whatever the live view's pace. The tab's one
+    /// capture is shared with the live view's: where one runs already the
+    /// recording takes its frames; otherwise it opens the capture at the
+    /// tab's own `width` × `height` pixels.
+    Record {
+        capture: u32,
+        target: String,
+        width: u32,
+        height: u32,
+        /// The pictures between key frames.
+        #[serde(rename = "keyInterval")]
+        key_interval: u32,
+    },
     Stop {
         capture: u32,
     },
@@ -57,6 +78,9 @@ pub enum CaptureEvent {
     Stalled { capture: u32 },
     /// The capture ended as the module asked.
     Stopped { capture: u32 },
+    /// A recording's encoder was behind, so the extension did not code this
+    /// many frames the tab drew.
+    Missed { capture: u32, count: u32 },
     /// The capture failed and the extension released it.
     Error { capture: u32, message: String },
     /// Chrome keeps a capture request the extension cannot release, which
@@ -71,10 +95,21 @@ impl CaptureEvent {
     }
 }
 
+/// Where a recorded picture differs from the one before, in its pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Changed {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
 /// An encoded frame's header, big-endian: the capture (u32), the sequence
-/// number (u32), flags (u8, 1 = key frame), three reserved bytes, the
-/// timestamp in microseconds (f64), the picture's width and height in pixels
-/// (u16 each), and eight reserved bytes.
+/// number (u32), flags (u8, 1 = key frame, 2 = the area that changed follows),
+/// three reserved bytes, the timestamp in microseconds (f64), the picture's
+/// width and height in pixels (u16 each), and the area that changed, x, y,
+/// width and height (u16 each), which a recording's pictures have and the
+/// live view's do not.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FrameHeader {
     pub capture: u32,
@@ -83,6 +118,7 @@ pub struct FrameHeader {
     pub timestamp: f64,
     pub width: u16,
     pub height: u16,
+    pub changed: Option<Changed>,
 }
 
 impl FrameHeader {
@@ -104,6 +140,12 @@ impl FrameHeader {
             timestamp: f64::from_be_bytes(field(12, 20).try_into().expect("eight bytes")),
             width: u16::from_be_bytes(field(20, 22).try_into().expect("two bytes")),
             height: u16::from_be_bytes(field(22, 24).try_into().expect("two bytes")),
+            changed: (header[8] & 2 == 2).then(|| Changed {
+                x: u16::from_be_bytes(field(24, 26).try_into().expect("two bytes")),
+                y: u16::from_be_bytes(field(26, 28).try_into().expect("two bytes")),
+                width: u16::from_be_bytes(field(28, 30).try_into().expect("two bytes")),
+                height: u16::from_be_bytes(field(30, 32).try_into().expect("two bytes")),
+            }),
         };
         Ok((header, data))
     }

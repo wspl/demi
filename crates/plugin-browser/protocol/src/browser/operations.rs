@@ -532,6 +532,45 @@ input! {
     }
 }
 
+pub use demi_shared_recording_protocol::{
+    FrameSet, RecordAction, RecordResult, RecordingDuration, Region, record_input, recording_target,
+};
+pub use demi_shared_recording_protocol::text::about as record_about;
+
+recording_target! {
+    /// What `record`'s first operand names: the tab `start` records, or the
+    /// recording every other action works on.
+    pub enum RecordTarget { Tab(TabId), "t", "a tab such as t1, or a recording such as r1" }
+}
+
+record_input! {
+    /// `record`: records every frame a tab draws, and reads what it kept.
+    pub struct RecordInput {
+        target: RecordTarget, "For start, the tab ID open or tabs returned, such as t1; for every other action, the recording's ID, such as r1";
+        output_length: LOCATOR_LENGTH;
+        /// Whole operation deadline in milliseconds
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "u64")]
+        #[garde(range(min = 1, max = MAX_TIMEOUT_MS))]
+        pub timeout: Option<u64>,
+    }
+}
+
+impl BrowserInput for RecordInput {
+    fn timeout_ms(&self) -> Option<u64> {
+        self.timeout
+    }
+
+    /// Only `start` acts on a tab; the other actions read a recording, which
+    /// outlasts its tab.
+    fn tab(&self) -> Option<&TabId> {
+        match (&self.target, self.action) {
+            (RecordTarget::Tab(tab), RecordAction::Start) => Some(tab),
+            _ => None,
+        }
+    }
+}
+
 closed_set! {
     /// The media type of a screenshot.
     pub enum ImageMime {
@@ -1555,6 +1594,7 @@ operations! {
     "find" => Find(FindInput),
     "read" => Read(ReadInput),
     "screenshot" => Screenshot(ScreenshotInput),
+    "record" => Record(RecordInput),
     "probe" => Probe(ProbeInput),
     "click" => Click(ClickInput),
     "move" => Move(MoveInput),

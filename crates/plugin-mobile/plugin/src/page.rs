@@ -10,7 +10,7 @@ use demi_command_package_mobile_protocol::PACKAGE;
 use demi_command_package_mobile_protocol::mobile::{
     AppearanceChoice, AppearanceInput, AppearanceResult, CloseInput, CloseResult, DeviceId,
     FailureDocument, Key, KeyInput, KeyResult, ListInput, ListResult, MobileErrorCode,
-    MobileOperation, PREFIX, RecordAction, RecordInput, RecordResult, RotateInput, RotateResult,
+    MobileOperation, PREFIX, RecordAction, RecordInput, RecordResult, RecordTarget, RotateInput, RotateResult,
     Rotation, ScreenshotInput, ScreenshotResult,
 };
 use demi_plugin_interface::{CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope};
@@ -85,12 +85,20 @@ pub struct PressButton {
     pub button: PanelButton,
 }
 
+/// What the panel's Record button does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PanelRecord {
+    Start,
+    Stop,
+}
+
 /// `record { device, action }`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RecordDevice {
     pub device: String,
-    pub action: RecordAction,
+    pub action: PanelRecord,
 }
 
 /// What Screenshot and a stopped Record answer: the file on the Host the
@@ -198,8 +206,16 @@ pub(crate) async fn call(
         "record" => {
             let RecordDevice { device, action } = decode(params)?;
             let input = RecordInput {
-                device: device_id(device)?,
-                action,
+                target: RecordTarget::Device(device_id(device)?),
+                action: match action {
+                    PanelRecord::Start => RecordAction::Start,
+                    PanelRecord::Stop => RecordAction::Stop,
+                },
+                duration: None,
+                frames: None,
+                whole: None,
+                region: None,
+                mp4: None,
                 output: None,
                 overwrite: None,
             };

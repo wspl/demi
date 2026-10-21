@@ -30,6 +30,8 @@ demi-command-sdk = { path = "../../command-sdk" }
 demi-live-view = { path = "../../live-view" }
 demi-live-view-protocol = { path = "../../live-view-protocol" }
 demi-shared-artifacts = { path = "../../shared-artifacts" }
+demi-shared-recording = { path = "../../shared-recording" }
+demi-shared-recording-protocol = { path = "../../shared-recording-protocol" }
 demi-shared-types = { path = "../../shared-types" }
 futures-util.workspace = true
 garde.workspace = true

@@ -1500,21 +1500,23 @@ async fn a_conversation_release_waits_for_the_runner_and_admits_no_work() {
     let refusing = Admission::Leased(Rc::new(|| panic!("a release must not admit work")));
     let host = device.host("/work", refusing);
     // Without a runner there is nothing to release.
-    host.release_conversation("conversation").await.unwrap();
+    host.release_conversation("conversation", false).await.unwrap();
     let mut link = device.connect(None);
     let release = |host: &RemoteHost| {
         let host = host.clone();
-        tokio::task::spawn_local(async move { host.release_conversation("conversation").await })
+        tokio::task::spawn_local(async move { host.release_conversation("conversation", false).await })
     };
     let released = release(&host);
     let Inbound::ConversationRelease {
         id,
         conversation_id,
+        over,
     } = link.next().await
     else {
         panic!("expected a release")
     };
     assert_eq!(conversation_id, "conversation");
+    assert!(!over, "a release that does not say the conversation is over keeps its recordings");
     assert!(!released.is_finished());
     link.send(Outbound::ConversationReleased { id, error: None })
         .await;

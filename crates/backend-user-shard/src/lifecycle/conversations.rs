@@ -22,6 +22,12 @@
 //! whatever it holds for the conversation (the browser closes its Chrome and
 //! removes its profile).
 //!
+//! It says whether the conversation is over: an archive and a deletion say so,
+//! the idle clock, a target switch and a detach do not. The runner removes the
+//! conversation's recordings only when it is, and a runner that was offline
+//! then learns it from its hello, which names the archived conversations
+//! (`crates/runner-jobs/src/scratch.rs`).
+//!
 //! It can be sent without checking what runs there because no job of the
 //! conversation runs there when it arrives: an archive, a detach and the idle
 //! clock send it only while the backend holds the conversation's file gate,
@@ -184,7 +190,7 @@ impl IdlePolicy for ConversationIdle {
                 .map_err(|error| error.to_string())?;
             shard
                 .host_shard()
-                .release_everywhere(&record)
+                .release_everywhere(&record, false)
                 .await
                 .map_err(|error| error.to_string())
         })))
@@ -240,7 +246,7 @@ mod tests {
     const HANG: Duration = Duration::from_secs(30);
 
     /// Each release a device's runner answered, and when.
-    type Released = watch::Sender<Vec<(DeviceId, Instant)>>;
+    type Released = watch::Sender<Vec<(DeviceId, Instant, bool)>>;
 
     /// A backend's services, whose idle window is `WINDOW`, with the
     /// conversation `ID` and the master's paired devices `names`.
@@ -287,10 +293,10 @@ mod tests {
         let mut played = Vec::new();
         for device in devices {
             let (log, id) = (released.clone(), device.clone());
-            played.push(shard.play_runner_for_tests(device, "/home/ana", move |_| {
+            played.push(shard.play_runner_for_tests(device, "/home/ana", move |_, over| {
                 let (log, id) = (log.clone(), id.clone());
                 Box::pin(
-                    async move { log.send_modify(|released| released.push((id, Instant::now()))) },
+                    async move { log.send_modify(|released| released.push((id, Instant::now(), over))) },
                 )
             }).await);
         }
@@ -359,14 +365,16 @@ mod tests {
                 until_released(&released, 2).await;
                 let mut released = released.borrow().clone();
                 released.sort();
-                let devices: Vec<&DeviceId> = released.iter().map(|(device, _)| device).collect();
+                let devices: Vec<&DeviceId> = released.iter().map(|(device, _, _)| device).collect();
                 let mut expected = vec![&primary, &attached];
                 expected.sort();
                 assert_eq!(devices, expected);
                 // Never before a full window after the last activity: the
                 // first activity's deadline released nothing.
-                for (_, at) in &released {
+                for (_, at, over) in &released {
                     assert!(*at - active >= WINDOW, "{:?}", *at - active);
+                    // An idle conversation is not over: its recordings stay.
+                    assert!(!over);
                 }
                 // The devices stay usable.
                 operate().await;
@@ -507,7 +515,7 @@ mod tests {
                 let devices: Vec<DeviceId> = released
                     .borrow()
                     .iter()
-                    .map(|(device, _)| device.clone())
+                    .map(|(device, _, _)| device.clone())
                     .collect();
                 assert_eq!(devices, std::slice::from_ref(&old));
                 // The old binding's deadline releases nothing: the next
@@ -518,11 +526,11 @@ mod tests {
                 until_retired(&shard, &id).await;
                 let mut later = released.borrow()[1..].to_vec();
                 later.sort();
-                let devices: Vec<&DeviceId> = later.iter().map(|(device, _)| device).collect();
+                let devices: Vec<&DeviceId> = later.iter().map(|(device, _, _)| device).collect();
                 let mut expected = vec![&new, &old];
                 expected.sort();
                 assert_eq!(devices, expected);
-                for (_, at) in &later {
+                for (_, at, _) in &later {
                     assert!(*at - switched >= WINDOW, "{:?}", *at - switched);
                 }
                 // The archive releases the conversation on both at once and

@@ -48,6 +48,7 @@ operations! {
     "find" => FindInput, FindResult, format!("Find nodes by reference, role/name, associated label, visible text, test ID or CSS; at most {MAX_NODES} nodes.");
     "read" => ReadInput, ReadResult, "Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.";
     "screenshot" => ScreenshotInput, ScreenshotResult, "Capture a tab: its PNG's bytes on stdout, so demi browser screenshot t1 | demi file view shows it to you and > shot.png saves it; or save a new PNG file with --output. Several tabs: a loop in one shell call.";
+    "record" => RecordInput, RecordResult, record_about("tab", "t1");
     "probe" => ProbeInput, ProbeResult, "Find elements at viewport coordinates and optionally save an annotated screenshot.";
     "click" => ClickInput, ActionResult, "Click one actionable element or an explicit viewport coordinate. Waits for a navigation the click starts, not for one the page starts later, which wait --url or --wait-url waits for.";
     "move" => MoveInput, ActionResult, "Move the pointer to an element or viewport coordinate.";
@@ -146,6 +147,9 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
             "screenshot" => {
                 "the PNG's bytes on stdout and what it captured on stderr, so pipe it into demi file view to see it or redirect it to save it; with --output, the file saved and what it captured on stdout; --json requires --output"
             }
+            "record" => {
+                "start and stop: the recording's ID and state; frames: the changed frames as a table; export: one image path per line, or with --mp4 the video's bytes on stdout, or with --output the file saved; --json requires --output with --mp4"
+            }
             _ => SUCCESS,
         })
         .failure_output(FAILURE);
@@ -198,6 +202,8 @@ fn operands(name: &str) -> &'static [&'static str] {
         "goto" => &["tab", "url"],
         "cdp.send" => &["tab", "method"],
         "webmcp.call" => &["tab", "tool"],
+        // The first operand is a tab for start, a recording for the others.
+        "record" => &["target", "action"],
         "tabs" | "content.fetch" | "install" => &[],
         _ => &["tab"],
     }

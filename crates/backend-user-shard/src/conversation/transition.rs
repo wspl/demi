@@ -407,7 +407,7 @@ impl Shard {
             records.push(record);
         }
         for record in &records {
-            host.release_everywhere(record).await?;
+            host.release_everywhere(record, true).await?;
         }
         let deleted = control
             .delete_workspace(self.user().clone(), id.clone(), conversations.clone())
@@ -653,7 +653,7 @@ mod tests {
             .call(move |shard, _| async move {
                 // Its runner is connected, so the move's directory resolves.
                 let _runner = shard
-                    .play_runner_for_tests(&laptop, "/home/ana", |_| Box::pin(async {}))
+                    .play_runner_for_tests(&laptop, "/home/ana", |_, _| Box::pin(async {}))
                     .await;
                 let slot = shard.conversations().slot(&id);
                 let to = ConversationTarget::Device {
@@ -764,7 +764,7 @@ mod tests {
                     }),
                     silent,
                 };
-                let _runner = shard.play_host_for_tests(&laptop, host, |_| Box::pin(async {})).await;
+                let _runner = shard.play_host_for_tests(&laptop, host, |_, _| Box::pin(async {})).await;
                 let before = shard.services().control.conversation(id.clone()).await.unwrap().unwrap().target;
                 let to = ConversationTarget::Device {
                     device_id: laptop.clone(),
@@ -865,7 +865,7 @@ mod tests {
         };
         let (heard, answer, released) = (heard.clone(), answer.clone(), device.clone());
         shard
-            .play_host_for_tests(device, host, move |_| {
+            .play_host_for_tests(device, host, move |_, _| {
                 let (heard, mut answer, released) = (heard.clone(), answer.clone(), released.clone());
                 Box::pin(async move {
                     heard.send_modify(|heard| heard.push(released));
@@ -1215,7 +1215,7 @@ mod tests {
                         }),
                         silent: false,
                     };
-                    let _runner = shard.play_host_for_tests(&desktop, host, |_| Box::pin(async {})).await;
+                    let _runner = shard.play_host_for_tests(&desktop, host, |_, _| Box::pin(async {})).await;
                     let mut targets = Vec::new();
                     for (id, path) in [
                         (&first, "C:/Users/ana/site/"),
@@ -1256,6 +1256,9 @@ mod tests {
         target: (Option<DeviceId>, String),
         attached: Vec<DeviceId>,
         archived: bool,
+        /// Whether the release said the conversation is over, archived or
+        /// deleted, which is what makes a runner remove its recordings.
+        over: bool,
     }
 
     /// The releases the played runners received, in order.
@@ -1275,7 +1278,7 @@ mod tests {
         let control = shard.services().control.clone();
         let device_id = device.clone();
         let log = log.clone();
-        shard.play_runner_for_tests(device, "/home/ana", move |conversation| {
+        shard.play_runner_for_tests(device, "/home/ana", move |conversation, over| {
             let (control, device, log) = (control.clone(), device_id.clone(), log.clone());
             Box::pin(async move {
                 let record = control
@@ -1293,6 +1296,7 @@ mod tests {
                     target: (resolved.device().cloned(), resolved.path().to_owned()),
                     attached: attached.into_iter().map(|host| host.device).collect(),
                     archived: record.archived,
+                    over,
                 }));
             })
         })
@@ -1350,7 +1354,8 @@ mod tests {
                 let released = |device: &DeviceId,
                                 target: ConversationTarget,
                                 attached: &[DeviceId],
-                                archived| Released {
+                                archived,
+                                over| Released {
                     device: device.clone(),
                     target: match target {
                         ConversationTarget::Device { device_id, path } => (Some(device_id), path),
@@ -1358,6 +1363,7 @@ mod tests {
                     },
                     attached: attached.to_vec(),
                     archived,
+                    over,
                 };
                 // A move commits first and releases the device it left once
                 // nothing of the conversation runs there, which it left
@@ -1367,17 +1373,17 @@ mod tests {
                     .await
                     .unwrap();
                 until_logged(&log, 1).await;
-                assert_eq!(*log.borrow(), [released(&one, on(&two), std::slice::from_ref(&one), false)]);
+                assert_eq!(*log.borrow(), [released(&one, on(&two), std::slice::from_ref(&one), false, false)]);
                 shard
                     .transition(&id, RecordChange::Detach(one.clone()).into())
                     .await
                     .unwrap();
                 assert_eq!(
                     log.borrow()[1],
-                    released(&one, on(&two), std::slice::from_ref(&one), false)
+                    released(&one, on(&two), std::slice::from_ref(&one), false, false)
                 );
                 // An archive releases it on the primary Host and the attached
-                // ones.
+                // ones, saying the conversation is over; the others do not.
                 let attach = RecordChange::Attach(AttachedHostRecord {
                     device: one.clone(),
                     cwd: None,
@@ -1391,8 +1397,8 @@ mod tests {
                 assert_eq!(
                     log.borrow()[2..],
                     [
-                        released(&two, on(&two), &attached, false),
-                        released(&one, on(&two), &attached, false)
+                        released(&two, on(&two), &attached, false, true),
+                        released(&one, on(&two), &attached, false, true)
                     ]
                 );
             })

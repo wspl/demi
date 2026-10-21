@@ -15,10 +15,11 @@ use tokio_util::sync::CancellationToken;
 use demi_command_package_mobile_protocol::mobile::{
     Appearance, AppearanceChoice, AppearanceResult, CloseResult, Direction, ElementRef,
     InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
-    MobilePlatform, RecordAction, RecordResult, Rotation, RotateResult,
+    MobilePlatform, RecordAction, RecordInput, RecordTarget, Rotation, RotateResult,
     ScreenshotResult, SwipeResult, TapResult, TypeResult, WAIT_SECONDS, WaitResult,
 };
 use demi_live_view_protocol::LivePoint;
+use demi_shared_recording::{Answer, Library, Reading, started};
 
 use crate::{
     devices::{Devices, OpenDevice},
@@ -55,10 +56,12 @@ pub struct Call<'a> {
     /// the user's computer: the conversation's scratch directory, for a call
     /// the user started; none for the agent's (`crates/plugin-mobile/command/src/live.rs`).
     pub scratch: Option<std::path::PathBuf>,
-    /// The conversation's scratch directory on this Host, whoever calls:
-    /// where a recording is written while it runs, so that it goes with
-    /// the conversation whatever becomes of the program.
-    pub recordings: std::path::PathBuf,
+    /// The conversation's recordings on this Host, which go with the
+    /// conversation whatever becomes of the program.
+    pub library: Arc<Library>,
+    /// The caller's own scratch directory, where an export of images goes
+    /// unless told otherwise.
+    pub caller_scratch: std::path::PathBuf,
     /// Whether the agent runs it, which the view shows; the user's panel
     /// controls are the user's, and show nothing (`crates/plugin-mobile/command/src/live.rs`).
     pub agent: bool,
@@ -383,71 +386,7 @@ pub async fn run(
                 )
             }
             (MobileOperation::Wait(input), Some(open)) => wait(&open, input).await,
-            (MobileOperation::Record(input), Some(open)) => match input.action {
-                RecordAction::Start => {
-                    if open.recording.lock().expect("the recording is intact").is_some() {
-                        return Err(MobileError::Recording);
-                    }
-                    let directory = call.recordings.join("mobile");
-                    tokio::fs::create_dir_all(&directory)
-                        .await
-                        .map_err(|error| MobileError::Io(format!("{}: {error}", directory.display())))?;
-                    let file = directory.join(format!("{}-recording-{}.mp4", open.handle, millis()));
-                    open.device.record_start(&file).await?;
-                    *open.recording.lock().expect("the recording is intact") = Some((file, Instant::now()));
-                    open.recorded();
-                    Outcome::result(
-                        RecordResult {
-                            device: open.handle.clone(),
-                            recording: true,
-                            path: None,
-                            duration_ms: None,
-                        },
-                        format!("Recording {}; stop with demi mobile record {} stop.\n", open.handle, open.handle),
-                    )
-                }
-                RecordAction::Stop => {
-                    let Some((file, _)) = open.recording.lock().expect("the recording is intact").take() else {
-                        return Err(MobileError::NotRecording);
-                    };
-                    open.recorded();
-                    let stopped = open.device.record_stop().await;
-                    let recording = match stopped {
-                        Ok(recording) => recording,
-                        Err(error) => {
-                            discard(&file).await;
-                            return Err(error.into());
-                        }
-                    };
-                    let seconds = recording.duration_ms as f64 / 1000.0;
-                    let about = format!("{} · {} · {seconds:.1} s MP4", open.handle, open.name);
-                    let output = match input.output {
-                        Some(output) => Some((output, input.overwrite == Some(true))),
-                        None => panel_file(call, &open, "mp4")?.map(|path| (path, false)),
-                    };
-                    match output {
-                        Some((output, overwrite)) => {
-                            let saved = save_file(call, &output, overwrite, &file).await;
-                            discard(&file).await;
-                            let path = saved?;
-                            let text = format!("Saved {about} to {path}.\n");
-                            Outcome::result(
-                                RecordResult {
-                                    device: open.handle.clone(),
-                                    recording: false,
-                                    path: Some(path),
-                                    duration_ms: Some(recording.duration_ms),
-                                },
-                                text,
-                            )
-                        }
-                        None => Ok(Outcome {
-                            produced: Produced::File { file, about },
-                            notes: Vec::new(),
-                        }),
-                    }
-                }
-            },
+            (MobileOperation::Record(input), open) => record(call, open, input).await,
             (_, None) => unreachable!("an operation on a device found it open"),
         }
     };
@@ -789,21 +728,6 @@ pub(crate) async fn discard(file: &std::path::Path) {
 
 /// Saves the file `from` at `output`, resolved against the call's
 /// directory, a piece at a time; answers the path.
-async fn save_file(call: &Call<'_>, output: &str, overwrite: bool, from: &std::path::Path) -> Result<String, MobileError> {
-    let path = demi_command_sdk::paths::resolve(call.cwd, output).map_err(|error| MobileError::Usage(error.to_string()))?;
-    let shown = path.display().to_string();
-    let mut file = tokio::fs::File::open(from)
-        .await
-        .map_err(|error| MobileError::Io(format!("{}: {error}", from.display())))?;
-    match demi_shared_artifacts::publish(&path, &mut file, publication(overwrite), call.cancel).await {
-        Ok(()) => Ok(shown),
-        Err(demi_shared_artifacts::Error::Cancelled) => Err(MobileError::Cancelled),
-        Err(demi_shared_artifacts::Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            Err(MobileError::OutputExists(shown))
-        }
-        Err(error) => Err(MobileError::Io(format!("{shown}: {error}"))),
-    }
-}
 
 fn publication(overwrite: bool) -> demi_shared_artifacts::Publication {
     demi_shared_artifacts::Publication {
@@ -827,5 +751,109 @@ async fn save(cwd: &str, output: &str, overwrite: bool, bytes: &[u8]) -> Result<
             Err(MobileError::OutputExists(shown))
         }
         Err(error) => Err(MobileError::Io(format!("{shown}: {error}"))),
+    }
+}
+
+/// `record`: starts recording a device, stops a recording, lists its frames,
+/// or exports them.
+async fn record(call: &Call<'_>, open: Option<Arc<OpenDevice>>, input: RecordInput) -> Result<Outcome, MobileError> {
+    let output = match &input.output {
+        Some(output) => Some(
+            demi_command_sdk::paths::resolve(call.cwd, output).map_err(|error| MobileError::Usage(error.to_string()))?,
+        ),
+        None => None,
+    };
+    let reading = || reading_of(call, &input, output.as_deref());
+    let answer = match (input.action, &input.target) {
+        (RecordAction::Start, RecordTarget::Device(_)) => {
+            let open = open.expect("an operation on a device found it open");
+            if open.recording().is_some() {
+                return Err(MobileError::Recording(open.handle.clone()));
+            }
+            let live = call.library.begin(&open.handle.to_string(), input.duration.map(|duration| duration.get())).await?;
+            match open.device.record(live.sink()).await {
+                Ok(capture) => {
+                    // Only the panel's calls have a scratch directory, and its
+                    // Stop takes the video of what it started.
+                    if call.scratch.is_some() {
+                        open.panel_started(live.id().clone());
+                    }
+                    open.record(live.clone(), capture);
+                }
+                Err(error) => {
+                    call.library.discard(&live).await;
+                    return Err(error.into());
+                }
+            }
+            started(call.command, &live)?
+        }
+        (RecordAction::Start, RecordTarget::Recording(_)) => {
+            return Err(MobileError::Usage(
+                "start records a device, such as demi mobile record m1 start".into(),
+            ));
+        }
+        (RecordAction::Stop, RecordTarget::Device(_)) => {
+            let open = open.expect("an operation on a device found it open");
+            let started = if call.scratch.is_some() { open.panel_takes() } else { None };
+            let (id, stopped) = match open.recording() {
+                Some(live) => (live.id().clone(), call.library.stop(live.id()).await?),
+                // The recording the panel started ended by itself, at its
+                // limit, or by the agent's stop: its video is the panel's all
+                // the same.
+                None => match started {
+                    Some(id) => {
+                        let stopped = call.library.stop(&id).await?;
+                        (id, stopped)
+                    }
+                    _ => return Err(MobileError::NoRecording(format!("{} is not recording", open.handle))),
+                },
+            };
+            // The panel's Stop saves the video, where the panel downloads it.
+            match panel_file(call, &open, "mp4")? {
+                Some(path) => {
+                    let saved = std::path::PathBuf::from(&path);
+                    let mut reading = reading();
+                    reading.mp4 = true;
+                    reading.output = Some(&saved);
+                    reading.overwrite = true;
+                    match call.library.export(&id, &reading).await {
+                        Ok(answer) => answer,
+                        // A recording that kept no frame has no video to save.
+                        Err(demi_shared_recording::Error::BadRequest(_)) => stopped,
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+                None => stopped,
+            }
+        }
+        (RecordAction::Stop, RecordTarget::Recording(id)) => call.library.stop(id).await?,
+        (RecordAction::Frames, RecordTarget::Recording(id)) => call.library.frames(id, &reading()).await?,
+        (RecordAction::Export, RecordTarget::Recording(id)) => call.library.export(id, &reading()).await?,
+        (_, RecordTarget::Device(_)) => {
+            return Err(MobileError::Usage(format!(
+                "{} works on a recording, such as demi mobile record r1 {}; start returns its ID",
+                input.action, input.action
+            )));
+        }
+    };
+    match answer {
+        Answer::Result { result, text } => Outcome::result(result, text),
+        Answer::Video { file, about } => Ok(Outcome {
+            produced: Produced::File { file, about },
+            notes: Vec::new(),
+        }),
+    }
+}
+
+fn reading_of<'a>(call: &'a Call<'_>, input: &'a RecordInput, output: Option<&'a std::path::Path>) -> Reading<'a> {
+    Reading {
+        command: call.command,
+        frames: input.frames.as_ref(),
+        whole: input.whole == Some(true),
+        region: input.region,
+        mp4: input.mp4 == Some(true),
+        output,
+        overwrite: input.overwrite == Some(true),
+        scratch: &call.caller_scratch,
     }
 }
