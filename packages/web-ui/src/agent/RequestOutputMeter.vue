@@ -37,12 +37,15 @@ const rate = computed(() => (shown.value ? speed.value : turnSpeed.value))
   <!--
     The reading's parts wrap onto a second line the row clips, the speed
     first, then the count, so a part never shows cut. The empty first part
-    lets the count wrap away too, and the last turn's speed alone.
+    lets the count wrap away too, and the last turn's speed alone. The row's
+    gap, not the separator, keeps the parts apart: a count that fades out
+    beside the last turn's speed never had a separator when no speed was
+    read yet.
   -->
   <Transition v-bind="FADE">
     <div
       v-if="shown || turnSpeed !== null"
-      class="flex h-chip min-w-0 flex-1 flex-wrap content-start items-center justify-end overflow-hidden text-detail text-fg-subtle tabular-nums"
+      class="flex h-chip min-w-0 flex-1 flex-wrap content-start items-center justify-end gap-x-1 overflow-hidden text-detail text-fg-subtle tabular-nums"
       data-request-output
     >
       <span class="h-chip" aria-hidden="true" />
@@ -53,8 +56,9 @@ const rate = computed(() => (shown.value ? speed.value : turnSpeed.value))
         </span>
       </Transition>
       <!--
-        One element for both speeds, so the speed keeps its place while the
-        count and its separator fade.
+        One element for both speeds and the separator, so the speed keeps its
+        place while the count and its separator fade, and wraps with its
+        separator.
       -->
       <span
         v-if="rate !== null"
@@ -63,7 +67,7 @@ const rate = computed(() => (shown.value ? speed.value : turnSpeed.value))
         :data-turn-speed="shown ? undefined : ''"
       >
         <Transition v-bind="FADE">
-          <span v-if="shown">&nbsp;·&nbsp;</span>
+          <span v-if="shown">·&nbsp;</span>
         </Transition>
         {{ t(shown ? 'dock.tokenRate' : 'dock.lastTurnRate', { rate: formatDecimal(rate, 0) }) }}
       </span>
