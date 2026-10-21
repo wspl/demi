@@ -158,7 +158,7 @@ async fn no_subagents_and_an_unavailable_workflow_refuse_every_spawn_with_their_
     *fixture.product.workflow.borrow_mut() = ConversationProfiles::Off;
     let _client = fixture.opened().await;
 
-    let off = "demi agent spawn: subagents are turned off for this conversation; do this work in this session, or ask the user to choose Global Workflow or a workflow in the composer's Workflow menu.\n";
+    let off = "demi agent spawn: subagents are turned off for this conversation; do this work in this session, or have Global Workflow or a workflow picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use global or use <id> once the user allows it.\n";
     for args in [json!({ "prompt": "task x" }), json!({ "prompt": "task x", "profile": "explore" })] {
         assert_eq!(refused_spawn(&fixture, args).await, off);
     }
@@ -170,7 +170,7 @@ async fn no_subagents_and_an_unavailable_workflow_refuse_every_spawn_with_their_
         (
             0,
             "NAME  SOURCE  MODEL  EFFORT  DESCRIPTION\n",
-            "demi agent profiles list: warning: subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu\n"
+            "demi agent profiles list: warning: subagents are turned off for this conversation; demi agent spawn fails until Global Workflow or a workflow is picked in the composer's Workflow menu, or with demi agent workflows use global or use <id> once the user allows it\n"
         )
     );
     let (_, listing) = both(&fixture, "profiles list", json!({})).await;
@@ -182,12 +182,12 @@ async fn no_subagents_and_an_unavailable_workflow_refuse_every_spawn_with_their_
     };
     assert_eq!(
         refused_spawn(&fixture, json!({ "prompt": "task x" })).await,
-        "demi agent spawn: this conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; do this work in this session, or ask the user to choose another in the composer's Workflow menu.\n"
+        "demi agent spawn: this conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; do this work in this session, or have another picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use <id> once the user allows it.\n"
     );
     let listed = agent(&fixture.server, &root(), "profiles list", json!({})).await;
     assert_eq!(
         listed.stderr,
-        "demi agent profiles list: warning: this conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; demi agent spawn fails until the user chooses another in the composer's Workflow menu\n"
+        "demi agent profiles list: warning: this conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; demi agent spawn fails until another is picked in the composer's Workflow menu, or with demi agent workflows use <id> once the user allows it\n"
     );
     assert!(fixture.store.numbered(1).is_none());
     assert!(model.requests().is_empty());

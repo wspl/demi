@@ -48,6 +48,10 @@
     "agent_profiles": {
       "action": "change subagent profiles",
       "description": "Create, edit and delete the subagent profiles every conversation of yours can use."
+    },
+    "agent_workflow": {
+      "action": "change its workflow",
+      "description": "Choose the workflow this conversation works with, as the composer’s Workflow menu does."
     }
   }
 }

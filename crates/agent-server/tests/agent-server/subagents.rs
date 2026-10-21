@@ -570,7 +570,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert!(
         asked[0]
             .system_prompt
-            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check\n")
+            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check, workflows use\n")
     );
     let [
         InferenceItem::UserMessage { content },

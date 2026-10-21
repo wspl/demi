@@ -17,7 +17,7 @@ use demi_agent_tools::{
     runs_on as job_model,
 };
 use demi_conversation_socket_protocol::{CacheChart, JobModel};
-use demi_shared_types::{ModelSelection, NodeId};
+use demi_shared_types::{ModelSelection, NodeId, WorkflowChoice};
 
 use super::runs_on::runs_on;
 use demi_backend_host_access::attachment_commands::attachment_group;
@@ -199,6 +199,18 @@ impl SubagentSource for ShardSubagents {
 
     fn workflows<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Result<WorkflowListing, String>> {
         Box::pin(async move { self.shard()?.workflow_listing(&conversation_of(root)).await })
+    }
+
+    fn choose_workflow<'a>(
+        &'a self,
+        root: &'a NodeId,
+        choice: WorkflowChoice,
+    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async move {
+            self.shard()?
+                .choose_workflow(&conversation_of(root), choice)
+                .await
+        })
     }
 
     fn read_workflow_file<'a>(
