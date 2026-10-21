@@ -32,11 +32,13 @@
 //! `intervalMs` is required, with no default, so the model decides how a
 //! command is watched when it starts it.
 //!
-//! - A call never holds the turn longer than [`CALL_WINDOW_MS`], and no tool
-//!   text mentions it, so a user's steer waits at most that long to be read (a
-//!   ten-minute interval used to hold the turn ten). A human steer ends no
-//!   window, since steering rather than sending now means the user chose to
-//!   wait.
+//! - A call returns when its command ends, or after [`CALL_WINDOW_MS`] with
+//!   the command still running, whatever its interval, and the tool's text
+//!   says so. The interval says only how often the running command reports,
+//!   so a long interval holds neither the turn nor the response's other
+//!   calls, and a user's steer waits at most the window to be read. A human
+//!   steer ends no window, since steering rather than sending now means the
+//!   user chose to wait.
 //! - A value outside the bounds is taken as the nearest bound with a line that
 //!   says so, because the command goes on either way and a refusal only cost
 //!   the model a call each time.
@@ -182,7 +184,7 @@ impl Directory for Option<ChildDirectory> {
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. A command still running when the call returns keeps running: the result carries its commandId, and the command reports to you as intervalMs says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. The call returns when the command ends, or after 10 seconds with the command still running, whatever its intervalMs; a command still running keeps running: the result carries its commandId, and the command reports to you as intervalMs says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -207,9 +209,9 @@ const QUIET: Duration = Duration::from_secs(2);
 /// The longest a resident command's call watches it.
 const RESIDENT_WINDOW: Duration = Duration::from_secs(30);
 /// The longest a call of a command with an interval watches it, in
-/// milliseconds: a minute, so a steer waits at most that long for the model
-/// to read it. No tool text mentions it.
-pub const CALL_WINDOW_MS: u32 = 60_000;
+/// milliseconds, whatever the interval: ten seconds, which the tool's text
+/// states.
+pub const CALL_WINDOW_MS: u32 = 10_000;
 
 /// A node's access to its shell environments: the resolver that names the
 /// current Host, the product's factory, the environments made so far, and
@@ -397,7 +399,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             command: command.clone(),
             interval_ms,
         });
-        let window_ms = interval_ms.map(|interval| interval.min(self.call_window_ms));
+        let window_ms = interval_ms.map(|_| self.call_window_ms);
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,

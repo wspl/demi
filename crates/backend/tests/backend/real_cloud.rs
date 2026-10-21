@@ -144,6 +144,9 @@ impl Environment {
         harness.public_url = Some(self.url.clone());
         harness.lifecycle = idle_after(Duration::from_secs(2));
         harness.cloud.sweep = Duration::from_millis(200);
+        // A download's call watches it as long as its test asks: the window
+        // is the longest watch of any test here.
+        harness.conversations.call_window_ms = 600_000;
         harness
     }
 
