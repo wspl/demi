@@ -1,4 +1,5 @@
 import { sliceHead } from '@demicodes/utils'
+import { maskMath } from '../markdown/math-syntax'
 import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
@@ -204,11 +205,13 @@ export function closeOpenInlineMarkdown(text: string): string {
   if (paragraph.startsWith('```') || paragraph.startsWith('~~~'))
     return ''
   const open: string[] = []
-  for (const match of paragraph.matchAll(INLINE_DELIMITER)) {
+  // What math holds, `p_i` or `a*b`, is no emphasis.
+  const masked = maskMath(paragraph)
+  for (const match of masked.matchAll(INLINE_DELIMITER)) {
     const run = match[0]
     const at = match.index
-    const before = paragraph[at - 1] ?? '\n'
-    const after = paragraph[at + run.length] ?? ''
+    const before = masked[at - 1] ?? '\n'
+    const after = masked[at + run.length] ?? ''
     if (run === '`') {
       const top = open.at(-1)
       if (top === '`')

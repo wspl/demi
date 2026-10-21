@@ -160,6 +160,23 @@ test('closeOpenInlineMarkdown closes what the last paragraph left open', () => {
   expect(closeOpenInlineMarkdown('~~gone')).toBe('~~')
 })
 
+test('closeOpenInlineMarkdown reads no emphasis in math, written or still being written, and none in code', () => {
+  // A subscript's underscore, in a formula that is closed.
+  expect(closeOpenInlineMarkdown('Each price $p_i$ counts once.')).toBe('')
+  expect(closeOpenInlineMarkdown('Both $a_1$ and $b_2$ count.')).toBe('')
+  expect(closeOpenInlineMarkdown('The product is $a*b$.')).toBe('')
+  expect(closeOpenInlineMarkdown('Sum: $$x_i$$ here')).toBe('')
+  // A formula the stream has not closed yet, inline and as a block.
+  expect(closeOpenInlineMarkdown('The sum is $\\sum_{i=1}')).toBe('')
+  expect(closeOpenInlineMarkdown('Then:\n\n$$\n\\sum_i x_i')).toBe('')
+  // Emphasis around math, and prices, still close.
+  expect(closeOpenInlineMarkdown('**bold $a_b$ text')).toBe('**')
+  expect(closeOpenInlineMarkdown('it costs $10 and _more')).toBe('_')
+  // Dollar signs in code are no math, and the code still closes.
+  expect(closeOpenInlineMarkdown('use `$HOME_DIR` here')).toBe('')
+  expect(closeOpenInlineMarkdown('use `$HOME_DIR')).toBe('`')
+})
+
 // A step's fade in a real Chromium, since happy-dom computes no animated
 // style: about 1 s for the file, the browser's start, shared by its tests.
 describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {

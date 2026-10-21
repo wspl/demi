@@ -1,7 +1,5 @@
-// The math syntax of every Markdown render, in a message and in a file: `$$…$$`
-// is display math, and `$…$` is inline math by Pandoc's rule, so prices such as
-// `$10 vs $12` stay text while math may touch Chinese text, as in
-// `面积为$x^2$平方米`.
+// The math of every Markdown render, in a message and in a file, drawn by KaTeX
+// over the syntax of `math-syntax.ts`.
 //
 // KaTeX is a chunk of its own, which the page loads in the background once the
 // first conversation has shown (`infra/region-load.ts`), with its fonts, and
@@ -19,6 +17,7 @@ import { chunkLoadFailure, reportError } from '../infra/errors'
 import { t } from '../locales/text'
 import { regionForm, regionsChanged, type RegionForm } from '../infra/region-wait'
 import { escapeHtml } from './html'
+import { blockMathToken, inlineMathStart, inlineMathToken } from './math-syntax'
 import { renderAgain } from './render-version'
 
 /** KaTeX, from its chunk. */
@@ -81,62 +80,6 @@ export function mathForm(katex: () => Katex | null = loadedKatex): RegionForm {
  */
 export function mathSourceHtml(tex: string, displayMode: boolean, waiting = false): string {
   return `<span class="math ${displayMode ? 'math-display' : 'math-inline'}${waiting ? ' math-waiting' : ''}">${escapeHtml(tex)}</span>`
-}
-
-/** `$$…$$` within a line: display math. */
-const INLINE_DISPLAY_MATH = /^\$\$(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n$]))\$\$/
-
-/**
- * `$…$`: the opening `$` has no space after it, the first `$` that follows
- * closes, and it has no space before it and no digit after it.
- */
-const INLINE_MATH = /^\$(?![\s$])((?:\\[^]|[^\\$])*?(?:\\[^]|[^\s\\$]))\$(?!\d)/
-
-/** Where math could start in inline text, so the text before it stops there. */
-function inlineMathStart(src: string): number | undefined {
-  let index = src.indexOf('$')
-  while (index !== -1) {
-    const rest = src.slice(index)
-    if (INLINE_DISPLAY_MATH.test(rest) || INLINE_MATH.test(rest))
-      return index
-    // A run of dollar signs that starts no math is text as a whole.
-    const after = rest.search(/[^$]/)
-    if (after === -1)
-      return undefined
-    index = src.indexOf('$', index + after)
-  }
-  return undefined
-}
-
-/** The inline math token at the start of `src`. */
-function inlineMathToken(src: string): Tokens.Generic | undefined {
-  const type = 'inlineMath'
-  const display = INLINE_DISPLAY_MATH.exec(src)
-  if (display) {
-    const [raw, tex = ''] = display
-    return { type, raw, text: tex.trim(), displayMode: true }
-  }
-  const inline = INLINE_MATH.exec(src)
-  if (inline) {
-    const [raw, tex = ''] = inline
-    return { type, raw, text: tex.trim(), displayMode: false }
-  }
-  return undefined
-}
-
-/**
- * `$$` or `$` alone on a line, the TeX, and the same alone on a line: block
- * math, display for `$$`.
- */
-const BLOCK_MATH = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/
-
-/** The block math token at the start of `src`. */
-function blockMathToken(src: string): Tokens.Generic | undefined {
-  const match = BLOCK_MATH.exec(src)
-  if (!match)
-    return undefined
-  const [raw, delimiter = '', tex = ''] = match
-  return { type: 'blockMath', raw, text: tex.trim(), displayMode: delimiter.length === 2 }
 }
 
 /**
