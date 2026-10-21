@@ -435,7 +435,7 @@ impl<H: HostResolver> Node<H> {
         if continuation.interrupted && self.role == NodeRole::Child {
             // The action reports its course as events, and a refusal means
             // the session is closing.
-            drop(session.resume(Some(RESTARTED)));
+            drop(session.resume(Some(RESTARTED), None));
         }
         for message in continuation.queued {
             // A restored session is live and has run nothing, so it admits

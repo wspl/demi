@@ -35,7 +35,7 @@ use demi_agent_transcript::{ForkEnd, IdSource};
 use demi_provider_common::{Ahead, ProviderRuntime};
 use demi_host_interface::{CommandSet, RegisterError};
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase};
+use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase, TurnId};
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::task::TaskTracker;
 
@@ -566,16 +566,16 @@ impl<H: HostResolver> AgentServer<H> {
         self.tree(root).ok_or(AskError::NotOpen)?.ask(side, of).await
     }
 
-    /// Sends the follow-up `text` to the side question `side` of the
-    /// conversation `root`, whose tree is open.
-    pub async fn ask_more(&self, root: &NodeId, side: NodeId, text: String) -> Result<(), AskError> {
-        self.tree(root).ok_or(AskError::NotOpen)?.ask_more(side, text).await
+    /// Sends the follow-up `text`, the message `message`, to the side
+    /// question `side` of the conversation `root`, whose tree is open.
+    pub async fn ask_more(&self, root: &NodeId, side: NodeId, message: TurnId, text: String) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.ask_more(side, message, text).await
     }
 
     /// Runs the failed turn of the side question `side` of the conversation
-    /// `root`, whose tree is open, again.
-    pub async fn retry_side(&self, root: &NodeId, side: NodeId) -> Result<(), AskError> {
-        self.tree(root).ok_or(AskError::NotOpen)?.retry_side(side).await
+    /// `root`, whose tree is open, again, as the action `action`.
+    pub async fn retry_side(&self, root: &NodeId, side: NodeId, action: TurnId) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.retry_side(side, action).await
     }
 
     /// Stores a Fork's seed as the first checkpoint of the new root

@@ -7,6 +7,7 @@ import { ConversationSocketError, connectConversationClient } from '../../transp
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
 import { ConversationClient, EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
+import { waitClock } from '../wait-clock'
 import { agentsFrame, clientHarness, createdAt, model, rootEntry, subagentEntry, userBlock } from './agent-harness'
 
 /** The root's entry with its session in `phase`, as the whole agents. */
@@ -43,6 +44,8 @@ function state(): RuntimeState {
     lastError: null,
     load: 'loading',
     pendingAction: null,
+    waitClock: waitClock(),
+    waitAction: null,
     failures: {},
     contextUsage: null,
   }
@@ -875,14 +878,19 @@ test('disposing during the backoff wait ends the retries', async () => {
   }
 })
 
-test('a resume is pending from the request until the next phase event', async () => {
+// The resume goes under an id of the page's, pressed now, which the wait it
+// begins carries, so the page counts that wait from the press.
+test('a resume is pending from the request until the next phase event, under the id its press holds', async () => {
   const h = clientHarness()
   const s = state()
   const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   const resumed = runtime.resume()
-  expect(s.pendingAction).toBe('resume')
+  expect(s.pendingAction?.kind).toBe('resume')
+  const id = s.pendingAction!.id
+  expect(Object.keys(s.waitClock.presses)).toEqual([id])
   await waitFor(() => h.sent.at(-1)?.type === 'resume')
+  expect(h.sent.at(-1)).toEqual({ type: 'resume', id })
   h.receive(phase('running'))
   expect(s.pendingAction).toBeNull()
   h.receive(phase('idle'))
@@ -960,7 +968,7 @@ test('a closed connection ends a pending resume', async () => {
   const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
   await runtime.connect()
   void runtime.resume().catch(() => {})
-  expect(s.pendingAction).toBe('resume')
+  expect(s.pendingAction?.kind).toBe('resume')
   h.receive({ type: 'closed' })
   expect(s.pendingAction).toBeNull()
   runtime.dispose()

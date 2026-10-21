@@ -474,9 +474,12 @@ export class ConversationClient {
     return this.action('retry', null, { type: 'retry' })
   }
 
-  /** Finishes a turn that did not finish; resolves when it ends. */
-  resume(): Promise<void> {
-    return this.action('resume', null, { type: 'resume' })
+  /**
+   * Finishes a turn that did not finish, as the action `id`, which the wait it
+   * begins carries; resolves when it ends.
+   */
+  resume(id: string): Promise<void> {
+    return this.action('resume', null, { type: 'resume', id })
   }
 
   /**

@@ -40,7 +40,6 @@ function transcript(): MessageRowsSource {
       call('l-1', 'l-1'),
       text('a-2', 'Clean.'),
     ],
-    pendingCalls: [],
     pendingSteers: [],
     queue: [],
     phase: 'idle',

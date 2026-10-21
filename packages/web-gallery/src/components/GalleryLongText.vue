@@ -3,6 +3,7 @@ import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { computed, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
+import { waitClock } from '@demicodes/web-ui/agent/wait-clock'
 import MarkdownDocument from '@demicodes/web-ui/files/MarkdownDocument.vue'
 import AxisPicker from './AxisPicker.vue'
 import { demoModel } from '../fixtures/blocks'
@@ -44,8 +45,8 @@ const text = computed(() => (language.value === 'edge' ? EDGE_CASES : LONG_TEXT[
 const createdAt = new Date(Date.now() - 120_000).toISOString()
 const conversation = computed<ChatSessionState>(() => ({
   id: `long-text-${language.value}`, cwd: WORKSPACE_ROOT, title: 'Sync Stall', phase: 'idle',
-  load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
-  waitingSince: null, requestOutput: null, turnSpeed: null,
+  load: 'ready', lastError: null, pendingAction: null, waitClock: waitClock(), failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
+  waitingSince: null, waitAction: null, requestOutput: null, turnSpeed: null,
   scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
   history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,

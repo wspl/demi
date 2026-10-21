@@ -7,10 +7,11 @@ import {
 import type { AgentEntry, Version } from '@demicodes/protocol'
 import { boundedHistory, latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation, SideRecord } from '../state/types'
-import { sideRecord } from './side-records'
+import { settleSent, sideRecord } from './side-records'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followFrame, isTerminalRunning } from '@demicodes/web-ui/agent/terminals'
 import { subagentEntryFields } from '@demicodes/web-ui/agent/subagents'
+import { serverWaits } from '@demicodes/web-ui/agent/wait-clock'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
@@ -71,6 +72,9 @@ export function takeAgents(
       held.sessionPhase = entry.phase
       held.pendingCalls = entry.pendingCalls
       held.waitingSince = entry.waitedMs === null ? null : receivedAt - entry.waitedMs
+      held.waitAction = entry.waitAction
+      serverWaits(held.waitClock, entry.waitAction)
+      settleSent(held)
       if (!listedSides.includes(held)) {
         listedSides.push(held)
       }
@@ -110,6 +114,9 @@ export function applyConversationEvent(
         record.shownAt,
       )
       record.failures = { ...record.failures, ...event.failures }
+      if ('sent' in record) {
+        settleSent(record)
+      }
     }
   } else if (event.type === 'cache_chart') {
     // The node's chart whole, the backend's count of its agent's recent

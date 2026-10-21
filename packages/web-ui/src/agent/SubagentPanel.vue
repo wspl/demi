@@ -14,7 +14,7 @@ import TabItem from './TabItem.vue'
 import AgentMark from './AgentMark.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { provideLiveCalls } from './live-calls'
-import { agentCompaction, agentName, subagentPanelTabs, type SubagentRecord } from './subagents'
+import { agentCompaction, agentName, subagentActivity, subagentPanelTabs, type SubagentRecord } from './subagents'
 import { useCallTerminals, type TerminalRecord } from './terminals'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import type { UsageLimits } from './context-usage'
@@ -288,8 +288,7 @@ function closeTab(id: string): void {
         :blocks="shown?.blocks ?? []"
         :at-start="shownEdges?.atStart ?? true"
         :at-end="shownEdges?.atEnd ?? true"
-        :pending-calls="active.pendingCalls"
-        :waiting-since="active.waitingSince"
+        :activity="subagentActivity(active)"
         :failures="active.failures"
         :pending-steers="[]"
         :queue="[]"

@@ -321,6 +321,9 @@ impl Agents {
             .filter_map(|kept| {
                 let mut entry = kept.entry.clone();
                 entry.waited_ms = entry.waited_ms.and_then(|_| waits(&entry.id));
+                if entry.waited_ms.is_none() {
+                    entry.wait_action = None;
+                }
                 let changed = since.is_none_or(|since| kept.revision > since);
                 (changed || entry.waited_ms.is_some()).then_some(entry)
             })
@@ -369,6 +372,7 @@ pub(crate) fn resting(id: NodeId, role: AgentRole) -> AgentEntry {
         role,
         phase: SessionPhase::Idle,
         waited_ms: None,
+        wait_action: None,
         pending_calls: Vec::new(),
         context: None,
         cost: AgentCost::default(),

@@ -4,6 +4,7 @@ import { toolCallTitle } from '../block-helpers'
 import { plainUserMarkdown } from '../../markdown/user-markdown'
 import { latestWindow } from '@demicodes/conversation-client'
 import type { HeldBlock } from '../history'
+import type { AgentActivity } from '../agent-activity'
 import { t } from '../locales/text'
 
 /**
@@ -45,6 +46,8 @@ export interface ShownSideQuestion {
   failures: Readonly<Record<string, ProviderFailureFacts>>
   /** A turn of it runs, or the page's question or follow-up is on its way. */
   working: boolean
+  /** What its agent does now, which its window shows after its transcript. */
+  activity: AgentActivity
 }
 
 /** A new side question, under the id the page chose. */

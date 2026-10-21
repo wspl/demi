@@ -224,6 +224,7 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::ForkAnswer>(),
         sends::<side_questions::AskRequest>(),
         sends::<side_questions::SideFollowUp>(),
+        sends::<side_questions::SideRetry>(),
         sends::<side_questions::SideQuestionPatch>(),
         receives::<side_questions::SideQuestionAnswer>(),
         sends::<shares::ShareTarget>(),

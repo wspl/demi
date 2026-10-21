@@ -5,6 +5,7 @@ import {
   sideFollowUpSchema,
   sideQuestionAnswerSchema,
   sideQuestionPatchSchema,
+  sideRetrySchema,
   type AskRequest,
   type SideQuestionAnswer,
 } from './generated/web-api'
@@ -30,15 +31,20 @@ export async function askSideQuestion(conversationId: string, request: AskReques
   return answered(await readResponse(response, sideQuestionAnswerSchema))
 }
 
-export async function followUpSideQuestion(conversationId: string, sideId: string, text: string): Promise<void> {
+/** Sends the follow-up `text`, the message `id`, which the wait it begins carries. */
+export async function followUpSideQuestion(conversationId: string, sideId: string, id: string, text: string): Promise<void> {
   await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/messages`, {
     method: 'POST',
-    ...jsonBody(sideFollowUpSchema.parse({ text })),
+    ...jsonBody(sideFollowUpSchema.parse({ id, text })),
   })
 }
 
-export async function retrySideQuestion(conversationId: string, sideId: string): Promise<void> {
-  await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/retry`, { method: 'POST' })
+/** Runs its failed turn again as the action `id`, which the wait it begins carries. */
+export async function retrySideQuestion(conversationId: string, sideId: string, id: string): Promise<void> {
+  await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/retry`, {
+    method: 'POST',
+    ...jsonBody(sideRetrySchema.parse({ id })),
+  })
 }
 
 export async function foldSideQuestion(conversationId: string, sideId: string, folded: boolean): Promise<AnsweredSide> {

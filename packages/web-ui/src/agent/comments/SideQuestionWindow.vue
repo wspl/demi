@@ -33,7 +33,10 @@ const blocks = computed(() => (props.question ? shownTurns(props.question) : [])
  * Where the list opens: at its start, the user's first question and its quote
  * in view, since a side conversation is short and starts with what the user
  * asked. A taller one the user scrolls down. The list places itself once, when
- * it first has rows, so it is drawn once its first question is held.
+ * it first has rows. Before its first question is held, as right after the
+ * press, it shows its tail row alone, Requesting from the press; it is drawn
+ * again, at its start, once the question is held, and the row counts on from
+ * the press, which the side question holds.
  */
 const opening = computed<PersistedScrollState | undefined>(() => {
   const first = blocks.value[0]
@@ -87,8 +90,7 @@ watch(
     </template>
     <div v-if="question" ref="body" class="h-full">
     <AgentMessageList
-      v-if="opening"
-      :key="question.id"
+      :key="`${question.id}:${opening ? 'held' : 'asked'}`"
       class="h-full"
       :conversation-id="question.id"
       :node="question.id"
@@ -99,6 +101,7 @@ watch(
       :pending-steers="[]"
       :queue="[]"
       :phase="question.working ? 'running' : 'idle'"
+      :activity="question.activity"
       :bottom-offset="16"
       :persisted-scroll-state="opening"
       read-only

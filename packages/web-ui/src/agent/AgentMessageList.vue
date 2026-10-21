@@ -3,13 +3,14 @@ import type { ShownError } from '../infra/errors'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, onScopeDispose, ref, watch } from 'vue'
 import { useDebounceFn, useElementSize, useResizeObserver } from '@vueuse/core'
-import type { PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import { rowKey } from './row-key'
 import type { PendingAction } from './activity-slot'
 import { useMessageRows } from './message-rows'
+import type { AgentActivity } from './agent-activity'
 import { useLiveCalls } from './live-calls'
 import { useChromeEntrance } from './useChromeEntrance'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -62,14 +63,12 @@ const props = withDefaults(defineProps<{
    */
   cwd?: string
   blocks: HeldBlock[]
-  /** The calls the model is writing, shown after the transcript. */
-  pendingCalls?: PendingCall[]
   /**
-   * When the agent began to wait for the model's answer, as the server tells
-   * it. The Requesting clock counts from it; null when the agent waits for
-   * none.
+   * What the agent does now, as its record holds it: the calls its model
+   * writes, its wait and the page's own actions on their way. Absent for one
+   * at rest, as a share's.
    */
-  waitingSince?: number | null
+  activity?: AgentActivity
   pendingSteers: PendingSteerMessage[]
   queue: QueuedMessage[]
   /** The message the running turn started with, until the turn writes it. */
@@ -236,6 +235,7 @@ const {
   rows: renderBlocks,
   keyOf,
   footerIds,
+  slot,
 } = useMessageRows(() => props, useLiveCalls())
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
@@ -303,8 +303,13 @@ const { isEntering } = useChromeEntrance(
 
 // The tail row alone is no transcript: it waits for one; nor is a failure told
 // at the tail.
+// A wait shows its row where the empty pane would: a message or another
+// action of the page's on its way, as a side question's right after its
+// press, or a wait the server tells before the page holds the transcript.
 const paneStatus = computed(() =>
-  props.pendingSubmissions?.length ? null : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure')),
+  props.pendingSubmissions?.length || slot.value?.kind === 'requesting'
+    ? null
+    : sessionPaneStatus(props.load ?? 'ready', renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure')),
 )
 const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.editTargetId))
 // The transcript's requests, which its rows' file pills read for what each

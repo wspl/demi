@@ -537,7 +537,7 @@ async fn retry_after_a_failed_continuation_reruns_it_from_its_message_and_keeps_
         ["user", "text", "response", "agent_message", "error"]
     );
 
-    session.retry().unwrap().await.unwrap();
+    session.retry(None).unwrap().await.unwrap();
 
     // The message opened the failed turn: the retry keeps it and the
     // finished turn before it, and asks again with both.
@@ -1130,7 +1130,7 @@ async fn waiting_reports_and_running_commands_survive_dispose() {
         Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
     ).await;
     assert!(continuation.interrupted);
-    restored.resume(None).unwrap().await.unwrap();
+    restored.resume(None, None).unwrap().await.unwrap();
     assert_eq!(steers(&later.requests()[0].items), [ended_report("17", "Build")]);
     commands.end("18");
     until(|| later.requests().len() == 2).await;
@@ -1362,7 +1362,7 @@ async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_n
     let state = store.checkpoint(&root()).unwrap().state;
     assert!(state.agent_inputs.is_empty() && state.reports.is_empty());
 
-    session.resume(None).unwrap().await.unwrap();
+    session.resume(None, None).unwrap().await.unwrap();
     let requests = provider.requests();
     assert_eq!(requests.len(), 3);
     let asked = format!("{:?}", requests[2].items);
@@ -1539,7 +1539,7 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
     .await.unwrap();
     assert_eq!(restored.interval_of(&running[0].command), Some(Some(300_000)));
     // The interrupted turn waits for the user, who resumes it.
-    restored.resume(None).unwrap().await.unwrap();
+    restored.resume(None, None).unwrap().await.unwrap();
 
     commands.lose("17");
     until(|| later.requests().len() == 2).await;

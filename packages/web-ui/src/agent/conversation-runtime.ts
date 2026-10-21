@@ -30,6 +30,7 @@ import { failureHeadline } from './error-detail'
 import { boundedHistory } from './history'
 import { hasAcceptedSubmission, isWritten } from './submission'
 import type { ConversationState } from './types'
+import { pressed, refused, serverWaits } from './wait-clock'
 
 /**
  * A rejected action whose failure the session reported as an `error` frame:
@@ -87,6 +88,8 @@ export type RuntimeState = Pick<
   | 'lastError'
   | 'load'
   | 'pendingAction'
+  | 'waitClock'
+  | 'waitAction'
   | 'failures'
   | 'contextUsage'
 >
@@ -488,11 +491,16 @@ export class ConversationRuntime {
   async resume(): Promise<void> {
     const state = this.options.state
     state.lastError = null
-    state.pendingAction = 'resume'
+    // The resume goes under an id of the page's, which the wait it begins
+    // carries, so it counts from the press.
+    const id = crypto.randomUUID()
+    state.pendingAction = { kind: 'resume', id }
+    pressed(state.waitClock, id)
     try {
-      await untilEndedOrLost((await this.ensureOpen()).resume())
+      await untilEndedOrLost((await this.ensureOpen()).resume(id))
     } catch (error) {
       this.settlePendingAction()
+      refused(state.waitClock, id)
       // The session's phase arrives before its refusal, in order.
       if (errorCode(error) !== 'session_busy' || state.phase !== 'running') {
         throw error
@@ -755,8 +763,12 @@ export class ConversationRuntime {
     state.phase = entry.phase
     state.pendingCalls = entry.pendingCalls
     state.waitingSince = waitingSince(entry, receivedAt)
+    state.waitAction = entry.waitAction
+    serverWaits(state.waitClock, entry.waitAction)
     state.contextUsage = entry.context
-    if (moved) {
+    // The server has the recovery once its phase moves, or once the wait
+    // it began shows.
+    if (moved || (entry.waitAction !== null && entry.waitAction === state.pendingAction?.id)) {
       this.settlePendingAction()
     }
   }

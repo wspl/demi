@@ -470,7 +470,7 @@ impl Driver {
             return;
         };
         if handle.await.is_err() {
-            if let Ok(resumed) = self.session.resume(None) {
+            if let Ok(resumed) = self.session.resume(None, None) {
                 let _ = resumed.await;
             }
         }
@@ -523,7 +523,7 @@ impl Driver {
         self.store = copy;
         self.shared.session.replace(Some(self.session.clone()));
         if continuation.interrupted {
-            self.finish(self.session.resume(None)).await;
+            self.finish(self.session.resume(None, None)).await;
         }
     }
 
@@ -539,7 +539,7 @@ impl Driver {
                 let running = self.send_hanging().await;
                 self.session.abort().await;
                 let _ = running.await;
-                self.finish(self.session.resume(None)).await;
+                self.finish(self.session.resume(None, None)).await;
             }
             5 => {
                 let running = self.send_hanging().await;

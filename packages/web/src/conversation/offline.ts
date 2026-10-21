@@ -289,9 +289,12 @@ function freshRuns(window: TranscriptWindow, end: number): { start: number, end:
 }
 
 /**
- * The conversation's metadata and agents as the disk keeps them: what lives
- * only while the conversation runs, its waits and the calls being written,
- * stays out. None before the page holds its metadata and agents.
+ * The conversation's metadata and agents as the disk keeps them: the agents
+ * as they were at the version the copy names, the calls being written
+ * included, since an opening from the copy asks the server only for what
+ * changed since that version. A wait's time is the one part left out: it
+ * counts on while nothing changes, and the server tells every wait again on
+ * each connection. None before the page holds its metadata and agents.
  */
 function copyOf(conversation: Conversation): ConversationCopy | null {
   const metadata = conversation.metadata.read.value
@@ -305,7 +308,8 @@ function copyOf(conversation: Conversation): ConversationCopy | null {
       role: { kind: 'root' },
       phase: conversation.phase,
       waitedMs: null,
-      pendingCalls: [],
+      waitAction: null,
+      pendingCalls: toRaw(conversation.pendingCalls),
       context: toRaw(conversation.contextUsage),
       cost: toRaw(conversation.cost),
       // The waiting inputs live while the session does and are never kept.
@@ -340,7 +344,8 @@ function subagentEntry(agent: SubagentRecord): AgentEntry {
     },
     phase: agent.sessionPhase,
     waitedMs: null,
-    pendingCalls: [],
+    waitAction: null,
+    pendingCalls: toRaw(agent.pendingCalls),
     context: toRaw(agent.contextUsage),
     cost: toRaw(agent.cost),
     queue: [],
@@ -360,7 +365,8 @@ function sideEntry(side: SideRecord): AgentEntry[] {
     role: { kind: 'side', ...role },
     phase: side.sessionPhase,
     waitedMs: null,
-    pendingCalls: [],
+    waitAction: null,
+    pendingCalls: toRaw(side.pendingCalls),
     context: null,
     cost: NO_COST,
     queue: [],

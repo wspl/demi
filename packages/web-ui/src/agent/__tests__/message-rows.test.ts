@@ -1,13 +1,57 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
-import type { Block } from '@demicodes/protocol'
+import type { Block, PendingCall } from '@demicodes/protocol'
 import { addPage, EMPTY_TRANSCRIPT, heldBlocks } from '@demicodes/conversation-client'
-import { useMessageRows, type MessageRows, type MessageRowsSource } from '../message-rows'
+import { useMessageRows as rowsOf, type MessageRows, type MessageRowsSource as ListSource } from '../message-rows'
+import type { PendingSubmissionState } from '../types'
+import { pressed, waitClock, type WaitClock } from '../wait-clock'
 import { useOpenRuns } from '../open-runs'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
 import { rowKey } from '../row-key'
 import type { TerminalPhase, TerminalRecord } from '../terminals'
 import { createdAt, model, userBlock } from './agent-harness'
+
+/**
+ * What a list shows its rows from, with what its agent does held as its
+ * conversation holds it, field by field, which the tests change as the page's
+ * state changes.
+ */
+type MessageRowsSource = Omit<ListSource, 'activity'> & {
+  pendingCalls?: readonly PendingCall[]
+  waitingSince?: number | null
+  waitAction?: string | null
+  waitClock?: WaitClock
+}
+
+/** The list's source, with the agent's activity, as the session view gives it. */
+function listSource(state: MessageRowsSource): ListSource {
+  const { pendingCalls, waitingSince, waitAction, waitClock: clock, ...rest } = state
+  return {
+    ...rest,
+    activity: {
+      pendingCalls: pendingCalls ?? [],
+      waitingSince: waitingSince ?? null,
+      waitAction: waitAction ?? null,
+      waitClock: clock,
+      sentAction: state.pendingAction?.id ?? null,
+    },
+  }
+}
+
+function useMessageRows(source: () => MessageRowsSource, ...rest: Parameters<typeof rowsOf> extends [unknown, ...infer R] ? R : never): MessageRows {
+  return rowsOf(() => listSource(source()), ...rest)
+}
+
+/** The user sends `submissions`, each pressed now as the store presses it. */
+function submit(state: MessageRowsSource, submissions: PendingSubmissionState[]): void {
+  state.waitClock ??= waitClock()
+  for (const submission of submissions) {
+    if (!state.pendingSubmissions?.some((each) => each.id === submission.id)) {
+      pressed(state.waitClock, submission.id)
+    }
+  }
+  state.pendingSubmissions = submissions
+}
 
 // The rows the transcript list renders, followed through a message sent while
 // the reader is at the end of a conversation. The list draws what this gives
@@ -129,23 +173,24 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   }
 
   await step('sent', () => {
-    state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Run the command, then reply.', attachments: [], error: null }]
+    submit(state, [{ id: 'm-2', way: 'send', text: 'Run the command, then reply.', attachments: [], error: null }])
   })
   expect(tail().type).toBe('activity_slot')
   const tailKey = list.keyOf(tail())
   await step('running', () => {
     state.phase = 'running'
+    waits(state)
   })
   await step('written', () => {
     state.blocks = [...state.blocks, userBlock('u-2', 'm-2', 'Run the command, then reply.')]
   })
   await step('confirmed', () => {
-    state.pendingSubmissions = []
+    submit(state, [])
   })
   const writing = (description: string | null) => [{ toolUseId: 'c-1-use', toolName: 'shell', description }]
   await step(first, () => {
     if (first === 'thinking') {
-      state.blocks = [...state.blocks, thinking('k-1')]
+      shows(thinking('k-1'))(state)
     } else {
       state.pendingCalls = writing(null)
     }
@@ -154,6 +199,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   expect([tail().type, list.keyOf(tail())]).toEqual([first === 'thinking' ? 'thinking' : 'activity_slot', tailKey])
   await step('call being written', () => {
     state.pendingCalls = writing('Wait two seconds')
+    state.waitingSince = null
   })
   expect([tail().type, list.keyOf(tail())]).toEqual(['pending_call', tailKey])
   // The call's block comes before the page drops the call being written.
@@ -172,6 +218,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   expect(list.slot.value).toBeNull()
   await step('command ended', () => {
     state.blocks = state.blocks.map((block) => block.id === 'c-1' ? call('c-1', 'completed', runOf) : block)
+    waits(state)
   })
   // It joined the run, whose row is the one it ran in, and Requesting stands
   // under it.
@@ -179,7 +226,7 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   expect(list.keyOf(run()!)).toBe(tailKey)
   expect(tail().type).toBe('activity_slot')
   await step('answer', () => {
-    state.blocks = [...state.blocks, text('a-2', 'Done.')]
+    shows(text('a-2', 'Done.'))(state)
   })
   expect(list.keyOf(run()!)).toBe(tailKey)
   expect(tail().type).toBe('text')
@@ -204,10 +251,24 @@ const drop = (id: string) => (state: MessageRowsSource) => {
 }
 const phase = (next: MessageRowsSource['phase']) => (state: MessageRowsSource) => {
   state.phase = next
+  if (next !== 'running') {
+    state.waitingSince = null
+  }
+}
+/** The server says the agent waits for the model from now. */
+const waits = (state: MessageRowsSource) => {
+  state.waitingSince = Date.now()
+}
+/** Output that shows: the server ends the wait. */
+const shows = (...blocks: Block[]) => (state: MessageRowsSource) => {
+  append(...blocks)(state)
+  state.waitingSince = null
 }
 /** The user presses Continue or Resume: the page knows at once. */
 const recover: Change = ['Continue or Resume', (state) => {
-  state.pendingAction = 'resume'
+  state.waitClock ??= waitClock()
+  pressed(state.waitClock, 'resume-1')
+  state.pendingAction = { kind: 'resume', id: 'resume-1' }
 }]
 /**
  * The server acknowledges the recovery with the phase, before the transcript
@@ -215,17 +276,21 @@ const recover: Change = ['Continue or Resume', (state) => {
  */
 const acknowledged: Change = ['acknowledged', (state) => {
   state.phase = 'running'
+  waits(state)
   state.pendingAction = null
 }]
 const sent: Change = ['sent', (state) => {
-  state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Go on.', attachments: [], error: null }]
+  submit(state, [{ id: 'm-2', way: 'send', text: 'Go on.', attachments: [], error: null }])
 }]
 const sentAndWritten: Change[] = [
   sent,
-  ['running', phase('running')],
+  ['running', (state) => {
+    phase('running')(state)
+    waits(state)
+  }],
   ['written', append(userBlock('u-2', 'm-2', 'Go on.'))],
   ['confirmed', (state) => {
-    state.pendingSubmissions = []
+    submit(state, [])
   }],
 ]
 
@@ -238,14 +303,23 @@ const workedOn = (...end: Block[]): Block[] => [userBlock('u-1', 'm-1', 'Fix the
 // Each way a row gives way to the next state without the user removing it, as
 // the events reach the page: the row that showed the old state stays drawn,
 // under its key, and the row at the end keeps its key from `from` on.
-const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['phase']; from: string; changes: Change[] }[] = [
+const transitions: {
+  name: string
+  blocks: Block[]
+  phase?: MessageRowsSource['phase']
+  /** The server says the agent waits for the model from the start. */
+  waiting?: true
+  from: string
+  changes: Change[]
+}[] = [
   {
     name: 'Stop, then Continue',
     blocks: workedOn(),
     phase: 'running',
+    waiting: true,
     from: 'stopped',
     changes: [
-      ['stopped', append(abort('x-1'))],
+      ['stopped', shows(abort('x-1'))],
       ['idle', phase('idle')],
       recover,
       acknowledged,
@@ -273,7 +347,7 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
       acknowledged,
       ['marked resumed', replace('x-1', abort('x-1', true))],
       ['resume written', append(resumed('r-1'))],
-      ['call', append(call('c-1', 'executing'))],
+      ['call', shows(call('c-1', 'executing'))],
     ],
   },
   {
@@ -284,7 +358,7 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
       recover,
       acknowledged,
       ['error dropped', drop('e-1')],
-      ['thinking', append(thinking('k-1'))],
+      ['thinking', shows(thinking('k-1'))],
     ],
   },
   {
@@ -313,16 +387,18 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
     name: 'Requesting, then the answer',
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
+    waiting: true,
     from: 'start',
-    changes: [['answer', append(text('a-1', 'Hi.'))]],
+    changes: [['answer', shows(text('a-1', 'Hi.'))]],
   },
   {
     name: 'Requesting, then a failure',
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
+    waiting: true,
     from: 'start',
     changes: [
-      ['failed', append(failure('e-1'))],
+      ['failed', shows(failure('e-1'))],
       ['idle', phase('idle')],
     ],
   },
@@ -330,9 +406,10 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
     name: 'Requesting, then a Stop',
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
+    waiting: true,
     from: 'start',
     changes: [
-      ['stopped', append(abort('x-1'))],
+      ['stopped', shows(abort('x-1'))],
       ['idle', phase('idle')],
     ],
   },
@@ -366,10 +443,10 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
     changes: [
       sent,
       ['not delivered', (state) => {
-        state.pendingSubmissions = state.pendingSubmissions!.map((each) => ({ ...each, error: 'The connection was lost.' }))
+        submit(state, state.pendingSubmissions!.map((each) => ({ ...each, error: 'The connection was lost.' })))
       }],
       ['Retry', (state) => {
-        state.pendingSubmissions = state.pendingSubmissions!.map((each) => ({ ...each, error: null }))
+        submit(state, state.pendingSubmissions!.map((each) => ({ ...each, error: null })))
       }],
       ...sentAndWritten.slice(1),
     ],
@@ -378,6 +455,7 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
     name: 'a failure told at the tail, then the session opened again',
     blocks: [userBlock('u-1', 'm-1', 'Hello.')],
     phase: 'running',
+    waiting: true,
     from: 'failed',
     changes: [
       ['failed', (state) => {
@@ -392,10 +470,11 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
   },
 ]
 
-test.each(transitions)('$name: no row goes while another takes its place, and the row at the end keeps its key', async ({ blocks, phase: initial, from, changes }) => {
+test.each(transitions)('$name: no row goes while another takes its place, and the row at the end keeps its key', async ({ blocks, phase: initial, waiting, from, changes }) => {
   const state = answered()
   state.blocks = blocks
   state.phase = initial ?? 'idle'
+  state.waitingSince = waiting ? Date.now() : null
   const { list, step, stop } = follow(state)
   const tail = () => list.keyOf(list.rows.value.at(-1)!)
   let kept = from === 'start' ? tail() : null
@@ -432,7 +511,7 @@ test.each([
   await step('unwound', () => unwind(state))
   await step('resume written', () => append(resumed('r-1'))(state))
   expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
-  await step('call', () => append(call('c-2', 'executing', 'c-1'))(state))
+  await step('call', () => shows(call('c-2', 'executing', 'c-1'))(state))
   expect(runRow().map((row) => row.type === 'work_group' && row.steps.map((each) => each.id))).toEqual([['c-1']])
   expect(list.keyOf(runRow()[0]!)).toBe(run)
   expect([list.rows.value.at(-1)?.id, list.keyOf(list.rows.value.at(-1)!)]).toEqual(['c-2', tail])
@@ -496,6 +575,7 @@ test('a call being written without its description leaves the face as it was, th
 
   const busy = running()
   busy.pendingCalls = opened(null)
+  busy.waitingSince = Date.now()
   const next = follow(busy)
   const run = () => next.list.rows.value.find((row) => row.type === 'work_group')
   const before = run()!
@@ -504,6 +584,7 @@ test('a call being written without its description leaves the face as it was, th
   const waiting = next.list.keyOf(next.list.rows.value.at(-1)!)
   await next.step('title written', () => {
     busy.pendingCalls = opened('Run the login test')
+    busy.waitingSince = null
   })
   const after = run()!
   expect(after.type === 'work_group' && after.steps.map((each) => each.id)).toEqual(['c-1'])
@@ -567,14 +648,14 @@ test('a steer on its way has its line from the send, and keeps its row and its l
   }
   const content = [{ type: 'text' as const, text: 'Also check the sign-up page.' }]
   await step('sent', () => {
-    state.pendingSubmissions = [{ id: 's-1', way: 'steer', text: 'Also check the sign-up page.', attachments: [], error: null }]
+    submit(state, [{ id: 's-1', way: 'steer', text: 'Also check the sign-up page.', attachments: [], error: null }])
   })
   // The session lists the steer before the page lets the message go.
   await step('listed', () => {
     state.pendingSteers = [{ id: 's-1', content }]
   })
   await step('confirmed', () => {
-    state.pendingSubmissions = []
+    submit(state, [])
   })
   expect(seen).toEqual([
     { name: 'sent', index: 3, line: 'steer' },
@@ -601,14 +682,14 @@ test('a steer on its way that comes to start the turn reads as the next message 
     ? [`tail:${row.slot.kind}`]
     : rowKey(row) === 'message:m-3' ? [`m-3:${waitingAs(row) ?? 'message'}`] : [])
   await step('sent', () => {
-    state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Rename the folder.', attachments: [], error: null }]
+    submit(state, [{ id: 'm-2', way: 'send', text: 'Rename the folder.', attachments: [], error: null }])
   })
   await step('steered', () => {
-    state.pendingSubmissions = [...state.pendingSubmissions!, { id: 'm-3', way: 'steer', text: 'Then list it.', attachments: [], error: null }]
+    submit(state, [...state.pendingSubmissions!, { id: 'm-3', way: 'steer', text: 'Then list it.', attachments: [], error: null }])
   })
   expect(shown()).toEqual(['tail:requesting', 'm-3:steer'])
   await step('not delivered', () => {
-    state.pendingSubmissions = state.pendingSubmissions!.map((each) => each.id === 'm-2' ? { ...each, error: 'The connection was lost.' } : each)
+    submit(state, state.pendingSubmissions!.map((each) => each.id === 'm-2' ? { ...each, error: 'The connection was lost.' } : each))
   })
   expect(shown()).toEqual(['m-3:message', 'tail:requesting'])
   stop()
@@ -618,13 +699,13 @@ test('a queued message on its way is counted under the queue divider from the se
   const state = running()
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
-  state.pendingSubmissions = [{ id: 'q-1', way: 'queue', text: 'Then deploy it.', attachments: [], error: null }]
+  submit(state, [{ id: 'q-1', way: 'queue', text: 'Then deploy it.', attachments: [], error: null }])
   await nextTick()
   const shown = () => list.rows.value.map((block) => block.type === 'queue_divider' ? `divider:${block.count}` : `${rowKey(block)}:${waitingAs(block) ?? ''}`)
   const before = shown()
   expect(before.slice(-2)).toEqual(['divider:1', 'message:q-1:queued'])
   state.queue = [{ id: 'q-1', content: [{ type: 'text', text: 'Then deploy it.' }] }]
-  state.pendingSubmissions = []
+  submit(state, [])
   await nextTick()
   expect(shown()).toEqual(before)
   scope.stop()
@@ -643,12 +724,34 @@ test('a steer waiting under a call the model is still writing adds no Requesting
   scope.stop()
 })
 
+// A running turn whose transcript the page holds only in part, as on a
+// first opening before its tail arrives or from a copy that lacks a call
+// being written: only the server says whether the agent waits. Before, the
+// page took a tail of finished output for a wait and counted it from when
+// the list was drawn, so every return to the conversation restarted the
+// clock while the model went on writing.
+test.each([
+  ['a run whose steps ended', [userBlock('u-1', 'm-1', 'Fix the login test.'), call('c-1', 'completed')]],
+  ['the user\'s message', [userBlock('u-1', 'm-1', 'Fix the login test.')]],
+] as const)('a running turn ending with %s shows no Requesting while the server tells no wait', async (_name, blocks) => {
+  const state = running()
+  state.blocks = [...blocks]
+  state.pendingCalls = []
+  const scope = effectScope()
+  const list = scope.run(() => useMessageRows(() => state))!
+  await nextTick()
+  expect(list.slot.value).toBeNull()
+  expect(list.rows.value.some((row) => row.type === 'activity_slot')).toBe(false)
+  scope.stop()
+})
+
 test('while the model is waited for, the Requesting row stands right after the transcript, above the steers and the queue', async () => {
   const state = running()
   state.blocks = [userBlock('u-1', 'm-1', 'Fix the login test.')]
   state.pendingCalls = []
   state.pendingSteers = [{ id: 's-1', content: [{ type: 'text', text: 'Also check the sign-up page.' }] }]
   state.queue = [{ id: 'q-1', content: [{ type: 'text', text: 'Then deploy it.' }] }]
+  state.waitingSince = Date.now()
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   await nextTick()
@@ -662,6 +765,7 @@ test('while the model is waited for, the Requesting row stands right after the t
 test('a notice and a receipt join the run, which stays one row under one name over the Requesting row', async () => {
   const state = running()
   state.pendingCalls = []
+  state.waitingSince = Date.now()
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   const drawn = () => drawnRows(list)
@@ -749,8 +853,8 @@ test.each([
 // Review: parallel calls return in any order. A step the reader opened while it
 // ran is still open as the run it starts. A run the reader opened stays the
 // same open row when a call that started before the one that joined it returns.
-// While a call still runs, the turn waits for it, so no Requesting row shows.
-// Before, the run was named after its first ended step: A returning after B
+// While a call still runs, the turn waits for it, and the server tells no
+// wait for the model, so no Requesting row shows. Before, the run was named after its first ended step: A returning after B
 // made it another row, closed.
 test('a run stays the same open row as parallel calls return out of order, and Requesting waits for the last', async () => {
   const state = reactive<MessageRowsSource>({
@@ -776,7 +880,9 @@ test('a run stays the same open row as parallel calls return out of order, and R
   const key = list.keyOf(runRow()!)
   runs.setOpen(key, true)
 
+  // The last call returned: the turn asks the model again, as the server tells.
   state.blocks = state.blocks.map((block) => block.id === 'a' ? call('a', 'completed', 'a') : block)
+  state.waitingSince = Date.now()
   await nextTick()
   expect(runRow()?.steps.map((step) => step.id)).toEqual(['a', 'b'])
   expect(list.keyOf(runRow()!)).toBe(key)
@@ -859,7 +965,7 @@ describe('a message not delivered stays where it was sent', () => {
     // m-5 is on its way: m-4 stands above it.
     expect(rows((state) => {
       state.blocks = [...state.blocks, ...third]
-      state.pendingSubmissions = [first, second, { id: 'm-5', way: 'send', text: 'Then this', attachments: [], error: null }]
+      submit(state, [first, second, { id: 'm-5', way: 'send', text: 'Then this', attachments: [], error: null }])
     })).toEqual([
       'message:m-1', 'a-1',
       'message:m-2', 'delivery-failure:m-2',
@@ -869,7 +975,7 @@ describe('a message not delivered stays where it was sent', () => {
     ])
     expect(rows((state) => {
       state.blocks = [...state.blocks, ...third, userBlock('u-5', 'm-5', 'Then this'), text('a-5', 'Also done.')]
-      state.pendingSubmissions = [first, second]
+      submit(state, [first, second])
     })).toEqual([
       'message:m-1', 'a-1',
       'message:m-2', 'delivery-failure:m-2',
@@ -882,7 +988,7 @@ describe('a message not delivered stays where it was sent', () => {
   test('above a message sent after it that waits in the queue, or on its way to it', () => {
     const queued = (state: MessageRowsSource) => {
       state.phase = 'running'
-      state.pendingSubmissions = [{ ...refused, id: 'm-2', way: 'queue', text: 'With a file', followers: ['m-3'] }]
+      submit(state, [{ ...refused, id: 'm-2', way: 'queue', text: 'With a file', followers: ['m-3'] }])
     }
     expect(rows((state) => {
       queued(state)
@@ -890,14 +996,14 @@ describe('a message not delivered stays where it was sent', () => {
     })).toEqual(['message:m-1', 'a-1', 'queue-divider', 'message:m-2', 'delivery-failure:m-2', 'message:m-3'])
     expect(rows((state) => {
       queued(state)
-      state.pendingSubmissions = [...state.pendingSubmissions!, { id: 'm-3', way: 'queue', text: 'Text alone', attachments: [], error: null }]
+      submit(state, [...state.pendingSubmissions!, { id: 'm-3', way: 'queue', text: 'Text alone', attachments: [], error: null }])
     })).toEqual(['message:m-1', 'a-1', 'queue-divider', 'message:m-2', 'delivery-failure:m-2', 'message:m-3'])
   })
 
   test('above the next message sent after it while the one between is taken back', () => {
     expect(rows((state) => {
       state.phase = 'running'
-      state.pendingSubmissions = [{ ...refused, id: 'm-2', way: 'queue', text: 'With a file', followers: ['m-3', 'm-4'] }]
+      submit(state, [{ ...refused, id: 'm-2', way: 'queue', text: 'With a file', followers: ['m-3', 'm-4'] }])
       state.queue = [{ id: 'm-3', content: [{ type: 'text', text: 'Recalled' }] }, { id: 'm-4', content: [{ type: 'text', text: 'Kept' }] }]
       state.removing = ['m-3']
     })).toEqual(['message:m-1', 'a-1', 'queue-divider', 'message:m-2', 'delivery-failure:m-2', 'message:m-4'])
@@ -909,14 +1015,14 @@ describe('a message not delivered stays where it was sent', () => {
     expect(rows((state) => {
       state.atStart = false
       state.blocks = [userBlock('u-9', 'm-9', 'Much later'), text('a-9', 'Later answer.')]
-      state.pendingSubmissions = [failed]
+      submit(state, [failed])
     })).toEqual(['history-before', 'message:m-9', 'a-9'])
     // A window of history that holds m-3, opened from search.
     expect(rows((state) => {
       state.latest = false
       state.atEnd = false
       state.blocks = [...state.blocks, userBlock('u-3', 'm-3', 'Meanwhile this'), text('a-3', 'Done.')]
-      state.pendingSubmissions = [failed]
+      submit(state, [failed])
     })).toEqual(['message:m-1', 'a-1', 'message:m-2', 'delivery-failure:m-2', 'message:m-3', 'a-3', 'history-after'])
   })
 })

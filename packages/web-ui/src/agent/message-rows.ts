@@ -1,5 +1,5 @@
 import { computed, ref, toRaw, watch, type ComputedRef } from 'vue'
-import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import type { PendingAction } from './activity-slot'
 import { listTailBlocks, rowMessageId, submissionRows, undeliveredPlaces } from './list-tail'
@@ -7,6 +7,7 @@ import type { ActivitySlotRow, MessageListBlock, StepsNotSharedRow } from './pen
 import { rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
+import { AT_REST, type AgentActivity } from './agent-activity'
 import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
 import { getVisibleBlocks } from './visible-blocks'
 import { workGrouping } from './work-groups'
@@ -19,12 +20,8 @@ import { shellRowRunning } from './terminals'
 export interface MessageRowsSource {
   conversationId: string
   blocks: readonly Block[]
-  pendingCalls?: readonly PendingCall[]
-  /**
-   * When the agent began to wait for the model's answer, as the server tells
-   * it; null when it waits for none.
-   */
-  waitingSince?: number | null
+  /** What the agent does now; absent for one at rest, as a share's. */
+  activity?: AgentActivity
   pendingSteers: readonly PendingSteerMessage[]
   queue: readonly QueuedMessage[]
   /** The message the running turn started with, until the turn writes it. */
@@ -99,7 +96,8 @@ interface Recovery {
  * `liveCalls` say, until the command ends.
  *
  * The messages that wait, the steers and the queue, stay below the turn: the
- * tail row stands above them, and its kind is read from the transcript alone.
+ * tail row stands above them. Whether it waits is the server's word or this
+ * page's own action's (`useActivitySlot`), never the transcript's.
  *
  * Continue after a Stop and Resume after an error take the place of the record
  * they continue from. From the press, the record's row is the Requesting row,
@@ -131,7 +129,7 @@ export function useMessageRows(
       if (previous && scope !== previous[2]) {
         recovery.value = null
       }
-      if (action === 'resume') {
+      if (action?.kind === 'resume') {
         recovery.value ??= recoveryFrom(visibleBlocks.value)
       } else if (phase === 'idle') {
         recovery.value = null
@@ -168,7 +166,7 @@ export function useMessageRows(
     return !input.latest ? { turn: [], waiting: [] } : listTailBlocks({
       phase: input.phase,
       blocks: blocks.value,
-      pendingCalls: input.pendingCalls ?? [],
+      pendingCalls: input.activity?.pendingCalls ?? [],
       pendingSteers: input.pendingSteers,
       queue: input.queue,
       starting: input.starting,
@@ -176,6 +174,18 @@ export function useMessageRows(
       removing: input.removing,
       elsewhere: new Set([...undelivered.value].flatMap(([id, place]) => place === 'end' ? [] : [id])),
     })
+  })
+  const { slot, startingTurn } = useActivitySlot({
+    input: () => {
+      const input = source()
+      return {
+        load: input.load ?? 'ready',
+        backendAway: input.backendAway ?? false,
+      }
+    },
+    phase: () => source().phase,
+    pendingSubmissions: () => source().pendingSubmissions ?? [],
+    activity: () => source().activity ?? AT_REST,
   })
   // The calls the model is writing are the newest steps of the work: each is a
   // row of its own after its run.
@@ -185,10 +195,11 @@ export function useMessageRows(
   // record's place is the turn's tail, and the tail row stands there: the
   // record marked resumed or unwound, with the leftovers before it, leaves
   // only what was shown before. A call being written shows only from its
-  // description, so only such a call is something new.
+  // description, so only such a call is something new. With no tail row,
+  // as while the server tells no wait yet, the record keeps its place.
   const atCut = computed(() => {
     const current = recovery.value
-    if (current === null || pendingCallRows.value.length > 0) {
+    if (current === null || slot.value === null || pendingCallRows.value.length > 0) {
       return false
     }
     const end = visibleBlocks.value.at(-1)
@@ -218,23 +229,6 @@ export function useMessageRows(
       source().phase === 'running' && !atCut.value,
       (toolUseId) => commandRuns.has(toolUseId),
     )
-  })
-
-  const { slot, startingTurn } = useActivitySlot({
-    input: () => {
-      const input = source()
-      return {
-        load: input.load ?? 'ready',
-        backendAway: input.backendAway ?? false,
-        phase: input.phase,
-        recovering: input.pendingAction === 'resume' || atCut.value,
-        transcriptBlocks: visibleBlocks.value,
-        turnRows: turnRows.value,
-      }
-    },
-    pendingSubmissions: () => source().pendingSubmissions ?? [],
-    waitingSince: () => source().waitingSince ?? null,
-    scope: () => source().conversationId,
   })
 
   // Each wait the tail row shows is counted, so a new one is a row of its own.

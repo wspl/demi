@@ -1,4 +1,5 @@
 import type { AgentCost, AgentEntry, ContextUsage, JobModel, JobPhase, PendingCall, ProviderFailureFacts, SessionPhase, Subagent } from '@demicodes/protocol'
+import type { AgentActivity } from './agent-activity'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
@@ -95,6 +96,14 @@ export function agentCompaction(agent: SubagentRecord): { compacting: boolean, u
     compacting: agent.sessionPhase === 'compacting',
     unavailableReason: agent.sessionPhase === 'running' ? compactAfterTurn() : null,
   }
+}
+
+/**
+ * What the child does now, as its record holds it: the page acts on no child
+ * of its own, so no wait of it counts from a press of the page's.
+ */
+export function subagentActivity(agent: Pick<SubagentRecord, 'pendingCalls' | 'waitingSince'>): AgentActivity {
+  return { pendingCalls: agent.pendingCalls, waitingSince: agent.waitingSince, waitAction: null, sentAction: null }
 }
 
 /** What a child's entry sets on its record: all of it but what the page holds of its transcript. */

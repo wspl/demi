@@ -1,200 +1,161 @@
 import { expect, spyOn, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
-import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/protocol'
-import type { MessageListBlock } from '../pending-steers'
+import type { SessionPhase } from '@demicodes/protocol'
 import { activitySlotKind } from '../activity-slot'
-import { groupWork } from '../work-groups'
 import type { SessionLoad } from '../session-status'
 import { turnStartingMessage } from '../send-way'
 import type { PendingSubmissionState } from '../types'
-import { useActivitySlot } from '../useActivitySlot'
+import { useActivitySlot, type ActivitySlotSources } from '../useActivitySlot'
+import { pressed, refused, serverWaits, waitClock, type WaitClock } from '../wait-clock'
 
-function kind(
-  phase: SessionPhase,
-  transcriptBlocks: readonly MessageListBlock[],
-  turnRows: readonly MessageListBlock[] = transcriptBlocks,
-  options: { load?: SessionLoad; backendAway?: boolean; recovering?: boolean } = {},
-) {
+function kind(options: {
+  load?: SessionLoad
+  backendAway?: boolean
+  actionSent?: boolean
+  startingTurn?: boolean
+  waiting?: boolean
+} = {}) {
   return activitySlotKind({
     load: options.load ?? 'ready',
     backendAway: options.backendAway ?? false,
-    phase,
-    recovering: options.recovering ?? false,
-    startingTurn: false,
-    transcriptBlocks,
-    turnRows,
+    actionSent: options.actionSent ?? false,
+    startingTurn: options.startingTurn ?? false,
+    waiting: options.waiting ?? false,
   })
 }
 
 test('a first opening whose socket is not made yet says it connects, as a lost socket does', () => {
-  expect(kind('idle', [userBlock()], undefined, { load: 'connecting' })).toBe('connecting')
-  expect(kind('idle', [userBlock()], undefined, { load: 'connecting', backendAway: true })).toBeNull()
-  expect(kind('idle', [userBlock()], undefined, { load: 'opening' })).toBeNull()
+  expect(kind({ load: 'connecting' })).toBe('connecting')
+  expect(kind({ load: 'connecting', backendAway: true })).toBeNull()
+  // The copy the page kept shows while the socket opens.
+  expect(kind({ load: 'opening' })).toBe('connecting')
 })
 
-test('a running turn requests while it waits for the first model output', () => {
-  expect(kind('running', [])).toBe('requesting')
+test('the row says Requesting while the server says the agent waits, and nothing otherwise', () => {
+  expect(kind({ waiting: true })).toBe('requesting')
+  expect(kind()).toBeNull()
 })
 
-test('a running turn requests after user-like blocks', () => {
-  expect(kind('running', [userBlock()])).toBe('requesting')
-  expect(kind('running', [steerBlock()])).toBe('requesting')
-  expect(kind('running', [compactionMarkerBlock()])).toBe('requesting')
-})
-
-test('a running turn requests after a completed tool while waiting for the model to continue', () => {
-  expect(kind('running', [toolCallBlock('completed')])).toBe('requesting')
-  expect(kind('running', [toolCallBlock('error')])).toBe('requesting')
-})
-
-// A run's row holds only the steps that ended, so at a running turn's end it is
-// what has happened, and the turn waits for the model under it. A step that
-// still runs is a row of its own after the run, the turn's activity, and no
-// Requesting row shows while it runs. Before, the run's row stood for the wait,
-// and no Requesting showed under it.
-test('a run whose steps ended waits for the model under it; a step that runs is the activity', () => {
-  const transcript = [userBlock(), thinkingBlock(), toolCallBlock('completed')]
-  expect(kind('running', transcript, groupWork(transcript, true))).toBe('requesting')
-  const lone = [userBlock(), toolCallBlock('completed')]
-  expect(kind('running', lone, groupWork(lone, true))).toBe('requesting')
-  const runs = [userBlock(), toolCallBlock('executing')]
-  expect(kind('running', runs, groupWork(runs, true))).toBeNull()
-})
-
-// Review: a call still waiting for its result keeps the turn waiting for it,
-// wherever it stands. The agent started A, wrote a line, and B in a new run
-// returned. Before, the run of B at the tail read as the model's turn.
-test('no Requesting shows while a call in an earlier run still executes', () => {
-  const started = { ...toolCallBlock('executing'), run: 'thinking-1' } as MessageListBlock
-  const said = { ...textBlock(), forkable: true } as MessageListBlock
-  const returned = { ...toolCallBlock('completed'), id: 'tool-b', toolUseId: 'tool-use-b', run: 'tool-b' } as MessageListBlock
-  const transcript = [userBlock(), { ...thinkingBlock(), run: 'thinking-1' } as MessageListBlock, started, said, returned]
-  expect(kind('running', transcript, groupWork(transcript, true))).toBeNull()
-})
-
-test('the slot stays hidden while the tool row itself is executing', () => {
-  expect(kind('running', [toolCallBlock('executing')])).toBeNull()
-})
-
-test('the slot stays hidden outside running phase', () => {
-  expect(kind('idle', [])).toBeNull()
-  expect(kind('idle', [toolCallBlock('completed')])).toBeNull()
-  expect(kind('compacting', [userBlock()])).toBeNull()
-})
-
-test('the slot stays hidden while assistant content is the latest visible block', () => {
-  expect(kind('running', [thinkingBlock()])).toBeNull()
-  expect(kind('running', [textBlock()])).toBeNull()
-})
-
-test('finished text with nothing after it is followed by Requesting, and a call being written takes its place', () => {
-  const finished: MessageListBlock = { ...textBlock(), forkable: true } as MessageListBlock
-  expect(kind('running', [finished])).toBe('requesting')
-  const writing: MessageListBlock = {
-    type: 'pending_call',
-    id: 'pending-call:call-1',
-    call: { toolUseId: 'call-1', toolName: 'shell', description: 'Write the categorizer' },
-  }
-  expect(kind('running', [finished], [finished, writing])).toBeNull()
-  expect(kind('idle', [finished])).toBeNull()
-})
-
-test('a materialized steer requests again before the model continues', () => {
-  expect(kind('running', [thinkingBlock(), steerBlock()])).toBe('requesting')
-})
-
-// A Stop being written, before the phase goes idle, waits for nothing.
-test('a running turn does not request after a Stop being written', () => {
-  expect(kind('running', [userBlock(), abortBlock()])).toBeNull()
-})
-
-test('a recovery this page asked for says Requesting, after an error record and after a Stop alike', () => {
-  expect(kind('idle', [userBlock(), errorBlock()], [userBlock()], { recovering: true })).toBe('requesting')
-  expect(kind('idle', [userBlock(), abortBlock()], undefined, { recovering: true })).toBe('requesting')
-  expect(kind('running', [userBlock(), errorBlock()], [userBlock()], { recovering: true })).toBe('requesting')
+test('a message that starts a turn, a recovery or a side question this page sent says Requesting before the server has it', () => {
+  expect(kind({ startingTurn: true })).toBe('requesting')
+  expect(kind({ actionSent: true })).toBe('requesting')
 })
 
 test('a conversation that failed to open waits for nothing: the failure told at the tail says so', () => {
-  expect(kind('running', [userBlock()], undefined, { load: 'failed' })).toBeNull()
+  expect(kind({ load: 'failed', waiting: true })).toBeNull()
 })
 
-test('connecting wins over a pending recovery and a running turn', () => {
-  expect(kind('idle', [], undefined, { load: 'reconnecting' })).toBe('connecting')
-  expect(kind('idle', [errorBlock()], [], { load: 'reconnecting', recovering: true })).toBe('connecting')
-  expect(kind('running', [thinkingBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
+test('connecting wins over a pending recovery and a wait', () => {
+  expect(kind({ load: 'reconnecting' })).toBe('connecting')
+  expect(kind({ load: 'reconnecting', actionSent: true })).toBe('connecting')
+  expect(kind({ load: 'reconnecting', waiting: true })).toBe('connecting')
 })
 
 test('while the connection banner says the backend is away, a reconnecting conversation shows no row of its own', () => {
   const away = { load: 'reconnecting', backendAway: true } as const
-  expect(kind('idle', [], undefined, away)).toBeNull()
-  expect(kind('running', [userBlock()], undefined, away)).toBeNull()
-  expect(kind('idle', [errorBlock()], [], { ...away, recovering: true })).toBeNull()
+  expect(kind(away)).toBeNull()
+  expect(kind({ ...away, waiting: true })).toBeNull()
+  expect(kind({ ...away, actionSent: true })).toBeNull()
   // Its socket lost while the page still reaches the backend: the row says so.
-  expect(kind('running', [userBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
+  expect(kind({ load: 'reconnecting', waiting: true })).toBe('connecting')
 })
 
 /**
  * The tail row as the message list drives it, over a conversation the test
  * changes the way the page's state changes, at a clock the test sets.
  */
-function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
-  const clock = spyOn(Date, 'now').mockReturnValue(opened)
-  const conversation = reactive({
+interface Conversation {
+  phase: SessionPhase
+  load: SessionLoad
+  pendingSubmissions: PendingSubmissionState[]
+  waitingSince: number | null
+  waitAction: string | null
+  sentAction: string | null
+  clock: WaitClock
+}
+
+function slotOver(phase: SessionPhase, opened = 0) {
+  const now = spyOn(Date, 'now').mockReturnValue(opened)
+  const conversation = reactive<Conversation>({
     phase,
-    blocks,
-    load: 'ready' as SessionLoad,
-    pendingSubmissions: [] as PendingSubmissionState[],
-    waitingSince: null as number | null,
+    load: 'ready',
+    pendingSubmissions: [],
+    waitingSince: null,
+    waitAction: null,
+    sentAction: null,
+    clock: waitClock(),
   })
   const scope = effectScope()
-  const { slot } = scope.run(() => useActivitySlot({
-    input: () => ({
-      load: conversation.load,
-      backendAway: false,
-      phase: conversation.phase,
-      recovering: false,
-      transcriptBlocks: conversation.blocks,
-      turnRows: conversation.blocks,
-    }),
-    pendingSubmissions: () => conversation.pendingSubmissions,
-    waitingSince: () => conversation.waitingSince,
-    scope: () => 'conversation',
-  }))!
+  const { slot } = scope.run(() => useActivitySlot(sourcesOf(conversation)))!
   return {
     conversation,
     slot,
-    at: (ms: number) => clock.mockReturnValue(ms),
+    at: (ms: number) => now.mockReturnValue(ms),
     [Symbol.dispose]() {
       scope.stop()
-      clock.mockRestore()
+      now.mockRestore()
     },
   }
 }
 
-function sent(error: string | null = null): PendingSubmissionState {
-  return { id: 'turn-1', way: 'send', text: 'hello', attachments: [], error }
+/** What the message list gives the row of `conversation`. */
+function sourcesOf(conversation: Conversation): ActivitySlotSources {
+  return {
+    input: () => ({ load: conversation.load, backendAway: false }),
+    phase: () => conversation.phase,
+    pendingSubmissions: () => conversation.pendingSubmissions,
+    activity: () => ({
+      pendingCalls: [],
+      waitingSince: conversation.waitingSince,
+      waitAction: conversation.waitAction,
+      waitClock: conversation.clock,
+      sentAction: conversation.sentAction,
+    }),
+  }
 }
 
-test('a message sent to an idle conversation says Requesting from the send, through its confirmation, on one clock', async () => {
-  using session = slotOver('idle', [textBlock()])
+function sent(id = 'turn-1', error: string | null = null): PendingSubmissionState {
+  return { id, way: 'send', text: 'hello', attachments: [], error }
+}
+
+// What the page's actors do, which the row reads: the store presses each
+// message as it is sent, and again at its Retry, and the runtime takes the
+// wait the server tells, with the action that began it.
+function sending(conversation: Conversation, messages: PendingSubmissionState[]): void {
+  for (const message of messages) {
+    const before = conversation.pendingSubmissions.find((each) => each.id === message.id)
+    if (message.error === null && (before === undefined || before.error !== null)) {
+      pressed(conversation.clock, message.id)
+    }
+  }
+  conversation.pendingSubmissions = messages
+}
+function serverTells(conversation: Conversation, since: number | null, action: string | null = null): void {
+  conversation.waitingSince = since
+  conversation.waitAction = since === null ? null : action
+  serverWaits(conversation.clock, conversation.waitAction)
+}
+
+test('a message sent to an idle conversation says Requesting from the press, through its confirmation, on one clock', async () => {
+  using session = slotOver('idle')
   const { conversation, slot, at } = session
   expect(slot.value).toBeNull()
 
   at(5_000)
-  conversation.pendingSubmissions = [sent()]
+  sending(conversation, [sent()])
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
-  // The backend starts the turn before it writes the message.
+  // The backend starts the turn, and its wait, which names the message,
+  // before it writes the message.
   at(6_000)
   conversation.phase = 'running'
+  serverTells(conversation, 5_400, 'turn-1')
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
-  // The message's block confirms it; the page drops the pending message in the
-  // same update.
+  // The message's block confirms it; the page drops the pending message.
   at(8_000)
-  conversation.blocks = [textBlock(), userBlock()]
   conversation.pendingSubmissions = []
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
@@ -202,9 +163,9 @@ test('a message sent to an idle conversation says Requesting from the send, thro
 
 test('a view shown during a wait counts from the start the server tells, not from when it opened', async () => {
   // A subagent's request had waited eight minutes when its view opened.
-  using session = slotOver('running', [userBlock()], 600_000)
+  using session = slotOver('running', 600_000)
   const { conversation, slot, at } = session
-  conversation.waitingSince = 120_000
+  serverTells(conversation, 120_000)
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 120_000 })
 
@@ -213,83 +174,127 @@ test('a view shown during a wait counts from the start the server tells, not fro
   expect(slot.value).toEqual({ kind: 'requesting', since: 120_000 })
 })
 
-test('a message this page sent counts from its send, also once the server tells a later start', async () => {
-  using session = slotOver('idle', [textBlock()])
+// The server says when a wait ends: the answer streams, a call's title is
+// written, the turn ends. A running turn that it tells no wait for waits for
+// nothing the row could count, whatever its transcript ends with.
+test('a running turn the server tells no wait for shows no Requesting', async () => {
+  using session = slotOver('running')
+  const { conversation, slot } = session
+  await nextTick()
+  expect(slot.value).toBeNull()
+  serverTells(conversation, 0)
+  await nextTick()
+  expect(slot.value?.kind).toBe('requesting')
+  serverTells(conversation, null)
+  await nextTick()
+  expect(slot.value).toBeNull()
+})
+
+// The request after a call's result, and the one a steer sent now starts
+// again, are waits no press began: the server names no action for them, and
+// the row counts from its start, as every other page does.
+test('a wait within the turn counts from the server\'s start, the message\'s from its press', async () => {
+  using session = slotOver('idle')
   const { conversation, slot, at } = session
   at(5_000)
-  conversation.pendingSubmissions = [sent()]
-  await nextTick()
+  sending(conversation, [sent()])
   at(6_000)
   conversation.phase = 'running'
-  conversation.waitingSince = 5_400
+  serverTells(conversation, 5_400, 'turn-1')
+  conversation.pendingSubmissions = []
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 
-  // The answer streams, then its call ran: the wait for the model's next
-  // answer is the server's, from when the call's result went back.
   at(9_000)
-  conversation.blocks = [textBlock(), userBlock(), textBlock()]
-  conversation.pendingSubmissions = []
-  conversation.waitingSince = null
+  serverTells(conversation, null)
   await nextTick()
   expect(slot.value).toBeNull()
   at(20_100)
-  conversation.blocks = [...conversation.blocks, toolCallBlock('completed')]
-  conversation.waitingSince = 20_000
+  serverTells(conversation, 20_000)
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 20_000 })
-})
-
-// The request has shown nothing for 74 s when the user sends a steer now. The
-// server starts the wait again, and the sending page counts from there as every
-// other page does.
-test('a message this page sent counts from its send only for its own wait, not for one a steer sent now starts', async () => {
-  using session = slotOver('idle', [textBlock()])
-  const { conversation, slot, at } = session
-  at(5_000)
-  conversation.pendingSubmissions = [sent()]
-  await nextTick()
-  at(6_000)
-  conversation.phase = 'running'
-  conversation.waitingSince = 5_400
-  conversation.blocks = [textBlock(), userBlock()]
-  conversation.pendingSubmissions = []
-  await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
-
   at(79_400)
-  conversation.waitingSince = 79_400
+  serverTells(conversation, 79_400)
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 79_400 })
 })
 
-test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
-  using session = slotOver('idle', [])
+// Switching to another conversation and back draws the list again. Before,
+// each list counted a wait it was not told the start of from when it was
+// drawn, so the clock went back to 0s at every return, while the same
+// request went on.
+test('a list drawn again during a wait counts on from the wait\'s start', async () => {
+  using session = slotOver('idle')
+  const { conversation, at } = session
+  const drawn = async (ms: number) => {
+    at(ms)
+    const scope = effectScope()
+    const { slot } = scope.run(() => useActivitySlot(sourcesOf(conversation)))!
+    await nextTick()
+    const shown = slot.value
+    scope.stop()
+    return shown
+  }
+  at(5_000)
+  sending(conversation, [sent()])
+  expect(await drawn(5_000)).toEqual({ kind: 'requesting', since: 5_000 })
+  expect(await drawn(7_000)).toEqual({ kind: 'requesting', since: 5_000 })
+  conversation.phase = 'running'
+  serverTells(conversation, 5_400, 'turn-1')
+  expect(await drawn(8_000)).toEqual({ kind: 'requesting', since: 5_000 })
+  conversation.pendingSubmissions = []
+  expect(await drawn(30_000)).toEqual({ kind: 'requesting', since: 5_000 })
+  serverTells(conversation, 40_000)
+  expect(await drawn(52_000)).toEqual({ kind: 'requesting', since: 40_000 })
+})
+
+test('a recovery this page asked for counts from the press, also once the server tells its wait', async () => {
+  using session = slotOver('idle')
   const { conversation, slot, at } = session
-  conversation.pendingSubmissions = [sent()]
+  at(3_000)
+  pressed(conversation.clock, 'resume-1')
+  conversation.sentAction = 'resume-1'
   await nextTick()
-  conversation.pendingSubmissions = [sent('Connection closed before confirmation')]
+  expect(slot.value).toEqual({ kind: 'requesting', since: 3_000 })
+  // The root's entry acknowledges it: the runtime takes its phase and its
+  // wait, then settles the action.
+  at(3_500)
+  conversation.phase = 'running'
+  serverTells(conversation, 3_200, 'resume-1')
+  conversation.sentAction = null
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', since: 3_000 })
+})
+
+test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
+  using session = slotOver('idle')
+  const { conversation, slot, at } = session
+  sending(conversation, [sent()])
+  await nextTick()
+  conversation.pendingSubmissions = [sent('turn-1', 'Connection closed before confirmation')]
+  refused(conversation.clock, 'turn-1')
   await nextTick()
   expect(slot.value).toBeNull()
 
   at(9_000)
-  conversation.pendingSubmissions = [sent()]
+  sending(conversation, [sent()])
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', since: 9_000 })
 })
 
-test('a message sent while the socket reconnects says Connecting, and Requesting starts once the socket is back', async () => {
-  using session = slotOver('idle', [])
+test('a message sent while the socket reconnects says Connecting, and Requesting from the press once the socket is back', async () => {
+  using session = slotOver('idle')
   const { conversation, slot, at } = session
   conversation.load = 'reconnecting'
-  conversation.pendingSubmissions = [sent()]
+  at(5_000)
+  sending(conversation, [sent()])
   await nextTick()
-  expect(slot.value?.kind).toBe('connecting')
+  expect(slot.value).toEqual({ kind: 'connecting' })
 
   at(12_000)
   conversation.load = 'ready'
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'requesting', since: 12_000 })
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
 })
 
 // Back-to-back sends 400 ms apart, the first one failing. The composer's Stop
@@ -298,7 +303,7 @@ test('a message sent while the socket reconnects says Connecting, and Requesting
 // steer that goes as the next message, while the row showed nothing. About 1
 // ms.
 test('the composer shows Stop exactly while the row says Requesting for a message that starts a turn', async () => {
-  using session = slotOver('idle', [textBlock()])
+  using session = slotOver('idle')
   const { conversation, slot } = session
   // As ConversationComposer passes it: running, or a message on its way
   // that starts a turn; SessionComposer shows Stop while running or compacting.
@@ -314,19 +319,19 @@ test('the composer shows Stop exactly while the row says Requesting for a messag
   const both = (shownNow: boolean) => ({ stop: shownNow, requesting: shownNow })
 
   expect(await shown()).toEqual(both(false))
-  conversation.pendingSubmissions = [message('a', 'send')]
+  sending(conversation, [message('a', 'send')])
   expect(await shown()).toEqual(both(true))
   // Sent while the first is on its way: it steers the turn the first starts.
-  conversation.pendingSubmissions = [message('a', 'send'), message('b', 'steer')]
+  sending(conversation, [message('a', 'send'), message('b', 'steer')])
   expect(await shown()).toEqual(both(true))
   // The first is not delivered: the session answers the steer as the next
   // message.
-  conversation.pendingSubmissions = [message('a', 'send', 'Upload failed'), message('b', 'steer')]
+  sending(conversation, [message('a', 'send', 'Upload failed'), message('b', 'steer')])
   expect(await shown()).toEqual(both(true))
-  conversation.pendingSubmissions = [message('a', 'send', 'Upload failed'), message('b', 'steer', 'Upload failed')]
+  sending(conversation, [message('a', 'send', 'Upload failed'), message('b', 'steer', 'Upload failed')])
   expect(await shown()).toEqual(both(false))
   // Retry sends the first again as the next message.
-  conversation.pendingSubmissions = [message('a', 'send'), message('b', 'steer', 'Upload failed')]
+  sending(conversation, [message('a', 'send'), message('b', 'steer', 'Upload failed')])
   expect(await shown()).toEqual(both(true))
   // The backend starts its turn before it writes the message.
   conversation.phase = 'running'
@@ -334,111 +339,9 @@ test('the composer shows Stop exactly while the row says Requesting for a messag
 })
 
 test('a message sent during a turn joins the queue and adds no Requesting under the streaming answer', async () => {
-  using session = slotOver('running', [userBlock(), textBlock()])
+  using session = slotOver('running')
   const { conversation, slot } = session
-  conversation.pendingSubmissions = [{ ...sent(), way: 'queue' }]
+  sending(conversation, [{ ...sent(), way: 'queue' }])
   await nextTick()
   expect(slot.value).toBeNull()
 })
-
-const createdAt = '2026-06-24T00:00:00.000Z'
-const model = null as unknown as BlockWithModel['model']
-
-type BlockWithModel = Extract<Block, { model: unknown }>
-
-function userBlock(): MessageListBlock {
-  return {
-    type: 'user',
-    id: 'user-1',
-    turnId: 'turn-1',
-    createdAt,
-    model,
-    content: [{ type: 'text', text: 'hello' }],
-    preamble: null,
-  }
-}
-
-function steerBlock(): MessageListBlock {
-  return {
-    type: 'steer',
-    id: 'steer-1',
-    turnId: 'turn-1',
-    createdAt,
-    model,
-    content: [{ type: 'text', text: 'steer' }],
-  }
-}
-
-/**
- * A compaction inside a turn shows as its marker at the tail; the turn then
- * asks the model again.
- */
-function compactionMarkerBlock(): MessageListBlock {
-  return {
-    type: 'compaction_marker',
-    id: 'compaction-marker-1',
-    createdAt,
-    model,
-    boundaryId: 'compaction-1',
-    compactedTokens: 1,
-  }
-}
-
-function toolCallBlock(status: ToolCallStatus): MessageListBlock {
-  return {
-    type: 'tool_call',
-    id: `tool-${status}`,
-    run: `tool-${status}`,
-    createdAt,
-    model,
-    toolUseId: `tool-use-${status}`,
-    toolName: 'shell',
-    input: '{"script":"ls"}',
-    status,
-    endedAt: status === 'executing' ? null : createdAt, output: [],
-    view: null,
-  }
-}
-
-function thinkingBlock(): MessageListBlock {
-  return {
-    type: 'thinking',
-    id: 'thinking-1',
-    run: 'thinking-1',
-    createdAt,
-    model,
-    text: 'thinking',
-    signature: null,
-  }
-}
-
-function errorBlock(): MessageListBlock {
-  return {
-    type: 'error',
-    id: 'error-1',
-    createdAt,
-    model,
-    message: 'Overloaded',
-    code: 'overloaded',
-  }
-}
-
-function abortBlock(): MessageListBlock {
-  return {
-    type: 'abort',
-    id: 'abort-1',
-    createdAt,
-    model,
-    isResumed: false,
-  }
-}
-
-function textBlock(): MessageListBlock {
-  return {
-    type: 'text',
-    id: 'text-1',
-    createdAt,
-    model,
-    text: 'answer',
-  }
-}

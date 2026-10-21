@@ -417,7 +417,7 @@ async fn without_rotation_a_usage_limit_offers_to_continue_with_the_other_accoun
         )
         .await;
     assert_eq!(activated.status, StatusCode::OK);
-    socket.send(&ClientFrame::Resume {}).await;
+    socket.send(&ClientFrame::Resume { id: None }).await;
     socket.until_idle().await;
     assert_eq!(accounts_run(&setup.runs), [first.as_str(), second.as_str()]);
     setup.backend.close().await;
