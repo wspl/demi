@@ -1,7 +1,8 @@
+import { toRaw } from 'vue'
 import type { ShownMedium } from '../files/media-viewer'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
-import { messageMedia } from '../markdown/render'
+import { messageMediumReferences, referencedMedia, type MessageMediumReference } from '../markdown/render'
 import type { ConversationFiles, MessageFiles } from '../markdown/types'
 import { previewKind } from '../files/preview'
 import { toolCallTitle } from './block-helpers'
@@ -40,6 +41,24 @@ export function transcriptPictures(rows: readonly MessageListBlock[], context: T
     blockPictures(block, context).map((medium) => ({ ...medium, row: row.id }))))
 }
 
+/**
+ * The pictures each block's texts name, by the text, as the block's last
+ * read found them. The list reads its pictures again on many changes around
+ * them, such as a message's attachment answered or a panel opened, and
+ * reading a text lexes it whole, so a text is lexed once for each version of
+ * it and a long transcript's unchanged messages never again.
+ */
+const named = new WeakMap<object, ReadonlyMap<string, readonly MessageMediumReference[]>>()
+
+/** The pictures `texts`, the texts of `block` in order, name: each as kept, or read now. */
+function namedIn(block: MessageListBlock, texts: readonly string[]): (readonly MessageMediumReference[])[] {
+  const key = toRaw(block)
+  const kept = named.get(key)
+  const read = texts.map((text) => [text, kept?.get(text) ?? messageMediumReferences(text)] as const)
+  named.set(key, new Map(read))
+  return read.map(([, references]) => references)
+}
+
 /** The pictures one block of a row shows. */
 function blockPictures(block: MessageListBlock, context: TranscriptPicturesContext): ShownMedium[] {
   switch (block.type) {
@@ -48,17 +67,17 @@ function blockPictures(block: MessageListBlock, context: TranscriptPicturesConte
       const files = context.files(block.id)
       const brief = childBrief(context.node, block.content)
       if (brief !== null)
-        return messageMedia(brief, files)
+        return namedIn(block, [brief]).flatMap((references) => referencedMedia(references, files))
       const { markdown, capsules } = contentMessage(block.content)
       // Each file stands at a mark between the text around it.
-      return markdown.split(ATTACHMENT_MARK).flatMap((text, index) => {
+      return namedIn(block, markdown.split(ATTACHMENT_MARK)).flatMap((references, index) => {
         const capsule = capsules[index]
         const medium = capsule ? capsuleMedium(capsule, context.address, files) : null
-        return [...messageMedia(text, files), ...(medium ? [medium] : [])]
+        return [...referencedMedia(references, files), ...(medium ? [medium] : [])]
       })
     }
     case 'text':
-      return messageMedia(block.text, context.files(block.id))
+      return namedIn(block, [block.text]).flatMap((references) => referencedMedia(references, context.files(block.id)))
     case 'tool_call':
       return toolPictures(toolMedia(block.output, toolCallTitle(block)), context)
     case 'wakeup':

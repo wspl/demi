@@ -198,7 +198,10 @@ export const ATTACHMENT_ID_ATTRIBUTE = 'data-attachment-id'
 /**
  * An attachment's image or video as the viewer shows it: its copy, which asks
  * when it shows whether the file it was uploaded from opens in its place
- * (`attachmentOrigin`); null for a file of another kind.
+ * (`attachmentOrigin`); null for a file of another kind. The description that
+ * answer carries enters the kept files as one more reading, and the file shows
+ * from the copy's address while the kept files say it has the version the
+ * Host found holding the copy's bytes.
  */
 export function attachmentMedium(id: string, attachment: MessageAttachment, files: MessageFiles | undefined): ShownMedium | null {
   const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
@@ -209,8 +212,19 @@ export function attachmentMedium(id: string, attachment: MessageAttachment, file
   if (!files?.attachmentOrigin || !contents || !attachment.source)
     return { ...shown, src: attachment.url }
   const origin = async () => {
-    const path = await files.attachmentOrigin?.(id, attachment)
-    return path ? { path, contents } : null
+    const found = await files.attachmentOrigin?.(id, attachment)
+    if (!found)
+      return null
+    const { path, described, sameAsCopy } = found
+    // The kept files own the file's description; the answer is one more reading of it.
+    if (described)
+      contents.offerDescription(path, described)
+    const version = described?.value.version
+    return {
+      path,
+      contents,
+      ...(sameAsCopy && version ? { copy: { version, src: attachment.url } } : {}),
+    }
   }
   return { ...shown, src: attachment.url, origin }
 }
@@ -622,13 +636,21 @@ agentMarked.use({
 })
 
 /**
- * The pictures a message shows that open in the media viewer, in order:
- * each image that loads and each attachment block that is an image or a
- * video, named and sized as a click on it names and sizes it. An image
- * inside a link follows the link and is not among them; neither is one still
- * being asked for, or one that shows its alt text.
+ * A picture a message's text names, as its reader finds it with no file
+ * resolved: an attachment block by its number, or an image by its target and
+ * alt text.
  */
-export function messageMedia(src: string, files: MessageFiles | undefined): ShownMedium[] {
+export type MessageMediumReference =
+  | { type: 'attachment'; id: string }
+  | { type: 'image'; href: string; text: string }
+
+/**
+ * The pictures `src`, a message's text, names, in order, which
+ * `referencedMedia` resolves: each image outside a link, and each attachment
+ * block. Reading them lexes the whole text, so a caller that reads them again
+ * for the same text keeps them (`transcriptPictures`).
+ */
+export function messageMediumReferences(src: string): MessageMediumReference[] {
   if (!src.includes('![') && !src.includes('<attachment'))
     return []
   const tokens = agentMarked.lexer(src)
@@ -637,29 +659,45 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
     if (token.type === 'link')
       agentMarked.walkTokens(token.tokens ?? [], (inside) => void linked.add(inside))
   })
-  const media: ShownMedium[] = []
+  const references: MessageMediumReference[] = []
   agentMarked.walkTokens(tokens, (token) => {
-    if (token.type === ATTACHMENT_BLOCK) {
-      const lookup = messageAttachment(files, token.id)
-      if (lookup?.state !== 'found')
-        return
-      const medium = attachmentMedium(token.id, lookup.attachment, files)
-      if (medium)
-        media.push(medium)
-      return
+    if (token.type === ATTACHMENT_BLOCK)
+      references.push({ type: 'attachment', id: token.id })
+    else if (token.type === 'image' && !linked.has(token))
+      references.push({ type: 'image', href: token.href, text: token.text })
+  })
+  return references
+}
+
+/**
+ * The pictures a message shows that open in the media viewer, in order:
+ * each image that loads and each attachment block that is an image or a
+ * video, named and sized as a click on it names and sizes it. An image
+ * inside a link follows the link and is not among them; neither is one still
+ * being asked for, or one that shows its alt text.
+ */
+export function messageMedia(src: string, files: MessageFiles | undefined): ShownMedium[] {
+  return referencedMedia(messageMediumReferences(src), files)
+}
+
+/** `messageMedia` of the pictures a message's text names, read already. */
+export function referencedMedia(references: readonly MessageMediumReference[], files: MessageFiles | undefined): ShownMedium[] {
+  return references.flatMap((reference): ShownMedium[] => {
+    if (reference.type === 'attachment') {
+      const lookup = messageAttachment(files, reference.id)
+      const medium = lookup?.state === 'found' ? attachmentMedium(reference.id, lookup.attachment, files) : null
+      return medium ? [medium] : []
     }
-    if (token.type !== 'image' || linked.has(token))
-      return
-    const image = messageImage(token.href, files)
-    const name = token.text || 'image'
+    const image = messageImage(reference.href, files)
+    const name = reference.text || 'image'
     if (image && 'url' in image)
-      media.push({ kind: 'image', src: image.url, name })
+      return [{ kind: 'image', src: image.url, name }]
     // A Host image is its file, which the viewer shows at the version the page
     // keeps.
-    else if (image && files?.contents)
-      media.push({ kind: 'image', file: { path: image.path, contents: files.contents }, name })
+    if (image && files?.contents)
+      return [{ kind: 'image', file: { path: image.path, contents: files.contents }, name }]
+    return []
   })
-  return media
 }
 
 /** The target of each image of an agent's message, in order, at any depth. */

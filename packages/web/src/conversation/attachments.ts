@@ -1,7 +1,9 @@
 import { computed, type ComputedRef } from 'vue'
-import type { AttachmentLookup, MessageAttachment } from '@demicodes/web-ui/markdown/types'
+import type { AttachmentLookup, MessageAttachment, OriginFile } from '@demicodes/web-ui/markdown/types'
 import { lookupAttachment } from '../api/attachments'
-import { apiRequest } from '../api/client'
+import { apiRequest, readResponse } from '../api/client'
+import { readAtOf } from '../api/files'
+import { attachmentFileSchema } from '../api/generated/web-api'
 import { blobUrl } from '../api/uploads'
 import { useConversations } from './store'
 
@@ -46,23 +48,29 @@ export interface OpeningHost {
 }
 
 /**
- * The Host path of the file attachment `id` was uploaded from, when opening it
- * shows that file (`docs/decisions/0003-attachment-opens-its-file.md`): its Host is
- * the conversation's and online, and the backend, asked once for this opening,
- * finds the file there. The backend asks the Host the conversation runs on
+ * The file attachment `id` was uploaded from, when opening it shows that file
+ * (`docs/decisions/0003-attachment-opens-its-file.md`): its Host is the
+ * conversation's and online, and the backend, asked once for this opening,
+ * finds the file there and answers its description, and whether it holds the
+ * copy's bytes. The backend asks the Host the conversation runs on
  * then, only while it is the attachment's, and never wakes a stopped Cloud
  * (`GET …/attachments/:id/file`). Any other answer, a failed one included,
  * opens the copy. A Host the page knows offline, a stopped Cloud included, or
  * another Host is not asked.
  */
-export async function attachmentOrigin(id: string, { source }: MessageAttachment, host: OpeningHost): Promise<string | null> {
+export async function attachmentOrigin(id: string, { source }: MessageAttachment, host: OpeningHost): Promise<OriginFile | null> {
   if (!source || source.host !== host.device || !host.online) {
     return null
   }
   try {
     // An unreachable backend is no reason to wait: the copy opens.
-    await apiRequest(`/conversations/${encodeURIComponent(host.conversation)}/attachments/${encodeURIComponent(id)}/file`, { waits: false })
-    return source.path
+    const response = await apiRequest(`/conversations/${encodeURIComponent(host.conversation)}/attachments/${encodeURIComponent(id)}/file`, { waits: false })
+    const { size, modifiedAt, version, sameAsCopy } = await readResponse(response, attachmentFileSchema)
+    return {
+      path: source.path,
+      described: { value: { size, modifiedAt, version }, readAt: readAtOf(response.headers) },
+      sameAsCopy,
+    }
   } catch {
     // The file is not there, the Host is another or stopped, or the backend
     // could not say: the copy opens.

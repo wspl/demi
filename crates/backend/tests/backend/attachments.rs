@@ -18,7 +18,7 @@
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
-use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, ConversationAttachment};
+use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, AttachmentFile, ConversationAttachment};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 
@@ -460,11 +460,15 @@ async fn a_reply_shows_the_uploads_of_its_own_agent_and_of_the_one_it_was_forked
 // Each time the page opens an attachment it asks whether the file it was
 // uploaded from is there (`GET .../attachments/:n/file`): yes while the
 // conversation's Host has it, no once it is gone, and no once the conversation
-// runs on another Host, though that Host reads the same path.
+// runs on another Host, though that Host reads the same path. A yes describes
+// the file as its bytes' route does, and says whether an image's file holds
+// the copy's bytes, which the page then shows from the copy it loaded already.
 //
 // Planted defects it catches: the check made on whatever Host the conversation
 // runs on, which finds the path on the second device, since the devices here
-// share one file system; and an attachment of no file that answers yes.
+// share one file system; an attachment of no file that answers yes; an image
+// whose file changed to other bytes of the same size said to hold the copy's;
+// and a description of another version than the bytes' route serves.
 #[tokio::test]
 async fn whether_an_attachments_file_is_there_is_asked_of_the_host_it_came_from() {
     let vendor = MockVendor::start().await;
@@ -474,9 +478,10 @@ async fn whether_an_attachments_file_is_there_is_asked_of_the_host_it_came_from(
     create(&backend, &master, CONVERSATION).await;
     let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
     std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
+    std::fs::write(format!("{root}/login.png"), &*PNG).unwrap();
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
     let uploaded = work
-        .turn(vec![shell("t1", "demi attachment upload notes.md", 30_000), say("uploaded")])
+        .turn(vec![shell("t1", "demi attachment upload notes.md login.png", 30_000), say("uploaded")])
         .await;
     assert_eq!(field(&uploaded.received[0], "exitCode"), "0", "{}", uploaded.received[0]);
     let check = async |number: &str| {
@@ -487,14 +492,35 @@ async fn whether_an_attachments_file_is_there_is_asked_of_the_host_it_came_from(
             )
             .await
     };
+    // The file's description and whether it holds the copy's bytes.
+    let found = async |number: &str| {
+        let answer = check(number).await;
+        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        assert!(answer.headers.contains_key("x-demi-read-at"), "{:?}", answer.headers);
+        answer.json::<AttachmentFile>()
+    };
     let no_file = (StatusCode::NOT_FOUND, ErrorCode::NotFound);
-    assert_eq!(check("a1").await.status, StatusCode::NO_CONTENT);
-    assert_eq!(check("a2").await.refusal(), no_file);
+    let notes = found("a1").await;
+    assert_eq!((notes.size, notes.same_as_copy), (8, false), "a file that is no image");
+    let image = found("a2").await;
+    assert_eq!((image.size, image.same_as_copy), (PNG.len() as u64, true));
+    let served = backend
+        .get(&format!("/api/conversations/{CONVERSATION}/fs/raw?path={root}/login.png"), Some(&master))
+        .await;
+    assert_eq!(served.headers.get("etag").and_then(|tag| tag.to_str().ok()), Some(image.version.as_str()));
+    assert_eq!(check("a3").await.refusal(), no_file);
+
+    let mut other = PNG.to_vec();
+    *other.last_mut().unwrap() ^= 0xff;
+    std::fs::write(format!("{root}/login.png"), &other).unwrap();
+    assert_eq!(found("a2").await.same_as_copy, false, "other bytes of the same size");
+    std::fs::write(format!("{root}/login.png"), &*PNG).unwrap();
+    assert_eq!(found("a2").await.same_as_copy, true);
 
     std::fs::remove_file(format!("{root}/notes.md")).unwrap();
     assert_eq!(check("a1").await.refusal(), no_file);
     std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
-    assert_eq!(check("a1").await.status, StatusCode::NO_CONTENT);
+    assert_eq!(check("a1").await.status, StatusCode::OK);
 
     let beta = backend.pair(&master, "beta").await;
     let on_beta = beta.runner.home_dir().to_owned();

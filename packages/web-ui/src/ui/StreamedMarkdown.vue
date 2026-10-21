@@ -223,7 +223,7 @@ async function openCard(place: HTMLElement): Promise<void> {
   // A question that fails is answered as a file that is not there: the copy opens.
   const origin = shown.open && shown.attachmentOrigin ? await shown.attachmentOrigin(id, attachment).catch(() => null) : null
   if (origin && shown.open)
-    shown.open({ path: origin, line: null })
+    shown.open({ path: origin.path, line: null })
   else
     shown.openAttachment?.(id, attachment)
 }

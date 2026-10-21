@@ -1,5 +1,6 @@
 import type { MessageAgents } from '../agent/agent-links'
-import type { FileContents } from '../files/types'
+import type { Answered } from '../files/file-cache'
+import type { FileContents, FileDescription } from '../files/types'
 import type { HostImage } from '../files/host-image'
 
 /**
@@ -64,6 +65,24 @@ export interface MessageFileTarget {
   root?: string
 }
 
+/** The file an attachment opens in place of its copy (`attachmentOrigin`), as the Host answered of it. */
+export interface OriginFile {
+  /** Its full path on the conversation's Host. */
+  path: string
+  /**
+   * Its description as the Host read it to answer, at the Host's number,
+   * which enters the kept files as one more reading of it
+   * (`FileContents.offerDescription`); absent where the answer carries none.
+   */
+  described?: Answered<FileDescription>
+  /**
+   * The file at the described version, and at that version alone, holds the
+   * attachment's own bytes, which then show from the copy the page loaded
+   * already.
+   */
+  sameAsCopy: boolean
+}
+
 /**
  * What the host offers for the files a conversation's messages name on its
  * Host and the attachments they name.
@@ -118,14 +137,14 @@ export interface ConversationFiles {
    */
   openAttachment?(id: string, attachment: MessageAttachment): void
   /**
-   * The Host path of the file `attachment` was uploaded from when opening
-   * the attachment shows that file, as a link to it does: its Host is the
-   * conversation's and online, and the file is there, which the page asks
-   * the Host once for each opening. Null otherwise, and at once, with no
-   * request and no wake, while the Host is offline or its Cloud stopped; the
-   * attachment then opens its copy. Absent, every attachment opens its copy.
+   * The file `attachment` was uploaded from when opening the attachment shows
+   * that file, as a link to it does: its Host is the conversation's and
+   * online, and the file is there, which the page asks the Host once for each
+   * opening. Null otherwise, and at once, with no request and no wake, while
+   * the Host is offline or its Cloud stopped; the attachment then opens its
+   * copy. Absent, every attachment opens its copy.
    */
-  attachmentOrigin?(id: string, attachment: MessageAttachment): Promise<string | null>
+  attachmentOrigin?(id: string, attachment: MessageAttachment): Promise<OriginFile | null>
   /**
    * Shows a commit a message links as `commit:3f2a9c1`, or as
    * `commit:src/v8@86229da` in the repository of that folder, in the Change

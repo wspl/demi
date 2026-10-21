@@ -104,6 +104,7 @@ export function keptContents(
     url: reads.url,
     describe: (path) => files.get(spec(path)),
     showDescription: (path) => files.show(spec(path)),
+    offerDescription: (path, answered) => files.offer(spec(path), answered),
     // A part of a file is read for the view that shows it, never kept.
     ...(reads.readStart ? { readStart: reads.readStart } : {}),
   }

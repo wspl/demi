@@ -180,6 +180,25 @@ const transcriptViewerPictures = viewerPictures.slice(0, 3).map(shownPicture)
 function showTranscriptPictures(): void {
   mediaViewer.show(transcriptViewerPictures[0]!, () => transcriptViewerPictures)
 }
+
+/** How long the slow specimen's Host takes to answer whether its attachment opens the file, in milliseconds. */
+const SLOW_HOST_MS = 3000
+
+/**
+ * An attachment whose Host takes three seconds to answer whether its file is
+ * there, as a slow link to a device would, then says no, so its copy opens:
+ * the viewer shows the loading pane meanwhile, never the copy.
+ */
+function showSlowPicture(): void {
+  const picture = viewerPictures[0]!
+  mediaViewer.show({
+    kind: 'image',
+    src: galleryBlobUrl(picture.blob, 'image/png'),
+    name: picture.name,
+    size: blobSize(picture.blob),
+    origin: () => new Promise<null>((resolve) => setTimeout(() => resolve(null), SLOW_HOST_MS)),
+  })
+}
 const inlineDialogOpen = ref(true)
 // Layers: a dialog, the model menu opened from it, and that menu's submenu, all pinned open.
 const layersDialogOpen = ref(true)
@@ -1451,7 +1470,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Media Viewer"
-        note="The page’s one viewer, the floating window above showing a picture. The window opens at the picture’s actual size in device pixels: on a display of two device pixels per page pixel a 2880 × 1800 screenshot is 1440 × 900 page pixels large, and a window opens that large plus its title bar when the page allows, otherwise scaled down to fit 60% of the page’s width and 70% of its height; a picture smaller than 320 × 240 sits centred in a window of that size, never enlarged. The first picture opens centred over the conversation; another opened while the window shows resizes it about its centre; a size you drag lasts while that picture shows. The title bar gives the pixel size and the zoom, 480 × 300 · 100%, where 100% is the actual size. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. Opened among a transcript’s pictures, as the three-pictures specimen is, the arrow keys step through them and the title bar counts them; on a phone, where the viewer fills the screen, a finger swiped left shows the next picture and one swiped right the previous, the picture following the finger and settling or springing back, and stopping at the first and the last; a tap on the empty space around the picture closes the viewer, while a tap on the picture toggles its actual size. A zoomed picture is moved by the drag instead of swiped. The buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does."
+        note="The page’s one viewer, the floating window above showing a picture. The window opens at the picture’s actual size in device pixels: on a display of two device pixels per page pixel a 2880 × 1800 screenshot is 1440 × 900 page pixels large, and a window opens that large plus its title bar when the page allows, otherwise scaled down to fit 60% of the page’s width and 70% of its height; a picture smaller than 320 × 240 sits centred in a window of that size, never enlarged. The first picture opens centred over the conversation; another opened while the window shows resizes it about its centre; a size you drag lasts while that picture shows. The title bar gives the pixel size and the zoom, 480 × 300 · 100%, where 100% is the actual size. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. Opened among a transcript’s pictures, as the three-pictures specimen is, the arrow keys step through them and the title bar counts them; on a phone, where the viewer fills the screen, a finger swiped left shows the next picture and one swiped right the previous, the picture following the finger and settling or springing back, and stopping at the first and the last; a tap on the empty space around the picture closes the viewer, while a tap on the picture toggles its actual size. A zoomed picture is moved by the drag instead of swiped. The buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does. A picture still on its way, such as an attachment whose Host is slow to say whether its file is there, shows nothing for a moment and then a spinner in the middle until it shows."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen v-for="picture in viewerPictures" :key="picture.name" :variant="picture.variant">
@@ -1459,6 +1478,9 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           </GallerySpecimen>
           <GallerySpecimen variant="three pictures of a transcript: arrow keys step, on a phone a swipe">
             <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showTranscriptPictures">Open the three pictures</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="an attachment whose Host answers after 3 seconds: loading, then its copy">
+            <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showSlowPicture">Open a slow attachment</Button>
           </GallerySpecimen>
         </div>
       </GallerySection>

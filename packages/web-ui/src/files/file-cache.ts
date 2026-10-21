@@ -23,6 +23,11 @@
  *   a read nobody asked for goes through the route of the view that came on
  *   screen last.
  * - Reads of one entry share one request.
+ * - Readings of one entry are ordered by their numbers, whatever order they
+ *   arrive in: one read before the answer kept never replaces it. A reading
+ *   the page made another way, such as a file's description an attachment's
+ *   question carried, is one more reading (`offer`), so the cache stays the
+ *   one owner of what a file is now.
  * - At most `budget` of text and `MAX_ENTRIES` entries stay, the entries shown
  *   longest ago leaving first.
  *
@@ -117,6 +122,12 @@ export interface ShownEntry<T> {
   readonly failure: FileBrowserFailure | null
   /** A read is on its way: the first, which a view shows as loading, or a check, which it does not. */
   readonly reading: boolean
+  /**
+   * The Host reported a change after the answer kept, which is being read
+   * again: a view that must never show an outdated answer first, as the
+   * media viewer's opening, waits for it.
+   */
+  readonly outdated: boolean
   /**
    * Why the Host does not watch it, while a subscription it depends on is
    * refused or unavailable: the view says quietly that it shows what was
@@ -270,7 +281,7 @@ class Entry<T> {
   readonly spec: Omit<KeptSpec<T>, 'read' | 'watch' | 'details'>
   /** The subscriptions it holds while kept; none until a view shows or reads it. */
   readonly subscriptions = shallowRef<readonly Subscription[]>([])
-  readonly state: { value: T | undefined; answer: KeptAnswer | null; failure: FileBrowserFailure | null; reading: boolean; readonly unwatched: string | null }
+  readonly state: { value: T | undefined; answer: KeptAnswer | null; failure: FileBrowserFailure | null; reading: boolean; outdated: boolean; readonly unwatched: string | null }
   /** The views that hold it, the one that came on screen last at the end. */
   readonly holders = new Set<Holder<T>>()
   /** The last answer's version and number. */
@@ -296,6 +307,7 @@ class Entry<T> {
       answer: null,
       failure: null,
       reading: false,
+      outdated: false,
       get unwatched() {
         for (const subscription of subscriptions.value) {
           const { status, reason } = subscription.state
@@ -353,6 +365,22 @@ class Entry<T> {
         after = { epoch, number: since }
     }
     return after
+  }
+
+  /**
+   * Whether an answer read at `at` is older than the one kept, which then
+   * stays: readings of one run are ordered by their numbers, whatever order
+   * they arrive in.
+   */
+  keepsNewerThan(at: ReadAt | null): boolean {
+    const held = this.readAt
+    return this.state.answer !== null && held !== null && at !== null && held.epoch === at.epoch && at.number < held.number
+  }
+
+  /** Whether the Host reported a change of what it depends on after the number `at`. */
+  changedAfter(at: ReadAt): boolean {
+    return this.subscriptions.value.some((subscription) =>
+      subscription.epoch === at.epoch && subscription.changedAt > at.number)
   }
 
   /** What it subscribes to: the subjects its answer depends on. */
@@ -504,6 +532,12 @@ export class HostFiles implements WatchListener {
       let answered = false
       try {
         const answer = await read(entry.version, entry.readAfter(Date.now()))
+        // A reading taken before the one kept, which arrived another way
+        // meanwhile (`offer`), says nothing newer.
+        if (entry.keepsNewerThan(answer.readAt)) {
+          answered = true
+          return
+        }
         entry.readAt = answer.readAt
         // Unchanged: the answer kept is the Host's, and nothing a view shows changes.
         if (!('unchanged' in answer)) {
@@ -522,7 +556,9 @@ export class HostFiles implements WatchListener {
       } catch (error) {
         const failure = failureOf(error)
         const kind = answerOf(failure.kind)
-        if (kind !== null && error instanceof FileBrowserError) {
+        if (kind !== null && error instanceof FileBrowserError && entry.keepsNewerThan(error.readAt)) {
+          answered = true
+        } else if (kind !== null && error instanceof FileBrowserError) {
           // An answer like any other, as a first read's would be.
           entry.state.value = undefined
           entry.state.answer = kind
@@ -543,6 +579,8 @@ export class HostFiles implements WatchListener {
       // run went live while it was on its way: it is read once more. An
       // answer of a run the watch has not gone live in yet waits for that.
       const freshness = answered && entry.shown > 0 ? entry.freshness(Date.now()) : 'unknown'
+      if (answered)
+        entry.state.outdated = freshness === 'stale'
       if (freshness === 'stale' || (freshness === 'restarted' && entry.lives() !== lives))
         this.reread(entry)
       this.evict()
@@ -640,8 +678,7 @@ export class HostFiles implements WatchListener {
     entry.holders.add(holder)
     entry.lastShown = ++this.clock
     this.follow(entry as Entry<unknown>, holder.watch)
-    if (entry.freshness(Date.now()) !== 'current')
-      void this.read(entry, spec.read)
+    this.check(entry as Entry<unknown>, spec.read as ReadEntry<unknown>)
     this.evict()
     let released = false
     return {
@@ -673,10 +710,44 @@ export class HostFiles implements WatchListener {
         entry.holders.add(holder)
         entry.lastShown = ++this.clock
         this.follow(entry as Entry<unknown>, holder.watch)
-        if (entry.freshness(Date.now()) !== 'current')
-          void this.read(entry, spec.read)
+        this.check(entry as Entry<unknown>, spec.read as ReadEntry<unknown>)
       },
     }
+  }
+
+  /** Reads through `read` an entry a view came to show that is not current, noting whether it is known outdated. */
+  private check(entry: Entry<unknown>, read: ReadEntry<unknown>): void {
+    const freshness = entry.freshness(Date.now())
+    if (freshness === 'current')
+      return
+    entry.state.outdated = freshness === 'stale'
+    void this.read(entry, read)
+  }
+
+  /**
+   * Takes `answered`, a reading of the entry `spec` names that the page made
+   * another way, such as the description of a file an attachment's question
+   * carried, as one more reading among the cache's own, without a request.
+   *
+   * It is kept only while it is the newest reading: one taken before the
+   * answer kept, or before a change the Host already reported, is dropped,
+   * and a later read of its own replaces it as any reading does. A reading
+   * at no number is kept only while nothing is.
+   */
+  offer<T>(spec: KeptSpec<T>, answered: Answered<T>): void {
+    const entry = this.entry(spec)
+    const at = answered.readAt
+    const known = at === null ? entry.state.answer !== null : entry.keepsNewerThan(at) || entry.changedAfter(at)
+    if (known)
+      return
+    entry.readAt = at
+    entry.state.value = answered.value
+    entry.state.answer = 'value'
+    entry.state.failure = null
+    entry.state.outdated = false
+    entry.version = entry.spec.version?.(answered.value) ?? null
+    this.measure(entry as Entry<unknown>, spec.size(answered.value))
+    this.evict()
   }
 
   /**
@@ -752,6 +823,8 @@ export class HostFiles implements WatchListener {
       const unnumbered = entry.state.answer !== null && entry.readAt === null && !entry.spec.immutable &&
         entry.readAfter(now) !== null
       const freshness = entry.freshness(now)
+      if (freshness === 'stale')
+        entry.state.outdated = true
       if (failed || unnumbered || freshness === 'stale' || freshness === 'restarted')
         this.reread(entry)
     }

@@ -109,7 +109,7 @@ export interface ChangeSources {
 export const emptyChangeSet: ChangeSetSource = {
   files: [],
   showSides: () => ({
-    entry: { value: undefined, answer: 'gone', failure: null, reading: false, unwatched: null },
+    entry: { value: undefined, answer: 'gone', failure: null, reading: false, outdated: false, unwatched: null },
     retry: () => Promise.resolve(),
     release: () => {},
     away: () => {},

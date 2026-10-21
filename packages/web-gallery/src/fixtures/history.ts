@@ -74,6 +74,7 @@ function fixed<T>(read: () => { value: T | undefined; answer: KeptAnswer }): Sho
     },
     failure: null,
     reading: false,
+    outdated: false,
     unwatched: null,
   }
   return { entry, retry: () => Promise.resolve(), release: () => {}, away: () => {}, back: () => {} }
