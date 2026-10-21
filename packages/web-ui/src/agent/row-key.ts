@@ -30,11 +30,12 @@ export function rowKey(block: MessageListBlock): string {
 /**
  * Whether the list draws `row` with `FunctionalBlock`, the 28px face of the
  * agent's work and the tail's state: a step or a run, a command's notice, an
- * agent's receipt, the Stopped row and the wait row (Requesting or
- * Connecting). Such a row enters as chrome (`chromeEntrance`) and rolls into
- * another such row (`rowFace`). Every other row, the agent's text, a message
- * bubble (another agent's message included, `receivedAsBubble`), an error, a
- * compaction rule, appears and changes in place.
+ * agent's receipt, the Stopped row, the wait row (Requesting or Connecting)
+ * and a share's note of steps not shared (`NoticeRow`). Such a row enters as
+ * chrome (`chromeEntrance`) and rolls into another such row (`rowFace`).
+ * Every other row, the agent's text, a message bubble (another agent's
+ * message included, `receivedAsBubble`), an error, a compaction rule, appears
+ * and changes in place.
  */
 export function drawnAsFunctionalBlock(row: MessageListBlock): boolean {
   switch (row.type) {
@@ -47,6 +48,7 @@ export function drawnAsFunctionalBlock(row: MessageListBlock): boolean {
     case 'work_group':
     case 'abort':
     case 'activity_slot':
+    case 'steps_not_shared':
       return true
     default:
       return false

@@ -96,6 +96,11 @@ async function rolls(before: ListState, after: Partial<ListState>): Promise<{ fr
 const asked: Block[] = [userBlock('u-1', 'm-1', 'What does the folder hold?')]
 const requesting = (): ListState => ({ blocks: asked, phase: 'running', activity: WAITING, pendingAction: null })
 
+test('a share\'s note of steps not shared is drawn as a functional row', async () => {
+  const { drawnAsFunctionalBlock } = await import('../row-key')
+  expect(drawnAsFunctionalBlock({ type: 'steps_not_shared', id: 'steps:1', count: 3, after: null })).toBe(true)
+})
+
 test('the answer\'s text takes the Requesting row\'s place without a roll', async () => {
   expect(await rolls(requesting(), { blocks: [...asked, answer], activity: ANSWERED })).toEqual({ frames: [[], [], []], tail: null })
 })
