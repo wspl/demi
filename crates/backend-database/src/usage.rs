@@ -8,15 +8,31 @@
 //! of its rows and the number of its turn calls (`usage_costs`), which the row's
 //! insert adds to in the same transaction. A turn call is numbered among its
 //! agent's and keeps why it missed the cache, judged from the agent's previous
-//! call as it is written. So no read of a cost, and no new row, reads more than
-//! a few rows of the ledger: a page reads an agent's totals with its metadata,
-//! and the recent calls behind its cache chart only when the chart opens.
+//! call as it is written. So no read of a cost reads the ledger, and a page
+//! reads an agent's totals with its metadata.
+//!
+//! # A cache chart
+//!
+//! Each agent's cache hit rate and the chart of it are counted here from its
+//! latest turn calls, at most 400
+//! (`docs/decisions/0019-the-server-counts-the-cache-chart.md`): as a turn
+//! call's row is written, in its transaction, and for each agent as a
+//! conversation's tree opens. The window's calls are found by the agent's
+//! index from its latest row back, so a count reads the window's rows and no
+//! others.
+//!
+//! ```text
+//!  calls  1 ··· 600 [601 ··· 610] [611 ··· 620] ··· [991 ··· 1000]
+//!                    └ point 1 ┘   └ point 2 ┘        └ point 40 ┘
+//!  size = ⌈min(last, 400) / 40⌉, the window starts at a point's first
+//!  call, so a new call changes only the last point
+//! ```
 //!
 //! The counts are the vendor's, so the ledger is a record for reconciliation and
 //! not a bill. Prices tiered by a request's length, as some models charge more
 //! past 200K tokens, are not modelled: a call is priced at the model's base rates.
 
-use demi_conversation_socket_protocol::{AgentCost, CacheMiss, CostCall, CostPrice, CostTotals};
+use demi_conversation_socket_protocol::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
 use demi_shared_types::{Cost, Currency, ModelCost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::text::EmailAddress;
@@ -28,8 +44,16 @@ use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 
-/// How many of an agent's latest turn calls a cache chart reads at most.
-pub const CHART_CALLS: u64 = 400;
+/// The most recent turn calls of an agent a cache chart counts.
+const CHART_WINDOW: u64 = 400;
+
+/// The points a cache chart draws at most: past them a point stands for
+/// several calls, so a long conversation's line stays readable.
+const CHART_POINTS: u64 = 40;
+
+/// The turn calls of an agent from which its chart has points: with fewer, a
+/// line says nothing a user can read and the rate alone says it.
+const CHART_CALLS: usize = 4;
 
 /// One call to a vendor: whose it was, what it was for, with which entry,
 /// account and model, the vendor's counts for it alone, how it ended and
@@ -134,6 +158,9 @@ pub struct UsageWritten {
     /// The kept cost of that agent, or of the rows of no agent, with the
     /// row.
     pub cost: AgentCost,
+    /// The agent's cache chart with the row, for a turn call; none for any
+    /// other row, which leaves it as it was.
+    pub chart: Option<CacheChart>,
 }
 
 /// A window of the account's quota as a call's response reported it, as
@@ -211,7 +238,7 @@ impl ControlService {
         let user = row.user.clone();
         let conversation = row.conversation.clone();
         let agent = row.agent;
-        let (id, totals) = self.call(move |connection, _| {
+        let (id, cost, chart) = self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let call = match (row.agent, row.purpose, row.usage) {
                 (Some(agent), "turn", Some(usage)) => Some(next_call(
@@ -292,15 +319,20 @@ impl ControlService {
             };
             add_cost(&transaction, row.conversation.as_str(), row.agent, &added, call.is_some())?;
             let totals = kept_cost(&transaction, row.conversation.as_str(), row.agent)?;
+            let chart = match (row.agent, call) {
+                (Some(agent), Some(call)) => Some(agent_chart(&transaction, row.conversation.as_str(), agent, call.number)?),
+                _ => None,
+            };
             transaction.commit()?;
-            Ok((id, totals))
+            Ok((id, totals, chart))
         })
         .await?;
         self.announce_usage(UsageWritten {
             user,
             conversation,
             agent,
-            cost: totals,
+            cost,
+            chart,
         });
         Ok(id)
     }
@@ -324,37 +356,32 @@ impl ControlService {
         .await
     }
 
-    /// The turn calls of the conversation's agent `agent` numbered after
-    /// `after`, oldest first: at most the latest `limit` of them, which the
-    /// cache chart draws.
-    pub async fn agent_calls(
-        &self,
-        conversation: ConversationId,
-        agent: u64,
-        after: u64,
-        limit: u64,
-    ) -> Result<Vec<CostCall>, StorageError> {
+    /// The cache chart of each agent of the conversation that made a turn
+    /// call, by its number.
+    pub async fn conversation_charts(&self, conversation: ConversationId) -> Result<Vec<(u64, CacheChart)>, StorageError> {
         self.call(move |connection, _| {
-            let mut statement = connection.prepare_cached(
-                "SELECT call_number, started_at, ended_at, input_tokens, cache_write_tokens, cache_read_tokens,
-                   api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
-                   cost, cost_currency, after_compaction, miss
-                 FROM usage_ledger
-                 WHERE conversation_id = ?1 AND agent = ?2 AND call_number > ?3
-                 ORDER BY rowid DESC LIMIT ?4",
-            )?;
-            let mut rows = statement.query(params![
-                conversation.as_str(),
-                column_count(agent),
-                column_count(after),
-                column_count(limit)
-            ])?;
-            let mut calls = Vec::new();
-            while let Some(row) = rows.next()? {
-                calls.push(cost_call(row)?);
+            let transaction = connection.transaction()?;
+            let agents = {
+                let mut statement = transaction.prepare_cached(
+                    "SELECT agent, calls FROM usage_costs
+                     WHERE conversation_id = ?1 AND agent IS NOT NULL AND calls > 0 ORDER BY agent",
+                )?;
+                let mut rows = statement.query([conversation.as_str()])?;
+                let mut agents = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let count = |column: &'static str| -> Result<u64, StorageError> {
+                        decode("usage_costs", column, u64::try_from(row.get::<_, i64>(column)?))
+                    };
+                    agents.push((count("agent")?, count("calls")?));
+                }
+                agents
+            };
+            let mut charts = Vec::with_capacity(agents.len());
+            for (agent, last) in agents {
+                charts.push((agent, agent_chart(&transaction, conversation.as_str(), agent, last)?));
             }
-            calls.reverse();
-            Ok(calls)
+            transaction.commit()?;
+            Ok(charts)
         })
         .await
     }
@@ -694,8 +721,116 @@ fn agent_cost(row: &Row<'_>) -> Result<KeptCost, StorageError> {
     })
 }
 
-/// A turn call's row as the cache chart plots it.
-fn cost_call(row: &Row<'_>) -> Result<CostCall, StorageError> {
+/// A turn call's row as a cache chart counts it.
+#[derive(Debug, Clone, PartialEq)]
+struct ChartCall {
+    /// Its number among its agent's turn calls, from 1.
+    number: u64,
+    started_at: Timestamp,
+    input_tokens: u64,
+    cache_write_tokens: u64,
+    cache_read_tokens: u64,
+    /// Its tokens' price, or the vendor's own cost in dollars; none when
+    /// neither is known.
+    price: Option<f64>,
+    after_compaction: bool,
+    miss: Option<CacheMiss>,
+}
+
+impl ChartCall {
+    /// The tokens of its prompt: uncached, written to the cache and read
+    /// from it.
+    fn prompt(&self) -> u64 {
+        self.input_tokens + self.cache_write_tokens + self.cache_read_tokens
+    }
+}
+
+/// The calls each point stands for and the number of the first call a
+/// cache chart counts, when its agent's latest turn call is `last`.
+fn chart_window(last: u64) -> (u64, u64) {
+    let size = last.min(CHART_WINDOW).div_ceil(CHART_POINTS).max(1);
+    let first = last.div_ceil(size).saturating_sub(CHART_POINTS) * size + 1;
+    (size, first)
+}
+
+/// The cache chart of the conversation's agent `agent`, whose latest turn
+/// call is `last`.
+fn agent_chart(connection: &Connection, conversation: &str, agent: u64, last: u64) -> Result<CacheChart, StorageError> {
+    let (size, first) = chart_window(last);
+    // The window's calls are the agent's latest turn calls, so the scan
+    // back from its latest row stops at the window's first.
+    let mut statement = connection.prepare_cached(
+        "SELECT call_number, started_at, ended_at, input_tokens, cache_write_tokens, cache_read_tokens,
+           api_price_input, api_price_cache_write, api_price_cache_read, api_price_output,
+           cost, cost_currency, after_compaction, miss
+         FROM usage_ledger
+         WHERE conversation_id = ?1 AND agent = ?2 AND call_number >= ?3
+         ORDER BY rowid DESC LIMIT ?4",
+    )?;
+    let mut rows = statement.query(params![
+        conversation,
+        column_count(agent),
+        column_count(first),
+        column_count(last.saturating_sub(first) + 1)
+    ])?;
+    let mut calls = Vec::new();
+    while let Some(row) = rows.next()? {
+        calls.push(chart_call(row)?);
+    }
+    calls.reverse();
+    Ok(count_chart(size, &calls))
+}
+
+/// The share of `calls`' prompt tokens read from the cache; none when they
+/// sent no prompt.
+fn hit_rate(calls: &[ChartCall]) -> Option<f64> {
+    let prompt: u64 = calls.iter().map(ChartCall::prompt).sum();
+    let read: u64 = calls.iter().map(|call| call.cache_read_tokens).sum();
+    // A count is far below 2^53, where an f64 stops being exact.
+    (prompt > 0).then(|| read as f64 / prompt as f64)
+}
+
+/// The chart of a window's `calls`, oldest first, each point of `size`
+/// consecutive calls counted from the agent's call 1.
+fn count_chart(size: u64, calls: &[ChartCall]) -> CacheChart {
+    let start = |call: &ChartCall| (call.number - 1) / size * size + 1;
+    let points = if calls.len() < CHART_CALLS {
+        Vec::new()
+    } else {
+        calls
+            .chunk_by(|a, b| start(a) == start(b))
+            .map(|group| {
+                let (head, tail) = (&group[0], &group[group.len() - 1]);
+                let mut misses = Vec::new();
+                for miss in group.iter().filter_map(|call| call.miss) {
+                    if !misses.contains(&miss) {
+                        misses.push(miss);
+                    }
+                }
+                let prices: Vec<f64> = group.iter().filter_map(|call| call.price).collect();
+                ChartPoint {
+                    first: start(head),
+                    last: tail.number,
+                    rate: hit_rate(group).unwrap_or(0.0),
+                    from: head.started_at,
+                    to: tail.started_at,
+                    misses,
+                    after_compaction: group.iter().any(|call| call.after_compaction),
+                    price: (!prices.is_empty()).then(|| prices.iter().sum()),
+                    rewritten: (group.len() == 1).then(|| head.input_tokens + head.cache_write_tokens),
+                }
+            })
+            .collect()
+    };
+    CacheChart {
+        rate: hit_rate(calls),
+        size,
+        points,
+    }
+}
+
+/// A turn call's row as a cache chart counts it.
+fn chart_call(row: &Row<'_>) -> Result<ChartCall, StorageError> {
     let count = |column: &'static str| -> Result<u64, StorageError> {
         decode("usage_ledger", column, u64::try_from(row.get::<_, i64>(column)?))
     };
@@ -723,7 +858,7 @@ fn cost_call(row: &Row<'_>) -> Result<CostCall, StorageError> {
         .get::<_, Option<String>>("miss")?
         .map(|miss| decode("usage_ledger", "miss", miss.parse::<CacheMiss>()))
         .transpose()?;
-    Ok(CostCall {
+    Ok(ChartCall {
         number: count("call_number")?,
         started_at,
         input_tokens: count("input_tokens")?,
@@ -1008,12 +1143,13 @@ mod tests {
         ]);
         write(&control, &user, calls).await;
 
-        let calls = control
-            .agent_calls(ConversationId::try_from(CONVERSATION).unwrap(), 0, 0, 100)
+        // Seventeen calls: a point each.
+        let charts = control
+            .conversation_charts(ConversationId::try_from(CONVERSATION).unwrap())
             .await
             .unwrap();
         let read: Vec<(bool, Option<CacheMiss>)> =
-            calls.iter().map(|call| (call.after_compaction, call.miss)).collect();
+            charts[0].1.points.iter().map(|point| (point.after_compaction, point.misses.first().copied())).collect();
         assert_eq!(
             read,
             [
@@ -1049,7 +1185,8 @@ mod tests {
     /// agent's calls are its turns alone.
     ///
     /// Planted defects: a cost in yuan counted as dollars, a title counted as
-    /// an agent, or a subagent's call among the main conversation's.
+    /// an agent, or a subagent's call among the main conversation's, in its
+    /// cost or its cache chart.
     ///
     /// Six rows of an in-memory ledger: milliseconds.
     #[tokio::test]
@@ -1119,9 +1256,100 @@ mod tests {
             (1.75, 2.5, 3.125, 4.625)
         );
 
-        // One agent's calls: its turn call alone.
-        let calls = control.agent_calls(conversation, 1, 0, 100).await.unwrap();
-        assert_eq!(calls.iter().map(|call| call.price).collect::<Vec<_>>(), [Some(10.0)]);
+        // Each agent's chart counts its own turn calls alone: an image is
+        // none.
+        let charts = control.conversation_charts(conversation).await.unwrap();
+        let rates: Vec<(u64, Option<f64>)> = charts.iter().map(|(agent, chart)| (*agent, chart.rate)).collect();
+        assert_eq!(rates, [(0, Some(0.5)), (1, Some(0.5)), (3, Some(1.0 / 3.0))]);
+        control.close().await.unwrap();
+    }
+
+    /// An agent's cache chart, as each of its turn calls announces it: the
+    /// rate over its latest calls, at most 400, and at most 40 points of
+    /// them, each of `size` consecutive calls counted from call 1, from its
+    /// fourth call (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
+    ///
+    /// - A point names its calls' numbers and when the first and the last
+    ///   started, their rate, their price, the causes of their misses each
+    ///   once, and whether a compaction came before one of them; a point of
+    ///   one call also what the call wrote again.
+    /// - The window starts at a point's first call, so a new call changes
+    ///   only the last point: past 400 calls it moves on by a whole point,
+    ///   and the rate no longer counts the calls it left.
+    ///
+    /// Planted defects: a window of the latest 400 calls whatever the
+    /// points, a point of a size that does not divide its calls from 1, a
+    /// cause counted twice, the rate over every call, or points before the
+    /// fourth call.
+    ///
+    /// 411 rows of a ledger on disk, each counted as written: under a
+    /// second.
+    #[tokio::test]
+    async fn the_cache_chart_counts_the_latest_calls_in_at_most_forty_points_as_they_arrive() {
+        let (_data, control, user) = ledger().await;
+        let mut written = control.usage_written();
+        let mut charts = Vec::new();
+        // The first ten calls miss the cache whole; the others read 90% of
+        // a 10,000-token prompt from it.
+        let at = |number: i64| number * MINUTE;
+        let missed = |number: i64| turn(0, 10_000, 0, at(number));
+        let hit = |number: i64| turn(1_000, 0, 9_000, at(number));
+        for number in 1..=401_i64 {
+            let call = match number {
+                ..=10 => missed(number),
+                // Two misses of one cause and one of another in the point of
+                // calls 61 to 70, which 400 calls make: six minutes after the
+                // previous call, the cache expired, and in between the model
+                // changed.
+                63 => Call { start: at(number) + 6 * MINUTE, ..missed(number) },
+                64 => Call { model: "model-2", ..missed(number) },
+                65 => Call { model: "model-2", start: at(number) + 6 * MINUTE, ..missed(number) },
+                66 => Call { model: "model-2", ..hit(number) },
+                _ => hit(number),
+            };
+            // An answered compaction before call 125.
+            if number == 125 {
+                write(&control, &user, vec![Call { purpose: "compaction", ..hit(number) }]).await;
+                written.recv().await.unwrap();
+            }
+            write(&control, &user, vec![call]).await;
+            charts.push(written.recv().await.unwrap().chart.expect("a turn call's chart"));
+        }
+        let chart = |calls: usize| &charts[calls - 1];
+        let shape = |calls: usize| {
+            let chart = chart(calls);
+            let points = &chart.points;
+            (chart.size, points.len(), points.first().map(|point| (point.first, point.last)), points.last().map(|point| (point.first, point.last)))
+        };
+        assert_eq!(chart(3).rate, Some(0.0));
+        assert_eq!(shape(3), (1, 0, None, None));
+        assert_eq!(shape(4), (1, 4, Some((1, 1)), Some((4, 4))));
+        assert_eq!(shape(40), (1, 40, Some((1, 1)), Some((40, 40))));
+        assert_eq!(shape(41), (2, 21, Some((1, 2)), Some((41, 41))));
+        assert_eq!(shape(199), (5, 40, Some((1, 5)), Some((196, 199))));
+        assert_eq!(shape(400), (10, 40, Some((1, 10)), Some((391, 400))));
+        // Past 400 the window moves on by a whole point: calls 11 to 401,
+        // never 2 to 401, and the ten that missed are no longer counted.
+        assert_eq!(shape(401), (10, 40, Some((11, 20)), Some((401, 401))));
+        assert!((chart(400).rate.unwrap() - (387.0 * 9_000.0) / (400.0 * 10_000.0)).abs() < 1e-9);
+        assert!((chart(401).rate.unwrap() - (388.0 * 9_000.0) / (391.0 * 10_000.0)).abs() < 1e-9);
+
+        let point = |calls: usize, first: u64| chart(calls).points.iter().find(|point| point.first == first).unwrap().clone();
+        let stamp = |number: i64| Timestamp::from_millisecond(1_790_000_000_000 + at(number)).unwrap();
+        let group = point(400, 61);
+        assert_eq!(
+            (group.last, group.from, group.to, group.misses.clone(), group.after_compaction, group.rewritten),
+            (70, stamp(61), stamp(70), vec![CacheMiss::CacheExpired, CacheMiss::ModelChanged], false, None)
+        );
+        // Calls 63 and 65 started late, but the point's range is its calls'.
+        assert!((group.rate - (7.0 * 9_000.0) / (10.0 * 10_000.0)).abs() < 1e-9);
+        assert!(point(400, 121).after_compaction);
+        assert!(!point(400, 111).after_compaction);
+        // A point of one call: the call's own.
+        let single = point(10, 3);
+        assert_eq!((single.last, single.misses.clone(), single.rewritten, single.rate), (3, vec![CacheMiss::NotCached], Some(10_000), 0.0));
+        // No call is priced here: no price.
+        assert_eq!(single.price, None);
         control.close().await.unwrap();
     }
 

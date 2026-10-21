@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
@@ -97,8 +97,8 @@ const props = defineProps<{
   segment?: boolean
   /**
    * The cost of the conversation or the agent the card is for, from its
-   * agents' metadata, with the calls the host reads while the card is open
-   * (`costCalls`). None for a card that shows no cost.
+   * agents' metadata, with the agent's cache chart as its node brought it.
+   * None for a card that shows no cost.
    */
   cost?: CostShown | null
   /**
@@ -131,13 +131,6 @@ const emit = defineEmits<{
    * Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
-  /** Read the calls again after a read that failed. */
-  retryCost: []
-  /**
-   * The card opened or closed: the host reads the calls the Cost section
-   * charts while it is open, and lets them go when it closes.
-   */
-  costCalls: [wanted: boolean]
 }>()
 
 /**
@@ -186,11 +179,6 @@ const open = computed({
   },
 })
 const elevation = useLayerElevation()
-watch(open, (shown) => emit('costCalls', shown), { immediate: true })
-onBeforeUnmount(() => {
-  if (open.value)
-    emit('costCalls', false)
-})
 /**
  * The Cost section shows once the conversation made a call, with the
  * context's part or without it.
@@ -400,7 +388,6 @@ const ringColor = computed(() => {
                   :first="!parts.context"
                   :pinned-tip="costTip"
                   :profiles="costProfiles"
-                  @retry="emit('retryCost')"
                   @toggle="toggle('cost')"
                 />
                 <div v-if="limits" class="pb-3" :class="parts.context || costShown ? 'border-t border-line' : 'pt-1'">

@@ -248,9 +248,10 @@ fn transcript_of(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
 // child's node (`crates/agent-server/src/server/tree.rs`).
 //
 // A running child's brief streams to nobody until the page subscribes,
-// which answers with the child's transcript, and its changes follow from
-// then on. Before, every page received every live child's transcript, which
-// made a conversation with large children slow to open.
+// which answers with the child's transcript and its cache chart, and its
+// changes follow from then on. Before, every page received every live
+// child's transcript, which made a conversation with large children slow to
+// open.
 #[tokio::test(flavor = "local")]
 async fn a_page_receives_a_childs_transcript_only_once_it_shows_the_child() {
     let gate = Gate::new();
@@ -278,9 +279,10 @@ async fn a_page_receives_a_childs_transcript_only_once_it_shows_the_child() {
     let followed = client.next_until(is_closed(&child)).await;
 
     assert!(!unshown.iter().any(transcript_of(&child)), "{unshown:#?}");
-    let [ServerFrame::TranscriptReset { blocks, .. }] = shown.as_slice() else {
-        panic!("the child's transcript alone: {shown:#?}")
+    let [ServerFrame::TranscriptReset { blocks, .. }, ServerFrame::CacheChart { node, .. }] = shown.as_slice() else {
+        panic!("the child's transcript and chart alone: {shown:#?}")
     };
+    assert_eq!(node, &child);
     assert!(brief_of(blocks).contains("Read notes.md"), "{blocks:#?}");
     assert!(
         followed.iter().any(|frame| matches!(frame, ServerFrame::TranscriptPatch { node, .. } if node == &child)),

@@ -234,10 +234,6 @@ const emit = defineEmits<{
    * card showed them, otherwise its Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
-  /** Read the calls again after a read that failed. */
-  retryCost: []
-  /** The context card opened or closed, which reads the root's calls or lets them go. */
-  costCalls: [wanted: boolean]
   /**
    * Files to attach; their capsules land where they were dropped, pasted or
    * picked.
@@ -925,8 +921,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @compact="emit('compact')"
             @open-instruction="emit('openInstruction', $event)"
             @refresh-limits="emit('refreshLimits', $event)"
-            @retry-cost="emit('retryCost')"
-            @cost-calls="emit('costCalls', $event)"
           />
         </template>
 

@@ -423,7 +423,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/agents/{node}/blocks/{block}",
             get(history::block),
         )
-        .route("/conversations/{id}/agents/{node}/calls", get(history::calls))
         .route(
             "/conversations/{id}/commands/{command}",
             get(history::command),

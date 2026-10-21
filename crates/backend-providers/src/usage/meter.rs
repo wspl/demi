@@ -533,7 +533,9 @@ mod tests {
         runtime.run(request.clone()).collect::<Vec<_>>().await;
         runtime.run(request).collect::<Vec<_>>().await;
 
-        let calls = control.agent_calls(conversation.clone(), 0, 0, 100).await.unwrap();
+        // Five calls: a point each.
+        let charts = control.conversation_charts(conversation.clone()).await.unwrap();
+        let calls = &charts[0].1.points;
         let costs = control.conversation_costs(conversation).await.unwrap();
         let [kept] = costs.as_slice() else {
             panic!("one agent's cost: {costs:?}")
@@ -554,7 +556,7 @@ mod tests {
         close(totals.price.cache_write, 0.125 + 0.013125);
         // As the page reads the causes.
         let misses: Vec<serde_json::Value> =
-            calls.iter().map(|call| serde_json::to_value(call.miss).unwrap()).collect();
+            calls.iter().map(|call| serde_json::to_value(call.misses.first()).unwrap()).collect();
         let none = serde_json::Value::Null;
         assert_eq!(misses, [none.clone(), "system_prompt_changed".into(), none.clone(), none.clone(), none]);
         control.close().await.unwrap();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useCardCost } from '../fixtures/cost'
+import { SHAPES, useCardCost } from '../fixtures/cost'
 import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
@@ -401,7 +401,7 @@ const runLines = [workSubagent(), ...gallerySubagents()]
 /** What the children's context cards show and do beside their usage. */
 const agentContext = useAgentContext()
 /** A child's own cost, which its context card shows without Profiles. */
-const agentCost = useCardCost('none', { turns: 60 })
+const agentCost = useCardCost('none', { shape: SHAPES.sixty })
 const runLineVariants: Record<string, string> = {
   'ag-suite': 'running · profile',
   'ag-cookie': 'running · no profile',
@@ -3249,8 +3249,6 @@ onBeforeUnmount(() => {
         <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
           <SubagentPanel
             :agent-cost="() => agentCost.cost.value"
-            @retry-agent-cost="agentCost.retry"
-            @agent-cost-calls="(_id, wanted) => agentCost.calls(wanted)"
             v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
             :agents="agents"
@@ -3285,8 +3283,6 @@ onBeforeUnmount(() => {
               :instructions="[]"
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
-              @retry-cost="agentCost.retry"
-              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3301,8 +3297,6 @@ onBeforeUnmount(() => {
               :instructions="[]"
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
-              @retry-cost="agentCost.retry"
-              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3317,8 +3311,6 @@ onBeforeUnmount(() => {
               :instructions="[]"
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
-              @retry-cost="agentCost.retry"
-              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3333,8 +3325,6 @@ onBeforeUnmount(() => {
               :instructions="[]"
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
-              @retry-cost="agentCost.retry"
-              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3349,8 +3339,6 @@ onBeforeUnmount(() => {
               :instructions="[]"
               :limits="agentContext.limits.value"
               :cost="agentCost.cost.value"
-              @retry-cost="agentCost.retry"
-              @cost-calls="agentCost.calls"
               @compact="agentContext.compact"
               @open-instruction="agentContext.openInstruction"
               @refresh-limits="agentContext.refresh"
@@ -3368,8 +3356,6 @@ onBeforeUnmount(() => {
         <DockWindowArea v-model:share="dockWindowShare" class="h-[32rem]">
           <SubagentPanel
             :agent-cost="() => agentCost.cost.value"
-            @retry-agent-cost="agentCost.retry"
-            @agent-cost-calls="(_id, wanted) => agentCost.calls(wanted)"
             v-model:open="briefOpen"
             v-model:active-id="briefAgentId"
             :agents="briefAgents"
@@ -3479,8 +3465,6 @@ onBeforeUnmount(() => {
             <template #overDock>
               <SubagentPanel
                 :agent-cost="() => agentCost.cost.value"
-                @retry-agent-cost="agentCost.retry"
-                @agent-cost-calls="(_id, wanted) => agentCost.calls(wanted)"
                 v-model:open="coverOpen"
                 v-model:active-id="coverAgentId"
                 :agents="agents"

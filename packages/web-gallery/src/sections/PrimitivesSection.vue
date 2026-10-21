@@ -39,7 +39,7 @@ import { inDevelopment } from '@demicodes/web-ui/ui/disabled'
 import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { usageAt, usageOf } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
-import { MANY_PROFILES, OFFERED_PROFILES, useCardCost } from '../fixtures/cost'
+import { MANY_PROFILES, OFFERED_PROFILES, SHAPES, useCardCost } from '../fixtures/cost'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryWorkingControls from '../components/GalleryWorkingControls.vue'
@@ -146,24 +146,23 @@ const costClosed = useCardCost('profiles')
 const costProfiles = useCardCost('profiles')
 const costPlain = useCardCost('plain')
 const costAlone = useCardCost('none')
-const costFailed = useCardCost('profiles', { failing: true })
-const costYoung = useCardCost('none', { turns: 2 })
-const costShort = useCardCost('profiles', { turns: 12 })
-const costGiant = useCardCost('profiles', { turns: 1_000 })
+const costYoung = useCardCost('none', { shape: SHAPES.young })
+const costShort = useCardCost('profiles', { shape: SHAPES.short })
+const costGiant = useCardCost('profiles', { shape: SHAPES.giant })
 const costMany = useCardCost('many')
-const costSubagent = useCardCost('none', { turns: 60 })
-const costUnpriced = useCardCost('none', { turns: 30, priced: false })
+const costSubagent = useCardCost('none', { shape: SHAPES.sixty })
+const costUnpriced = useCardCost('none', { shape: SHAPES.thirty, priced: false })
 const costEarly = useCardCost('profiles')
-const costWindowless = useCardCost('none', { turns: 12 })
+const costWindowless = useCardCost('none', { shape: SHAPES.short })
 const costCompacting = useCardCost('profiles')
 // Each call by its place among the conversation's 180; the chart draws the last 50, from #131.
 const costTips = [
-  { variant: 'tip · a call', call: 20, cost: useCardCost('profiles', { turns: 40 }) },
-  { variant: 'tip · a miss, its cause in red', call: 6, cost: useCardCost('profiles', { turns: 40 }) },
-  { variant: 'tip · the first call after a compaction', call: 30, cost: useCardCost('profiles', { turns: 40 }) },
-  { variant: 'tip · near the card’s end, above its point', call: 38, cost: useCardCost('profiles', { turns: 40 }) },
-  { variant: 'tip · a point of 10 calls: their numbers, rate and price', call: 849, cost: useCardCost('profiles', { turns: 1_000 }) },
-  { variant: 'tip · a point of 10 calls with a miss, its cause in red', call: 678, cost: useCardCost('profiles', { turns: 1_000 }) },
+  { variant: 'tip · a call', call: 20, cost: useCardCost('profiles', { shape: SHAPES.forty }) },
+  { variant: 'tip · a miss, its cause in red', call: 6, cost: useCardCost('profiles', { shape: SHAPES.forty }) },
+  { variant: 'tip · the first call after a compaction', call: 30, cost: useCardCost('profiles', { shape: SHAPES.forty }) },
+  { variant: 'tip · near the card’s end, above its point', call: 38, cost: useCardCost('profiles', { shape: SHAPES.forty }) },
+  { variant: 'tip · a point of 10 calls: their numbers, rate and price', call: 849, cost: useCardCost('profiles', { shape: SHAPES.giant }) },
+  { variant: 'tip · a point of 10 calls with a miss, its cause in red', call: 678, cost: useCardCost('profiles', { shape: SHAPES.giant }) },
 ]
 const cardTruncated = useCardLimits('a-very-long-account-name.with.many.parts@subdomain.example.com')
 const cardUnlabeled = useCardLimits('')
@@ -1152,8 +1151,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="cardLong.refresh"
-                  @retry-cost="costClosed.retry"
-                  @cost-calls="costClosed.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1170,8 +1167,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costProfiles.retry"
-                  @cost-calls="costProfiles.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1188,8 +1183,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costPlain.retry"
-                  @cost-calls="costPlain.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1206,8 +1199,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costAlone.retry"
-                  @cost-calls="costAlone.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1224,26 +1215,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costYoung.retry"
-                  @cost-calls="costYoung.calls"
-                />
-              </div>
-            </GallerySpecimen>
-          </GalleryOverlayWell>
-          <GalleryOverlayWell>
-            <GallerySpecimen variant="card · Cost, a read that failed, with Retry">
-              <div class="px-44 pt-[30rem]">
-                <ContextUsageIndicator
-                  pinned
-                  :expanded="null"
-                  :usage="usageAt(0.62)"
-                  :instructions="demoInstructions"
-                  :cost="costFailed.cost.value"
-                  :cost-profiles="OFFERED_PROFILES"
-                  @compact="productWould('Compact the Conversation')"
-                  @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costFailed.retry"
-                  @cost-calls="costFailed.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1260,8 +1231,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costShort.retry"
-                  @cost-calls="costShort.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1278,8 +1247,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costGiant.retry"
-                  @cost-calls="costGiant.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1296,8 +1263,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="MANY_PROFILES"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @retry-cost="costMany.retry"
-                  @cost-calls="costMany.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1312,8 +1277,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost="costUnpriced.cost.value"
                   :cost-profiles="OFFERED_PROFILES"
                   @compact="productWould('Compact the Conversation')"
-                  @retry-cost="costUnpriced.retry"
-                  @cost-calls="costUnpriced.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1328,8 +1291,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost="costSubagent.cost.value"
                   :cost-profiles="[]"
                   @compact="productWould('Compact the Conversation')"
-                  @retry-cost="costSubagent.retry"
-                  @cost-calls="costSubagent.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1346,8 +1307,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost="costEarly.cost.value"
                   :cost-profiles="OFFERED_PROFILES"
                   @refresh-limits="cardEarly.refresh"
-                  @retry-cost="costEarly.retry"
-                  @cost-calls="costEarly.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1363,8 +1322,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost="costWindowless.cost.value"
                   :cost-profiles="OFFERED_PROFILES"
                   @refresh-limits="cardWindowless.refresh"
-                  @retry-cost="costWindowless.retry"
-                  @cost-calls="costWindowless.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1383,8 +1340,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="cardLong.refresh"
-                  @retry-cost="costCompacting.retry"
-                  @cost-calls="costCompacting.calls"
                 />
               </div>
             </GallerySpecimen>
@@ -1400,8 +1355,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   :cost-profiles="OFFERED_PROFILES"
                   :cost-tip="tip.call"
                   @compact="productWould('Compact the Conversation')"
-                  @retry-cost="tip.cost.retry"
-                  @cost-calls="tip.cost.calls"
                 />
               </div>
             </GallerySpecimen>

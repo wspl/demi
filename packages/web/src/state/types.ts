@@ -1,5 +1,4 @@
-import type { CallsState } from '@demicodes/web-ui/agent/context-cost'
-import type { AgentCost, Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
+import type { AgentCost, Block, CacheChart, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase, SideQuestion, TurnSpeed, Version } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
@@ -160,10 +159,11 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    */
   cost: AgentCost
   /**
-   * The turn calls of each node whose context card is open, by the node,
-   * which its cache chart draws; a node whose card is closed holds none.
+   * The cache chart of each agent's node the page subscribes to, by the
+   * node, as its subscription and its turn calls bring it
+   * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
    */
-  calls: Record<string, CallsState>
+  charts: Record<string, CacheChart>
 }
 
 export interface Device extends DeviceReport {

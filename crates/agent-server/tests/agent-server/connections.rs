@@ -3,6 +3,8 @@
 //! The tests cover:
 //!
 //! - the open handshake and two opens at once;
+//! - the cache chart a tree's start reads, and a read of the agents that
+//!   reads none;
 //! - several connections of one tree with their events, replies and lag;
 //! - connections acting at once;
 //! - the refusals of frames that need a session;
@@ -20,7 +22,8 @@ use demi_agent_server::{
 };
 use demi_agent_store::testing::{MemoryTreeStore, model_of};
 use demi_conversation_socket_protocol::{
-    AgentCode, AgentEntry, ClientFrame, ClientFrameKind, EditOutcome, Refusal, RemoveOutcome, ServerFrame, SteerOutcome,
+    AgentCode, AgentCost, AgentEntry, CacheChart, ChartPoint, ClientFrame, ClientFrameKind, EditOutcome, Refusal, RemoveOutcome, ServerFrame,
+    SteerOutcome,
 };
 use demi_provider_common::{
     Ahead, InferenceItem, ProviderEvent,
@@ -32,7 +35,7 @@ use futures_util::{StreamExt as _, stream};
 use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
-        is_root_reset, Fixture, Gate, conversation, frame_type, held, is_context_usage, kinds, send, session_of, streamed_then_held, turn, until,
+        is_root_reset, Fixture, Gate, HeldCharts, conversation, frame_type, held, is_context_usage, kinds, send, session_of, streamed_then_held, turn, until,
     },
 };
 
@@ -183,10 +186,11 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "opened",
             "agents",
             "request_output",
-            "transcript_reset"
+            "transcript_reset",
+            "cache_chart"
         ]
     );
-    let Some(ServerFrame::TranscriptReset { version, .. }) = handshake.last() else {
+    let Some(ServerFrame::TranscriptReset { version, .. }) = handshake.iter().rev().nth(1) else {
         unreachable!()
     };
     let mut revision = version.revision;
@@ -306,7 +310,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
         "{received:?}"
     );
     let handshake: Vec<String> = received.iter().map(frame_type).collect();
-    assert_eq!(handshake, ["opened", "agents", "request_output", "transcript_reset"]);
+    assert_eq!(handshake, ["opened", "agents", "request_output", "transcript_reset", "cache_chart"]);
 
     gate.open();
     let turn = second.until_idle().await;
@@ -455,7 +459,7 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
     let replies: Vec<String> = second.received().iter().map(frame_type).collect();
     assert_eq!(
         replies,
-        ["steer_result", "abort_result", "transcript_reset", "error"]
+        ["steer_result", "abort_result", "transcript_reset", "cache_chart", "error"]
     );
     assert_eq!(first.received(), []);
 
@@ -726,6 +730,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     // The handshake, whose agents tell the usage.
     client.next_until(is_context_usage).await;
     client.next_until(is_root_reset).await;
+    client.next_until(|frame| matches!(frame, ServerFrame::CacheChart { .. })).await;
     client.send(ClientFrame::Open { agents: None, draft: None }).await;
     assert_eq!(
         client.next().await,
@@ -873,4 +878,63 @@ async fn shutdown_disposes_every_live_tree_with_its_final_checkpoint() {
             if serde_json::to_string(patches).unwrap().contains("\"code\":\"interrupted\""))
     });
     assert!(recorded, "{frames:?}");
+}
+
+/// A chart of the root's four calls, as the product keeps it.
+fn kept_chart() -> CacheChart {
+    let at = demi_shared_types::Timestamp::from_millisecond(1_790_000_000_000).unwrap();
+    let point = |number: u64| ChartPoint {
+        first: number,
+        last: number,
+        rate: 0.9,
+        from: at,
+        to: at,
+        misses: Vec::new(),
+        after_compaction: false,
+        price: None,
+        rewritten: Some(100),
+    };
+    CacheChart {
+        rate: Some(0.9),
+        size: 1,
+        points: (1..=4).map(point).collect(),
+    }
+}
+
+// A ledger row that is no turn call, such as a compaction's, changes the
+// agent's cost and leaves its chart. Before, its cost notice, arriving while
+// a new tree read what the product kept, made the tree drop the chart it
+// read, and the page saw an empty chart until the agent's next turn call.
+// Milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_cost_notice_while_a_tree_starts_leaves_the_chart_it_reads() {
+    let script = ScriptedRuntime::new([]);
+    let source = HeldCharts::new(kept_chart());
+    let fixture = Fixture::with_agents(&script, source.clone());
+    let mut client = fixture.client();
+    tokio::join!(client.open(), async {
+        source.asked().await;
+        let tree = fixture.server.tree(&conversation()).expect("the tree is listed as it reads");
+        tree.cost_changed(0, AgentCost { calls: 4, ..AgentCost::default() }, None);
+        source.gate.open();
+    });
+    let handshake = client
+        .next_until(|frame| matches!(frame, ServerFrame::CacheChart { .. }))
+        .await;
+    let Some(ServerFrame::CacheChart { chart, .. }) = handshake.last() else {
+        unreachable!()
+    };
+    assert_eq!(chart, &kept_chart());
+}
+
+// A read of the agents of a conversation that is not live, as a page's
+// read of the conversation makes, reads their entries' facts and counts no
+// chart, which only a live tree sends. Milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_read_of_the_agents_counts_no_chart() {
+    let script = ScriptedRuntime::new([]);
+    let source = HeldCharts::new(kept_chart());
+    let fixture = Fixture::with_agents(&script, source.clone());
+    fixture.server.agents(&conversation(), None).await.unwrap();
+    assert_eq!((source.kept_reads.get(), source.chart_reads.get()), (1, 0));
 }

@@ -25,7 +25,7 @@ use demi_agent_session::{
     AgentMessageError, Continuation, ForkError, ForkSeed, ModelSwitch, SessionConfig, fork_seed,
 };
 use demi_agent_store::{AgentTreeStore, NodeRecord, Placement, SideOf, StoreError};
-use demi_conversation_socket_protocol::{AgentEntry, Version};
+use demi_conversation_socket_protocol::{AgentEntry, CacheChart, Version};
 use demi_agent_tools::{
     CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -206,8 +206,8 @@ pub struct ServerDeps<H: HostResolver> {
     /// root's phase changed, or that was disposed: a product that shows each
     /// conversation's status reads it again.
     pub status_changed: Rc<dyn Fn(&NodeId)>,
-    /// What the product keeps of a conversation's agents that their entries
-    /// show, read once as a tree opens; the product tells each change after
+    /// What the product keeps of a conversation's agents that the tree
+    /// shows, read once as a tree opens; the product tells each change after
     /// that ([`Tree::cost_changed`], [`Tree::side_card_changed`]).
     pub agents: Rc<dyn AgentsSource>,
     /// Which paths a complete text's code spans name are files on the
@@ -215,12 +215,22 @@ pub struct ServerDeps<H: HostResolver> {
     pub reply_files: Rc<dyn crate::node::ReplyFiles>,
 }
 
-/// What the product keeps of a conversation's agents: what each has cost,
-/// from its usage ledger, and each side question's card.
+/// What the product keeps of a conversation's agents: what each has cost and
+/// its cache chart, from its usage ledger, and each side question's card.
+///
+/// The charts are read apart from the rest: a tree's start needs them, while
+/// a read of the agents of a conversation that is not live needs only their
+/// entries, and counting every agent's chart would be work it throws away.
 pub trait AgentsSource {
-    /// What the product keeps of the agents of the conversation `root`; what
-    /// it cannot read it leaves out, having logged why.
+    /// What the product keeps of the agents of the conversation `root` that
+    /// their entries show; what it cannot read it leaves out, having logged
+    /// why.
     fn kept<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, KeptAgents>;
+
+    /// The cache chart of each agent of the conversation `root` that made a
+    /// turn call, by its number; what it cannot read it leaves out, having
+    /// logged why.
+    fn charts<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, HashMap<u64, CacheChart>>;
 }
 
 /// The conversation's tree works, which a reload does not interrupt.

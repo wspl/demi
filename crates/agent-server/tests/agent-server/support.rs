@@ -14,6 +14,7 @@ use bytes::Bytes;
 
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
+    AgentsSource, KeptAgents,
     testing::{NoKeptAgents, ScriptedProviders, TestClient, TestHostFiles, root_entry},
 };
 use demi_agent_store::{AgentTreeStore, Placement, testing::MemoryTreeStore};
@@ -24,7 +25,7 @@ use demi_agent_tools::{
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
-use demi_conversation_socket_protocol::{ClientFrame, JobModel, ServerFrame};
+use demi_conversation_socket_protocol::{CacheChart, ClientFrame, JobModel, ServerFrame};
 use demi_host_interface::{
     CommandRecord, CommandSet, CommandStatus, DEFAULT_OUTPUT_LIMIT_BYTES, Ending, ExecRequest,
     GroupBuilder, Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, LeafBuilder,
@@ -413,6 +414,52 @@ impl Gate {
     }
 }
 
+/// A product that keeps the root's cache chart `chart` and nothing else,
+/// whose read of the charts waits until `gate` opens, and that counts each
+/// read of the kept facts and of the charts.
+pub struct HeldCharts {
+    pub chart: CacheChart,
+    pub gate: Gate,
+    /// Raised as a read of the charts starts.
+    asked: watch::Sender<bool>,
+    pub kept_reads: Cell<usize>,
+    pub chart_reads: Cell<usize>,
+}
+
+impl HeldCharts {
+    pub fn new(chart: CacheChart) -> Rc<Self> {
+        Rc::new(Self {
+            chart,
+            gate: Gate::new(),
+            asked: watch::Sender::new(false),
+            kept_reads: Cell::new(0),
+            chart_reads: Cell::new(0),
+        })
+    }
+
+    /// Waits until a read of the charts started.
+    pub async fn asked(&self) {
+        let _ = self.asked.subscribe().wait_for(|asked| *asked).await;
+    }
+}
+
+impl AgentsSource for HeldCharts {
+    fn kept<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, KeptAgents> {
+        self.kept_reads.set(self.kept_reads.get() + 1);
+        Box::pin(async { KeptAgents::default() })
+    }
+
+    fn charts<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, HashMap<u64, CacheChart>> {
+        self.chart_reads.set(self.chart_reads.get() + 1);
+        self.asked.send_replace(true);
+        let mut opened = self.gate.0.subscribe();
+        Box::pin(async move {
+            let _ = opened.wait_for(|open| *open).await;
+            HashMap::from([(0, self.chart.clone())])
+        })
+    }
+}
+
 /// A run that plays `events` once `gate` is open.
 pub fn held(gate: &Gate, events: Vec<demi_provider_common::ProviderEvent>) -> Turn {
     let mut opened = gate.0.subscribe();
@@ -708,12 +755,38 @@ impl Fixture {
         )
     }
 
+    /// A server of the provider `stub` playing `script`, whose product keeps
+    /// the agents `agents` tells.
+    pub fn with_agents(script: &ScriptedRuntime, agents: Rc<dyn AgentsSource>) -> Self {
+        let resolver = Rc::new(ScriptedProviders::default());
+        resolver.provide("stub", script);
+        Self::build_with(
+            resolver,
+            TestProduct::default(),
+            MemoryTreeStore::new(),
+            ServerConfig::default(),
+            Arc::new(FixedClock(start())),
+            agents,
+        )
+    }
+
     fn build(
         resolver: Rc<ScriptedProviders>,
         product: TestProduct,
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
         clock: Arc<dyn Clock>,
+    ) -> Self {
+        Self::build_with(resolver, product, store, config, clock, Rc::new(NoKeptAgents))
+    }
+
+    fn build_with(
+        resolver: Rc<ScriptedProviders>,
+        product: TestProduct,
+        store: Rc<MemoryTreeStore>,
+        config: ServerConfig,
+        clock: Arc<dyn Clock>,
+        agents: Rc<dyn AgentsSource>,
     ) -> Self {
         let product = Rc::new(product);
         // The product's order: its own context, the side questions, then a plugin.
@@ -744,7 +817,7 @@ impl Fixture {
             config,
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
-            agents: Rc::new(NoKeptAgents),
+            agents,
             reply_files: product.host_files.clone(),
         });
         told.server.replace(Rc::downgrade(&server));

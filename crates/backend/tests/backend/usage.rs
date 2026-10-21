@@ -14,12 +14,12 @@
 //! their modules' (`claude`, `titles`, `rotation`).
 
 use demi_agent_server::testing::root_entry;
-use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_conversation_socket_protocol::{CacheChart, ClientFrame, ServerFrame};
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::InstanceMode;
-use demi_web_api_protocol::usage::{AgentCalls, InstanceUsage, UsageTotals};
+use demi_web_api_protocol::usage::{InstanceUsage, UsageTotals};
 use reqwest::StatusCode;
 
 use serde_json::json;
@@ -322,21 +322,20 @@ async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_n
 
 /// Each call of a conversation reaches its open page as the root's entry with
 /// its kept cost, which the row's write adds to without reading the ledger
-/// again (`crates/backend-database/src/usage.rs`). `GET
-/// /api/conversations/:id/agents/:node/calls` lists the agent's turn calls
-/// for the cache chart, its second call a miss once it wrote the prompt
-/// again.
+/// again, and as the root's cache chart, which the row's write counts
+/// (`crates/backend-database/src/usage.rs`): its rate over the calls so far,
+/// and no points before the fourth.
 ///
-/// The entry counts the turn calls it includes, so a page that holds the
-/// calls can tell when it holds them all; a page that opens again receives
-/// the same cost with its handshake. An entry whose models have no price
-/// leaves every price null.
+/// A page that opens again receives the same cost with its handshake, and the
+/// same chart with its subscription to the root, so its context card has
+/// both before it opens. An entry whose models have no price leaves every
+/// price null.
 ///
-/// Planted defect: a cost not announced, which the socket waits for until
-/// the test's timeout.
+/// Planted defect: a cost or a chart not announced, or a chart not sent with
+/// the subscription, which the socket waits for until the test's timeout.
 // A backend and two answers of a scripted vendor: about half a second.
 #[tokio::test]
-async fn each_call_reaches_the_open_page_as_its_agents_cost_and_the_calls_list_its_turns() {
+async fn each_call_reaches_the_open_page_as_its_agents_cost_and_cache_chart() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let vendor = MockVendor::start().await;
@@ -344,7 +343,13 @@ async fn each_call_reaches_the_open_page_as_its_agents_cost_and_the_calls_list_i
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
+    let chart_of = |frame: &ServerFrame| match frame {
+        ServerFrame::CacheChart { node, chart } if node.as_str() == FIRST => Some(chart.clone()),
+        _ => None,
+    };
+    // A conversation that made no call yet: an empty chart.
+    let opened = socket.open().await;
+    assert_eq!(opened.iter().find_map(chart_of), Some(CacheChart::default()));
     let usage = |input: u64, write: u64, read: u64| {
         json!({
             "input_tokens": input, "output_tokens": 0, "cache_read_input_tokens": read,
@@ -353,43 +358,35 @@ async fn each_call_reaches_the_open_page_as_its_agents_cost_and_the_calls_list_i
     };
     let cost_of = |frame: &ServerFrame| root_entry(frame).map(|entry| entry.cost);
     let mut totals = Vec::new();
-    for (count, id, (input, write, read)) in [(1, "m1", (1_000, 20_000, 0)), (2, "m2", (10, 30_000, 0))] {
+    let mut charts = Vec::new();
+    for (count, id, (input, write, read)) in [(1, "m1", (1_000, 20_000, 0)), (2, "m2", (10, 990, 19_000))] {
         vendor.respond(message(vec![text_block(0, &["Answer."])], "end_turn", usage(input, write, read), 7));
         let mut frames = socket.chat(id, "Question").await;
-        // The cost follows the row's write, which may come after the turn's end.
+        // The cost and the chart follow the row's write, which may come
+        // after the turn's end, and come together as one step.
         let counted = |frame: &ServerFrame| cost_of(frame).is_some_and(|cost| cost.calls == count);
         if !frames.iter().any(counted) {
-            frames = socket.until(counted).await;
+            frames.extend(socket.until(counted).await);
         }
-        let cost = frames.iter().rev().find_map(cost_of).expect("the root's cost");
-        totals.push(cost);
+        if !frames.iter().any(|frame| chart_of(frame).is_some()) {
+            frames.extend(socket.until(|frame| chart_of(frame).is_some()).await);
+        }
+        totals.push(frames.iter().rev().find_map(cost_of).expect("the root's cost"));
+        charts.push(frames.iter().rev().find_map(chart_of).expect("the root's chart"));
     }
     let last = totals[1].totals;
     assert_eq!(
         (last.input_tokens, last.cache_write_tokens, last.output_tokens, last.price.total),
-        (1_010, 50_000, 14, None)
+        (1_010, 20_990, 14, None)
     );
     assert_eq!(totals[0].totals.input_tokens, 1_000);
+    let rates: Vec<Option<f64>> = charts.iter().map(|chart| chart.rate).collect();
+    assert_eq!(rates, [Some(0.0), Some(19_000.0 / 41_000.0)]);
+    assert!(charts.iter().all(|chart| chart.points.is_empty()), "{charts:?}");
 
-    let calls = backend
-        .get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/calls"), Some(&master))
-        .await
-        .json::<AgentCalls>()
-        .calls;
-    assert_eq!(
-        calls.iter().map(|call| (call.number, call.cache_write_tokens, call.after_compaction, call.miss)).collect::<Vec<_>>(),
-        [(1, 20_000, false, None), (2, 30_000, false, Some(demi_conversation_socket_protocol::CacheMiss::NotCached))]
-    );
-    // The calls after the first the page holds.
-    let newer = backend
-        .get(&format!("/api/conversations/{FIRST}/agents/{FIRST}/calls?after=1"), Some(&master))
-        .await
-        .json::<AgentCalls>()
-        .calls;
-    assert_eq!(newer, calls[1..]);
     let mut again = Socket::connect(&backend, &master, FIRST).await;
     let opened = again.open().await;
     assert_eq!(opened.iter().find_map(cost_of), Some(totals[1]));
+    assert_eq!(opened.iter().find_map(chart_of).as_ref(), charts.last());
     backend.close().await;
 }
-

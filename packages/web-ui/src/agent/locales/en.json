@@ -347,7 +347,6 @@
       "title": "Cost",
       "price": "Equivalent API price",
       "hitRate": "Cache hit rate",
-      "loadFailed": "Couldn’t load the cost.",
       "kind": {
         "input": "Input",
         "cacheWrite": "Cache write",

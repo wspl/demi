@@ -14,6 +14,12 @@
 //!  ledger row, side card (product) ┘                       `agent` frame
 //! ```
 //!
+//! Each agent's cache chart, which the product counts as its turn calls land
+//! (`crates/backend-database/src/usage.rs`), is kept here beside its cost but
+//! is no part of its entry: it goes whole, as `cache_chart`, to the
+//! connections that subscribe to the agent's node, with each subscription and
+//! as it changes (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
+//!
 //! The epoch is new at each open of the tree, so a page that held the agents
 //! before a restart of the backend reads them whole.
 //!
@@ -30,7 +36,9 @@ use std::{
 };
 
 use demi_agent_store::{NodeRecord, Placement, SideOf};
-use demi_conversation_socket_protocol::{AgentCost, AgentEntry, AgentRole, JobModel, ServerFrame, SideQuestion, Version};
+use demi_conversation_socket_protocol::{
+    AgentCost, AgentEntry, AgentRole, CacheChart, JobModel, ServerFrame, SideQuestion, Version,
+};
 use demi_shared_types::{NodeId, SessionPhase};
 
 use super::FrameSink;
@@ -43,9 +51,10 @@ pub struct SideCard {
     pub folded: bool,
 }
 
-/// What the product keeps of a conversation's agents that the tree shows: the
-/// cost of each agent by its number, the root's 0, and each side question's
-/// card.
+/// What the product keeps of a conversation's agents that their entries
+/// show: the cost of each agent by its number, the root's 0, and each side
+/// question's card. The agents' cache charts, which only a live tree sends,
+/// are read apart (`AgentsSource::charts`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct KeptAgents {
     pub costs: HashMap<u64, AgentCost>,
@@ -66,10 +75,15 @@ pub(crate) struct Agents {
     /// What the product told of the agents, kept for the entries still to
     /// come and for those it changes.
     costs: RefCell<HashMap<u64, AgentCost>>,
+    charts: RefCell<HashMap<u64, CacheChart>>,
     cards: RefCell<HashMap<NodeId, SideCard>>,
     /// The agents whose cost a ledger row announced since the tree opened,
     /// which what the product kept before that leaves as they are.
     announced: RefCell<HashSet<u64>>,
+    /// The agents whose chart a turn call's row announced since the tree
+    /// opened, apart from `announced`: a row of no turn call announces a
+    /// cost but leaves the chart the product kept.
+    charted: RefCell<HashSet<u64>>,
     /// Where the conversation worked when last read, which a child's entry
     /// names its directory by (`crates/agent-server/src/node/mod.rs`).
     placement: RefCell<Option<Placement>>,
@@ -87,8 +101,10 @@ impl Agents {
             revision: Cell::new(0),
             entries: RefCell::default(),
             costs: RefCell::default(),
+            charts: RefCell::default(),
             cards: RefCell::default(),
             announced: RefCell::default(),
+            charted: RefCell::default(),
             placement: RefCell::new(None),
             staged: RefCell::default(),
             depth: Cell::new(0),
@@ -196,20 +212,71 @@ impl Agents {
         self.refresh_all();
     }
 
-    /// The agent `number` costs `cost` now, as its latest ledger row made it.
-    pub(crate) fn cost_changed(&self, number: u64, cost: AgentCost) {
-        self.announced.borrow_mut().insert(number);
-        self.costs.borrow_mut().insert(number, cost);
-        let ids: Vec<NodeId> = self
-            .entries
+    /// The charts the product kept when the tree opened: a chart a turn
+    /// call announced since stays.
+    pub(crate) fn adopt_charts(&self, kept: HashMap<u64, CacheChart>) {
+        let adopted: Vec<u64> = {
+            let charted = self.charted.borrow();
+            let mut charts = self.charts.borrow_mut();
+            kept.into_iter()
+                .filter(|(number, _)| !charted.contains(number))
+                .map(|(number, chart)| {
+                    charts.insert(number, chart);
+                    number
+                })
+                .collect()
+        };
+        for number in adopted {
+            self.announce_chart(number);
+        }
+    }
+
+    /// The agent `number` costs `cost` now, as its latest ledger row made it,
+    /// and its cache chart is `chart`, for a row of a turn call. The entry
+    /// and the chart go as one step, so a page never shows the row's cost
+    /// with the chart before it.
+    pub(crate) fn cost_changed(&self, number: u64, cost: AgentCost, chart: Option<CacheChart>) {
+        self.step(|| {
+            self.announced.borrow_mut().insert(number);
+            self.costs.borrow_mut().insert(number, cost);
+            for id in self.ids_of(number) {
+                self.change(&id, |_| {});
+            }
+            if let Some(chart) = chart {
+                self.charted.borrow_mut().insert(number);
+                self.charts.borrow_mut().insert(number, chart);
+                self.announce_chart(number);
+            }
+        });
+    }
+
+    /// The nodes of the agent `number`.
+    fn ids_of(&self, number: u64) -> Vec<NodeId> {
+        self.entries
             .borrow()
             .values()
             .filter(|kept| number_of(&kept.entry.role) == Some(number))
             .map(|kept| kept.entry.id.clone())
-            .collect();
-        for id in ids {
-            self.change(&id, |_| {});
+            .collect()
+    }
+
+    /// Sends the agent `number`'s chart to the connections that subscribe
+    /// to its node.
+    fn announce_chart(&self, number: u64) {
+        for id in self.ids_of(number) {
+            if let Some(frame) = self.chart_frame(&id) {
+                self.sink.emit_to(&id, frame);
+            }
         }
+    }
+
+    /// The `cache_chart` of the node `id`, an empty chart for an agent that
+    /// made no turn call; none for a side question or a node the collection
+    /// does not hold.
+    pub(crate) fn chart_frame(&self, id: &NodeId) -> Option<ServerFrame> {
+        let number = number_of(&self.entries.borrow().get(id)?.entry.role)?;
+        let chart = self.charts.borrow().get(&number).cloned().unwrap_or_default();
+        Some(ServerFrame::CacheChart { node: id.clone(), chart })
     }
 
     /// The side question `id`'s card is `card` now.

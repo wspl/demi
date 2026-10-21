@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, jest, mock, setSystemTime, spyOn, test } from 'bun:test'
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { AgentEntry, Block, ClientContent, ClientFrame, MessageComment, ProviderFailureFacts, ServerFrame, SessionPhase } from '@demicodes/protocol'
+import type { AgentEntry, Block, CacheChart, ClientContent, ClientFrame, MessageComment, ProviderFailureFacts, ServerFrame, SessionPhase } from '@demicodes/protocol'
 import { RefusedError, heldEdge } from '@demicodes/conversation-client'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
@@ -4514,11 +4514,6 @@ function costOf(calls: number, price: number): AgentEntry['cost'] {
   }
 }
 
-/** The call number `number` of an agent, as `/calls` lists it. */
-function costCall(number: number) {
-  return { number, startedAt: '2026-09-13T00:00:00.000Z', inputTokens: 10, cacheWriteTokens: 0, cacheReadTokens: 90, price: 0.5, afterCompaction: false, miss: null }
-}
-
 // A child's context card shows the child's own context and cost, which its
 // entry brings; the conversation's card adds every agent's cost to the
 // root's, and a child's change leaves the root's context alone
@@ -4538,38 +4533,34 @@ test('a child\'s entry shows its own context and cost, and the conversation\'s c
   expect(conversation.contextUsage).toBeNull()
 })
 
-// An open card reads its agent's recent calls once; a call its entry counts
-// later is read after the last the card holds, and a closed card lets them
-// go and reads nothing more. Cost: one opening, two reads, no wait.
-test('an open context card reads its agent\'s calls, then only those its entry counts later, and a closed one reads none', async () => {
+/** The backend's cache chart of an agent whose recent calls read `rate` from the cache. */
+function chartAt(rate: number): CacheChart {
+  return { rate, size: 1, points: [] }
+}
+
+// A context card shows its agent's rate and chart as soon as it opens: they
+// come with the node the page subscribes to, and each call that lands sends
+// them again, so the page reads nothing when the card opens
+// (`docs/decisions/0019-the-server-counts-the-cache-chart.md`). Cost: one
+// opening, no wait.
+test('a node\'s cache chart comes with its subscription and each call, and the card shows it with no read', async () => {
   const reads: string[] = []
   const answering = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
-    const url = new URL(String(input), 'https://demi.test')
-    if (!url.pathname.endsWith('/calls')) return answering(input, init)
-    reads.push(`${url.pathname.split('/').at(-2)}${url.search}`)
-    const after = Number(url.searchParams.get('after') ?? 0)
-    return Response.json({ calls: [costCall(after + 1)] })
+    reads.push(new URL(String(input), 'https://demi.test').pathname)
+    return answering(input, init)
   }) as typeof fetch
-  const { conversation, sockets } = await openWithSession(FIRST)
+  const { conversation, sockets } = await openWithSession(FIRST, [{ type: 'cache_chart', node: FIRST, chart: chartAt(0.5) }])
   const store = useConversations()
-  store.wantCalls(conversation, null, true)
-  await waitFor(() => store.costShown(conversation)?.calls?.status === 'read', () => 'the calls were not read')
-  expect(reads).toEqual([FIRST])
+  expect(store.costShown(conversation)?.chart).toEqual(chartAt(0.5))
 
-  sockets[0]!.receive({ type: 'agent', revision: 2, agent: { ...rootEntry(FIRST), cost: costOf(2, 1) } })
-  await waitFor(() => reads.length === 2, () => 'the new call was not read')
-  expect(reads[1]).toBe(`${FIRST}?after=1`)
-  await waitFor(() => {
-    const calls = store.costShown(conversation)?.calls
-    return calls?.status === 'read' && calls.calls.length === 2
-  }, () => 'the new call is not shown')
-
-  store.wantCalls(conversation, null, false)
-  sockets[0]!.receive({ type: 'agent', revision: 3, agent: { ...rootEntry(FIRST), cost: costOf(3, 1.5) } })
+  sockets[0]!.receive({ type: 'agents', version: { epoch: 'e', revision: 2 }, agents: [rootEntry(FIRST), childEntry(conversation, 'child')] })
+  sockets[0]!.receive({ type: 'cache_chart', node: 'child', chart: chartAt(0.25) })
+  sockets[0]!.receive({ type: 'cache_chart', node: FIRST, chart: chartAt(0.75) })
   await nextTick()
-  expect(store.costShown(conversation)?.calls).toBeNull()
-  expect(reads).toHaveLength(2)
+  expect(store.costShown(conversation)?.chart).toEqual(chartAt(0.75))
+  expect(store.costShown(conversation, 'child')?.chart).toEqual(chartAt(0.25))
+  expect(reads.filter((path) => path.includes('/agents/'))).toEqual([])
 })
 
 // Under 50 ms each: the backend is the stub above.

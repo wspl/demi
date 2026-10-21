@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{AgentEntry, BlockVersions, ClientFrameKind, TranscriptPatch, Version};
+use crate::{AgentEntry, BlockVersions, CacheChart, ClientFrameKind, TranscriptPatch, Version};
 
 /// What the providers read out of the error blocks a frame carries, by block
 /// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
@@ -121,6 +121,15 @@ pub enum ServerFrame {
         revision: u64,
         #[garde(dive)]
         agent: AgentEntry,
+    },
+    /// The node `node`'s cache chart whole: sent with its subscription, and
+    /// as one of its agent's turn calls lands in the usage ledger. A side
+    /// question, whose calls are the root's, has none.
+    CacheChart {
+        #[garde(skip)]
+        node: NodeId,
+        #[garde(dive)]
+        chart: CacheChart,
     },
     /// The output of the request the root agent runs, or null when its turn
     /// has none: sent at once when a request starts or ends and when the

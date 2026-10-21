@@ -347,7 +347,6 @@
       "title": "费用",
       "price": "按 API 计价",
       "hitRate": "缓存命中率",
-      "loadFailed": "无法加载费用。",
       "kind": {
         "input": "输入",
         "cacheWrite": "缓存写入",

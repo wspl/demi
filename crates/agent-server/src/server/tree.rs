@@ -45,7 +45,9 @@ use demi_agent_session::{Continuation, Execution, ModelSwitch, Reset, SessionEve
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
-use demi_conversation_socket_protocol::{AgentCost, AgentCode, AgentRole, HeldEdge, ServerFrame, TranscriptPatch, Version, index_u32};
+use demi_conversation_socket_protocol::{
+    AgentCost, AgentCode, AgentRole, CacheChart, HeldEdge, ServerFrame, TranscriptPatch, Version, index_u32,
+};
 use demi_host_interface::{CommandSet, PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{Block, Clock, CommandId, ModelSelection, NodeId};
@@ -587,7 +589,9 @@ impl<H: HostResolver> Tree<H> {
         tree.show_subagents();
         // Read once the tree is listed, so a ledger row announced meanwhile
         // reaches it, and what was kept before it stays behind it.
-        tree.agents.adopt(deps.agents.kept(root).await);
+        let (kept, charts) = tokio::join!(deps.agents.kept(root), deps.agents.charts(root));
+        tree.agents.adopt(kept);
+        tree.agents.adopt_charts(charts);
         Ok((tree, assembled.continuation))
     }
 
@@ -687,9 +691,10 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The agent `number`, the root's 0, costs `cost` now, as the product's
-    /// latest ledger row of it made it.
-    pub fn cost_changed(&self, number: u64, cost: AgentCost) {
-        self.agents.cost_changed(number, cost);
+    /// latest ledger row of it made it, and its cache chart is `chart`, for
+    /// a row of a turn call.
+    pub fn cost_changed(&self, number: u64, cost: AgentCost, chart: Option<CacheChart>) {
+        self.agents.cost_changed(number, cost, chart);
     }
 
     /// The side question `id`'s card is `card` now, as the product keeps it.
@@ -883,8 +888,8 @@ impl<H: HostResolver> Tree<H> {
     /// 2. the agents changed since the version the page holds, `agents`;
     /// 3. the output of the request the root runs;
     /// 4. the transcript of each live node it subscribes to, from the blocks
-    ///    `held` names, with the view of each of its live commands
-    ///    ([`node_frames`](Self::node_frames)).
+    ///    `held` names, with its agent's cache chart and the view of each of
+    ///    its live commands ([`node_frames`](Self::node_frames)).
     ///
     /// Answers how many frames it sent.
     pub(crate) fn attach(
@@ -934,9 +939,10 @@ impl<H: HostResolver> Tree<H> {
 
     /// What a connection that subscribes to the node `id` receives: the
     /// node's transcript from the blocks the page `held`, unless it holds
-    /// the current version, and the view of each of its live commands; no
-    /// transcript for a node that is not live, which sends it when it
-    /// starts, though a closed child's commands still stopping are shown.
+    /// the current version, its agent's cache chart, and the view of each of
+    /// its live commands; no transcript for a node that is not live, which
+    /// sends it when it starts, though a closed child's chart and commands
+    /// still stopping are shown.
     pub(crate) fn node_frames(&self, id: &NodeId, held: Option<&HeldEdge>) -> Vec<ServerFrame> {
         let mut frames = Vec::new();
         if let Some(node) = self.node(id) {
@@ -946,6 +952,7 @@ impl<H: HostResolver> Tree<H> {
                 frames.push(reset_frame(id.clone(), reset));
             }
         }
+        frames.extend(self.agents.chart_frame(id));
         frames.extend(self.live_commands_of(id));
         frames
     }
