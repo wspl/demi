@@ -5,9 +5,17 @@
 //! causes is delivered after the current event has reached every listener.
 //! Events may be held and then delivered together, such as a turn's end.
 //!
-//! A hold keeps the transcript and the phase together; the live reading of
-//! a request's output (`SessionEvent::OutputChanged`) is not part of either
-//! and passes it, delivered in its order among the events not held.
+//! A hold keeps the transcript and the phase together. What is part of
+//! neither passes it, delivered in its order among the events not held:
+//!
+//! - the live reading of a request's output (`SessionEvent::OutputChanged`);
+//! - a change of the waiting inputs (`SessionEvent::PendingSteersChanged`,
+//!   `SessionEvent::QueueChanged`) made apart from the transcript and the
+//!   phase, such as a steer, its Recall or a message queued. A client is told
+//!   such a command's answer at once, and must see the list it changed with
+//!   it, however long the turn's end waits. A change made together with the
+//!   transcript, such as a steer written into it, stays with it, and so does
+//!   one whose earlier state is held, which would otherwise arrive after it.
 
 use std::{
     cell::{Cell, RefCell},
@@ -68,14 +76,30 @@ impl EventBus {
         if events.is_empty() {
             return;
         }
+        let with_transcript = events.iter().any(|event| {
+            matches!(event, SessionEvent::TranscriptChanged { .. } | SessionEvent::PhaseChanged { .. })
+        });
         for event in events {
-            if self.held.get() && matches!(event, SessionEvent::OutputChanged { .. }) {
+            if self.held.get() && self.passes(&event, with_transcript) {
                 self.passing.borrow_mut().push_back(event);
             } else {
                 self.queue.borrow_mut().push_back(event);
             }
         }
         self.drain();
+    }
+
+    /// Whether a hold lets `event` pass, given whether its change also
+    /// changed the transcript or the phase.
+    fn passes(&self, event: &SessionEvent, with_transcript: bool) -> bool {
+        match event {
+            SessionEvent::OutputChanged { .. } => true,
+            SessionEvent::PendingSteersChanged { .. } | SessionEvent::QueueChanged { .. } => {
+                let kind = std::mem::discriminant(event);
+                !with_transcript && !self.queue.borrow().iter().any(|held| std::mem::discriminant(held) == kind)
+            }
+            _ => false,
+        }
     }
 
     /// Keeps what `deliver` is given from now on until `release`. Called
