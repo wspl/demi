@@ -21,7 +21,7 @@ import {
   type SessionFailureNotice,
   type SessionLoad,
 } from './session-status'
-import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
+import { COMPOSER_CLEARANCE } from './composer-clearance'
 import MessageEditRegion from './MessageEditRegion.vue'
 import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
@@ -523,7 +523,7 @@ defineExpose({
   -->
   <div
     class="relative h-full antialiased"
-    :style="{ '--transcript-clearance': `${props.bottomOffset + COMPOSER_CLEARANCE_PX}px` }"
+    :style="{ '--transcript-clearance': `calc(${props.bottomOffset}px + ${COMPOSER_CLEARANCE})` }"
   >
     <!--
       The scroll padding keeps a control the keyboard focuses out from under the

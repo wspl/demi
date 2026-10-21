@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { COMPOSER_VEIL_FADE_PX, COMPOSER_VEIL_SCROLLBAR_GUTTER_PX } from './composer-clearance'
+import { computed } from 'vue'
+import { COMPOSER_VEIL_FADE, COMPOSER_VEIL_SCROLLBAR_GUTTER_PX } from './composer-clearance'
 
-// The veil covers the dock whole, its rows and the gaps between them, however
-// tall the dock grows, and fades evenly over the strip it reaches above it.
-const fadeStart = `calc(100% - ${COMPOSER_VEIL_FADE_PX}px)`
+const props = defineProps<{
+  /** The height of the dock's composer, 0 before the dock measures it. */
+  composer: number
+}>()
+
+// The veil is opaque from the area's foot to the composer's top, the gaps
+// between the composer's rows included, and fades evenly over the chips row
+// above it, whether the row shows or not: there the scroll control floats.
+// Before the dock measures its composer, the veil covers the area whole.
+const height = computed(() =>
+  props.composer > 0
+    ? `calc(${props.composer}px + max(0.75rem, var(--safe-bottom)) + ${COMPOSER_VEIL_FADE})`
+    : '100%',
+)
 </script>
 
 <template>
@@ -12,10 +24,10 @@ const fadeStart = `calc(100% - ${COMPOSER_VEIL_FADE_PX}px)`
     aria-hidden="true"
     :style="{
       right: `${COMPOSER_VEIL_SCROLLBAR_GUTTER_PX}px`,
-      height: `calc(100% + ${COMPOSER_VEIL_FADE_PX}px)`,
+      height,
       background: `linear-gradient(to top,
         var(--color-surface) 0,
-        var(--color-surface) ${fadeStart},
+        var(--color-surface) calc(100% - ${COMPOSER_VEIL_FADE}),
         transparent 100%)`,
     }"
   />

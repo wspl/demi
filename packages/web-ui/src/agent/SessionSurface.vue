@@ -4,7 +4,7 @@ import { useElementSize } from '@vueuse/core'
 import DockWindowArea from './DockWindowArea.vue'
 import { DOCK_WINDOW_SHARE } from './dock-window'
 import SessionBottomVeil from './SessionBottomVeil.vue'
-import { sessionCoverKey } from './session-cover'
+import { sessionComposerKey, sessionCoverKey } from './session-cover'
 
 /**
  * The share of this area's height the dock's windows keep (`dock-window.ts`);
@@ -30,6 +30,9 @@ const { height: dockFootprint } = useElementSize(
  */
 const coverHeight = ref(0)
 provide(sessionCoverKey, coverHeight)
+/** The dock's composer, under its chips row; the dock sets it. */
+const composerHeight = ref(0)
+provide(sessionComposerKey, composerHeight)
 /**
  * What the transcript keeps clear at its foot: the dock and what stands over
  * it. A panel the dock opened stands on the dock alone, so the card covers
@@ -74,7 +77,7 @@ defineExpose({ dockHeight })
       ref="bottomAreaRef"
       class="absolute bottom-0 left-0 right-0 px-[calc(var(--session-gutter)+0.75rem)] pb-[max(0.75rem,var(--safe-bottom))]"
     >
-      <SessionBottomVeil />
+      <SessionBottomVeil :composer="composerHeight" />
       <div class="relative z-30">
         <slot name="dock" />
       </div>

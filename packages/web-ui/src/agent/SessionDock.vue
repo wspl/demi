@@ -6,7 +6,7 @@ import { ChevronDown } from '@lucide/vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
 import IconButton from '../ui/IconButton.vue'
 import RequestOutputMeter from './RequestOutputMeter.vue'
-import { sessionCoverKey } from './session-cover'
+import { sessionComposerKey, sessionCoverKey } from './session-cover'
 import { dockCardsKey } from './dock-cards'
 
 withDefaults(defineProps<{
@@ -62,6 +62,17 @@ const composerRef = ref<HTMLElement>()
 const { height: rowHeight } = useElementSize(rowRef, { width: 0, height: 0 }, { box: 'border-box' })
 const { width: chipsWidth } = useElementSize(chipsRef, { width: 0, height: 0 }, { box: 'border-box' })
 const { height: composerHeight } = useElementSize(composerRef, { width: 0, height: 0 }, { box: 'border-box' })
+const surfaceComposer = inject(sessionComposerKey, null)
+watch(composerHeight, (height) => {
+  if (surfaceComposer) {
+    surfaceComposer.value = height
+  }
+}, { immediate: true })
+onBeforeUnmount(() => {
+  if (surfaceComposer) {
+    surfaceComposer.value = 0
+  }
+})
 /** The chips row's step over the composer (its `pb-2`). */
 const STEP_PX = 8
 /** The gap between the row's parts (its `gap-1.5`). */

@@ -7,3 +7,10 @@ import type { InjectionKey, Ref } from 'vue'
  * panel the dock opened keeps its place under it.
  */
 export const sessionCoverKey: InjectionKey<Ref<number>> = Symbol('session-cover')
+
+/**
+ * The height of the dock's composer, from its top to the dock's foot: the dock
+ * (`SessionDock`) sets it, and the surface's veil (`SessionBottomVeil`) fades
+ * over the chips row above it.
+ */
+export const sessionComposerKey: InjectionKey<Ref<number>> = Symbol('session-composer')
