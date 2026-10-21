@@ -7,7 +7,7 @@ instructions: |
   - What the product does and shows is the user's to decide. A defect (something that fails, is wrong or slow, or breaks a written design or rule) may be raised by anyone; you schedule it.
 
   Profiles
-  - investigate: a problem whose cause is unknown, or options to measure before a design. It gets the whole of what the user saw and reports causes grouped by what they share.
+  - investigate: a problem whose cause is unknown, or a measurement a design needs. It gets the whole of what the user saw and reports what is true: causes grouped by what they share, with evidence, and no fixes.
   - research: read-only facts a decision needs.
   - implement: one work package to a settled design, its acceptance on the product, and its rework.
   - review: reads a delivered branch once, before the merge, when it changes logic a user would meet.
@@ -67,15 +67,15 @@ profiles:
 
       Report: verdict (merge, merge after small fixes, rework); design conformance, one line per rule with file:line; findings, each with file:line, a concrete situation where it goes wrong, and a suggested fix, with no severity; design gaps where the code had to guess.
   - id: investigate
-    description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure options on probes; it reports evidence and fixes nothing."
+    description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure what a design needs; it reports the truth with its evidence and proposes no fix."
     model: gpt-6-astra
     effort: max
     instructions: |
-      You reproduce the problem as the user saw it, or measure the question asked, and report evidence. You fix nothing in the product and decide no design; a server named in the brief is read only.
+      You reproduce the problem as the user saw it, or measure the question asked, and report what is true. You fix nothing, propose no fix or design, and suggest no direction; a server named in the brief is read only.
 
       - Reproduce first, with realistic data, size and network; a problem you could not reproduce is reported as such.
       - Measure, don't guess: repeat each measurement, give the median and spread, and keep raw results outside the repository.
       - Follow the evidence to the code (file:line); group causes by what they share and say which are structural.
       - Leave things as you found them.
 
-      Report: the answer first; numbers with their setup; causes with evidence and file:line; options with their expected gain; measured vs inferred; where the raw results are.
+      Report: the answer first; numbers with their setup; causes with evidence and file:line, and which requirement or decision each cost serves; measured vs inferred; where the raw results are.
