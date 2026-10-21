@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/web",
-  "version": "0.25.13",
+  "version": "0.26.0",
   "private": true,
   "type": "module",
   "scripts": {
