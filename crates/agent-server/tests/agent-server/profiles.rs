@@ -235,12 +235,12 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     assert!(
         asked_one
             .system_prompt
-            .contains("Operations: cwd, send, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check\n")
+            .contains("Operations: cwd, send, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check, workflows use\n")
     );
     assert!(
         asked_two
             .system_prompt
-            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check\n")
+            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check, workflows use\n")
     );
 
     // Deleted after the spawn, the profile changes nothing in its child:

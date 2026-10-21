@@ -360,6 +360,19 @@ pub trait SubagentSource {
         Box::pin(async { Err(NO_WORKFLOWS.to_owned()) })
     }
 
+    /// Makes `choice` the conversation `root`'s Workflow menu choice through
+    /// the menu's own change, so the menu shows it at once; answers the
+    /// chosen workflow's name, none for Global Workflow and No Subagents. A
+    /// workflow the project does not have, or that cannot be used, is refused
+    /// with why, and the choice stays.
+    fn choose_workflow<'a>(
+        &'a self,
+        _root: &'a NodeId,
+        _choice: WorkflowChoice,
+    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+        Box::pin(async { Err(NO_WORKFLOWS.to_owned()) })
+    }
+
     /// The text of the file `path`, read against `directory`, on the
     /// conversation `root`'s Host, which `demi agent workflows check` parses.
     fn read_workflow_file<'a>(

@@ -13,6 +13,9 @@
 //!   making a profile unavailable. No Subagents takes both away.
 //! - A workflow added or edited raises the workflows revision the
 //!   conversation's metadata carries, and the page reads the list again.
+//! - An agent picks the workflow with `demi agent workflows use` once the user
+//!   allows it in the conversation, as the menu does; a workflow that cannot
+//!   be used is refused and the choice stays.
 
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, INSTRUCTIONS_SOURCE, InstructionEntry, WorkflowChoice};
@@ -623,5 +626,158 @@ async fn the_menu_answers_what_was_read_at_once_unknown_before_and_after_a_resta
         panic!("the list read before the restart: {}", String::from_utf8_lossy(&answer.body));
     };
     assert_eq!(list.workflows[0].name.as_deref(), Some("Review Team"));
+    backend.close().await;
+}
+
+/// The conversation `FIRST`'s Workflow menu choice as a page that opens it
+/// now reads it.
+async fn shown_choice(backend: &TestBackend, master: &Session) -> WorkflowChoice {
+    Socket::shown(backend, master, FIRST, 0).await.1.workflow
+}
+
+// A few seconds: a real runner on a paired device answers the reads and runs
+// the shell jobs of three turns and of two the user's answers wake.
+//
+// Planted defects it catches: a pick that writes the choice without
+// announcing it, so the menu keeps the old one; a pick of a workflow that
+// does not read, which then fails every spawn.
+#[tokio::test]
+async fn an_agent_picks_the_workflow_as_the_menu_does_once_the_user_allows_it() {
+    use std::sync::Arc;
+
+    use crate::agent_profiles::{assert_shows, last_root};
+    use crate::permissions::{categories, decide, permissions, settled};
+    use crate::subagents::{Scripts, background, say, shell, tree_on};
+
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _device, root, _provider) = tree_on(&scripts, Harness::new()).await;
+    let root = std::path::Path::new(&root);
+    let workflows = root.join(".demi/workflows");
+    std::fs::create_dir_all(root.join(".git")).unwrap();
+    std::fs::create_dir_all(&workflows).unwrap();
+    std::fs::write(workflows.join("review.yaml"), REVIEW).unwrap();
+    std::fs::write(
+        workflows.join("broken.yaml"),
+        "name: Broken\nprofiles:\n  - id: Reader\n    description: Reads.\n",
+    )
+    .unwrap();
+    let mut page = MenuPage::open(&backend, &master).await;
+    page.when(&backend, &master, |listed| listed["workflows"].as_array().is_some_and(|listed| listed.len() == 2))
+        .await;
+    let review = WorkflowChoice::Workflow { id: "review".into() };
+
+    // The first pick waits for the user's permission, which the user denies:
+    // the command is not run and the choice stays.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root(
+        FIRST,
+        vec![background("t1", "demi agent workflows use review"), say("asked"), say("refused"), say("refused")],
+    );
+    socket.chat("m1", "Use the review workflow").await;
+    assert_shows(
+        &last_root(&scripts),
+        "waiting for the user's permission to change its workflow; its end will report to you, so do not run it again",
+    );
+    let requested = permissions(&backend, &master, FIRST).await;
+    assert_eq!(requested.requests.len(), 1, "{requested:?}");
+    let request = &requested.requests[0];
+    assert_eq!(request.command(), "demi agent workflows use review");
+    let category = &categories(request)[0];
+    assert_eq!(category.id, "agent.workflow");
+    assert_eq!(category.action.as_deref(), Some("change its workflow"));
+    assert_eq!(
+        category.description.as_deref(),
+        Some("Choose the workflow this conversation works with, as the composer's Workflow menu does.")
+    );
+    let denied = decide(&backend, &master, FIRST, request.id().as_str(), "deny").await;
+    assert_eq!(denied.status, StatusCode::NO_CONTENT);
+    let told = settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user denied this conversation permission to change its workflow.", "(t1) ended with exit code 1"],
+    )
+    .await;
+    assert_shows(
+        &told,
+        "demi agent workflows use: the user denied this conversation permission to change its workflow; the command was not run",
+    );
+    assert!(!told.contains("REVIEW STEPS"), "{told}");
+    assert_eq!(shown_choice(&backend, &master).await, WorkflowChoice::Default);
+
+    // Asked again and allowed, the pick is the menu's: the open page hears
+    // of it.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root_anew(
+        FIRST,
+        vec![background("t2", "demi agent workflows use review"), say("asked"), say("used"), say("used")],
+    );
+    socket.chat("m2", "Use the review workflow").await;
+    let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    let told = settled(
+        &scripts,
+        &backend,
+        &master,
+        FIRST,
+        &["The user allowed this conversation to change its workflow.", "(t2) ended with exit code 0"],
+    )
+    .await;
+    assert_shows(&told, "Workflow: review\nName: Review Team");
+    page.socket.metadata_until(|metadata| metadata.workflow == review).await;
+
+    // From then on, with no more asking: the next request carries its
+    // instructions and a spawn takes its profiles; a workflow that does not
+    // read, or that the project lacks, fails with why and leaves the choice.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let script = [
+        "demi agent spawn --profile slow <<< 'Think'",
+        "demi agent workflows use broken",
+        "demi agent workflows use nothing",
+        "demi agent workflows list",
+    ];
+    scripts.root_anew(FIRST, vec![shell("t3", &script.join("\n")), say("tried")]);
+    socket.chat("m3", "Try them").await;
+    let asked = last_root(&scripts);
+    assert_shows(&asked, "<workflow name=\"Review Team\">\nREVIEW STEPS\n</workflow>");
+    let file = |id: &str| workflows.join(format!("{id}.yaml")).to_str().unwrap().to_owned();
+    assert_shows(
+        &asked,
+        &format!("demi agent spawn: profile \"slow\" is unavailable: no provider entry of the user's offers model \"nowhere-model\"; change the profile's model in {}", file("review")),
+    );
+    assert_shows(
+        &asked,
+        &format!(
+            "demi agent workflows use: workflow \"broken\" cannot be used: {} does not read: line 3 column 9: validation error",
+            file("broken")
+        ),
+    );
+    assert_shows(
+        &asked,
+        "demi agent workflows use: the project has no workflow \"nothing\"; demi agent workflows list lists them",
+    );
+    assert_shows(&asked, &format!("review  yes      available    {}", file("review")));
+    assert!(permissions(&backend, &master, FIRST).await.requests.is_empty());
+    assert_eq!(shown_choice(&backend, &master).await, review);
+
+    // No Subagents, then Global Workflow, each as the menu shows it.
+    let script = [
+        "demi agent workflows use none",
+        "demi agent spawn <<< 'Think'",
+        "demi agent workflows use global",
+    ];
+    scripts.root_anew(FIRST, vec![shell("t4", &script.join("\n")), say("switched")]);
+    socket.chat("m4", "Switch").await;
+    let asked = last_root(&scripts);
+    assert_shows(&asked, "Workflow: none\nName: No Subagents");
+    assert_shows(&asked, "subagents are turned off for this conversation");
+    assert_shows(&asked, "Workflow: global\nName: Global Workflow");
+    page.socket.metadata_until(|metadata| metadata.workflow == WorkflowChoice::None).await;
+    page.socket.metadata_until(|metadata| metadata.workflow == WorkflowChoice::Default).await;
     backend.close().await;
 }

@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     AgentServer,
     profile_commands::{PROFILES_CATEGORY, profiles_group},
-    workflow_commands::workflows_group,
+    workflow_commands::{WORKFLOW_CATEGORY, workflows_group},
     shell_output::shell_group,
     tree::{ShownAgent, StartInput, Tree, TreeEntry, list_text},
 };
@@ -153,7 +153,7 @@ struct ShowArgs {
 }
 
 /// The group's entry in the model's capability index.
-const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists and checks the project's workflows. A single lookup or edit is faster by hand.";
+const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists, checks and picks workflows. A single lookup or edit is faster by hand.";
 
 /// `demi agent spawn --json`, `fork --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
@@ -288,10 +288,10 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
     } else {
         "Agent tree communication: this session may not spawn subagents; send, list and show any live agent."
     };
-    let (category, action, description) = PROFILES_CATEGORY;
-    let mut group = GroupBuilder::new("agent", summary)
-        .index_entry(AGENT_ENTRY)
-        .permission(category, action, description);
+    let mut group = GroupBuilder::new("agent", summary).index_entry(AGENT_ENTRY);
+    for (category, action, description) in [PROFILES_CATEGORY, WORKFLOW_CATEGORY] {
+        group = group.permission(category, action, description);
+    }
     if can_spawn {
         group = group.leaf(
             LeafBuilder::rpc("spawn", SPAWN_SUMMARY)

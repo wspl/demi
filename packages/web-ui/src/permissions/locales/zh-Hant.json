@@ -48,6 +48,10 @@
     "agent_profiles": {
       "action": "變更子智慧體設定檔",
       "description": "建立、編輯和刪除你的每個對話都可以使用的子智慧體設定檔。"
+    },
+    "agent_workflow": {
+      "action": "變更工作流程",
+      "description": "像輸入框的「工作流程」選單那樣，選擇此對話使用的工作流程。"
     }
   }
 }

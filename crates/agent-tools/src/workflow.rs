@@ -46,7 +46,7 @@ const DESCRIPTION_MAX: usize = 500;
 
 /// The help of `demi agent workflows`: where workflow files live, each
 /// field, and a whole example (`crates/backend-user-shard/src/conversation/workflows.rs`).
-pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles with instructions on how to split the work between them, kept in the project's repository so a team shares it. The user picks one for a conversation in the composer's Workflow menu; nothing applies until they do. With a workflow picked, its profiles replace the user's for that conversation, and its instructions reach the agent leading the conversation with the project's instructions.
+pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles with instructions on how to split the work between them, kept in the project's repository so a team shares it. The user picks one for a conversation in the composer's Workflow menu, or lets an agent pick one with demi agent workflows use; nothing applies until one is picked. With a workflow picked, its profiles replace the user's for that conversation, and its instructions reach the agent leading the conversation with the project's instructions.
 
 Where: .demi/workflows/<id>.yaml in the nearest directory, from the working directory up to the git repository's root, that has a .demi/workflows/ directory. The file's name without .yaml is the workflow's id.
 

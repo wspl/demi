@@ -61,7 +61,7 @@ const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work 
 
 /// Why a spawn fails in a conversation whose Workflow menu says No
 /// Subagents.
-const OFF_HERE: &str = "subagents are turned off for this conversation; do this work in this session, or ask the user to choose Global Workflow or a workflow in the composer's Workflow menu.";
+const OFF_HERE: &str = "subagents are turned off for this conversation; do this work in this session, or have Global Workflow or a workflow picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use global or use <id> once the user allows it.";
 
 /// What a spawn makes its child of: the profile's settings, or the
 /// parent's for the inherit profile.
@@ -182,7 +182,7 @@ impl<H: HostResolver> Tree<H> {
         match self.conversation_profiles(server).await? {
             ConversationProfiles::Off => Err(OFF_HERE.to_owned()),
             ConversationProfiles::Unavailable { id, reason } => Err(format!(
-                "this conversation's workflow \"{id}\" is unavailable: {reason}; do this work in this session, or ask the user to choose another in the composer's Workflow menu."
+                "this conversation's workflow \"{id}\" is unavailable: {reason}; do this work in this session, or have another picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use <id> once the user allows it."
             )),
             ConversationProfiles::Workflow(workflow) => {
                 let Some(name) = name else {
@@ -253,6 +253,13 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn workflows(&self) -> Result<WorkflowListing, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         server.deps.subagents.workflows(self.root.id()).await
+    }
+
+    /// `demi agent workflows use`: makes `choice` the conversation's
+    /// Workflow menu choice; answers the chosen workflow's name.
+    pub(crate) async fn choose_workflow(&self, choice: WorkflowChoice) -> Result<Option<String>, String> {
+        let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        server.deps.subagents.choose_workflow(self.root.id(), choice).await
     }
 
     /// The text of the file `path`, read against `directory`, the invoking
@@ -617,10 +624,10 @@ impl ProfileListing {
                 "subagents are turned off in settings; demi agent spawn fails until the user turns them on".to_owned(),
             ),
             WorkflowChoice::None => Some(
-                "subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu".to_owned(),
+                "subagents are turned off for this conversation; demi agent spawn fails until Global Workflow or a workflow is picked in the composer's Workflow menu, or with demi agent workflows use global or use <id> once the user allows it".to_owned(),
             ),
             WorkflowChoice::Workflow { id } if !self.enabled => Some(format!(
-                "this conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until the user chooses another in the composer's Workflow menu",
+                "this conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until another is picked in the composer's Workflow menu, or with demi agent workflows use <id> once the user allows it",
                 self.unavailable.as_deref().unwrap_or_default()
             )),
             _ if self.profiles.is_empty() => Some(match &self.workflow {

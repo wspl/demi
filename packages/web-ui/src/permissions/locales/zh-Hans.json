@@ -48,6 +48,10 @@
     "agent_profiles": {
       "action": "更改子智能体配置",
       "description": "创建、编辑和删除你的每个对话都可以使用的子智能体配置。"
+    },
+    "agent_workflow": {
+      "action": "更改工作流",
+      "description": "像输入框的“工作流”菜单那样，选择此对话使用的工作流。"
     }
   }
 }

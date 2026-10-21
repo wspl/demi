@@ -17,7 +17,8 @@
 //!
 //! - Nothing applies by itself. A repository is often someone else's, so a
 //!   workflow applies only when the user picks it in a conversation's Workflow
-//!   menu, never because a repository holds it.
+//!   menu, or allows an agent of that conversation to pick it (`demi agent
+//!   workflows use`), never because a repository holds it.
 //! - A workflow is a regular file of the project. A `.demi` directory, a
 //!   `.demi/workflows` directory or a workflow file that is a link is listed as
 //!   unavailable and never followed, since the Host looks at what each entry is
@@ -45,7 +46,7 @@ use demi_host_interface::{Host as _, HostError, HostPaths};
 use demi_plugin_interface::project;
 use demi_plugin_interface::{EntryKind, HostFile, HostRead};
 use demi_shared_types::{ModelSelection, ReadAt, THINKING_OFF, UnavailableSetting, WorkflowChoice};
-use demi_web_api_protocol::conversations::ModelSettings;
+use demi_web_api_protocol::conversations::{ConversationPatch, FieldResult, ModelSettings};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_runner_protocol::files::SubscriptionKind as WatchKind;
 use demi_web_api_protocol::workflows::{ConversationWorkflows, KeptWorkflowList, MenuWorkflow, WatchSubject};
@@ -456,6 +457,62 @@ impl Shard {
             unavailable: found.unavailable.clone(),
             workflows,
         })
+    }
+
+    /// Makes `choice` the conversation `id`'s Workflow menu choice, as an
+    /// agent asks with `demi agent workflows use`, through the menu's own
+    /// change (`apply_patch`), which announces it to the page.
+    ///
+    /// A workflow is chosen only as the menu offers it: listed in what the
+    /// shard holds and usable; otherwise it is refused with why, and the
+    /// choice stays. Answers the chosen workflow's name, none for Global
+    /// Workflow and No Subagents. Unlike the user's pick in the menu, it is
+    /// not remembered as the project's workflow, since the user did not make
+    /// it.
+    pub(crate) async fn choose_workflow(
+        &self,
+        id: &ConversationId,
+        choice: WorkflowChoice,
+    ) -> Result<Option<String>, String> {
+        let name = match &choice {
+            WorkflowChoice::Default | WorkflowChoice::None => None,
+            WorkflowChoice::Workflow { id: chosen } => {
+                let found = self
+                    .project_workflows(id)
+                    .await
+                    .map_err(|reason| format!("the project's workflows cannot be read: {reason}"))?;
+                let Some(directory) = &found.directory else {
+                    return Err("this project has no workflows: no directory from the working directory up to the repository's root has .demi/workflows/".to_owned());
+                };
+                if let Some(reason) = &found.unavailable {
+                    return Err(format!("the workflows in {directory} cannot be used: {reason}"));
+                }
+                let Some(file) = found.get(chosen) else {
+                    return Err(format!(
+                        "the project has no workflow \"{chosen}\"; demi agent workflows list lists them"
+                    ));
+                };
+                if let Some(reason) = file.reason() {
+                    return Err(format!("workflow \"{chosen}\" cannot be used: {reason}"));
+                }
+                file.read.as_ref().ok().map(|workflow| workflow.name.clone())
+            }
+        };
+        let patch = ConversationPatch {
+            workflow: Some(choice),
+            ..ConversationPatch::default()
+        };
+        let update = self
+            .apply_patch(id, patch)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or("the conversation is gone")?;
+        for result in update.results {
+            if let FieldResult::Failed { message, .. } = result {
+                return Err(message);
+            }
+        }
+        Ok(name)
     }
 
     /// The Workflow menu choice of the conversation `id`.
