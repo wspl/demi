@@ -344,6 +344,11 @@ export interface PanelKind<Data> {
   schema: z.ZodType<Data>
   title(data: Data, tab: KindTab): string
   /**
+   * What the tab's pane says it reads while it waits for what it shows
+   * (`agent/pane-ready.ts`), such as a file's name; without it, its title.
+   */
+  subject?(data: Data, tab: KindTab): string
+  /**
    * What makes a tab of a kind that is not pinned the one it is, such as an
    * attachment's number: an intent whose new data has the key of a tab the strip
    * holds selects that tab instead of adding another.
@@ -792,11 +797,12 @@ function bindKind(kind: PanelKind<unknown>, tab: KindTab, context: PageContext):
         })
     },
   })
-  const { badge, icon, busy, commands } = kind
+  const { badge, icon, busy, commands, subject } = kind
   return {
     kind: kind.kind,
     schema: kind.schema,
     title: (data) => kind.title(data, tab),
+    subject: subject && ((data) => subject(data, tab)),
     mark: kind.mark,
     icon: icon && ((data, id) => icon(data, tab, id)),
     busy: busy && ((data, id) => busy(data, tab, id)),

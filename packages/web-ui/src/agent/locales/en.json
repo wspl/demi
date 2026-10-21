@@ -397,6 +397,7 @@
     "closeLeft": "Close to the Left",
     "cannotShow": "This tab cannot be shown.",
     "nothingOpen": "Nothing open",
-    "noFiles": "No files or changes"
+    "noFiles": "No files or changes",
+    "reading": "Reading {name}"
   }
 }

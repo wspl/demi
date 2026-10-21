@@ -76,10 +76,13 @@ const many = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`folde
  */
 function mountTree(children: Parameters<typeof dir>[0], held: string[] = []) {
   const gates = new Map(held.map((path) => [path, deferred()]))
+  /** The directories the tree asked its source to list, in the order it asked. */
+  const asked: string[] = []
   const reads = memoryFileReads({ platform: 'linux', home: '/w', root: dir({ w: dir(children) }) })
   const source = keptSource({
     ...reads,
     list: async (path) => {
+      asked.push(path)
       await gates.get(path)?.promise
       return reads.list(path)
     },
@@ -93,6 +96,7 @@ function mountTree(children: Parameters<typeof dir>[0], held: string[] = []) {
   const row = (name: string) => [...host.querySelectorAll<HTMLElement>('[role=treeitem]')].find((el) => el.textContent?.trim() === name)
   return {
     selected,
+    asked,
     row,
     let: (path: string) => gates.get(path)!.resolve(),
     selectedRows: () => [...host.querySelectorAll('[role=tree] > [aria-selected=true]')].map((el) => el.textContent?.trim()),
@@ -128,6 +132,18 @@ test('a deep file the view shows unfolds the folders above it, is selected and s
   expect(tree.row('inner')!.getAttribute('aria-expanded')).toBe('true')
   expect(tree.selectedRows()).toEqual(['deep.ts'])
   expect(inView(tree.row('deep.ts')!, tree.scrollTop())).toBe(true)
+})
+
+// Planted defect it catches: a follow that opens each folder only once its parent has listed,
+// so a Host far away is waited for once for each level of a deep path.
+test('the folders above a deep file are asked for together, before any of them has listed', async () => {
+  const tree = mountTree({ a: dir({ b: dir({ c: dir({ 'deep.ts': textFile('', at) }) }) }) }, ['/w'])
+  tree.selected.value = '/w/a/b/c/deep.ts'
+  await nextTick()
+  expect(tree.asked).toEqual(['/w', '/w/a', '/w/a/b', '/w/a/b/c'])
+
+  tree.let('/w')
+  await tree.until(() => tree.selectedRows().includes('deep.ts'))
 })
 
 test('a file shown while another’s folders still list wins: the first’s deeper folders stay closed', async () => {

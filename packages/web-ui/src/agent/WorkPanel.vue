@@ -9,6 +9,7 @@ import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import PaneScope from './PaneScope.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import { vContextMenu, type ContextMenuEntry, type ContextMenuGroup } from '../ui/context-menu'
@@ -123,10 +124,10 @@ watch(() => props.tabsRead, (read) => {
 const contents = computed(() => kept.value.flatMap((id) => {
   const pinned = pinnedTabs.value.find((item) => item.kind.kind === id)
   if (pinned) {
-    return [{ id, kind: pinned.kind, data: pinned.data, pinned: true }]
+    return [{ id, kind: pinned.kind, data: pinned.data, pinned: true, name: pinned.kind.subject?.(pinned.data) ?? pinned.kind.title(pinned.data) }]
   }
   const tab = tabs.value.find((item) => item.tab.id === id)
-  return tab?.kind ? [{ id, kind: tab.kind, data: tab.data, pinned: false }] : []
+  return tab?.kind ? [{ id, kind: tab.kind, data: tab.data, pinned: false, name: tab.kind.subject?.(tab.data) ?? tab.title }] : []
 }))
 /** The tab menu's commands that close several tabs at once. */
 const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
@@ -320,10 +321,12 @@ function reorder(from: number, to: number): void {
         Each content keeps what it shows while another tab is selected; only the
         shown one is told it is.
       -->
-      <div
+      <PaneScope
         v-for="content in contents"
         v-show="content.id === selection"
         :key="content.id"
+        :name="content.name"
+        :shown="content.id === selection"
         class="flex min-h-0 flex-1 flex-col"
       >
         <component
@@ -334,7 +337,7 @@ function reorder(from: number, to: number): void {
           @update="(data: unknown, how?: TabUpdate) => content.pinned ? emit('updatePinned', content.id, data, how) : emit('updateTab', content.id, data, how)"
           @close="content.pinned || emit('closeTabs', [content.id])"
         />
-      </div>
+      </PaneScope>
       <template v-if="!contents.some((content) => content.id === selection)">
       <div
         v-if="shownTab"

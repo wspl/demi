@@ -40,7 +40,7 @@ use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId}
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
-use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
+use demi_web_api_protocol::panel::{HeldState, PanelChange, PanelEffect, PanelRead, WorkPanel};
 use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
 use demi_web_api_protocol::workflows::WatchSubject;
 use futures_util::StreamExt as _;
@@ -1018,6 +1018,49 @@ impl UserPlugins {
         self.0.control.panel(conversation).await
     }
 
+    /// The conversation's work panel with the held states of the plugins the
+    /// user has on whose conversation state is held, each as its plugin holds
+    /// it now: a plugin that has none, or fails, adds nothing, and the page
+    /// reads that state itself.
+    pub async fn panel_read(
+        &self,
+        conversation: ConversationId,
+        cancel: CancellationToken,
+    ) -> Result<PanelRead, StorageError> {
+        let panel = self.0.control.panel(conversation.clone()).await?;
+        let enabled = self.enabled().await?;
+        let mut states = Vec::new();
+        for (index, registered) in self.0.registry.plugins.iter().enumerate() {
+            let held = registered.state(Scope::Conversation).is_some_and(|state| state.held);
+            if !enabled[index] || !held {
+                continue;
+            }
+            // Read after the revision, as `conversation_state` does.
+            let revision = self.0.revision(index, &conversation);
+            let request = Request::PageState {
+                user: self.0.user.clone(),
+                conversation: Some(conversation.clone()),
+                held: true,
+            };
+            let reply = self
+                .0
+                .request(index, request, Some(conversation.clone()), None, cancel.clone())
+                .await;
+            if let Ok(Reply::State { state }) = reply {
+                states.push(HeldState {
+                    plugin: registered.id().as_str().to_owned(),
+                    revision,
+                    state,
+                });
+            }
+        }
+        Ok(PanelRead {
+            revision: panel.revision,
+            tabs: panel.tabs,
+            states,
+        })
+    }
+
     /// A page's changes of the conversation's work panel, all or none: each tab
     /// they create is of a kind a plugin the user has on declares.
     ///
@@ -1077,6 +1120,7 @@ impl UserPlugins {
         let request = Request::PageState {
             user: self.0.user.clone(),
             conversation: conversation.clone(),
+            held: false,
         };
         let reply = self
             .0

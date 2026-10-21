@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePaneReady } from '../agent/pane-ready'
 import { errorMessage } from '../infra/errors'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
@@ -16,7 +17,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
 import LinkMark from './LinkMark.vue'
 import { readLinkAgain } from './link-activation'
-import { failureShown } from './file-cache'
+import { failureShown, hasAnswered } from './file-cache'
 import { t } from './locales/text'
 import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
@@ -178,15 +179,49 @@ function inTree(path: string, root: string): boolean {
   return root === '/' ? path !== '/' : path.startsWith(`${root}/`)
 }
 
-// Ends the follow on its way, if any: its watch of the rows.
+// Ends the follow on its way, if any: its watch of the listings.
 let stopFollowing: (() => void) | null = null
+/** Whether a follow waits for listings: the pane the tree is in waits with it (`usePaneReady`). */
+const awaitingRow = ref(false)
+
+/** Whether a listing has its first answer, or the reason there is none. */
+function listed(path: string): boolean {
+  return hasAnswered(listings.get(path)?.showing?.entry)
+}
+
+/**
+ * Where a follow of `chain`, the folders from the root down to the followed
+ * path, stands: `waiting` for a listing, `in` once the path's row is in, or
+ * `out` when it cannot come, which ends the follow where it is:
+ *
+ * - A folder on the way was folded since, by the user, who went elsewhere.
+ * - A listing came without the next name, or the name is no folder, or it
+ *   could not be read: the path has no row to show.
+ */
+function followProgress(chain: readonly string[]): 'waiting' | 'in' | 'out' {
+  for (let at = 0; at < chain.length - 1; at++) {
+    const dir = chain[at]!
+    const entry = listings.get(dir)
+    if (!entry?.open)
+      return 'out'
+    if (!listed(dir))
+      return 'waiting'
+    const next = chain[at + 1]!
+    const row = entriesOf(entry).find((item) => joinPath(dir, item.name) === next)
+    if (!row)
+      return 'out'
+    if (at + 2 < chain.length && !row.isDirectory)
+      return 'out'
+  }
+  return 'in'
+}
 
 /**
  * Follows `path` as an editor's explorer follows the file it shows.
  *
- * 1. It unfolds the root, then each folder above the path in order, each once
- *    its parent's listing has put its row in, so no folder opens before the tree
- *    knows it is one.
+ * 1. The root and each folder above the path unfold together, so the source
+ *    may read their listings as one request, which a Host far away takes one
+ *    round trip for, not one for each level.
  * 2. Once the path's row is in, a directory's own listing opens when
  *    `isDirectory`, and the row is brought into view if it is not.
  *
@@ -198,6 +233,7 @@ let stopFollowing: (() => void) | null = null
 function follow(path: string | null, isDirectory: boolean): void {
   stopFollowing?.()
   stopFollowing = null
+  awaitingRow.value = false
   const root = normalizePath(props.root)
   open(root)
   const target = path === null ? null : normalizePath(path)
@@ -206,44 +242,47 @@ function follow(path: string | null, isDirectory: boolean): void {
   const above: string[] = []
   for (let dir = parentPath(target); dir !== root; dir = parentPath(dir))
     above.unshift(dir)
-  const opened = new Set<string>()
+  // The folders this follow opens, which no one had open.
+  const opened = above.filter((dir) => !listings.get(dir)?.open)
+  for (const dir of above)
+    open(dir)
+  const chain = [root, ...above, target]
+  const progress = computed(() => followProgress(chain))
   // One step down: whether the follow is over, done or given up.
-  const step = (): boolean => {
-    for (const dir of above) {
-      if (listings.get(dir)?.open)
-        continue
-      // Opened on the way and folded since: the user went elsewhere.
-      if (opened.has(dir))
-        return true
-      const row = rows.value.find((entry) => entry.path === dir)
-      if (!row)
-        return false
-      if (!row.isDirectory)
-        return true
-      opened.add(dir)
-      open(dir)
+  const arrive = (now: 'waiting' | 'in' | 'out'): boolean => {
+    if (now === 'waiting')
       return false
+    if (now === 'in') {
+      if (isDirectory)
+        open(target)
+      void nextTick(() => tree.value?.revealRow(target))
     }
-    if (!rows.value.some((entry) => entry.path === target))
-      return false
-    if (isDirectory)
-      open(target)
-    void nextTick(() => tree.value?.revealRow(target))
     return true
   }
-  if (step())
+  if (arrive(progress.value))
     return
-  // Each listing that lands changes the rows: the next step is taken then.
-  const stop = watch(rows, () => {
-    if (step())
+  awaitingRow.value = true
+  const stop = watch(progress, (now) => {
+    if (arrive(now))
       end()
   })
   const end = (): void => {
     stop()
-    if (stopFollowing === end)
+    if (stopFollowing === cancel) {
       stopFollowing = null
+      awaitingRow.value = false
+    }
   }
-  stopFollowing = end
+  // Another path followed meanwhile wins, and the folders this one read ahead of
+  // their parents' listings stay closed, as if they had waited for them.
+  const cancel = (): void => {
+    stop()
+    for (const dir of opened) {
+      if (!listed(parentPath(dir)))
+        fold(dir)
+    }
+  }
+  stopFollowing = cancel
 }
 
 onBeforeUnmount(releaseAll)
@@ -295,6 +334,8 @@ onBeforeUnmount(() => {
 
 const selectedPath = computed(() => (props.selected ? normalizePath(props.selected) : null))
 const rootListing = computed(() => listings.get(normalizePath(props.root)))
+// The tree is in once the root is listed and the followed row has come.
+usePaneReady(() => listed(normalizePath(props.root)) && !awaitingRow.value)
 const rootFailure = computed(() => failureShown(rootListing.value?.showing?.entry))
 const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
 

@@ -38,6 +38,34 @@ impl WorkPanel {
     }
 }
 
+/// `GET /conversations/:id/panel`: the panel, and the conversation states that
+/// plugins hold (a manifest state that declares itself held) as of their revision,
+/// which the page takes as it would read them, so a kind's content has them
+/// when its tab appears.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct PanelRead {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub revision: u64,
+    #[garde(dive)]
+    pub tabs: Vec<PanelTab>,
+    #[garde(dive)]
+    pub states: Vec<HeldState>,
+}
+
+/// A plugin's conversation state as the plugin holds it, with the revision it
+/// was held at (`PluginStateAnswer`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct HeldState {
+    #[garde(length(min = 1))]
+    pub plugin: String,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub revision: u64,
+    #[garde(skip)]
+    pub state: Value,
+}
+
 /// One tab of the panel: its kind, and what the page and the kind's plugin
 /// keep for it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]

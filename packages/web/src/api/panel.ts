@@ -1,6 +1,6 @@
 import type { PanelBackend, PanelChange } from '@demicodes/web-ui/agent/panel-changes'
 import { apiRequest, jsonBody, readResponse } from './client'
-import { panelAnswerSchema, panelChangesSchema, workPanelSchema } from './generated/web-api'
+import { panelAnswerSchema, panelChangesSchema, panelReadSchema } from './generated/web-api'
 
 /** A change as the panel's route names it; the route's schema checks it before it leaves. */
 function changeBody(change: PanelChange) {
@@ -26,7 +26,7 @@ function changeBody(change: PanelChange) {
 export function panelBackend(conversationId: string): PanelBackend {
   const panel = `/conversations/${encodeURIComponent(conversationId)}/panel`
   return {
-    read: async () => readResponse(await apiRequest(panel), workPanelSchema),
+    read: async () => readResponse(await apiRequest(panel), panelReadSchema),
     async send(changes) {
       // A kind's data is JSON the page made; the schema says so before it leaves.
       const body = panelChangesSchema.parse({ changes: changes.map(changeBody) })

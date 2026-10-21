@@ -1,4 +1,4 @@
-import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { HostFiles, type Answered } from '@demicodes/web-ui/files/file-cache'
 import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { keptSource, type ContentReads, type FileReads } from '@demicodes/web-ui/files/kept-source'
 import type { ReadAt, WatchChannel } from '@demicodes/web-ui/files/watch-channel'
@@ -11,8 +11,16 @@ import {
   type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
 import { z } from 'zod'
-import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
-import { directorySchema, fileTextSchema, type CreateDirectory, type DirectoryEntry, type LinkTarget } from './generated/web-api'
+import { ApiError, apiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
+import {
+  directoryListsSchema,
+  directorySchema,
+  fileTextSchema,
+  listedDirectoriesSchema,
+  type CreateDirectory,
+  type DirectoryEntry,
+  type LinkTarget,
+} from './generated/web-api'
 import { uploadBytes } from './uploads'
 import { t } from './locales/text'
 import type { Device } from '../state/types'
@@ -183,6 +191,8 @@ export function rawFileContents(endpoint: string, fixed: Record<string, string> 
 export interface FileRoutes {
   /** Lists a directory, and makes one with `POST`. */
   directory: string | null
+  /** Lists several directories in one `POST`; without it each is listed by a request of its own. */
+  lists?: string
   /** A file's text. */
   text?: string
   /** A file's bytes. */
@@ -199,7 +209,7 @@ export interface FileRoutes {
  */
 export function conversationFileRoutes(conversationId: string): Required<FileRoutes> {
   const base = `/conversations/${encodeURIComponent(conversationId)}/fs`
-  return { directory: base, text: `${base}/file`, raw: `${base}/raw`, upload: `${base}/raw`, remove: base }
+  return { directory: base, lists: `${base}/lists`, text: `${base}/file`, raw: `${base}/raw`, upload: `${base}/raw`, remove: base }
 }
 
 /** What the page keeps of each Host's files, by its device: every conversation on a Host shares it. */
@@ -243,6 +253,88 @@ function linkBreak(leadsTo: LinkTarget): Pick<FileBrowserLink, 'broken'> {
   }
 }
 
+/** The most directories one request of listings names (`MAX_LISTED_DIRECTORIES`). */
+const MOST_LISTED = 64
+
+/** A listing's reader: the entries of a directory with the Host's number. */
+type ListOne = (path: string) => Promise<Answered<FileBrowserEntry[]>>
+
+/**
+ * Lists the directories asked for in one turn of the event loop as one request
+ * to `endpoint`, as a path's deep ancestors are asked for together: a Host far
+ * away is then waited for once, not once for each level. One directory is
+ * listed by `listOne`, as it would be alone, and each answers or fails as it
+ * would have alone.
+ */
+function listTogether(endpoint: string, listOne: ListOne): ListOne {
+  interface Asker {
+    resolve(answer: Answered<FileBrowserEntry[]>): void
+    reject(error: unknown): void
+  }
+  let pending = new Map<string, Asker[]>()
+
+  async function ask(asked: Map<string, Asker[]>): Promise<void> {
+    const paths = [...asked.keys()]
+    if (paths.length === 1) {
+      const [path] = paths as [string]
+      listOne(path).then(
+        (answer) => asked.get(path)?.forEach((asker) => asker.resolve(answer)),
+        (error: unknown) => asked.get(path)?.forEach((asker) => asker.reject(error)),
+      )
+      return
+    }
+    try {
+      const answers = new Map<string, { answer: Answered<FileBrowserEntry[]> } | { failure: unknown }>()
+      for (let from = 0; from < paths.length; from += MOST_LISTED) {
+        const chunk = paths.slice(from, from + MOST_LISTED)
+        const body = directoryListsSchema.parse({ paths: chunk })
+        const { lists } = await readResponse(
+          await apiRequest(endpoint, { method: 'POST', ...jsonBody(body) }),
+          listedDirectoriesSchema,
+        )
+        for (const item of lists) {
+          if (item.type === 'refused') {
+            answers.set(item.path, { failure: fileBrowserError(apiError(item.status, JSON.stringify(item.error))) })
+            continue
+          }
+          const readAt = item.readAt === undefined ? null : readAtSchema.safeParse(item.readAt)
+          if (readAt !== null && !readAt.success)
+            throw invalidResponse(readAt.error)
+          answers.set(item.path, { answer: { value: item.entries.map(fileBrowserEntry), readAt: readAt?.data ?? null } })
+        }
+      }
+      for (const [path, askers] of asked) {
+        const answer = answers.get(path) ?? { failure: new Error(`The listing of ${path} was not answered`) }
+        for (const asker of askers) {
+          if ('answer' in answer)
+            asker.resolve(answer.answer)
+          else
+            asker.reject(answer.failure)
+        }
+      }
+    } catch (error) {
+      for (const askers of asked.values())
+        askers.forEach((asker) => asker.reject(fileBrowserError(error)))
+    }
+  }
+
+  return (path) => new Promise((resolve, reject) => {
+    const asking = pending.get(path)
+    if (asking) {
+      asking.push({ resolve, reject })
+      return
+    }
+    pending.set(path, [{ resolve, reject }])
+    if (pending.size === 1) {
+      queueMicrotask(() => {
+        const asked = pending
+        pending = new Map()
+        void ask(asked)
+      })
+    }
+  })
+}
+
 /** The reads and writes a file source makes through `endpoints`, each a request. */
 export function fileReads(
   endpoints: FileRoutes,
@@ -250,26 +342,29 @@ export function fileReads(
 ): FileReads {
   const {
     directory: endpoint,
+    lists: listsEndpoint,
     text: textEndpoint,
     raw: rawEndpoint,
     upload: uploadEndpoint,
     remove: removeEndpoint,
   } = endpoints
+  const listOne: ListOne = async (path) => {
+    if (!endpoint) {
+      throw new FileBrowserError('offline', t('files.selectDevice'))
+    }
+    try {
+      const response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`)
+      const directory = await readResponse(response, directorySchema)
+      return { value: directory.entries.map(fileBrowserEntry), readAt: readAtOf(response.headers) }
+    } catch (error) {
+      browserError(error)
+    }
+  }
+  const list = endpoint && listsEndpoint ? listTogether(listsEndpoint, listOne) : listOne
   return {
     platform: device?.platform ?? 'linux',
     home: device?.home ?? '/',
-    async list(path) {
-      if (!endpoint) {
-        throw new FileBrowserError('offline', t('files.selectDevice'))
-      }
-      try {
-        const response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`)
-        const directory = await readResponse(response, directorySchema)
-        return { value: directory.entries.map(fileBrowserEntry), readAt: readAtOf(response.headers) }
-      } catch (error) {
-        browserError(error)
-      }
-    },
+    list,
     ...(endpoint
       ? {
           async createDirectory(path: string, signal?: AbortSignal) {

@@ -110,6 +110,49 @@ pub struct Directory {
     pub entries: Vec<DirectoryEntry>,
 }
 
+/// The most directories one request of listings names: the ancestors of a deep
+/// path, and a few more.
+pub const MAX_LISTED_DIRECTORIES: usize = 64;
+
+/// `POST .../fs/lists { paths }`: directories to list together, as one request
+/// to the backend, which reads them from the Host side by side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct DirectoryLists {
+    #[garde(length(min = 1, max = MAX_LISTED_DIRECTORIES), inner(length(chars, min = 1), custom(demi_command_protocol::without_nul)))]
+    pub paths: Vec<String>,
+}
+
+/// What the Host answered for one of the directories of a [`DirectoryLists`]:
+/// the listing, as `GET .../fs` answers it with its header `X-Demi-Read-At`, or
+/// the refusal that route would have answered with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum ListedDirectory {
+    Listed {
+        path: String,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<String>")]
+        home: Option<String>,
+        entries: Vec<DirectoryEntry>,
+        /// The Host's number before it listed, as `<epoch>.<number>`.
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        read_at: Option<String>,
+    },
+    Refused {
+        path: String,
+        status: u16,
+        error: crate::error::ErrorBody,
+    },
+}
+
+/// `POST .../fs/lists`: one answer for each path asked, in its order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ListedDirectories {
+    pub lists: Vec<ListedDirectory>,
+}
+
 /// `POST .../fs { path }`: a directory to make, with its parents.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]

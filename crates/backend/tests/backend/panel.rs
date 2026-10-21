@@ -111,7 +111,7 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
         master: &master,
         id: conversation(&backend, &master).await,
     };
-    assert_eq!(panel.read().await, json!({ "revision": 0, "tabs": [] }));
+    assert_eq!(panel.read().await, json!({ "revision": 0, "tabs": [], "states": [] }));
     assert_eq!(panel.summary_revision().await, 0);
 
     let created = panel.create(page("p1", "https://a.test/")).await;
@@ -121,7 +121,7 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
     );
     assert_eq!(
         panel.read().await,
-        json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")] })
+        json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")], "states": [] })
     );
     assert_eq!(panel.summary_revision().await, 1);
     // Creating it again, as a page whose answer was lost does, creates nothing.
@@ -300,7 +300,7 @@ async fn an_attachments_tab_is_kept_until_the_user_closes_it() {
     });
     let created = panel.create(tab.clone()).await;
     assert_eq!(created.json::<Value>(), json!({ "revision": 1, "changed": true }));
-    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab] }));
+    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab], "states": [] }));
     assert_eq!(revision(&panel.remove("t1").await), 2);
     assert_eq!(panel.ids().await, Vec::<String>::new());
     backend.close().await;
@@ -328,7 +328,7 @@ async fn a_media_tab_is_kept_with_its_place_until_the_user_closes_it() {
     });
     let created = panel.create(tab.clone()).await;
     assert_eq!(created.json::<Value>(), json!({ "revision": 1, "changed": true }));
-    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab] }));
+    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab], "states": [] }));
     assert_eq!(revision(&panel.remove("t1").await), 2);
     assert_eq!(panel.ids().await, Vec::<String>::new());
     backend.close().await;
@@ -372,5 +372,37 @@ async fn turning_a_plugin_off_closes_its_tabs_and_leaves_the_others() {
     assert_eq!(panel.summary_revision().await, 3);
     assert_eq!(archive(false).await.status, StatusCode::OK);
     assert_eq!(archived.ids().await, Vec::<String>::new());
+    backend.close().await;
+}
+
+/// The panel read carries the conversation states plugins hold, with the
+/// revision each was held at, and leaves out one that holds none, so a kind's
+/// content has what it shows when its tab appears.
+#[tokio::test]
+async fn the_panel_read_carries_the_conversation_states_that_plugins_hold() {
+    let harness = Harness::new().with_panel_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let panel = Panel {
+        backend: &backend,
+        master: &master,
+        id: conversation(&backend, &master).await,
+    };
+    assert_eq!(panel.read().await["states"], json!([]));
+
+    let held = backend
+        .post(
+            &format!("/api/conversations/{}/plugins/fixture-panel/calls/hold", panel.id),
+            Some(&master),
+            json!({ "tabs": 2 }),
+        )
+        .await;
+    assert_eq!(held.status, StatusCode::OK, "{}", String::from_utf8_lossy(&held.body));
+    let states = panel.read().await["states"].clone();
+    let revision = states[0]["revision"].as_u64().unwrap();
+    assert_eq!(
+        states,
+        json!([{ "plugin": "fixture-panel", "revision": revision, "state": { "tabs": 2 } }])
+    );
+    assert!(revision >= 1);
     backend.close().await;
 }

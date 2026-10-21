@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Diff, Eye, FileOutput, Files, History, Pencil, RefreshCw } from '@lucide/vue'
+import { usePaneReady, usePaneWaiting } from '../agent/pane-ready'
 import { DiffEditor, useEditor } from '../editor/load'
 import { t as editorText } from '../editor/locales/text'
 import type { DocumentPlace } from '../markdown/document'
@@ -44,7 +45,7 @@ import {
   type RequestEdit,
   type RequestEditRef,
 } from './request-changes'
-import { goneMessage } from './file-cache'
+import { goneMessage, hasAnswered } from './file-cache'
 import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import { formatCount } from '../ui/numbers'
@@ -432,8 +433,11 @@ type State =
 /** The file whose sides show: its path and a renamed file's earlier path. */
 const shownSides = computed(() => {
   const change = selectedChange.value
-  if (!change)
-    return null
+  if (!change) {
+    // A working-tree file the address names is read with the list that is on its way, not after it.
+    const named = mode.value === 'commits' && !showsCommit.value && workingTree.value.listed === false ? selected.value : null
+    return named === null ? null : { path: named }
+  }
   return renamedFrom.value === undefined ? { path: change.path } : { path: change.path, from: renamedFrom.value }
 })
 const workingSides = useWorkingSides(
@@ -528,6 +532,44 @@ const state = computed<State>(() => mode.value === 'conversation' ? callSides.st
 // The view shows its loading state until the editor is there, whose load starts now.
 const { load: editorLoad, retry: retryEditor } = useEditor()
 
+/** The newest commits were read once: another branch shown reads its own beside the rest of the view. */
+const commitsSeen = ref(false)
+watch(() => log.listed.value, (listed) => {
+  if (listed)
+    commitsSeen.value = true
+}, { immediate: true })
+/**
+ * Whether the view has what a work panel pane waits for (`agent/pane-ready.ts`):
+ * the list of the files it shows, the selected file's two sides, the branch
+ * the toolbar names and the newest commits. A read the view holds an answer to
+ * is in, though it is read again.
+ */
+const settled = computed(() => {
+  if (editorLoad.value.phase === 'loading')
+    return false
+  if (history.value && treeAvailable.value && !(hasAnswered(branches.entry.value) && commitsSeen.value))
+    return false
+  if (mode.value === 'conversation')
+    return callSides.state.value.phase !== 'loading'
+  if (outsideRepository.value)
+    return true
+  if (showsCommit.value) {
+    if (!hasAnswered(shownCommit.entry.value))
+      return false
+    if (commitDetails.value === null)
+      return true
+  } else if (workingTree.value.listed === false) {
+    return false
+  }
+  if (!selectedChange.value || mediaPair.value)
+    return true
+  return hasAnswered(keptSides.value.entry.value)
+})
+usePaneReady(() => settled.value)
+/** The branch's name is part of what the pane draws once: it shows with the rest, never as HEAD before. */
+const pane = usePaneWaiting()
+const branchShown = computed(() => !pane.waiting.value && hasAnswered(branches.entry.value))
+
 /** What the view's content shows: its state once the editor is there, until then the editor's load. */
 const content = computed<State | { phase: 'editorFailed'; message: string }>(() => {
   const editor = editorLoad.value
@@ -610,6 +652,7 @@ function pick(path: string): void {
           v-if="history && treeAvailable"
           v-model:shown="branch"
           class="min-w-0 phone:mr-auto"
+          :class="branchShown ? '' : 'invisible'"
           :branches="branchList"
         />
         <!-- All Changes, then each edit of the request in turn, as GitHub picks a pull request's commits. -->

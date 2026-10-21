@@ -213,6 +213,9 @@ export { baseName, isAbsoluteHostPath, joinPath, relativePath } from '@demicodes
 export { downloadUrl } from '@demicodes/web-ui/files/download'
 export { formatByteRatio, formatBytes } from '@demicodes/web-ui/files/format'
 export { treeLayout } from '@demicodes/web-ui/files/tree-layout'
+// A view of the work panel says whether it has read what it first needs, and its empty area waits for it.
+export { usePaneReady, usePaneWaiting } from '@demicodes/web-ui/agent/pane-ready'
+export { default as PaneReading } from '@demicodes/web-ui/ui/PaneReading.vue'
 
 // Components: settings, controls, progress, navigation, files and icons.
 export { default as AddressBar } from '@demicodes/web-ui/agent/AddressBar.vue'

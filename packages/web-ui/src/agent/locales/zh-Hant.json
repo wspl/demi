@@ -397,6 +397,7 @@
     "closeLeft": "向左關閉",
     "cannotShow": "無法顯示此分頁。",
     "nothingOpen": "沒有開啟的內容",
-    "noFiles": "沒有檔案或變更"
+    "noFiles": "沒有檔案或變更",
+    "reading": "正在讀取 {name}"
   }
 }

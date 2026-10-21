@@ -38,6 +38,11 @@ export interface ChangeSetSource {
   truncated?: boolean
   /** Why there is nothing to list, when the reason is not that nothing changed. */
   unavailable?: 'no-repository' | null
+  /**
+   * The list was read once: an answer, or the reason there is none. Absent
+   * for a source that holds its list from the start.
+   */
+  readonly listed?: boolean
   /** A new list is on its way; `files` are the last one until it lands. */
   refreshing?: boolean
   /** The last listing failed, in these words; `files` are the last list that succeeded. */

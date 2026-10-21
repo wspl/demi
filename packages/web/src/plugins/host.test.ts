@@ -57,7 +57,7 @@ beforeEach(() => {
       return Response.json({ providers: [], smallModel: null })
     }
     if (path === `/api/conversations/${CONVERSATION}/panel`) {
-      return Response.json({ revision: 1, tabs: panelTabs })
+      return Response.json({ revision: 1, tabs: panelTabs, states: [] })
     }
     if (path === `/api/conversations/${CONVERSATION}/panel/changes`) {
       return Response.json({ revision: 2, changed: true })

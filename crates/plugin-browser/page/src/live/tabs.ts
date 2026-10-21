@@ -407,21 +407,21 @@ export class BrowserTabsController {
   }
 
   /**
-   * The title of the page the panel tab with `data` shows, as the browser
-   * reports it: as a view last reported it, else as the plugin last listed it,
-   * the moment the browser names it, as a web browser's tab takes its page's
-   * title in the background too.
-   *
-   * None when:
+   * What the browser reports of the page the panel tab with `data` shows: as a
+   * view last reported it, else as the plugin last listed it. The tab's
+   * address and its title both come from this one record, so they never
+   * describe two pages. None when:
    *
    * - the tab has no browser tab;
-   * - the page has no title;
-   * - the browser still reports the page a request of the user's leaves: until
-   *   a list after the request, and while the browser loads from an address
+   * - the browser still reports the page a request of the user's leaves:
+   *   until a list after the request, while the browser loads from an address
    *   other than the one the tab asks for, as it does until the new page
-   *   commits.
+   *   commits, and while it reports the blank page of a browser tab that has
+   *   not started on the address yet.
+   *
+   * The address and the title then come from the panel tab's own data.
    */
-  title(data: BrowserTabData): string | null {
+  private reportedPage(data: BrowserTabData): Pick<LiveTab, 'url' | 'title' | 'loading'> | null {
     if (data.tab === undefined || data.closed || data.failure || this.requested(data.tab)) {
       return null
     }
@@ -429,7 +429,22 @@ export class BrowserTabsController {
     if (!reported || (reported.loading && reported.url !== data.url)) {
       return null
     }
-    return reported.title || null
+    return reported.url === BLANK_URL && data.url !== BLANK_URL ? null : reported
+  }
+
+  /**
+   * The title of the page the panel tab with `data` shows, as the browser
+   * reports it, the moment it names it, as a web browser's tab takes its
+   * page's title in the background too; none when the page has no title or
+   * the browser reports no page of the tab (`reportedPage`).
+   */
+  title(data: BrowserTabData): string | null {
+    return this.reportedPage(data)?.title || null
+  }
+
+  /** The address of the page the panel tab with `data` shows: the page's own, else the one the tab asks for (`reportedPage`). */
+  address(data: BrowserTabData): string {
+    return this.reportedPage(data)?.url ?? data.url
   }
 
   /**

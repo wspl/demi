@@ -86,3 +86,29 @@ test('the start of a large file is one byte range, read up to the length asked f
   expect(ranges).toEqual(['bytes=0-1'])
   expect(requests[0]?.url).toBe('/api/conversations/c1/fs/raw?path=%2Fwork%2Fbig.log&version=W%2F%229%22')
 })
+
+// Planted defect it catches: a listing that goes alone though others are asked for in the same
+// turn (a deep file's folders, one round trip each), or one refused folder failing its neighbours.
+test('the folders asked for together are listed in one request, each answering as it would alone', async () => {
+  const requests: Array<{ url: string; method: string; body: unknown }> = []
+  const listed = (path: string) => ({ type: 'listed', path, home: null, entries: [{ name: 'x', isDirectory: false, size: 3, modifiedAt: '2026-01-01T00:00:00.000Z' }], readAt: 'run.7' })
+  globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({ url: String(input), method: init?.method ?? 'GET', body: init?.body === undefined ? null : JSON.parse(String(init.body)) })
+    if (init?.method !== 'POST')
+      return new Response(JSON.stringify({ path: '/w', home: null, entries: [] }), { status: 200 })
+    const refused = { type: 'refused', path: '/w/secret', status: 403, error: { requestId: 'req_test000000000001', code: 'host_operation_failed', message: 'Permission denied' } }
+    return new Response(JSON.stringify({ lists: [listed('/w'), refused, listed('/w/a')] }), { status: 200 })
+  }, { preconnect: originalFetch.preconnect })
+  const reads = fileReads({ directory: '/conversations/c1/fs', lists: '/conversations/c1/fs/lists' }, null)
+
+  const [first, second, third] = await Promise.allSettled([reads.list('/w'), reads.list('/w/secret'), reads.list('/w/a')])
+  expect(requests).toEqual([{ url: '/api/conversations/c1/fs/lists', method: 'POST', body: { paths: ['/w', '/w/secret', '/w/a'] } }])
+  expect(first).toMatchObject({ status: 'fulfilled', value: { value: [{ name: 'x' }], readAt: { epoch: 'run', number: 7 } } })
+  expect(second).toMatchObject({ status: 'rejected', reason: { kind: 'permission' } })
+  expect(third.status).toBe('fulfilled')
+
+  // One folder is listed as it always was.
+  requests.length = 0
+  await reads.list('/w')
+  expect(requests).toEqual([{ url: '/api/conversations/c1/fs?path=%2Fw', method: 'GET', body: null }])
+})

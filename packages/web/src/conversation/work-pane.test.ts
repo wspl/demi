@@ -143,7 +143,7 @@ async function panePage() {
   useSession().current = { status: 'signedIn', user }
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
     return (init?.method ?? 'GET') === 'GET'
-      ? Response.json({ revision: 1, tabs: [] })
+      ? Response.json({ revision: 1, tabs: [], states: [] })
       : Response.json({ revision: 2, changed: true })
   }) as typeof fetch
   const conversations = useConversations()

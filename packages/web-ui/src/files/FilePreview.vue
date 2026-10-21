@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { usePaneReady } from '../agent/pane-ready'
 import RegionStatus from '../ui/RegionStatus.vue'
 import FileCard from './FileCard.vue'
 import ImagePreview from './ImagePreview.vue'
@@ -72,6 +73,9 @@ const state = computed<State>(() => {
     ? { phase: 'undecodable', description }
     : { phase: 'ready', description }
 })
+
+// The description says what the preview shows: the pane waits for it.
+usePaneReady(() => state.value.phase !== 'loading')
 
 /** A viewer that cannot show the bytes: the file changed, or the web browser cannot decode it. */
 function failed(): void {

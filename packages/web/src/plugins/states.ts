@@ -1,7 +1,10 @@
+import { defineStore } from 'pinia'
 import { effectScope, reactive, watch, type EffectScope } from 'vue'
 import type { PluginCallError, StateFeed } from '@demicodes/web-ui/plugins/page'
 import { apiRequest, readResponse } from '../api/client'
 import { pluginStateAnswerSchema, type ConversationMetadata, type ProductState } from '../api/generated/web-api'
+import { useConversations } from '../conversation/store'
+import { useProduct } from '../state/product'
 import { isNewer, type RunRevision } from '../state/revisions'
 import { readFailure } from './errors'
 
@@ -76,6 +79,20 @@ export function conversationStates(
     }
   }
 
+  /**
+   * Takes a state the backend sent along with the conversation's panel, as
+   * if it had been read: a state that is not newer than the one held is left.
+   */
+  function hold(plugin: string, conversation: string, revision: number, state: unknown): void {
+    const entry = entryOf(`${conversation}\u0000${plugin}`)
+    const taken = { run: snapshot()?.run ?? null, revision }
+    if (isNewer(taken, entry.held)) {
+      entry.held = taken
+      entry.state = state
+      entry.error = null
+    }
+  }
+
   function follow(plugin: string, conversation: string): StateFeed {
     const key = `${conversation}\u0000${plugin}`
     const entry = entryOf(key)
@@ -114,5 +131,16 @@ export function conversationStates(
     }
   }
 
-  return { follow }
+  return { follow, hold }
 }
+
+/**
+ * The page's one set of plugin conversation states: the plugin pages follow
+ * them through the host (`productPageHost`), and a conversation's panel read
+ * brings the ones its plugins hold.
+ */
+export const usePluginStates = defineStore('plugin-states', () => {
+  const product = useProduct()
+  const conversations = useConversations()
+  return conversationStates(() => product.snapshot, (conversation) => conversations.metadataOf(conversation))
+})

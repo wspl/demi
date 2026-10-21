@@ -334,6 +334,24 @@ impl ApiError {
     }
 }
 
+impl ApiError {
+    /// The status and body this error answers with, for an answer that
+    /// carries several failures in its own body.
+    pub(crate) fn into_body(self) -> (StatusCode, ErrorBody) {
+        let body = ErrorBody {
+            code: self.code,
+            message: self.message,
+            params: self.params,
+            reason: self.reason,
+            credential_id: self.credential_id,
+            login_id: self.login_id,
+            workspace: self.workspace,
+            request_id: request_id::current_or_new(),
+        };
+        (self.status, body)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = ErrorBody {

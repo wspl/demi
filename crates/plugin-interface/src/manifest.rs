@@ -312,6 +312,13 @@ pub struct State {
     /// as a method is.
     #[serde(default)]
     pub operations: Vec<NativeOperation>,
+    /// The plugin holds this state between reads and keeps it as its Host says
+    /// it changes, so the backend sends what it holds with the conversation's
+    /// work panel (`crates/backend-http/src/panel.rs`) and the page shows both
+    /// at once, with no read of its own by the page. A plugin that holds none
+    /// reads it only for a panel that has tabs of its kind.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub held: bool,
 }
 
 impl State {
@@ -320,7 +327,14 @@ impl State {
         Self {
             schema: schema_of::<S>(Direction::Serializes),
             operations: Vec::new(),
+            held: false,
         }
+    }
+
+    /// The plugin holds the state between reads: see [`State::held`].
+    pub fn held(mut self) -> Self {
+        self.held = true;
+        self
     }
 
     pub fn calls(mut self, operation: NativeOperation) -> Self {

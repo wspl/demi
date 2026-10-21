@@ -251,6 +251,10 @@ export function keptChangeSet(
       const value = entry().value
       return value && !value.repository ? 'no-repository' as const : null
     },
+    get listed() {
+      const kept = entry()
+      return kept.answer !== null || kept.failure !== null
+    },
     get refreshing() {
       return entry().reading
     },

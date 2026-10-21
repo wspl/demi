@@ -1,4 +1,5 @@
 import { computed, shallowRef, watch, type ComputedRef } from 'vue'
+import { hasAnswered } from './file-cache'
 import { useShowings } from './showing'
 import type { CommitHistorySource, CommitLogPage, LoggedCommit } from './history'
 import { t } from './locales/text'
@@ -10,6 +11,8 @@ export interface CommitLogView {
   readonly more: ComputedRef<boolean>
   /** A page is on its way that nothing shows yet. */
   readonly loading: ComputedRef<boolean>
+  /** The newest page has an answer, or the reason there is none. */
+  readonly listed: ComputedRef<boolean>
   /** The branch is gone: deleted since it was shown. */
   readonly gone: ComputedRef<boolean>
   /** Why a page could not be read, the newest or a later one, which `loadMore` reads again. */
@@ -76,6 +79,7 @@ export function useCommitLog(
   return {
     commits,
     more,
+    listed: computed(() => hasAnswered(first.value)),
     loading: computed(() => [...shown.entries.value.values()].some((entry) => entry.value === undefined && entry.failure === null && entry.answer === null)),
     gone: computed(() => first.value?.answer === 'gone'),
     failure: computed(() => {
