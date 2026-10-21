@@ -327,6 +327,7 @@ impl Shard {
                         service_tier_id: model.as_ref().map(|model| model.service_tier_id.clone()),
                         target: Some(target),
                         workflow: None,
+                        first_message: None,
                     })
                     .await
                     .map_err(|refusal| refusal.to_string())?;

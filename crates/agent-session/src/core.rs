@@ -769,7 +769,7 @@ impl SessionCore {
 
     /// Whether `id` is the running turn, a queued message or the turn of a
     /// `user` block.
-    fn knows_turn(&self, id: &TurnId) -> bool {
+    pub(super) fn knows_turn(&self, id: &TurnId) -> bool {
         let running = matches!(&self.activity, Activity::Running(run) if &run.turn == id);
         running
             || self

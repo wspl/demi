@@ -30,6 +30,12 @@ test('a first opening whose socket is not made yet says it connects, as a lost s
   expect(kind({ load: 'opening' })).toBe('connecting')
 })
 
+test('a message sent while the first opening runs says Requesting, never Connecting; a socket that is not made yet still says Connecting', () => {
+  expect(kind({ load: 'opening', startingTurn: true })).toBe('requesting')
+  expect(kind({ load: 'opening', startingTurn: true, backendAway: true })).toBeNull()
+  expect(kind({ load: 'connecting', startingTurn: true })).toBe('connecting')
+})
+
 test('the row says Requesting while the server says the agent waits, and nothing otherwise', () => {
   expect(kind({ waiting: true })).toBe('requesting')
   expect(kind()).toBeNull()

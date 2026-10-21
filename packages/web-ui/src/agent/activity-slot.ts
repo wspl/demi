@@ -3,7 +3,7 @@ import type { SessionLoad } from './session-status'
 /**
  * Why the transcript's tail row is waiting.
  *
- * - `connecting` is the socket.
+ * - `connecting` is the socket, whether it is lost or not made yet.
  * - `requesting` is the wait for the provider's answer. It runs from the send
  *   of a message that starts a turn, its delivery included. A recovery the
  *   server has not acknowledged yet and the agent's own retries are the same
@@ -57,11 +57,20 @@ export interface ActivitySlotInput {
  * - A conversation that failed to open waits for nothing. The failure told at
  *   the tail says so.
  * - A first opening whose socket is not made yet says Connecting as a lost one
- *   does, also while it shows the copy the page kept of the conversation.
+ *   does, also while it shows the copy the page kept of the conversation,
+ *   unless a message sent to start a turn is on its way: Connecting is for
+ *   opening a conversation, not for sending in it, so the row says Requesting
+ *   from the send, as the first message of a new conversation does while its
+ *   socket opens
+ *   (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+ *   A socket that could not be made, `connecting`, still says Connecting.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
   if (input.load === 'reconnecting' || input.load === 'connecting' || input.load === 'opening') {
-    return input.backendAway ? null : 'connecting'
+    if (input.backendAway) {
+      return null
+    }
+    return input.load === 'opening' && input.startingTurn ? 'requesting' : 'connecting'
   }
   if (input.load === 'failed') {
     return null

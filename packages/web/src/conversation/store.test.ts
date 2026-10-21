@@ -137,6 +137,12 @@ let rootBlocks = new Map<string, Block[]>()
 /** Each conversation's subagents' entries, as the played backend serves them. */
 let subagentEntries = new Map<string, AgentEntry[]>()
 let rejectCreate: boolean
+/** The creation's answer says the session refused the first message it carried. */
+let refuseFirstMessage: boolean
+/** Holds the next creation's answer until the test opens it. */
+let holdCreate: Promise<void> | null
+/** What a test records the order of: each creation the backend took, beside what it records. */
+let order: string[] | null
 let rejectFork: boolean
 let requests: {
   path: string
@@ -313,6 +319,9 @@ beforeEach(async () => {
   FakeXhr.gate = null
   FakeXhr.failures = 0
   rejectCreate = false
+  refuseFirstMessage = false
+  holdCreate = null
+  order = null
   rejectFork = false
   requests = []
   globalThis.fetch = (async (input, init) => {
@@ -347,6 +356,9 @@ beforeEach(async () => {
       return Response.json({ conversation: created, metadata: metaOf(created.id) }, { status: 201 })
     }
     if (path === '/api/conversations') {
+      const held = holdCreate
+      holdCreate = null
+      await held
       if (rejectCreate) {
         return Response.json(
           {
@@ -362,8 +374,27 @@ beforeEach(async () => {
       if (!existing) {
         records.unshift(created)
         metaOf(created.id).workflow = body.workflow ?? { type: 'default' }
+        if (body.model) {
+          metaOf(created.id).model = { thinkingEffort: body.thinkingEffort ?? null, serviceTierId: body.serviceTierId ?? null, ...body.model }
+        }
       }
-      return Response.json({ conversation: created, metadata: metaOf(created.id) }, { status: existing ? 200 : 201 })
+      order?.push('create')
+      // The session takes the first message a creation carries, so the
+      // socket's opening shows it, as the backend's does.
+      const first = body.firstMessage as { messageId: string, content: ClientContent[] } | undefined
+      if (first && !refuseFirstMessage) {
+        rootBlocks.set(body.id, [{
+          type: 'user', id: `user-${first.messageId}`, turnId: first.messageId, createdAt: '2026-10-11T00:00:00.000Z',
+          model, content: first.content, preamble: null,
+        }])
+      }
+      const answered = refuseFirstMessage
+        ? { type: 'refused', refusal: { code: 'model_not_selected', reason: 'Choose a model for the conversation before opening it' } }
+        : { type: 'taken' }
+      return Response.json(
+        { conversation: created, metadata: metaOf(created.id), ...(first ? { firstMessage: answered } : {}) },
+        { status: existing ? 200 : 201 },
+      )
     }
     if (path === '/api/conversations/batch') {
       const items = body.items as {
@@ -1001,6 +1032,30 @@ test('a new conversation keeps the workflow it was given, in its saved draft and
   written.mockRestore()
 })
 
+test('the answer of the first send, made before a title the page shows came, does not take the title back to the placeholder', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  try {
+    await chooseStubModel(conversation)
+    conversation.draft = 'First message'
+    let open!: () => void
+    holdCreate = new Promise((resolve) => { open = resolve })
+    const sending = store.send(conversation)
+    await waitFor(() => requests.some((request) => request.path === '/api/conversations'), () => 'the record was not asked for')
+    // The title reaches the page while the answer, which holds the placeholder, is still on its way.
+    conversation.title = 'Plans for the week'
+    open()
+    await sending
+    expect(conversation.persistence).toBe('synced')
+    expect(conversation.title).toBe('Plans for the week')
+  } finally {
+    connect.mockRestore()
+  }
+})
+
 test('first send failure preserves the conversation and retries its UUID and message', async () => {
   const store = useConversations()
   await store.create()
@@ -1066,8 +1121,7 @@ test('a first send while the backend is away waits without failing and goes once
       throw new TypeError('Failed to fetch')
     }
   })
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit')
   try {
     await chooseStubModel(conversation)
     conversation.draft = 'Sent while Demi restarts'
@@ -1084,12 +1138,14 @@ test('a first send while the backend is away waits without failing and goes once
     await returned()
     channels.last().connect({ ...backendState(), providers: [stubProvider] })
     await sending
-    expect(submit).toHaveBeenCalledTimes(1)
-    expect(submit.mock.calls[0]?.[1]).toBe(messageId)
-    expect(conversation.pendingSends).toEqual([])
+    // The creation carried the message under its id, once; no socket send
+    // follows, and the message stays on its way until the opening shows it.
+    const created = requests.filter((request) => request.path === '/api/conversations')
+    expect(created.map((request) => (request.body as { firstMessage: { messageId: string } }).firstMessage.messageId)).toEqual([messageId])
+    expect(submit).not.toHaveBeenCalled()
+    await waitFor(() => conversation.pendingSends.length === 0, () => 'the opening did not show the message')
   } finally {
     submit.mockRestore()
-    connect.mockRestore()
     restoreFetch()
   }
 })
@@ -1101,31 +1157,28 @@ test('Stop pressed while the first message is on its way stops the turn it start
   const conversation = store.items.find((item) => item.id === id)!
   const restoreFetch = answerOpening(id)
   const held = deferred<void>()
-  const order: string[] = []
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async () => {
-    await held.promise
-    order.push('submit')
-  })
+  const seen: string[] = []
+  order = seen
   const abort = spyOn(ConversationRuntime.prototype, 'abort').mockImplementation(async () => {
-    order.push('abort')
+    seen.push('abort')
   })
   try {
     await chooseStubModel(conversation)
     conversation.draft = 'Write a long poem'
+    // The creation, which carries the message, is held.
+    holdCreate = held.promise
     const sending = store.send(conversation)
     const stopping = store.stop(conversation)
-    await waitFor(() => submit.mock.calls.length === 1, () => 'the message was not submitted')
-    expect(order).toEqual([])
+    await waitFor(() => requests.some((request) => request.path === '/api/conversations'), () => 'the message was not sent')
+    expect(seen).toEqual([])
     held.resolve()
     await sending
     await stopping
-    await waitFor(() => order.length === 2, () => `order: ${order.join(', ')}`)
-    expect(order).toEqual(['submit', 'abort'])
+    // The session holds the message once the opening shows it.
+    await waitFor(() => seen.length === 2, () => `order: ${seen.join(', ')}`)
+    expect(seen).toEqual(['create', 'abort'])
   } finally {
     abort.mockRestore()
-    submit.mockRestore()
-    connect.mockRestore()
     restoreFetch()
   }
 })
@@ -1405,13 +1458,8 @@ test('two messages sent in a row while the first is unconfirmed both show at onc
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
   const restoreFetch = answerOpening(id)
-  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const order: string[] = []
-  const submitted = deferred<void>()
-  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (_content, messageId) => {
-    order.push(`submit ${messageId}`)
-    await submitted.promise
-  })
+  const submit = spyOn(ConversationRuntime.prototype, 'submit')
   const steered = deferred<void>()
   const steer = spyOn(ConversationRuntime.prototype, 'steer').mockImplementation(async (_content, messageId) => {
     order.push(`steer ${messageId}`)
@@ -1427,19 +1475,15 @@ test('two messages sent in a row while the first is unconfirmed both show at onc
     expect(conversation.draft).toBe('')
     const [one, two] = conversation.pendingSends.map((pending) => pending.id)
     expect(shownRows(conversation)).toEqual({ turn: [`message:${one}`], waiting: [`message:${two}`] })
-    await waitFor(() => order.length === 1, () => 'nothing was sent')
-    expect(order).toEqual([`submit ${one}`])
+    // The first goes with its creation, the second after it.
+    await waitFor(() => order.length === 1, () => 'the second was not sent')
+    expect(requests.filter((request) => request.path === '/api/conversations').map((request) => (request.body as { firstMessage: { messageId: string } }).firstMessage.messageId)).toEqual([one!])
+    expect(order).toEqual([`steer ${two}`])
+    expect(submit).not.toHaveBeenCalled()
     // The session holds the first: its turn's message is written under its id.
-    conversation.history = wholeHistory([{
-      type: 'user', id: 'u-1', turnId: one!, createdAt: '2026-10-11T00:00:00.000Z', model,
-      content: [{ type: 'text', text: 'Run the tests' }], preamble: null,
-    }])
     conversation.phase = 'running'
-    submitted.resolve()
-    await first
-    await waitFor(() => order.length === 2, () => 'the second was not sent')
-    expect(order).toEqual([`submit ${one}`, `steer ${two}`])
     expect(shownRows(conversation)).toEqual({ turn: [], waiting: [`message:${two}`] })
+    await first
     // The session holds the second as a steer: the same row.
     conversation.pendingSteers = [{ id: two!, content: [{ type: 'text', text: 'Skip the e2e tests' }] }]
     steered.resolve()
@@ -1449,7 +1493,6 @@ test('two messages sent in a row while the first is unconfirmed both show at onc
   } finally {
     steer.mockRestore()
     submit.mockRestore()
-    connect.mockRestore()
     restoreFetch()
   }
 })
@@ -1482,8 +1525,17 @@ test.each([
     conversation.comments = [other]
     conversation.draft = 'My own draft'
     store.commenting(conversation).sendNow!(now)
-    await waitFor(() => sent.length === 1, () => 'nothing was sent')
-    expect(sent).toEqual([{ way, content: [], comments: [now] }])
+    // A new conversation's first message goes with its creation.
+    const created = () => requests.filter((request) => request.path === '/api/conversations')
+    await waitFor(() => (way === 'submit' ? created().length : sent.length) === 1, () => 'nothing was sent')
+    if (way === 'submit') {
+      expect(created().map((request) => (request.body as { firstMessage: unknown }).firstMessage)).toEqual([
+        { messageId: expect.any(String), content: [], comments: [now] },
+      ])
+      expect(sent).toEqual([])
+    } else {
+      expect(sent).toEqual([{ way, content: [], comments: [now] }])
+    }
     expect(conversation.draft).toBe('My own draft')
     expect(conversation.comments).toEqual([other])
   } finally {
@@ -1506,6 +1558,9 @@ test('Steer on a comment the session refuses puts the comment back with the wait
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockRejectedValue(new Error('The model is not available.'))
   const errors = spyOn(console, 'error').mockImplementation(() => {})
+  // The session refuses the message the creation carries, as it refuses a
+  // message on its socket.
+  refuseFirstMessage = true
   try {
     await chooseStubModel(conversation)
     const other: MessageComment = { id: 'c1', blockId: 'b1', start: 0, end: 4, at: 0, quote: 'Uplo', text: 'Smaller?' }
@@ -1514,7 +1569,8 @@ test('Steer on a comment the session refuses puts the comment back with the wait
     conversation.draft = 'My own draft'
     store.commenting(conversation).sendNow!(now)
     await waitFor(() => conversation.comments.length === 2, () => 'the comment did not come back')
-    expect(submit).toHaveBeenCalledTimes(1)
+    expect(requests.filter((request) => request.path === '/api/conversations')).toHaveLength(1)
+    expect(submit).not.toHaveBeenCalled()
     expect(conversation.pendingSends).toEqual([])
     expect(conversation.comments).toEqual([other, now])
     expect(conversation.draft).toBe('My own draft')
@@ -1554,7 +1610,8 @@ test('the first send keeps the new conversation shown while its record opens', a
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
     conversation.draft = 'First message'
     await store.send(conversation)
-    expect(submit).toHaveBeenCalledTimes(1)
+    expect(requests.filter((request) => request.path === '/api/conversations')).toHaveLength(1)
+    expect(submit).not.toHaveBeenCalled()
     expect(conversation.persistence).toBe('synced')
     expect(shown).toEqual([])
   } finally {
@@ -1565,7 +1622,7 @@ test('the first send keeps the new conversation shown while its record opens', a
   }
 })
 
-test('the first send creates the conversation with its settings and no title in one request and reads nothing of it back', async () => {
+test('the first send creates the conversation with its settings, its first message and no title in one request and reads nothing of it back', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)
@@ -1585,7 +1642,7 @@ test('the first send creates the conversation with its settings and no title in 
     await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
     conversation.draft = 'First message'
     await store.send(conversation)
-    expect(submit).toHaveBeenCalledTimes(1)
+    expect(submit).not.toHaveBeenCalled()
     const created = requests.filter((request) => request.path === '/api/conversations')
     // The placeholder goes as no title: it holds no words, so it reads
     // right in whichever language a page shows it later.
@@ -1594,6 +1651,8 @@ test('the first send creates the conversation with its settings and no title in 
       model: { providerId: 'stub', modelId: 'stub' }, serviceTierId: null,
       // What a new conversation outside projects starts with before any choice.
       workflow: { type: 'none' },
+      // Its first message goes with it.
+      firstMessage: { messageId: conversation.pendingSends[0]!.id, content: [{ type: 'text', text: 'First message' }] },
     }])
     expect(conversation.title).toBeNull()
     expect(readBack).toEqual([])
@@ -1601,6 +1660,39 @@ test('the first send creates the conversation with its settings and no title in 
     submit.mockRestore()
     connect.mockRestore()
     globalThis.fetch = originalFetch
+  }
+})
+
+test('a first message the session refuses leaves the conversation made and the message not delivered; Retry sends it on the socket under its id', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const restoreFetch = answerOpening(id)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    await chooseStubModel(conversation)
+    conversation.draft = 'First message'
+    refuseFirstMessage = true
+    await store.send(conversation)
+    // The record exists, and the message waits for its Edit or Retry.
+    expect(conversation.persistence).toBe('synced')
+    expect(conversation.pendingSends.map(({ text, error }) => ({ text, error }))).toEqual([
+      { text: 'First message', error: 'Choose a model for this conversation first.' },
+    ])
+    expect(submit).not.toHaveBeenCalled()
+    const messageId = conversation.pendingSends[0]!.id
+    await store.retrySends(conversation)
+    // A retry makes no second record: the conversation has one.
+    expect(requests.filter((request) => request.path === '/api/conversations')).toHaveLength(1)
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(submit.mock.calls[0]?.[1]).toBe(messageId)
+    expect(conversation.pendingSends).toEqual([])
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
   }
 })
 

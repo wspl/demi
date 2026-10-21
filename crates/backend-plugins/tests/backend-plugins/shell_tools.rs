@@ -230,11 +230,11 @@ async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
         client
-            .send(ClientFrame::Send {
+            .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
                 comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Wait for the flag."),
-            })
+            }))
             .await;
         // The command runs: the user steers, and the steer waits for the
         // call, which returns only once the command ends.
@@ -353,11 +353,11 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
         client
-            .send(ClientFrame::Send {
+            .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
                 comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Wait for go."),
-            })
+            }))
             .await;
         // The command runs: the user steers and sends the steer now.
         client.next_until(|frame| shows_call(frame, "wait")).await;
@@ -585,11 +585,11 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
         let mut client = fixture.opened().await;
         let started = tokio::time::Instant::now();
         client
-            .send(ClientFrame::Send {
+            .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
                 comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Serve, then stop."),
-            })
+            }))
             .await;
         let serve = fixture_command(&script, "serve").await;
         let served = started.elapsed();
@@ -994,11 +994,11 @@ async fn a_stop_ends_the_command_a_call_watches_with_its_output_and_leaves_one_a
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
         client
-            .send(ClientFrame::Send {
+            .send(ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
                 comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Serve, then wait."),
-            })
+            }))
             .await;
         let shown = client
             .next_until(|frame| {

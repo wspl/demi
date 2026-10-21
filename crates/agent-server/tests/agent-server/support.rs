@@ -899,11 +899,11 @@ pub async fn switch(fixture: &Fixture, model: ModelSelection) {
 }
 
 pub fn send(id: &str, message: &str) -> ClientFrame {
-    ClientFrame::Send {
+    ClientFrame::Send(demi_conversation_socket_protocol::SendMessage {
         comments: Vec::new(),
         message_id: turn(id),
         content: demi_agent_server::testing::client_text(message),
-    }
+    })
 }
 
 /// The handshake's frame after the agents: the output of the request the root

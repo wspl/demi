@@ -3054,7 +3054,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its socket, never Connecting. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -3072,6 +3072,11 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('offline')"
           >Offline</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('first')"
+          >First Message</Button>
           <Button
             variant="ghost"
             size="sm"

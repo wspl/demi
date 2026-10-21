@@ -1241,6 +1241,13 @@ impl AgentSession {
         }
     }
 
+    /// Whether the message `id` is the running turn, a queued message or the
+    /// turn of a `user` block, which a message sent again under it does not
+    /// run twice.
+    pub fn knows_turn(&self, id: &TurnId) -> bool {
+        self.shared.read(|core| core.knows_turn(id))
+    }
+
     /// Whether the tool call `id` is on the transcript's current path.
     pub fn holds_call(&self, id: &BlockId) -> bool {
         self.shared.read(|core| core.transcript.holds_call(id))
