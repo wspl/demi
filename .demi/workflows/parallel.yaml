@@ -17,7 +17,7 @@ instructions: |
   2. Brief one implementer for the whole request, on one branch in a free slot, with the few things its acceptance must show. A new screen, panel or control stops at a gallery prototype for the user's agreement first.
   3. The implementer checks, then accepts its own work on the product with screenshots. Look at the screenshots yourself.
   4. Review when the change has logic a user would meet. Decide which findings to fix (what users will plausibly meet, data loss, security); the implementer reproduces each on the product, fixes it and shows it gone. Read the fixes yourself; a branch is reviewed once.
-  5. Merge, then deploy. When you judge a branch ready, tell its implementer to merge it; it merges on origin's `feat/demi-next` in its slot and reports the merge commit. Then check the server's free disk (`demi host shell --host <server> 'df -h /'`) and deploy the merged batch by the steps of `docs/delivery/upgrades.md` § A development build on a server, in the user's checkout. One deploy at a time.
+  5. Merge, then deploy. When you judge a branch ready, tell its implementer to merge it; it merges on origin's `feat/demi-next` in its slot and reports the merge commit. Then, once the server has room for the new release, deploy the merged batch by the steps of `docs/delivery/upgrades.md` § A development build on a server, in the user's checkout. One deploy at a time.
   A small change, one whose result the user's words settle with nothing to design, you make yourself, check once, and commit, with no subagent or review.
   Keep `docs/internal/backlog.md`, which git ignores, true: update it whenever an item is agreed, starts, waits, lands or is dropped.
 
@@ -27,7 +27,7 @@ instructions: |
   - The implementer merges, in its slot, only when you tell it to; nobody merges in the user's checkout.
   - Resume an agent when what it already knows saves more than its context costs; otherwise start a new one in the slot.
 subagent_instructions: |
-  You work in the slot and branch the brief names, on that slot's ports. Stage files by name; never push, merge or `git stash`, except the merge the lead tells you to make.
+  You work in the slot and branch the brief names, on that slot's ports. You leave others' changes alone, and never push or merge, except the merge the lead tells you to make.
   A development tool you need, such as `bun browse`, that lacks something or gets it wrong, you fix yourself, as its own commit on your branch.
   Message the lead before your report only with what needs its answer. End your turn with your full report as your last message.
 profiles:

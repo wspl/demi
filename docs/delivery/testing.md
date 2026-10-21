@@ -129,6 +129,23 @@ A test has the following budget:
   no cheaper test can.
 - Soaks, benchmarks and long waits stay out of the regular suite.
 
+## Running
+
+Every Rust build and test uses one Cargo selection, because each selection
+keeps its own copy of the dependencies and switching between them has cost
+140 seconds a time:
+
+```sh
+cargo check --workspace --all-targets --features demi-runner/test-fixtures
+cargo test --workspace --features demi-runner/test-fixtures
+```
+
+Add `--test <name>` to run one target; never `-p <crate>`.
+
+TypeScript tests never build a program: `bun run test` builds the programs
+and runs the suite in parallel. To run only some tests, build first and set
+`DEMI_TEST_PROGRAMS=target/debug`.
+
 ## Resources and placement
 
 Tests use resources and live in places by these rules:
