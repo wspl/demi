@@ -32,12 +32,12 @@ const { shown, count, speed } = useRequestOutput({
   <Transition leave-active-class="transition-opacity duration-200 ease-out" leave-to-class="opacity-0">
     <div
       v-if="shown"
-      class="flex h-chip min-w-0 flex-1 flex-wrap content-start items-center justify-end overflow-hidden text-chrome text-fg-subtle tabular-nums"
+      class="flex h-chip min-w-0 flex-1 flex-wrap content-start items-center justify-end overflow-hidden text-detail text-fg-subtle tabular-nums"
       data-request-output
     >
       <span class="h-chip" aria-hidden="true" />
       <span class="inline-flex h-chip shrink-0 items-center gap-1 whitespace-nowrap">
-        <ArrowDown :size="ICON_PX.in28" />
+        <ArrowDown :size="ICON_PX.in20" />
         {{ t('dock.outputTokens', { tokens: formatTokens(Math.round(count)) }, Math.round(count)) }}
       </span>
       <span v-if="speed !== null" class="inline-flex h-chip shrink-0 items-center whitespace-nowrap">
