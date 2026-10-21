@@ -2101,7 +2101,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Output Tokens"
-        note="While a turn runs, the chips row’s right end shows the output tokens of the request the agent runs and its speed, as the server counts them: an estimate while it streams, rolling to each new count, then the response’s own count. A new request starts from zero at once. The speed shows from the request’s first second. When the turn ends, the last reading stays 3 seconds; then the count fades and the turn’s speed stays, dimmer, as the server keeps it with the conversation, until the next request’s reading takes its place. A conversation without one shows none. On a narrow row the speed goes first, then the whole reading, and the last turn’s speed alone when the row cannot hold it; the chips keep their room. The buttons stand in for the server’s frames."
+        note="While a turn runs, the chips row’s right end shows the output tokens of the request the agent runs and its speed, as the server counts them: an estimate while it streams, rolling to each new count, then the response’s own count. A new request starts from zero at once. The speed shows from the first token and rises with the count through the first second. When the turn ends, the last reading stays 3 seconds; then the count fades and the turn’s speed stays, dimmer, as the server keeps it with the conversation, until the next request’s reading takes its place. A conversation without one shows none. On a narrow row the speed goes first, then the whole reading, and the last turn’s speed alone when the row cannot hold it; the chips keep their room. The buttons stand in for the server’s frames."
       >
         <GalleryRequestOutput />
       </GallerySection>

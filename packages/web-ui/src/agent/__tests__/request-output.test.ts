@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { effectScope, nextTick, reactive } from 'vue'
 import type { RequestOutputReading } from '@demicodes/conversation-client'
 import type { TurnSpeed } from '@demicodes/protocol'
-import { LINGER_MS, ROLL_MS, SPEED_AFTER_MS, useRequestOutput, type RequestOutputDisplay } from '../request-output'
+import { LINGER_MS, ROLL_MS, SPEED_OVER_AT_LEAST_MS, useRequestOutput, type RequestOutputDisplay } from '../request-output'
 
 // The roll's frames come from the window's animation frames.
 GlobalRegistrator.register({ url: 'https://demi.test/chat' })
@@ -105,11 +105,12 @@ test('the count rolls within a request and changes at once otherwise', async () 
   shown.stop()
 })
 
-// Less than a second of streaming reads as thousands of tokens a second, so
-// the speed waits for the first second; while no reading arrives it follows
-// the time, a second at a time, by one timer, which goes with the reading it
-// was for and stops at the request's end.
-test('the speed shows from the request\'s first second and follows the time, by a timer released with its reading', async () => {
+// The speed shows from the first token and rises with the count: within the
+// first second it counts the tokens so far as that second's, where the time
+// streamed alone would read a few tokens as thousands a second. While no
+// reading arrives it follows the time, a second at a time, by one timer,
+// which goes with the reading it was for and stops at the request's end.
+test('the speed shows from the first token, rises with the count, and follows the time, by a timer released with its reading', async () => {
   reset()
   told.output = reading('r-1', 0, null)
   const shown = display()
@@ -118,11 +119,16 @@ test('the speed shows from the request\'s first second and follows the time, by 
 
   told.output = reading('r-1', 40, Date.now())
   await after(0)
-  expect(shown.speed.value).toBeNull()
   expect(timersSet()).toBe(1)
-  await after(SPEED_AFTER_MS - 2)
-  expect(shown.speed.value).toBeNull()
-  await after(1)
+  // It rises as the count rolls, never above the tokens so far over a second.
+  expect(shown.speed.value).toBe(shown.count.value)
+  await after(ROLL_MS / 2)
+  expect(shown.speed.value).toBe(shown.count.value)
+  expect(shown.speed.value!).toBeGreaterThan(0)
+  expect(shown.speed.value!).toBeLessThan(40)
+  await after(ROLL_MS)
+  expect(shown.speed.value).toBe(40)
+  await after(SPEED_OVER_AT_LEAST_MS - ROLL_MS * 1.5 - 1)
   expect(shown.speed.value).toBe(40)
   // No reading comes for a second: the speed follows the time.
   await after(1_000)

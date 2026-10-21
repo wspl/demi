@@ -8,10 +8,12 @@ export const ROLL_MS = 500
 /** How long the last reading stays once the turn ended, before it fades. */
 export const LINGER_MS = 3_000
 /**
- * How long a request streams before its speed shows: over less, a few tokens
- * read as thousands a second.
+ * The least time a speed is taken over. In its first second a request's
+ * speed is the tokens so far over that whole second, so it rises with the
+ * count from the first token, where the time streamed alone would read a few
+ * tokens as thousands a second.
  */
-export const SPEED_AFTER_MS = 1_000
+export const SPEED_OVER_AT_LEAST_MS = 1_000
 /** How often the speed of a streaming request follows the time. */
 const SECOND_MS = 1_000
 
@@ -33,7 +35,10 @@ export interface RequestOutputDisplay {
   shown: Readonly<Ref<RequestOutputReading | null>>
   /** The count as it shows, rolling to the reading's within a request. */
   count: Readonly<Ref<number>>
-  /** Tokens a second once the request streamed for `SPEED_AFTER_MS`; null before. */
+  /**
+   * Tokens a second from the request's first token, the count as it shows over
+   * the time streamed, at least `SPEED_OVER_AT_LEAST_MS`; null before.
+   */
   speed: ComputedRef<number | null>
   /** The last turn's tokens a second while no reading shows; null while one does, or with none kept. */
   turnSpeed: ComputedRef<number | null>
@@ -129,7 +134,7 @@ export function useRequestOutput(sources: RequestOutputSources): RequestOutputDi
     if (reading === null || reading.firstTokenAt === null)
       return null
     const streamed = (reading.endedAt ?? Date.now()) - reading.firstTokenAt
-    return streamed < SPEED_AFTER_MS ? null : reading.tokens / (streamed / 1_000)
+    return count.value / (Math.max(streamed, SPEED_OVER_AT_LEAST_MS) / 1_000)
   })
 
   const turnSpeed = computed(() => {

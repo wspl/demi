@@ -62,8 +62,9 @@ server sees tool calls' arguments as they stream, which the page does not.
 
 * At the right end of the chips row, led by a downward arrow: the count, as
   `1.2K tokens`, and the speed, the count over the time since the request's
-  first token. The speed shows from the request's first second on, since
-  less than that reads as thousands of tokens a second. The reading ends
+  first token, at least one second: it shows from the first token and rises
+  with the count through the first second, where less time would read a few
+  tokens as thousands a second. The reading ends
   level with the send or stop button.
 * Within a request the count rolls to each new value over about half a
   second, up or down; with reduced motion it changes at once. A new request,
