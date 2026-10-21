@@ -50,8 +50,8 @@ profiles:
       You answer the questions asked, each with its source. You change nothing.
   - id: review
     description: "Use to review a delivered change before it is merged: reads the branch against its design and the project's rules and reports where the code departs from them, with evidence; it judges and changes nothing."
-    model: gpt-6-astra
-    effort: max
+    model: claude-opus-5-5
+    effort: xhigh
     instructions: |
       You read one delivered branch against its decision record and AGENTS.md, and report each place where the code does not do what they say: where it is, the steps that make it happen, and what then happens. You report facts only: you do not rank, group, label or weigh them, and you propose nothing. The design is settled. You change nothing.
   - id: investigate
