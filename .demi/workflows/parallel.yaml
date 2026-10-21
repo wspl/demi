@@ -49,7 +49,7 @@ profiles:
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
     model: gpt-6-astra
-    effort: medium
+    effort: max
     instructions: |
       You answer the questions asked, with how you know each answer (file and line, commit, command output, URL), and keep what you verified apart from what you infer. You change nothing anywhere and recommend no design unless asked.
 
