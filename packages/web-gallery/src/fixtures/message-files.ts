@@ -17,17 +17,16 @@ function isFile(root: MemoryDirectory, path: string): boolean {
 }
 
 /**
- * Which file an attachment opens in place of its copy, as the product
- * answers: the one it was uploaded from while the gallery's Host is online,
- * as `online` says, and the workspace has the file. None holds its copy's
- * bytes, since the gallery's files are not its blobs.
+ * Which file a card of an attachment opens in place of its copy, as the
+ * product answers: the one it was uploaded from while the gallery's Host is
+ * online, as `online` says, and the workspace has the file.
  */
 export function galleryAttachmentOrigin(
   source: MemoryFileSource,
   online: () => boolean,
 ): NonNullable<ConversationFiles['attachmentOrigin']> {
   return async (_id, { source: origin }) =>
-    origin && origin.host === GALLERY_HOST && online() && isFile(source.root, origin.path) ? { path: origin.path, sameAsCopy: false } : null
+    origin && origin.host === GALLERY_HOST && online() && isFile(source.root, origin.path) ? origin.path : null
 }
 
 /**

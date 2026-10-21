@@ -196,37 +196,15 @@ export const HOST_FILE_ATTRIBUTE = 'data-host-file'
 export const ATTACHMENT_ID_ATTRIBUTE = 'data-attachment-id'
 
 /**
- * An attachment's image or video as the viewer shows it: its copy, which asks
- * when it shows whether the file it was uploaded from opens in its place
- * (`attachmentOrigin`); null for a file of another kind. The description that
- * answer carries enters the kept files as one more reading, and the file shows
- * from the copy's address while the kept files say it has the version the
- * Host found holding the copy's bytes.
+ * An attachment's image or video as the viewer shows it: its own copy, the
+ * bytes its thumbnail shows, whatever became of the file it was uploaded from;
+ * null for a file of another kind.
  */
-export function attachmentMedium(id: string, attachment: MessageAttachment, files: MessageFiles | undefined): ShownMedium | null {
+export function attachmentMedium(attachment: MessageAttachment): ShownMedium | null {
   const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
   if (!kind)
     return null
-  const shown = { kind, name: attachment.name, size: declaredSize(attachment), bytes: attachment.size } as const
-  const contents = files?.contents
-  if (!files?.attachmentOrigin || !contents || !attachment.source)
-    return { ...shown, src: attachment.url }
-  const origin = async () => {
-    const found = await files.attachmentOrigin?.(id, attachment)
-    if (!found)
-      return null
-    const { path, described, sameAsCopy } = found
-    // The kept files own the file's description; the answer is one more reading of it.
-    if (described)
-      contents.offerDescription(path, described)
-    const version = described?.value.version
-    return {
-      path,
-      contents,
-      ...(sameAsCopy && version ? { copy: { version, src: attachment.url } } : {}),
-    }
-  }
-  return { ...shown, src: attachment.url, origin }
+  return { kind, name: attachment.name, size: declaredSize(attachment), bytes: attachment.size, src: attachment.url }
 }
 
 /** An attachment as Demi's own form of a copy holds a stored file. */
@@ -685,7 +663,7 @@ export function referencedMedia(references: readonly MessageMediumReference[], f
   return references.flatMap((reference): ShownMedium[] => {
     if (reference.type === 'attachment') {
       const lookup = messageAttachment(files, reference.id)
-      const medium = lookup?.state === 'found' ? attachmentMedium(reference.id, lookup.attachment, files) : null
+      const medium = lookup?.state === 'found' ? attachmentMedium(lookup.attachment) : null
       return medium ? [medium] : []
     }
     const image = messageImage(reference.href, files)

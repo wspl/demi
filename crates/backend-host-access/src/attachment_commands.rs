@@ -19,7 +19,8 @@
 //!    uploads, and stores the record under the next number of the
 //!    conversation's `attachment` sequence, with the file it came from: the
 //!    invocation's device and the file's full path as that Host writes it,
-//!    which the page opens in the copy's place while it can read it
+//!    which a card of a file that is no image or video opens in the Files
+//!    panel in the copy's place while the page can read it
 //!    (`docs/decisions/0003-attachment-opens-its-file.md`).
 //!
 //! The command returns no medium: the attachment is for the user.
@@ -317,8 +318,8 @@ async fn store(
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.message)?;
-    // The full path of the file the Host read, as it writes it, which the
-    // page opens in the copy's place.
+    // The full path of the file the Host read, as it writes it, which a file
+    // card opens in the Files panel in the copy's place.
     let (sha256, full_path) = match hash {
         // A file that grew past the limit since the Host looked at its size
         // is refused all the same.

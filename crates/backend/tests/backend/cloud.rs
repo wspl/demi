@@ -1122,7 +1122,7 @@ async fn whether_an_attachments_file_is_there_never_wakes_a_stopped_cloud() {
     let present = backend.get(&check, Some(&master)).await;
     assert_eq!(
         present.status,
-        StatusCode::OK,
+        StatusCode::NO_CONTENT,
         "{}",
         String::from_utf8_lossy(&present.body)
     );

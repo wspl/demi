@@ -2,14 +2,13 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
 // A video in the work panel's Media tab plays only while the tab shows, and a
-// tab hidden while its video's source is still asked for shows the video once
-// it is shown again.
+// tab hidden while a Host video's description is still read shows the video
+// once it is shown again.
 //
-// The tab is MediaView on a page of happy-dom, given the page's viewer. An
-// attachment's question of whether it opens its file is a promise the test
-// settles, the Host's file a description the test answers. Happy-dom loads no
-// media, so the test plays a web browser's part where a test needs it: a
-// player given no address fails. A few milliseconds besides the page's start.
+// The tab is MediaView on a page of happy-dom, given the page's viewer, the
+// Host's file a description the test answers. Happy-dom loads no media, so the
+// test plays a web browser's part where a test needs it: a player given no
+// address fails. A few milliseconds besides the page's start.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -22,7 +21,6 @@ const { SimulatedWatch } = await import('../memory-source')
 const { WatchChannel } = await import('../watch-channel')
 
 type MediaViewerState = ReturnType<typeof provideMediaViewer>
-type MediumFile = { path: string; contents: ReturnType<typeof keptContents> }
 
 let unmount: (() => void) | null = null
 afterEach(() => {
@@ -77,16 +75,6 @@ function mountTab(): { root: HTMLElement; viewer: MediaViewerState; shown: { val
   return { root, viewer: viewer!, shown }
 }
 
-/** The agent's video, whose question of whether it opens its file the test answers with `answer`. */
-function attachedVideo() {
-  let answer: (file: MediumFile | null) => void = () => {}
-  const asked = new Promise<MediumFile | null>((resolve) => {
-    answer = resolve
-  })
-  const medium = { kind: 'video' as const, name: 'clip.webm', src: '/blob/clip', origin: () => asked }
-  return { medium, answer: (file: MediumFile | null) => answer(file) }
-}
-
 /** What a web browser does to a player given no address: it fails. */
 function failPlayersWithoutAddress(root: HTMLElement): void {
   for (const video of root.querySelectorAll('video')) {
@@ -96,14 +84,11 @@ function failPlayersWithoutAddress(root: HTMLElement): void {
 }
 
 // Planted defect this catches: the player made with its autoplay whatever the
-// tab, which starts the copy that loads while the user looks at Files.
-test('a video whose source arrives while its tab is hidden does not start, and waits for Play once shown', async () => {
+// tab, which starts a video that loads while the user looks at Files.
+test('a video shown while its tab is hidden does not start, and waits for Play once shown', async () => {
   const { root, viewer, shown } = mountTab()
-  const { medium, answer } = attachedVideo()
-  viewer.show(medium)
-  await settle()
   shown.value = false
-  answer(null)
+  viewer.show({ kind: 'video', name: 'clip.webm', src: '/blob/clip' })
   await settle()
   const video = root.querySelector('video')!
   expect([video.getAttribute('src'), video.autoplay, video.paused]).toEqual(['/blob/clip', false, true])
@@ -121,19 +106,18 @@ test('a video whose source arrives while its tab is hidden does not start, and w
 // Planted defect this catches: the player made before the file has an
 // address, which a web browser fails, so the user returns to "Couldn’t show
 // this video" until the file's description arrives.
-test('a tab hidden while its video\'s file is asked for shows no failure once shown again, then the file', async () => {
+test('a tab hidden while a Host video\'s description is read shows no failure once shown again, then the file', async () => {
   const { root, viewer, shown } = mountTab()
-  const { medium, answer } = attachedVideo()
   const host = hostContents()
-  viewer.show(medium)
-  await settle()
   shown.value = false
-  answer({ path: '/work/clip.webm', contents: host.contents })
+  viewer.show({ kind: 'video', name: 'clip.webm', file: { path: '/work/clip.webm', contents: host.contents } })
   await settle()
   failPlayersWithoutAddress(root)
   await settle()
 
   shown.value = true
+  await settle()
+  failPlayersWithoutAddress(root)
   await settle()
   expect(root.textContent).not.toContain('Couldn’t show this video.')
   host.describe()

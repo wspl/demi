@@ -117,11 +117,12 @@ pub struct ConversationAttachment {
     pub height: Option<u32>,
     /// The hash its bytes are served under, at `GET /blobs/:sha256`.
     pub blob: BlobRef,
-    /// The file the agent uploaded it from, which the page opens in the
-    /// copy's place while the conversation's Host is that device, online,
-    /// and has the file (`docs/decisions/0003-attachment-opens-its-file.md`);
-    /// absent for a file the user sent, for an upload stored before uploads
-    /// kept it, and on a share.
+    /// The file the agent uploaded it from, which a card of a file that is no
+    /// image or video opens in the Files panel in the copy's place while the
+    /// conversation's Host is that device, online, and has the file
+    /// (`docs/decisions/0003-attachment-opens-its-file.md`); absent for a file
+    /// the user sent, for an upload stored before uploads kept it, and on a
+    /// share.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -129,27 +130,6 @@ pub struct ConversationAttachment {
     )]
     #[schemars(with = "AttachmentSourceDto")]
     pub source: Option<AttachmentSourceDto>,
-}
-
-/// `GET /conversations/:id/attachments/:attachment/file`: the file the
-/// attachment was uploaded from, while it is there to open in the copy's
-/// place, described as a `HEAD` of the file's bytes describes it, at the
-/// Host's number its `x-demi-read-at` header carries. The page shows the file
-/// from this answer with no other request before the file's bytes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AttachmentFile {
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub size: u64,
-    pub modified_at: Timestamp,
-    /// The version a request for the file's bytes names, as `fs/raw` answers
-    /// it in its `ETag`.
-    pub version: String,
-    /// Whether the file at `version` holds the attachment's own bytes, which
-    /// the page then shows from the copy it loaded already. The Host decides
-    /// it for an image alone: the same size, then the same SHA-256. A video
-    /// streams the file whatever it holds.
-    pub same_as_copy: bool,
 }
 
 /// The file of a Host an attachment was uploaded from.

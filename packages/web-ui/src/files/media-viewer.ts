@@ -14,13 +14,6 @@ import type { FileContents } from './types'
 export interface MediumFile {
   path: string
   contents: FileContents
-  /**
-   * A copy of the file's bytes at `version` the page loaded already, as an
-   * attachment's is: while the kept files say the file has that version, it
-   * shows from the copy's address `src`, which the web browser holds, and
-   * any other version from the Host.
-   */
-  copy?: { version: string; src: string }
 }
 
 /**
@@ -38,17 +31,8 @@ export type ShownMedium = {
   /** The transcript row it stands in, which tells apart the same picture standing in two rows (`transcriptRowOf`). */
   row?: string
 } & (
-  | {
-    src: string
-    file?: never
-    /**
-     * An attachment's question of whether it opens the file it was uploaded
-     * from in place of its copy at `src`, asked when it shows
-     * (`attachmentMedium`): the file, or null for the copy.
-     */
-    origin?: () => Promise<MediumFile | null>
-  }
-  | { file: MediumFile; src?: never; origin?: never }
+  | { src: string; file?: never }
+  | { file: MediumFile; src?: never }
 )
 
 /**
@@ -70,10 +54,9 @@ export function mediumKey(medium: ShownMedium): string {
  * Host image the version of its file the page keeps.
  *
  * A Host image shows from the kept files while the viewer is open, so it is the
- * picture the message shows and the file's next version replaces it in place;
- * the version a copy the page holds has shows from the copy. Until a medium
- * first shows, a description the Host reported changed is not shown: the
- * viewer waits for its new reading, so an outdated picture or copy never
+ * picture the message shows and the file's next version replaces it in place.
+ * Until a medium first shows, a description the Host reported changed is not
+ * shown: the viewer waits for its new reading, so an outdated picture never
  * shows first.
  * `gone` says a Host image's file is not there. Closed, the last stays for the
  * window's leave. `bytes` is the size of what shows: a Host image's file's, or
@@ -109,10 +92,8 @@ export function useMediumSource(
     // Nothing shown yet of this medium: a description the Host reported
     // changed waits for its new reading.
     if (image.state === 'shown' && !(src.value === '' && outdated)) {
-      const description = file.entry.value?.value
-      const copy = medium()?.file?.copy
-      src.value = copy && description?.version === copy.version ? copy.src : image.src
-      bytes.value = description?.size ?? bytes.value
+      src.value = image.src
+      bytes.value = file.entry.value?.value?.size ?? bytes.value
     }
     gone.value = image.state === 'none'
   }, { immediate: true })

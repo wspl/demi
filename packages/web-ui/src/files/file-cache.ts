@@ -24,10 +24,7 @@
  *   screen last.
  * - Reads of one entry share one request.
  * - Readings of one entry are ordered by their numbers, whatever order they
- *   arrive in: one read before the answer kept never replaces it. A reading
- *   the page made another way, such as a file's description an attachment's
- *   question carried, is one more reading (`offer`), so the cache stays the
- *   one owner of what a file is now.
+ *   arrive in: one read before the answer kept never replaces it.
  * - At most `budget` of text and `MAX_ENTRIES` entries stay, the entries shown
  *   longest ago leaving first.
  *
@@ -377,12 +374,6 @@ class Entry<T> {
     return this.state.answer !== null && held !== null && at !== null && held.epoch === at.epoch && at.number < held.number
   }
 
-  /** Whether the Host reported a change of what it depends on after the number `at`. */
-  changedAfter(at: ReadAt): boolean {
-    return this.subscriptions.value.some((subscription) =>
-      subscription.epoch === at.epoch && subscription.changedAt > at.number)
-  }
-
   /** What it subscribes to: the subjects its answer depends on. */
   subjects(): Subject[] {
     const { kind, path, root } = this.spec
@@ -532,8 +523,8 @@ export class HostFiles implements WatchListener {
       let answered = false
       try {
         const answer = await read(entry.version, entry.readAfter(Date.now()))
-        // A reading taken before the one kept, which arrived another way
-        // meanwhile (`offer`), says nothing newer.
+        // A reading taken before the one kept, which arrived meanwhile, says
+        // nothing newer.
         if (entry.keepsNewerThan(answer.readAt)) {
           answered = true
           return
@@ -722,32 +713,6 @@ export class HostFiles implements WatchListener {
       return
     entry.state.outdated = freshness === 'stale'
     void this.read(entry, read)
-  }
-
-  /**
-   * Takes `answered`, a reading of the entry `spec` names that the page made
-   * another way, such as the description of a file an attachment's question
-   * carried, as one more reading among the cache's own, without a request.
-   *
-   * It is kept only while it is the newest reading: one taken before the
-   * answer kept, or before a change the Host already reported, is dropped,
-   * and a later read of its own replaces it as any reading does. A reading
-   * at no number is kept only while nothing is.
-   */
-  offer<T>(spec: KeptSpec<T>, answered: Answered<T>): void {
-    const entry = this.entry(spec)
-    const at = answered.readAt
-    const known = at === null ? entry.state.answer !== null : entry.keepsNewerThan(at) || entry.changedAfter(at)
-    if (known)
-      return
-    entry.readAt = at
-    entry.state.value = answered.value
-    entry.state.answer = 'value'
-    entry.state.failure = null
-    entry.state.outdated = false
-    entry.version = entry.spec.version?.(answered.value) ?? null
-    this.measure(entry as Entry<unknown>, spec.size(answered.value))
-    this.evict()
   }
 
   /**

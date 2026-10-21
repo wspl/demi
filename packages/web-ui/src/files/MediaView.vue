@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, shallowRef, watch, watchEffect } from 'vue'
+import { computed, nextTick, ref, watch, watchEffect } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { ChevronLeft, ChevronRight, Download } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
@@ -10,7 +10,7 @@ import { formatCount } from '../ui/numbers'
 import { usePhone } from '../ui/phone'
 import { downloadUrl } from './download'
 import MediumStage from './MediumStage.vue'
-import { mediumKey, useMediaViewer, type MediumPlace, type ShownMedium } from './media-viewer'
+import { mediumKey, useMediaViewer, type MediumPlace } from './media-viewer'
 import FileIcon from './FileIcon.vue'
 import { formatBytes } from './format'
 import { baseName } from '@demicodes/utils'
@@ -49,11 +49,6 @@ const phone = usePhone()
 const root = ref<HTMLElement | null>(null)
 
 const medium = computed(() => viewer.shown.value)
-/** The medium as the stage shows it, an attachment's file or its copy, which Download downloads. */
-const showing = shallowRef<ShownMedium | null>(null)
-watch(medium, () => {
-  showing.value = null
-})
 
 // A tab the page restored shows the medium it showed again, once the
 // conversation's transcript offers the series that holds it.
@@ -78,7 +73,7 @@ watch(medium, (shown) => {
 const resolution = computed(() => (size.value ? `${size.value.width} × ${size.value.height}` : null))
 /** What the icon is told: a Host image's file, whose name its caption need not carry, or the medium's name. */
 const iconName = computed(() => {
-  const shown = showing.value ?? medium.value
+  const shown = medium.value
   return shown?.file ? baseName(shown.file.path) : shown?.name ?? ''
 })
 
@@ -139,7 +134,7 @@ function onKeydown(event: KeyboardEvent): void {
 
 /** Downloads the medium as it shows: a Host file's version, or its address. */
 function download(): void {
-  const shown = showing.value ?? medium.value
+  const shown = medium.value
   if (!shown)
     return
   if (shown.file)
@@ -187,7 +182,6 @@ function download(): void {
         :from="arriving"
         @size="(width, height) => (size = { width, height })"
         @bytes="bytes = $event"
-        @shown="showing = $event"
         @step="onSwipe"
       />
       <RegionStatus v-else class="h-full" status="note" :label="t('media.none')" />
