@@ -2,7 +2,7 @@
 import type { ShownError } from '../infra/errors'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, onScopeDispose, ref, watch } from 'vue'
-import { useElementSize, useResizeObserver } from '@vueuse/core'
+import { useDebounceFn, useElementSize, useResizeObserver } from '@vueuse/core'
 import type { PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens } from './visible-blocks'
@@ -194,6 +194,13 @@ const emit = defineEmits<{
    * transcript's.
    */
   readAfter: []
+  /**
+   * The block in view once the scroll settles, which bounds what of the
+   * transcript the host holds; null at the end of a window that reaches the
+   * transcript's, for the latest
+   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   */
+  shown: [blockId: string | null]
 }>()
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
@@ -378,7 +385,8 @@ const {
   scrollToBottom,
   reveal,
   onScroll,
-  getPersistedState
+  getPersistedState,
+  anchorId,
 } =
   useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, { keyOf })
 
@@ -483,6 +491,39 @@ watch(
   },
   { flush: 'post' },
 )
+
+/** How long the scroll stays still before the list tells the block in view. */
+const SHOWN_SETTLE_MS = 200
+
+// The block in view, told once the scroll settles: the row the list follows,
+// or a block of its steps for a group of work, among the blocks the window
+// holds; null at the end of a window that reaches the transcript's.
+let toldShown: string | null | undefined
+const tellShown = useDebounceFn(() => {
+  if (paneStatus.value || props.revealBlockId) {
+    return
+  }
+  const shown = props.atEnd && isAtBottom.value ? null : blockInView()
+  if (shown === undefined || shown === toldShown) {
+    return
+  }
+  toldShown = shown
+  emit('shown', shown)
+}, SHOWN_SETTLE_MS)
+watch(scrollOffset, () => {
+  void tellShown()
+})
+
+function blockInView(): string | undefined {
+  const id = anchorId()
+  const row = id === undefined ? undefined : renderBlocks.value.find((each) => each.id === id)
+  if (!row) {
+    return undefined
+  }
+  const held = new Set(props.blocks.map((block) => block.id))
+  const candidates = [row.id, ...('steps' in row ? row.steps.map((step) => step.id) : [])]
+  return candidates.find((id) => held.has(id))
+}
 
 // Composer or task-control growth covers the tail, and a reader at the bottom
 // stays there. `bottomOffset` includes the permanent control row, even when its

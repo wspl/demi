@@ -8,6 +8,7 @@ export function sideRecord(record: SideRecord['record']): SideRecord {
     record,
     listed: false,
     history: EMPTY_TRANSCRIPT,
+    shownAt: null,
     failures: {},
     sessionPhase: 'idle',
     pendingCalls: [],

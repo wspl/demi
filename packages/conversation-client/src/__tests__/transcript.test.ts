@@ -6,6 +6,7 @@ import {
   EMPTY_TRANSCRIPT,
   addPage,
   applyTranscriptPatches,
+  boundedTranscript,
   heldBlocks,
   heldEdge,
   resetTranscript,
@@ -94,6 +95,36 @@ test('patches change the blocks the page holds and move the indices after them',
     const held = applyTranscriptPatches(twoWindows(), [patch])
     expect([held.length, shape(held)], name).toEqual([length, windows])
   }
+})
+
+/** Twenty blocks, `b0` to `b19`, of which the page holds 2–3 and 6–19. */
+function longTail(): HeldTranscript {
+  const block = (index: number) => text(`b${index}`, String(index))
+  return {
+    length: 20,
+    windows: [
+      { start: 2, blocks: [block(2), block(3)] },
+      { start: 6, blocks: Array.from({ length: 14 }, (_, offset) => block(6 + offset)) },
+    ],
+    version: { epoch: 'e', revision: 4 },
+  }
+}
+
+test('a transcript shown holds the blocks around what its view shows and the latest, and lets the rest go', () => {
+  const cases: { name: string, anchor: string | null, windows: [number, string[]][] }[] = [
+    { name: 'at the latest, the latest blocks alone', anchor: null, windows: [[17, ['b17', 'b18', 'b19']]] },
+    { name: 'in an earlier window, around it and the latest', anchor: 'b3', windows: [[2, ['b2', 'b3']], [17, ['b17', 'b18', 'b19']]] },
+    { name: 'far up the latest window, a gap between', anchor: 'b8', windows: [[6, ['b6', 'b7', 'b8', 'b9', 'b10', 'b11']], [17, ['b17', 'b18', 'b19']]] },
+    { name: 'near the end, one run', anchor: 'b15', windows: [[12, ['b12', 'b13', 'b14', 'b15', 'b16', 'b17', 'b18', 'b19']]] },
+    { name: 'a block not held, as the latest', anchor: 'b0', windows: [[17, ['b17', 'b18', 'b19']]] },
+  ]
+  for (const { name, anchor, windows } of cases) {
+    const held = boundedTranscript(longTail(), anchor, 3)
+    // The latest blocks stay, so the stream's version still vouches for them.
+    expect([held.length, shape(held), held.version], name).toEqual([20, windows, { epoch: 'e', revision: 4 }])
+  }
+  const within: HeldTranscript = { ...longTail(), windows: longTail().windows.slice(1) }
+  expect(boundedTranscript(within, 'b10', 20)).toBe(within)
 })
 
 test('a page joins the windows it meets, and a block the page holds stays as it is', () => {

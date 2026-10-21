@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { isAbortError } from '@demicodes/utils'
 import { coded } from '@demicodes/web-ui/infra/errors'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -178,7 +179,12 @@ const hasProvider = computed(() =>
  * again, so it is only logged.
  */
 function readHistory(read: Promise<void>): void {
-  read.catch((error: unknown) => console.warn('A page of the transcript was not read', error))
+  read.catch((error: unknown) => {
+    // A read nobody needed any more was stopped.
+    if (!isAbortError(error)) {
+      console.warn('A page of the transcript was not read', error)
+    }
+  })
 }
 
 // A search result opens at its message, and a report's title at its
@@ -368,10 +374,12 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :reveal-command="(id) => revealCommand(conversation!, id)"
     @read-before="readHistory(store.history.readBefore(conversation!, null))"
     @read-after="readHistory(store.history.readAfter(conversation!, null))"
-    @show-latest="conversation.shownAt = null"
+    @show-latest="store.history.showAt(conversation!, null, null)"
     :read-subagent-latest="(id) => store.history.readLatest(conversation!, id)"
     :subagents-streamed="store.streamsSubagents(conversation)"
     @read-subagent="(id) => readHistory(store.history.readBefore(conversation!, id))"
+    @read-subagent-after="(id) => readHistory(store.history.readAfter(conversation!, id))"
+    @shown="(node, block) => store.history.showAt(conversation!, node, block)"
     @show-subagents="store.showSubagents(conversation!, $event)"
     @open-aside="work.setOpen(conversation.id, true)"
     :usage-limits="card.limitsOf"

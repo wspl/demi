@@ -29,6 +29,7 @@ function agent(
     forkedFrom: null,
     startedAt: '2026-09-09T00:00:00.000Z',
     history: EMPTY_TRANSCRIPT,
+    shownAt: null,
     sessionPhase: 'idle',
     pendingCalls: [],
     waitingSince: null,

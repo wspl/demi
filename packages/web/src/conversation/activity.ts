@@ -5,7 +5,7 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
 import type { AgentEntry, Version } from '@demicodes/protocol'
-import { latestBlocks } from '@demicodes/web-ui/agent/history'
+import { boundedHistory, latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation, SideRecord } from '../state/types'
 import { sideRecord } from './side-records'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
@@ -60,7 +60,7 @@ export function takeAgents(
           listedChildren.push(held)
         }
       } else {
-        listedChildren.push({ ...fields, history: EMPTY_TRANSCRIPT, failures: {} })
+        listedChildren.push({ ...fields, history: EMPTY_TRANSCRIPT, shownAt: null, failures: {} })
       }
     } else {
       const { kind: _kind, ...side } = role
@@ -103,9 +103,12 @@ export function applyConversationEvent(
     // The root's messages are the runtime's.
     const record = event.node === conversation.id ? undefined : nodeRecord(conversation, event.node)
     if (record) {
-      record.history = event.type === 'transcript_reset'
-        ? resetTranscript(record.history, event, event.asked)
-        : applyTranscriptPatches(record.history, event.patches, performance.now(), event.version)
+      record.history = boundedHistory(
+        event.type === 'transcript_reset'
+          ? resetTranscript(record.history, event, event.asked)
+          : applyTranscriptPatches(record.history, event.patches, performance.now(), event.version),
+        record.shownAt,
+      )
       record.failures = { ...record.failures, ...event.failures }
     }
   } else if (event.type === 'cache_chart') {

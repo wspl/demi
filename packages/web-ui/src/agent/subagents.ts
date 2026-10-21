@@ -58,6 +58,12 @@ export interface SubagentRecord extends AgentRun {
    * stream.
    */
   history: HeldTranscript
+  /**
+   * The block its view shows, which bounds what of its history the page
+   * holds; null for the latest
+   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   */
+  shownAt: string | null
   /** The calls this agent's model is writing. */
   pendingCalls: PendingCall[]
   /**
@@ -92,7 +98,7 @@ export function agentCompaction(agent: SubagentRecord): { compacting: boolean, u
 }
 
 /** What a child's entry sets on its record: all of it but what the page holds of its transcript. */
-export type SubagentEntryFields = Omit<SubagentRecord, 'history' | 'failures'>
+export type SubagentEntryFields = Omit<SubagentRecord, 'history' | 'shownAt' | 'failures'>
 
 /**
  * A child's record fields from its entry `entry`, whose role is `child`, as

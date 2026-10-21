@@ -27,6 +27,7 @@ import type {
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
 import { failureHeadline } from './error-detail'
+import { boundedHistory } from './history'
 import { hasAcceptedSubmission, isWritten } from './submission'
 import type { ConversationState } from './types'
 
@@ -75,6 +76,7 @@ export type RuntimeState = Pick<
   ConversationState,
   | 'id'
   | 'history'
+  | 'shownAt'
   | 'phase'
   | 'queue'
   | 'pendingSteers'
@@ -765,13 +767,16 @@ export class ConversationRuntime {
       case 'transcript_reset':
         // Another node's messages are the host's, which keeps its record.
         if (event.node === state.id) {
-          state.history = resetTranscript(state.history, event, event.asked)
+          state.history = boundedHistory(resetTranscript(state.history, event, event.asked), state.shownAt)
           state.failures = { ...state.failures, ...event.failures }
         }
         break
       case 'transcript_patch':
         if (event.node === state.id) {
-          state.history = applyTranscriptPatches(state.history, event.patches, performance.now(), event.version)
+          state.history = boundedHistory(
+            applyTranscriptPatches(state.history, event.patches, performance.now(), event.version),
+            state.shownAt,
+          )
           state.failures = { ...state.failures, ...event.failures }
         }
         break

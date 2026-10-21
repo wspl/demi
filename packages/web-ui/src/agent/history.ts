@@ -1,4 +1,5 @@
 import {
+  boundedTranscript,
   latestWindow,
   windowEnd,
   windowOf,
@@ -26,6 +27,22 @@ export function latestBlocks(history: HeldTranscript): HeldBlock[] {
 export interface TranscriptReveal {
   node: string | null
   blockId: string
+}
+
+/**
+ * How many blocks a transcript shown holds in memory on each side of the block
+ * its view shows; what lies further leaves memory and is read again, from the
+ * disk copy first, when the view reaches it
+ * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+ */
+export const SHOWN_HALF = 300
+
+/**
+ * `history` bounded to what a view that shows the block `shownAt`, or the
+ * latest for null, holds (`SHOWN_HALF`).
+ */
+export function boundedHistory<B extends Held>(history: HeldTranscript<B>, shownAt: string | null): HeldTranscript<B> {
+  return boundedTranscript(history, shownAt, SHOWN_HALF)
 }
 
 /**

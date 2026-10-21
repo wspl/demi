@@ -764,6 +764,9 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     reveal,
     onScroll,
     getPersistedState,
+    /** The key of the row in view, as the list last followed it; none before it followed one. */
+    /** The id of the row at the top of the view, as the last scroll left it. */
+    anchorId: (): string | undefined => lastAnchor?.blockId,
   }
 }
 

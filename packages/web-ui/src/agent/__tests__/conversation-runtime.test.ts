@@ -33,6 +33,7 @@ function state(): RuntimeState {
   return {
     id: 'conversation',
     history: EMPTY_TRANSCRIPT,
+    shownAt: null,
     phase: 'idle',
     queue: [],
     pendingSteers: [],

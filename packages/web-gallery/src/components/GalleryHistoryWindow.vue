@@ -48,6 +48,12 @@ function readBefore(): void {
 function resetWindow(): void {
   earlierRead.value = false
 }
+// The block the reader stopped at, which bounds what the product holds of
+// the transcript; null at the latest block.
+const shownAt = ref<string | null>(null)
+const shownNote = computed(() =>
+  shownAt.value === null ? 'The reader is at the latest block.' : 'The reader is at an earlier block; the product holds the blocks around it.',
+)
 
 // The same requests read from a page, and a question answered after a
 // thinking: their calls and thinking in their light form, without their
@@ -100,8 +106,10 @@ function resetLight(): void {
             :persisted-scroll-state="undefined"
             read-only
             @read-before="readBefore"
+            @shown="(block) => (shownAt = block)"
           />
         </div>
+        <p class="text-xs text-fg-faint">{{ shownNote }}</p>
         <div>
           <Button size="sm" variant="default" :disabled="!earlierRead" @click="resetWindow">Show Only the Latest Page</Button>
         </div>

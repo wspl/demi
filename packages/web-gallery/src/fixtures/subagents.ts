@@ -210,6 +210,7 @@ export function workSubagent(): SubagentRecord {
     pendingCalls: [],
     waitingSince: null,
     cost: NO_COST,
+    shownAt: null,
     history: wholeHistory([
       user('ag-suite-user', ago(60_000), 'Find the suite paths test/mjsunit/mjsunit.status still names that no longer exist.'),
       ...inRun(shell(
@@ -251,6 +252,7 @@ export function gallerySubagents(): SubagentRecord[] {
       pendingCalls: [],
       waitingSince: null,
       cost: NO_COST,
+      shownAt: null,
       history: wholeHistory([
         user(
           'ag-cookie-user',
@@ -295,6 +297,7 @@ export function gallerySubagents(): SubagentRecord[] {
       // the wait from then.
       waitingSince: Date.now() - 31_000,
       cost: NO_COST,
+      shownAt: null,
       history: wholeHistory([
         user(
           'ag-logout-user',
@@ -340,6 +343,7 @@ export function gallerySubagents(): SubagentRecord[] {
       // the view says Requesting from then, however often it opens.
       waitingSince: Date.now() - 12_000,
       cost: NO_COST,
+      shownAt: null,
       history: wholeHistory([
         user(
           'ag-snapshot-user',
@@ -364,6 +368,7 @@ export function gallerySubagents(): SubagentRecord[] {
       pendingCalls: [],
       waitingSince: null,
       cost: NO_COST,
+      shownAt: null,
       history: wholeHistory([
         user(
           'ag-comments-user',
@@ -404,6 +409,7 @@ export function gallerySubagents(): SubagentRecord[] {
       pendingCalls: [],
       waitingSince: null,
       cost: NO_COST,
+      shownAt: null,
       history: wholeHistory([
         user(
           'ag-fixture-user',
@@ -448,6 +454,7 @@ export function gallerySubagents(): SubagentRecord[] {
       pendingCalls: [],
       waitingSince: null,
       cost: NO_COST,
+      shownAt: null,
       history: wholeHistory([
         user(
           'ag-ci-user',
@@ -509,6 +516,7 @@ export function briefSubagent(): SubagentRecord {
     pendingCalls: [],
     waitingSince: null,
     cost: NO_COST,
+    shownAt: null,
     history: wholeHistory([
       user('ag-flake-user', ago(30_000), RESEARCH_BRIEF),
       text('ag-flake-text', ago(20_000), 'I will start with the cookie assertions, then the fixture server.'),
@@ -538,6 +546,7 @@ export function slotSubagent(): SubagentRecord {
     pendingCalls: [],
     waitingSince: null,
     cost: NO_COST,
+    shownAt: null,
     history: wholeHistory(slotBlocks()),
   }
 }
@@ -635,6 +644,7 @@ function bubbleAgent(agent: { id: string, number: number, description: string },
     pendingCalls: [],
     waitingSince: null,
     cost: NO_COST,
+    shownAt: null,
     history: wholeHistory(blocks),
   }
 }
