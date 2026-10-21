@@ -7,6 +7,7 @@ import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
 import { t } from '@demicodes/web-ui/share/locales/text'
 import { pageTitle } from '@demicodes/web-ui/sidebar/tab-attention'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
+import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
@@ -31,6 +32,7 @@ const reads = createShareReads(props.token, () => lifetime.signal, () => history
 })
 const blobUrl = shareBlobUrl(props.token)
 provideBlobUrl(blobUrl)
+provideHistoryReading(reads.reading)
 const mediaViewer = provideMediaViewer()
 
 /** What the link names: still asking, no share, the share, or asking failed. */

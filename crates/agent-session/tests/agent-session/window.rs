@@ -100,23 +100,27 @@ fn across_a_boundary(tail: &str) -> Vec<Block> {
     ]
 }
 
-// The latest page of a window that starts inside a request reaches no block
-// before the window: the window's part of that request counts on its own, so a
-// reset with nothing held starts at the window when it all fits, and at its
-// first message when that part does not.
+// The latest page of a window reaches no block before the window: a reset with
+// nothing held starts at the window when it holds no more than a page, and a
+// page before its end when it holds more.
 //
 // Two restored sessions, a few milliseconds.
 #[tokio::test(flavor = "local")]
-async fn a_reset_of_a_window_that_starts_inside_a_request_starts_within_the_window() {
+async fn a_reset_of_a_window_is_at_most_a_page_and_starts_within_the_window() {
     let session = restored(&stored(&across_a_boundary("the rest of A")).await).await;
     assert_eq!(session.transcript().start, 4);
     let reset = session.reset(None, None);
     assert_eq!((reset.start, reset.length), (4, 12));
 
-    let long = "x".repeat(demi_conversation_socket_protocol::PAGE_BYTES);
-    let session = restored(&stored(&across_a_boundary(&long)).await).await;
+    let mut path = vec![user("a", "ta", "A"), boundary("b")];
+    path.extend((0..1_500).map(|n| said(&format!("s{n}"), "words")));
+    let session = restored(&stored(&path).await).await;
+    assert_eq!(session.transcript().start, 1);
     let reset = session.reset(None, None);
-    assert_eq!((reset.start, reset.blocks.first().map(Block::id)), (6, Some(&BlockId::try_from("u-b").unwrap())));
+    assert_eq!(
+        (reset.start, reset.length, reset.blocks.len()),
+        (502, 1_502, demi_conversation_socket_protocol::PAGE_BLOCKS)
+    );
 }
 
 // A Fork of a session whose window starts at 4 keeps the blocks before it as

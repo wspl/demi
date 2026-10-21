@@ -451,8 +451,8 @@ pub struct TranscriptQuery {
     pub edge: Option<BlockId>,
 }
 
-/// One page of an agent's transcript: blocks within the page budget, wherever
-/// requests begin and end, in their light form, with the failure facts of its error blocks
+/// One page of an agent's transcript: a thousand blocks, wherever requests
+/// begin and end (`PAGE_BLOCKS` in `crates/conversation-socket-protocol`), in their light form, with the failure facts of its error blocks
 /// (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

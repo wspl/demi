@@ -1,47 +1,44 @@
-//! Which blocks a page of a transcript holds: blocks within the page budget,
-//! from where the page is taken, wherever requests begin and end, in their
-//! light form.
+//! Which blocks a page of a transcript holds: a thousand of them from where the
+//! page is taken, wherever requests begin and end, in their light form.
 
-use demi_conversation_socket_protocol::{PAGE_BYTES, PageAt, SIZED_AT_ONCE, light, page};
+use demi_conversation_socket_protocol::{PAGE_BLOCKS, PageAt, light, page};
 use demi_shared_types::{Block, ToolView};
 use serde_json::{Value, json};
 
 // Cost: pure, under a millisecond.
 
 #[test]
-fn a_page_holds_blocks_within_the_budget_and_at_least_one() {
-    // Fifty blocks; a tenth of the budget each, unless a case says otherwise.
-    let tenth = PAGE_BYTES / 10;
-    let even = |range: std::ops::Range<usize>| Some(vec![tenth; range.len()]);
+fn a_page_is_a_thousand_blocks_wherever_it_is_taken() {
+    let length = 5_000;
     let cases: &[(&str, PageAt, std::ops::Range<usize>)] = &[
-        ("the latest takes blocks back while they fit", PageAt::Latest, 40..50),
-        ("before an edge, the blocks that end there", PageAt::Before(30), 20..30),
-        ("after an edge, the blocks that start there", PageAt::After(9), 10..20),
-        ("around a block, then after it, then before it", PageAt::Around(22), 18..28),
-        ("around the last block, the blocks before it", PageAt::Around(49), 40..50),
-        ("nothing before the start", PageAt::Before(0), 0..0),
-        ("nothing after the end", PageAt::After(49), 50..50),
+        ("the latest ends at the end", PageAt::Latest, 4_000..5_000),
+        ("before a block, the blocks that end there", PageAt::Before(3_000), 2_000..3_000),
+        ("after a block, the blocks that start after it", PageAt::After(999), 1_000..2_000),
+        ("around a block, half on each side", PageAt::Around(2_500), 2_000..3_000),
     ];
     for (name, at, expected) in cases {
-        assert_eq!(page(50, *at, even), *expected, "{name}");
+        assert_eq!(page(length, *at), *expected, "{name}");
+        assert_eq!(expected.len(), PAGE_BLOCKS, "{name}");
     }
-    // One block past the budget is a page alone; a long request is several.
-    let large = |range: std::ops::Range<usize>| Some(vec![PAGE_BYTES * 2; range.len()]);
-    assert_eq!(page(50, PageAt::Latest, large), 49..50, "a block past the budget alone");
-    assert_eq!(page(0, PageAt::Latest, even), 0..0, "an empty transcript");
 }
 
 #[test]
-fn a_page_sizes_a_few_blocks_at_a_time_however_long_the_transcript() {
-    // A page read from storage decodes only the blocks it sizes.
-    let mut sized = 0;
-    let range = page(100_000, PageAt::Latest, |range| {
-        assert!(range.len() <= SIZED_AT_ONCE);
-        sized += range.len();
-        Some(vec![PAGE_BYTES / 100; range.len()])
-    });
-    assert_eq!(range, 100_000 - 100..100_000);
-    assert!(sized <= 100 + SIZED_AT_ONCE, "{sized} blocks sized");
+fn only_the_first_and_the_last_page_of_a_transcript_are_shorter() {
+    let cases: &[(&str, usize, PageAt, std::ops::Range<usize>)] = &[
+        ("a short transcript is one page", 50, PageAt::Latest, 0..50),
+        ("before a block near the start, the first page", 5_000, PageAt::Before(300), 0..300),
+        ("after a block near the end, the last page", 5_000, PageAt::After(4_700), 4_701..5_000),
+        ("around a block near the start, a full page from the start", 5_000, PageAt::Around(10), 0..1_000),
+        ("around a block near the end, a full page to the end", 5_000, PageAt::Around(4_990), 4_000..5_000),
+        ("around the only block of a short transcript", 1, PageAt::Around(0), 0..1),
+        ("nothing before the start", 5_000, PageAt::Before(0), 0..0),
+        ("nothing after the end", 5_000, PageAt::After(4_999), 5_000..5_000),
+        ("an empty transcript", 0, PageAt::Latest, 0..0),
+        ("an index past the end answers an empty page there", 50, PageAt::After(900), 50..50),
+    ];
+    for (name, length, at, expected) in cases {
+        assert_eq!(page(*length, *at), *expected, "{name}");
+    }
 }
 
 fn model() -> Value {

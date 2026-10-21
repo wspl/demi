@@ -1,3 +1,4 @@
+import { PAGE_BLOCKS } from '@demicodes/protocol'
 import {
   boundedTranscript,
   latestWindow,
@@ -31,18 +32,35 @@ export interface TranscriptReveal {
 
 /**
  * How many blocks a transcript shown holds in memory on each side of the block
- * its view shows; what lies further leaves memory and is read again, from the
- * disk copy first, when the view reaches it
- * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+ * its view shows, a page before and a page after; what lies further leaves
+ * memory and is read again, from the disk copy first, when the view reaches it
+ * (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`).
  */
-export const SHOWN_HALF = 300
+export const SHOWN_HALF = PAGE_BLOCKS
 
 /**
- * `history` bounded to what a view that shows the block `shownAt`, or the
- * latest for null, holds (`SHOWN_HALF`).
+ * What a view tells of where it stands in its transcript: the block in view,
+ * or null for the latest, and how many blocks lie within its reach on either
+ * side of that block.
  */
-export function boundedHistory<B extends Held>(history: HeldTranscript<B>, shownAt: string | null): HeldTranscript<B> {
-  return boundedTranscript(history, shownAt, SHOWN_HALF)
+export interface ShownView {
+  shownAt: string | null
+  shownWithin?: number
+}
+
+/**
+ * `history` bounded to what the view holds: `SHOWN_HALF` blocks beyond the
+ * view's reach on each side of the block it shows, the latest, and the
+ * indices `also` names, a page just read. The reach is what the view asks
+ * pages for, so a transcript that folds into few rows holds as much as the
+ * view needs to be satisfied, and never lets go of the page it just read.
+ */
+export function boundedHistory<B extends Held>(
+  history: HeldTranscript<B>,
+  view: ShownView,
+  also?: { start: number; end: number },
+): HeldTranscript<B> {
+  return boundedTranscript(history, view.shownAt, SHOWN_HALF + (view.shownWithin ?? 0), also)
 }
 
 /**

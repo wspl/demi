@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0044
 ---
 
 # A transcript is shown from a bounded window, around any message, local copy first

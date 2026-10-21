@@ -127,6 +127,13 @@ test('a transcript shown holds the blocks around what its view shows and the lat
   expect(boundedTranscript(within, 'b10', 20)).toBe(within)
 })
 
+test('a page just read stays whole, though the block the view told lies far from it', () => {
+  // The view told b10; the page that holds b2 and b3 came while the reader scrolled up.
+  const held = boundedTranscript(longTail(), 'b10', 2, { start: 2, end: 4 })
+  expect(shape(held)).toEqual([[2, ['b2', 'b3']], [8, ['b8', 'b9', 'b10', 'b11', 'b12']], [18, ['b18', 'b19']]])
+  expect(shape(boundedTranscript(longTail(), 'b10', 2))).toEqual([[8, ['b8', 'b9', 'b10', 'b11', 'b12']], [18, ['b18', 'b19']]])
+})
+
 test('a page joins the windows it meets, and a block the page holds stays as it is', () => {
   const live = withWholeBlock(twoWindows(), text('b3', 'streamed'))
   const page = { start: 3, length: 9, blocks: [text('b3', 'stored'), text('b4', '4'), text('b5', '5'), text('b6', '6')] }

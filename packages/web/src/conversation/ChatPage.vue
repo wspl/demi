@@ -7,6 +7,7 @@ import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import { provideCostWatch } from '@demicodes/web-ui/agent/context-cost'
+import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { provideAutomationOpener } from '@demicodes/web-ui/agent/message-origins'
 import AutomationRunBar from '@demicodes/web-ui/automations/AutomationRunBar.vue'
 import { useAutomations } from '../automations/store'
@@ -93,6 +94,12 @@ provideAutomationOpener(openAutomation)
 provideCostWatch(() => {
   const current = conversation.value
   return current ? store.watchLastHour(current) : () => {}
+})
+// The transcripts of the open conversation show a loading row at an edge only
+// while a page is being read for it.
+provideHistoryReading((node) => {
+  const current = conversation.value
+  return current ? store.history.reading(current, node) : { before: false, after: false }
 })
 /** The automation and run the conversation is filed under, whose bar shows under the header. */
 const filedRun = computed(() => {
@@ -398,7 +405,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :subagents-streamed="store.streamsSubagents(conversation)"
     @read-subagent="(id) => readHistory(store.history.readBefore(conversation!, id))"
     @read-subagent-after="(id) => readHistory(store.history.readAfter(conversation!, id))"
-    @shown="(node, block) => store.history.showAt(conversation!, node, block)"
+    @shown="(node, block, within) => store.history.showAt(conversation!, node, block, within)"
     @show-subagents="store.showSubagents(conversation!, $event)"
     @open-aside="work.setOpen(conversation.id, true)"
     :usage-limits="card.limitsOf"

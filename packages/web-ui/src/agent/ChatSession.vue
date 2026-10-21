@@ -349,7 +349,7 @@ const emit = defineEmits<{
    * or null for its latest: what of it the page holds follows it
    * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
    */
-  shown: [node: string | null, blockId: string | null]
+  shown: [node: string | null, blockId: string | null, within: number]
   /**
    * The children whose transcripts the page shows, the whole set, at first and
    * whenever it changes. They are the child the Agents window shows, or none
@@ -954,7 +954,7 @@ watch(
             @retry-load="emit('retryLoad')"
             @read-before="emit('readBefore')"
             @read-after="emit('readAfter')"
-            @shown="(block) => emit('shown', null, block)"
+            @shown="(block, within) => emit('shown', null, block, within)"
           />
         </div>
         <template #dock>
@@ -1041,7 +1041,7 @@ watch(
             :streamed="subagentsStreamed"
             @read="(id) => emit('readSubagent', id)"
             @read-after="(id) => emit('readSubagentAfter', id)"
-            @shown="(id, block) => emit('shown', id, block)"
+            @shown="(id, block, within) => emit('shown', id, block, within)"
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
             :agent-cost="subagentCost"

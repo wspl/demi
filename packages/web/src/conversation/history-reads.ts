@@ -10,8 +10,10 @@ import {
   type TranscriptWindow,
 } from '@demicodes/web-ui/transport/protocol'
 import { boundedHistory, pageBeside, shownWindow } from '@demicodes/web-ui/agent/history'
+import type { HistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { oneRunPerKey } from '@demicodes/utils'
 import { ApiError, apiRequest, readResponse } from '../api/client'
+import { createReading } from './reading'
 import {
   transcriptPageSchema,
   wholeBlockSchema,
@@ -52,6 +54,8 @@ export interface HistoryAgent {
   history: HeldTranscript
   /** The block its view shows, which bounds what of its history the page holds; null for the latest. */
   shownAt: string | null
+  /** How many blocks lie within the view's reach around it (`ShownView`). */
+  shownWithin?: number
   failures: Record<string, ProviderFailureFacts>
 }
 
@@ -67,6 +71,8 @@ export interface HistoryHolder {
   instructions: InstructionEntry[]
   summaries: Record<string, number>
   shownAt: string | null
+  /** How many blocks lie within the view's reach around it (`ShownView`). */
+  shownWithin?: number
   subagents: HistoryAgent[]
   /** A conversation's side questions, whose transcripts its routes read by their nodes as a subagent's; a share has none. */
   sides?: HistoryAgent[]
@@ -107,6 +113,12 @@ export function createHistoryReads<T extends HistoryHolder>(
   }
   const groups = new Map<string, ReadGroup>()
   const releasing = new Set<ReadGroup>()
+  /** The pages each agent's window is being read for at each of its edges, by `${holder id}:${node}:${side}`. */
+  const reading = createReading()
+
+  function readingKey(holder: T, node: string | null, side: 'before' | 'after'): string {
+    return `${holder.id}:${node ?? ''}:${side}`
+  }
 
   function groupKey(holder: T, node: string | null): string {
     return `${holder.id}:${node ?? ''}`
@@ -185,10 +197,11 @@ export function createHistoryReads<T extends HistoryHolder>(
 
   /**
    * Shows the block `block` in the agent `node`'s view, or the latest for
-   * null: what of its history the page holds follows it
+   * null, with `within` blocks in the view's reach around it: what of its
+   * history the page holds follows it
    * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
    */
-  function showAt(holder: T, node: string | null, block: string | null): void {
+  function showAt(holder: T, node: string | null, block: string | null, within = 0): void {
     const before = shownWindow(historyOf(holder, node), shownAtOf(holder, node))
     // A move to another part of the transcript leaves the reads at the
     // part shown before to a view that asks for them again.
@@ -197,24 +210,29 @@ export function createHistoryReads<T extends HistoryHolder>(
     }
     if (node === null) {
       holder.shownAt = block
+      holder.shownWithin = within
     } else {
       const agent = agentOf(holder, node)
       if (!agent) {
         return
       }
       agent.shownAt = block
+      agent.shownWithin = within
     }
     setHistory(holder, node, historyOf(holder, node))
   }
 
   /** Takes `page` into the agent's history, with what it names beside its blocks. */
   function take(holder: T, node: string | null, page: TranscriptPage): void {
+    // The page just read stays whole: the block the view last told may lie
+    // far from it, and the reader is about to reach it.
+    const pageRange = { start: page.start, end: page.start + page.blocks.length }
     const failures = { ...page.failures }
     if (holder.attachmentDescriptions) {
       describeAttachments({ attachmentDescriptions: holder.attachmentDescriptions }, node ?? holder.id, page.attachments ?? [])
     }
     if (node === null) {
-      holder.history = boundedHistory(addPage(holder.history, page, live(holder, null)), holder.shownAt)
+      holder.history = boundedHistory(addPage(holder.history, page, live(holder, null)), holder, pageRange)
       holder.failures = { ...holder.failures, ...failures }
       holder.instructions = page.instructions
       holder.summaries = {
@@ -225,7 +243,7 @@ export function createHistoryReads<T extends HistoryHolder>(
     }
     const agent = agentOf(holder, node)
     if (agent) {
-      agent.history = boundedHistory(addPage(agent.history, page, live(holder, node)), agent.shownAt)
+      agent.history = boundedHistory(addPage(agent.history, page, live(holder, node)), agent, pageRange)
       agent.failures = { ...agent.failures, ...failures }
     }
   }
@@ -239,10 +257,12 @@ export function createHistoryReads<T extends HistoryHolder>(
   function read(holder: T, node: string | null, at: PageAt): Promise<void> {
     const key = `${holder.id}:${node ?? ''}:${JSON.stringify(at)}`
     const group = groupFor(holder, node, key)
+    const side = at.kind === 'before' || at.kind === 'after' ? readingKey(holder, node, at.kind) : null
     return once(key, async () => {
       group.keys.add(key)
       try {
-        await readInto(holder, node, at, group.controller.signal)
+        const read = () => readInto(holder, node, at, group.controller.signal)
+        await (side === null ? read() : reading.track(side, read))
       } finally {
         group.keys.delete(key)
       }
@@ -255,7 +275,12 @@ export function createHistoryReads<T extends HistoryHolder>(
     stop.throwIfAborted()
     if (disk && disk.window.blocks.length > 0) {
       const history = historyOf(holder, node)
-      setHistory(holder, node, addWindow(history, { start: disk.window.start, length: history.length, blocks: disk.window.blocks }, true))
+      setHistory(
+        holder,
+        node,
+        addWindow(history, { start: disk.window.start, length: history.length, blocks: disk.window.blocks }, true),
+        { start: disk.window.start, end: disk.window.start + disk.window.blocks.length },
+      )
       if (node === null) {
         holder.failures = { ...holder.failures, ...disk.failures }
       } else {
@@ -319,15 +344,15 @@ export function createHistoryReads<T extends HistoryHolder>(
     }
   }
 
-  /** Sets the agent's history, bounded to what its view shows. */
-  function setHistory(holder: T, node: string | null, history: HeldTranscript): void {
+  /** Sets the agent's history, bounded to what its view shows and the page `also` names, just read. */
+  function setHistory(holder: T, node: string | null, history: HeldTranscript, also?: { start: number; end: number }): void {
     if (node === null) {
-      holder.history = boundedHistory(history, holder.shownAt)
+      holder.history = boundedHistory(history, holder, also)
       return
     }
     const agent = agentOf(holder, node)
     if (agent) {
-      agent.history = boundedHistory(history, agent.shownAt)
+      agent.history = boundedHistory(history, agent, also)
     }
   }
 
@@ -366,6 +391,11 @@ export function createHistoryReads<T extends HistoryHolder>(
     readAround,
     showAt,
     release,
+    /** Which edges of the agent `node`'s window a page is being read for now. */
+    reading: (holder: T, node: string | null): HistoryReading => ({
+      before: reading.has(readingKey(holder, node, 'before')),
+      after: reading.has(readingKey(holder, node, 'after')),
+    }),
     /**
      * Reads a block whole, for a row the page holds light: a block the page holds is
      * replaced by it, and the block is the answer.

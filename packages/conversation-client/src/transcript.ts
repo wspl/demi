@@ -256,8 +256,17 @@ export function addWindow<B extends Held>(
  * its chat list keeps each chat's top message
  * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
  * One already within the bound is returned as it is.
+ *
+ * `also` names indices that stay too, the page a read just brought: the
+ * anchor the view last told may lie a screen away from it, and the page the
+ * reader is about to reach is not cut as it arrives.
  */
-export function boundedTranscript<B extends Held>(held: HeldTranscript<B>, anchor: string | null, half: number): HeldTranscript<B> {
+export function boundedTranscript<B extends Held>(
+  held: HeldTranscript<B>,
+  anchor: string | null,
+  half: number,
+  also?: { start: number; end: number },
+): HeldTranscript<B> {
   const tail = latestWindow(held) ?? held.windows.at(-1)
   if (!tail) {
     return held
@@ -272,6 +281,15 @@ export function boundedTranscript<B extends Held>(held: HeldTranscript<B>, ancho
   if (anchored) {
     const at = anchored.blocks.findIndex((block) => block.id === anchor)
     keep(anchored, Math.max(0, at - half), Math.min(anchored.blocks.length, at + half + 1))
+  }
+  if (also) {
+    for (const window of held.windows) {
+      const from = Math.max(also.start - window.start, 0)
+      const to = Math.min(also.end - window.start, window.blocks.length)
+      if (from < to) {
+        keep(window, from, to)
+      }
+    }
   }
   const windows = held.windows.flatMap((window) => {
     const ranges = (kept.get(window) ?? []).sort((a, b) => a[0] - b[0])

@@ -131,7 +131,7 @@ export function applyConversationEvent(
         event.type === 'transcript_reset'
           ? resetTranscript(record.history, event, event.asked)
           : applyTranscriptPatches(record.history, event.patches, performance.now(), event.version),
-        record.shownAt,
+        record,
       )
       record.failures = { ...record.failures, ...event.failures }
       if ('sent' in record) {

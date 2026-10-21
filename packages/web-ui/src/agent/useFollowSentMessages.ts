@@ -12,7 +12,8 @@ import type { MessageListBlock } from './pending-steers'
  * A message is not just sent in these cases:
  *
  * - a message read from a page of history, in its light form, wherever the page
- *   puts it
+ *   puts it, or whole, when it arrives above the messages the list held: the
+ *   page before the window, which the reader asked for by scrolling up
  * - a message not delivered, which shows where it was sent once the window that
  *   holds that place is read, and was on its way, a row already, when it was
  *   sent
@@ -26,15 +27,16 @@ export function useFollowSentMessages(
   keyOf: (block: MessageListBlock) => string,
   scrollToBottom: () => void,
 ): void {
-  const readerKeys = computed(() => new Set(blocks()
+  const readerKeys = computed(() => blocks()
     .filter((block) => sentMessage(block) !== undefined && !('light' in block && block.light) && !undelivered(block))
-    .map(keyOf)))
+    .map(keyOf))
   watch(readerKeys, (keys, previous) => {
-    for (const key of keys) {
-      if (!previous.has(key)) {
-        void nextTick(scrollToBottom)
-        return
-      }
+    const known = new Set(previous)
+    // A message that comes in above the last one the list held is read from
+    // an earlier page, not sent.
+    const lastKnown = keys.findLastIndex((key) => known.has(key))
+    if (keys.some((key, index) => !known.has(key) && index > lastKnown)) {
+      void nextTick(scrollToBottom)
     }
   }, { flush: 'post' })
 }

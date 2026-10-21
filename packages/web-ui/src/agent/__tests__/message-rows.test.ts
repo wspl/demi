@@ -923,11 +923,11 @@ describe('a message not delivered stays where it was sent', () => {
    * The rows drawn for a conversation answered to m-1, changed by `change`,
    * without the tail row.
    */
-  function rows(change: (state: MessageRowsSource) => void): string[] {
+  function rows(change: (state: MessageRowsSource) => void, reading = { before: false, after: false }): string[] {
     const state = answered()
     change(state)
     const scope = effectScope()
-    const list = scope.run(() => useMessageRows(() => state))!
+    const list = scope.run(() => useMessageRows(() => state, undefined, () => reading))!
     const drawn = drawnRows(list).filter((key) => !key.startsWith('tail-row:'))
     scope.stop()
     return drawn
@@ -992,13 +992,25 @@ describe('a message not delivered stays where it was sent', () => {
       state.atStart = false
       state.blocks = [userBlock('u-9', 'm-9', 'Much later'), text('a-9', 'Later answer.')]
       state.pendingSubmissions = [failed]
-    })).toEqual(['history-before', 'message:m-9', 'a-9'])
+    }, { before: true, after: false })).toEqual(['history-before', 'message:m-9', 'a-9'])
     // A window of history that holds m-3, opened from search.
     expect(rows((state) => {
       state.latest = false
       state.atEnd = false
       state.blocks = [...state.blocks, userBlock('u-3', 'm-3', 'Meanwhile this'), text('a-3', 'Done.')]
       state.pendingSubmissions = [failed]
-    })).toEqual(['message:m-1', 'a-1', 'message:m-2', 'delivery-failure:m-2', 'message:m-3', 'a-3', 'history-after'])
+    }, { before: false, after: true })).toEqual(['message:m-1', 'a-1', 'message:m-2', 'delivery-failure:m-2', 'message:m-3', 'a-3', 'history-after'])
+  })
+
+  test('a loading row shows at an edge of the window only while a page is read for it', () => {
+    const edges = (reading: { before: boolean, after: boolean }, atStart = false) => rows((state) => {
+      state.atStart = atStart
+      state.atEnd = false
+    }, reading).filter((row) => row.startsWith('history-'))
+    expect(edges({ before: false, after: false })).toEqual([])
+    expect(edges({ before: true, after: false })).toEqual(['history-before'])
+    expect(edges({ before: false, after: true })).toEqual(['history-after'])
+    // A window that reaches the transcript's start has nothing before it to read.
+    expect(edges({ before: true, after: true }, true)).toEqual(['history-after'])
   })
 })

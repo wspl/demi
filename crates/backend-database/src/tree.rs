@@ -31,7 +31,7 @@ use demi_agent_store::{
     Placement, Rows, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
-use demi_conversation_socket_protocol::{BlockVersions, PageAt, TurnSpeed, least_light_bytes, page};
+use demi_conversation_socket_protocol::{BlockVersions, PageAt, TurnSpeed, page};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
@@ -2354,8 +2354,8 @@ impl<'a> From<&'a TranscriptQuery> for PageQuery<'a> {
     }
 }
 
-/// The page `query` asks of `transcript`, its blocks whole: blocks within the
-/// page budget, wherever requests begin and end ([`page`]).
+/// The page `query` asks of `transcript`, its blocks whole: a thousand of them,
+/// wherever requests begin and end ([`page`]).
 pub fn read_page(
     connection: &Connection,
     transcript: &Transcript,
@@ -2398,28 +2398,12 @@ pub fn read_page(
         },
         _ => return Ok(PageRead::Invalid("one of `before`, `after` and `around`")),
     };
-    // The selection sizes a few blocks at a time; each is decoded once, and
-    // the page is made of those it keeps.
-    let mut read: HashMap<usize, Entry> = HashMap::new();
-    let mut failed = None;
-    let range = page(length, at, |sized| match transcript.entries_in(connection, sized.clone()) {
-        Ok(entries) => {
-            let sizes = entries.iter().map(entry_bytes).collect();
-            read.extend(sized.zip(entries));
-            Some(sizes)
-        }
-        Err(error) => {
-            failed.get_or_insert(error);
-            None
-        }
-    });
-    if let Some(error) = failed {
-        return Err(error);
-    }
-    let blocks: Vec<Entry> = range
-        .clone()
-        .map(|index| read.remove(&index).expect("each block of the page was read to size it"))
-        .collect();
+    let range = page(length, at);
+    let blocks = if range.is_empty() {
+        Vec::new()
+    } else {
+        transcript.entries_in(connection, range.clone())?
+    };
     // A marker's boundary may be on another page, so only its size is read.
     let mut summaries = Vec::new();
     for entry in &blocks {
@@ -2494,20 +2478,6 @@ pub fn read_block(
         // An entry found by a block's id holds that block.
         Entry::StepsNotShared(_) => Ok(BlockRead::NoBlock),
     }
-}
-
-/// The fewest bytes `entry` takes in a page: a block in its light form, a run
-/// of steps as its count.
-fn entry_bytes(entry: &Entry) -> usize {
-    match entry {
-        Entry::Block(block) => least_light_bytes(block),
-        Entry::StepsNotShared(count) => steps_bytes(*count),
-    }
-}
-
-/// The size of a run of `count` steps not shared as a page sends it.
-fn steps_bytes(count: u64) -> usize {
-    format!(r#"{{"type":"steps_not_shared","count":{count}}}"#).len()
 }
 
 /// A subagent as [`subagents`] reads it: its record, whether the call that
@@ -2716,6 +2686,11 @@ pub(crate) mod tests {
             moved_from: None,
             version: false,
         }
+    }
+
+    /// The ids of `entries`' blocks, in order.
+    fn ids_of(entries: &[Entry]) -> Vec<String> {
+        entries.iter().filter_map(|entry| entry.id().map(|id| id.as_str().to_owned())).collect()
     }
 
     pub(crate) fn user(block: &str) -> Block {
@@ -3099,16 +3074,16 @@ pub(crate) mod tests {
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
     }
 
-    /// The latest page of a long request holds the blocks back from its end
-    /// while they fit in a page's bytes, wherever its requests begin and end
+    /// Every page of a long request is a thousand blocks, wherever its requests
+    /// begin and end, with no byte limit, and reads no row outside it
     /// (`crates/conversation-socket-protocol/src/transcript.rs`).
     ///
-    /// It reads only the blocks it sizes: a row long before the page is never
-    /// decoded, which a row that does not decode shows. Planted defect: a page
-    /// of whole requests, which reads the request's every row.
+    /// A row long before the latest page is never decoded, which a row that does
+    /// not decode shows; the first page is the blocks that remain. Planted
+    /// defect: a page of whole requests, which reads the request's every row.
     // Cost: one database on disk with about two thousand rows, under a second.
     #[tokio::test(flavor = "local")]
-    async fn a_page_of_a_long_request_holds_what_fits_and_reads_no_row_before_it() {
+    async fn a_page_of_a_long_request_is_a_thousand_blocks_and_reads_no_row_outside_it() {
         let latest = PageQuery { before: None, after: None, around: None, edge: None };
         let (tree, stores, _data) = store().await;
         tree.create_node(record("root", None, 0), update(Vec::new(), 0))
@@ -3141,10 +3116,60 @@ pub(crate) mod tests {
         let PageRead::Page { start, blocks, .. } = read else {
             panic!("a page");
         };
-        assert!(start > 1 && start + blocks.len() == length, "a page from {start} of {} blocks", blocks.len());
-        let bytes = |blocks: &[Entry]| blocks.iter().map(entry_bytes).sum::<usize>();
-        assert!(bytes(&blocks[1..]) <= demi_conversation_socket_protocol::PAGE_BYTES);
-        assert!(bytes(&blocks) + least_light_bytes(&reply("a0")) > demi_conversation_socket_protocol::PAGE_BYTES);
+        assert_eq!((start, blocks.len()), (length - 1000, 1000));
+    }
+
+    /// The pages before and after a block, from the latest back to the start:
+    /// each is a thousand blocks that end or start where the next begins, the
+    /// first page holds what remains, and a page around a block holds it with
+    /// half a page on each side (`crates/conversation-socket-protocol/src/transcript.rs`).
+    // Cost: one database on disk with 2,500 rows, under a second.
+    #[tokio::test(flavor = "local")]
+    async fn pages_before_and_after_a_block_run_from_the_latest_to_the_start() {
+        let (tree, stores, _data) = store().await;
+        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
+            .await
+            .unwrap();
+        // One request: its message and 2,499 replies, `a1` at index 1.
+        let mut blocks = vec![user("u0")];
+        blocks.extend((1..2500).map(|n| reply(&format!("a{n}"))));
+        let length = blocks.len();
+        tree.session_store(&id("root"))
+            .save(update(blocks.into_iter().enumerate().collect(), length))
+            .await
+            .unwrap();
+        let page = |query: PageQuery<'static>| {
+            let stores = stores.clone();
+            async move {
+                let read = stores
+                    .read(&conversation(), move |connection| {
+                        read_page(connection, &Transcript::Agent(id("root")), query)
+                    })
+                    .await
+                    .unwrap()
+                    .unwrap();
+                let PageRead::Page { start, blocks, .. } = read else {
+                    panic!("a page");
+                };
+                (start, blocks.len(), ids_of(&blocks))
+            }
+        };
+        let edge = |n: usize| -> &'static BlockId { Box::leak(Box::new(BlockId::try_from(format!("a{n}")).unwrap())) };
+
+        let (start, len, _) = page(PageQuery { before: None, after: None, around: None, edge: None }).await;
+        assert_eq!((start, len), (1500, 1000));
+        let (start, len, ids) = page(PageQuery { before: Some(1500), after: None, around: None, edge: Some(edge(1500)) }).await;
+        assert_eq!((start, len), (500, 1000));
+        assert_eq!((ids.first().map(String::as_str), ids.last().map(String::as_str)), (Some("a500"), Some("a1499")));
+        let (start, len, ids) = page(PageQuery { before: Some(500), after: None, around: None, edge: Some(edge(500)) }).await;
+        assert_eq!((start, len, ids.first().map(String::as_str)), (0, 500, Some("u0")));
+        let (start, len, ids) = page(PageQuery { before: None, after: Some(499), around: None, edge: Some(edge(499)) }).await;
+        assert_eq!((start, len, ids.first().map(String::as_str)), (500, 1000, Some("a500")));
+        let (start, len, _) = page(PageQuery { before: None, after: Some(2400), around: None, edge: Some(edge(2400)) }).await;
+        assert_eq!((start, len), (2401, 99));
+        let (start, len, ids) = page(PageQuery { before: None, after: None, around: Some(edge(1200)), edge: None }).await;
+        assert_eq!((start, len), (700, 1000));
+        assert!(ids.iter().any(|id| id == "a1200"));
     }
 
     // A child off the current path takes its own children off it, whose

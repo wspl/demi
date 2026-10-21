@@ -113,10 +113,12 @@ pub struct Version {
     pub revision: u64,
 }
 
-/// How many bytes of JSON a page of a transcript holds at most, past its
-/// first block, wherever requests begin and end: one long request is several
-/// pages.
-pub const PAGE_BYTES: usize = 64 * 1024;
+/// How many blocks a page of a transcript holds, the root's, a subagent's or a
+/// side question's alike, wherever requests begin and end: every page but the
+/// first and the last of a transcript holds this many, and none has a byte
+/// limit. The page's window and the local copy's reads take their size from
+/// here (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`).
+pub const PAGE_BLOCKS: usize = 1000;
 
 /// How long a call's input a light form keeps whole: a short script, such
 /// as one that only looks at a command, says on the folded row what the
@@ -227,30 +229,6 @@ fn light_block(block: &Block) -> Block {
     light
 }
 
-/// The size of whole requests' `blocks` in their light form as a page
-/// sends them.
-pub fn light_bytes<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> usize {
-    light(blocks)
-        .iter()
-        .map(|block| serde_json::to_vec(block).map_or(0, |json| json.len()))
-        .sum()
-}
-
-/// The fewest bytes `block` takes in a page's light form, whichever of its
-/// lists of changed files the page keeps on it ([`light`]): a reader that
-/// adds these up over a request's blocks knows the request does not fit a
-/// room once they pass it, without reading its later blocks.
-pub fn least_light_bytes(block: &Block) -> usize {
-    let mut light = light_block(block);
-    if let Block::ToolCall(call) = &mut light
-        && let Some(ToolView::Shell(view)) = &mut call.view
-    {
-        view.run_files = None;
-        view.request_files = None;
-    }
-    serde_json::to_vec(&light).map_or(0, |json| json.len())
-}
-
 /// Where a page is taken from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageAt {
@@ -264,96 +242,39 @@ pub enum PageAt {
     Around(usize),
 }
 
-/// How many blocks a page sizes at once, as a reader reads them.
-pub const SIZED_AT_ONCE: usize = 32;
-
 /// The blocks of the page `at` of a transcript of `length` blocks, as a range
-/// of indices.
+/// of indices, [`PAGE_BLOCKS`] of them where the transcript holds so many there.
 ///
-/// - The page holds blocks from where `at` names, adding blocks while their
-///   sizes stay within [`PAGE_BYTES`]; at least one block.
-/// - `sizes` gives the bytes each block of a range takes in a page, as
-///   [`least_light_bytes`] counts them, for at most [`SIZED_AT_ONCE`] blocks
-///   at a time; none when the blocks could not be read, which ends the page
-///   where it is.
-/// - `Around` adds the block after, then the one before, in turn.
+/// - `Latest` ends at the transcript's end.
+/// - `Before` ends just before the block at its index, and `After` starts just
+///   after it.
+/// - `Around` holds the block with half the page on each side; near an end of
+///   the transcript the page holds the blocks from there on instead, so only
+///   the first and the last page of a transcript are shorter than a page.
 /// - An index past the transcript's ends answers an empty page there.
-pub fn page(
-    length: usize,
-    at: PageAt,
-    mut sizes: impl FnMut(Range<usize>) -> Option<Vec<usize>>,
-) -> Range<usize> {
-    if length == 0 {
-        return 0..0;
-    }
-    let (first, toward_start, toward_end) = match at {
-        PageAt::Latest => (length - 1, true, false),
-        PageAt::Before(0) => return 0..0,
-        PageAt::Before(index) => ((index - 1).min(length - 1), true, false),
-        PageAt::After(index) if index + 1 >= length => return length..length,
-        PageAt::After(index) => (index + 1, false, true),
-        PageAt::Around(index) => (index.min(length - 1), true, true),
-    };
-    let mut known: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
-    let mut size_of = |index: usize, downward: bool| -> Option<usize> {
-        if let Some(size) = known.get(&index) {
-            return Some(*size);
+pub fn page(length: usize, at: PageAt) -> Range<usize> {
+    match at {
+        PageAt::Latest => length.saturating_sub(PAGE_BLOCKS)..length,
+        PageAt::Before(index) => {
+            let end = index.min(length);
+            end.saturating_sub(PAGE_BLOCKS)..end
         }
-        let range = if downward {
-            index.saturating_sub(SIZED_AT_ONCE - 1)..index + 1
-        } else {
-            index..(index + SIZED_AT_ONCE).min(length)
-        };
-        let read = sizes(range.clone())?;
-        for (offset, size) in read.into_iter().enumerate() {
-            known.insert(range.start + offset, size);
+        PageAt::After(index) => {
+            let start = index.saturating_add(1).min(length);
+            start..start.saturating_add(PAGE_BLOCKS).min(length)
         }
-        known.get(&index).copied()
-    };
-    let Some(mut bytes) = size_of(first, toward_start) else {
-        return first..first;
-    };
-    let (mut low, mut high) = (first, first);
-    let (mut down, mut up) = (toward_start, toward_end);
-    // Around a block the page grows after it first, then before.
-    let mut next_up = toward_end;
-    while down || up {
-        let grow_up = up && (next_up || !down);
-        next_up = !grow_up;
-        let candidate = if grow_up {
-            (high + 1 < length).then_some(high + 1)
-        } else {
-            low.checked_sub(1)
-        };
-        let Some(candidate) = candidate else {
-            if grow_up {
-                up = false;
-            } else {
-                down = false;
-            }
-            continue;
-        };
-        let fits = size_of(candidate, !grow_up).filter(|&more| bytes + more <= PAGE_BYTES);
-        let Some(more) = fits else {
-            break;
-        };
-        bytes += more;
-        if grow_up {
-            high = candidate;
-        } else {
-            low = candidate;
+        PageAt::Around(index) => {
+            let start = index.min(length.saturating_sub(1)).saturating_sub(PAGE_BLOCKS / 2);
+            let end = start.saturating_add(PAGE_BLOCKS).min(length);
+            end.saturating_sub(PAGE_BLOCKS)..end
         }
     }
-    low..high + 1
 }
 
 /// The start of the latest page of `blocks`, a transcript or the window of it
-/// a session holds: no block before the window is read to size it.
+/// a session holds.
 pub fn latest_page_start(blocks: &[Block]) -> usize {
-    page(blocks.len(), PageAt::Latest, |range| {
-        Some(blocks[range].iter().map(least_light_bytes).collect())
-    })
-    .start
+    page(blocks.len(), PageAt::Latest).start
 }
 
 /// An index of a transcript as a frame or a page names it.

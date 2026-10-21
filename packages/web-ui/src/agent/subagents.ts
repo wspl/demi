@@ -65,6 +65,8 @@ export interface SubagentRecord extends AgentRun {
    * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
    */
   shownAt: string | null
+  /** How many blocks of the window lie within the view's reach on either side of that block, which the window holds beyond (`PREFETCH_SCREENS`); absent for none. */
+  shownWithin?: number
   /** The calls this agent's model is writing. */
   pendingCalls: PendingCall[]
   /**

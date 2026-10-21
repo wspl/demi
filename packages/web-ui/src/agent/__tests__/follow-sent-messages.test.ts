@@ -53,3 +53,22 @@ test('a sent message the turn starts with follows to the bottom once, from its s
   expect(scrolls).toBe(1)
   scope.stop()
 })
+
+// The page before the window arrives with the requests the reader scrolled up
+// to read, whole when they are short: the reader stays where they read. A
+// message sent after it arrived follows to the bottom. Pure: a few ms.
+test('requests read from the page before the window leave the reader where they read', async () => {
+  const rows = shallowRef<MessageListBlock[]>([userBlock('u-3', 'm-3', 'Third'), userBlock('u-4', 'm-4', 'Fourth')])
+  let scrolls = 0
+  const scope = effectScope()
+  scope.run(() => useFollowSentMessages(() => rows.value, rowKey, () => { scrolls += 1 }))
+  rows.value = [userBlock('u-1', 'm-1', 'First'), userBlock('u-2', 'm-2', 'Second'), ...rows.value]
+  await nextTick()
+  await nextTick()
+  expect(scrolls).toBe(0)
+  rows.value = [...rows.value, userBlock('u-5', 'm-5', 'Fifth')]
+  await nextTick()
+  await nextTick()
+  expect(scrolls).toBe(1)
+  scope.stop()
+})

@@ -1,9 +1,11 @@
 import { oneRunPerKey } from '@demicodes/utils'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { pageBeside, shownWindow } from '@demicodes/web-ui/agent/history'
+import type { HistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
 import { addWindow, type HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, apiRequest, apiUrl, readResponse } from '../api/client'
+import { createReading } from '../conversation/reading'
 import {
   sharedConversationSchema,
   sharedTranscriptPageSchema,
@@ -55,6 +57,8 @@ export function createShareReads(
   hold: (history: HeldTranscript<SharedItem>) => void,
 ) {
   const once = oneRunPerKey<string, void>()
+  /** The edges of the window a page is being read for now. */
+  const reading = createReading()
 
   function read(query: URLSearchParams): Promise<void> {
     return once(String(query), async () => {
@@ -70,10 +74,12 @@ export function createShareReads(
     if (!beside) {
       return Promise.resolve()
     }
-    return read(new URLSearchParams({ [side]: String(beside.index), edge: beside.edge }))
+    return reading.track(side, () => read(new URLSearchParams({ [side]: String(beside.index), edge: beside.edge })))
   }
 
   return {
+    /** The edges of the window a page is being read for now. */
+    reading: (): HistoryReading => ({ before: reading.has('before'), after: reading.has('after') }),
     readLatest: () => read(new URLSearchParams()),
     readBefore: () => readBeside('before'),
     readAfter: () => readBeside('after'),

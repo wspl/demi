@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0044
 ---
 
 # Agent sessions, and one way to keep their data in sync

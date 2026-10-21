@@ -611,6 +611,12 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const st = el.scrollTop
     const containerTop = el.getBoundingClientRect().top
     for (const item of virtualizer.value.getVirtualItems()) {
+      // The loading row at an edge is no content: a page that arrives above
+      // it moves what the reader reads, and an anchor on the row would leave
+      // the view at the top of the list, on the row, where the next page is
+      // asked for again.
+      if (blocks.value[item.index]?.type === 'history_edge')
+        continue
       if (item.start + item.size > st) {
         const anchorEl = el.querySelector(`[data-index="${item.index}"]`) as HTMLElement | null
         if (!anchorEl)
@@ -625,6 +631,23 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         return
       }
     }
+  }
+
+  /**
+   * The first and last row that lie within `reach` px of the view, above its
+   * top and below its bottom; none while the list has no row. Rows are read
+   * from the virtualizer's measurements, drawn or not.
+   */
+  function rowsNear(reach: number): { first: number, last: number } | null {
+    const el = scrollContainer.value
+    const rows = virtualizer.value.measurementsCache
+    if (!el || rows.length === 0)
+      return null
+    const top = el.scrollTop
+    const bottom = top + el.clientHeight
+    const first = rows.findIndex((row) => row.end > top - reach)
+    const last = rows.findLastIndex((row) => row.start < bottom + reach)
+    return first < 0 || last < 0 ? null : { first, last }
   }
 
   function onScroll() {
@@ -762,11 +785,20 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     isAtBottom,
     scrollToBottom: scrollToBottomExplicit,
     reveal,
+    rowsNear,
     onScroll,
     getPersistedState,
-    /** The key of the row in view, as the list last followed it; none before it followed one. */
-    /** The id of the row at the top of the view, as the last scroll left it. */
-    anchorId: (): string | undefined => lastAnchor?.blockId,
+    /**
+     * The id of the row at the top of the view now, none before the list has
+     * a row in view. It is read from the rows as drawn, not from the last
+     * scroll: rows that changed under a view that did not scroll, as a
+     * folded run does when a page arrives above it, are not the ones the last
+     * scroll saw.
+     */
+    anchorId: (): string | undefined => {
+      updateAnchor()
+      return lastAnchor?.blockId
+    },
   }
 }
 

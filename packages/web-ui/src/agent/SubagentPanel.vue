@@ -81,7 +81,7 @@ const emit = defineEmits<{
    */
   readAfter: [id: string]
   /** The block of the child's transcript in view, or null for its latest. */
-  shown: [id: string, blockId: string | null]
+  shown: [id: string, blockId: string | null, within: number]
   /** The block `reveal` names is in view. */
   revealed: []
   /** Compact in the shown child's context card: that child's context. */
@@ -300,7 +300,7 @@ function closeTab(id: string): void {
         @revealed="emit('revealed')"
         @read-before="emit('read', active.id)"
         @read-after="emit('readAfter', active.id)"
-        @shown="(block) => emit('shown', active!.id, block)"
+        @shown="(block, within) => emit('shown', active!.id, block, within)"
       />
       <AgentStatusBar
         :run="active"

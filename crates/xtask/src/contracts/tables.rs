@@ -107,6 +107,11 @@ pub fn module(header: &str) -> String {
 
     for (name, description, value) in [
         (
+            "PAGE_BLOCKS",
+            "How many blocks a page of a transcript holds, the one size the page's window and its local copy's reads take (`crates/conversation-socket-protocol/src/transcript.rs`).",
+            count(demi_conversation_socket_protocol::PAGE_BLOCKS),
+        ),
+        (
             "TEXT_FILE_BYTES",
             "The most bytes of a file the text route reads; a larger text file shows its first this many.",
             count(demi_command_protocol::EDIT_FILE_BYTES),

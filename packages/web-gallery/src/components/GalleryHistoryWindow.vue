@@ -4,14 +4,15 @@ import type { HeldBlock } from '@demicodes/web-ui/transport/protocol'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { provideBlockReader } from '@demicodes/web-ui/agent/whole-blocks'
+import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
-import { commandLookBlocks, thoughtAnswerBlocks } from '../fixtures/blocks'
+import { commandLookBlocks, requestPairsBlocks, thoughtAnswerBlocks } from '../fixtures/blocks'
 
 /**
  * How a long conversation reads: a window that does not reach the start shows a
- * loading row at its top, and earlier requests arrive above it without moving
- * the rows in view; a row whose block came in its light form reads it whole
+ * loading row at its top while the page before it is read, and earlier requests
+ * arrive above it without moving the rows in view; a row whose block came in its light form reads it whole
  * when it is opened. The stand-in backend answers each read after a moment.
  */
 const READ_MS = 700
@@ -29,12 +30,18 @@ onBeforeUnmount(() => {
   }
 })
 
-// The latest page holds the last request; the page before it, the rest.
+// The latest page holds the last requests, enough of them to fill many
+// screens, so the list stands at its bottom; the page before it holds the
+// earlier requests.
 const whole = commandLookBlocks()
 const latestStart = whole.findLastIndex((block) => block.type === 'user')
+const latestPage = [...requestPairsBlocks(40), ...whole.slice(latestStart)]
+const earlierPage = whole.slice(0, latestStart)
 const earlierRead = ref(false)
 const reading = ref(false)
-const windowBlocks = computed(() => (earlierRead.value ? whole : whole.slice(latestStart)))
+const windowBlocks = computed(() => (earlierRead.value ? [...earlierPage, ...latestPage] : latestPage))
+// The loading row stands only while the page before is being read.
+provideHistoryReading(() => ({ before: reading.value, after: false }))
 function readBefore(): void {
   if (earlierRead.value || reading.value) {
     return
@@ -45,15 +52,23 @@ function readBefore(): void {
     reading.value = false
   })
 }
+/** The list is drawn anew each time the window is shown again, so it stands at the bottom, as a conversation opens. */
+const windowKey = ref(0)
 function resetWindow(): void {
   earlierRead.value = false
+  windowKey.value += 1
 }
-// The block the reader stopped at, which bounds what the product holds of
-// the transcript; null at the latest block.
+// The block the reader stopped at, which bounds what of the transcript the
+// product holds; null where the window holds the whole transcript and the
+// reader is at its latest block.
 const shownAt = ref<string | null>(null)
-const shownNote = computed(() =>
-  shownAt.value === null ? 'The reader is at the latest block.' : 'The reader is at an earlier block; the product holds the blocks around it.',
-)
+const shownNote = computed(() => {
+  if (shownAt.value === null) {
+    return 'The window holds the whole transcript and the reader is at its latest block.'
+  }
+  const place = windowBlocks.value.findIndex((block) => block.id === shownAt.value) + 1
+  return `The reader is at block ${place} of the ${windowBlocks.value.length} the window holds; the product holds the blocks around it.`
+})
 
 // The same requests read from a page, and a question answered after a
 // thinking: their calls and thinking in their light form, without their
@@ -89,12 +104,13 @@ function resetLight(): void {
 <template>
   <GallerySection
     title="A Long Conversation"
-    note="The transcript holds the parts the reader has been to. Near the top of a window that does not reach the start, a loading row stands while the page before it is read, and its requests appear above without moving the rows in view. A step that came in its light form opens to read its script and output, and a thinking its text, its row shimmering until they arrive."
+    note="The transcript holds the parts the reader has been to. The list stands at the bottom of the latest page. Scrolling up to within three screens of the top of a window that does not reach the start reads the page before it; a loading row stands at the top only while it is read, and its requests appear above without moving the rows in view. A step that came in its light form opens to read its script and output, and a thinking its text, its row shimmering until they arrive."
   >
     <GallerySpecimen variant="earlier requests read as the reader nears the top" wide>
       <div class="flex flex-col gap-2">
         <div class="gallery-frame h-[22rem] bg-surface">
           <AgentMessageList
+            :key="windowKey"
             class="h-full"
             conversation-id="gallery-history-window"
             :blocks="windowBlocks"

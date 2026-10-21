@@ -67,6 +67,8 @@ export interface ConversationState {
   history: HeldTranscript
   /** The block whose window the transcript shows; null for the latest. */
   shownAt: string | null
+  /** How many blocks of the window lie within the view's reach on either side of that block, which the window holds beyond (`PREFETCH_SCREENS`); absent for none. */
+  shownWithin?: number
   /**
    * The entries of the root's newest instructions block as a page of the
    * transcript named them, for when the page does not hold that block.
@@ -128,6 +130,7 @@ export interface ChatSessionState
     | 'title'
     | 'history'
     | 'shownAt'
+    | 'shownWithin'
     | 'summaries'
     | 'queue'
     | 'pendingSteers'

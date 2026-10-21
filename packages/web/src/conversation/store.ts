@@ -1331,6 +1331,7 @@ export const useConversations = defineStore('conversations', () => {
     takeAgents(conversation, detail.entries, detail.agents, Date.now(), true)
     conversation.history = addPage(EMPTY_TRANSCRIPT, page, false)
     conversation.shownAt = null
+    conversation.shownWithin = 0
     conversation.failures = page.failures ?? {}
     describeAttachments(conversation, conversation.id, page.attachments ?? [])
     conversation.instructions = page.instructions
@@ -1439,6 +1440,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.load = 'reading'
     conversation.history = EMPTY_TRANSCRIPT
     conversation.shownAt = null
+    conversation.shownWithin = 0
     conversation.failures = {}
     conversation.instructions = []
     conversation.summaries = {}

@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 // The transcript's list draws the rows near the view as the view moves,
 // within a row taller than the view too (`useBlockVirtualizer`). One Vue app
@@ -8,21 +8,30 @@ import { afterEach, expect, test } from 'bun:test'
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 const { createApp, defineComponent, h, nextTick, ref } = await import('vue')
-const { useBlockVirtualizer } = await import('../useBlockVirtualizer')
+const { BLOCK_GAP, useBlockVirtualizer } = await import('../useBlockVirtualizer')
 
 /**
  * happy-dom lays nothing out: each box is as tall as its `data-height` says,
  * and nothing resizes.
  */
 const rect = HTMLElement.prototype.getBoundingClientRect
-HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-  const height = Number(this.dataset['height'] ?? 0)
-  return { x: 0, y: 0, top: 0, left: 0, width: 600, height, right: 600, bottom: height, toJSON: () => ({}) }
-}
 const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight')
 const offsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth')
-Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get(this: HTMLElement) { return Number(this.dataset['height'] ?? 0) } })
-Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 600 })
+const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
+const scrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight')
+/** Gives every box the size its `data-height` says, for the test that follows; each test undoes it. */
+function layOut(): void {
+  HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+    const height = Number(this.dataset['height'] ?? 0)
+    return { x: 0, y: 0, top: 0, left: 0, width: 600, height, right: 600, bottom: height, toJSON: () => ({}) }
+  }
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get(this: HTMLElement) { return Number(this.dataset['height'] ?? 0) } })
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: () => 600 })
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get(this: HTMLElement) { return Number(this.dataset['height'] ?? 0) } })
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get(this: HTMLElement) { return Number.parseFloat((this.firstElementChild as HTMLElement | null)?.style.height ?? '') || 0 } })
+}
+layOut()
+beforeEach(layOut)
 /**
  * Reports each box it is given once, at its size, as a browser's first
  * observation does.
@@ -103,8 +112,60 @@ test('scrolling within a row taller than the view brings the next row once it co
   expect(drawn.value).toEqual([0, 1])
 })
 
+test('a page that arrives above a list at its top keeps the reader on the row they read, not on the loading row', async () => {
+  const drawn = ref<number[]>([])
+  const root = document.createElement('div')
+  document.body.append(root)
+  let scroller: HTMLElement | undefined
+  let blocks: { value: { id: string, type: string }[] } | undefined
+  let anchorOf: (() => string | undefined) | undefined
+  const app = createApp(defineComponent({
+    setup() {
+      const container = ref<HTMLElement>()
+      blocks = ref([{ id: 'history-before', type: 'history_edge' }, ...Array.from({ length: 30 }, (_, index) => ({ id: `b${index}`, type: 'text' }))])
+      const list = useBlockVirtualizer(container, blocks as never, { anchor: { blockId: 'b0', anchorIndex: 1, offsetPx: 0, scrollTop: 0 }, heightCache: new Map() })
+      anchorOf = list.anchorId
+      return () => {
+        drawn.value = list.virtualItems.value.map((item) => item.index)
+        const scrollerRef = (el: unknown) => {
+          container.value = el instanceof HTMLElement ? el : undefined
+          scroller = container.value
+        }
+        const rowRef = (el: unknown) => list.measureElement(el instanceof Element ? el : null)
+        return h('div', { ref: scrollerRef, 'data-height': '500', onScroll: list.onScroll }, [
+          h('div', { style: { height: `${list.totalSize.value}px` } }, list.virtualItems.value.map((item) =>
+            h('div', { key: blocks!.value[item.index]!.id, 'data-index': item.index, 'data-height': blocks!.value[item.index]!.type === 'history_edge' ? '36' : '40', ref: rowRef }))),
+        ])
+      }
+    },
+  }))
+  app.mount(root)
+  unmount = () => app.unmount()
+  await settled(drawn)
+
+  // At the top, the first row in the view is the loading row; the reader's
+  // row is the first of the content.
+  scroller!.scrollTop = 0
+  scroller!.dispatchEvent(new Event('scroll'))
+  await settled(drawn)
+  expect(anchorOf!()).toBe('b0')
+
+  // Four rows arrive above the content, under the loading row.
+  blocks!.value = [blocks!.value[0]!, ...Array.from({ length: 4 }, (_, index) => ({ id: `earlier${index}`, type: 'text' })), ...blocks!.value.slice(1)]
+  await settled(drawn)
+  // The reader's row stays 36 px below the view's top, where the loading row stood.
+  expect(scroller!.scrollTop).toBe(4 * (40 + BLOCK_GAP))
+})
+
 afterEach(() => {
   HTMLElement.prototype.getBoundingClientRect = rect
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offsetHeight!)
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetWidth!)
+  // A property happy-dom does not define on the prototype is removed again.
+  for (const [name, original] of [['clientHeight', clientHeight], ['scrollHeight', scrollHeight]] as const) {
+    if (original)
+      Object.defineProperty(HTMLElement.prototype, name, original)
+    else
+      Reflect.deleteProperty(HTMLElement.prototype, name)
+  }
 })

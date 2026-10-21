@@ -998,15 +998,14 @@ mod tests {
     }
 
     // A message the share lists is rewritten after the link is made, as a
-    // later event marks it, so the share holds it as a copy. It still starts
-    // its request: with an answer before it too long for one page, the
-    // latest page starts at it.
+    // later event marks it, so the share holds it as a copy. A page reads it
+    // from the copy, as it was when the link was made.
     #[tokio::test(flavor = "local")]
-    async fn a_message_the_share_holds_as_a_copy_still_starts_its_request() {
+    async fn a_message_the_share_holds_as_a_copy_is_read_from_the_copy() {
         let (tree, stores, _data) = store().await;
         let mut long = reply("t1");
         let Block::Text(text) = &mut long else { unreachable!() };
-        text.text = "x".repeat(70 * 1024);
+        text.text = "x".repeat(1024);
         let blocks = vec![(0, user("u1")), (1, long), (2, response("r1")), (3, user("u2")), (4, reply("t2")), (5, response("r2"))];
         tree.create_node(record("root", None, 0), update(blocks, 6)).await.unwrap();
         make_list(&stores).await;
@@ -1026,7 +1025,10 @@ mod tests {
             .unwrap()
             .unwrap();
         let PageRead::Page { start, length, blocks, .. } = read else { panic!("the latest page") };
-        assert_eq!((start, length), (2, 4));
-        assert_eq!(ids(&blocks), ["u2", "t2"]);
+        assert_eq!((start, length), (0, 4));
+        assert_eq!(ids(&blocks), ["u1", "t1", "u2", "t2"]);
+        // The page holds the message as the link was made, not as it is now.
+        let message = serde_json::to_value(&self::blocks(&blocks)[2]).unwrap();
+        assert_ne!(message["content"][0]["text"], "marked later");
     }
 }

@@ -12,6 +12,7 @@ import { AT_REST, type AgentActivity } from './agent-activity'
 import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
 import { getVisibleBlocks } from './visible-blocks'
 import { workGrouping } from './work-groups'
+import type { HistoryReading } from './history-reading'
 import type { LiveCallLookup } from './live-calls'
 import { shellRowRunning } from './terminals'
 
@@ -110,6 +111,13 @@ interface Recovery {
 export function useMessageRows(
   source: () => MessageRowsSource,
   liveCalls: LiveCallLookup = () => undefined,
+  /**
+   * Which edges of the window the page is reading a page for, each of which
+   * shows a loading row while the read lasts and none otherwise
+   * (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`). Its own
+   * parameter, so no other change of the source recomputes the rows for it.
+   */
+  reading: () => HistoryReading = () => ({ before: false, after: false }),
 ): MessageRows {
   // The transcript as plain data: a block that changes is replaced, as is the
   // list that holds it (`applyTranscriptPatches`), so a new list is the one
@@ -287,11 +295,11 @@ export function useMessageRows(
     const present = new Set([...sharedRows.value, ...tailRows].flatMap((row) => sentMessage(row)?.id ?? []))
     const unplaced = [...before].flatMap(([sent, list]) => present.has(sent) ? [] : list)
     return [
-      ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
+      ...(!source().atStart && reading().before ? [{ type: 'history_edge', id: 'history-before' } as const] : []),
       ...inPlace(sharedRows.value),
       ...unplaced,
       ...inPlace(tailRows),
-      ...(source().atEnd ? [] : [{ type: 'history_edge', id: 'history-after' } as const]),
+      ...(!source().atEnd && reading().after ? [{ type: 'history_edge', id: 'history-after' } as const] : []),
     ]
   })
 

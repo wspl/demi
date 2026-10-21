@@ -10,6 +10,7 @@ import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streamin
 import { rowKey } from './row-key'
 import type { PendingAction } from './activity-slot'
 import { useMessageRows } from './message-rows'
+import { useHistoryReading } from './history-reading'
 import type { AgentActivity } from './agent-activity'
 import { useLiveCalls } from './live-calls'
 import { useChromeEntrance } from './useChromeEntrance'
@@ -199,7 +200,7 @@ const emit = defineEmits<{
    * transcript's, for the latest
    * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
    */
-  shown: [blockId: string | null]
+  shown: [blockId: string | null, within: number]
 }>()
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
@@ -229,6 +230,7 @@ function answerShare(blockId: string): AnswerShare {
   return { start: () => props.share!(blockId) }
 }
 
+const historyReading = useHistoryReading()
 const {
   visibleBlocks,
   transcriptRows: visibleTranscriptBlocks,
@@ -236,7 +238,7 @@ const {
   keyOf,
   footerIds,
   slot,
-} = useMessageRows(() => props, useLiveCalls())
+} = useMessageRows(() => props, useLiveCalls(), () => historyReading(props.node ?? null))
 const editableUserId = computed(() => props.readOnly || !props.latest ? null : offeredEditId(props))
 /**
  * The answer whose footer offers Regenerate. It is the last answer after the
@@ -389,6 +391,7 @@ const {
   isAtBottom,
   scrollToBottom,
   reveal,
+  rowsNear,
   onScroll,
   getPersistedState,
   anchorId,
@@ -473,24 +476,49 @@ const { height: viewportHeight } = useElementSize(scrollContainer)
 
 useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
-// Within a screen of an edge that is not the transcript's, the next page is
-// read there, and the page before is read while the window shows a stale
-// block. The host reads each page once.
+/**
+ * How many screens from an edge of the window the next page is read: far
+ * enough that the page has arrived before the reader reaches the edge
+ * (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`).
+ */
+const PREFETCH_SCREENS = 3
+
+/**
+ * Whether the view is within `PREFETCH_SCREENS` screens of an edge of the
+ * window that is not the transcript's, from numbers the scroll and the
+ * observers already hold: a scroll within the reach changes none of these, so
+ * it asks the page for nothing and forces no layout.
+ */
+const nearStart = computed(() => !props.atStart && scrollOffset.value < PREFETCH_SCREENS * viewportHeight.value)
+const nearEnd = computed(() =>
+  !props.atEnd && totalSize.value - scrollOffset.value - viewportHeight.value < PREFETCH_SCREENS * viewportHeight.value)
+/** A stale block, held from before a reset that could not vouch for it, is a hole the host reads again while it shows (`resetTranscript`). */
+const hasStale = computed(() => props.blocks.some((block) => block.stale))
+
+// Near an edge, the next page is read there, and the page before is read
+// while the window shows a stale block. It runs as the view comes near an
+// edge, and as the blocks change while it stays near: a page that arrived
+// may leave the view near the edge still, as a transcript that folds into few
+// rows does. The block in view is told first, so the host holds the part of
+// the transcript the reader is at when the page arrives. The host reads each
+// page once.
 watch(
-  [scrollOffset, () => props.blocks, viewportHeight, () => props.atStart, () => props.atEnd, () => props.revealBlockId],
+  [nearStart, nearEnd, hasStale, () => props.blocks, () => props.revealBlockId],
   () => {
-    const el = scrollContainer.value
     // A block being brought into view places the list first. Until then, the
     // list's scroll position belongs to the window shown before.
-    if (!el || paneStatus.value || props.revealBlockId) {
+    if (paneStatus.value || props.revealBlockId) {
       return
     }
-    // A stale block, held from before a reset that could not vouch for it,
-    // is a hole the host reads again while it shows (`resetTranscript`).
-    if ((!props.atStart && el.scrollTop < el.clientHeight) || props.blocks.some((block) => block.stale)) {
+    const before = nearStart.value || hasStale.value
+    const after = nearEnd.value
+    if (before || after) {
+      tellShownNow()
+    }
+    if (before) {
       emit('readBefore')
     }
-    if (!props.atEnd && distanceFromBottom(el) < el.clientHeight) {
+    if (after) {
       emit('readAfter')
     }
   },
@@ -502,19 +530,34 @@ const SHOWN_SETTLE_MS = 200
 
 // The block in view, told once the scroll settles: the row the list follows,
 // or a block of its steps for a group of work, among the blocks the window
-// holds; null at the end of a window that reaches the transcript's.
+// holds; null at the end of a window that reaches both ends of the transcript.
+// With it goes how many blocks lie within the reach of the view on either
+// side, which the host holds beyond.
 let toldShown: string | null | undefined
-const tellShown = useDebounceFn(() => {
+let toldWithin = 0
+function tellShownNow(): void {
   if (paneStatus.value || props.revealBlockId) {
     return
   }
-  const shown = props.atEnd && isAtBottom.value ? null : blockInView()
-  if (shown === undefined || shown === toldShown) {
+  // At the end of a window that holds the transcript from its start the
+  // reader needs nothing but the latest. A window that does not reach the
+  // start is held around the block in view even at its end, or the page read
+  // before it, which the reader's few folded rows ask for, would be let go as
+  // it arrives and read again.
+  const whole = props.atEnd && props.atStart && isAtBottom.value
+  const shown = whole ? null : blockInView()
+  if (shown === undefined) {
+    return
+  }
+  const within = shown === null ? 0 : blocksWithinReach(shown)
+  if (shown === toldShown && within === toldWithin) {
     return
   }
   toldShown = shown
-  emit('shown', shown)
-}, SHOWN_SETTLE_MS)
+  toldWithin = within
+  emit('shown', shown, within)
+}
+const tellShown = useDebounceFn(tellShownNow, SHOWN_SETTLE_MS)
 watch(scrollOffset, () => {
   void tellShown()
 })
@@ -528,6 +571,40 @@ function blockInView(): string | undefined {
   const held = new Set(props.blocks.map((block) => block.id))
   const candidates = [row.id, ...('steps' in row ? row.steps.map((step) => step.id) : [])]
   return candidates.find((id) => held.has(id))
+}
+
+/**
+ * How many held blocks lie between the block `anchor`, in view, and the
+ * farthest block that a row within the reach of the view holds, on either
+ * side: what the host holds beyond, so that a transcript that folds into few
+ * rows is not let go of within the reach the list asks pages for.
+ */
+function blocksWithinReach(anchor: string): number {
+  const near = rowsNear(PREFETCH_SCREENS * viewportHeight.value)
+  const position = new Map(props.blocks.map((block, index) => [block.id, index]))
+  const at = position.get(anchor)
+  if (!near || at === undefined) {
+    return 0
+  }
+  /** The place of a row's first or last held block; none for a row of no block. */
+  const placeOf = (row: number, last: boolean): number | undefined => {
+    const shown = renderBlocks.value[row]
+    if (!shown) {
+      return undefined
+    }
+    const ids = [shown.id, ...('steps' in shown ? shown.steps.map((step) => step.id) : [])]
+    const held = ids.map((id) => position.get(id)).filter((place): place is number => place !== undefined)
+    return held.length === 0 ? undefined : last ? Math.max(...held) : Math.min(...held)
+  }
+  let first: number | undefined
+  for (let row = near.first; row <= near.last && first === undefined; row += 1) {
+    first = placeOf(row, false)
+  }
+  let last: number | undefined
+  for (let row = near.last; row >= near.first && last === undefined; row -= 1) {
+    last = placeOf(row, true)
+  }
+  return Math.max(0, at - (first ?? at), (last ?? at) - at)
 }
 
 // Composer or task-control growth covers the tail, and a reader at the bottom

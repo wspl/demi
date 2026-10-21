@@ -5,6 +5,7 @@ import {
   blockSchema,
   conversationAttachmentSchema,
   instructionEntrySchema,
+  PAGE_BLOCKS,
   providerFailureFactsSchema,
   schemaRefusal,
   versionSchema,
@@ -72,10 +73,10 @@ const ACCOUNT_KEY = 'account'
 
 /** The most the disk holds, in bytes, when the browser grants as much. */
 export const DISK_BYTES = 500 * 1024 * 1024
-/** The blocks one idle step deletes at most, so no deletion holds reads back for long. */
+/** The blocks one idle step deletes at most, so no deletion holds reads back for long: a number of its own, which the page's size does not set. */
 export const EVICTION_BATCH = 200
-/** The blocks of a node's latest run a view shows from the disk at once. */
-export const DISK_WINDOW = 200
+/** The blocks of a node's run a view reads from the disk at once, a page. */
+export const DISK_WINDOW = PAGE_BLOCKS
 
 /**
  * The database's layout. Its records are disposable, so a change of their

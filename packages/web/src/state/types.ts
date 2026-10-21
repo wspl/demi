@@ -68,6 +68,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   history: ConversationState['history']
   /** The block whose window the transcript shows; null for the latest. */
   shownAt: string | null
+  /** How many blocks of the window lie within the view's reach on either side of that block, which the window holds beyond (`PREFETCH_SCREENS`); absent for none. */
+  shownWithin?: number
   /** The entries of the root's newest instructions block as a page named them. */
   instructions: ConversationState['instructions']
   /** Each compaction marker's boundary's summary size, by the marker's id, as pages named them. */
@@ -216,6 +218,8 @@ export interface SideRecord {
   history: HeldTranscript
   /** The block its view shows, which bounds what of its history the page holds; null for the latest. */
   shownAt: string | null
+  /** How many blocks of the window lie within the view's reach on either side of that block, which the window holds beyond (`PREFETCH_SCREENS`); absent for none. */
+  shownWithin?: number
   failures: Record<string, ProviderFailureFacts>
   sessionPhase: SessionPhase
   pendingCalls: PendingCall[]

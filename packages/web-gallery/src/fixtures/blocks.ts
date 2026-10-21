@@ -1669,6 +1669,24 @@ export function thoughtAnswerBlocks(): Block[] {
  *
  * The groups read Checked 1 command and Ran 1 command, checked 1 command.
  */
+/**
+ * `count` short requests and their answers, such as a page of a long
+ * conversation holds: each takes a few lines, so enough of them fill several
+ * screens.
+ */
+export function requestPairsBlocks(count: number): Block[] {
+  return Array.from({ length: count }, (_, index): Block[] => [
+    {
+      type: 'user', id: `pair-${index}-user`, turnId: `pair-${index}-turn`, createdAt: iso(index * 2_000),
+      model: demoModel, content: [{ type: 'text', text: `Request ${index + 1}: check the next module.` }], preamble: null,
+    },
+    {
+      type: 'text', id: `pair-${index}-answer`, createdAt: iso(index * 2_000 + 1_000), model: demoModel,
+      text: `The module ${index + 1} reads its settings once and passes them on; nothing there needs a change.`,
+    },
+  ]).flat()
+}
+
 export function commandLookBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({
     type: 'user', id, turnId: `${id}-turn`, createdAt: iso(at), model: demoModel,

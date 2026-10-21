@@ -1,11 +1,10 @@
 //! A conversation's history read a page at a time.
 //!
-//! - Pages that fit a page's bytes, from the latest back.
+//! - The page of a conversation, with no byte limit.
 //! - A page around a block.
 //! - The refusal of a page whose edge moved.
 //! - The light form and a block read whole.
 
-use demi_conversation_socket_protocol::{PAGE_BYTES, least_light_bytes};
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::Block;
 use demi_web_api_protocol::conversations::{TranscriptPage, WholeBlock};
@@ -24,13 +23,13 @@ async fn page(backend: &TestBackend, session: &Session, query: &str) -> Transcri
     read.json()
 }
 
-// Four requests whose answers are each past half a page: each page holds
-// the blocks that fit in a page's bytes past its first, wherever a request
-// begins (`crates/conversation-socket-protocol/src/transcript.rs`), and the
-// pages before the latest go back to the start, each ending where the one
-// after it starts; the page around a block holds that block.
+// Four requests whose answers are each far past the old 64 KB limit of a
+// page: the conversation is one page, the whole of it, since a page is a
+// thousand blocks with no byte limit
+// (`crates/conversation-socket-protocol/src/transcript.rs`); the page around a
+// block holds that block, and a page before its first block is empty.
 #[tokio::test]
-async fn a_long_conversation_reads_in_pages_that_fit_a_pages_bytes() {
+async fn a_long_answer_does_not_split_a_page() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -39,7 +38,7 @@ async fn a_long_conversation_reads_in_pages_that_fit_a_pages_bytes() {
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    let long = "a long answer ".repeat(3_000);
+    let long = "a long answer ".repeat(10_000);
     for turn in 1..=4 {
         vendor.respond(answer(&[&format!("{turn}: "), &long], 10, 10));
         socket.chat(&format!("m{turn}"), &format!("Question {turn}")).await;
@@ -47,32 +46,16 @@ async fn a_long_conversation_reads_in_pages_that_fit_a_pages_bytes() {
     // Every block, as the pages and the block reads give them back.
     let live = transcript(&backend, &master, FIRST).await.blocks;
 
-    let fits = |blocks: &[Block]| {
-        let past_first: usize = blocks[1..].iter().map(least_light_bytes).sum();
-        assert!(past_first <= PAGE_BYTES, "{past_first} bytes past the first block");
-    };
     let latest = page(&backend, &master, "").await;
     assert_eq!(latest.length as usize, live.len());
-    fits(&latest.blocks);
-    // The last answer's request and the block before it: the answer before
-    // that does not fit.
-    assert_eq!(kinds(&latest.blocks), ["response", "user", "text", "response"]);
-    assert_eq!(latest.start as usize + latest.blocks.len(), live.len());
+    assert_eq!(latest.start, 0);
+    assert_eq!(latest.blocks.len(), live.len());
+    assert_eq!(kinds(&latest.blocks), kinds(&live));
 
-    // Back to the start, each page ends where the one after it starts.
-    let mut start = latest.start;
-    let mut edge = latest.blocks[0].id().clone();
-    let mut pages = 1;
-    while start > 0 {
-        let before = page(&backend, &master, &format!("?before={start}&edge={edge}")).await;
-        assert_eq!(before.start as usize + before.blocks.len(), start as usize);
-        assert_eq!(before.blocks[0].id(), live[before.start as usize].id());
-        fits(&before.blocks);
-        start = before.start;
-        edge = before.blocks[0].id().clone();
-        pages += 1;
-    }
-    assert!(pages >= 4, "{pages} pages");
+    // Nothing lies before the first block.
+    let first = latest.blocks[0].id().clone();
+    let before = page(&backend, &master, &format!("?before=0&edge={first}")).await;
+    assert!(before.blocks.is_empty());
 
     // Around the second answer: a page that holds it.
     let second = live
@@ -84,7 +67,6 @@ async fn a_long_conversation_reads_in_pages_that_fit_a_pages_bytes() {
         .clone();
     let around = page(&backend, &master, &format!("?around={second}")).await;
     assert!(around.blocks.iter().any(|block| block.id() == &second));
-    fits(&around.blocks);
 
     // An edge that is no longer at its index: the transcript changed under the page.
     let moved = backend

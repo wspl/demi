@@ -77,6 +77,7 @@ export type RuntimeState = Pick<
   | 'id'
   | 'history'
   | 'shownAt'
+  | 'shownWithin'
   | 'phase'
   | 'queue'
   | 'pendingSteers'
@@ -767,7 +768,7 @@ export class ConversationRuntime {
       case 'transcript_reset':
         // Another node's messages are the host's, which keeps its record.
         if (event.node === state.id) {
-          state.history = boundedHistory(resetTranscript(state.history, event, event.asked), state.shownAt)
+          state.history = boundedHistory(resetTranscript(state.history, event, event.asked), state)
           state.failures = { ...state.failures, ...event.failures }
         }
         break
@@ -775,7 +776,7 @@ export class ConversationRuntime {
         if (event.node === state.id) {
           state.history = boundedHistory(
             applyTranscriptPatches(state.history, event.patches, performance.now(), event.version),
-            state.shownAt,
+            state,
           )
           state.failures = { ...state.failures, ...event.failures }
         }

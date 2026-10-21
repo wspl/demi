@@ -81,8 +81,8 @@ pub use server::{
     RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, TurnSpeed,
 };
 pub use transcript::{
-    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, SIZED_AT_ONCE, TranscriptPatch, Version, Versions,
-    index_u32, latest_page_start, light, least_light_bytes, light_bytes, page,
+    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BLOCKS, PageAt, TranscriptPatch, Version, Versions,
+    index_u32, latest_page_start, light, page,
 };
 
 use demi_shared_types::DecodeError;
