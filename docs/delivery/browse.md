@@ -150,7 +150,10 @@ The following helpers show the page:
   on (`zoom` only on the slot's page). The PNG has the page's real size and
   pixel ratio. The helper takes it after the page's finite animations end, up
   to two seconds, and writes it into `.cache/browse/shots/`. The call returns
-  its path, which the agent lists in its report for the lead to send.
+  its path, which the agent lists in its report for the lead to send. A shot
+  covers only what the viewport shows: an element or a region that reaches
+  past it fails, so shoot the parts the viewport shows or set a larger
+  viewport with `demi.emulate({ viewport })`.
 - `demi.timeline(action, [0, 100, 1500], { region })` runs the action and keeps
   the browser's frames painted nearest to those milliseconds after it, for the
   moments between a click and its result. A full screenshot takes about 100 ms
