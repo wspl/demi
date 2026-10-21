@@ -55,7 +55,7 @@ profiles:
       Your report, in English and short: branch and its commit, what changed per item, tests and that each failed before, checks run, what the acceptance pass should walk, gaps.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
-    model: claude-sonnet-5-5
+    model: gpt-6-astra
     effort: medium
     instructions: |
       You research and report; you change nothing.
