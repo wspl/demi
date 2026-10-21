@@ -1752,6 +1752,7 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
     let switch = |model: &ModelSelection, runtime: Option<&ScriptedRuntime>| {
         session
             .update_model(ModelSwitch {
+                compaction_blocked: None,
                 model: Box::new(model.clone()),
                 runtime: runtime
                     .map(|runtime| Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
@@ -1856,6 +1857,7 @@ async fn a_switch_to_another_provider_continues_the_running_turn_on_the_new_runt
 
     session
         .update_model(ModelSwitch {
+            compaction_blocked: None,
             model: Box::new(model_of("other", "model-b")),
             runtime: Some(Box::new(second.clone())),
         })

@@ -1650,8 +1650,43 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.38.sql"),
             migration: Migration::Code(conversation_from_0_1_38),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.46.sql"),
+            migration: Migration::Code(conversation_from_0_1_46),
+        },
     ],
 };
+
+/// From 0.1.46's conversation schema to the current one.
+///
+/// - A child's node row names the model its rounds run on. A child stored
+///   before ran on the selection its checkpoint saved, so the row takes that;
+///   the root and a side question keep none.
+/// - A child that inherited its parent's profile records the instructions its
+///   parent's prompt added, as it does from its spawn on. One stored before
+///   read them from its parent's session at each start, which was the
+///   parent's own record's, so its row takes its parent's row's, the root's
+///   being none. A parent that inherited itself passes on what it took in
+///   turn, so each pass takes one level more, down to the deepest.
+fn conversation_from_0_1_46(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "ALTER TABLE nodes ADD COLUMN model TEXT;
+         UPDATE nodes SET model = json_extract(state, '$.model')
+           WHERE parent_id IS NOT NULL AND id NOT IN (SELECT node_id FROM side_questions);",
+    )?;
+    let inherited = "SELECT parent.instructions FROM nodes AS parent WHERE parent.id = nodes.parent_id";
+    while transaction.execute(
+        &format!(
+            "UPDATE nodes SET instructions = ({inherited})
+               WHERE profile IS NULL AND parent_id IS NOT NULL
+                 AND id NOT IN (SELECT node_id FROM side_questions)
+                 AND instructions IS NOT ({inherited})"
+        ),
+        [],
+    )? > 0
+    {}
+    Ok(())
+}
 
 /// From 0.1.38's conversation schema, of transcript block format 13 and
 /// checkpoint state format 6, to the current one, of block format 14 and state
@@ -2214,31 +2249,34 @@ ALTER TABLE sequences_next RENAME TO sequences;
     // cascades while foreign keys are on, as they are in a migration's
     // transaction. Its columns stay as they are, so its text changes in place, the
     // procedure SQLite gives for a change of constraints alone
-    // (lang_altertable.html § 7), to the current schema's own text.
+    // (lang_altertable.html § 7), to 0.1.28's own text.
     //
     // Every row keeps its number, which the integrity check proves the new text
     // accepts.
-    let start = CONVERSATION_V1
+    // The text of the schema this step leads to, not the current one, whose
+    // nodes table has columns added since.
+    const SCHEMA_0_1_28: &str = include_str!("schema/conversation-0.1.28.sql");
+    let start = SCHEMA_0_1_28
         .find("CREATE TABLE nodes (")
         .expect("the conversation schema makes the nodes table");
-    let end = start + CONVERSATION_V1[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
+    let end = start + SCHEMA_0_1_28[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
     let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
     transaction.pragma_update(None, "writable_schema", true)?;
     transaction.execute(
         "UPDATE sqlite_schema SET sql = ?1 WHERE type = 'table' AND name = 'nodes'",
-        [&CONVERSATION_V1[start..end]],
+        [&SCHEMA_0_1_28[start..end]],
     )?;
     transaction.pragma_update(None, "schema_version", version + 1)?;
     transaction.pragma_update(None, "writable_schema", false)?;
-    let start = CONVERSATION_V1
+    let start = SCHEMA_0_1_28
         .find("CREATE TABLE side_questions (")
         .expect("the conversation schema makes the side questions' table");
     let end = start
-        + CONVERSATION_V1[start..]
+        + SCHEMA_0_1_28[start..]
             .find("CREATE INDEX side_questions_in_order")
             .expect("the table's index follows it");
-    let index_end = end + CONVERSATION_V1[end..].find(";\n").expect("the index ends") + 1;
-    transaction.execute_batch(&CONVERSATION_V1[start..index_end])?;
+    let index_end = end + SCHEMA_0_1_28[end..].find(";\n").expect("the index ends") + 1;
+    transaction.execute_batch(&SCHEMA_0_1_28[start..index_end])?;
     let problems: Vec<String> = transaction
         .prepare("PRAGMA integrity_check")?
         .query_map([], |row| row.get(0))?
@@ -4837,6 +4875,13 @@ CREATE TABLE nodes (
   -- child belongs to the branch that call is on; null for the root and for
   -- a child stored before versions existed, which is on every path.
   started_by       TEXT,
+  -- The model selection a child's rounds run on, the one owner of it: the
+  -- checkpoint's is only what its history was last requested with. Null for
+  -- the root, whose model the conversation's record holds, and for a side
+  -- question, which keeps its checkpoint's. Its reader refuses a row that
+  -- is a child without one, since a migration adds no table CHECK.
+  -- nodes.model: model selection, as in checkpoint state format 7
+  model            TEXT,
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')
@@ -7974,6 +8019,75 @@ mod tests {
             ))
             .unwrap();
         (directory, path, connection)
+    }
+
+    /// A child stored by 0.1.38 or by 0.1.46, which 0.1.45 and 0.1.46 shipped,
+    /// ran on the model its checkpoint saved and, if it inherited, on its
+    /// parent's instructions: once migrated, its row names both, and the
+    /// root's and a side question's rows name no model.
+    #[test]
+    fn a_child_of_0_1_38_or_0_1_46_takes_the_model_its_checkpoint_saved() {
+        for sql in [
+            include_str!("schema/conversation-0.1.38.sql"),
+            include_str!("schema/conversation-0.1.46.sql"),
+        ] {
+            a_child_takes_the_model_its_checkpoint_saved(sql);
+        }
+    }
+
+    fn a_child_takes_the_model_its_checkpoint_saved(sql: &str) {
+        let (_directory, path, mut connection) = database(sql);
+        let state = |model: &str| serde_json::json!({ "model": { "providerId": "p1", "model": { "id": model } } }).to_string();
+        // The root, a child with a profile of its own, its inheriting child
+        // and that child's, an inheriting child of the root, and a side
+        // question.
+        for (id, number, parent, model, profile, instructions) in [
+            ("root", Some(0), None, "m0", None, None),
+            ("reader", Some(1), Some("root"), "m1", Some("readonly"), Some("Read only.")),
+            ("inheritor", Some(2), Some("reader"), "m3", None, None),
+            ("deepest", Some(3), Some("inheritor"), "m4", None, None),
+            ("plain", Some(4), Some("root"), "m5", None, None),
+            ("side", None, Some("root"), "m2", None, None),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at, can_spawn, delivered, state, output_revision)
+                     VALUES (?1, ?2, ?3, '', ?5, ?6, 1, 0, 1, 0, ?4, 0)",
+                    rusqlite::params![id, number, parent, state(model), profile, instructions],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO side_questions (node_id, block_id, start_offset, end_offset, quote, question, asked_at)
+                 VALUES ('side', 'b1', 0, 1, 'q', 'Why?', 0)",
+                [],
+            )
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let model = |id: &str| -> Option<serde_json::Value> {
+            let text: Option<String> = connection
+                .query_row("SELECT model FROM nodes WHERE id = ?1", [id], |row| row.get(0))
+                .unwrap();
+            text.map(|text| serde_json::from_str(&text).unwrap())
+        };
+        assert_eq!(model("root"), None);
+        assert_eq!(model("side"), None);
+        assert_eq!(model("reader").unwrap()["model"]["id"], "m1");
+        assert_eq!(model("deepest").unwrap()["model"]["id"], "m4");
+        let instructions = |id: &str| -> Option<String> {
+            connection
+                .query_row("SELECT instructions FROM nodes WHERE id = ?1", [id], |row| row.get(0))
+                .unwrap()
+        };
+        // An inheriting child takes what its parent's prompt added, down
+        // the levels; the root added none.
+        assert_eq!(instructions("reader").as_deref(), Some("Read only."));
+        assert_eq!(instructions("inheritor").as_deref(), Some("Read only."));
+        assert_eq!(instructions("deepest").as_deref(), Some("Read only."));
+        assert_eq!(instructions("plain"), None);
     }
 
     /// 0.1.37's and 0.1.38's boundaries kept the user's messages with their

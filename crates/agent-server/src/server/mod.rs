@@ -350,7 +350,7 @@ impl<H: HostResolver> AgentServer<H> {
         let store = (self.deps.stores)(root);
         let subagents = store.subagents().await?;
         let sides = store.sides().await?;
-        let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model.clone()).collect();
+        let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model().clone()).collect();
         let models = self.deps.subagents.runs_on(&selections).await;
         let kept = self.deps.agents.kept(root).await;
         // A tree opened meanwhile answers instead, so the answer never
@@ -454,6 +454,7 @@ impl<H: HostResolver> AgentServer<H> {
             None
         };
         Ok(Some(ModelSwitch {
+            compaction_blocked: None,
             model: Box::new(model),
             runtime,
         }))

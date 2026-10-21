@@ -23,7 +23,10 @@
 //!   unavailable is reported disabled.
 //! - The switch blocks spawns only. Running children go on, and `send`,
 //!   `abort`, `resume`, `list` and `show` keep working, because they act on
-//!   agents that exist. A resume continues a child the parent already has.
+//!   agents that exist. A resume continues a child the parent already has,
+//!   and one that names a profile reads the profile's settings, not the
+//!   switch, so a child whose provider failed can be moved on while subagents
+//!   are off.
 //! - The limits are the user's across all their conversations, because they
 //!   bound what the user runs at once (tokens, the Hosts' load), not what one
 //!   conversation does. A tree with a live subagent is never evicted, so every
@@ -63,13 +66,34 @@ const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work 
 /// Subagents.
 const OFF_HERE: &str = "subagents are turned off for this conversation; do this work in this session, or have Global Workflow or a workflow picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use global or use <id> once the user allows it.";
 
+/// What a setup is for.
+///
+/// A spawn makes a child and answers to the switches that guard making one;
+/// a resume moves a child that exists to another profile, which the switches do
+/// not guard (`Tree::spawn_setup`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SetupFor {
+    Spawn,
+    Resume,
+}
+
+impl SetupFor {
+    /// What an omitted `--profile` does, as the checks' messages offer it.
+    fn omitting(self) -> &'static str {
+        match self {
+            Self::Spawn => "inherit the parent",
+            Self::Resume => "go on with the profile the child runs on",
+        }
+    }
+}
+
 /// What a spawn makes its child of: the profile's settings, or the
 /// parent's for the inherit profile.
 pub(super) struct Setup {
     pub(super) model: ModelSelection,
-    /// The instructions the profile adds to the child's system prompt; none
-    /// when it adds none, and for the inherit profile, whose child copies
-    /// its parent's.
+    /// The instructions the child's system prompt adds to the product's: the
+    /// profile's, or the parent's own for the inherit profile; none when
+    /// there are none.
     pub(super) instructions: Option<String>,
     /// The Context the profile chose, in tokens, in place of the user's
     /// limit; none for the user's. With the parent's model, the parent's.
@@ -143,44 +167,61 @@ fn effort_word(effort: &str) -> String {
 }
 
 impl<H: HostResolver> Tree<H> {
-    /// What a spawn by `owner` with the profile `name` makes its child of.
+    /// What a spawn by `owner` with the profile `name` makes its child of; for
+    /// a resume, what the child the resume moves to the profile is made of.
     ///
-    /// `name` is none for the inherit profile. The checks run against the
-    /// user's current settings and the conversation's choice. The first that
-    /// fails ends the spawn before anything is created. In order, they require
-    /// that:
+    /// `name` is none for the inherit profile, which only a spawn takes. The
+    /// checks run against the user's current settings and the conversation's
+    /// choice. The first that fails ends the call before anything is created
+    /// or changed. In order, they require that:
     ///
-    /// 1. subagents are on;
+    /// 1. subagents are on, for a spawn only;
     /// 2. the name is known;
     /// 3. the profile is enabled;
     /// 4. its model settings make a selection.
     ///
     /// A workflow's profiles replace the user's, whatever the user's switch is.
-    /// The limits the spawn checks next come with the answer.
+    /// A resume in a conversation that says No Subagents names the user's
+    /// profiles, which are the ones left. The limits the call checks next come
+    /// with the answer.
     pub(super) async fn spawn_setup(
         &self,
         server: &AgentServer<H>,
         owner: &Node<H>,
         name: Option<&str>,
+        purpose: SetupFor,
     ) -> Result<Setup, String> {
         let settings = read(server).await?;
         let limits = Limits::of(&settings);
         // The parent's model comes with the parent's Context, for the
         // inherit profile and for a profile without a model of its own
         // alike.
-        let parents = || (owner.session().model(), owner.record().context_limit);
+        //
+        // A child's own record is where its model, instructions and Context
+        // are; only the root's come from its session.
+        let parents = || {
+            let record = owner.record();
+            let model = record.model.clone().unwrap_or_else(|| owner.session().model());
+            (model, record.context_limit)
+        };
         let inherit = || {
             let (model, context_limit) = parents();
             Setup {
                 model,
-                instructions: None,
+                instructions: owner.record().instructions.clone(),
                 context_limit,
                 can_spawn: true,
                 limits,
             }
         };
-        match self.conversation_profiles(server).await? {
-            ConversationProfiles::Off => Err(OFF_HERE.to_owned()),
+        let omitting = purpose.omitting();
+        let profiles = match self.conversation_profiles(server).await? {
+            ConversationProfiles::Off if purpose == SetupFor::Spawn => return Err(OFF_HERE.to_owned()),
+            ConversationProfiles::Off => ConversationProfiles::Settings,
+            profiles => profiles,
+        };
+        match profiles {
+            ConversationProfiles::Off => unreachable!("an Off choice is a spawn's refusal or the user's settings"),
             ConversationProfiles::Unavailable { id, reason } => Err(format!(
                 "this conversation's workflow \"{id}\" is unavailable: {reason}; do this work in this session, or have another picked: the user picks one in the composer's Workflow menu, or you pick one with demi agent workflows use <id> once the user allows it."
             )),
@@ -192,7 +233,7 @@ impl<H: HostResolver> Tree<H> {
                     .profiles
                     .iter()
                     .find(|child| child.name == name)
-                    .ok_or_else(|| unknown_in(name, &workflow))?;
+                    .ok_or_else(|| unknown_in(name, &workflow, omitting))?;
                 let (model, context_limit) = match &child.model {
                     None => parents(),
                     Some(Ok(selection)) => (selection.clone(), child.context_limit),
@@ -209,7 +250,7 @@ impl<H: HostResolver> Tree<H> {
                 })
             }
             ConversationProfiles::Settings => {
-                if !settings.enabled {
+                if !settings.enabled && purpose == SetupFor::Spawn {
                     return Err(SUBAGENTS_OFF.to_owned());
                 }
                 let Some(name) = name else {
@@ -219,10 +260,10 @@ impl<H: HostResolver> Tree<H> {
                     .profiles
                     .iter()
                     .find(|profile| profile.name == name)
-                    .ok_or_else(|| unknown(name, &settings))?;
+                    .ok_or_else(|| unknown(name, &settings, omitting))?;
                 if !profile.enabled {
                     return Err(format!(
-                        "profile \"{name}\" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagents."
+                        "profile \"{name}\" is disabled in settings; omit --profile to {omitting}, or ask the user to enable it in Settings > Subagents."
                     ));
                 }
                 let (model, context_limit) = match &profile.model {
@@ -435,7 +476,7 @@ impl<H: HostResolver> Tree<H> {
                 .profiles
                 .iter()
                 .find(|child| child.name == name)
-                .ok_or_else(|| unknown_in(name, &workflow))?;
+                .ok_or_else(|| unknown_in(name, &workflow, SetupFor::Spawn.omitting()))?;
             return Ok(workflow_answer(&workflow, child));
         }
         let settings = read(&server).await?;
@@ -700,7 +741,7 @@ async fn listed<H: HostResolver>(server: &Rc<AgentServer<H>>, profile: &Profile)
 /// Why a spawn names no profile of the user's: with the enabled profiles'
 /// names, so a model that guessed or remembered an old name learns the
 /// current ones.
-fn unknown(name: &str, settings: &SubagentSettings) -> String {
+fn unknown(name: &str, settings: &SubagentSettings, omitting: &str) -> String {
     let names: Vec<&str> = settings
         .profiles
         .iter()
@@ -709,18 +750,18 @@ fn unknown(name: &str, settings: &SubagentSettings) -> String {
         .collect();
     if names.is_empty() {
         return format!(
-            "unknown profile \"{name}\"; the user has no enabled profile. Omit --profile to inherit the parent."
+            "unknown profile \"{name}\"; the user has no enabled profile. Omit --profile to {omitting}."
         );
     }
     format!(
-        "unknown profile \"{name}\"; the user's profiles are {}. Run `demi agent profiles list` for when to use each, or omit --profile to inherit the parent.",
+        "unknown profile \"{name}\"; the user's profiles are {}. Run `demi agent profiles list` for when to use each, or omit --profile to {omitting}.",
         names.join(", ")
     )
 }
 
 /// Why a spawn names no profile of the conversation's workflow: with the
 /// workflow's names.
-fn unknown_in(name: &str, workflow: &ChosenWorkflow) -> String {
+fn unknown_in(name: &str, workflow: &ChosenWorkflow, omitting: &str) -> String {
     let names: Vec<&str> = workflow
         .profiles
         .iter()
@@ -728,12 +769,12 @@ fn unknown_in(name: &str, workflow: &ChosenWorkflow) -> String {
         .collect();
     if names.is_empty() {
         return format!(
-            "unknown profile \"{name}\"; this conversation's workflow {} has no profiles. Omit --profile to inherit the parent.",
+            "unknown profile \"{name}\"; this conversation's workflow {} has no profiles. Omit --profile to {omitting}.",
             workflow.name
         );
     }
     format!(
-        "unknown profile \"{name}\"; the profiles of this conversation's workflow {} are {}. Run `demi agent profiles list` for when to use each, or omit --profile to inherit the parent.",
+        "unknown profile \"{name}\"; the profiles of this conversation's workflow {} are {}. Run `demi agent profiles list` for when to use each, or omit --profile to {omitting}.",
         workflow.name,
         names.join(", ")
     )

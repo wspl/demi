@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput, StoredSubagent, Switched};
 use demi_agent_store::{
-    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord,
+    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord, Reprofile,
     Placement, Rows, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
@@ -222,8 +222,8 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
     transaction.execute(
         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
            can_spawn, closed_phase, closed_at, result, failure, delivered, state,
-           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21)",
+           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by, model)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             record.id.as_str(),
             number,
@@ -246,6 +246,7 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
             record.cwd.as_ref().map(|own| &own.under.directory),
             record.context_limit,
             record.started_by.as_ref().map(BlockId::as_str),
+            record.model.as_ref().map(to_json),
         ],
     )?;
     if let Some(side) = &record.side {
@@ -323,7 +324,6 @@ impl AgentTreeStore for SqliteTreeStore {
                 .into_iter()
                 .map(|subagent| StoredSubagent {
                     record: subagent.record,
-                    model: subagent.model,
                     started_on_path: subagent.started_on_path,
                 })
                 .collect())
@@ -406,6 +406,7 @@ impl AgentTreeStore for SqliteTreeStore {
         round: u64,
         started_at: Timestamp,
         message: Option<QueuedMessage>,
+        reprofile: Option<Reprofile>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
         Box::pin(async move {
@@ -429,6 +430,20 @@ impl AgentTreeStore for SqliteTreeStore {
                          WHERE id = ?1",
                         params![node.as_str(), integer(round), started_at.as_millisecond(), to_json(&state)],
                     )?;
+                    if let Some(reprofile) = reprofile {
+                        transaction.execute(
+                            "UPDATE nodes SET profile = ?2, instructions = ?3, context_limit = ?4, can_spawn = ?5, model = ?6
+                             WHERE id = ?1",
+                            params![
+                                node.as_str(),
+                                reprofile.name,
+                                reprofile.instructions,
+                                reprofile.context_limit,
+                                reprofile.can_spawn_subagents,
+                                to_json(&reprofile.model),
+                            ],
+                        )?;
+                    }
                     transaction.commit()?;
                     Ok(true)
                 })
@@ -1325,7 +1340,7 @@ fn node_state(
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
      closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
-     context_limit, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote, picture,
+     context_limit, model, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote, picture,
      question, asked_at";
 
 /// The nodes with what a side question's node asks about.
@@ -1450,6 +1465,19 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             });
         }
     };
+    // A child runs on a model of its own; the root's the conversation's record
+    // holds, and a side question's its checkpoint does.
+    let model = match row.get::<_, Option<String>>("model")? {
+        Some(model) => Some(json::<ModelSelection>(TABLE, "model", &model)?),
+        None => None,
+    };
+    if model.is_some() != (parent.is_some() && side.is_none()) {
+        return Err(StorageError::Corrupt {
+            table: TABLE,
+            column: "model",
+            reason: "a child has a model, and the root and a side question none".into(),
+        });
+    }
     // A side question works in the conversation's directory, as the root.
     if cwd.is_some() != (parent.is_some() && side.is_none()) {
         return Err(StorageError::Corrupt {
@@ -1471,6 +1499,7 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             .get::<_, Option<i64>>("context_limit")?
             .map(|tokens| decode(TABLE, "context_limit", u32::try_from(tokens)))
             .transpose()?,
+        model,
         round: decode(TABLE, "round", u64::try_from(row.get::<_, i64>("round")?))?,
         started_at: instant(row, TABLE, "started_at")?,
         can_spawn_subagents: row.get("can_spawn")?,
@@ -2443,16 +2472,15 @@ fn steps_bytes(count: u64) -> usize {
     format!(r#"{{"type":"steps_not_shared","count":{count}}}"#).len()
 }
 
-/// A subagent as [`subagents`] reads it: its record, the model selection its
-/// checkpoint saved, whether the call that started it is on its parent's current
-/// path, and whether its every ancestor's start is too.
+/// A subagent as [`subagents`] reads it: its record, whether the call that
+/// started it is on its parent's current path, and whether its every ancestor's
+/// start is too.
 ///
 /// The last makes it a child of the conversation's current path. A child no call
 /// started is on every path.
 #[derive(Debug, Clone)]
 pub struct Subagent {
     pub record: NodeRecord,
-    pub model: ModelSelection,
     pub started_on_path: bool,
     pub on_path: bool,
 }
@@ -2477,7 +2505,7 @@ fn subagents_sql() -> String {
            UNION ALL
            SELECT nodes.id FROM nodes JOIN on_path ON nodes.parent_id = on_path.id WHERE {STARTED_ON_PATH}
          )
-         SELECT {NODE_COLUMNS}, json_extract(state, '$.model') AS model,
+         SELECT {NODE_COLUMNS},
            {STARTED_ON_PATH} AS started_on_path, id IN (SELECT id FROM on_path) AS on_path
          FROM {NODES} WHERE parent_id IS NOT NULL AND number IS NOT NULL ORDER BY number"
     )
@@ -2489,10 +2517,8 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
-        let model: String = row.get("model")?;
         nodes.push(Subagent {
             record: node_row(row)?,
-            model: json("nodes", "state", &model)?,
             started_on_path: row.get("started_on_path")?,
             on_path: row.get("on_path")?,
         });
@@ -2610,6 +2636,7 @@ pub(crate) mod tests {
             profile: None,
             instructions: None,
             context_limit: None,
+            model: parent.map(|_| state().model),
             round: 1,
             started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,
@@ -2961,6 +2988,8 @@ pub(crate) mod tests {
         .await;
         let (tree, _stores, _data) = store().await;
         store_contract::reopen_makes_a_closed_node_live_with_its_message(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_reopen_with_a_profile_replaces_what_the_profile_chose(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(&tree)
             .await;

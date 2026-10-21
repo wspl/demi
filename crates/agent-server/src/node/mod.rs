@@ -1085,14 +1085,22 @@ impl Origin {
         }
     }
 
-    /// The model selection the node infers with: a new node's, or the one
-    /// its checkpoint saved.
+    /// The model selection the node's history was last requested with: a new
+    /// node's, or the one its checkpoint saved, which its runtime serves
+    /// until a switch lands.
     pub(crate) fn model(&self) -> &ModelSelection {
         match self {
             Self::New { model, .. } => model,
             Self::Forked { seed, .. } => &seed.checkpoint.state.model,
             Self::Stored { checkpoint, .. } => &checkpoint.state.model,
         }
+    }
+
+    /// The model selection the node runs its next request on: its record's,
+    /// or [`model`](Self::model) for the root and a side question, whose
+    /// records name none.
+    pub(crate) fn target(&self) -> &ModelSelection {
+        self.record().model.as_ref().unwrap_or_else(|| self.model())
     }
 }
 

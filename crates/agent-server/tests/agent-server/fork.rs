@@ -136,6 +136,8 @@ async fn a_fork_of_an_archived_child_continues_its_history_on_another_profiles_m
     assert_eq!(record.parent, Some(root()));
     assert_eq!(record.description, "trace the estimate (fork)");
     assert_eq!(record.profile.as_deref(), Some("frontend"));
+    // The record names what it runs on, whatever its checkpoint saved.
+    assert_eq!(record.model.as_ref().map(|model| model.model.id.as_str()), Some("other-model"));
     assert_eq!(
         closed_phase(&fixture, &child),
         Some(ClosePhase::Completed { result: "Fixed the cache read.".into() })
@@ -381,6 +383,58 @@ async fn a_fork_onto_a_smaller_window_compacts_with_the_sources_model_first() {
     // The source's own history is as it was.
     let kept = fixture.store.session_store(&source).load().await.unwrap().unwrap();
     assert!(!kept.transcript.iter().any(|block| matches!(block, Block::CompactionBoundary(_))));
+}
+
+// A resume onto a profile whose model has a smaller window compacts the
+// history with the model the child ran on first, as a fork does.
+#[tokio::test(flavor = "local")]
+async fn a_resume_onto_a_smaller_window_compacts_with_the_childs_model_first() {
+    let long = "f".repeat(8_000);
+    let model = Model::default();
+    model.root([said("noted"), said("noted")]);
+    model.child(
+        "task trace the estimate",
+        [
+            // The usage the vendor reported anchors the estimate, as a
+            // resume keeps it.
+            Turn::Events(vec![event::text(&long), event::response(5_000, 0)]),
+            said("Summary: the card reads a stale cache."),
+            // A pass the estimate asks for again.
+            said("Summary: the card reads a stale cache."),
+        ],
+    );
+    let compacted = "The earlier part of this conversation was compacted.";
+    let other = Model::default();
+    other.child(compacted, [said("Fixed.")]);
+    let small = ProviderModel {
+        context_window: Some(1_000),
+        ..listed_model("other-model", &[], &[])
+    };
+    let fixture = fixture(&model, &other, small);
+    let mut client = fixture.opened().await;
+    let child = spawn(&fixture, &root(), json!({ "prompt": "task trace the estimate" })).await;
+    client.next_until(is_closed(&child)).await;
+    until(|| fixture.store.record(&child).unwrap().delivered).await;
+
+    let resumed = agent(
+        &fixture.server,
+        &root(),
+        "resume",
+        json!({ "id": 1, "profile": "frontend", "message": "Fix it." }),
+    )
+    .await;
+    assert_eq!(resumed.code, 0, "{resumed:?}");
+    client.next_until(|frame| is_closed(&child)(frame) && crate::subagents::child_in(frame, &child).is_some_and(|row| row.round == 2)).await;
+
+    let on_stub = model.requests_of("task trace the estimate");
+    assert!(on_stub.len() >= 2);
+    assert!(on_stub[1..].iter().all(|request| is_summary_request(request) && request.model_id == "test-model"));
+    let asked = other.requests_of(compacted);
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].model_id, "other-model");
+    let text = request_text(&asked[0]);
+    assert!(text.contains("Summary: the card reads a stale cache."), "{text}");
+    assert!(!text.contains(&long), "{text}");
 }
 
 /// Waits until the saved checkpoint of `node` holds the loss of a resident

@@ -22,7 +22,7 @@ use demi_conversation_socket_protocol::Versions;
 
 use crate::{
     AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, EarlierRows, Kind, NodeClose,
-    NodeRecord, Rows, RunningCommand, SessionStore, StoreError, StoredCommand, StoredPrefix, StoredSubagent, Switched, SwitchedBefore,
+    NodeRecord, Reprofile, Rows, RunningCommand, SessionStore, StoreError, StoredCommand, StoredPrefix, StoredSubagent, Switched, SwitchedBefore,
     media::BlobStore,
     versions::{Sibling, version_rows, versions_of},
 };
@@ -794,7 +794,6 @@ impl AgentTreeStore for MemoryTreeStore {
                 .filter(|node| node.record.parent.is_some() && node.record.side.is_none())
                 .map(|node| StoredSubagent {
                     record: node.record.clone(),
-                    model: node.state.model.clone(),
                     started_on_path: started_on_path(&node.record),
                 })
                 .collect();
@@ -919,10 +918,18 @@ impl AgentTreeStore for MemoryTreeStore {
         round: u64,
         started_at: Timestamp,
         message: Option<QueuedMessage>,
+        reprofile: Option<Reprofile>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let mut stored = self.stored.borrow_mut();
             let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
+            if let Some(reprofile) = reprofile {
+                node.record.profile = Some(reprofile.name);
+                node.record.model = Some(reprofile.model);
+                node.record.instructions = reprofile.instructions;
+                node.record.context_limit = reprofile.context_limit;
+                node.record.can_spawn_subagents = reprofile.can_spawn_subagents;
+            }
             node.record.closed = None;
             node.record.delivered = false;
             node.record.round = round;
@@ -1109,10 +1116,10 @@ pub mod store_contract {
 
     use sha2::{Digest, Sha256};
 
-    use super::{test_model, text};
+    use super::{model_of, test_model, text};
     use crate::{
         AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, Kind, NodeClose,
-        NodeRecord, PendingAgentInput, Placement,
+        NodeRecord, PendingAgentInput, Placement, Reprofile,
     };
 
     fn id(value: &str) -> NodeId {
@@ -1130,6 +1137,7 @@ pub mod store_contract {
             profile: None,
             instructions: None,
             context_limit: None,
+            model: parent.map(|_| test_model()),
             round: 1,
             started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,
@@ -1696,7 +1704,7 @@ pub mod store_contract {
 
         let resumed = Timestamp::from_millisecond(60_000).expect("the time is in range");
         store
-            .reopen_node(&id("child"), 2, resumed, Some(message("m2")))
+            .reopen_node(&id("child"), 2, resumed, Some(message("m2")), None)
             .await
             .expect("the node reopens");
         let reopened = stored(store, "child").await.expect("the node exists");
@@ -1710,6 +1718,57 @@ pub mod store_contract {
             (None, 2, resumed, false)
         );
         assert_eq!(queue(store, "child").await, [message("m2")]);
+    }
+
+    /// A reopen with a profile replaces what the node's profile chose, and
+    /// the node keeps its number, description and round count.
+    pub async fn a_reopen_with_a_profile_replaces_what_the_profile_chose(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 0),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        let mut first = record("child", Some("root"), 1);
+        first.description = "Read the logs".to_owned();
+        first.profile = Some("Reader".to_owned());
+        first.instructions = Some("Read only.".to_owned());
+        first.context_limit = Some(50_000);
+        first.can_spawn_subagents = false;
+        create(store, first, update(Vec::new(), Vec::new())).await;
+        store
+            .close_node(&id("child"), completed("first"))
+            .await
+            .expect("the node closes");
+
+        let reprofile = Reprofile {
+            name: "Writer".to_owned(),
+            model: model_of("other", "other-model"),
+            instructions: None,
+            context_limit: None,
+            can_spawn_subagents: true,
+        };
+        store
+            .reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, Some(message("go on")), Some(reprofile))
+            .await
+            .expect("the node reopens");
+        let reopened = stored(store, "child").await.expect("the node exists");
+        assert_eq!(
+            (
+                reopened.number,
+                reopened.description.as_str(),
+                reopened.round,
+                reopened.profile.as_deref(),
+                reopened.instructions,
+                reopened.context_limit,
+                reopened.can_spawn_subagents,
+                reopened.model,
+            ),
+            (1, "Read the logs", 2, Some("Writer"), None, None, true, Some(model_of("other", "other-model")))
+        );
+        assert_eq!(queue(store, "child").await, [message("go on")]);
     }
 
     pub async fn a_completion_of_an_earlier_round_marks_the_current_one_undelivered(
@@ -1732,7 +1791,7 @@ pub mod store_contract {
             .await
             .expect("the node closes");
         store
-            .reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, Some(message("again")))
+            .reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, Some(message("again")), None)
             .await
             .expect("the node reopens");
         store
@@ -1903,6 +1962,7 @@ pub mod store_contract {
         create(store, record("child", Some("root"), 1), update(Vec::new(), Vec::new())).await;
         let side = |node: &str, at: i64, question: &str| NodeRecord {
             cwd: None,
+            model: None,
             started_at: Timestamp::from_millisecond(at).expect("the time is in range"),
             side: Some(crate::SideOf {
                 block: demi_shared_types::BlockId::try_from("text-1").expect("a block id is not empty"),
@@ -1944,7 +2004,7 @@ pub mod store_contract {
         };
         store.close_node(&id("asked"), close).await.expect("the node closes");
         let retried = Timestamp::from_millisecond(4_000).expect("the time is in range");
-        store.reopen_node(&id("asked"), 2, retried, None).await.expect("the node reopens");
+        store.reopen_node(&id("asked"), 2, retried, None, None).await.expect("the node reopens");
         let reopened = stored(store, "asked").await.expect("the node exists");
         assert_eq!((reopened.closed, reopened.round), (None, 2));
         assert_eq!(queue(store, "asked").await, [message("waiting")]);

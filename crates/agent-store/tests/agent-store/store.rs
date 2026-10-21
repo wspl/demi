@@ -31,6 +31,14 @@ async fn reopen_makes_a_closed_node_live_with_its_message() {
 }
 
 #[tokio::test(flavor = "local")]
+async fn a_reopen_with_a_profile_replaces_what_the_profile_chose() {
+    store_contract::a_reopen_with_a_profile_replaces_what_the_profile_chose(
+        &*MemoryTreeStore::new(),
+    )
+    .await;
+}
+
+#[tokio::test(flavor = "local")]
 async fn a_completion_of_an_earlier_round_marks_the_current_one_undelivered() {
     store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(
         &*MemoryTreeStore::new(),

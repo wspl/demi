@@ -1578,6 +1578,12 @@ impl SessionCore {
         Ok(())
     }
 
+    /// Why the model the history was last requested with cannot compact it
+    /// for the recorded switch ([`ModelSwitch::compaction_blocked`]).
+    pub(super) fn switch_blocked(&self) -> Option<String> {
+        self.switch.as_ref().and_then(|switch| switch.compaction_blocked.clone())
+    }
+
     /// The model the recorded switch lands with at the next provider
     /// request, and what its vendor takes in one request, from the runtime
     /// it lands on.

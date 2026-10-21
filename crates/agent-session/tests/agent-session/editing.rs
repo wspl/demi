@@ -132,6 +132,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
         Err(SteerError::Editing)
     );
     let switch = ModelSwitch {
+        compaction_blocked: None,
         model: Box::new(model_of("stub", "other-model")),
         runtime: None,
     };
