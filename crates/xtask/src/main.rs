@@ -105,7 +105,6 @@
 mod boundaries;
 mod browser;
 mod cloud_image;
-mod deploy;
 // Reads the offered vendors as the backend does, which builds only where
 // the backend runs.
 #[cfg(all(unix, feature = "developer"))]
@@ -149,9 +148,6 @@ enum Command {
     ServerRelease(server_release::Options),
     /// Writes the third-party notices of a release into the built web app.
     Notices(notices::Options),
-    /// Moves the server DEMI_DEPLOY_HOST names to a build of the checkout's
-    /// commit, which the release workflow publishes as a pre-release.
-    Deploy(deploy::Options),
     /// Pins a Chrome for Testing version: writes its release record.
     BrowserRelease(browser::Options),
     /// Completes a Cloud image release on its Linux builder.
@@ -394,13 +390,6 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask notices: {error}");
-                ExitCode::FAILURE
-            }
-        },
-        Command::Deploy(options) => match deploy::run(options) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(error) => {
-                eprintln!("xtask deploy: {error}");
                 ExitCode::FAILURE
             }
         },

@@ -11,9 +11,9 @@
 #   never starts by pushing its tag, because a run reads only the caches of its
 #   own branch and the default branch, so a run started by a tag could not read
 #   the previous release's.
-# - With `prerelease`, as `bun xtask deploy` starts it after committing the next
-#   version, it publishes a pre-release, which no installer takes as the newest
-#   and which a later `gh release edit` publishes.
+# - With `prerelease`, as a deploy starts it after committing the next version
+#   (docs/delivery/upgrades.md), it publishes a pre-release, which no installer
+#   takes as the newest and which a later `gh release edit` publishes.
 #
 # Each platform's targets build natively on the newest free standard runner of
 # that platform, one target's group of programs per job, so no runner compiles

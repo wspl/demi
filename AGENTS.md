@@ -18,7 +18,7 @@ contributors start with CONTRIBUTING.md. -->
 - Write code comments in English.
 - Stop only the processes you started, by the process id or server id you recorded when you started them, never by a name or a pattern (`pkill -f`, `killall`): the user's own development backend runs the same programs.
 - A work package is one change a user or a reviewer understands on its own, such as "a device is drawn as its system's logo" or "a Claude Code answer that replaces a failed stream is handed on": its decision record when it makes a new decision, its code and its tests together. It is one commit with a Conventional Commit subject that says what changed and why, pushed once; a later fix to it before it lands, a review's rework or a reworded sentence of its decision record included, is folded into that commit (`git commit --amend`), never added as a commit of its own. A commit never holds a part of a work package, such as its runner half or its decision record alone.
-- Release only when the user asks for a release; releasing and upgrading the user's server then need no further confirmation. Deploy to the server `DEMI_DEPLOY_HOST` names in the user's `.env` with `bun xtask deploy` (`docs/delivery/upgrades.md` § A development build on a server) when the user or the workflow asks for it, and then the whole merged batch.
+- Release only when the user asks for a release; releasing and upgrading the user's server then need no further confirmation. Deploy to the server `DEMI_DEPLOY_HOST` names in the user's `.env` by the steps of `docs/delivery/upgrades.md` § A development build on a server when the user or the workflow asks for it, and then the whole merged batch.
 
 # Building and Testing
 

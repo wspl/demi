@@ -318,45 +318,56 @@ The steps themselves leave nothing half done:
 ## A development build on a server
 
 For example, a batch of work is merged and the user wants to try it on their
-own server before anything is published. The developer runs:
+own server before anything is published. The server moves to the next
+version, built on GitHub from the branch, as an upgrade moves it to a
+published release. Pages reload into the new web app, the user's paired
+devices replace their runners, and Clouds wake with the new programs, exactly
+as after an upgrade. Nothing is compiled on the developer's machine.
+
+Every deploy is a version of its own, the next patch version after the
+workspace's: `0.1.22` after `0.1.21`. The repository then always says which
+version a server runs. In a clean checkout of the branch:
 
 ```sh
-bun xtask deploy
+git pull --ff-only
+version=0.1.22   # the next patch after Cargo.toml's [workspace.package] version
+sed -i "/^\[workspace.package\]/,/^\[/s/^version = .*/version = \"$version\"/" Cargo.toml
+cargo update --workspace --offline   # Cargo.lock names each crate's version
+git commit --quiet -m "chore: release $version" Cargo.toml Cargo.lock
+git push
 ```
 
-The server then moves to the next version, built on GitHub from the checkout,
-as an upgrade moves it to a published release. Pages reload into the new web
-app, the user's paired devices replace their runners, and Clouds wake with the
-new programs, exactly as after an upgrade. Nothing is compiled on the
-developer's machine.
+Then build the pre-release and wait for it:
 
-A deploy has these parts:
+```sh
+gh workflow run release.yml --ref feat/demi-next -f prerelease=true
+gh run watch --exit-status "$(gh run list --workflow release.yml --limit 1 \
+  --json databaseId --jq '.[0].databaseId')"
+```
 
-- **Which server.** The SSH host that `DEMI_DEPLOY_HOST` names in the
-  developer's `.env`, or `--host`. The server must already run Demi
-  ([Installation](installation.md)), and the SSH user must be able to use
-  `sudo`.
-- **The version.** Every deploy is a version of its own, the next patch
-  version after the workspace's: `0.1.22` after `0.1.21`.
-  - The deploy writes the version into `Cargo.toml`, commits it as
-    `chore: release 0.1.22` on the checkout's branch and pushes it, so the
-    repository always says which version a server runs.
-  - The checkout must be clean and its branch even with GitHub's before the
-    deploy starts.
-- **The pre-release.** The deploy starts the release workflow on that branch
-  with `prerelease`, and checks that the run builds the commit it pushed.
-  - The workflow builds every target, the server releases, the Cloud images
-    and the web app, as for any release (`.github/workflows/release.yml`),
-    and publishes them as a GitHub pre-release, `v0.1.22`.
-  - A pre-release is never the latest release, which `releases/latest` gives.
-    So the installer and `demi-server upgrade` without a version never return
-    one: only a deploy installs one, until it is published.
-- **The move.** When the run succeeds, the deploy runs
-  `sudo demi-server upgrade <version>` on the server over SSH. That command
-  downloads the pre-release from GitHub as it downloads a published one and
-  carries it out ([The upgrade](#the-upgrade)): the checks, the database
-  copies, the switch and the return on failure are an upgrade's.
-  `demi-server rollback` returns to the release before it.
+The run's commit, which `gh run watch` shows, must be the one just pushed.
+The workflow builds every target, the server releases, the Cloud images and
+the web app, as for any release (`.github/workflows/release.yml`), and
+publishes them as a GitHub pre-release, `v0.1.22`. A pre-release is never the
+latest release, which `releases/latest` gives, so the installer and
+`demi-server upgrade` without a version never return one: only a deploy
+installs one, until it is published. A run that fails touches no server.
+
+Then move the server, the SSH host that `DEMI_DEPLOY_HOST` names in the
+developer's `.env`. It must already run Demi
+([Installation](installation.md)), and the SSH user must be able to use
+`sudo`:
+
+```sh
+ssh "$DEMI_DEPLOY_HOST" \
+  "sudo /usr/local/bin/demi-server upgrade $version && sudo /usr/local/bin/demi-server status"
+```
+
+`demi-server upgrade` downloads the pre-release from GitHub as it downloads a
+published one and carries it out ([The upgrade](#the-upgrade)): the checks,
+the database copies, the switch and the return on failure are an upgrade's.
+`demi-server rollback` returns to the release before it.
+
 - **Publishing it.** To publish a deployed version the user is content with,
   turn its pre-release into the latest release on GitHub with
   `gh release edit v0.1.22 --prerelease=false --latest`. The files users
@@ -366,7 +377,7 @@ A deploy has these parts:
   an upgrade does.
   - A schema changed again after a deploy shipped it, in the same unpublished
     batch, leaves the server's databases at a version the next build does not
-    know. The Data check of [Prepare](#prepare) then stops the deploy before
+    know. The Data check of [Prepare](#prepare) then stops the upgrade before
     anything is interrupted, and names the databases. The developer resolves
     it before deploying again. Nothing is migrated by guesswork.
   - When a server keeps data of a deployed version, its schema enters the
@@ -376,15 +387,6 @@ A deploy has these parts:
     a schema after a deploy adds the deployed schema with its migration, and
     every later change before the next deploy extends that migration. So two
     deploys apart there is one step, whatever changed between them.
-
-A deploy prints:
-
-- The workflow run's address, as it starts.
-- The server's release afterwards (`demi-server status`).
-- How long each stage took.
-
-A workflow run that fails ends the deploy with the failing job's name and
-address, before the deploy touches the server.
 
 ## Rollback
 
