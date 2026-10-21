@@ -207,15 +207,15 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       initialRect: { width: 0, height: window.innerHeight },
       getScrollElement: () => scrollContainer.value ?? null,
       estimateSize,
-      // Vue calls a row's ref as it mounts the row, and a list that mounts
-      // anew does so before it is in the document, where every row is 0 px
-      // tall. Such a row keeps the height it is known by; the virtualizer
-      // measures it once it watches the rows, when the scroller attaches.
+      // A row is measured only in the document (`measureElement` below), as
+      // the observer reports only rows there.
       measureElement: (element, entry, instance) => {
-        if (!element.isConnected)
-          return estimateSize(instance.indexFromElement(element))
         const size = measureRow(element, entry, instance)
-        revealMeasured(instance.indexFromElement(element), size)
+        const index = instance.indexFromElement(element)
+        const known = instance.itemSizeCache.get(instance.options.getItemKey(index))
+        if (known !== undefined && size < known)
+          keepReaderControl(element)
+        revealMeasured(index, size)
         return size
       },
       scrollPaddingStart: revealRoom,
@@ -262,18 +262,31 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   const watched = new WeakSet<HTMLElement>()
 
   /**
-   * Hands the virtualizer a row as it mounts, which it measures at once and
-   * then watches. Vue calls a row's ref again at every update of the list,
-   * as a turn streams; measuring each row again there would read its height
-   * while the styles the update changed are not yet computed, so the
-   * browser would recompute them for each row. A row's later sizes come
-   * from the observer, after the browser laid the frame out.
+   * Hands the virtualizer a row as it mounts, which it measures once the
+   * update that mounts it has run, and then watches. Vue calls a row's ref
+   * while it mounts the row, before the row's own components have run their
+   * mounted hooks, where a long message folds: measured then, the row would
+   * be known by a height it never shows, which a row that leaves the list
+   * before the observer reports again keeps. The measure still comes before
+   * the frame is painted, so the row is never drawn at a guess.
+   *
+   * Vue calls a row's ref again at every update of the list, as a turn
+   * streams; measuring each row again there would read its height while the
+   * styles the update changed are not yet computed, so the browser would
+   * recompute them for each row. A row's later sizes come from the observer,
+   * after the browser laid the frame out.
    */
   function measureElement(el: Element | null) {
     if (!(el instanceof HTMLElement) || watched.has(el))
       return
     watched.add(el)
-    virtualizer.value.measureElement(el)
+    void nextTick(() => {
+      // By then the list that mounted the row is in the document, where the
+      // row has its height; a row the same update mounted and removed again
+      // was never shown.
+      if (el.isConnected)
+        virtualizer.value.measureElement(el)
+    })
   }
 
   const shouldAutoScroll = ref(true)
@@ -291,7 +304,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   // The reader opened or folded something. Until the fold ends, the view
   // neither follows the end nor corrects for the row's new height, so the row
   // they acted on stays put and what follows it moves, as a browser keeps a
-  // <details> the reader opens in place.
+  // <details> the reader opens in place. A row that gets shorter, such as a
+  // long message folded from Show Less at its end, keeps the control the
+  // reader used where it was instead, its Show More where the Show Less
+  // stood, as chat apps keep a message folded back in view: kept by its top,
+  // the view would land on whatever follows the row, or at the list's end.
   //
   // Then the list is at its end or not by where it is: it follows only when its
   // end is in view, as scrolling there re-engages it. The nearness that keeps
@@ -309,13 +326,21 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    * when first acted on.
    */
   const readerRows = new Map<HTMLElement, number>()
+  /**
+   * The control the reader last acted on while the view holds, and how far
+   * below the view's top it stood then.
+   */
+  let readerControl: { element: Element, top: number } | null = null
   function holdsView(): boolean {
     return performance.now() < readerLayoutUntil
   }
   function readerChangesLayout(event: Event): void {
-    const row = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-index]') : null
+    const target = event.target instanceof Element ? event.target : null
+    const row = target?.closest<HTMLElement>('[data-index]') ?? null
     if (row && !readerRows.has(row))
       readerRows.set(row, row.getBoundingClientRect().height)
+    const control = target?.closest('button, summary, a, [role="button"]') ?? target
+    readerControl = control ? { element: control, top: control.getBoundingClientRect().top } : null
     readerLayoutUntil = performance.now() + READER_LAYOUT_MS
     clearTimeout(readerLayoutTimer)
     readerLayoutTimer = setTimeout(() => {
@@ -324,6 +349,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       const resized = [...readerRows].some(([row, height]) =>
         Math.abs(row.getBoundingClientRect().height - height) > RESIZED_PX)
       readerRows.clear()
+      readerControl = null
       if (!el)
         return
       const dist = distanceFromBottom(el)
@@ -337,7 +363,31 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   onScopeDispose(() => {
     clearTimeout(readerLayoutTimer)
     readerRows.clear()
+    readerControl = null
   })
+
+  /**
+   * While the view holds, scrolls it by as much as the control the reader
+   * acted on in `row` moved, so it stands where it stood. It runs as the
+   * shorter row is measured, before the list lays the rows out by its new
+   * height: a row above the view by then would leave the list, and the
+   * control with it.
+   */
+  function keepReaderControl(row: HTMLElement): void {
+    const el = scrollContainer.value
+    const control = readerControl
+    if (!el || !holdsView() || !control || !row.contains(control.element))
+      return
+    const moved = control.element.getBoundingClientRect().top - control.top
+    if (Math.abs(moved) <= RESIZED_PX)
+      return
+    // The virtualizer's offset moves with the scroller's in the same step, as
+    // it does when rows are added above the view.
+    const target = el.scrollTop + moved
+    virtualizer.value.scrollOffset = target
+    el.scrollTop = target
+    scrollOffset.value = el.scrollTop
+  }
 
   function scrollToBottom() {
     isProgrammaticScroll = true

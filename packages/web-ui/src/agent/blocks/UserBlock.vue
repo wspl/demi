@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from '../locales/text'
 import { t as shared } from '../../locales/text'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { Component } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
 import { Copy, Pencil, Trash2, Zap } from '@lucide/vue'
@@ -284,6 +284,12 @@ function measure(): void {
   clip.value = height < full - 1 ? { height, line } : null
 }
 
+// The message folds as it mounts, so nothing that sizes it, such as the
+// transcript's list, which measures its rows once their mount has run, ever
+// takes its unfolded height for its size: a row the list draws for a moment
+// would otherwise keep that height after it scrolls away, before the observer
+// below reports the fold.
+onMounted(measure)
 // Wrapping follows the width, so a narrower or wider column changes the cut.
 // The text alone is watched: it takes the box's width, while the box's height
 // is the cut itself, which would call the measure back for nothing.
