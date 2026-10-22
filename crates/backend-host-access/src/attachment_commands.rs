@@ -20,14 +20,12 @@
 //!    conversation's `attachment` sequence, with the file it came from: the
 //!    invocation's device and the file's full path as that Host writes it,
 //!    which a card of a file that is no image or video opens in the Files
-//!    panel in the copy's place while the page can read it
-//!    (`docs/decisions/0003-attachment-opens-its-file.md`).
+//!    panel in the copy's place while the page can read it.
 //!
 //! The command returns no medium: the attachment is for the user.
 //!
 //! The same copy is made for a picture of the Host that a reply shows, when
-//! the reply ends ([`copy_picture`],
-//! `docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`): the Host is
+//! the reply ends ([`copy_picture`]): the Host is
 //! then looked at, never woken, only while it is the device the agent ran on,
 //! and the file must be an image.
 //!
@@ -407,8 +405,7 @@ async fn on_host<T>(
 
 /// Copies the picture at `path`, beside `cwd`, from the conversation's Host
 /// on `device` into its attachments, as the reply of the agent of `node`
-/// shows it (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`),
-/// and answers its number. The Host is looked at, never woken, and only while
+/// shows it, and answers its number. The Host is looked at, never woken, and only while
 /// it is `device`; a file that is no image, or is over the limit of an
 /// attachment, is refused. Answers why when it cannot.
 pub async fn copy_picture(

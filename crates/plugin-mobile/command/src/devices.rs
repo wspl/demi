@@ -7,8 +7,7 @@
 //!
 //! - A device Demi booted shuts down when its conversation closes it or is
 //!   released; a device the user booted is only let go. Nothing closes a
-//!   device for being unused: it lasts until someone closes it or it is gone
-//!   (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+//!   device for being unused: it lasts until someone closes it or it is gone.
 //! - The program's end shuts nothing down and forgets nothing: the record
 //!   ([`Kept`]) holds the simulators Demi booted and the open devices with
 //!   their conversations and handles.

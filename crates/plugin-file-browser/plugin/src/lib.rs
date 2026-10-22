@@ -8,8 +8,7 @@
 //! - an attachment's stored copy in a tab of the `attachment` kind, which the
 //!   page opens for an attachment block's card;
 //! - the conversation's pictures and videos in its one tab of the `media`
-//!   kind, which the page opens for a picture or a video of the conversation
-//!   (`docs/decisions/0004-media-in-the-work-panel.md`).
+//!   kind, which the page opens for a picture or a video of the conversation.
 
 use std::rc::Rc;
 

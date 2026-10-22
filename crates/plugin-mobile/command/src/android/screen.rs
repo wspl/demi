@@ -1,6 +1,5 @@
 //! An emulator's screen as one stream of pictures, which the live view and a
-//! recording both take
-//! (`docs/decisions/0036-a-recording-keeps-every-drawn-frame.md`).
+//! recording both take.
 //!
 //! The emulator draws each picture once, and every reader of the screen shares
 //! that picture; the stream is opened when the first reader comes and closed

@@ -2,8 +2,7 @@
  * One open device's live view on the page (`crates/plugin-mobile/page/src/index.ts`):
  * its own `mobile` stream, over the live view's link that the browser's view
  * uses too, and its own decoder and canvas, which the plugin's store keeps
- * while the device is open
- * (`docs/decisions/0017-each-device-streams-on-its-own.md`).
+ * while the device is open.
  *
  * - The stream's one state of its own is whether it is looked at: whether a
  *   view of the device shows in a visible page. While it is, the Host sends
@@ -33,8 +32,7 @@
  *   connection was lost silently while nobody looked, opens again.
  * - Turns what the view shows at once when the viewer rotates the device,
  *   from the orientation it shows, until a picture drawn in the orientation
- *   the device reports replaces it, and back if the device refuses
- *   (`docs/decisions/0007-rotation-shows-at-once.md`).
+ *   the device reports replaces it, and back if the device refuses.
  * - Sends the viewer's touches and keys, and follows the agent's activity on
  *   the device.
  */
@@ -396,8 +394,7 @@ export class DeviceSession {
   /**
    * Whether the stream ended, as with the runner's restart or a dropped
    * connection, and opens again: the device stays, and its view keeps its
-   * last picture until the stream returns
-   * (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+   * last picture until the stream returns.
    */
   get reconnecting(): boolean {
     return this.state.connection === 'opening' && this.state.ended !== null

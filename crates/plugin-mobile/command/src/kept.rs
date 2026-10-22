@@ -7,8 +7,7 @@
 //!   (`driver::Simulator::boot`), so a simulator the user shut down and
 //!   booted again is the user's.
 //! - the devices open, which conversation has each and under which handle,
-//!   so a service that starts again takes each back under the same handle
-//!   (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+//!   so a service that starts again takes each back under the same handle.
 //!
 //! A `demi-mobile` that stops, updates or is killed shuts nothing down and
 //! forgets nothing; a device leaves the record when it closes or is lost.

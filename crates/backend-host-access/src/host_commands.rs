@@ -10,9 +10,8 @@
 //! - `pair` pairs the computer whose installer shows a code and attaches it.
 //! - `attach` attaches a device at once.
 //! - `detach` marks a device to detach once the conversation's work ends.
-//! - `move` makes a host and a directory where the conversation runs, at once
-//!   (`docs/decisions/0027-a-move-applies-at-once.md`), and answers once it is
-//!   made.
+//! - `move` makes a host and a directory where the conversation runs, at once,
+//!   and answers once it is made.
 //!
 //! The dispatch asks the user before a call brings in a host the conversation
 //! may not reach, and before every pairing.

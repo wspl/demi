@@ -3,8 +3,7 @@
 //! live view's own frames, pictures and input (`live-view-protocol`).
 //!
 //! Each open device a page shows has a stream of its own, whose only state is
-//! whether it is looked at
-//! (`docs/decisions/0017-each-device-streams-on-its-own.md`).
+//! whether it is looked at.
 //!
 //! The page and the service ship in the same release; there is no version.
 

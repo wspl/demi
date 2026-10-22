@@ -25,8 +25,7 @@ import { t } from '../locales/text'
  * A simulator, live (`crates/plugin-mobile/page/src/index.ts`): its look, the
  * picture its session's canvas paints in the device's frame, fitted into the
  * tab. The view draws the session's look and nothing else, so the screen and
- * its frame show together or not at all
- * (`docs/decisions/0017-each-device-streams-on-its-own.md`).
+ * its frame show together or not at all.
  *
  * - A click or a finger on it is a touch, a drag a swipe, and the keyboard types.
  * - Over it show the agent's activity: the note that it is using the device and the
@@ -85,8 +84,8 @@ type Shown = { layout: Layout; frame: LiveFrame; device: number; picture: number
 /**
  * The device shows at once in the orientation the device reports, turned by
  * the viewer's presses it has not shown yet, laid out as its pictures in that
- * orientation will be, so their first paint leaves the device where it is
- * (`docs/decisions/0007-rotation-shows-at-once.md`). Until those pictures
+ * orientation will be, so their first paint leaves the device where it is.
+ * Until those pictures
  * paint, the look shows turned in the new screen, in that orientation's
  * frame; a device whose frame of that orientation is not ready turns whole,
  * its frame turned with it, laid out as that frame would be.

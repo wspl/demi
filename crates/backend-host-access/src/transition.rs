@@ -14,8 +14,7 @@
 //! (`crates/backend-user-shard/src/lifecycle/conversations.rs`). The shard's
 //! `transition` is the one entry every change of a conversation goes through.
 //!
-//! A move (`docs/decisions/0027-a-move-applies-at-once.md`) stops and waits
-//! for nothing, in order:
+//! A move stops and waits for nothing, in order:
 //!
 //! ```text
 //! 1. check the destination: one question to its Host for a directory

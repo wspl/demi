@@ -3,8 +3,7 @@
 //!
 //! - A tab is added when the agent opens the device.
 //! - A tab is removed when the device closes or is lost, that is, when the
-//!   Host no longer lists it as open
-//!   (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`). A
+//!   Host no longer lists it as open. A
 //!   service that starts again, an update or a stopped Host loses no tab: the
 //!   Host's service takes its devices back under their handles, and a stopped
 //!   Host's tabs stay as they were until it lists them again.

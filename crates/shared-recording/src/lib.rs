@@ -1,5 +1,4 @@
-//! A recording of a screen that keeps every frame it drew
-//! (`docs/decisions/0036-a-recording-keeps-every-drawn-frame.md`).
+//! A recording of a screen that keeps every frame it drew.
 //!
 //! A source, a browser tab or a simulator, codes each frame its screen drew
 //! that differs from the one before, exactly, as H.264 at the screen's own

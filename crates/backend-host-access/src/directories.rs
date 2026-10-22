@@ -131,8 +131,7 @@ impl dyn HostShard + '_ {
     }
 
     /// A move's destination `to` checked with one question to its Host, and
-    /// its directory as the Host names it
-    /// (`docs/decisions/0027-a-move-applies-at-once.md`):
+    /// its directory as the Host names it:
     ///
     /// - A directory of a paired device, given or a project's, is checked and
     ///   named by the device's runner; a project keeps its own id.

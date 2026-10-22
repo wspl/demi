@@ -1,5 +1,5 @@
 //! H.264 encoding of a screen's pictures, on the Host's hardware where it has
-//! an encoder (`docs/decisions/0036-a-recording-keeps-every-drawn-frame.md`).
+//! an encoder.
 //!
 //! A source of raw pictures, an Android emulator's screen, hands them to an
 //! [`Encoder`], which gives back coded pictures: H.264 Annex B, one access

@@ -30,8 +30,7 @@
 //!
 //! So each user message carries a client id, and a `result` names the ids of
 //! every message its turn consumed. The run ends at the `result` that names
-//! the last message written to the process; any other is an earlier turn's
-//! (`docs/decisions/0022-a-claude-code-run-ends-at-the-result-that-names-its-last-message.md`).
+//! the last message written to the process; any other is an earlier turn's.
 //! Which messages a turn consumed is the CLI's to say, never the run's to
 //! count.
 

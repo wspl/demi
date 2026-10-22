@@ -1,5 +1,5 @@
 //! The simulators' live view on the Host: one invocation of `mobile.live` per
-//! device a page shows (`docs/decisions/0017-each-device-streams-on-its-own.md`).
+//! device a page shows.
 //!
 //! The stream's only state is whether it is looked at. While it is, the
 //! viewer joins the device's capture and the view sends the device's

@@ -1,4 +1,4 @@
-//! What every recording says of itself (`docs/decisions/0036-a-recording-keeps-every-drawn-frame.md`):
+//! What every recording says of itself:
 //! the types that `demi browser record` and `demi mobile record` share, so a
 //! recording reads the same wherever it was made.
 //!

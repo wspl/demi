@@ -2,7 +2,7 @@
  * A conversation's simulators on the page (`crates/plugin-mobile/page/src/index.ts`),
  * which the plugin's store keeps while the plugin is on (`./store.ts`): each
  * open device's live view, on a stream of its own, kept until the device
- * closes (`docs/decisions/0017-each-device-streams-on-its-own.md`), and the
+ * closes, and the
  * panel's controls, each the page method of the command that does the same.
  */
 import { ref, watch, type Ref } from 'vue'
