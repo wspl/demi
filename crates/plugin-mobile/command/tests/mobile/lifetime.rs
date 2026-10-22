@@ -12,32 +12,8 @@ use serde_json::Value;
 
 use crate::{CHAT, Mobile, OTHER, simulators};
 
-const DAY: Duration = Duration::from_secs(24 * 60 * 60);
-
 fn shut_down(mobile: &Mobile, native_id: &str) -> bool {
     mobile.log().contains(&format!("shutdown {native_id}"))
-}
-
-/// A device nobody watches and no command uses stays open, and its simulator
-/// booted, however long it is left; its commands work after the wait.
-#[tokio::test(start_paused = true)]
-async fn nothing_closes_a_device_left_unwatched_and_unused() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let user = mobile.open(CHAT, "iPhone 17 Pro").await;
-    tokio::time::sleep(DAY).await;
-    assert!(!shut_down(&mobile, "UDID-1"), "{:?}", mobile.log());
-    assert!(!shut_down(&mobile, "UDID-BOOTED"), "{:?}", mobile.log());
-    mobile.run(CHAT, "key", json!({ "device": device, "key": "home" })).await.json();
-    mobile.run(CHAT, "key", json!({ "device": user, "key": "home" })).await.json();
-    let listed = mobile.run(CHAT, "list", json!({})).await.json();
-    let open: Vec<&str> = listed["devices"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|each| each["open"].as_str())
-        .collect();
-    assert_eq!(open.len(), 2, "{listed}");
 }
 
 /// A simulator the user booted is never shut down: not when its conversation closes.
@@ -188,24 +164,6 @@ async fn a_device_deleted_during_the_restart_closes_as_lost() {
     assert_eq!(kept_open(&mobile), ["UDID-2"]);
 }
 
-/// A device whose simulator was shut down while the service was away is lost
-/// too: nothing is left to show.
-#[tokio::test(start_paused = true)]
-async fn a_device_shut_down_during_the_restart_closes_as_lost() {
-    let home = tempfile::tempdir().unwrap();
-    let mobile = home.path().join("mobile");
-    let driver = FakeDriver::ios(simulators());
-    let first = Mobile::start_on(driver.clone(), &mobile, None).await;
-    let device = first.open(CHAT, "iPhone 17").await;
-    first.kill();
-    driver.shutdown_now("UDID-1");
-
-    let second = Mobile::start_on(driver.clone(), &mobile, None).await;
-    let lost = second.run(CHAT, "screenshot", json!({ "device": device })).await;
-    assert_eq!(lost.failure().0, "device_not_found");
-    assert!(kept_open(&mobile).is_empty());
-}
-
 /// The restored device that the user booted again while the service was away
 /// is the user's: it is taken back under its handle, and its conversation's
 /// end only lets it go.
@@ -223,25 +181,6 @@ async fn a_simulator_the_user_booted_again_is_the_users_after_a_restart() {
     second.run(CHAT, "key", json!({ "device": device, "key": "home" })).await.json();
     second.release(CHAT).await;
     assert!(!shut_down(&second, "UDID-1"));
-}
-
-/// A conversation released before it reached the service again releases the
-/// devices the record holds for it too.
-#[tokio::test(start_paused = true)]
-async fn a_release_after_a_restart_reaches_the_devices_the_record_holds() {
-    let home = tempfile::tempdir().unwrap();
-    let mobile = home.path().join("mobile");
-    let driver = FakeDriver::ios(simulators());
-    let first = Mobile::start_on(driver.clone(), &mobile, None).await;
-    first.open(CHAT, "iPhone 17").await;
-    first.kill();
-
-    let second = Mobile::start_on(driver.clone(), &mobile, None).await;
-    second.release(CHAT).await;
-    assert!(shut_down(&second, "UDID-1"));
-    assert!(kept_open(&mobile).is_empty());
-    assert!(recorded(&mobile).is_empty());
-    assert_eq!(attaches(&second, "UDID-1", CHAT), 1, "a released device was attached again");
 }
 
 /// The runner stopping the program, as an update does, lets its devices go

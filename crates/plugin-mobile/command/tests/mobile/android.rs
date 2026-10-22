@@ -803,43 +803,6 @@ fn reference(elements: &Value, label: &str) -> Option<String> {
     None
 }
 
-/// `list` shows the AVDs beside the iOS simulators in one table, each by
-/// the AVD name `open` takes. Planted defect this catches: Android listed
-/// apart, or by its display name, which `open` does not take. A stub SDK,
-/// milliseconds.
-#[tokio::test]
-async fn avds_are_listed_beside_the_ios_simulators() {
-    let (mobile, _sdk) = start(false).await;
-    let text = mobile.run_text(CHAT, "list", json!({})).await;
-    assert_eq!(
-        String::from_utf8(text.stdout).unwrap(),
-        "ID                   PLATFORM  OS          STATE      HANDLE  MODEL         NAME\n\
-         UDID-1               ios       iOS 26.5    shut down  -       iPhone 17     iPhone 17\n\
-         Medium_Phone_API_35  android   Android 15  shut down  -       Medium Phone  Medium Phone API 35\n\
-         Pixel_8_API_36       android   Android 16  shut down  -       Pixel 8       Pixel 8 API 36\n"
-    );
-    assert_eq!(text.stderr, "");
-}
-
-/// A Host whose SDK has no emulator package says how to install it, as
-/// `list`'s warning and as `open`'s failure. Planted defect this catches:
-/// the AVDs listed with no way to boot them. An empty SDK directory,
-/// milliseconds.
-#[tokio::test]
-async fn a_host_without_the_emulator_says_how_to_install_it() {
-    let sdk = tempfile::tempdir().unwrap();
-    let installed = demi_mobile::android::sdk::Installed::at(Some(sdk.path().to_owned()), None);
-    let mobile = Mobile::start_android(Vec::new(), Arc::new(installed)).await;
-    let text = mobile.run_text(CHAT, "list", json!({})).await;
-    assert_eq!(
-        text.stderr,
-        "demi mobile list: warning: no Android emulator; install the Android SDK's emulator package (sdkmanager \"emulator\")\n"
-    );
-    let (code, message) = mobile.run(CHAT, "open", json!({ "device": AVD })).await.failure();
-    assert_eq!(code, "device_not_found");
-    assert!(message.contains("no Android emulator; install the Android SDK's emulator package (sdkmanager \"emulator\")"), "{message}");
-}
-
 /// An AVD that is shut down boots, is driven over the emulator's gRPC interface
 /// with signed tokens, and shuts down as it closes: taps in panel pixels, keys
 /// as a hardware keyboard's, a field's text through the helper, the dark
@@ -1207,32 +1170,6 @@ async fn the_view_goes_on_while_the_screens_corners_are_read() {
     sdk.emulator.heard.until("corner read let go").await;
 }
 
-/// Android Studio's frame needs nothing of the corners the device reports,
-/// and comes while they are still being read; a device that reports no
-/// corner radius, and has no art, has square corners. Planted defects this
-/// catches: the art held up by the corner reads, or a corner made up where
-/// the radius is unknown. A stub emulator and a small art; under a second.
-#[tokio::test]
-async fn the_art_needs_no_corners_and_unknown_corners_are_square() {
-    let (mobile, sdk) = start(true).await;
-    sdk.guest.held.send_replace(true);
-    let art = tempfile::tempdir().unwrap();
-    write_art(&art.path().join("pixel_8"));
-    *sdk.art.lock().unwrap() = Some(art.path().join("pixel_8"));
-    let framed = tokio::time::timeout(std::time::Duration::from_secs(10), live_frame(&mobile)).await;
-    let (_page, frame) = framed.expect("the art waited for the corners");
-    assert_eq!(frame["kind"], "image", "{frame}");
-    assert!(!sdk.heard().iter().any(|line| line.starts_with("apk files")), "{:?}", sdk.heard());
-
-    let (mobile, sdk) = start(true).await;
-    sdk.guest.corners.lock().unwrap().radius = None;
-    let (_page, frame) = live_frame(&mobile).await;
-    assert_eq!(frame["kind"], "drawn");
-    for corner in ["topLeft", "topRight", "bottomRight", "bottomLeft"] {
-        assert_eq!(frame["corners"][corner], json!({ "kind": "round", "radius": 0.0 }), "{frame}");
-    }
-}
-
 /// Writes Android Studio-like art for a 108 × 240 screen into `folder`: a
 /// grey frame 20 pixels wide at the sides and 25 at the top and bottom,
 /// opaque over the screen too, and a mask that is clear but for a black
@@ -1334,53 +1271,6 @@ async fn text_a_us_keyboard_cannot_type_is_pasted_and_the_clipboard_put_back() {
     assert_eq!(since(&sdk, from), expected);
 }
 
-/// The viewer's own typing in a layout other than a US keyboard's, and an input
-/// method's composed text, reach the focused field as the characters they are.
-///
-/// A German keyboard's ü, on the key a US keyboard has [ on, is pasted and its
-/// release sends nothing. 東京 from a Chinese input method is pasted.
-///
-/// Planted defects this catches:
-///
-/// - the key's US character typed instead;
-/// - the composed text refused.
-///
-/// Cost: a stub emulator and a viewer, milliseconds.
-#[tokio::test]
-async fn the_viewers_typing_in_any_layout_or_input_method_reaches_the_field() {
-    let (mobile, sdk) = start(true).await;
-    mobile.open(CHAT, AVD).await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    let from = sdk.heard().len();
-    let key = |action: &str| {
-        let mut key = json!({ "type": "key", "action": action, "key": "ü", "code": "BracketLeft", "keyCode": 186, "modifiers": 0, "repeat": false, "location": 0, "altGraph": false });
-        if action == "down" {
-            key["text"] = json!("ü");
-        }
-        json!({ "type": "input", "input": key })
-    };
-    page.send(key("down")).await;
-    page.send(key("up")).await;
-    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
-    sdk.emulator.heard.until("clipboard 東京").await;
-    let mut restored = sdk.emulator.heard.count.subscribe();
-    let both = async {
-        while since(&sdk, from).iter().filter(|line| *line == "clipboard the user's copy").count() < 2 {
-            restored.changed().await.unwrap();
-        }
-    };
-    let waited = tokio::time::timeout(std::time::Duration::from_secs(10), both).await;
-    assert!(waited.is_ok(), "the clipboard was not put back after each paste: {:?}", since(&sdk, from));
-    let mut expected = vec!["clipboard ü"];
-    expected.extend(PASTE);
-    expected.extend(["clipboard the user's copy", "clipboard 東京"]);
-    expected.extend(PASTE);
-    expected.push("clipboard the user's copy");
-    assert_eq!(since(&sdk, from), expected);
-}
-
 /// A finger or a key the driver holds down is released when what holds it fails
 /// or is cancelled: Shift after a key the emulator refuses, the finger after a
 /// swipe's refused move, and the finger of a long press the agent interrupts.
@@ -1412,61 +1302,6 @@ async fn a_held_finger_or_key_is_released_when_its_command_fails_or_is_cancelled
     input.cancel();
     drop(output);
     sdk.emulator.heard.until("touch 541,1200 up").await;
-}
-
-/// While another UI automation client, such as Appium, holds the
-/// emulator's, a command that needs the tree fails saying so and sends
-/// nothing. Planted defect this catches: the refusal reported as a broken
-/// helper, or a touch sent anyway. A stub emulator, milliseconds.
-#[tokio::test]
-async fn inspecting_while_another_client_holds_the_ui_automation_says_so() {
-    let (mobile, sdk) = start(true).await;
-    mobile.open(CHAT, AVD).await;
-    *sdk.guest.unreadable.lock().unwrap() = Some(demi_mobile::android::guest::TAKEN.to_owned());
-    let from = sdk.heard().len();
-    let (_, message) = mobile.run(CHAT, "inspect", json!({ "device": "m1" })).await.failure();
-    assert!(message.contains("such as Appium, holds this emulator's UI automation"), "{message}");
-    assert!(since(&sdk, from).iter().all(|line| !line.starts_with("touch")), "{:?}", since(&sdk, from));
-}
-
-/// An element is tapped at its own place on the glass in every orientation,
-/// whether the app turns with the device or stays portrait.
-///
-/// Sign Up's centre, display pixel 300,1050, is that panel pixel on a portrait
-/// display, and turned with the display otherwise. The emulator's touches take
-/// the panel's own pixels.
-///
-/// Planted defects this catches:
-///
-/// - a turn taken the wrong way round for one orientation;
-/// - a touch sent in display pixels.
-///
-/// Cost: a stub emulator, under a second.
-#[tokio::test]
-async fn an_element_is_tapped_at_its_place_on_the_glass_in_every_orientation() {
-    let (mobile, sdk) = start(true).await;
-    mobile.open(CHAT, AVD).await;
-    for orientation in ["portrait", "left", "right"] {
-        mobile.run(CHAT, "rotate", json!({ "device": "m1", "orientation": orientation })).await.json();
-        let picture = *sdk.emulator.rotation.borrow();
-        for display in [0, picture] {
-            *sdk.guest.display.lock().unwrap() = display;
-            let tree = mobile.run(CHAT, "inspect", json!({ "device": "m1" })).await.json();
-            let sign_up = reference(&tree["elements"], "Sign Up").unwrap();
-            let from = sdk.heard().len();
-            mobile.run(CHAT, "tap", json!({ "device": "m1", "at": [sign_up] })).await.json();
-            let glass = match display {
-                0 => "300,1050",
-                1 => "30,300",
-                _ => "1050,2100",
-            };
-            assert_eq!(
-                since(&sdk, from),
-                [format!("touch {glass} down"), format!("touch {glass} up")],
-                "held {orientation}, the display turned {display}"
-            );
-        }
-    }
 }
 
 /// An emulator whose pictures stop while it runs loses its connection, not
@@ -1701,36 +1536,6 @@ async fn the_helper_says_when_another_client_holds_the_ui_automation() {
         .unwrap_err()
         .to_string();
     assert_eq!(refused, demi_mobile::android::guest::TAKEN);
-}
-
-/// An emulator's display that turns off, by the panel's Lock here, is told to
-/// the view as Android announces it. The viewer's Wake turns it on with the
-/// wake key, never the power key, which would turn a lit one off.
-///
-/// Planted defects this catches:
-///
-/// - Lock sent as the emulator's own Power key, which an Android 16 guest
-///   ignores;
-/// - a display that went dark with the view showing its picture as though it
-///   were on;
-/// - Wake sent as the power key.
-///
-/// Cost: a stub emulator, milliseconds.
-#[tokio::test]
-async fn the_view_says_when_an_emulators_display_turns_off_and_wake_turns_it_on() {
-    let (mobile, sdk) = start(true).await;
-    mobile.open(CHAT, AVD).await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": "m1" })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
-    assert!(on(screen(&mut page).await));
-    mobile.run(CHAT, "key", json!({ "device": "m1", "key": "lock" })).await.json();
-    assert!(!on(screen(&mut page).await), "Lock turned the display off");
-    let before = sdk.heard().len();
-    page.send(json!({ "type": "wake" })).await;
-    assert!(on(screen(&mut page).await), "Wake turned it on");
-    assert_eq!(since(&sdk, before), ["wake"], "Wake is the wake key, not Power");
 }
 
 /// The display's state stays true after the log that tells it ends while

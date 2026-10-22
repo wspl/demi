@@ -38,4 +38,3 @@ tokio.workspace = true
 
 [dev-dependencies]
 demi-agent-store = { path = ".", features = ["testing"] }
-serde_json.workspace = true

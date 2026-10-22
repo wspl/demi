@@ -221,10 +221,8 @@ impl Driver for FakeDriver {
                 read_time: Mutex::default(),
                 reads: watch::Sender::new(0),
                 captures: watch::Sender::new(Vec::new()),
-                swipes: watch::Sender::new(Vec::new()),
                 appearance: Mutex::new(Appearance::Light),
                 recording: Arc::default(),
-                unseen: Mutex::default(),
                 refused: Mutex::default(),
                 log: self.log.clone(),
             });
@@ -265,13 +263,9 @@ pub struct FakeDevice {
     reads: watch::Sender<u64>,
     /// The size of each capture asked for.
     captures: watch::Sender<Vec<(u32, u32)>>,
-    /// Each swipe, where it started and ended.
-    swipes: watch::Sender<Vec<(Points, Points)>>,
     appearance: Mutex<Appearance>,
     /// The recording under way and what its source holds.
     recording: Arc<Mutex<Option<Source>>>,
-    /// The screen the device draws its frame for, turned before it says so.
-    unseen: Mutex<Option<Screen>>,
     /// The orientations the app in front refuses.
     refused: Mutex<Vec<Orientation>>,
     log: Log,
@@ -303,13 +297,6 @@ impl FakeDevice {
         *self.read_time.lock().unwrap() = time;
     }
 
-    /// The device turns to `orientation` and draws its frame so before it
-    /// says it turned, as a simulator's frame may be drawn while its turn is
-    /// on the way.
-    pub fn turns_unseen(&self, orientation: Orientation) {
-        *self.unseen.lock().unwrap() = Some(turned(*self.screen.borrow(), orientation));
-    }
-
     /// The app in front refuses `orientation`: a turn to it leaves the
     /// screen as it is.
     pub fn refuses(&self, orientation: Orientation) {
@@ -331,22 +318,9 @@ impl FakeDevice {
         recording.as_mut().is_some_and(|source| source.draw(drawn, &load))
     }
 
-    /// The recording under way ends for `reason`, as at the limit of its time
-    /// or its size.
-    pub fn recording_ends(&self, reason: demi_shared_recording_protocol::EndReason) {
-        if let Some(source) = self.recording.lock().unwrap().as_ref() {
-            source.sink.end(reason, None);
-        }
-    }
-
     /// The size of each capture asked for, which a test waits on.
     pub fn captures(&self) -> watch::Receiver<Vec<(u32, u32)>> {
         self.captures.subscribe()
-    }
-
-    /// Each swipe so far, which a test waits on.
-    pub fn swipes(&self) -> watch::Receiver<Vec<(Points, Points)>> {
-        self.swipes.subscribe()
     }
 
     /// Counts the reads of the tree, which a test waits on.
@@ -428,7 +402,6 @@ impl Device for FakeDevice {
     fn swipe(&self, from: Points, to: Points) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.log(format!("swipe {} to {}", at(from), at(to)));
-            self.swipes.send_modify(|swipes| swipes.push((from, to)));
             Ok(())
         })
     }
@@ -486,7 +459,6 @@ impl Device for FakeDevice {
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
             self.log(format!("orient {orientation}"));
-            *self.unseen.lock().unwrap() = None;
             if self.refused.lock().unwrap().contains(&orientation) {
                 return Ok(());
             }
@@ -536,7 +508,7 @@ impl Device for FakeDevice {
     fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Option<Framed>>> {
         Box::pin(async move {
             self.log(format!("frame {}x{}@{}", area.width, area.height, area.scale));
-            let screen = self.unseen.lock().unwrap().unwrap_or_else(|| *self.screen.borrow());
+            let screen = *self.screen.borrow();
             Ok(Some(Framed {
                 frame: Frame::Drawn {
                     corners: LiveCorners::round(55.0),

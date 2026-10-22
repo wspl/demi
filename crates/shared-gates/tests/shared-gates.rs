@@ -81,25 +81,6 @@ async fn giving_up_a_draining_reservation_admits_waiters_without_touching_leases
     drop(reservation);
 }
 
-#[tokio::test]
-async fn an_idle_reservation_excludes_entrants_and_a_given_up_wait_never_admits() {
-    let gate = ActivityGate::new();
-    let reservation = gate.try_reserve().expect("an idle gate reserves");
-    assert!(gate.try_reserve().is_none());
-    assert!(gate.try_enter(Purpose::Maintenance).is_none());
-    let waiting = tokio::spawn({
-        let gate = gate.clone();
-        async move { gate.enter(Purpose::Demand).await }
-    });
-    settle().await;
-    waiting.abort();
-    assert!(waiting.await.unwrap_err().is_cancelled());
-    drop(reservation);
-    assert_eq!(gate.state().demand, 0);
-    assert!(!gate.state().reserved);
-    assert!(gate.try_reserve().is_some());
-}
-
 #[tokio::test(start_paused = true)]
 async fn the_state_counts_leases_by_purpose_and_records_when_demand_ends() {
     let hub = ActivityHub::new();

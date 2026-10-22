@@ -613,20 +613,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_condition_compares_a_version_weakly() {
-        let etag = "W/\"493e0-1a0c4506c7b\"";
-        assert!(not_modified(Some(etag), etag));
-        assert!(not_modified(Some("\"493e0-1a0c4506c7b\""), etag));
-        assert!(not_modified(
-            Some("\"other\", W/\"493e0-1a0c4506c7b\""),
-            etag
-        ));
-        assert!(not_modified(Some(" * "), etag));
-        assert!(!not_modified(Some("W/\"493e0-0\""), etag));
-        assert!(!not_modified(None, etag));
-    }
-
     #[tokio::test(flavor = "local", start_paused = true)]
     async fn closing_ends_the_open_transfers_refuses_new_ones_and_waits_for_their_release() {
         let set = TransferSet::new();

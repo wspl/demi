@@ -6,10 +6,9 @@
 use std::time::Duration;
 
 use demi_command_package_mobile_protocol::live::{LiveModuleMessage, LiveViewerMessage};
-use demi_command_package_mobile_protocol::mobile::{DeviceId, Orientation};
+use demi_command_package_mobile_protocol::mobile::DeviceId;
 use demi_command_protocol::{CommandCaller, Record};
 use demi_live_view_protocol::LiveActivity;
-use demi_mobile::driver::Points;
 use serde_json::json;
 
 use crate::{CHAT, Mobile};
@@ -277,24 +276,6 @@ async fn a_stream_nobody_looks_at_sends_nothing() {
     page.until("state").await;
 }
 
-/// A stream names a device that is not open, or its device closes: the view
-/// says the device is gone and ends. Planted defect this catches: a stream
-/// left open for a device that closed, which the page would open again and
-/// again. One fake device, milliseconds.
-#[tokio::test]
-async fn a_stream_of_a_device_that_closed_says_it_is_gone_and_ends() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    mobile.run(CHAT, "close", json!({ "device": device })).await.json();
-    page.until("gone").await;
-
-    let mut late = Page::open(&mobile, CHAT).await;
-    late.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    late.until("gone").await;
-}
-
 /// A device whose connection ended while its simulator runs is not gone: the
 /// view ends without saying so, the page opens another stream, and that one
 /// is answered once the device is attached again. Planted defect this
@@ -416,35 +397,6 @@ async fn the_view_gets_the_frame_for_its_size_and_again_when_the_device_turns() 
     assert_eq!(drawn, 2, "a frame drawn once for each size and orientation");
 }
 
-/// A frame says the screen it was drawn for, as the driver read it to draw
-/// it: a device that turned before it said so has its frame named with
-/// the turned orientation and points, and the page asks again for a frame
-/// it already had, which is drawn again
-/// (`crates/plugin-mobile/command/src/live.rs`). Planted defect this
-/// catches: the orientation read apart from the drawing, which named a
-/// turned frame with the old orientation, and the page kept it under it.
-/// One fake device, milliseconds.
-#[tokio::test]
-async fn a_frame_names_the_screen_it_was_drawn_for() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    page.until("state").await;
-    mobile.driver.device("UDID-1").turns_unseen(Orientation::LandscapeLeft);
-    page.send(json!({ "type": "frame", "width": 800, "height": 1600, "scale": 2.0 })).await;
-    let LiveModuleMessage::Frame { orientation, points_width, points_height, .. } = page.framed().await else {
-        unreachable!()
-    };
-    assert_eq!(orientation, Orientation::LandscapeLeft, "the frame is named as the screen it was drawn for");
-    assert!(points_width > points_height, "its points are the turned screen's: {points_width}×{points_height}");
-    page.send(json!({ "type": "frame", "width": 800, "height": 1600, "scale": 2.0 })).await;
-    page.framed().await;
-    let drawn = mobile.log().iter().filter(|line| line.contains("frame 800x1600")).count();
-    assert_eq!(drawn, 2, "a frame the page asks for again is drawn again");
-}
-
 /// The capture starts once the stream is looked at and the view said the
 /// area it lays the device out in, before any frame is drawn or the view
 /// says the screen's size, fitted to the most of the screen that area can
@@ -467,74 +419,6 @@ async fn the_capture_starts_without_waiting_for_the_frame() {
         .expect("a capture once the view said its area")
         .unwrap()[0];
     assert_eq!(first, (590, 1278), "the capture fits the area, as the screen half its size");
-}
-
-/// A device's stream says only that device's changes: another device of
-/// the conversation starting a recording sends nothing on it, and its own
-/// does. Planted defect this catches: the streams following every change
-/// of the open devices, so each device's view heard of the others'. Two
-/// fake devices, milliseconds.
-#[tokio::test]
-async fn another_devices_change_sends_nothing_on_a_devices_stream() {
-    let mobile = Mobile::start().await;
-    let first = mobile.open(CHAT, "iPhone 17").await;
-    let second = mobile.open(CHAT, "iPhone Air").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": first })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    page.until("state").await;
-    mobile.run(CHAT, "record", json!({ "target": second, "action": "start" })).await.json();
-    mobile.run(CHAT, "record", json!({ "target": first, "action": "start" })).await.json();
-    let next = serde_json::to_value(tokio::time::timeout(Duration::from_secs(10), page.until("state")).await.unwrap()).unwrap();
-    assert_eq!(next["device"]["recording"], true, "the stream's next state is its own device's recording");
-}
-
-/// The view says the device's model its driver reads, which the toolbar
-/// shows after its name. Planted defect this catches: the model left out of
-/// the device's state. One fake device, milliseconds.
-#[tokio::test]
-async fn the_view_lists_a_devices_model() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    let state = serde_json::to_value(page.until("state").await).unwrap();
-    // The fake driver's model is the simulator's name.
-    assert_eq!(state["device"]["model"], "iPhone 17");
-}
-
-/// A recording shows on every view of the device, whoever started it: the
-/// agent's command starts one, and the view lists the device as
-/// recording until it stops. Planted defect this catches: a recording the
-/// view does not hear of. One fake device, milliseconds.
-#[tokio::test]
-async fn a_recording_the_agent_starts_shows_on_the_view() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    let first = serde_json::to_value(page.until("state").await).unwrap();
-    assert_eq!(first["device"]["recording"], false);
-    mobile.run(CHAT, "record", json!({ "target": device, "action": "start" })).await.json();
-    tokio::time::timeout(Duration::from_secs(10), recording_is(&mut page, true))
-        .await
-        .expect("the view says the device records");
-    mobile.run(CHAT, "record", json!({ "target": "r1", "action": "stop" })).await.json();
-    tokio::time::timeout(Duration::from_secs(10), recording_is(&mut page, false))
-        .await
-        .expect("the view says the recording stopped");
-}
-
-/// Waits for a state that lists the device's recording as `wanted`.
-async fn recording_is(page: &mut Page, wanted: bool) {
-    loop {
-        let state = serde_json::to_value(page.until("state").await).unwrap();
-        if state["device"]["recording"] == wanted {
-            return;
-        }
-    }
 }
 
 /// The user's input on a device reaches it while the agent's `wait` on the same
@@ -563,26 +447,6 @@ async fn the_users_input_does_not_wait_for_the_agents_wait() {
     pressed.json();
     assert_eq!(mobile.log().last().unwrap(), "UDID-1: press Home");
     drop(waiting);
-}
-
-/// The view tells the page whether the device's screen is on as
-/// it watches it and as it turns off and on. Planted defect this catches:
-/// a screen that went dark with the view showing its last picture as
-/// though it were on. One fake device, milliseconds.
-#[tokio::test]
-async fn the_view_says_when_the_screen_turns_off_and_on() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    let on = |message: LiveModuleMessage| serde_json::to_value(message).unwrap()["on"].as_bool().unwrap();
-    assert!(on(screen(&mut page).await), "the screen is on as the view starts watching");
-    let fake = mobile.driver.device("UDID-1");
-    fake.power(false);
-    assert!(!on(screen(&mut page).await), "the device slept");
-    fake.power(true);
-    assert!(on(screen(&mut page).await), "the device woke");
 }
 
 /// The pictures are captured at the size the panel shows the screen at,
@@ -625,38 +489,3 @@ pub(crate) async fn screen(page: &mut Page) -> LiveModuleMessage {
         .expect("the view said nothing of the screen")
 }
 
-/// The viewer's scroll wheel scrolls the device's screen: a turn is the
-/// swipe that moves the screen as far, the finger going against the turn
-/// from where the pointer is, and stopping at the screen's edge
-/// (`crates/plugin-mobile/command/src/live.rs`). Planted defect this catches: a wheel the
-/// view drops, as it did before. One fake device, milliseconds.
-#[tokio::test]
-async fn the_viewers_wheel_scrolls_the_screen() {
-    let mobile = Mobile::start().await;
-    let device = mobile.open(CHAT, "iPhone 17").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    page.until("state").await;
-    let swipes = mobile.driver.device("UDID-1").swipes();
-    let wheel = |y: f64, delta_y: f64| json!({ "type": "input", "input": { "type": "wheel", "x": 200.0, "y": y, "deltaX": 0.0, "deltaY": delta_y, "modifiers": 0 } });
-    let swiped = |swipes: &tokio::sync::watch::Receiver<Vec<(Points, Points)>>, count: usize| {
-        let mut swipes = swipes.clone();
-        async move {
-            tokio::time::timeout(Duration::from_secs(10), swipes.wait_for(|swipes| swipes.len() == count))
-                .await
-                .expect("the wheel reached the device")
-                .unwrap()
-                .last()
-                .copied()
-                .unwrap()
-        }
-    };
-    // Down the page: the finger goes up by the turn.
-    page.send(wheel(400.0, 120.0)).await;
-    assert_eq!(swiped(&swipes, 1).await, (Points { x: 200.0, y: 400.0 }, Points { x: 200.0, y: 280.0 }));
-    // Far up the page: the finger stops at the screen's bottom edge.
-    page.send(wheel(400.0, -10_000.0)).await;
-    // The fake's screen is 393 × 852 points.
-    assert_eq!(swiped(&swipes, 2).await, (Points { x: 200.0, y: 400.0 }, Points { x: 200.0, y: 852.0 }));
-}

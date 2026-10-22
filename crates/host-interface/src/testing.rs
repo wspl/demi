@@ -15,7 +15,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
-use demi_shared_types::{B64Bytes, Sequence, StreamKind, Timestamp};
+use demi_shared_types::{Sequence, StreamKind, Timestamp};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
@@ -840,13 +840,11 @@ fn spawn_error(end: &ProcessEnd, expected: SpawnErrorKind) -> Result<(), String>
     }
 }
 
-/// An in-memory port for `rpc` handler tests: standard input and live input
-/// fed by the test, and output kept. Every request yields once before it is
-/// served, as a real port's do, so two handlers interleave.
+/// An in-memory port for `rpc` handler tests: no input, and output kept.
+/// Every request yields once before it is served, as a real port's do, so two
+/// handlers interleave.
 #[derive(Default)]
 pub struct MemoryPort {
-    stdin: RefCell<VecDeque<Bytes>>,
-    live: RefCell<VecDeque<Bytes>>,
     stdout: RefCell<Vec<u8>>,
     stderr: RefCell<Vec<u8>>,
 }
@@ -854,16 +852,6 @@ pub struct MemoryPort {
 impl MemoryPort {
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
-    }
-
-    /// Finite standard input, in chunks.
-    pub fn feed_stdin(&self, chunk: impl Into<Bytes>) {
-        self.stdin.borrow_mut().push_back(chunk.into());
-    }
-
-    /// An interactive write to the calling job.
-    pub fn feed_live(&self, chunk: impl Into<Bytes>) {
-        self.live.borrow_mut().push_back(chunk.into());
     }
 
     pub fn port(self: &Rc<Self>, cancel: CancellationToken) -> RpcPort {
@@ -892,12 +880,9 @@ impl PortTransport for MemoryPort {
                     self.stderr.borrow_mut().extend_from_slice(&bytes);
                     PortResponse::Written {}
                 }
-                PortRequest::ReadStdin {} => PortResponse::Input {
-                    bytes: self.stdin.borrow_mut().pop_front().map(B64Bytes::new),
-                },
-                PortRequest::ReadLiveStdin {} => PortResponse::Input {
-                    bytes: self.live.borrow_mut().pop_front().map(B64Bytes::new),
-                },
+                PortRequest::ReadStdin {} | PortRequest::ReadLiveStdin {} => {
+                    PortResponse::Input { bytes: None }
+                }
                 // A call in memory has no job that waits with it.
                 PortRequest::AwaitsUser { .. } => PortResponse::Written {},
             })

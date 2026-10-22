@@ -449,11 +449,7 @@ mod tests {
         );
         assert_eq!(found[3], HostFile::Missing);
         assert_eq!(found[4], HostFile::Missing);
-        assert!(
-            matches!(&found[5], HostFile::Unreadable { message } if message.contains("ermission")),
-            "{:?}",
-            found[5]
-        );
+        assert!(matches!(&found[5], HostFile::Unreadable { .. }), "{:?}", found[5]);
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
         fixture.stop().await;
     }

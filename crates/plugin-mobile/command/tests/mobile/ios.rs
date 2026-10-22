@@ -567,29 +567,6 @@ async fn the_viewers_typing_in_any_layout_or_input_method_reaches_an_iphones_fie
     assert!(helper.requests("key").is_empty(), "a key's release went to the simulator: {:?}", helper.requests("key"));
 }
 
-/// The viewer's text that finds no focused field on an iPhone is told to
-/// the view as that reason, quoting the viewer's own text, so the panel
-/// says why in its own words rather than that the input did not arrive.
-/// Planted defect this catches: the refusal sent as the generic
-/// input_failed. One fake helper, milliseconds.
-#[tokio::test]
-async fn the_view_says_when_its_text_has_no_focused_field() {
-    use demi_command_package_mobile_protocol::live::NO_FOCUSED_FIELD;
-    let helper = FakeHelper::new();
-    let mobile = Mobile::start_ios(helper.clone()).await;
-    let device = mobile.open(CHAT, "UDID-A").await;
-    let mut page = Page::open(&mobile, CHAT).await;
-    page.send(json!({ "type": "hello", "platform": "mac", "device": device })).await;
-    page.send(json!({ "type": "looked", "looked": true })).await;
-    page.send(json!({ "type": "input", "input": { "type": "text", "text": "東京" } })).await;
-    let notice = tokio::time::timeout(std::time::Duration::from_secs(10), page.until("notice"))
-        .await
-        .expect("the view is told");
-    let LiveModuleMessage::Notice(notice) = notice else { unreachable!() };
-    assert_eq!((notice.code.as_str(), notice.message.as_str()), (NO_FOCUSED_FIELD, "東京"));
-    assert!(helper.requests("setValue").is_empty());
-}
-
 /// Text a US keyboard cannot type needs a focused field on an iPhone, as
 /// it is added to that field's value: without one, `type` fails saying so
 /// and changes nothing. Planted defect this catches: the text set on

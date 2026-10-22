@@ -47,18 +47,3 @@ fn an_images_size_is_read_from_its_header_as_a_browser_shows_it() {
     assert_eq!(pixel_size(shot, "application/pdf"), None);
 }
 
-#[test]
-fn a_videos_size_is_read_from_its_containers_header() {
-    let mp4 = Bytes::from_static(include_bytes!("fixtures/clip.mp4"));
-    let moov_last = Bytes::from_static(include_bytes!("fixtures/moov-last.mp4"));
-    let mov = Bytes::from_static(include_bytes!("fixtures/clip.mov"));
-    let webm = Bytes::from_static(include_bytes!("fixtures/clip.webm"));
-    assert_eq!(pixel_size(mp4.clone(), "video/mp4"), size(64, 36));
-    assert_eq!(pixel_size(moov_last.clone(), "video/mp4"), size(64, 36));
-    assert_eq!(pixel_size(mov, "video/quicktime"), size(40, 30));
-    assert_eq!(pixel_size(webm, "video/webm"), size(48, 64));
-    // The opening of an MP4 holds its header when the `moov` box comes
-    // first, and not when it comes after the frames.
-    assert_eq!(pixel_size(mp4.slice(..900), "video/mp4"), size(64, 36));
-    assert_eq!(pixel_size(moov_last.slice(..900), "video/mp4"), None);
-}

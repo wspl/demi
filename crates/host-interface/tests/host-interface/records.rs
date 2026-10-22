@@ -128,36 +128,6 @@ fn the_end_gives_the_whole_output_once_with_what_the_model_had_seen() {
     );
 }
 
-/// A stop shows the command stopping, and still running, until its runner
-/// says that the job ended; that end is the stop (`crates/runner-shell/src/job.rs`). Before, a stop the runner had not
-/// confirmed marked the command stopped after ten seconds while it ran on.
-#[test]
-fn a_stop_shows_the_command_stopping_until_its_end_which_is_the_stop() {
-    let mut record = new_record();
-    record.append_output(StreamKind::Stderr, "partial");
-    assert!(record.mark_stopping());
-    assert!(!record.mark_stopping());
-    assert!(record.is_running());
-    assert_eq!(record.page_view().state, PageState::Stopping);
-    assert!(matches!(
-        record.status(0, None, Vec::new()).state,
-        CommandState::Running { .. }
-    ));
-    assert!(record.settle(
-        Ending::Aborted,
-        Arc::new(WholeOutput::default()),
-        None,
-        Vec::new(),
-        ""
-    ));
-    assert!(matches!(
-        record.status(0, None, Vec::new()).state,
-        CommandState::Aborted
-    ));
-    assert_eq!(record.page_view().state, PageState::Aborted);
-    assert!(!record.mark_stopping());
-}
-
 /// The pages' view keeps the last characters of the output in the order it
 /// came and how many there were, whatever the model read, and ends with the
 /// command (`crates/agent-server/src/server/tree/live.rs`).

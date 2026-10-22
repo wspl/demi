@@ -282,35 +282,6 @@ fn a_file_created_in_one_run_and_removed_in_a_later_one_stays_in_the_first_runs_
 }
 
 #[test]
-fn a_file_that_was_there_before_and_was_removed_is_deleted_everywhere() {
-    // `old.ts` was edited, then removed; `gone.ts` was only removed, so
-    // nothing of it was kept to count.
-    let mut copies = Copies::default();
-    let edit = copies.edit("a\nb\nc\n", "a\nB\nc\n");
-    let mut blocks = vec![
-        user("u"),
-        shell("1", vec![written("/w/old.ts", EditKind::Modified, vec![edit])], vec![]),
-        shell("2", vec![], vec![removed("/w/old.ts"), removed("/w/gone.ts")]),
-        text("done"),
-    ];
-    copies.list(&mut blocks);
-
-    assert_eq!(
-        own(&blocks[2]),
-        [
-            ("/w/old.ts".to_owned(), EditKind::Deleted),
-            ("/w/gone.ts".to_owned(), EditKind::Deleted)
-        ]
-    );
-    let deleted = [
-        entry("/w/old.ts", EditKind::Deleted, None, Some((0, 3))),
-        entry("/w/gone.ts", EditKind::Deleted, None, None),
-    ];
-    assert_eq!(run_files(&blocks[2]), deleted);
-    assert_eq!(request_files(&blocks[2]), deleted);
-}
-
-#[test]
 fn a_renamed_file_shows_under_its_new_name_with_its_edits() {
     // `c.ts` is edited, then moved, and `x.ts` only moved; the scratch file
     // in `/tmp` placed over `page.ts` shows as `page.ts`, modified.

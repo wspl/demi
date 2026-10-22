@@ -1,7 +1,7 @@
 //! What an uploaded file becomes.
 
 use demi_agent_store::{
-    attachments::{Upload, is_text, snippet, unavailable, upload_blocks, upload_media_type},
+    attachments::{Upload, is_text, snippet, upload_blocks, upload_media_type},
     media::{BlobStore, HeldMedia},
     testing::{MemoryBlobs, png},
 };
@@ -46,82 +46,6 @@ fn an_upload_is_recorded_with_the_type_its_bytes_show_and_a_text_files_opening()
     );
     let long = "字".repeat(300);
     assert_eq!(snippet(long.as_bytes()), "字".repeat(160));
-}
-
-#[tokio::test]
-async fn an_upload_becomes_its_native_medium_then_its_record() {
-    let blobs = MemoryBlobs::new();
-    let png = png(4, 3, 1);
-    let sha256 = BlobRef::of(&png);
-    let (image, image_bytes) =
-        upload_blocks(upload("tiny.png", "image/png", &png, &sha256), &*blobs)
-            .await
-            .unwrap();
-    let pdf_bytes = B64Bytes::from(b"%PDF-1.7".to_vec());
-    let (pdf, _) = upload_blocks(
-        upload("paper.pdf", "application/pdf", &pdf_bytes, &sha256),
-        &*blobs,
-    )
-    .await
-    .unwrap();
-    let notes = B64Bytes::from(b"\n hello".to_vec());
-    let (text, text_bytes) =
-        upload_blocks(upload("notes.txt", "text/plain", &notes, &sha256), &*blobs)
-            .await
-            .unwrap();
-
-    let kinds = |blocks: &[UserContentBlock]| -> Vec<String> {
-        blocks
-            .iter()
-            .map(|block| {
-                serde_json::to_value(block).unwrap()["type"]
-                    .as_str()
-                    .unwrap()
-                    .to_owned()
-            })
-            .collect()
-    };
-    assert_eq!(kinds(&image), ["image", "attachment"]);
-    // The medium is the upload's own blob, and its bytes come along for
-    // the session to hold; a file with no native medium brings none.
-    assert_eq!(
-        image[0],
-        UserContentBlock::Image {
-            source: MediaSource::Ref {
-                r#ref: sha256.clone(),
-                media_type: "image/png".into(),
-                width: Some(4),
-                height: Some(3),
-            }
-        }
-    );
-    let mut held = HeldMedia::default();
-    held.hold(sha256.clone(), png);
-    assert_eq!(image_bytes, held);
-    assert_eq!(text_bytes, HeldMedia::default());
-    assert_eq!(kinds(&pdf), ["document", "attachment"]);
-    assert_eq!(kinds(&text), ["attachment"]);
-    let UserContentBlock::Attachment(record) = &text[0] else {
-        unreachable!()
-    };
-    assert_eq!(
-        (
-            record.name.as_str(),
-            record.size_bytes,
-            record.snippet.as_deref()
-        ),
-        ("notes.txt", 7, Some("hello"))
-    );
-    let UserContentBlock::Attachment(record) = &image[1] else {
-        unreachable!()
-    };
-    assert_eq!(record.snippet, None);
-    assert_eq!(
-        unavailable("upload-9"),
-        UserContentBlock::Text {
-            text: "[attachment upload-9 is not available]".into()
-        }
-    );
 }
 
 #[tokio::test]

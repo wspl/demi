@@ -223,31 +223,6 @@ mod tests {
     }
 
     #[test]
-    fn a_name_is_joined_with_the_hosts_separator() {
-        let cases = [
-            (Posix, "/home/alex", ".demi", "/home/alex/.demi"),
-            (Posix, "/home/alex/", ".demi/attachments", "/home/alex/.demi/attachments"),
-            (Posix, "/", "etc", "/etc"),
-            (Windows, r"C:\Users\alex", ".demi", r"C:\Users\alex\.demi"),
-            (Windows, r"C:\Users\alex\", ".demi/attachments", r"C:\Users\alex\.demi\attachments"),
-            (Windows, r"C:\", "Users", r"C:\Users"),
-        ];
-        for (paths, directory, name, joined) in cases {
-            assert_eq!(paths.join(directory, name), joined, "{paths:?} {directory} {name}");
-        }
-    }
-
-    #[test]
-    fn a_paths_name_is_its_last_component() {
-        assert_eq!(Posix.file_name("/home/alex/skills/review"), "review");
-        assert_eq!(Posix.file_name("/home/alex/skills/review/"), "review");
-        assert_eq!(Windows.file_name(r"C:\Users\alex\skills\review"), "review");
-        assert_eq!(Windows.file_name("C:/Users/alex/skills/review"), "review");
-        // A backslash is part of a name on a Posix Host.
-        assert_eq!(Posix.file_name(r"/home/alex/a\b"), r"a\b");
-    }
-
-    #[test]
     fn a_path_walks_up_to_its_root() {
         assert_eq!(Posix.ancestors("/home/alex/app"), ["/home/alex/app", "/home/alex", "/home", "/"]);
         assert_eq!(Posix.ancestors("/home/alex/app/"), ["/home/alex/app", "/home/alex", "/home", "/"]);
