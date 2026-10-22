@@ -41,7 +41,7 @@ use crate::page::{
     protocol::{
         ActionResult, BrowserOperation, BrowserTarget, BrowserViewport, Capability,
         ContentReadResult, DEFAULT_NODES, Dialog, DialogInspectResult, DialogOutcome, DialogResult,
-        ElementState, EvalResult, FindResult, HistoryEntry, HistoryResult, INLINE_BYTES,
+        ElementState, EvalResult, FindResult, HistoryEntry, HistoryResult,
         InfoResult, InspectResult, LogsResult, MAX_NODES, NavigationResult, ProbeResult,
         ReadProperty, ReadResult, ViewportMode, ViewportResult, WaitResult,
     },
@@ -879,19 +879,12 @@ pub async fn command_admitted(
             BrowserOperation::ContentRead(input) => Box::pin(async {
                 let format = input.format.unwrap_or_default();
                 let content = crate::page::content::read(tab, format, references).await?;
-                let truncated = input.output.is_none() && content.len() > INLINE_BYTES;
-                let end = if input.output.is_some() {
-                    content.len()
-                } else {
-                    content.floor_char_boundary(INLINE_BYTES.min(content.len()))
-                };
                 let (url, title) = target_info(tab).await?;
                 Ok(TabResult::ContentRead(ContentReadResult::Inline {
                     url,
                     title,
                     format,
-                    content: content[..end].to_owned(),
-                    truncated,
+                    content,
                 }))
             }),
             BrowserOperation::Open(_)

@@ -95,9 +95,6 @@ pub fn inspect(result: &InspectResult, name: &str) -> String {
     if result.elements.is_empty() {
         text.push_str("The screen shows no elements.\n");
     }
-    if result.truncated {
-        text.push_str("… more elements left out; the result holds at most 64 KiB.\n");
-    }
     text
 }
 

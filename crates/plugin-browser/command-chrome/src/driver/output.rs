@@ -1,10 +1,6 @@
-//! Browser output is bounded before any success bytes escape, and one typed
-//! result is rendered as text and as `--json`; neither is parsed from the
-//! other.
-//!
-//! A truncated JSON result stays complete, valid JSON saying `truncated: true`.
-//! One that cannot shrink fails with `result_too_large`, never printing a
-//! prefix.
+//! One typed result is rendered as text and as `--json`; neither is parsed
+//! from the other. The output has no size limit of its own: a long one is cut
+//! by the shell that runs the command, as any command's output is.
 //!
 //! A script never learns an artifact's path by parsing stdout, since a page
 //! must not be able to cause file reads by forging output text. `--json`
@@ -15,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::driver::{
     operation::{BrowserError, Result},
-    protocol::{ActionProgress, BrowserErrorCode, BrowserOperation, ErrorDetails, INLINE_BYTES},
+    protocol::{ActionProgress, BrowserErrorCode, BrowserOperation, ErrorDetails},
 };
 
 /// A typed result as the JSON value [`render`] bounds.
@@ -121,52 +117,9 @@ async fn publish(
     }
 }
 
-/// Prints `operation`'s result, shortening its content or its list until it
-/// fits [`INLINE_BYTES`]; a result that cannot shrink fails. `--json` prints
-/// the result, anything else its text.
-pub fn render(operation: &BrowserOperation, mut value: Value, json: bool) -> Result<Vec<u8>> {
-    loop {
-        let bytes = serde_json::to_vec(&value)
-            .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-        if bytes.len() <= INLINE_BYTES {
-            break;
-        }
-        if let Some(content) = value.get("content").and_then(Value::as_str)
-            && !content.is_empty()
-        {
-            let end = content.floor_char_boundary(content.len() / 2);
-            value["content"] = Value::String(content[..end].into());
-            value["truncated"] = Value::Bool(true);
-            continue;
-        }
-        let collection = ["tree", "matches", "entries", "events", "tabs", "values"]
-            .into_iter()
-            .find(|key| value.get(*key).is_some_and(Value::is_array));
-        if let Some(key) = collection {
-            let items = value[key].as_array_mut().expect("collection was checked");
-            if let Some(omitted) = items.pop() {
-                let empty = items.is_empty();
-                if let Some(cursor) = value["cursor"].as_str() {
-                    // A stream cursor must stop at the first omitted event, so
-                    // output truncation cannot skip entries on the next read.
-                    if empty {
-                        return Err(BrowserError::ResultTooLarge);
-                    }
-                    let (identity, _) = cursor.rsplit_once(':').ok_or_else(|| {
-                        BrowserError::InvalidResult("stream cursor has no position".into())
-                    })?;
-                    let sequence = omitted["sequence"].as_u64().ok_or_else(|| {
-                        BrowserError::InvalidResult("stream entry has no sequence".into())
-                    })?;
-                    value["cursor"] = Value::String(format!("{identity}:{sequence}"));
-                    value["hasMore"] = Value::Bool(true);
-                }
-                value["truncated"] = Value::Bool(true);
-                continue;
-            }
-        }
-        return Err(BrowserError::ResultTooLarge);
-    }
+/// Renders `operation`'s result: `--json` as the result, anything else as its
+/// text.
+pub fn render(operation: &BrowserOperation, value: Value, json: bool) -> Result<Vec<u8>> {
     let mut result = if json {
         serde_json::to_string(&value)
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
@@ -175,9 +128,6 @@ pub fn render(operation: &BrowserOperation, mut value: Value, json: bool) -> Res
     };
     if !result.ends_with('\n') {
         result.push('\n');
-    }
-    if result.len() > INLINE_BYTES {
-        return Err(BrowserError::ResultTooLarge);
     }
     Ok(result.into_bytes())
 }
@@ -242,25 +192,6 @@ pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetail
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn stream_output_truncation_does_not_skip_the_omitted_entries() {
-        let entries: Vec<_> = (0..3).map(|sequence| json!({"sequence":sequence,"level":"info","text":"x".repeat(30_000),"timestamp":0})).collect();
-        let logs = BrowserOperation::parse("logs", json!({"tab": "t1"})).unwrap();
-        let bytes = render(
-            &logs,
-            json!({"entries":entries,"cursor":"logs_test:3","hasMore":false,"truncated":false}),
-            true,
-        )
-        .unwrap();
-        let result: Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(result["entries"].as_array().unwrap().len(), 2);
-        assert_eq!(result["cursor"], "logs_test:2");
-        assert_eq!(result["hasMore"], true);
-        assert_eq!(result["truncated"], true);
-        assert!(bytes.len() <= INLINE_BYTES);
-    }
 
     #[test]
     fn a_text_error_ends_with_its_tab_message_code_and_progress_after_its_details() {

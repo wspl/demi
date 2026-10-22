@@ -14,7 +14,7 @@ use demi_command_sdk::InvocationContext;
 
 use crate::page::protocol::{
     BrowserErrorCode, BrowserFailure, BrowserOperation, ContentFetchResult, FetchedPage,
-    INLINE_BYTES, Load,
+    Load,
 };
 
 /// Keep every temporary tab registered until collection and cleanup finish.
@@ -42,7 +42,6 @@ pub async fn execute(
         )
         .await?;
     let mut pages = Vec::with_capacity(input.url.len());
-    let mut truncated = false;
     let collection = async {
         for (tab, requested) in batch.tabs().iter().zip(&input.url) {
             let operation = tab.operation(cancel, deadline);
@@ -71,14 +70,11 @@ pub async fn execute(
             .await;
             match item {
                 Ok((url, title, content)) => {
-                    let limit = INLINE_BYTES / input.url.len().max(1) / 2;
-                    let end = content.floor_char_boundary(content.len().min(limit));
-                    truncated |= end < content.len();
                     pages.push(FetchedPage {
                         requested_url: requested.clone(),
                         url,
                         title,
-                        content: content[..end].to_owned(),
+                        content,
                         error: None,
                     });
                 }
@@ -113,7 +109,7 @@ pub async fn execute(
                 }
             }
         }
-        crate::driver::output::value(ContentFetchResult { pages, truncated })
+        crate::driver::output::value(ContentFetchResult { pages })
     }
     .await;
     // The batch owns partial creation and already-closed targets. Joining its

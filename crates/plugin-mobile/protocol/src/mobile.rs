@@ -27,8 +27,6 @@ pub const MAX_WAIT_SECONDS: u64 = 300;
 pub const TEXT_LENGTH: usize = 10_000;
 /// The longest device name, path or text to wait for an input carries.
 pub const NAME_LENGTH: usize = 4096;
-/// The largest result written to stdout; a larger tree is cut.
-pub const INLINE_BYTES: usize = 64 * 1024;
 
 numbered!(
     /// A device's handle in the conversation, which `open` answers: `m` and
@@ -478,8 +476,6 @@ pub struct InspectResult {
     pub height: u32,
     pub settled: bool,
     pub elements: Vec<Element>,
-    /// Whether elements were left out to fit the result.
-    pub truncated: bool,
 }
 
 device_input! {

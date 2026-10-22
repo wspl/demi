@@ -26,8 +26,8 @@ use crate::driver::{
     },
 };
 
-/// The text of `operation`'s result `value`, which the output bound already
-/// shortened to fit.
+/// The text of `operation`'s result `value`, whole: the shell that runs the
+/// command cuts what it shows.
 pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<String> {
     let text = match operation {
         BrowserOperation::Open(input) => open(&typed(value)?, input.show == Some(true)),
@@ -705,18 +705,13 @@ fn content_read(result: &ContentReadResult) -> String {
             url,
             title,
             content,
-            truncated: cut,
             ..
-        } => {
-            let mut text = format!(
-                "Title: {}\nURL: {}\n\n{}\n",
-                plain(title),
-                plain(url),
-                body(content)
-            );
-            truncated(&mut text, *cut);
-            text
-        }
+        } => format!(
+            "Title: {}\nURL: {}\n\n{}\n",
+            plain(title),
+            plain(url),
+            body(content)
+        ),
         ContentReadResult::File { path, format, .. } => {
             format!("Content saved: {}\nFormat: {format}\n", plain(path))
         }
@@ -746,9 +741,7 @@ fn content_fetch(result: &ContentFetchResult) -> String {
         }
         pages.push(text);
     }
-    let mut text = pages.join("\n");
-    truncated(&mut text, result.truncated);
-    text
+    pages.join("\n")
 }
 
 fn assets_list(result: &AssetsListResult) -> String {
@@ -1196,7 +1189,7 @@ mod tests {
             (
                 "content.read",
                 tab.clone(),
-                json!({"url": "http://localhost:3000/products", "title": "Products", "format": "text", "content": "Welcome.\nAll items.", "truncated": false}),
+                json!({"url": "http://localhost:3000/products", "title": "Products", "format": "text", "content": "Welcome.\nAll items."}),
                 vec![
                     "Title: Products\nURL: http://localhost:3000/products\n\nWelcome.\nAll items.\n",
                 ],
@@ -1204,7 +1197,7 @@ mod tests {
             (
                 "content.fetch",
                 json!({"url": ["https://example.com/a"]}),
-                json!({"pages": [{"requestedUrl": "https://example.com/a", "url": "https://example.com/a", "title": "Page A", "content": "Page A content."}], "truncated": false}),
+                json!({"pages": [{"requestedUrl": "https://example.com/a", "url": "https://example.com/a", "title": "Page A", "content": "Page A content."}]}),
                 vec!["URL: https://example.com/a\nTitle: Page A\nPage A content.\n"],
             ),
             (
@@ -1280,7 +1273,7 @@ mod tests {
             "content.read",
             json!({"tab": "t1"}),
             json!({"url": "http://localhost:3000/", "title": "Page", "format": "text",
-                "content": "First line\nSecond\u{1b}[2J line", "truncated": false}),
+                "content": "First line\nSecond\u{1b}[2J line"}),
         );
         assert!(
             content.contains("First line\nSecond\\u{1b}[2J line\n"),

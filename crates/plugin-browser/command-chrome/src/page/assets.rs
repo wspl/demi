@@ -22,7 +22,7 @@ use demi_command_sdk::InvocationContext;
 
 use crate::page::protocol::{
     AssetKind, AssetsExportResult, AssetsListResult, BrowserFailure, BrowserOperation,
-    ExportedAsset, INLINE_BYTES, InlineSvg, MAX_NODES,
+    ExportedAsset, InlineSvg, MAX_NODES,
 };
 
 /// The manifest an export writes beside the files: what it saved and what failed.
@@ -71,7 +71,6 @@ pub async fn execute(
                 truncated: false,
             };
             let mut inventory = Inventory { assets: Vec::new() };
-            let mut size = 0;
             for (page, frame) in frames {
                 for resource in frame.resources {
                     let kind = match resource.r#type {
@@ -90,14 +89,10 @@ pub async fn execute(
                         url: resource.url.clone(),
                         mime_type: Some(resource.mime_type.clone()),
                     };
-                    let bytes = serde_json::to_vec(&entry)
-                        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
-                        .len();
-                    if inventory.assets.len() >= MAX_NODES || size + bytes > INLINE_BYTES / 2 {
+                    if inventory.assets.len() >= MAX_NODES {
                         result.truncated = true;
                         continue;
                     }
-                    size += bytes;
                     result.assets.push(entry);
                     inventory.assets.push(Asset {
                         id,
@@ -126,11 +121,10 @@ pub async fn execute(
                         .into_value().map_err(|error| BrowserError::InvalidResult(error.to_string()))
                 }).await?;
                 for html in svgs {
-                    if inventory.assets.len() >= MAX_NODES || size + html.len() > INLINE_BYTES / 2 {
+                    if inventory.assets.len() >= MAX_NODES {
                         result.truncated = true;
                         continue;
                     }
-                    size += html.len();
                     let id = crate::driver::handles::fresh("asset")?;
                     result.inline_svgs.push(InlineSvg {
                         id: id.clone(),

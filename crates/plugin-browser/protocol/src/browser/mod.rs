@@ -40,8 +40,6 @@ pub const MAX_TIMEOUT_MS: u64 = 300_000;
 pub const MAX_NODES: usize = 1_000;
 /// How many a result lists when the input names no limit.
 pub const DEFAULT_NODES: usize = 100;
-/// The largest result written to stdout; a larger one is shortened or fails.
-pub const INLINE_BYTES: usize = 64 * 1024;
 /// The longest text an input carries, such as typed text or an expression,
 /// in Unicode scalar values.
 pub const STDIN_BYTES: usize = 1024 * 1024;

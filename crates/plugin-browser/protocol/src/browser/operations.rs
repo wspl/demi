@@ -1256,7 +1256,6 @@ pub enum ContentReadResult {
         title: String,
         format: ContentFormat,
         content: String,
-        truncated: bool,
     },
     File {
         url: String,
@@ -1299,7 +1298,6 @@ pub struct FetchedPage {
 #[serde(deny_unknown_fields)]
 pub struct ContentFetchResult {
     pub pages: Vec<FetchedPage>,
-    pub truncated: bool,
 }
 
 input! {

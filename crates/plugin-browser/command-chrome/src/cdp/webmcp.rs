@@ -13,7 +13,7 @@ use crate::tabs::{environment::BrowserEnvironment, session::ToolSet, tab::Browse
 use demi_command_sdk::InvocationContext;
 
 use crate::cdp::protocol::{
-    BrowserOperation, Capability, INLINE_BYTES, WebmcpCallResult, WebmcpListResult, WebmcpTool,
+    BrowserOperation, Capability, WebmcpCallResult, WebmcpListResult, WebmcpTool,
 };
 
 /// Report native WebMCP availability in this document, including permissions.
@@ -161,13 +161,6 @@ pub async fn execute(
                 entries: entries.clone(),
                 truncated: false,
             })?;
-            if serde_json::to_vec(&result)
-                .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
-                .len()
-                > INLINE_BYTES
-            {
-                return Err(BrowserError::ResultTooLarge);
-            }
             state.tools = Some(ToolSet { handle, entries });
             Ok(result)
         }

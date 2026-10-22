@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_command_package_mobile_protocol::mobile::{
     Appearance, AppearanceChoice, AppearanceResult, CloseResult, Direction, ElementRef,
-    INLINE_BYTES, InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
+    InspectResult, Key, KeyResult, MobileOperation, OpenResult, Orientation,
     MobilePlatform, RecordAction, RecordResult, Rotation, RotateResult,
     ScreenshotResult, SwipeResult, TapResult, TypeResult, WAIT_SECONDS, WaitResult,
 };
@@ -186,26 +186,17 @@ pub async fn run(
                 let raw = open.device.tree().await?;
                 let screen = *open.device.screen().borrow();
                 let scale = Scale::of(&screen);
-                let mut elements = {
+                let elements = {
                     let mut refs = open.refs.lock().expect("the refs are intact");
                     tree::elements(&raw, input.keyboard == Some(true), &scale, &mut refs)
                 };
-                let mut truncated = false;
-                let result = loop {
-                    let result = InspectResult {
-                        device: open.handle.clone(),
-                        orientation: screen.orientation,
-                        width: scale.width,
-                        height: scale.height,
-                        settled,
-                        elements: elements.clone(),
-                        truncated,
-                    };
-                    let size = serde_json::to_vec(&result).map(|bytes| bytes.len()).unwrap_or(0);
-                    if size <= INLINE_BYTES || !shorten(&mut elements) {
-                        break result;
-                    }
-                    truncated = true;
+                let result = InspectResult {
+                    device: open.handle.clone(),
+                    orientation: screen.orientation,
+                    width: scale.width,
+                    height: scale.height,
+                    settled,
+                    elements,
                 };
                 let text = text::inspect(&result, &open.name);
                 let mut outcome = Outcome::result(result, text)?;
@@ -565,19 +556,6 @@ fn unsettled(call: &Call<'_>) -> String {
         call.command,
         SETTLE_LIMIT.as_secs_f64()
     )
-}
-
-/// Leaves out the last element, the deepest last one first, so the tree
-/// fits; false when nothing is left to leave out.
-fn shorten(elements: &mut Vec<demi_command_package_mobile_protocol::mobile::Element>) -> bool {
-    let Some(last) = elements.last_mut() else {
-        return false;
-    };
-    if shorten(&mut last.children) {
-        return true;
-    }
-    elements.pop();
-    true
 }
 
 /// The element `reference` names in the device's last inspect.

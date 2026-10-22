@@ -1615,8 +1615,7 @@ const DECODE_PICTURE: &str = r#"async (encoded, codec) => {
   return globalThis.decodedPicture.length;
 }"#;
 
-/// How much of a kept picture one answer carries, within a command's 64 KiB
-/// output.
+/// How much of a kept picture one answer carries.
 const PICTURE_SLICE: usize = 48 * 1024;
 
 /// Runs `expression` in `tab` through the agent's CDP command, which, unlike

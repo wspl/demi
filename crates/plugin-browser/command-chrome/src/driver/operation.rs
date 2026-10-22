@@ -81,7 +81,9 @@ pub enum BrowserError {
     NavigationFailed(String),
     #[error("output already exists: {0}")]
     OutputExists(String),
-    #[error("result exceeds the browser output limit")]
+    /// A payload, an image or a counter past what a command can hold, such as
+    /// the clipboard's text or picture.
+    #[error("the content is larger than a command can hold")]
     ResultTooLarge,
     /// A CDP response over the connection's limit, which failed only the
     /// request it answers.
