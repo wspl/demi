@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -115,14 +116,14 @@ onBeforeUnmount(() => clearTimeout(timer))
       <Button size="sm" @click="play">Replay</Button>
     </div>
     <GallerySpecimen variant="a reply arriving" wide>
-      <div class="gallery-frame h-[36rem] overflow-y-auto bg-surface px-6 py-5">
+      <ScrollArea class="gallery-frame h-[36rem] bg-surface" viewport-class="px-6 py-5">
         <StreamedMarkdown
           :key="run"
           class="text-conversation text-fg-body"
           :content="content"
           :streaming="streaming"
         />
-      </div>
+      </ScrollArea>
     </GallerySpecimen>
   </GallerySection>
 </template>

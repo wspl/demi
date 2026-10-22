@@ -4078,9 +4078,9 @@ onBeforeUnmount(() => {
         </div>
         <GallerySpecimen variant="a reply’s code beside its file · the same colors" wide>
           <div class="grid h-[40rem] grid-cols-2 gap-4">
-            <div class="gallery-frame overflow-y-auto bg-surface px-6 py-5">
+            <ScrollArea class="gallery-frame bg-surface" viewport-class="px-6 py-5">
               <StreamedMarkdown class="text-conversation text-fg-body" :content="quotedReply" />
-            </div>
+            </ScrollArea>
             <div class="gallery-frame flex overflow-hidden">
               <FileView
                 class="w-full"

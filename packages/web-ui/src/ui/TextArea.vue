@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useAttrs, watch } from 'vue'
-import { useOverlayScrollbars } from 'overlayscrollbars-vue'
+import { computed, onMounted, ref, useAttrs } from 'vue'
 import { keepComposition } from '@demicodes/utils'
 import { disabledTooltip } from './disabled'
-import { scrollbarsOptions, scrollbarsTarget } from './scrollbars'
+import { useFieldScrollbars } from '../composables/useFieldScrollbars'
 import Tooltip from './Tooltip.vue'
 import { useAutofocus } from './autofocus'
 
@@ -55,13 +54,9 @@ function input(event: Event): void {
 }
 
 // The field scrolls past its rows with the app's scrollbar, in its frame.
-const [initializeScrollbars, scrollbars] = useOverlayScrollbars({ options: scrollbarsOptions('y') })
-// A field's text is no change OverlayScrollbars observes; it measures again for each new value.
-watch(() => props.modelValue, () => scrollbars()?.update(true), { flush: 'post' })
+useFieldScrollbars(fieldRef, frameRef, () => props.modelValue ?? '')
 
 onMounted(() => {
-  if (fieldRef.value && frameRef.value)
-    initializeScrollbars(scrollbarsTarget(fieldRef.value, frameRef.value))
   if (props.focused)
     autofocus(fieldRef.value)
 })

@@ -11,6 +11,7 @@ import { dragCloses, dragVelocity } from './drag-close'
 import { focusByPage } from './focus-by-page'
 import { inSheetKey } from './sheet-context'
 import { stackAbove } from '../overlay/stacking'
+import ScrollArea from './ScrollArea.vue'
 // A context menu opened in the sheet reads its layer from its element and stands on it (`context-menu.ts`).
 import { overlayLayerAttributes } from './context-menu'
 
@@ -68,7 +69,7 @@ defineSlots<{
 provide(inSheetKey, true)
 
 const panel = ref<HTMLElement>()
-const body = ref<HTMLElement>()
+const body = ref<InstanceType<typeof ScrollArea>>()
 
 function close(): void {
   if (props.open)
@@ -133,7 +134,7 @@ function moveDrag(y: number, t: number): boolean {
     if (Math.abs(dy) < SLOP_PX)
       return false
     // The content scrolls a move up, and a pull down while it is not at its top; only then does the sheet take it.
-    const atTop = (body.value?.scrollTop ?? 0) <= 0
+    const atTop = (body.value?.el?.scrollTop ?? 0) <= 0
     if (!drag.fromHandle && !(dy > 0 && atTop)) {
       drag = null
       return false
@@ -266,9 +267,9 @@ const panelStyle = computed(() => ({
         <div data-sheet-handle class="sheet-handle flex h-5 shrink-0 items-center justify-center">
           <span class="h-1 w-9 rounded-full bg-fg-faint opacity-60" />
         </div>
-        <div ref="body" class="sheet-body min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <ScrollArea ref="body" class="sheet-body min-h-0 flex-1">
           <slot />
-        </div>
+        </ScrollArea>
       </div>
     </Transition>
   </Teleport>

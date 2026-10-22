@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { X } from '@lucide/vue'
 import { isMacOS } from '@tiptap/core'
+import { useFieldScrollbars } from '../../composables/useFieldScrollbars'
 import Button from '../../ui/Button.vue'
 import IconButton from '../../ui/IconButton.vue'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -53,10 +54,14 @@ const emit = defineEmits<{
 }>()
 
 const field = ref<HTMLTextAreaElement>()
+const frame = ref<HTMLElement>()
 const shaking = ref(false)
 const empty = computed(() => text.value.trim() === '')
 const chosen = computed<FieldWay>(() => props.way ?? 'comment')
 const blocked = computed(() => !!props.unavailable || props.busy === true)
+
+// It grows to a few lines and scrolls past them with the app's scrollbar.
+useFieldScrollbars(field, frame, () => text.value)
 
 defineExpose({
   /** Takes the focus, the caret at the end of what is typed. */
@@ -128,15 +133,18 @@ function keep(event: Event): void {
     @animationend="shaking = false"
   >
     <div class="flex items-start gap-1">
-      <textarea
-        ref="field"
-        v-model="text"
-        rows="1"
-        :placeholder="t('comments.placeholder')"
-        :aria-label="t('comments.placeholder')"
-        class="max-h-32 min-h-7 min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
-        @keydown="onKeydown"
-      />
+      <div ref="frame" class="relative flex min-w-0 flex-1">
+        <textarea
+          ref="field"
+          v-model="text"
+          data-overlayscrollbars-initialize
+          rows="1"
+          :placeholder="t('comments.placeholder')"
+          :aria-label="t('comments.placeholder')"
+          class="max-h-32 min-h-7 min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-chrome leading-5 text-fg outline-none [field-sizing:content] placeholder:text-fg-subtle"
+          @keydown="onKeydown"
+        />
+      </div>
       <Tooltip :content="shared('common.close')">
         <IconButton
           :icon="X"

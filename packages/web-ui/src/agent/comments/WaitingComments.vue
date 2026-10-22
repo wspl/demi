@@ -4,6 +4,7 @@ import { MessageSquare, X } from '@lucide/vue'
 import type { MessageComment } from '@demicodes/protocol'
 import IconButton from '../../ui/IconButton.vue'
 import Popover from '../../ui/Popover.vue'
+import ScrollArea from '../../ui/ScrollArea.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { ICON_PX } from '../../ui/icon-metrics'
 import { appOverlayStore } from '../../overlay/appOverlay'
@@ -83,7 +84,7 @@ function remove(id: string): void {
     @close="open = false"
   >
     <!-- On a phone the list is a sheet's content, which drops this surface. -->
-    <div role="dialog" :aria-label="t('comments.title')" class="overlay-shell flex max-h-[24rem] w-[340px] max-w-full flex-col gap-3 overflow-y-auto rounded-lg p-3">
+    <ScrollArea role="dialog" :aria-label="t('comments.title')" class="overlay-shell max-h-[24rem] w-[340px] max-w-full rounded-lg" viewport-class="flex flex-col gap-3 p-3">
       <CommentItem
         v-for="comment in comments"
         :key="comment.id"
@@ -93,6 +94,6 @@ function remove(id: string): void {
         @save="emit('edit', comment.id, $event)"
         @delete="remove(comment.id)"
       />
-    </div>
+    </ScrollArea>
   </Popover>
 </template>

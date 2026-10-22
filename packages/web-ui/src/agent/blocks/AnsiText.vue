@@ -3,6 +3,7 @@ import { computed, toRef } from 'vue'
 import { refThrottled } from '@vueuse/core'
 import AnsiToHtml from 'ansi-to-html'
 import { useTerminalTheme } from '@demicodes/web-ui/composables/useTerminalTheme'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 
 const RENDER_THROTTLE = 80
 
@@ -73,8 +74,10 @@ const renderedHtml = computed(() => {
 </script>
 
 <template>
-  <pre
-    class="overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-fg-muted"
-    v-html="renderedHtml"
-  />
+  <ScrollArea axis="x">
+    <pre
+      class="whitespace-pre font-mono text-xs leading-5 text-fg-muted"
+      v-html="renderedHtml"
+    />
+  </ScrollArea>
 </template>

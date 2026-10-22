@@ -45,7 +45,7 @@ const emit = defineEmits<{
       >
         <pre
           v-if="acknowledgements.status === 'ready'"
-          class="select-text overflow-x-auto whitespace-pre-wrap break-words px-4 py-3 font-mono text-[12px] leading-[18px] text-fg-body"
+          class="select-text whitespace-pre-wrap break-words px-4 py-3 font-mono text-[12px] leading-[18px] text-fg-body"
         >{{ acknowledgements.text }}</pre>
         <div
           v-else
