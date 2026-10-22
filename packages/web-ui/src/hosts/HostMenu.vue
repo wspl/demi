@@ -116,9 +116,11 @@ function connect() {
   >
     <template #trigger>
       <Tooltip :content="primaryHost.name" :show-if="nameHidden">
+        <!-- data-host-menu: the product checks choose a Host through it in any language (`browse.md`). -->
         <Button
           variant="ghost"
           class="max-w-full"
+          data-host-menu
           :aria-label="t('menu.where')"
           :loading="pending || detaching"
         >

@@ -263,6 +263,12 @@ The following helpers drive the product itself:
   - `demi.runner.stop()` and `.start()` stop and start that same runner, as a
     device that goes away and comes back.
   - `demi.runner({ fresh: true })` pairs a new one.
+  - `demi.host(name)` has the open conversation run on that device, through the
+    header's Host menu, before its first message. Without it a conversation
+    runs on the Cloud, which the development setup stands in with a scripted
+    machine whose home is a temporary folder: no `ANDROID_*`, no Android
+    virtual devices, no simulators of the person's machine. A conversation that
+    has messages asks before it moves, so the call fails and says so.
   - `demi.runner({ backend })` and `.start({ backend })` have the runner reach
     the backend at another address, such as a local proxy that stands in for a
     CDN's edge.

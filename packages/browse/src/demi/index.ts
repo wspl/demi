@@ -9,6 +9,7 @@ import { frames } from './frames'
 import { gallery } from './gallery'
 import { grant } from './grant'
 import { help } from './help'
+import { host } from './host'
 import { hide, show, type VisibilityOptions } from './hide'
 import { ime } from './ime'
 import { log } from './log'
@@ -47,6 +48,7 @@ export function createDemi(tool: Tool) {
     gallery: (path?: string) => gallery(tool, path),
     message: (text: string, options?: Parameters<typeof message>[2]) => message(tool, text, options),
     turn: (options?: { timeout?: number }) => turn(tool, options),
+    host: (name: string) => host(tool, name),
     runner: runner(tool),
     log: log(tool),
   }

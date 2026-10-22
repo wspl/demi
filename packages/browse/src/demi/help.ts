@@ -41,6 +41,7 @@ what it returns, then the page's state; a call ends after ten minutes unless
     demi.gallery(path)                   open a gallery page, such as '/session?view=blocks'
     demi.message(text, { files, wait, timeout })   send in the open conversation, with files from this machine, and wait for its turn, not for subagents; fails at once, with the page's words, when it is not delivered or the turn fails, and before writing when the draft holds files
     demi.turn({ timeout })               wait until the open conversation no longer runs, from a message on its way to the subagents and background jobs it started
+    demi.host(name)                      have the open conversation run on the device name, such as the slot's runner, before its first message; the Cloud's environment is the development setup's, not a device's
     demi.runner({ fresh, backend }) .stop() .start({ backend })   the slot's runner, paired through Add Device; backend: another address to reach the backend at, such as a proxy
     demi.log.console() .network() .sockets() ({ all, modules }), demi.log.mark(name)
     demi.help()                          this text
