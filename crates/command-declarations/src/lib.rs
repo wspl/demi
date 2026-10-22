@@ -81,31 +81,9 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use serde_with::rust::unwrap_or_skip;
 
-/// The deepest a command tree nests.
-pub const MAX_DEPTH: usize = 32;
-
-/// The most bytes a command's body read from its standard input may hold.
+/// The most bytes a command's body read from its standard input may hold: the
+/// body is held whole in memory, and an endless producer would fill it.
 pub const MAX_STDIN_BODY: usize = 1024 * 1024;
-
-/// The most characters a group's index entry holds.
-///
-/// Registration refuses a longer one, and a top-level group without one, since
-/// a group the index does not name is one the model never finds.
-///
-/// An entry is the most important text a capability has: a model that does not
-/// see from it that the capability fits the task never asks for its help. An
-/// entry says:
-///
-/// - in three sentences or fewer, what the group does, in the third person and
-///   in the words of the task, not of the implementation;
-/// - when to use it, as the situations a user would describe;
-/// - when not to, where a common alternative is better.
-///
-/// It gives reasons and situations, never capital letters or "you must": a
-/// newer model follows emphasis too eagerly and reaches for the capability
-/// where it does not fit. A plugin never writes free text into the system
-/// prompt, nor orders its entries: the renderer does.
-pub const MAX_INDEX_ENTRY: usize = 600;
 
 /// The keyword beside a field's `pattern` that says what the pattern stands
 /// for, with an example, as a usage error names it: `"foo" is not a ref,
@@ -147,6 +125,20 @@ pub struct Group<B = Binding> {
     /// What the group is for and when to use it, as the model's capability
     /// index shows it: every top-level group has one, which the command
     /// set checks.
+    ///
+    /// An entry is the most important text a capability has: a model that does not
+    /// see from it that the capability fits the task never asks for its help. An
+    /// entry says:
+    ///
+    /// - in three sentences or fewer, what the group does, in the third person and
+    ///   in the words of the task, not of the implementation;
+    /// - when to use it, as the situations a user would describe;
+    /// - when not to, where a common alternative is better.
+    ///
+    /// It gives reasons and situations, never capital letters or "you must": a
+    /// newer model follows emphasis too eagerly and reaches for the capability
+    /// where it does not fit. A plugin never writes free text into the system
+    /// prompt, nor orders its entries: the renderer does.
     #[serde(
         default,
         rename = "indexEntry",
@@ -442,13 +434,12 @@ impl<B> Node<B> {
         }
     }
 
-    /// Checks the tree's rules: names, at most [`MAX_DEPTH`] levels, groups
-    /// with distinctly named subcommands and an index entry of at most
-    /// [`MAX_INDEX_ENTRY`] characters, each leaf's input declaration, and
+    /// Checks the tree's rules: names, groups with distinctly named
+    /// subcommands, each leaf's input declaration, and
     /// the permission categories: each declared once, and a leaf's
     /// `permission` naming one its groups declare, on an `rpc` leaf only.
     pub fn validate(&self) -> Result<(), DeclarationError> {
-        self.validate_at(0, &mut Vec::new())?;
+        self.validate_at(&mut Vec::new())?;
         let mut ids = HashSet::new();
         for category in self.categories() {
             if !ids.insert(category.id.as_str()) {
@@ -463,14 +454,7 @@ impl<B> Node<B> {
 
     /// `declared` holds the ids of the categories the groups above this
     /// node declare.
-    fn validate_at<'a>(
-        &'a self,
-        depth: usize,
-        declared: &mut Vec<&'a str>,
-    ) -> Result<(), DeclarationError> {
-        if depth > MAX_DEPTH {
-            return Err(invalid(format!("command tree exceeds {MAX_DEPTH} levels")));
-        }
+    fn validate_at<'a>(&'a self, declared: &mut Vec<&'a str>) -> Result<(), DeclarationError> {
         if !is_command_name(self.name()) {
             return Err(invalid(format!("invalid command name: {}", self.name())));
         }
@@ -481,15 +465,6 @@ impl<B> Node<B> {
                         "command group {} has no subcommands",
                         group.name
                     )));
-                }
-                if let Some(entry) = &group.index_entry {
-                    let length = entry.chars().count();
-                    if length > MAX_INDEX_ENTRY {
-                        return Err(invalid(format!(
-                            "the index entry of command group {} has {length} characters; at most {MAX_INDEX_ENTRY} are allowed",
-                            group.name
-                        )));
-                    }
                 }
                 for category in &group.permissions {
                     category.validate(&group.name)?;
@@ -503,7 +478,7 @@ impl<B> Node<B> {
                         checked = Err(invalid(format!("duplicate command name: {}", child.name())));
                         break;
                     }
-                    checked = child.validate_at(depth + 1, declared);
+                    checked = child.validate_at(declared);
                     if checked.is_err() {
                         break;
                     }

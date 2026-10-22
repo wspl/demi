@@ -41,7 +41,8 @@ use crate::tabs::{tab::BrowserTab, viewport::pixels};
 
 /// How long a capture that failed waits before it starts again.
 const RETRY: Duration = Duration::from_secs(1);
-/// How many captures in a row may fail before the recording does.
+/// How many captures in a row may fail before the recording does: a source
+/// that can never capture must end its recording, not retry without end.
 const FAILURES: u32 = 3;
 /// A capture that ran this long was well, whatever failed it after.
 const WELL: Duration = Duration::from_secs(10);

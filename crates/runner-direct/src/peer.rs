@@ -64,7 +64,8 @@ const LIVE_RTO: (std::time::Duration, std::time::Duration, std::time::Duration) 
 );
 /// The most bytes of one datagram; a data channel's are well under it.
 const DATAGRAM_BYTES: usize = 2048;
-/// Datagrams received that wait for the peer's loop.
+/// Datagrams received that wait for the peer's loop: a peer at full speed must
+/// not hold them in memory without end.
 const DATAGRAMS: usize = 1024;
 /// The label of a channel that carries a forwarded connection.
 const FORWARD_LABEL: &str = "forward";

@@ -2443,33 +2443,6 @@ async fn a_summary_read_while_the_conversations_database_migrates_lists_its_fact
 }
 
 #[tokio::test]
-async fn a_request_over_the_rate_limit_fails_without_reaching_the_vendor() {
-    let vendor = MockVendor::start().await;
-    let mut harness = Harness::new();
-    harness.conversations.requests_per_minute = 1;
-    let (backend, master) = harness.start_set_up().await;
-    let provider = anthropic(&backend, &master, &vendor).await;
-    create(&backend, &master, FIRST).await;
-    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
-
-    vendor.respond(answer(&["one"], 1, 1));
-    socket.chat("m1", "first").await;
-    let turn = socket.chat("m2", "second").await;
-
-    let limited = turn.iter().any(|frame| matches!(frame, ServerFrame::Error { code, .. } if code.as_deref() == Some("rate_limited")));
-    assert!(limited, "{turn:?}");
-    assert_eq!(vendor.requests().len(), 1);
-    assert_eq!(usage(&backend, &master).await.totals[0].requests, 1);
-    assert_eq!(
-        summary(&backend, &master, FIRST).await.status,
-        ConversationStatus::Error
-    );
-    backend.close().await;
-}
-
-#[tokio::test]
 async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_start_serves_it() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();

@@ -518,6 +518,7 @@ pub async fn serve(
 /// would make a second one, which the runner refuses. The channel ends with
 /// the page's side, after a refusal of a frame the protocol refuses.
 fn read(mut reader: Reader) -> (mpsc::Receiver<Result<FromPage, String>>, AbortOnDropHandle<()>) {
+    // Bounded: a loop that stops reading holds back the page, not memory.
     let (messages, inbound) = mpsc::channel(64);
     let task = tokio::spawn(async move {
         loop {

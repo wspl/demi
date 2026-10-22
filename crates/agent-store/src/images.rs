@@ -24,7 +24,8 @@ const MAX_BYTES: usize = 3_750_000;
 /// The most bytes an image enters with as it is: every request replays it,
 /// so one heavier enters as a JPEG when that is smaller.
 const LIGHT_BYTES: usize = 500_000;
-/// The most memory decoding one image may take.
+/// The most memory decoding one image may take: a small file can declare a
+/// huge picture, and decoding it would otherwise take memory without end.
 const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
 const JPEG_QUALITY: u8 = 90;
 /// The quality of an image that is heavier than [`LIGHT_BYTES`].

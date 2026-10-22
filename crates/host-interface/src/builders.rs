@@ -39,9 +39,7 @@ impl GroupBuilder {
     }
 
     /// The group's entry in the model's capability index: what it does,
-    /// when to use it and when not, in at most
-    /// [`MAX_INDEX_ENTRY`](demi_command_declarations::MAX_INDEX_ENTRY)
-    /// characters, which registration checks.
+    /// when to use it and when not.
     pub fn index_entry(mut self, entry: impl Into<String>) -> Self {
         self.index_entry = Some(entry.into());
         self

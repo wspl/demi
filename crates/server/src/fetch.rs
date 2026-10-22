@@ -20,10 +20,13 @@ const REPOSITORY: &str = "wspl/demi";
 /// The file of the assets' SHA-256 sums.
 const SUMS: &str = "SHA256SUMS";
 
-/// The largest asset a release has, its image archive, is far below this.
+/// The largest asset a release has, its image archive, is far below this; a
+/// download is written to the disk, which a wrong or hostile source would
+/// otherwise fill.
 const LARGEST: u64 = 4 << 30;
 
-/// How many redirects a download of a release's asset follows.
+/// How many redirects a download of a release's asset follows: two servers can
+/// redirect to each other without end.
 const REDIRECTS: usize = 10;
 
 /// Where releases come from.

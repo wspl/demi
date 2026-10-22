@@ -81,16 +81,18 @@ pub use invocation::{
 pub use line_counts::line_counts;
 pub use media::{MAX_MEDIUM_BYTES, MediumFacts, is_binary, sniff_media_type};
 pub use messages::{MessageAnswer, PluginMessage};
-pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
+pub use numbers::{NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
     ServiceInfo, TARGETS, VERSION, canonical_digest, digest,
     host_target, is_digest, is_target, target, target_artifact, target_artifacts,
 };
 
-/// The most bytes of invocation metadata.
+/// The most bytes of invocation metadata: a reader allocates a header's length
+/// before it reads it, so the protocol bounds it.
 pub const MAX_METADATA_BYTES: usize = 256 * 1024;
-/// The most bytes of one response record's payload or one input chunk.
+/// The most bytes of one response record's payload or one input chunk: the
+/// protocol's framing, which every reader allocates a record's length for.
 pub const MAX_RECORD_BYTES: usize = 64 * 1024;
 pub const INFO_PATH: &str = "/v1/info";
 pub const INVOKE_PATH: &str = "/v1/invoke";

@@ -81,7 +81,9 @@ pub const BOOT_RECORD: &str = "/run/demi-boot.json";
 /// The CFS period the CPU budget is a quota of.
 const CPU_PERIOD: u64 = 100_000;
 
-/// The sandbox's process limit, host PIDs and ordinary-user processes alike.
+/// The sandbox's process limit, host PIDs and ordinary-user processes alike: a
+/// runaway fork loop in one sandbox would otherwise exhaust the host's process
+/// table, which every Cloud shares.
 const PROCESS_LIMIT: u64 = 1024;
 
 /// What one boot's configuration varies by.

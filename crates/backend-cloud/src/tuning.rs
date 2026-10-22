@@ -17,7 +17,8 @@ pub struct CloudTuning {
     /// reconnect during a recovery.
     pub runner_connection: Duration,
     /// How many runtime losses within `crash_loop_window` stop the
-    /// Cloud's automatic boots.
+    /// Cloud's automatic boots: a Cloud that dies at every boot would
+    /// otherwise boot without end.
     pub crash_loop_deaths: u32,
     pub crash_loop_window: Duration,
     /// How long a Cloud's runner has to flush its filesystems before a save.
@@ -26,7 +27,8 @@ pub struct CloudTuning {
     /// let go.
     pub reset_hold: Duration,
     /// How many Clouds, across every user, may be booting, running, saving
-    /// or resetting at once.
+    /// or resetting at once: each holds the machine's memory, which is
+    /// finite.
     pub capacity: usize,
 }
 

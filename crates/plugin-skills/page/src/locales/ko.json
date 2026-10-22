@@ -53,7 +53,6 @@
     "fetch": {
       "repository_too_large": "리포지토리가 크기 한도({limit})를 초과합니다.",
       "no_commit": "리포지토리에 커밋이 없습니다.",
-      "too_many_skills": "리포지토리의 스킬이 {limit}개를 초과합니다.",
       "files_too_large": "스킬 파일이 크기 한도({limit})를 초과합니다.",
       "no_skill": "리포지토리에 스킬이 없습니다."
     },

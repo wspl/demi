@@ -45,9 +45,6 @@ const FAMILIES: [(&str, &str, Option<WireApi>); 5] = [
 /// xAI's API, which models.dev does not name.
 const XAI_BASE_URL: &str = "https://api.x.ai/v1";
 
-/// The most matches a model search answers.
-const SEARCH_LIMIT: usize = 20;
-
 /// Vendors whose endpoint needs an authentication scheme of its own, which
 /// an API key cannot satisfy.
 const NOT_OFFERED: [&str; 1] = ["github-copilot"];
@@ -115,7 +112,7 @@ impl VendorCatalog {
     ) -> Result<Vec<ModelMatch>, ModelsDevError> {
         let snapshot = self.models_dev.kept().await?;
         Ok(snapshot
-            .search(query, vendor_id, SEARCH_LIMIT)
+            .search(query, vendor_id)
             .into_iter()
             .map(filled)
             .collect())

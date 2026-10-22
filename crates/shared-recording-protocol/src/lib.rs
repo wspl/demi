@@ -23,17 +23,15 @@ extern crate demi_shared_types;
 
 use demi_shared_types::MAX_SAFE_INTEGER;
 
-/// The longest a recording runs, whether or not it was given a duration.
+/// The longest a recording runs, whether or not it was given a duration: a
+/// still screen draws almost nothing, so no size would ever end it.
 pub const MAX_DURATION: Duration = Duration::from_secs(120);
-/// The most bytes a recording's files take before it stops itself.
+/// The most bytes a recording's files take before it stops itself: they are
+/// written to the Host's disk.
 pub const MAX_BYTES: u64 = 200 * 1024 * 1024;
 /// How many recordings a conversation keeps on a Host; one more removes the
-/// oldest.
+/// oldest, so that the Host's disk does not fill with recordings nobody reads.
 pub const KEPT: usize = 5;
-/// The most frames one `export` writes as images.
-pub const MAX_EXPORT_FRAMES: usize = 60;
-/// The most bytes of text one `frames` prints.
-pub const MAX_LISTED_BYTES: usize = 64 * 1024;
 
 numbered!(
     /// A recording's identity, which `start` answers: `r` and a number.

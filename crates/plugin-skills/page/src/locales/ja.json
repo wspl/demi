@@ -53,7 +53,6 @@
     "fetch": {
       "repository_too_large": "リポジトリが {limit} を超えています。",
       "no_commit": "リポジトリにコミットがありません。",
-      "too_many_skills": "リポジトリのスキルが {limit} 個を超えています。",
       "files_too_large": "スキルのファイルが {limit} を超えています。",
       "no_skill": "リポジトリにスキルがありません。"
     },

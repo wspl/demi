@@ -23,9 +23,6 @@ use serde_with::rust::unwrap_or_skip;
 use super::ProtocolError;
 use super::invocation::conversation_name;
 
-/// The most numbers one request reserves.
-pub const MAX_NUMBERS: u32 = 16;
-
 /// A sequence of the conversation that a native service draws numbers from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,7 +51,7 @@ pub struct NumbersRequest {
     pub conversation: String,
     #[garde(skip)]
     pub sequence: ServiceSequence,
-    #[garde(range(min = 1, max = MAX_NUMBERS))]
+    #[garde(range(min = 1))]
     pub count: u32,
 }
 

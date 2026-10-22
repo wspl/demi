@@ -22,8 +22,6 @@ use crate::mcp::{Bearer, Mcp};
 
 /// How many pages a search lists when `--count` names none.
 pub const DEFAULT_COUNT: u32 = 8;
-/// The most pages a search lists.
-pub const MAX_COUNT: u32 = 25;
 /// How long Exa has to answer a whole search.
 pub(crate) const DEADLINE: Duration = Duration::from_secs(30);
 /// How many of the lines Exa chose a page shows.
@@ -39,11 +37,12 @@ const NOTHING: &str = "No pages found. Try other words or fewer filters.";
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SearchArgs {
-    /// One to four queries, run at once; quote a query of several words
+    /// One to four queries, run at once; quote a query of several words.
+    /// Each is a request to Exa, whose anonymous use has a shared rate limit.
     #[schemars(length(min = 1, max = 4))]
     pub query: Vec<String>,
     /// How many pages to list in all
-    #[schemars(range(min = 1, max = MAX_COUNT))]
+    #[schemars(range(min = 1))]
     pub count: Option<u32>,
     /// Keep only pages of this domain and its subdomains; repeat for several
     pub domain: Option<Vec<String>>,

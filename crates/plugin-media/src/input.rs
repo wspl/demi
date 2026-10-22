@@ -10,10 +10,11 @@ use image::ImageFormat;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-/// The largest image a call sends.
+/// The largest image a call sends: it is held whole in memory and sent to a
+/// vendor, whose APIs refuse an image over a few tens of megabytes.
 pub const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 
-/// The largest prompt read from stdin.
+/// The largest prompt read from stdin, which is held whole in memory.
 const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
 /// The invocation's arguments, as the leaf declared them.

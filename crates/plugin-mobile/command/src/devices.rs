@@ -2,8 +2,7 @@
 //! which conversation has each simulator open and under which handle, and when
 //! each ends.
 //!
-//! A conversation has at most [`MAX_DEVICES`] devices, and no device is in two
-//! conversations.
+//! No device is in two conversations.
 //!
 //! - A device Demi booted shuts down when its conversation closes it or is
 //!   released; a device the user booted is only let go. Nothing closes a
@@ -42,7 +41,7 @@ use tokio::{
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use demi_command_package_mobile_protocol::mobile::{
-    DeviceId, DevicesChange, ListResult, MAX_DEVICES, MobileMessage, MobilePlatform, PowerState,
+    DeviceId, DevicesChange, ListResult, MobileMessage, MobilePlatform, PowerState,
     Simulator, Unavailable,
 };
 use demi_command_protocol::ServiceSequence;
@@ -835,14 +834,6 @@ impl Devices {
                 }
                 return Err(MobileError::Busy(simulator.name));
             }
-        }
-        let count = {
-            let state = self.state.lock().expect("the registry is intact");
-            state.open.values().filter(|open| open.conversation == conversation).count()
-                + state.resuming.values().filter(|resuming| resuming.entry.conversation == conversation).count()
-        };
-        if count >= MAX_DEVICES {
-            return Err(MobileError::TooMany);
         }
         // Demi booted it now, or the program before this one did.
         let booting = simulator.state != PowerState::Booted;

@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 use crate::search::{Failure, Kind, Query, SearchError, SearchedPage, page, remaining, status_failure};
 
 const ENDPOINT: &str = "https://api.exa.ai/search";
-/// The most bytes of an answer: a search's pages and their lines.
+/// The most bytes of an answer: a search's pages and their lines, held whole in
+/// memory, which a server may send without end.
 const LIMIT: u64 = 4 * 1024 * 1024;
 
 #[derive(Deserialize)]

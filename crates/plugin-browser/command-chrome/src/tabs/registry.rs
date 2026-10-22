@@ -67,7 +67,8 @@ const EVENTS: usize = 256;
 const REQUESTS: usize = 64;
 /// Targets destroyed lately. Each kind of target event arrives on a buffer
 /// of its own, so a page's creation can reach the owner after its
-/// destruction; remembering the destruction keeps that page out.
+/// destruction; remembering the destruction keeps that page out. The memory is
+/// bounded, since every closed tab would add to it.
 const DESTROYED: usize = 1024;
 
 /// A tab as the registry lists it.

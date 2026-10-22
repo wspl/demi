@@ -53,8 +53,11 @@ pub fn resume_text(resume: &demi_shared_types::ResumeBlock) -> String {
     }
 }
 
-/// The scalar values a replayed text keeps from its start, and from its end,
-/// when it is longer than both together.
+/// The scalar values a replayed text other than the user's own keeps from its
+/// start, and from its end, when it is longer than both together: every request
+/// replays the whole
+/// history, so a long text would take the model's finite window and the
+/// vendor's body limit again each time.
 const HEAD_CHARS: usize = 8_000;
 const TAIL_CHARS: usize = 8_000;
 
@@ -318,12 +321,12 @@ impl<'a> RequestView<'a> {
         self.tools
     }
 
-    /// A message's part as the model receives it: a long text bounded, a
+    /// A message's part as the model receives it: the user's text whole, a
     /// reference as its text, an attachment record as its tag, and a medium
     /// with its bytes or as its text.
     fn user_part(&self, part: &UserContentBlock) -> UserPart {
         match part {
-            UserContentBlock::Text { text } => bounded(text),
+            UserContentBlock::Text { text } => UserPart::Text(text.clone()),
             UserContentBlock::Reference { reference } => UserPart::Text(reference.clone()),
             UserContentBlock::Attachment(attachment) => UserPart::Text(attachment_tag(attachment)),
             UserContentBlock::Image { source } => {

@@ -6,7 +6,9 @@ use std::sync::Mutex;
 use demi_web_api_protocol::text::EmailAddress;
 use tokio::time::{Duration, Instant};
 
-/// Failures, each within `WINDOW` of the one before, that lock an address.
+/// Failures, each within `WINDOW` of the one before, that lock an address:
+/// anyone on the network can try passwords, and without a lock a password
+/// can be guessed without end.
 const LOCK_AFTER: u32 = 5;
 /// How long a lock holds, and how long an address's failures are remembered.
 const WINDOW: Duration = Duration::from_secs(60);

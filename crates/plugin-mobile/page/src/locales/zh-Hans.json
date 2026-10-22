@@ -40,7 +40,6 @@
     "device_not_found": "这台设备上已没有该模拟器。",
     "ambiguous_device": "有多个模拟器使用该名称。",
     "device_busy": "另一个对话正在使用该模拟器。请先在那里关闭它。",
-    "too_many_devices": "此对话已在这台设备上打开 4 个模拟器。请先关闭一个。",
     "stale_ref": "模拟器执行操作前屏幕已发生变化。",
     "timeout": "模拟器未及时响应。",
     "unavailable": "这台设备不能使用模拟器。",

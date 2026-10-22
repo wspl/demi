@@ -141,7 +141,7 @@ pub enum UserCallKind {
 }
 
 /// A one-shot user call: the operation, its arguments, and the most its
-/// JSON answer may be.
+/// JSON answer may be, so that an answer cannot take memory without end.
 #[derive(Debug, Clone)]
 pub struct ServiceCall {
     pub binding: ServiceBinding,

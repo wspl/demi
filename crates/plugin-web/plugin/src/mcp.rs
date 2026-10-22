@@ -41,7 +41,8 @@ pub(crate) const ENDPOINT: &str = "https://mcp.exa.ai/mcp";
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SEARCH_TOOL: &str = "web_search_exa";
 const ADVANCED_TOOL: &str = "web_search_advanced_exa";
-/// The most bytes of an answer.
+/// The most bytes of an answer: it is held whole in memory, and a server may
+/// send without end.
 const LIMIT: u64 = 4 * 1024 * 1024;
 
 /// The sessions of one user's searches: one anonymous, one for the token

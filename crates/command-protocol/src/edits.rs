@@ -22,15 +22,20 @@ use serde_with::rust::unwrap_or_skip;
 use super::invocation::without_nul;
 use super::media::is_binary;
 
-/// The most bytes of one file a job's edit record copies.
+/// The most bytes of one file a job's edit record copies: each copy is held in
+/// memory and kept on disk, and a file is shown as text only up to it.
 pub const EDIT_FILE_BYTES: usize = 8 * 1024 * 1024;
-/// The most bytes a job's edit record copies in total.
+/// The most bytes a job's edit record copies in total: the copies live in the
+/// job's directory, which a job that edits without end would fill.
 pub const EDIT_JOB_BYTES: u64 = 64 * 1024 * 1024;
-/// The most files a job's edit record lists.
+/// The most files a job's edit record lists: the record is read whole and sent
+/// in one message.
 pub const EDIT_JOB_FILES: usize = 500;
-/// The most edit segments a job's edit record holds.
+/// The most edit segments a job's edit record holds, bounded for the same
+/// reason.
 pub const EDIT_JOB_SEGMENTS: u64 = 1000;
-/// The most renames and removals a job's edit record lists.
+/// The most renames and removals a job's edit record lists, bounded for the
+/// same reason.
 pub const EDIT_JOB_PATH_CHANGES: usize = 500;
 
 /// Where an invoked command records its edits: the job's edit directory and

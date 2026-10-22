@@ -5,7 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The largest medium a command returns.
+/// The largest medium a command returns: a medium is held whole in memory, and
+/// a model's vendor accepts no more than a few megabytes of one.
 pub const MAX_MEDIUM_BYTES: u64 = 16 * 1024 * 1024;
 
 /// The media type `bytes` begin with, from their magic numbers, or `None` for

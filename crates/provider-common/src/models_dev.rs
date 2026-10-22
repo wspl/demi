@@ -254,8 +254,7 @@ impl ModelsDevSnapshot {
 
     /// The models an agent can work with ([`ModelsDevModel::agentic`]), whose
     /// name or id holds each word of `query`, in any case and order, newest
-    /// release first, at most `limit`
-    /// (`crates/backend-providers/src/llm/vendors.rs`).
+    /// release first (`crates/backend-providers/src/llm/vendors.rs`).
     ///
     /// A model several vendors list is one match: the listing of `vendor` when
     /// it lists the model, else the publisher's ([`Listing::publisher`]).
@@ -264,7 +263,7 @@ impl ModelsDevSnapshot {
     /// vendor's prefix: the part after the maker in `canonical_model_id`, where
     /// the document gives one, else the last part of the listing's own id, both
     /// without regard to case. A query without a word matches nothing.
-    pub fn search(&self, query: &str, vendor: Option<&str>, limit: usize) -> Vec<ModelsDevMatch> {
+    pub fn search(&self, query: &str, vendor: Option<&str>) -> Vec<ModelsDevMatch> {
         let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
         if words.is_empty() {
             return Vec::new();
@@ -299,7 +298,7 @@ impl ModelsDevSnapshot {
                 .as_deref()
                 .cmp(&left.model.release_date.as_deref())
         });
-        found.into_iter().take(limit).map(Listing::found).collect()
+        found.into_iter().map(Listing::found).collect()
     }
 
     /// The model `id` as vendor `vendor_id` lists it.

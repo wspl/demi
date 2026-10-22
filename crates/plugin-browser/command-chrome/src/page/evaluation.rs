@@ -26,6 +26,8 @@ use crate::driver::operation::{BrowserError, Result};
 use crate::page::element::{OBJECT_GROUP, TargetElement};
 use crate::tabs::tab::BrowserTab;
 
+/// The most bytes of an evaluation's result: it is held whole in memory, and
+/// a page can build a value of any size.
 const MAX_EVAL_BYTES: usize = 1024 * 1024;
 
 /// What the copy in `read-only.js` throws for a value JSON cannot hold, before

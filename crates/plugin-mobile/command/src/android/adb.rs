@@ -16,7 +16,8 @@ use tokio::{
 
 use crate::driver::{DriverError, Result};
 
-/// The largest piece of a file the sync service takes at once.
+/// The largest piece of a file the sync service takes at once: adb's own
+/// protocol sets it.
 const SYNC_CHUNK: usize = 64 * 1024;
 
 /// The adb server at its port on this computer.

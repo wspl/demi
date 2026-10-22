@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_protocol::{
-    ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
+    ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor,
     ServiceSequence, Viewable, conversation_name, digest, without_nul,
 };
 use demi_shared_types::{BlobRef, HostLogLine};
@@ -955,7 +955,7 @@ pub enum Outbound {
         #[garde(custom(conversation_name))]
         conversation_id: String,
         sequence: ServiceSequence,
-        #[garde(range(min = 1, max = MAX_NUMBERS))]
+        #[garde(range(min = 1))]
         count: u32,
     },
     /// A message of the service of `package` to its plugin about the

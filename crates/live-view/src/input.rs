@@ -20,7 +20,8 @@ use demi_live_view_protocol::{PointerAction, PointerKind, ViewerInput};
 
 /// Input the viewer sent and the task has not delivered yet. Past this the
 /// source is not taking input: what is queued is discarded and held input is
-/// released, rather than delivered all at once later.
+/// released, rather than delivered all at once later, and a source that has
+/// stopped taking input cannot grow memory.
 const QUEUE: usize = 256;
 
 pub enum Item<M, T> {

@@ -49,7 +49,8 @@ use crate::live::{
 /// Requests waiting for the hub; a full queue holds back their viewers.
 const REQUESTS: usize = 32;
 /// Notices a viewer has not written to its page yet; past them the hub
-/// drops more, having logged them.
+/// drops more, having logged them, so that a viewer that stopped reading does
+/// not grow memory.
 const NOTICES: usize = 4;
 
 /// A viewer's panel in CSS pixels, and its screen.

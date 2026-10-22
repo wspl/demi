@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{Digest, Error, InstallLock, coding::ZSTD_MAGIC};
 
 /// The most bytes an installed entry may have: the digest of a larger file
-/// stops early.
+/// stops early, and an entry is written to the disk.
 const ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// An archive to install: the size and SHA-256 it must have, and its entry,

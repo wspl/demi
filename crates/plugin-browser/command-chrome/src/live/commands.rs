@@ -18,7 +18,7 @@ pub(crate) enum Command {
 }
 
 /// Commands a viewer sent that have not run yet; a full queue holds back
-/// the viewer's messages.
+/// the viewer's messages, so that a slow tab does not grow memory.
 const COMMANDS: usize = 8;
 
 /// Runs a viewer's commands in order, beside its input and pictures, until

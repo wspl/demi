@@ -21,7 +21,8 @@ use image::{DynamicImage, GenericImageView as _, ImageFormat};
 
 use crate::commands::{EditArgs, Format, GenerateArgs, ModelsArgs};
 
-/// The most memory decoding the image made may take.
+/// The most memory decoding the image made may take: a small file can declare a
+/// huge picture, and decoding it would otherwise take memory without end.
 const MAX_DECODE_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Runs the leaf `invocation` names.

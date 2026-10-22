@@ -157,7 +157,8 @@ mod service {
         Ok(())
     }
 
-    /// Deaths waiting for the server's fan-out, which takes them at once.
+    /// Deaths waiting for the server's fan-out, which takes them at once; the
+    /// queue is bounded so that memory is.
     const DEATHS: usize = 64;
 
     pub async fn run(config: Config) -> Result<(), Failure> {

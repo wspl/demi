@@ -42,9 +42,6 @@ use serde_json::{Map, Value};
 use crate::panel::{KIND, Work};
 use crate::reason::PanelReason;
 
-/// The most characters of a URL a method takes.
-pub const URL_MAX: usize = 4096;
-
 /// The conversation state: the conversation browser's tabs, none while it
 /// does not run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -75,7 +72,7 @@ pub struct TabBound {
 #[serde(deny_unknown_fields)]
 pub struct NavigateTab {
     pub tab: String,
-    #[schemars(length(min = 1, max = URL_MAX))]
+    #[schemars(length(min = 1))]
     pub url: String,
 }
 

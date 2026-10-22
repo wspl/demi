@@ -17,13 +17,12 @@ use gix::progress::{Count, Id, MessageLevel, NestedProgress, Progress, Step, Ste
 
 use crate::skill::{self, Parsed, SkipProblem};
 
-/// The most bytes a fetch receives.
+/// The most bytes a fetch receives: they are held in memory while they are
+/// unpacked, and a repository has no size of its own.
 const FETCH_MAX_BYTES: usize = 64 * 1024 * 1024;
 
-/// The most skills one source has.
-pub(crate) const SOURCE_MAX_SKILLS: usize = 100;
-
-/// The most bytes the files of one source's skills hold together.
+/// The most bytes the files of one source's skills hold together: they are held
+/// in memory and written to the Host's disk.
 const FILES_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// What gix-pack names the progress of the pack bytes it reads.
@@ -81,8 +80,6 @@ pub enum FetchProblem {
     /// The repository is larger than `limit_bytes`.
     RepositoryTooLarge { limit_bytes: u32 },
     NoCommit,
-    /// It has more than `limit` skills.
-    TooManySkills { limit: u32 },
     /// Its skills' files hold more than `limit_bytes`.
     FilesTooLarge { limit_bytes: u32 },
     NoSkill,
@@ -258,14 +255,6 @@ fn skills_of(
                 continue;
             }
         };
-        if skills.len() == SOURCE_MAX_SKILLS {
-            return Err(FetchError::problem(
-                FetchProblem::TooManySkills {
-                    limit: SOURCE_MAX_SKILLS as u32,
-                },
-                "the repository has more than 100 skills",
-            ));
-        }
         let mut files = Vec::new();
         for entry in entries.iter().filter(|entry| entry.mode.is_blob()) {
             let path = path_of(entry);

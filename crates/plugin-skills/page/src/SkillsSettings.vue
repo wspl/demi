@@ -41,8 +41,6 @@ function fetchFailure(failure: Failure): string {
     case 'repository_too_large':
     case 'files_too_large':
       return t(`problems.fetch.${problem.code}`, { limit: formatBytes(problem.limitBytes) })
-    case 'too_many_skills':
-      return t('problems.fetch.too_many_skills', { limit: problem.limit })
     case 'no_commit':
     case 'no_skill':
       return t(`problems.fetch.${problem.code}`)

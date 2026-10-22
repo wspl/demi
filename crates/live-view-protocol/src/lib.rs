@@ -50,7 +50,8 @@ pub const VIDEO_CODEC: &str = "avc1.640033";
 /// ("Failed to initialize OpenH264 encoder", measured with the pinned Chrome
 /// between 288 and 299 Mbps), so a budget never asks for more.
 pub const VIDEO_MAX_BITRATE: u32 = 240_000_000;
-/// The largest frame after its length: a source's largest message.
+/// The largest frame after its length: a reader allocates a frame's length
+/// before it reads it, so the protocol bounds it.
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// How often the Host speaks at least, so a still picture is told from a stall.
 pub const HEARTBEAT_MS: u64 = 250;
@@ -348,7 +349,7 @@ pub struct TouchContact {
     pub y: f64,
 }
 
-/// The most fingers a touch carries.
+/// The most fingers a touch carries: a touchscreen reports ten at most.
 pub const MAX_CONTACTS: usize = 10;
 
 /// The viewer's input, in the picture's coordinates: the CSS pixels of a

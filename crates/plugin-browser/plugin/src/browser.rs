@@ -44,8 +44,8 @@ operations! {
     "reload" => ReloadInput, NavigationResult, "Reload a tab.";
     "history" => HistoryInput, HistoryResult, "Read the tab’s navigation history.";
     "close" => CloseInput, CloseResult, "Close a tab. Closing the last tab ends this browser; the next open starts fresh.";
-    "inspect" => InspectInput, InspectResult, format!("Read accessibility names, roles, values, states and references; at most {MAX_NODES} nodes.");
-    "find" => FindInput, FindResult, format!("Find nodes by reference, role/name, associated label, visible text, test ID or CSS; at most {MAX_NODES} nodes.");
+    "inspect" => InspectInput, InspectResult, "Read accessibility names, roles, values, states and references.";
+    "find" => FindInput, FindResult, "Find nodes by reference, role/name, associated label, visible text, test ID or CSS.";
     "read" => ReadInput, ReadResult, "Read a matched element’s text, HTML, value, attribute or visible/enabled/checked state.";
     "screenshot" => ScreenshotInput, ScreenshotResult, "Capture a tab: its PNG's bytes on stdout, so demi browser screenshot t1 | demi file view shows it to you and > shot.png saves it; or save a new PNG file with --output. Several tabs: a loop in one shell call.";
     "record" => RecordInput, RecordResult, record_about("tab", "t1");
@@ -77,7 +77,7 @@ operations! {
     "cdp.send" => CdpSendInput, CdpSendResult, "Send a scoped CDP method with a JSON parameter object from stdin.";
     "cdp.events" => CdpEventsInput, CdpEventsResult, "Read buffered CDP events or wait for events after a cursor.";
     "content.read" => ContentReadInput, ContentReadResult, "Read or save the page’s text or HTML content.";
-    "content.fetch" => ContentFetchInput, ContentFetchResult, "Read up to ten URLs in temporary tabs sharing this browser’s login state.";
+    "content.fetch" => ContentFetchInput, ContentFetchResult, "Read URLs in temporary tabs sharing this browser’s login state.";
     "assets.list" => AssetsListInput, AssetsListResult, "Inventory observed page resources and inline SVGs.";
     "assets.export" => AssetsExportInput, AssetsExportResult, "Export selected assets from a current inventory to Host files.";
     "capabilities" => CapabilitiesInput, CapabilitiesResult, "Report the browser’s available observation and evaluation capabilities.";

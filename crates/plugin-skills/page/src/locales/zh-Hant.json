@@ -53,7 +53,6 @@
     "fetch": {
       "repository_too_large": "儲存庫大於 {limit}。",
       "no_commit": "儲存庫沒有提交。",
-      "too_many_skills": "儲存庫中的技能超過 {limit} 個。",
       "files_too_large": "技能的檔案大於 {limit}。",
       "no_skill": "儲存庫中沒有技能。"
     },

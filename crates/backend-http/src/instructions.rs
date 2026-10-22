@@ -19,7 +19,7 @@ pub(super) async fn replace(
     AuthUser(user): AuthUser,
     JsonBody(InstructionsBody { text }): JsonBody<InstructionsBody>,
 ) -> Result<StatusCode, ApiError> {
-    let text = personal_instructions(text).map_err(|error| ApiError::invalid_body(error.to_string()))?;
+    let text = personal_instructions(text);
     state
         .shards
         .of(&user.id)

@@ -38,7 +38,6 @@ pub mod subagents;
 
 pub(crate) use self::page_socket::{PageEnd, PageGone, PageSocket, PageStream};
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
@@ -49,7 +48,6 @@ use std::sync::Arc;
 use demi_agent_server::AgentServer;
 use demi_backend_cloud::machine::Cloud;
 use demi_backend_plugins::UserPlugins;
-use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_remote_host::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::router::CommandRouter;
@@ -179,10 +177,6 @@ impl Shard {
         http: reqwest::Client,
         web: reqwest::Client,
     ) -> Self {
-        // The user's request rate limit, which every runtime of the user's
-        // conversations counts against.
-        let limit = services.conversation_tuning.requests_per_minute;
-        let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
         let plugins = UserPlugins::new(
             services.plugins.clone(),
             user.clone(),
@@ -199,7 +193,6 @@ impl Shard {
             user.clone(),
             services.clone(),
             http.clone(),
-            rate_limit,
         );
         let devices = Devices::new(
             services.returning.clone(),

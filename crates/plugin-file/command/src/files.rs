@@ -43,7 +43,8 @@ use crate::{
     patch::{self, PatchError},
 };
 
-/// How much of a file over the medium bound is read to tell what it is.
+/// How much of a file over the medium bound is read to tell what it is: its
+/// first bytes tell, and the rest may be far larger than memory.
 const OPENING_BYTES: usize = 64 * 1024;
 
 /// What the view lines name stdin by.

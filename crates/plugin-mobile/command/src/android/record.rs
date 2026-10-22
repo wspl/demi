@@ -30,7 +30,8 @@ use demi_shared_recording_protocol::{Area, EndReason};
 
 use super::screen::{self, Event, Screen, Subscription};
 
-/// How many pictures may wait for the encoder before one is counted missed.
+/// How many pictures may wait for the encoder before one is counted missed:
+/// pictures are large, so a slow encoder must not hold them without end.
 const QUEUE: usize = 8;
 
 /// What the thread is told.

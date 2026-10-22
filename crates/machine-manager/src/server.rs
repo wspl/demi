@@ -41,7 +41,8 @@ use tokio_util::{
 use crate::blocking;
 
 /// Lines waiting for one connection's socket. The backend reads its replies
-/// as they come, so a full queue only delays the requests that wait on it.
+/// as they come, so a full queue only delays the requests that wait on it; an
+/// unbounded one would grow memory for a connection that stopped reading.
 const OUTBOX_LINES: usize = 64;
 
 /// The pause after a failed accept.

@@ -6,7 +6,7 @@
 //!   family contract every provider family implements.
 //! - `vault`: the credential vault with its records, their encryption and
 //!   scope, subscription accounts, login flows and quotas.
-//! - `usage`: usage metering with the request rate limit.
+//! - `usage`: usage metering.
 //!
 //! A provider that needs a process gets it from the user's shard, which places
 //! it on the Claude Code machine.
@@ -31,7 +31,7 @@
 //! |         sealed secret*, logins | builds    | provider |  one per entry
 //! | llm     assembly, catalogs,    | --------> |          |  and account,
 //! |         rotation               |           +----+-----+  shared
-//! | usage   meter, rate limit      |                | runtime, one per
+//! | usage   meter                  |                | runtime, one per
 //! +---------------+----------------+                v session, on the shard
 //!                 | wraps each runtime      HTTPS to the vendor API; for
 //!                 v                         claude-code, Host process IO

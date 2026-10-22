@@ -1181,7 +1181,7 @@ export function createSettingsState() {
           origin: 'https://github.com/example/broken-skills',
           fetching: false,
           updateAvailable: false,
-          failure: { at: ahead(-60 * 60_000), message: 'The repository has more than 500 skills', problem: { code: 'too_many_skills', limit: 500 } },
+          failure: { at: ahead(-60 * 60_000), message: 'The skills’ files are larger than 16 MiB', problem: { code: 'files_too_large', limitBytes: 16 * 1024 * 1024 } },
           skills: [
           ],
           skipped: [],

@@ -43,7 +43,6 @@ pub(crate) mod titles;
 pub mod transition;
 pub mod workflows;
 
-use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -58,7 +57,6 @@ use demi_backend_database::tree::SqliteTreeStore;
 use demi_backend_host_access::shells::ShardShellEnvironments;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_page_sync::Part;
-use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 
@@ -97,7 +95,6 @@ pub(crate) fn conversation_parts(
     user: UserId,
     services: Arc<Services>,
     http: reqwest::Client,
-    rate_limit: Rc<RefCell<RequestRateLimit>>,
 ) -> ConversationParts {
     let marks = services.sync.of(&user);
     let stores: TreeStores = {
@@ -142,7 +139,6 @@ pub(crate) fn conversation_parts(
         user.clone(),
         services.clone(),
         http,
-        rate_limit,
     ));
     let small_requests = Rc::new(SmallRequests::new(providers.clone(), user, services.clone()));
     let titles = Titles::new(

@@ -24,14 +24,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::skill::{self, SKILL_MD_MAX_BYTES};
 
-/// The most directories one search reads.
+/// The most directories one search reads: the search follows symlinks, so a
+/// loop of them would otherwise be walked without end.
 const MAX_DIRECTORIES: usize = 2_000;
 
-/// How deep below a skills directory a search looks.
+/// How deep below a skills directory a search looks, bounded for the same
+/// reason.
 const MAX_DEPTH: usize = 6;
-
-/// The most project skills one search finds.
-const MAX_SKILLS: usize = 100;
 
 /// The skills directories of the project, the first over the second.
 const SKILLS_DIRECTORIES: [&str; 2] = [".agents/skills", ".claude/skills"];
@@ -90,7 +89,7 @@ pub(crate) async fn search(
     let mut watch: Vec<WatchSubject> = Vec::new();
     let mut found: Vec<(usize, ProjectSkill)> = Vec::new();
     let mut read = 0;
-    while !frontier.is_empty() && read < MAX_DIRECTORIES && found.len() < MAX_SKILLS {
+    while !frontier.is_empty() && read < MAX_DIRECTORIES {
         let room = MAX_DIRECTORIES - read;
         frontier.truncate(room);
         read += frontier.len();
@@ -160,7 +159,6 @@ pub(crate) async fn search(
         }
         frontier = next;
     }
-    found.truncate(MAX_SKILLS);
     // Stable: in one skills directory, the search's order holds.
     found.sort_by_key(|(rank, _)| *rank);
     let mut skills: Vec<ProjectSkill> = Vec::new();

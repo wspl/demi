@@ -75,7 +75,8 @@ struct Shared {
 }
 
 /// How many announced account changes a follower may fall behind before it
-/// misses some: they come from the user's own clicks in Settings.
+/// misses some: a broadcast channel holds its backlog in memory, so it has a
+/// bound, and the changes come from the user's own clicks in Settings.
 const ACCOUNT_CHANGES_KEPT: usize = 64;
 
 /// An account a subscription entry is created with outside a sign-in:

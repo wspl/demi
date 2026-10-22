@@ -4,10 +4,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The largest `SKILL.md` that is a skill.
+/// The largest `SKILL.md` that is a skill: it is read whole into memory, and
+/// a skill's text is an instruction, never a document.
 pub(crate) const SKILL_MD_MAX_BYTES: usize = 256 * 1024;
 
-/// The longest description without a warning, in characters.
+/// The longest description without a warning, in characters: the format's
+/// guide for clients sets it.
 const DESCRIPTION_MAX_CHARS: usize = 1024;
 
 /// What a `SKILL.md` says of its skill.

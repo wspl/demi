@@ -579,7 +579,8 @@ pub(crate) fn commit(
     }
 }
 
-/// Refuses a file over the limit of the user's own uploads.
+/// Refuses a file over the limit of the user's own uploads: the backend holds
+/// an attachment whole in memory while it stores it.
 fn within_limit(size: u64) -> Result<(), CopyError> {
     if size > ATTACHMENT_MAX_BYTES as u64 {
         return Err(CopyError::TooLarge { size });

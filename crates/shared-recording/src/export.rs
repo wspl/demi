@@ -13,7 +13,7 @@ use std::{
 };
 
 use demi_shared_openh264::Load;
-use demi_shared_recording_protocol::{Area, FrameSet, MAX_EXPORT_FRAMES, frame_label};
+use demi_shared_recording_protocol::{Area, FrameSet, frame_label};
 use image::{ImageEncoder as _, codecs::png::PngEncoder};
 use openh264::decoder::{Decoder, DecoderConfig};
 
@@ -77,12 +77,6 @@ impl Stored {
                 self.id,
                 frame_label(total),
                 String::from(set.clone())
-            )));
-        }
-        if chosen.len() > MAX_EXPORT_FRAMES {
-            return Err(Error::BadRequest(format!(
-                "{} frames are more than one export writes, at most {MAX_EXPORT_FRAMES}; choose with --frames, such as f001-f{MAX_EXPORT_FRAMES:03}",
-                chosen.len()
             )));
         }
         // Where the first and the last frame chosen are among the frames.

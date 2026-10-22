@@ -42,7 +42,8 @@ use crate::tabs::{
 
 /// How long a navigation nobody waits for may load.
 const DETACHED_LOAD_TIMEOUT: Duration = Duration::from_secs(60);
-/// A page and its child frames can emit a burst while the baseline is read.
+/// A page and its child frames can emit a burst while the baseline is read; a
+/// broadcast channel holds its backlog in memory, so it has a bound.
 const NAVIGATION_EVENT_CAPACITY: usize = 256;
 
 pub enum Navigation {

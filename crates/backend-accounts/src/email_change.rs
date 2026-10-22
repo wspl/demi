@@ -70,6 +70,9 @@ impl VerificationMail {
 #[error("{0}")]
 pub struct MailError(pub String);
 
+/// A code lives ten minutes, a new mail waits a minute after the last, and a
+/// code is tried five times: a six-digit code can be guessed, and each mail
+/// costs the sender's quota, so none of the three can be left open.
 const CHALLENGE_POLICY: ChallengePolicy = ChallengePolicy {
     lifetime: SignedDuration::from_mins(10),
     cooldown: SignedDuration::from_mins(1),

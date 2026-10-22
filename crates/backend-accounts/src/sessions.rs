@@ -7,7 +7,8 @@
 //!   SHA-256.
 //! - A session expires 30 days after its last renewal.
 //! - A session is named for the browser and system it signed in from.
-//! - A request writes the session's last activity at most once an hour.
+//! - A request writes the session's last activity at most once an hour, since
+//!   every request would otherwise be a database write.
 //! - A session verified by password or passkey in the last five minutes makes
 //!   handoff codes and adds passkeys.
 //! - A sign-in counts as a verification. So does a handoff code, by which a

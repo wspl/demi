@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{BaseVersion, MachineImageState, RuntimeState, Volume};
 
-/// The longest line either end reads, its newline excluded. The largest real
-/// message is a few kilobytes.
+/// The longest line either end reads, its newline excluded: a reader holds a
+/// line whole, so an end that never sends a newline would fill memory. The
+/// largest real message is a few kilobytes.
 pub const MAX_LINE_BYTES: usize = 1 << 20;
 
 /// The wire's version, which the manager's `hello` names. The backend and

@@ -37,7 +37,8 @@ use tokio_util::sync::CancellationToken;
 
 use install::EnsureError;
 
-/// A release record is a few hundred bytes for each platform.
+/// The most bytes of input read: the input is held whole in memory, and a
+/// release record is only a few hundred bytes for each platform.
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 /// The service holds no conversation state, so the trait's empty conversation

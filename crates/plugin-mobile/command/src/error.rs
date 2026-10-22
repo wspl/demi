@@ -2,7 +2,7 @@
 //! script branches on.
 
 use demi_command_package_mobile_protocol::mobile::{
-    DeviceId, ElementRef, MAX_DEVICES, MobileErrorCode,
+    DeviceId, ElementRef, MobileErrorCode,
 };
 
 use crate::driver::DriverError;
@@ -27,8 +27,6 @@ pub enum MobileError {
     },
     #[error("{0} is open in another conversation; close it there first")]
     Busy(String),
-    #[error("this conversation has {MAX_DEVICES} devices open on this Host, the most it may; close one first")]
-    TooMany,
     #[error("{0} is not an element of the last inspect; run demi mobile inspect again")]
     StaleRef(ElementRef),
     #[error("{0}")]
@@ -81,7 +79,6 @@ impl MobileError {
             Self::NotOpen(_) | Self::NoSimulator { .. } => MobileErrorCode::DeviceNotFound,
             Self::Ambiguous { .. } => MobileErrorCode::AmbiguousDevice,
             Self::Busy(_) => MobileErrorCode::DeviceBusy,
-            Self::TooMany => MobileErrorCode::TooManyDevices,
             Self::StaleRef(_) => MobileErrorCode::StaleRef,
             Self::Timeout(_) => MobileErrorCode::Timeout,
             Self::Unavailable(_) => MobileErrorCode::Unavailable,

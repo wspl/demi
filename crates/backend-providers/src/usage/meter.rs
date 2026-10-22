@@ -2,7 +2,6 @@
 //! (`crates/backend-user-shard/src/conversation/providers.rs`): the backend
 //! wraps each session's runtime so that accounting happens around every run.
 //!
-//! - The user's rate limit applies before every run.
 //! - Every call the run makes to the vendor is a usage ledger row as it ends,
 //!   the run's last before the run's response reaches the agent
 //!   (`crates/backend-database/src/usage.rs`).
@@ -12,14 +11,13 @@
 //! request, its agent and its account, so a row finds its course in the server
 //! log.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_database::control::ControlService;
 use demi_backend_database::usage::{ApiPrice, ObservedWindow, UsageRow, merge_windows};
 use demi_provider_common::{
-    Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    Ahead, CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderRun,
     ProviderRuntime, RequestLimits, RequestPurpose, VendorCall,
 };
 use demi_shared_types::{Clock, Model, ModelCost, QuotaWindow, Timestamp, TokenUsage};
@@ -28,7 +26,6 @@ use futures_util::future::LocalBoxFuture;
 use futures_util::{Stream, StreamExt, stream};
 use sha2::{Digest, Sha256};
 
-use super::rate_limit::RequestRateLimit;
 
 /// Whose calls a runtime makes: the ledger rows' user, conversation, entry
 /// and account.
@@ -97,24 +94,17 @@ async fn write(control: &ControlService, row: UsageRow) -> Option<String> {
     }
 }
 
-/// A session's runtime with the user's rate limit and the ledger around it.
-/// Its forks count against the same limit and write to the same ledger.
+/// A session's runtime with the ledger around it. Its forks write to the same
+/// ledger.
 pub struct MeteredRuntime {
     inner: Box<dyn ProviderRuntime>,
-    /// The user's window, which the user's shard holds.
-    rate_limit: Rc<RefCell<RequestRateLimit>>,
     ledger: Rc<Ledger>,
 }
 
 impl MeteredRuntime {
-    pub fn new(
-        inner: Box<dyn ProviderRuntime>,
-        rate_limit: Rc<RefCell<RequestRateLimit>>,
-        ledger: Ledger,
-    ) -> Self {
+    pub fn new(inner: Box<dyn ProviderRuntime>, ledger: Ledger) -> Self {
         Self {
             inner,
-            rate_limit,
             ledger: Rc::new(ledger),
         }
     }
@@ -333,20 +323,7 @@ fn within<'a>(span: tracing::Span, run: impl Stream<Item = ProviderEvent> + 'a) 
 }
 
 impl ProviderRuntime for MeteredRuntime {
-    /// A request over the limit never reaches the vendor: its run fails with
-    /// `rate_limited`, which the agent does not retry by itself, and it has
-    /// no row.
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        let admitted = self.rate_limit.borrow_mut().take();
-        if let Err(limited) = admitted {
-            let refusal = ProviderEvent::Error(ProviderFailure {
-                message: limited.to_string(),
-                code: Some(ErrorCode::RateLimited),
-                diagnostics: None,
-                retry_after: None,
-            });
-            return stream::iter([refusal]).boxed_local();
-        }
         let span = tracing::info_span!(
             "provider_call",
             request = %request.request_id,
@@ -396,7 +373,6 @@ impl ProviderRuntime for MeteredRuntime {
     fn fresh(&self) -> Box<dyn ProviderRuntime> {
         Box::new(Self {
             inner: self.inner.fresh(),
-            rate_limit: self.rate_limit.clone(),
             ledger: self.ledger.clone(),
         })
     }

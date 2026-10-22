@@ -24,12 +24,11 @@ use tokio_util::sync::CancellationToken;
 use crate::{CommandInput, CommandOutput, Input, Output, ServiceError};
 use demi_command_protocol::{Completion, ProtocolError, Record};
 
-/// Requests waiting for the stream; a full queue holds back their callers.
+/// Requests waiting for the stream; a full queue holds back their callers,
+/// where an unbounded one would grow memory for a stream that is slow.
 const ASKS: usize = 64;
-/// The most requests of one service the answering end has in flight; one
-/// beyond is refused at once.
-const IN_FLIGHT: usize = 32;
-/// Progress reports a caller has not taken yet; one beyond is not delivered.
+/// Progress reports a caller has not taken yet; one beyond is not delivered,
+/// since a report is only a hint and a slow caller must not grow memory.
 const PROGRESS: usize = 16;
 
 /// One kind of stream: its request and answer records and what an answer
@@ -205,7 +204,7 @@ impl<A: Asked> Reporter<A> {
 
 impl RequestStream {
     /// Answers the service's requests until it ends the stream: each goes
-    /// to `answer`, at most 32 at a time, with where it reports how far it
+    /// to `answer`, with where it reports how far it
     /// has come, and each answer goes back as one input chunk when the
     /// service pulls.
     pub async fn answer<A: Asked, F>(
@@ -235,17 +234,12 @@ impl RequestStream {
                         let request: A::Request = serde_json::from_slice(&bytes)?;
                         A::check(&request)?;
                         let id = A::request_id(&request);
-                        if asking.len() < IN_FLIGHT {
-                            let reporter = Reporter {
-                                id,
-                                reports: reporting.clone(),
-                            };
-                            let answering = answer(request, reporter);
-                            asking.push(async move { A::answer(id, answering.await) });
-                        } else {
-                            let refused = Err(format!("too many {} requests in flight", A::NAME));
-                            answers.push_back(A::answer(id, refused));
-                        }
+                        let reporter = Reporter {
+                            id,
+                            reports: reporting.clone(),
+                        };
+                        let answering = answer(request, reporter);
+                        asking.push(async move { A::answer(id, answering.await) });
                     }
                     Some(Record::InputPull) => pulls += 1,
                     Some(Record::Stderr(bytes)) => tracing::info!(

@@ -52,7 +52,9 @@ use webauthn_rs_core::proto::{Registration, ResidentKeyRequirement};
 
 use crate::user_agent::browser_and_system;
 
-/// A challenge lasts five minutes, and at most 1000 wait at once.
+/// A challenge lasts five minutes, and at most 1000 wait at once: the sign-in
+/// that issues one needs no account, so without a bound anyone could grow the
+/// stored challenges without end.
 pub const CHALLENGE_LIMITS: ChallengeLimits = ChallengeLimits {
     lifetime: SignedDuration::from_mins(5),
     waiting: 1000,

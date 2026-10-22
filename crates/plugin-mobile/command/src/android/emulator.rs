@@ -29,7 +29,8 @@ use super::proto::emulator_controller_client::EmulatorControllerClient;
 use crate::driver::{DriverError, Result};
 
 /// The largest message the emulator sends: a picture at a tablet's full
-/// size, 2560 × 1600 RGB, with room.
+/// size, 2560 × 1600 RGB, with room. gRPC refuses a larger one, and each is
+/// held whole in memory.
 const LARGEST_MESSAGE: usize = 64 * 1024 * 1024;
 /// How long the emulator takes to take a new key in.
 const KEY_TAKEN: Duration = Duration::from_secs(10);

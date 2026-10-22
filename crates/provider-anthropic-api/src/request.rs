@@ -18,8 +18,8 @@ use serde::Serialize;
 /// vendor's signature would fail the vendor's check.
 pub(crate) const SIGNATURE_TAG: &str = "anthropic:";
 
-/// `max_tokens` when the model names no output limit: agent turns stream long
-/// tool-heavy answers, which small defaults cut off.
+/// `max_tokens` when the model names no output limit: the API requires one, and
+/// agent turns stream long tool-heavy answers, which small defaults cut off.
 const DEFAULT_MAX_TOKENS: u32 = 32_000;
 
 /// The smallest thinking budget the API accepts, which is also what a budget

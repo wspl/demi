@@ -1,6 +1,5 @@
-//! Metering and the request rate limit: every response a conversation's runtime
-//! yields becomes a ledger row before the agent sees it, and each user may
-//! start at most 120 provider requests in any 60 seconds.
+//! Metering: every response a conversation's runtime yields becomes a ledger
+//! row before the agent sees it.
 //!
 //! Demi keeps two records of provider use that answer different questions:
 //!
@@ -9,8 +8,6 @@
 //! - A quota snapshot is the vendor's report of how much of a subscription
 //!   account's plan is used.
 //!
-//! Neither stops a request. The rate limit is the one limit Demi enforces
-//! itself.
+//! Neither stops a request.
 
 pub mod meter;
-pub mod rate_limit;

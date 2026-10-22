@@ -20,10 +20,10 @@ use super::adb::Adb;
 use crate::driver::{DriverError, RawElement, Rect, Result};
 
 /// The largest APK copied from the device to read its files: SystemUI's
-/// is about 40 MB.
+/// is about 40 MB, and the copy is written to this computer's disk.
 const APK_LIMIT: u64 = 256 * 1024 * 1024;
 /// The largest file read from an APK, uncompressed: a corner's drawable is
-/// under a kilobyte.
+/// under a kilobyte, and a compressed file can declare any size.
 const APK_FILE_LIMIT: u64 = 1024 * 1024;
 
 /// A resource as the device resolves it.

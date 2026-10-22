@@ -103,7 +103,8 @@ pub struct WebRequest {
 impl WebRequest {
     /// The longest deadline a plugin may name.
     pub const MAX_DEADLINE: Duration = Duration::from_secs(60);
-    /// The largest response body a plugin may accept.
+    /// The largest response body a plugin may accept: the backend holds a body
+    /// whole in memory, and a server may send without end.
     pub const MAX_BODY_BYTES: u64 = 16 * 1024 * 1024;
 
     /// A `method` request of `url`, with no header and no body, a deadline

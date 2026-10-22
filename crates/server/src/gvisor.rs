@@ -26,7 +26,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::layout::{Layout, sync_directory};
 
-/// The distribution's archive is far below this.
+/// The distribution's archive is far below this; a download is written to the
+/// disk, which a wrong or hostile source would otherwise fill.
 const LARGEST: u64 = 1 << 30;
 
 /// Fetches the version this program's release pins, unless it is there, and

@@ -40,7 +40,6 @@
     "device_not_found": "That simulator is no longer on this device.",
     "ambiguous_device": "More than one simulator has that name.",
     "device_busy": "Another conversation is using that simulator. Close it there first.",
-    "too_many_devices": "This conversation has 4 simulators open on this device. Close one first.",
     "stale_ref": "The screen changed before the simulator could act on it.",
     "timeout": "The simulator didn’t answer in time.",
     "unavailable": "Simulators aren’t available on this device.",

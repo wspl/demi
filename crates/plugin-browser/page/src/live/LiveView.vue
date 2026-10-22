@@ -206,6 +206,7 @@ function pasted(event: ClipboardEvent): void {
   event.preventDefault()
   const text = event.clipboardData?.getData('text/plain') ?? ''
   const html = event.clipboardData?.getData('text/html') ?? ''
+  // A paste is held to the protocol's largest text and HTML (`protocol/src/live.rs`).
   if (text || html) {
     props.session?.input({
       type: 'paste',

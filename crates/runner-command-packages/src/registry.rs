@@ -79,9 +79,11 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a service has to release a conversation: long enough for a
 /// browser to close its tabs and remove its profile.
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
-/// The most a conversation operation's answer may hold.
+/// The most a conversation operation's answer may hold: it is held whole in
+/// memory, and a service may answer without end.
 const ANSWER_BYTES: usize = 1024 * 1024;
-/// Requests waiting for the owner; a sender waits for room.
+/// Requests waiting for the owner; a sender waits for room, so that a slow
+/// owner does not grow memory.
 const REQUESTS: usize = 64;
 /// The decisions a test's view holds before the test reads them.
 #[cfg(feature = "testing")]

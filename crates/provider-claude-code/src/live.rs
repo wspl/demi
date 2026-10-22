@@ -50,14 +50,16 @@ use crate::{FAMILY, Shared, cli};
 /// The `tracing` target of the raw stream-json exchange, at trace level.
 pub(crate) const WIRE: &str = "demi::provider::claude_code::wire";
 
-/// How much of the process's standard error is kept.
+/// How much of the process's standard error is kept: a process may print
+/// without end, and the tail is where it says why it failed.
 const STDERR_TAIL_BYTES: usize = 64 * 1024;
 
 /// How long a closed process has to end after SIGTERM before SIGKILL.
 const CLOSE_GRACE: Duration = Duration::from_secs(5);
 
 /// The longest line Demi reads; a longer one fails the run like a line that
-/// cannot be read.
+/// cannot be read: a line is held whole in memory, and a process may print one
+/// without end.
 const MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 
 /// The CLI's output, line by line.

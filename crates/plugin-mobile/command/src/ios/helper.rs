@@ -53,7 +53,8 @@ pub const VIDEO: u8 = 2;
 pub const BLOB: u8 = 3;
 /// A recording's picture: [`PICTURE_HEADER_BYTES`], then H.264 Annex B.
 pub const PICTURE: u8 = 4;
-/// The largest frame after its length.
+/// The largest frame after its length: a reader allocates a frame's length
+/// before it reads it, so the helper's protocol bounds it.
 const MAX_FRAME: usize = 64 * 1024 * 1024;
 
 /// A video frame's header, big-endian: the capture (u32), the sequence
@@ -278,6 +279,7 @@ impl Helper {
     /// The frames of capture `capture` arrive at the receiver until the
     /// capture ends.
     pub fn frames(&self, capture: u32) -> mpsc::Receiver<CaptureEvent> {
+        // Bounded for the same reason: frames are large.
         let (sender, frames) = mpsc::channel(8);
         self.shared
             .captures

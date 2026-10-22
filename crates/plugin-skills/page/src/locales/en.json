@@ -53,7 +53,6 @@
     "fetch": {
       "repository_too_large": "The repository is larger than {limit}.",
       "no_commit": "The repository has no commits.",
-      "too_many_skills": "The repository has more than {limit} skills.",
       "files_too_large": "The skills’ files are larger than {limit}.",
       "no_skill": "The repository has no skills."
     },

@@ -41,9 +41,11 @@ use crate::access::{Attention, HostAccessError, Refusal};
 use crate::lease::{Lease, Released};
 use crate::transfer::OpenTransfer;
 
-/// The page's messages that may wait for the shard.
+/// The page's messages that may wait for the shard: a bounded queue makes a
+/// page that outpaces the shard wait, instead of growing memory.
 const FROM_PAGE: usize = 8;
-/// The messages for the page that may wait for the edge.
+/// The messages for the page that may wait for the edge, bounded for the same
+/// reason.
 const TO_PAGE: usize = 64;
 
 /// An open file watch, as the edge carries it. `Send`.

@@ -28,13 +28,13 @@
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_fetch_protocol::{
-    DEFAULT_LENGTH, DEFAULT_TIMEOUT_MS, FetchArgs, Fetched, GET, MAX_LENGTH, MAX_TIMEOUT_MS,
+    DEFAULT_LENGTH, DEFAULT_TIMEOUT_MS, FetchArgs, Fetched, GET, MAX_TIMEOUT_MS,
     PACKAGE,
 };
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
 
-use crate::search::{DEFAULT_COUNT, MAX_COUNT, SearchArgs, SearchedPage};
+use crate::search::{DEFAULT_COUNT, SearchArgs, SearchedPage};
 
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "Searches the web; fetches a page as Markdown, or a file.";
@@ -57,7 +57,7 @@ fn web_group() -> GroupBuilder {
             .positionals(["query"])
             .describe(
                 "count",
-                format!("How many pages to list in all, 1 to {MAX_COUNT}; default {DEFAULT_COUNT}"),
+                format!("How many pages to list in all, at least 1; default {DEFAULT_COUNT}"),
             )
             .json_output::<Vec<SearchedPage>>()
             .success_output(
@@ -85,7 +85,7 @@ fn web_group() -> GroupBuilder {
             )
             .describe(
                 "length",
-                format!("How many characters the part holds; default {DEFAULT_LENGTH}, maximum {MAX_LENGTH}"),
+                format!("How many characters the part holds; default {DEFAULT_LENGTH}"),
             )
             .describe(
                 "timeout",

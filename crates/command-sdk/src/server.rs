@@ -27,6 +27,8 @@ use crate::{
     stream::{CONNECTION_WINDOW, HttpInput, send_bytes},
 };
 
+/// Output records that may wait for the connection: a command that writes
+/// faster than the caller reads waits, instead of growing memory.
 const OUTPUT_QUEUE_RECORDS: usize = 4;
 const METADATA_TIMEOUT: Duration = Duration::from_secs(10);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);

@@ -40,7 +40,6 @@
     "device_not_found": "這部裝置上已沒有該模擬器。",
     "ambiguous_device": "有多個模擬器使用該名稱。",
     "device_busy": "另一個對話正在使用該模擬器。請先在那裡關閉它。",
-    "too_many_devices": "此對話已在這部裝置上打開 4 個模擬器。請先關閉一個。",
     "stale_ref": "模擬器執行操作前畫面已改變。",
     "timeout": "模擬器未及時回應。",
     "unavailable": "這部裝置無法使用模擬器。",

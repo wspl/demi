@@ -223,7 +223,7 @@ impl Direct {
                 backend: element.backend_node_id,
                 frame: self.frame.clone(),
                 loader: self.loader.clone(),
-            })?,
+            }),
             role,
             name,
         })
@@ -254,7 +254,7 @@ pub(crate) async fn named_in_main(
             backend: element.backend_node_id,
             frame: frame.id,
             loader: frame.loader_id,
-        })?,
+        }),
         role: ax_text(&node.role).into(),
         name: ax_text(&node.name).into(),
     }))

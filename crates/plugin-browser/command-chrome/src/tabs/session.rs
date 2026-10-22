@@ -14,7 +14,6 @@ use chromiumoxide::{
     },
 };
 
-use crate::driver::operation::{BrowserError, Result};
 
 use crate::tabs::protocol::{AssetKind, NodeRef, WebmcpTool};
 
@@ -152,20 +151,15 @@ impl References {
     }
 
     /// The reference to `reference`: the one given before, or the tab's next.
-    pub fn issue(&mut self, reference: Reference) -> Result<NodeRef> {
+    pub fn issue(&mut self, reference: Reference) -> NodeRef {
         if let Some(id) = self.by_node.get(&reference) {
-            return Ok(id.clone());
-        }
-        if self.by_id.len() >= 10_000 {
-            return Err(BrowserError::Configuration(
-                "browser reference limit reached for this document".into(),
-            ));
+            return id.clone();
         }
         self.last += 1;
         let id = NodeRef::numbered(self.last);
         self.by_id.insert(id.clone(), reference.clone());
         self.by_node.insert(reference, id.clone());
-        Ok(id)
+        id
     }
 }
 

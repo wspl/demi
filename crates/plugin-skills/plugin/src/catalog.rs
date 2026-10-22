@@ -4,7 +4,8 @@
 
 use demi_shared_types::xml_escaped;
 
-/// The most characters of a catalog block.
+/// The most characters of a catalog block: it is part of the prompt of every
+/// request, which the model's finite window pays for each time.
 const CATALOG_MAX_CHARS: usize = 8_000;
 
 const HEADER: &str = "The following skills provide specialized instructions for specific tasks.

@@ -340,7 +340,7 @@ impl Observation {
                 backend: dom.backend_node_id,
                 frame: frame.clone(),
                 loader: loader.clone(),
-            })?;
+            });
             let mut node = BrowserTreeNode {
                 r#ref: Some(reference),
                 tag: Some(dom.local_name.clone()),
@@ -369,7 +369,7 @@ impl Observation {
                 backend,
                 frame: node.frame.clone(),
                 loader: node.loader.clone(),
-            })?),
+            })),
             None => None,
         };
         let protected = node.ax.backend_dom_node_id.is_some_and(|backend| {
@@ -735,7 +735,7 @@ impl Observation {
                             backend: element.backend_node_id,
                             frame: frame.clone(),
                             loader: loader.clone(),
-                        })?),
+                        })),
                         role: String::new(),
                         name: String::new(),
                         depth: 0,

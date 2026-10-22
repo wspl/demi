@@ -203,8 +203,9 @@ async fn answer_numbers(service: &str, stream: RequestStream, backend: Arc<dyn S
 /// fail.
 async fn answer_messages(service: &str, stream: RequestStream, backend: Arc<dyn ServiceBackend>) {
     // The answering end takes each message when it reads it, in order, and
-    // the one forwarder hands them on in that order; at most 32 are
-    // unanswered, which the queue holds.
+    // the one forwarder hands them on in that order; the service's own
+    // bounded queue of requests limits how many are unanswered, which this
+    // queue holds.
     type Taken = tokio::sync::oneshot::Sender<Result<(), String>>;
     let (queued, mut queue) =
         tokio::sync::mpsc::unbounded_channel::<(serde_json::Value, String, Taken)>();

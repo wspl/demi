@@ -10,7 +10,6 @@
 //! Every runtime is metered: the user's rate limit applies before each run, and
 //! each response is a usage ledger row before the agent sees it.
 
-use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -20,7 +19,6 @@ use demi_agent_tools::{ProfileModel, Unavailable};
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_providers::llm::catalog::configured_selection;
 use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime, ModelPrices};
-use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
@@ -49,7 +47,6 @@ pub(super) struct ConversationProviders {
     services: Arc<Services>,
     /// The shard's HTTP client, which its runtimes send with.
     http: reqwest::Client,
-    rate_limit: Rc<RefCell<RequestRateLimit>>,
 }
 
 impl ConversationProviders {
@@ -58,14 +55,12 @@ impl ConversationProviders {
         user: UserId,
         services: Arc<Services>,
         http: reqwest::Client,
-        rate_limit: Rc<RefCell<RequestRateLimit>>,
     ) -> Self {
         Self {
             shard,
             user,
             services,
             http,
-            rate_limit,
         }
     }
 }
@@ -109,7 +104,6 @@ impl ProviderResolver for ConversationProviders {
                 conversation: conversation_of(root),
                 provider,
                 http: self.http.clone(),
-                rate_limit: self.rate_limit.clone(),
             });
             let entry = scope
                 .services
@@ -251,7 +245,6 @@ struct Scope {
     conversation: ConversationId,
     provider: ProviderId,
     http: reqwest::Client,
-    rate_limit: Rc<RefCell<RequestRateLimit>>,
 }
 
 /// A session's runtime.
@@ -630,7 +623,7 @@ impl ConversationRuntime {
                 account: account.or(entry.active()).cloned(),
                 prices,
             };
-            let metered = MeteredRuntime::new(runtime, scope.rate_limit.clone(), ledger);
+            let metered = MeteredRuntime::new(runtime, ledger);
             self.close_current().await;
             self.current = Some(Current {
                 provider,

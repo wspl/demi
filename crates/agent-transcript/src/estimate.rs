@@ -315,7 +315,7 @@ fn content_part_estimate<'a>(
     request: &RequestView,
 ) -> (Cow<'a, str>, u64) {
     match part {
-        UserContentBlock::Text { text } => (bound_text(text), 0),
+        UserContentBlock::Text { text } => (Cow::Borrowed(text.as_str()), 0),
         UserContentBlock::Reference { reference } => (Cow::Borrowed(reference.as_str()), 0),
         UserContentBlock::Attachment(attachment) => (
             Cow::Owned(format!("{} {}", attachment.id, attachment.name)),

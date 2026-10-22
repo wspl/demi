@@ -106,7 +106,8 @@ pub struct Output {
 
 impl Output {
     /// The error output, or the standard output when there is none, trimmed
-    /// and bounded to its last 8 KiB.
+    /// and bounded to its last 8 KiB: the message travels in one line of the
+    /// manager's socket and in the log, and a tool's error ends its output.
     pub fn message(&self) -> &str {
         let text = if self.stderr.trim().is_empty() {
             self.stdout.trim()

@@ -33,7 +33,7 @@ pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 /// The largest file an answer may hold, counted as it arrives: a video's
 /// longest, 15 seconds at 1080p, is tens of MiB, and ten minutes of
 /// 44.1 kHz stereo PCM about 106 MiB. A file sent as base64 inside JSON
-/// is counted as decoded.
+/// is counted as decoded. The answer is held whole in memory.
 pub const ANSWER_LIMIT: usize = 256 * 1024 * 1024;
 
 /// What room a JSON answer whose file is base64 has around it: its other

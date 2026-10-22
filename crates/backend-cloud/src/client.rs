@@ -34,13 +34,15 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{FramedRead, LinesCodec};
 use tokio_util::task::AbortOnDropHandle;
 
-/// Calls waiting for the supervisor before their callers wait to send more.
+/// Calls waiting for the supervisor before their callers wait to send more: a
+/// slow manager slows its callers instead of growing memory.
 const QUEUE: usize = 64;
 
-/// Replies the reader has decoded ahead of the supervisor.
+/// Replies the reader has decoded ahead of the supervisor, bounded for the same
+/// reason.
 const INCOMING: usize = 64;
 
-/// Death events waiting for the backend's router.
+/// Death events waiting for the backend's router, bounded for the same reason.
 pub(crate) const DEATHS: usize = 256;
 
 /// How long a new connection waits for the manager's `hello`, which it

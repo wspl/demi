@@ -230,10 +230,6 @@ pub enum ErrorCode {
     UsageLimit,
     /// Throttling: too many requests or tokens for a short while.
     RateLimit,
-    /// The backend's own request rate limit refused the attempt before it
-    /// reached the vendor (`crates/backend-providers/src/usage/rate_limit.rs`); unlike
-    /// `rate_limit`, the agent does not retry it by itself.
-    RateLimited,
     /// A transient failure: HTTP 5xx, a timeout, a network or socket failure.
     Overloaded,
     /// The request holds more tokens than the model accepts.
@@ -276,7 +272,6 @@ impl ErrorCode {
         match self {
             Self::UsageLimit => "usage_limit",
             Self::RateLimit => "rate_limit",
-            Self::RateLimited => "rate_limited",
             Self::Overloaded => "overloaded",
             Self::ContextLengthExceeded => "context_length_exceeded",
             Self::RequestTooLarge => "request_too_large",
@@ -345,7 +340,6 @@ impl FromStr for ErrorCode {
         Ok(match code {
             "usage_limit" => Self::UsageLimit,
             "rate_limit" => Self::RateLimit,
-            "rate_limited" => Self::RateLimited,
             "overloaded" => Self::Overloaded,
             "context_length_exceeded" => Self::ContextLengthExceeded,
             "request_too_large" => Self::RequestTooLarge,

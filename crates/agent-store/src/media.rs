@@ -19,8 +19,9 @@ use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, st
 use super::StoreError;
 use crate::pixels::pixel_size;
 
-/// How many blobs are read at once: on S3 each read is a round trip, and
-/// more at once only queue there.
+/// How many blobs are read at once: on S3 each read is a round trip and a
+/// connection, and a message with many attachments would otherwise open one
+/// for each.
 pub const READS_AT_ONCE: usize = 8;
 
 /// The conversation owner's blob namespace, as a session reaches it through

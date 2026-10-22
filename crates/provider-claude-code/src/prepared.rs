@@ -41,7 +41,8 @@ use crate::placement::Placement;
 /// How long a prepared process waits for its request before it is closed.
 pub(crate) const UNUSED_FOR: Duration = Duration::from_secs(10 * 60);
 
-/// How many prepared processes not yet used one machine holds.
+/// How many prepared processes not yet used one machine holds: each holds a
+/// CLI's memory, and the machine's is limited.
 const MOST_ON_A_MACHINE: usize = 2;
 
 /// The processes prepared ahead on one machine and not yet used, of every

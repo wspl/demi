@@ -71,6 +71,8 @@ impl AndroidCapture {
     /// them with the hardware encoder or else with the library `load`
     /// reaches.
     pub fn start(screen: &Arc<Screen>, load: Load, size: (u32, u32), fps: u32, bitrate: u32) -> Self {
+        // Bounded: a pipeline that stops taking frames must not hold them in
+        // memory without end.
         let (events, frames) = mpsc::channel(8);
         let shared = Arc::new(Shared {
             asked: Mutex::new(Asked::default()),

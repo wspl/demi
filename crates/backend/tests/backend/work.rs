@@ -1145,9 +1145,6 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
             tokio::time::Instant::now() < deadline,
             "the far job's ready never came: {output:?}"
         );
-        // Each read is a turn of two requests, and the backend starts at most
-        // 120 a minute (`crates/backend-providers/src/usage/rate_limit.rs`): 400 ms apart, the
-        // reads of the whole wait make at most 100.
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         reads += 1;
         // The first look asks for JSON: the same result, with its facts.

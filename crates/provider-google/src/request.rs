@@ -14,9 +14,6 @@ use serde::Serialize;
 
 use crate::SIGNATURE_TAG;
 
-/// `maxOutputTokens` when the model names no output limit.
-const DEFAULT_MAX_OUTPUT_TOKENS: u32 = 32_000;
-
 /// The JSON body of `request`. It makes no explicit cache: Gemini caches by
 /// prefix on its own, and an explicit cache is a stored resource with a storage
 /// price, a second copy of the history.
@@ -40,9 +37,7 @@ pub(crate) fn encode(request: &InferenceRequest) -> Vec<u8> {
             }]
         },
         generation_config: GenerationConfig {
-            max_output_tokens: request
-                .max_output_tokens()
-                .map_or(DEFAULT_MAX_OUTPUT_TOKENS, |limit| limit.get()),
+            max_output_tokens: request.max_output_tokens().map(|limit| limit.get()),
             thinking_config: thinking(request.thinking.as_ref()),
         },
     };
@@ -96,7 +91,8 @@ impl<'a> From<&'a ToolDefinition> for FunctionDeclaration<'a> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GenerationConfig {
-    max_output_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_output_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking_config: Option<GeminiThinking>,
 }

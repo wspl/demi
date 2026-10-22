@@ -3,7 +3,7 @@
 
 use demi_shared_types::output::{Fields, Table};
 
-use crate::{FrameRow, Gap, MAX_LISTED_BYTES, RecordAction, RecordResult, RecordingInfo, frame_label};
+use crate::{FrameRow, Gap, RecordAction, RecordResult, RecordingInfo, frame_label};
 
 /// What `record`'s tool description says, for the kind of `source` (`tab` or
 /// `device`) that `example` (`t1`, `m1`) names.
@@ -30,7 +30,6 @@ pub fn record(action: RecordAction, command: &str, result: &RecordResult) -> Str
             info,
             result.frames.as_deref().unwrap_or_default(),
             result.gaps.as_deref().unwrap_or_default(),
-            command,
         ),
         RecordAction::Export => match (&result.path, &result.images, result.area) {
             (Some(path), _, _) => format!(
@@ -89,18 +88,14 @@ pub fn summary(info: &RecordingInfo) -> String {
     fields.render()
 }
 
-/// A listing of `frames`, cut at [`MAX_LISTED_BYTES`] with the command to
-/// ask for the rest. A gap of missed frames is a row of its own after the
+/// A listing of `frames`. A gap of missed frames is a row of its own after the
 /// frame it follows, or before the next listed frame when the one it follows
 /// is not listed.
-pub fn listing(info: &RecordingInfo, frames: &[FrameRow], gaps: &[Gap], command: &str) -> String {
+pub fn listing(info: &RecordingInfo, frames: &[FrameRow], gaps: &[Gap]) -> String {
     let mut table = Table::new(["frame", "time (s)", "changed area"]);
     let mut text = summary(info);
     text.push('\n');
-    let mut cut = None;
     let mut missed = gaps.iter().peekable();
-    // What the table rendered before the rows of the frame being added.
-    let mut rows = table.render();
     // A gap that follows the frame before the first listed one was listed
     // with it, in the listing of the frames before.
     let first = frames.first().map_or(0, |row| row.frame);
@@ -117,23 +112,8 @@ pub fn listing(info: &RecordingInfo, frames: &[FrameRow], gaps: &[Gap], command:
         while let Some(gap) = missed.next_if(|gap| gap.after == row.frame) {
             table.row(missing(gap));
         }
-        let rendered = table.render();
-        if text.len() + rendered.len() > MAX_LISTED_BYTES {
-            cut = Some(row.frame);
-            break;
-        }
-        rows = rendered;
     }
-    text.push_str(&rows);
-    if let Some(over) = cut {
-        text.push_str(&format!(
-            "\nThe list stops before {}; list the rest with {command} {} frames --frames {}-f{:03}.\n",
-            frame_label(over),
-            info.id,
-            frame_label(over),
-            info.frames
-        ));
-    }
+    text.push_str(&table.render());
     text
 }
 

@@ -331,7 +331,9 @@ pub struct LiveControl {
     pub rect: ControlRect,
 }
 
-/// The most cursor regions a view hears of for a tab, from all its frames.
+/// The most cursor regions a view hears of for a tab, from all its frames: a
+/// page can have a million elements, and the regions travel in one message
+/// within the live view's largest frame.
 pub const MAX_CURSOR_REGIONS: usize = 4000;
 
 /// Where on the visible page a cursor applies, in tab CSS pixels.
@@ -428,7 +430,8 @@ pub struct LiveDownload {
     pub path: String,
 }
 
-/// The most downloads a tab's bubble keeps, the newest.
+/// The most downloads a tab's bubble keeps, the newest: a page can start
+/// downloads without end.
 pub const MAX_DOWNLOADS: usize = 20;
 
 /// The watched tab's JavaScript dialog.

@@ -21,7 +21,8 @@ use tokio::sync::broadcast;
 pub(crate) const CHECK_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// The moves a slow instance may be behind before it hears that it missed
-/// some, which makes it tell its pages anyway.
+/// some, which makes it tell its pages anyway: a broadcast channel holds its
+/// backlog in memory, so it has a bound.
 const MOVES: usize = 256;
 
 /// What the backend knows of the commit a source's default branch points

@@ -90,7 +90,7 @@ use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
 type Checked = HashMap<String, Option<PathBuf>>;
 
 /// How many redirects an artifact's download follows, as GitHub's release
-/// downloads need.
+/// downloads need: two servers can redirect to each other without end.
 const REDIRECTS: usize = 10;
 
 /// The suffix of an entry's line record, beside the entry.
@@ -127,7 +127,8 @@ type Install = BoxFuture<'static, Result<PathBuf, RuntimeError>>;
 type Report = Arc<dyn Fn(ArtifactProgress) + Send + Sync>;
 
 /// How many progress events a caller may fall behind: an attempt reports
-/// eleven at most, ten tenths and its unpacking.
+/// eleven at most, ten tenths and its unpacking. A broadcast channel holds its
+/// backlog in memory, so it has a bound.
 const PROGRESS_BACKLOG: usize = 64;
 
 /// An install as its callers share it, whose error each of them reports.

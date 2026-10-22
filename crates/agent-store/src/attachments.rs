@@ -19,10 +19,12 @@ use crate::{
 };
 
 /// How much of a text file's opening a record keeps, in Unicode scalar
-/// values.
+/// values: the record is kept in the database and read in every listing, so
+/// it holds a preview, never the file.
 pub const SNIPPET_MAX_CHARS: usize = 160;
 
-/// How much of a text file is read for its opening.
+/// How much of a text file is read for its opening: the preview needs no more,
+/// and a whole file would be read for nothing.
 const SNIPPET_READ_BYTES: usize = 4_096;
 
 /// The extensions of files that are text whatever their media type says.

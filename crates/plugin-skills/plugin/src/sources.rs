@@ -297,6 +297,7 @@ pub(crate) fn directory_name(name: &str) -> String {
             directory.push('-');
         }
     }
+    // The format's names have at most 64 characters.
     let directory: String = directory.trim_end_matches('-').chars().take(64).collect();
     if directory.is_empty() {
         "skill".to_owned()

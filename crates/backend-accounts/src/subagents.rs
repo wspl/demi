@@ -16,27 +16,18 @@ use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile
 /// The name no profile takes: omitting `--profile` selects the inherit
 /// profile, and naming it would read as that one.
 pub const RESERVED_NAME: &str = "default";
-/// The most characters a profile's name has.
-pub const NAME_MAX: usize = 40;
-/// The most characters a profile's description has.
-pub const DESCRIPTION_MAX: usize = 500;
-/// The most characters of the instructions a profile replaces a child's
-/// with.
-pub const INSTRUCTIONS_MAX: usize = 65_536;
 
 /// Why a profile's name or text is refused. Each names the field, as a
 /// refused body does.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ProfileTextError {
-    #[error(
-        "name: must be 1 to {NAME_MAX} lowercase letters, digits and hyphens, starting with a letter"
-    )]
+    #[error("name: must be lowercase letters, digits and hyphens, starting with a letter")]
     Name,
     #[error("name: \"{RESERVED_NAME}\" is reserved for inheriting the parent")]
     ReservedName,
-    #[error("description: must be one line of 1 to {DESCRIPTION_MAX} characters")]
+    #[error("description: must be one line that is not blank")]
     Description,
-    #[error("instructions: must be 1 to {INSTRUCTIONS_MAX} characters")]
+    #[error("instructions: must not be blank")]
     Instructions,
 }
 
@@ -150,14 +141,14 @@ pub fn merge(profile: SubagentProfile, patch: ProfilePatch, window: Option<u32>)
     }
 }
 
-/// 1 to 40 lowercase letters, digits and hyphens, starting with a letter,
+/// Lowercase letters, digits and hyphens, starting with a letter,
 /// and not the reserved name.
 fn check_name(name: &str) -> Result<(), ProfileTextError> {
     let starts_with_letter = name.chars().next().is_some_and(|c| c.is_ascii_lowercase());
     let allowed = name
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if !starts_with_letter || !allowed || name.chars().count() > NAME_MAX {
+    if !starts_with_letter || !allowed {
         return Err(ProfileTextError::Name);
     }
     if name == RESERVED_NAME {
@@ -166,18 +157,18 @@ fn check_name(name: &str) -> Result<(), ProfileTextError> {
     Ok(())
 }
 
-/// One line that is not blank, of at most 500 characters.
+/// One line that is not blank.
 fn check_description(description: &str) -> Result<(), ProfileTextError> {
     let one_line = !description.contains(['\n', '\r']);
-    if is_blank(description) || !one_line || description.chars().count() > DESCRIPTION_MAX {
+    if is_blank(description) || !one_line {
         return Err(ProfileTextError::Description);
     }
     Ok(())
 }
 
-/// Text that is not blank, of at most 65,536 characters.
+/// Text that is not blank.
 fn check_instructions(instructions: &str) -> Result<(), ProfileTextError> {
-    if is_blank(instructions) || instructions.chars().count() > INSTRUCTIONS_MAX {
+    if is_blank(instructions) {
         return Err(ProfileTextError::Instructions);
     }
     Ok(())

@@ -22,7 +22,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{CommandMedium, CommandRecord, CommandSet, Ending, HostError, PageView, Seen, WholeOutput};
 
-/// The default budget of one status view's new output, per stream.
+/// The default budget of one status view's new output, per stream: the status
+/// goes into the model's context, whose window is finite.
 pub const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 
 /// The most of a binary final stdout a status carries: enough for an

@@ -14,11 +14,12 @@ use demi_command_protocol::MediumFacts;
 use demi_shared_types::whole_image::{self, Undecodable};
 use image::{ImageDecoder, ImageFormat, ImageReader, Limits, metadata::Orientation};
 
-/// The most memory reading an image's header may take.
+/// The most memory reading an image's header may take: a small file can declare
+/// a huge picture, and decoding it would otherwise take memory without end.
 const MAX_HEADER_ALLOC: u64 = 64 * 1024 * 1024;
 
-/// The most memory decoding an image whole may take: a 16 MiB file of
-/// about 11,000 × 11,000 pixels.
+/// The most memory decoding an image whole may take, for the same reason: a
+/// 16 MiB file of about 11,000 × 11,000 pixels.
 const MAX_DECODE_ALLOC: u64 = 512 * 1024 * 1024;
 
 /// Decodes `bytes`, an image of `media_type`, whole, so a line printed for it

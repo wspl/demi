@@ -22,16 +22,13 @@ pub const PREFIX: &str = "mobile.";
 /// The longest side of a screenshot, the most a model reads at full detail;
 /// every coordinate is in this image's pixels.
 pub const SCREENSHOT_LONG_SIDE: u32 = 1568;
-/// The most devices a conversation has open on one Host.
-pub const MAX_DEVICES: usize = 4;
 /// How long `wait` waits when it names no timeout, and the longest it may
 /// name, in seconds.
 pub const WAIT_SECONDS: u64 = 30;
 pub const MAX_WAIT_SECONDS: u64 = 300;
-/// The longest text `type` types, in characters.
-pub const TEXT_LENGTH: usize = 10_000;
-/// The longest device name, path or text to wait for an input carries.
-pub const NAME_LENGTH: usize = 4096;
+/// The longest output path, in characters: the longest path the systems the
+/// Host runs on take.
+pub const PATH_LENGTH: usize = 4096;
 
 numbered!(
     /// A device's handle in the conversation, which `open` answers: `m` and
@@ -382,7 +379,7 @@ pub struct ListResult {
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct OpenInput {
     /// A simulator's name, simctl id or AVD name, as list shows it
-    #[garde(length(chars, min = 1, max = NAME_LENGTH))]
+    #[garde(length(chars, min = 1))]
     pub device: String,
 }
 
@@ -430,7 +427,7 @@ device_input! {
         /// New output file on this Host; without it the PNG goes to stdout
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(chars, min = 1, max = NAME_LENGTH))]
+        #[garde(length(chars, min = 1, max = PATH_LENGTH))]
         pub output: Option<String>,
         /// Replace an existing output file
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -523,7 +520,7 @@ device_input! {
     /// `type`: text to the focused field, or into an element.
     pub struct TypeInput {
         /// The text to type
-        #[garde(length(chars, min = 1, max = TEXT_LENGTH))]
+        #[garde(length(chars, min = 1))]
         pub text: String,
         /// Tap this element ref first, then type into it
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -610,7 +607,7 @@ device_input! {
         /// Wait until an element's label or value contains this text
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(chars, min = 1, max = NAME_LENGTH))]
+        #[garde(length(chars, min = 1))]
         pub text: Option<String>,
         /// Wait until this element ref is on the screen
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -652,7 +649,7 @@ record_input! {
     /// `record`: records every picture a device draws, and reads what it kept.
     pub struct RecordInput {
         target: RecordTarget, "For start, the device handle open returned, such as m1; for every other action, the recording's ID, such as r1";
-        output_length: NAME_LENGTH;
+        output_length: PATH_LENGTH;
     }
 }
 
@@ -674,7 +671,6 @@ closed_set! {
         AmbiguousDevice = "ambiguous_device",
         /// Another conversation has the device open.
         DeviceBusy = "device_busy",
-        TooManyDevices = "too_many_devices",
         /// The ref names no element of the device's last `inspect`.
         StaleRef = "stale_ref",
         Timeout = "timeout",

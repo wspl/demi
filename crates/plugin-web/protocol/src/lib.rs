@@ -20,17 +20,18 @@ pub const OPERATIONS: &[&str] = &[GET];
 /// How many characters a part holds when `--length` names none; it stays
 /// inside the replay bound.
 pub const DEFAULT_LENGTH: u32 = 15_000;
-/// The most characters one part holds.
-pub const MAX_LENGTH: u32 = 100_000;
 /// The deadline of a fetch when `--timeout` names none, in milliseconds.
 pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 /// The longest deadline `--timeout` takes, in milliseconds.
 pub const MAX_TIMEOUT_MS: u64 = 300_000;
-/// The most redirects a fetch follows.
+/// The most redirects a fetch follows: two servers can redirect to each other
+/// without end.
 pub const MAX_REDIRECTS: usize = 10;
-/// The largest body read as text: a page, JSON, XML or Markdown.
+/// The largest body read as text: a page, JSON, XML or Markdown. A body is held
+/// whole in memory, and a server may send without end.
 pub const MAX_TEXT_BYTES: u64 = 10 * 1024 * 1024;
-/// The largest body saved as a file.
+/// The largest body saved as a file, bounded for the same reason and by the
+/// Host's disk.
 pub const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 /// How long a fetched page is kept on the Host, in seconds.
 pub const CACHE_SECONDS: u64 = 15 * 60;
@@ -69,7 +70,7 @@ pub struct FetchArgs {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "u32")]
-    #[garde(range(min = 1, max = MAX_LENGTH))]
+    #[garde(range(min = 1))]
     pub length: Option<u32>,
     /// Print the body as received, HTML included, instead of Markdown
     #[serde(

@@ -151,10 +151,12 @@ pub const NO_HEADERS: Headers<'static> = &|_| HeaderMap::new();
 /// One file to download.
 pub struct Download<'a> {
     pub url: &'a str,
-    /// The most bytes the file may have; a larger one fails.
+    /// The most bytes the file may have; a larger one fails: the file is
+    /// written to the disk, which a source may otherwise fill.
     pub limit: u64,
     pub patience: Patience,
-    /// How many redirects a request follows.
+    /// How many redirects a request follows: two servers can redirect to each
+    /// other without end.
     pub redirects: usize,
     pub headers: Headers<'a>,
     /// The answer to the first request, when the caller sent it to see

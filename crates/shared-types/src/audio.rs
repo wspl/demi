@@ -158,9 +158,11 @@ pub enum BadPcm {
     TooLong(usize),
 }
 
-/// The largest rate a WAV file of this is made at, a studio's 384 kHz.
+/// The largest rate a WAV file of this is made at, a studio's 384 kHz: the
+/// header's byte rate is a 32-bit field, and players play no more.
 const MAX_RATE: u32 = 384_000;
-/// The most channels a WAV file of this holds, 7.1's eight.
+/// The most channels a WAV file of this holds, 7.1's eight, for the same
+/// reason.
 const MAX_CHANNELS: u16 = 8;
 /// A WAV header's size: `RIFF`, `fmt ` and `data` with their lengths.
 const WAV_HEADER: usize = 44;

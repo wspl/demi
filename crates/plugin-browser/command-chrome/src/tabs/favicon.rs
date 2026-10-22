@@ -38,11 +38,11 @@ use crate::tabs::tab::BrowserTab;
 const DRAW_TIME: Duration = Duration::from_secs(10);
 
 /// The largest icon file the Host draws; a larger one leaves the tab without
-/// an icon.
+/// an icon: a page names the file, and the Host holds it whole in memory.
 const ICON_BYTES: usize = 1024 * 1024;
 
 /// The largest picture a raster icon may decode to, and the memory decoding
-/// it may take.
+/// it may take: a small file can declare a huge picture.
 const ICON_PIXELS: u32 = 2048;
 const DECODE_BYTES: u64 = 64 * 1024 * 1024;
 

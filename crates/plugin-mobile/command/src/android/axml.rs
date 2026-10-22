@@ -23,7 +23,8 @@ const NONE: u32 = u32::MAX;
 /// The size of an attribute's fields (`ResXMLTree_attribute`).
 const ATTRIBUTE: usize = 20;
 /// The most strings, elements and attributes a document may hold
-/// together: a corner's drawable holds a few dozen.
+/// together: a corner's drawable holds a few dozen, and the document comes
+/// from the device, which may send any size.
 const ITEMS: usize = 65_536;
 
 /// An attribute's value, by its `Res_value` type.

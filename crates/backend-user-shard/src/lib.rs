@@ -28,7 +28,7 @@
 //! v shard threads: each a LocalRuntime hosting the shards of its pinned
 //! users. One user's shard: conversations (file gates, transfers, idle
 //! watches), agent trees, runner connections, pipe records, the Cloud machine,
-//! titles, forks, the command router, the request rate limit, the sync
+//! titles, forks, the command router, the sync
 //! channels
 //!      |  owned data in and out
 //! v threads: one per open SQLite connection; the blocking pool for disk,
