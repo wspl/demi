@@ -52,7 +52,7 @@ fn tool_rules() -> String {
         "The shell tool:".to_owned(),
         "- Runs a script in your working directory; a call returns when it ends, or after 30 s with it still running in the background.".to_owned(),
         format!("- A command in the background wakes you when it ends, and once after {silence} without output; it keeps running."),
-        "- background: true is for a command that runs until stopped, such as a server: its call returns once its output has been quiet for 2 s, and only its exit wakes you.".to_owned(),
+        "- service: true is for a command that runs until stopped, such as a server: its call returns once its output has been quiet for 2 s, and only its exit wakes you.".to_owned(),
         "- Commands in one response run in parallel.".to_owned(),
         "- Results and reports show new output, runningMs and idleMs (time without output).".to_owned(),
         "- `demi shell status|input|output|stop <commandId>`".to_owned(),

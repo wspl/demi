@@ -212,7 +212,7 @@ pub(crate) fn background(id: &str, script: &str) -> Answer {
         event::tool_call(
             id,
             "shell",
-            json!({ "description": id, "script": script, "background": true }),
+            json!({ "description": id, "script": script, "service": true }),
         ),
         event::response(1, 1),
     ]

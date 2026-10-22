@@ -43,7 +43,7 @@
 //!   (`crates/agent-session/src/reports.rs`); nothing else wakes the node about
 //!   it. So no call chooses how it is told, and a hung command still reaches
 //!   the node.
-//! - `background: true` is for a command that runs until stopped, such as a
+//! - `service: true` is for a command that runs until stopped, such as a
 //!   development server: its call returns once its output has been quiet for
 //!   [`QUIET`], or after [`BACKGROUND_WINDOW`], and only its exit wakes the node.
 //! - A script that starts with a `sleep` of the window or more is refused unless
@@ -194,7 +194,7 @@ const SHELL: &str = "shell";
 const SLEEP_REFUSED: &str = "Refused: a call returns after 30 s, so a script that starts with a long sleep only holds it. You wait by ending your turn, and a command's end wakes you.";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. The call returns when the command ends, or after 30 seconds with the command still running in the background: the result carries its commandId, and its end wakes you. With background: true, for a command that runs until stopped, the call returns once its output has been quiet for 2 seconds, and only its exit wakes you. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. The call returns when the command ends, or after 30 seconds with the command still running in the background: the result carries its commandId, and its end wakes you. With service: true, for a command that runs until stopped, the call returns once its output has been quiet for 2 seconds, and only its exit wakes you. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -356,7 +356,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
-        if !input.background && leading_sleep(&input.script).is_some_and(|sleep| sleep >= LONGEST_SLEEP) {
+        if !input.service && leading_sleep(&input.script).is_some_and(|sleep| sleep >= LONGEST_SLEEP) {
             return Ok(ToolOutcome::error(SLEEP_REFUSED.to_owned()));
         }
         let cwd = self.cwd().await?;
@@ -373,7 +373,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 turn: Some(call.turn),
             },
             title: input.description.0.clone(),
-            background: input.background,
+            background: input.service,
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -400,9 +400,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         };
         call.command.started(StartedCommand {
             command: command.clone(),
-            background: input.background,
+            background: input.service,
         });
-        let window_ms = (!input.background).then_some(self.call_window_ms);
+        let window_ms = (!input.service).then_some(self.call_window_ms);
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
@@ -412,7 +412,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         .await?;
         stopping.disarm();
         let running = matches!(status.state, CommandState::Running { .. });
-        let moved = match (ended_by, running && !input.background) {
+        let moved = match (ended_by, running && !input.service) {
             (Some(WindowEnd::SentNow), _) => Some(Moved::SentNow),
             (None, true) => Some(Moved::TimePassed),
             _ => None,
@@ -423,7 +423,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             call.request_limits,
             Look {
                 moved,
-                watch: Some(Watch::started(input.background)),
+                watch: Some(Watch::started(input.service)),
                 unreachable: None,
             },
         )
@@ -431,7 +431,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         if running {
             outcome.effect = Some(ToolEffect::Background {
                 command,
-                background: input.background,
+                background: input.service,
             });
         } else {
             self.release(environment.as_ref(), &command).await;

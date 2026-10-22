@@ -9,7 +9,7 @@ use serde_json::{Map, Value};
 use std::time::Duration;
 
 /// What `background` tells the model.
-const BACKGROUND: &str = "true for a command that runs until stopped, such as a development server or a watcher: the call returns once its output has been quiet for 2 seconds, and only its exit wakes you.";
+const SERVICE: &str = "true for a command that runs until stopped, such as a development server or a watcher: the call returns once its output has been quiet for 2 seconds, and only its exit wakes you.";
 
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs.
@@ -23,9 +23,11 @@ pub(super) struct ShellInput {
     #[schemars(length(min = 1), description = DESCRIPTION)]
     pub(super) description: NonEmpty,
     pub(super) script: String,
-    #[serde(default)]
-    #[schemars(description = BACKGROUND)]
-    pub(super) background: bool,
+    /// Was `background` until 0.1.61; transcripts written before keep that
+    /// name, so a replayed call still reads.
+    #[serde(default, alias = "background")]
+    #[schemars(description = SERVICE)]
+    pub(super) service: bool,
 }
 
 /// How long a script's first command sleeps, when it is a `sleep`: the sum of
@@ -111,7 +113,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_schema_requires_a_title_first_and_offers_background_and_nothing_else() {
+    fn the_schema_requires_a_title_first_and_offers_service_and_nothing_else() {
         let shell = schema::<ShellInput>();
         assert_eq!(shell["additionalProperties"], false);
         assert_eq!(shell["required"], json!(["description", "script"]));
@@ -119,8 +121,8 @@ mod tests {
         // The title leads: serde_json keeps the order (`preserve_order`), so
         // the schema a provider serializes lists it first too.
         let order: Vec<&String> = properties.as_object().unwrap().keys().collect();
-        assert_eq!(order, ["description", "script", "background"]);
-        assert_eq!(properties["background"]["type"], "boolean");
+        assert_eq!(order, ["description", "script", "service"]);
+        assert_eq!(properties["service"]["type"], "boolean");
         assert_eq!(
             properties["description"],
             json!({"type": "string", "minLength": 1, "description": DESCRIPTION})
@@ -137,8 +139,8 @@ mod tests {
                 "unknown field `intervalMs`",
             ),
             (
-                json!({"script": "true", "description": "Run", "background": "yes"}),
-                "background: invalid type: string",
+                json!({"script": "true", "description": "Run", "service": "yes"}),
+                "service: invalid type: string",
             ),
             // A step that starts work names it for the user.
             (json!({"script": "true"}), "missing field `description`"),
@@ -153,13 +155,13 @@ mod tests {
             assert!(text.contains(field), "{text}");
         }
         let plain: ShellInput = parse("shell", json!({"script": "true", "description": "Run"})).unwrap();
-        assert!(!plain.background);
+        assert!(!plain.service);
         let server: ShellInput = parse(
             "shell",
-            json!({"script": "npm run dev", "background": true, "description": "Start the dev server"}),
+            json!({"script": "npm run dev", "service": true, "description": "Start the dev server"}),
         )
         .unwrap();
-        assert!(server.background);
+        assert!(server.service);
     }
 
     #[test]

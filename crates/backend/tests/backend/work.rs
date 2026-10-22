@@ -60,7 +60,7 @@ pub(crate) fn background(id: &str, script: &str) -> MockResponse {
     tool_use(
         id,
         "shell",
-        &json!({ "description": id, "script": script, "background": true }),
+        &json!({ "description": id, "script": script, "service": true }),
     )
 }
 

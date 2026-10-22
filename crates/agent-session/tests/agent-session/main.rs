@@ -355,7 +355,7 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
         if let Some(command) = call.input["commandId"].as_str() {
             call.command.started(StartedCommand {
                 command: CommandId::try_from(command).unwrap(),
-                background: call.input["background"].as_bool().unwrap_or(false),
+                background: call.input["service"].as_bool().unwrap_or(false),
             });
         }
         if let Some(started) = started.borrow_mut().take() {
@@ -381,7 +381,7 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
             call.input["commandId"].as_str().unwrap(),
             call.input["description"].as_str().unwrap(),
         );
-        let background = call.input["background"].as_bool().unwrap_or(false);
+        let background = call.input["service"].as_bool().unwrap_or(false);
         let view = ToolView::Shell(ShellToolView {
             request_files: None,
             run_files: None,
