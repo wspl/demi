@@ -135,7 +135,7 @@ const OPEN_TIMEOUT_MS = 30_000
  * another client disposed the tree. On a weak network a connection comes and
  * goes, so the runtime:
  *
- * - keeps `load` at `reconnecting` (the transcript's tail row says Connecting,
+ * - keeps `load` at `reconnecting` (the title's spinner says so,
  *   the composer stays), or at `connecting` while the session has never opened
  * - tries again after each of the page's reconnect waits, until the socket is
  *   back or the view is disposed

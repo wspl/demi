@@ -93,11 +93,6 @@ const props = withDefaults(defineProps<{
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
   /**
-   * The host's connection banner says the backend is away; a reconnecting
-   * socket adds no Connecting row.
-   */
-  backendAway?: boolean
-  /**
    * A recovery the server has not acknowledged: the tail row says Requesting.
    */
   pendingAction?: PendingAction

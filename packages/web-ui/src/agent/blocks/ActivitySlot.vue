@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { t } from '../locales/text'
 import { computed } from 'vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import type { ActivityKind } from '../activity-slot'
@@ -17,7 +16,7 @@ const props = defineProps<{
   /**
    * When the server began the wait, as `Date.now()`; Requesting shows how
    * long it has waited since. Without it, as while the page's own action has
-   * no answer, and for Connecting, the row counts nothing.
+   * no answer, the row counts nothing.
    */
   since?: number | null
 }>()
@@ -27,14 +26,7 @@ const requestingElapsed = useElapsedTime(
   () => props.kind === 'requesting' && props.since != null,
 )
 
-const label = computed(() => {
-  switch (props.kind) {
-    case 'connecting':
-      return t('transcript.connecting')
-    case 'requesting':
-      return providerWaitLabel(requestingElapsed.value ?? 0)
-  }
-})
+const label = computed(() => providerWaitLabel(requestingElapsed.value ?? 0))
 </script>
 
 <template>

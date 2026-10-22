@@ -9,31 +9,23 @@ import { useActivitySlot, type ActivitySlotSources } from '../useActivitySlot'
 
 function kind(options: {
   load?: SessionLoad
-  backendAway?: boolean
   actionSent?: boolean
   startingTurn?: boolean
   waiting?: boolean
 } = {}) {
   return activitySlotKind({
     load: options.load ?? 'ready',
-    backendAway: options.backendAway ?? false,
     actionSent: options.actionSent ?? false,
     startingTurn: options.startingTurn ?? false,
     waiting: options.waiting ?? false,
   })
 }
 
-test('a first opening whose socket is not made yet says it connects, as a lost socket does', () => {
-  expect(kind({ load: 'connecting' })).toBe('connecting')
-  expect(kind({ load: 'connecting', backendAway: true })).toBeNull()
-  // The copy the page kept shows while the socket opens.
-  expect(kind({ load: 'opening' })).toBe('connecting')
-})
-
-test('a message sent while the first opening runs says Requesting, never Connecting; a socket that is not made yet still says Connecting', () => {
-  expect(kind({ load: 'opening', startingTurn: true })).toBe('requesting')
-  expect(kind({ load: 'opening', startingTurn: true, backendAway: true })).toBeNull()
-  expect(kind({ load: 'connecting', startingTurn: true })).toBe('connecting')
+test('the socket changes nothing of the row: a message sent while it is not open says Requesting from the send', () => {
+  for (const load of ['opening', 'connecting', 'reconnecting'] as const) {
+    expect(kind({ load })).toBeNull()
+    expect(kind({ load, startingTurn: true })).toBe('requesting')
+  }
 })
 
 test('the row says Requesting while the server says the agent waits, and nothing otherwise', () => {
@@ -50,19 +42,9 @@ test('a conversation that failed to open waits for nothing: the failure told at 
   expect(kind({ load: 'failed', waiting: true })).toBeNull()
 })
 
-test('connecting wins over a pending recovery and a wait', () => {
-  expect(kind({ load: 'reconnecting' })).toBe('connecting')
-  expect(kind({ load: 'reconnecting', actionSent: true })).toBe('connecting')
-  expect(kind({ load: 'reconnecting', waiting: true })).toBe('connecting')
-})
-
-test('while the connection banner says the backend is away, a reconnecting conversation shows no row of its own', () => {
-  const away = { load: 'reconnecting', backendAway: true } as const
-  expect(kind(away)).toBeNull()
-  expect(kind({ ...away, waiting: true })).toBeNull()
-  expect(kind({ ...away, actionSent: true })).toBeNull()
-  // Its socket lost while the page still reaches the backend: the row says so.
-  expect(kind({ load: 'reconnecting', waiting: true })).toBe('connecting')
+test('a wait the server tells shows while the socket is lost', () => {
+  expect(kind({ load: 'reconnecting', waiting: true })).toBe('requesting')
+  expect(kind({ load: 'reconnecting', actionSent: true })).toBe('requesting')
 })
 
 /**
@@ -102,7 +84,7 @@ function slotOver(phase: SessionPhase, opened = 0) {
 /** What the message list gives the row of `conversation`. */
 function sourcesOf(conversation: Conversation): ActivitySlotSources {
   return {
-    input: () => ({ load: conversation.load, backendAway: false }),
+    input: () => ({ load: conversation.load }),
     phase: () => conversation.phase,
     pendingSubmissions: () => conversation.pendingSubmissions,
     activity: () => ({
@@ -205,13 +187,13 @@ test('a failed delivery ends the wait, and Retry says Requesting again', async (
   expect(slot.value).toEqual({ kind: 'requesting', since: null })
 })
 
-test('a message sent while the socket reconnects says Connecting, and Requesting once the socket is back', async () => {
+test('a message sent while the socket reconnects says Requesting from the send, and keeps it once the socket is back', async () => {
   using session = slotOver('idle')
   const { conversation, slot } = session
   conversation.load = 'reconnecting'
   sending(conversation, [sent()])
   await nextTick()
-  expect(slot.value).toEqual({ kind: 'connecting' })
+  expect(slot.value).toEqual({ kind: 'requesting', since: null })
 
   conversation.load = 'ready'
   await nextTick()

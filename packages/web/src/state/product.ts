@@ -5,7 +5,7 @@ import { schemaRefusal } from '@demicodes/protocol'
 import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, openSocket, pingOn, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
-import { connectionProblem } from '@demicodes/web-ui/transport/connection'
+import { backendUnreachable } from '@demicodes/web-ui/transport/connection'
 import { t } from './locales/text'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
@@ -318,11 +318,8 @@ export const useProduct = defineStore('product', () => {
   const restarting = ref(false)
   /** Consecutive connections that ended before their snapshot. */
   const failures = ref(0)
-  /**
-   * Why the page cannot reach the backend, which its connection banner says;
-   * null while it can.
-   */
-  const connection = computed(() => connectionProblem({
+  /** Whether the page cannot reach the backend. */
+  const unreachable = computed(() => backendUnreachable({
     online: browserOnline.value,
     restarting: restarting.value,
     failedAttempts: failures.value,
@@ -513,7 +510,7 @@ export const useProduct = defineStore('product', () => {
     if (event.type === 'snapshot') {
       // The backend is back after it was away: each other socket of the page
       // that waits to connect connects at once, as at the page's return, so
-      // nothing still says it connects once the banner goes.
+      // nothing still says it connects once the backend is reachable.
       const returned = failures.value > 0 || restarting.value
       failures.value = 0
       restarting.value = false
@@ -607,8 +604,8 @@ export const useProduct = defineStore('product', () => {
 
   /**
    * Resolves once the backend is worth asking again after `attempt` requests
-   * that could not reach it: when the connection banner goes, while it shows;
-   * otherwise after the page's reconnect wait for that many failures, cut
+   * that could not reach it: when the backend is reachable again, while it is
+   * not; otherwise after the page's reconnect wait for that many failures, cut
    * short when the page returns. Rejects when `signal` aborts first.
    */
   function reachable(attempt: number, signal: AbortSignal): Promise<void> {
@@ -633,12 +630,12 @@ export const useProduct = defineStore('product', () => {
         resolve()
       }
       signal.addEventListener('abort', aborted, { once: true })
-      if (connection.value === null) {
+      if (!unreachable.value) {
         wait = waitToReconnect(attempt, ready)
         return
       }
-      stopWatching = watch(connection, (problem) => {
-        if (problem === null) {
+      stopWatching = watch(unreachable, (away) => {
+        if (!away) {
           ready()
         }
       })
@@ -762,7 +759,7 @@ export const useProduct = defineStore('product', () => {
     account,
     read,
     load,
-    connection,
+    unreachable,
     newBuild,
     catalog,
     automaticSmallModel,

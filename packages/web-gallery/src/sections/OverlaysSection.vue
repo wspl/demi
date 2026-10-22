@@ -9,7 +9,6 @@ import { productWould } from '../product-would'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
-import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import GalleryContextMenus from '../components/GalleryContextMenus.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
@@ -1240,23 +1239,6 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 @click="showArchived(1, () => productWould('Restore the Conversation'))"
               >Archive</Button>
             </div>
-          </GallerySpecimen>
-        </div>
-      </GallerySection>
-
-      <GallerySection
-        title="Connection Banner"
-        note="Across the top of the app while the backend cannot be reached, as Slack and Linear show one; everything under it stays readable and usable, and it goes once the page reaches the backend again. It says why in the user’s words: no network, Demi restarting (the backend said so as it closed the page’s channel), or reconnecting once a lost channel’s first new attempt failed too. A message sent meanwhile says it waits to be sent (Session › Turns › Offline)."
-      >
-        <div class="specimen-stack">
-          <GallerySpecimen variant="offline" wide>
-            <ConnectionBanner problem="offline" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="restarting" wide>
-            <ConnectionBanner problem="restarting" />
-          </GallerySpecimen>
-          <GallerySpecimen variant="reconnecting" wide>
-            <ConnectionBanner problem="reconnecting" />
           </GallerySpecimen>
         </div>
       </GallerySection>

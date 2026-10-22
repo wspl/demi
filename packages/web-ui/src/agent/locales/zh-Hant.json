@@ -116,7 +116,6 @@
       "next": "下一個版本",
       "position": "第 {index} 個版本，共 {count} 個"
     },
-    "connecting": "正在連線",
     "newFile": "新增檔案",
     "moreFiles": "+{count} 個檔案",
     "picture": {
@@ -207,6 +206,7 @@
     "tabsOpen": "分頁，已開啟 {count} 個",
     "closePanel": "關閉面板",
     "options": "{title}，對話選項",
+    "connecting": "正在連線",
     "hostState": "{name} {state}",
     "renameTitle": "重新命名對話",
     "titleLabel": "對話標題",

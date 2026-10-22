@@ -1,13 +1,8 @@
-import type { SentenceText } from '../ui/ui-text'
-import { t } from './locales/text'
-
 /**
- * Why the page cannot reach the backend, as its connection banner says: the
- * browser has no network, the backend said it shuts down and will be back, or a
- * lost synchronization channel's first new attempt failed too.
+ * What decides whether the page reaches the backend: the browser has a
+ * network, the backend did not say it shuts down, and the synchronization
+ * channel's lost connection was not refused twice.
  */
-export type ConnectionProblem = 'offline' | 'restarting' | 'reconnecting'
-
 export interface ConnectionFacts {
   /** The browser reports a network. */
   online: boolean
@@ -20,23 +15,12 @@ export interface ConnectionFacts {
 }
 
 /**
- * What the banner says, or null while the page reaches the backend.
+ * Whether the page cannot reach the backend.
  *
  * - No network wins, since nothing else can be true of it.
- * - A lost channel shows nothing until its first new attempt failed as well, so a
- *   blip that the next connection mends never flashes a banner.
+ * - A lost channel counts only once its first new attempt failed as well, so a
+ *   blip that the next connection mends is never unreachable.
  */
-export function connectionProblem(facts: ConnectionFacts): ConnectionProblem | null {
-  if (!facts.online) {
-    return 'offline'
-  }
-  if (facts.restarting) {
-    return 'restarting'
-  }
-  return facts.hasSnapshot && facts.failedAttempts >= 2 ? 'reconnecting' : null
-}
-
-/** The banner's words for `problem`, in the page's language. */
-export function connectionWords(problem: ConnectionProblem): SentenceText {
-  return t(`connection.${problem}`)
+export function backendUnreachable(facts: ConnectionFacts): boolean {
+  return !facts.online || facts.restarting || (facts.hasSnapshot && facts.failedAttempts >= 2)
 }

@@ -138,10 +138,10 @@ test('the backend refusing a read acknowledgement rejects with its answer', asyn
   expect(answered).toEqual(['POST /api/conversations/c-1/read {"revision":4}'])
 })
 
-test("the backend's own answer rejects at once, even while the banner shows", async () => {
+test("the backend's own answer rejects at once, even while the backend is unreachable", async () => {
   connected()
   channels.last().end(1001, 'backend_closing')
-  expect(useProduct().connection).toBe('restarting')
+  expect(useProduct().unreachable).toBe(true)
   const fork = apiRequest('/conversations/c-1/fork', { method: 'POST' })
   await expect(fork).rejects.toThrow(ApiError)
   expect(answered).toEqual(['POST /api/conversations/c-1/fork'])

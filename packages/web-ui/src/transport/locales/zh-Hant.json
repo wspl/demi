@@ -1,8 +1,3 @@
 {
-  "connection": {
-    "offline": "你已離線",
-    "restarting": "Demi 正在重新啟動",
-    "reconnecting": "正在重新連線到 Demi"
-  },
   "socketReplaced": "連線已被取代"
 }

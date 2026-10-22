@@ -156,13 +156,3 @@ test('a switch, a reconnect and a reload show the server\'s count unchanged', as
   now.mockReturnValue(STARTED + 41_000)
   expect(await drawnRoot(reloaded)()).toBe(providerWaitLabel(41_000))
 })
-
-// A conversation opened from the copy the page kept shows it while its
-// socket opens: the tail row says it connects, as a lost socket's does.
-test('a conversation shown from its kept copy before its socket opens says Connecting', async () => {
-  const conversation = state()
-  conversation.load = 'opening'
-  conversation.phase = 'running'
-  const row = drawnRoot(conversation)
-  expect(await row()).toBe(t('transcript.connecting'))
-})

@@ -23,8 +23,8 @@ import { printLive } from './live-command'
  *   confirms.
  * - `undelivered`: a sent message whose delivery fails, until Retry sends it
  *   again.
- * - `offline`: a message sent while the socket is lost, under Connecting, which
- *   goes once the socket is back.
+ * - `offline`: a message sent while the socket is lost, under Requesting with
+ *   the title's spinner, which goes once the socket is back.
  * - `first`: a new conversation's first message, sent with its creation while
  *   its socket opens, under Requesting, which goes on through the opening
  *   until the answer begins.
@@ -102,7 +102,7 @@ const CONFIRM_MS = 1600
 const DELIVERY_ERROR = 'The message couldn’t be sent.'
 const DELIVERY_REQUEST = 'req_ffb05w4w6kxpdtz0'
 /** How long the simulated backend stays out of reach after an offline send. */
-const OFFLINE_MS = 2500
+const OFFLINE_MS = 4500
 /** How long the socket of a new conversation takes to open after its first message was sent. */
 const OPENING_MS = 1500
 const WAIT_MS = 80
@@ -1437,7 +1437,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
 
     if (kind === 'connect') {
-      // The socket dropped while a turn was running: Connecting wins until it is back.
+      // The socket dropped while a turn was running: the title's spinner says so until it is back.
       state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
       state.phase = 'running'
       state.load = 'reconnecting'
@@ -1489,8 +1489,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
     state.blocks = []
     if (kind === 'offline') {
-      // The socket is lost: the tail row says Connecting under the message,
-      // which goes with its id once the socket is back.
+      // The socket is lost: the row says Requesting under the message and the
+      // title shows its spinner; the message goes with its id once the socket
+      // is back.
       state.load = 'reconnecting'
       holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
       at(run, OFFLINE_MS, () => {
@@ -1502,7 +1503,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (kind === 'first') {
       // The message went with the conversation's creation, and the session
       // shows it once the socket has opened: the tail row says Requesting
-      // meanwhile, never Connecting.
+      // meanwhile.
       state.load = 'opening'
       holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
       at(run, OPENING_MS, () => {

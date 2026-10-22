@@ -152,21 +152,21 @@ test('a page of another build than the backend serves is out of date, as soon as
   }
 })
 
-test('a snapshot of another build that this page cannot read still names the build to load, and the banner goes', () => {
+test('a snapshot of another build that this page cannot read still names the build to load, and the backend is reachable', () => {
   process.env.DEMI_WEB_BUILD = 'b1'
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(1)
   try {
     const product = started(productState({ webBuild: 'b1' }))
     channels.last().end(1001, 'backend_closing')
-    expect(product.connection).toBe('restarting')
+    expect(product.unreachable).toBe(true)
     jest.advanceTimersByTime(2_000)
     // The new release's Cloud has a state this build does not know.
     const state = productState({ webBuild: 'b2' })
     channels.last().open()
     channels.last().deliver({ type: 'snapshot', state: { ...state, cloud: { ...state.cloud, state: 'migrating' } } })
     expect(product.newBuild).toBe('b2')
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     // The page loads the new build; the channel is not replaced meanwhile.
     const count = channels.opened.length
     jest.advanceTimersByTime(60_000)
@@ -191,11 +191,11 @@ test('a connection whose handshake does not complete within 10 seconds is abando
     expect(held.closed).toBe(false)
     jest.advanceTimersByTime(1)
     expect(held.closed).toBe(true)
-    expect(product.connection).toBe('restarting')
+    expect(product.unreachable).toBe(true)
     jest.advanceTimersByTime(2_000)
     expect(channels.opened.length).toBe(count + 1)
     channels.last().connect(productState())
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
   } finally {
     random.mockRestore()
   }
@@ -203,7 +203,7 @@ test('a connection whose handshake does not complete within 10 seconds is abando
 
 // When the channel's snapshot arrives after the backend was away, every
 // other socket of the page that waits to connect connects at once, so no
-// Connecting row outlives the banner. Cost: fake timers, a few milliseconds.
+// spinner by the title outlives the wait. Cost: fake timers, a few milliseconds.
 test('a socket waiting its backoff, as a conversation\'s does, connects as soon as the channel\'s snapshot is back after a restart', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(1)
@@ -215,7 +215,7 @@ test('a socket waiting its backoff, as a conversation\'s does, connects as soon 
     const conversation = waitToReconnect(5, () => connected.push(Date.now()))
     jest.advanceTimersByTime(2_000)
     channels.last().connect(productState())
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     expect(connected).toHaveLength(1)
     conversation.cancel()
   } finally {
@@ -319,15 +319,15 @@ test('a closed channel connects again after a second, then twice as long each ti
   }
 })
 
-test('a backend that shuts down shows the banner Demi is restarting, tried every one to two seconds until a snapshot comes', () => {
+test('a backend that shuts down is unreachable, tried every one to two seconds until a snapshot comes', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(1)
   try {
     const product = started()
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     channels.last().end(1001, 'backend_closing')
-    expect(product.connection).toBe('restarting')
-    // Connections that end while the backend is away keep the banner and
+    expect(product.unreachable).toBe(true)
+    // Connections that end while the backend is away stay unreachable and keep
     // the short wait: none doubles.
     for (let refused = 0; refused < 4; refused += 1) {
       const count = channels.opened.length
@@ -337,36 +337,36 @@ test('a backend that shuts down shows the banner Demi is restarting, tried every
       expect(channels.opened.length).toBe(count + 1)
       channels.last().open()
       channels.last().end(1006)
-      expect(product.connection).toBe('restarting')
+      expect(product.unreachable).toBe(true)
     }
     jest.advanceTimersByTime(2_000)
     channels.last().connect(productState())
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
   } finally {
     random.mockRestore()
   }
 })
 
-test('a channel lost without the backend saying so shows no banner until its first new attempt fails too', () => {
+test('a channel lost without the backend saying so is unreachable only once its first new attempt fails too', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(0)
   try {
     const product = started()
     channels.last().end(1006)
     // A blip the next connection mends shows nothing.
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     jest.advanceTimersByTime(1_000)
     channels.last().end(1006)
-    expect(product.connection).toBe('reconnecting')
+    expect(product.unreachable).toBe(true)
     jest.advanceTimersByTime(2_000)
     channels.last().connect(productState())
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
   } finally {
     random.mockRestore()
   }
 })
 
-test('a first connection that cannot reach the backend says the page connects; one the backend fails shows its failure in the regions, not the banner', () => {
+test('a first connection that cannot reach the backend says the page connects; one the backend fails shows its failure in the regions, not as unreachable', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(0)
   try {
@@ -378,11 +378,11 @@ test('a first connection that cannot reach the backend says the page connects; o
     channels.last().end(1006)
     expect(product.load).toBe('loading')
     expect(product.connecting).toBe(true)
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     jest.advanceTimersByTime(2_000)
     channels.last().end(1011, 'internal_error')
     expect(product.load).toBe('failed')
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
   } finally {
     random.mockRestore()
   }
@@ -520,7 +520,7 @@ test('a page back from sleep replaces a channel silent for 75 seconds at once, a
 // The return asks the
 // channel for a pong; one that answers was never broken, and the page shows
 // nothing of the check. Cost: fake timers, a few milliseconds.
-test('a page back whose channel answers the return\'s ping keeps it and shows no banner', async () => {
+test('a page back whose channel answers the return\'s ping keeps it and is not unreachable', async () => {
   jest.useFakeTimers()
   const product = started()
   const channel = channels.last()
@@ -535,7 +535,7 @@ test('a page back whose channel answers the return\'s ping keeps it and shows no
   jest.advanceTimersByTime(0)
   expect(channel.closed).toBe(false)
   expect(channels.last()).toBe(channel)
-  expect(product.connection).toBeNull()
+  expect(product.unreachable).toBe(false)
 })
 
 test('a channel still connecting when the page went away is abandoned at the return and connects again at once', () => {
@@ -559,11 +559,11 @@ test('a channel still connecting when the page went away is abandoned at the ret
 
 // The browser's word that
 // it went offline counts once it has held for a second, as a network that
-// macOS re-evaluates reports offline for a moment; one that holds shows the
-// banner and closes no socket, which may still work through a VPN's tunnel,
-// and coming back online checks each socket as at a return. Cost: fake
+// macOS re-evaluates reports offline for a moment; one that holds makes the
+// backend unreachable and closes no socket, which may still work through a
+// VPN's tunnel, and coming back online checks each socket as at a return. Cost: fake
 // timers, a few milliseconds.
-test('a moment offline under a second shows no banner; one that holds shows it and keeps the channel, and back online the return keeps a live channel', () => {
+test('a moment offline under a second is not unreachable; one that holds is, and keeps the channel, and back online the return keeps a live channel', () => {
   jest.useFakeTimers()
   try {
     const product = started()
@@ -572,20 +572,20 @@ test('a moment offline under a second shows no banner; one that holds shows it a
     jest.advanceTimersByTime(500)
     browserCameOnline()
     jest.advanceTimersByTime(5_000)
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
 
     browserWentOffline()
     jest.advanceTimersByTime(999)
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     jest.advanceTimersByTime(1)
-    expect(product.connection).toBe('offline')
+    expect(product.unreachable).toBe(true)
     expect(channel.closed).toBe(false)
     // The channel goes on working through the tunnel while the browser says offline.
     channel.send({ type: 'heartbeat' })
     jest.advanceTimersByTime(30_000)
     browserCameOnline()
     jest.advanceTimersByTime(0)
-    expect(product.connection).toBeNull()
+    expect(product.unreachable).toBe(false)
     expect(channel.closed).toBe(false)
     expect(channels.last()).toBe(channel)
   } finally {

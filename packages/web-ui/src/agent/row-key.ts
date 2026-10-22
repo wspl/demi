@@ -30,7 +30,7 @@ export function rowKey(block: MessageListBlock): string {
 /**
  * Whether the list draws `row` with `FunctionalBlock`, the 28px face of the
  * agent's work and the tail's state: a step or a run, a command's notice, an
- * agent's receipt, the Stopped row, the wait row (Requesting or Connecting)
+ * agent's receipt, the Stopped row, the wait row (Requesting)
  * and a share's note of steps not shared (`NoticeRow`). Such a row enters as
  * chrome (`chromeEntrance`) and rolls into another such row (`rowFace`).
  * Every other row, the agent's text, a message bubble (another agent's

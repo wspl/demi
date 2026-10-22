@@ -27,7 +27,7 @@ export interface PendingCallRenderBlock {
 }
 
 /**
- * The transcript's tail row, Requesting or Connecting, right after the
+ * The transcript's tail row, Requesting, right after the
  * transcript and above the messages that wait. Each wait it shows is a row of
  * its own, which enters once.
  */

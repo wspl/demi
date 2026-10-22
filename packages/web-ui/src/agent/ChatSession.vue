@@ -70,14 +70,16 @@ import { usePhone } from '../ui/phone'
 import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
+import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import { provideLabelRoom } from '../ui/label-room'
-import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, SOCKET_WAIT_MS, socketWaiting, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import { provideBlockReader, type BlockReader } from './whole-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
+import { useHeldFor } from '../composables/useHeldFor'
 import RequestCard from '../permissions/RequestCard.vue'
 import type { CredentialAnswer, PermissionDecision, RequestView } from '../permissions/types'
 
@@ -199,12 +201,6 @@ const props = withDefaults(defineProps<{
    * not Expose Port. Absent, no port counts as exposed.
    */
   isExposed?: (deviceId: string, port: number) => boolean
-  /**
-   * The host's connection banner says the backend is away. The transcript adds
-   * no Connecting row of its own while the conversation's socket waits for the
-   * backend.
-   */
-  backendAway?: boolean
   /**
    * The user's preference to resume a turn by itself at the time its failure
    * names, which such a failure's record offers. Absent, it offers none.
@@ -482,6 +478,14 @@ function titleSheetEntries(listed: { pinned: boolean }) {
   }, true)
 }
 
+/**
+ * The conversation's socket has not been open for `SOCKET_WAIT_MS`: the title
+ * says so with a spinner where its Rename button, or on a phone its chevron,
+ * stands (`docs/decisions/0059-connecting-is-a-spinner-by-the-title.md`).
+ */
+const connecting = useHeldFor(() => socketWaiting(props.conversation.load), SOCKET_WAIT_MS)
+const iconPx = useIconPx()
+
 /** The Rename button, or a double-click on the title, names it in place. */
 function beginRename(): void {
   if (!props.conversation.archived) {
@@ -752,7 +756,15 @@ watch(
           :label="t('session.hostState', { name: hostNotReady.name, state: DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase() })"
         />
         <h1 class="min-w-0 truncate text-[15px] font-medium">{{ shownTitle }}</h1>
-        <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
+        <span
+          v-if="connecting"
+          class="flex shrink-0 text-fg-subtle"
+          role="status"
+          :aria-label="t('session.connecting')"
+        >
+          <IndeterminateSpinner :size="ICON_PX.in20" />
+        </span>
+        <ChevronDown v-else :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
       </button>
       <IconButton
         v-if="asideOpen !== undefined"
@@ -841,7 +853,16 @@ watch(
           </h1>
           <!-- A cut title shows whole in its tip, as a sidebar row's does. -->
           <Tooltip :trigger="title" :content="shownTitle" :show-if="isTextCut" placement="bottom-start" />
-          <Tooltip :content="shared('common.rename')" class="shrink-0">
+          <!-- Not a button while it spins; the box is the button's, so the title stays. -->
+          <span
+            v-if="connecting"
+            class="flex size-hit shrink-0 items-center justify-center text-fg-muted"
+            role="status"
+            :aria-label="t('session.connecting')"
+          >
+            <IndeterminateSpinner :size="iconPx.in28" />
+          </span>
+          <Tooltip v-else :content="shared('common.rename')" class="shrink-0">
             <IconButton
               :icon="TextCursorInput"
               variant="ghost"
@@ -924,7 +945,6 @@ watch(
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"
-            :backend-away="backendAway"
             :pending-action="conversation.pendingAction"
             :failures="conversation.failures"
             :load-error="conversation.lastError"

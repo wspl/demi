@@ -17,7 +17,7 @@ import type { PendingSteerMessage, PendingSubmissionState } from './types'
 //   (`drawnAsFunctionalBlock`).
 // - Messages that wait, the pending steers and the queue, stand below the turn
 //   and never in its flow. What the turn is doing is read from the transcript
-//   alone, so the tail row (Requesting or Connecting) stands right after the
+//   alone, so the tail row (Requesting) stands right after the
 //   transcript, above them.
 // - The Requesting row says one word for as long as the provider is asked,
 //   since which part of the system holds a message is no concern of the person

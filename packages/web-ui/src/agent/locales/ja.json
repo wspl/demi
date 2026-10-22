@@ -116,7 +116,6 @@
       "next": "次のバージョン",
       "position": "バージョン {index}/{count}"
     },
-    "connecting": "接続中",
     "newFile": "新しいファイル",
     "moreFiles": "+{count} ファイル",
     "picture": {
@@ -207,6 +206,7 @@
     "tabsOpen": "タブ、{count} 個開いています",
     "closePanel": "パネルを閉じる",
     "options": "{title}、チャットのオプション",
+    "connecting": "接続中",
     "hostState": "{name} は{state}",
     "renameTitle": "チャットの名前を変更",
     "titleLabel": "チャットのタイトル",

@@ -104,7 +104,7 @@ export async function conversationAddress(page: Page): Promise<void> {
  *
  * - the composer's Stop, which stays from the send of the message that starts
  *   the turn to its end;
- * - the transcript's Requesting or Connecting row, which also stands for a
+ * - the transcript's Requesting row, which also stands for a
  *   recovery the backend has not taken up yet.
  */
 export async function pageActivity(page: Page): Promise<string | null> {

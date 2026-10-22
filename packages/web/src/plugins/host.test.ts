@@ -162,7 +162,7 @@ function backendLeaves(): void {
   channels.last().end(1001, 'backend_closing')
 }
 
-/** The backend is back with `state`: the page connects again at once, and the channel's snapshot ends the banner. */
+/** The backend is back with `state`: the page connects again at once, and the channel's snapshot ends the wait. */
 async function backendReturns(state = productState({ pluginStates: { skills } })): Promise<void> {
   away = false
   await pageReturned()
@@ -181,7 +181,7 @@ test('a call the page cannot send while the backend restarts goes once it is bac
   expect(calls).toEqual([['/api/plugins/skills/calls/set_enabled', review]])
 })
 
-test("an answer of the backend's own rejects at once, even while the banner shows", async () => {
+test("an answer of the backend's own rejects at once, even while the backend is unreachable", async () => {
   channels.last().end(1001, 'backend_closing')
   const fetched = page('skills').plugin.call('fetch_source', { source: 'src_1' }, z.null())
   // The backend's own code, in the page's words.

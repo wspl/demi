@@ -5,17 +5,15 @@ import { turnStartingMessage } from './send-way'
 import type { AgentActivity } from './agent-activity'
 import type { PendingSubmissionState } from './types'
 
-export type ActivitySlotState =
-  | { kind: 'connecting' }
-  | {
-    kind: 'requesting'
-    /**
-     * When the server began the wait, as `Date.now()`, which the row counts
-     * from; null while the page's own action has no answer yet, when the row
-     * shows no time.
-     */
-    since: number | null
-  }
+export interface ActivitySlotState {
+  kind: 'requesting'
+  /**
+   * When the server began the wait, as `Date.now()`, which the row counts
+   * from; null while the page's own action has no answer yet, when the row
+   * shows no time.
+   */
+  since: number | null
+}
 
 export interface ActivitySlotSources {
   /**
@@ -52,10 +50,8 @@ export function useActivitySlot(sources: ActivitySlotSources): {
 } {
   const { input, phase, pendingSubmissions, activity } = sources
 
-  // A message on its way that waits for the backend to be reachable again
-  // still starts its turn: the row says Connecting meanwhile, or the
-  // connection banner says the backend is away, and Requesting once the
-  // socket is back.
+  // A message on its way that waits for the socket still starts its turn: the
+  // row says Requesting from the send.
   const startingTurn = computed(() => turnStartingMessage(phase(), pendingSubmissions()) !== undefined)
   const kind = computed(() => activitySlotKind({
     ...input(),
@@ -64,16 +60,8 @@ export function useActivitySlot(sources: ActivitySlotSources): {
     actionSent: activity().actionSent,
   }))
 
-  const slot = computed<ActivitySlotState | null>(() => {
-    switch (kind.value) {
-      case 'connecting':
-        return { kind: 'connecting' }
-      case 'requesting':
-        return { kind: 'requesting', since: activity().waitingSince }
-      case null:
-        return null
-    }
-  })
+  const slot = computed<ActivitySlotState | null>(() =>
+    kind.value === null ? null : { kind: 'requesting', since: activity().waitingSince })
 
   return { slot, startingTurn }
 }

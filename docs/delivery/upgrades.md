@@ -130,7 +130,7 @@ The following table shows how each part reaches the new release, and when:
 
 | Part | How it reaches the new release | When |
 | --- | --- | --- |
-| Backend and web app | The backend restarts from `current`. An open page shows the connection banner meanwhile and then loads the new build (`packages/web-ui/src/infra/build-reload.ts`) | During the upgrade |
+| Backend and web app | The backend restarts from `current`. An open page shows a spinner by its conversation's title meanwhile and then loads the new build (`packages/web-ui/src/infra/build-reload.ts`) | During the upgrade |
 | Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)) | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot (`crates/machine-manager/src/sandbox/mod.rs`) | The Cloud's next wake |

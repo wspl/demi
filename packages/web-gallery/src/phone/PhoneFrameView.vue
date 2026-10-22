@@ -214,6 +214,14 @@ onMounted(async () => {
     case 'title':
       press('[aria-label$="conversation options"]')
       break
+    case 'connecting':
+      // The socket is lost for longer than the title waits to say so, then
+      // comes back, and the chevron returns.
+      session.load = 'reconnecting'
+      setTimeout(() => {
+        session.load = 'ready'
+      }, 6000)
+      break
     case 'drawer':
       sidebarOpen.value = true
       break

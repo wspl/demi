@@ -30,7 +30,6 @@ export interface MessageRowsSource {
   starting?: QueuedMessage | null
   phase: SessionPhase
   load?: SessionLoad
-  backendAway?: boolean
   pendingAction?: PendingAction
   /** A session-level failure told at the tail of the transcript. */
   failure?: SessionFailureNotice | null
@@ -65,7 +64,7 @@ export interface MessageRows {
    * the key of the row it took the place of (`succeedKeys`).
    */
   keyOf: (row: MessageListBlock) => string
-  /** The tail row: Requesting or Connecting; null when none shows. */
+  /** The tail row: Requesting; null when none shows. */
   slot: ComputedRef<ActivitySlotState | null>
   /** The texts that end the agent's reply, which Copy and Fork close. */
   footerIds: ComputedRef<Set<string>>
@@ -188,13 +187,7 @@ export function useMessageRows(
     })
   })
   const { slot, startingTurn } = useActivitySlot({
-    input: () => {
-      const input = source()
-      return {
-        load: input.load ?? 'ready',
-        backendAway: input.backendAway ?? false,
-      }
-    },
+    input: () => ({ load: source().load ?? 'ready' }),
     phase: () => source().phase,
     pendingSubmissions: () => source().pendingSubmissions ?? [],
     activity: () => source().activity ?? AT_REST,

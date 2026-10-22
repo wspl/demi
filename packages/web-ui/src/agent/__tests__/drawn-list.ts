@@ -56,7 +56,7 @@ export async function settled(): Promise<void> {
   }
 }
 
-/** What the transcript's tail row says, Requesting or Connecting with its time; null while none shows. */
+/** What the transcript's tail row says, Requesting with its time; null while none shows. */
 export function tailRow(host: HTMLElement): string | null {
   // The row's words roll as they change: the first face is the one shown.
   return host.querySelector('[data-transcript-wait] .truncate')?.textContent?.trim() ?? null

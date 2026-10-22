@@ -21,7 +21,7 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  *   agents show. The session is opening, and nothing only the live session
  *   knows shows yet.
  * - `connecting`: the first step, whose session could not be reached yet and is
- *   tried again. The transcript's tail says it connects.
+ *   tried again. The title says it connects.
  * - `ready`: the second step, the session open and shown; or a conversation
  *   that opens no session, which stops at the first step.
  * - `reconnecting`: an open session whose connection was lost. What it showed
@@ -49,6 +49,21 @@ export function transcriptShown(load: SessionLoad): boolean {
 }
 
 /**
+ * How long a socket that is not open waits before the title says it
+ * (`docs/decisions/0059-connecting-is-a-spinner-by-the-title.md`): a shorter
+ * wait, as at every opening, shows nothing.
+ */
+export const SOCKET_WAIT_MS = 2000
+
+/**
+ * Whether the conversation's socket is not open: an opening that has not
+ * reached it, a first opening that could not make it, or an open one it lost.
+ */
+export function socketWaiting(load: SessionLoad): boolean {
+  return load === 'opening' || load === 'connecting' || load === 'reconnecting'
+}
+
+/**
  * Whether the conversation is still opening for the first time: what joins it
  * now is not new.
  */
@@ -69,8 +84,8 @@ export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'no
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
  * never reads as an empty conversation, even with cached blocks. Connecting and
- * reconnecting keep the transcript (or an empty list) and say so in the tail
- * row. A failure with history in memory also keeps the transcript: the dock's
+ * reconnecting keep the transcript (or an empty list) and say so by the title.
+ * A failure with history in memory also keeps the transcript: the dock's
  * notice names the failure and offers Retry, and nothing the reader already had
  * disappears. /
  */

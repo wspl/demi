@@ -1387,7 +1387,7 @@ function playStreamingThinking(): void {
   }, 120)
 }
 // Requesting covers a recovery in flight and the agent's own retries: one wait, one word.
-const activityKinds: ActivityKind[] = ['requesting', 'connecting']
+const activityKinds: ActivityKind[] = ['requesting']
 // The wait the slot specimens show began when the page opened.
 const activitySince = Date.now()
 const compactionCases: { state: CompactionCase; variant: string }[] = [
@@ -3076,7 +3076,7 @@ onBeforeUnmount(() => {
       <GalleryCommandWakeup />
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay, the tail row says Connecting, never that it failed, and the message goes with its ID once the socket is back. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its socket, never Connecting. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each step rolls into the tail row, and the answer takes its place without a roll. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the failure under the message says why, with no button; the message’s hover actions offer Edit and Delete, a message sent next comes below it with its turn, and the dock’s Retry sends it again with the same ID, as a new message at the end, and shows Requesting from then. Offline sends while the socket is lost: the message shows as it will stay and the tail row says Requesting, never that it failed; once the socket has been lost for two seconds, the spinner by the title replaces the Rename button, and the message goes with its ID once the socket is back. First Message sends a new conversation’s first message, which goes with the conversation’s creation: the tail row says Requesting from the send, through the opening of its socket. Steer and Queue send a message while the command runs: it shows as the steer or the queued message it will be from the send, its line and Steer and Recall in view, in the row and at the height it keeps once the server holds it, below the turn with nothing under it. Recall takes it back at once: into the composer when that is empty, the caret at its end; when the composer holds a draft, the draft stays and a Message Recalled toast offers Undo, which sends it again the same way. Steer or Recall pressed before the server holds it is carried out once it does. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -3594,7 +3594,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Session Load"
-        note="First opening uses the loading pane until history and agents arrive, then shows them before its session opens. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. Enter while the models load says why on the send button, and the message goes once they have (Finish Loading). An unconfirmed send keeps its user message as it will stay, and the next message can be sent meanwhile, after it; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
+        note="First opening uses the loading pane until history and agents arrive, then shows them before its session opens. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session shows a spinner by the title, after two seconds, in place of the Rename button. Enter while the models load says why on the send button, and the message goes once they have (Finish Loading). An unconfirmed send keeps its user message as it will stay, and the next message can be sent meanwhile, after it; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -3667,27 +3667,6 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="switching · cached sessions" wide>
             <GalleryCachedSessions />
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="reconnecting"
-            wide
-          >
-            <div class="gallery-frame gallery-activity-frame bg-surface">
-              <ActivitySlot kind="connecting" :since="activitySince" />
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="reconnecting · cached"
-            wide
-          >
-            <div
-              class="gallery-frame flex h-[16rem] flex-col overflow-hidden bg-surface"
-            >
-              <ScrollArea class="flex-1" viewport-class="pt-2">
-                <UserBlock :content="userBubble" />
-                <ActivitySlot kind="connecting" :since="activitySince" />
-              </ScrollArea>
-            </div>
           </GallerySpecimen>
           <GallerySpecimen
             variant="failed · live"

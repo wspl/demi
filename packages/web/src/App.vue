@@ -16,9 +16,8 @@ import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import SelectionToolbar from '@demicodes/web-ui/ui/SelectionToolbar.vue'
-import { APP_BAR_PX, CONNECTION_BANNER_PX } from '@demicodes/web-ui/ui/app-bar'
+import { APP_BAR_PX } from '@demicodes/web-ui/ui/app-bar'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
-import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideKeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
@@ -339,7 +338,6 @@ useAppShortcuts(
   />
   <!-- A phone signed in opens a handoff code on its own page too, which goes on to the page the code opens. -->
   <div v-else-if="productShown" class="flex h-full flex-col">
-    <ConnectionBanner v-if="product.connection" :problem="product.connection" />
     <SidebarLayout
       class="min-h-0 flex-1"
       v-model:open="resources.sidebarOpen"
@@ -443,7 +441,7 @@ useAppShortcuts(
   <ContextMenu :open-in-work-panel="openInWorkPanel" />
   <!-- The text selection's toolbar, by a selection in a message. -->
   <SelectionToolbar />
-  <ToastHost :below="APP_BAR_PX + (session.signedIn && product.connection ? CONNECTION_BANNER_PX : 0)" />
+  <ToastHost :below="APP_BAR_PX" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <MediaViewer :viewer="mediaViewer" />
 </template>

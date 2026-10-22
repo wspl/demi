@@ -347,7 +347,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :has-provider="hasProvider"
     :credential-kinds="credentialKinds"
     :is-exposed="exposedPorts.isExposed"
-    :backend-away="product.connection !== null"
     :resume-at-retry="preferences.resumeAtRetry"
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     :fork="fork"

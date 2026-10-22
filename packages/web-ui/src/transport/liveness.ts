@@ -514,8 +514,7 @@ let offlineHold: ReturnType<typeof setTimeout> | null = null
  * Whether the browser reports a network, as the page counts it: its word that it is
  * offline counts once it has held for `OFFLINE_HOLD_MS`.
  *
- * The connection banner says so while it does not, and the direct channel tries again
- * when it returns (`packages/web/src/direct/index.ts`).
+ * The direct channel tries again when it returns (`packages/web/src/direct/index.ts`).
  */
 export const browserOnline = readonly(online)
 

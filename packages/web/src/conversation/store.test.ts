@@ -1127,14 +1127,14 @@ test('a first send while the backend is away waits without failing and goes once
     conversation.draft = 'Sent while Demi restarts'
     away = true
     channels.last().end(1001, 'backend_closing')
-    expect(useProduct().connection).toBe('restarting')
+    expect(useProduct().unreachable).toBe(true)
     const sending = store.send(conversation)
     await waitFor(() => refused === 1, () => 'no create request')
     const messageId = conversation.pendingSends[0]?.id
     expect(conversation.pendingSends[0]?.error).toBeNull()
     expect(submit).not.toHaveBeenCalled()
     away = false
-    // The page connects again at once rather than after its wait, and the channel's snapshot ends the banner.
+    // The page connects again at once rather than after its wait, and the channel's snapshot ends the wait.
     await returned()
     channels.last().connect({ ...backendState(), providers: [stubProvider] })
     await sending
@@ -3221,11 +3221,11 @@ test('a conversation reopened from the disk while its agent writes a call shows 
   await openSent(again)
   await waitFor(() => conversation.load === 'opening', () => `it is ${conversation.load}`)
   // The copy shows while the socket opens: the calls, and no wait it could
-  // count; the tail row says it connects, as a lost socket's does.
+  // count; the tail row says nothing, as the socket is the title's to tell.
   expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['asked'])
   expect(shown()).toEqual({ calls: ['Write the categorizer'], child: [['Read the notes']], wait: null })
   expect(list.rows.value.map((row) => row.id)).toContain('pending-call:call-1')
-  expect(list.slot.value).toEqual({ kind: 'connecting' })
+  expect(list.slot.value).toBeNull()
 
   const open = again[0]!.sent.find((frame) => frame.type === 'open')!
   expect(open.agents).toEqual({ epoch: 'e', revision: 2 })

@@ -21,7 +21,7 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 
-const labelFaces = ['Requesting', 'Connecting'] as const
+const labelFaces = ['Requesting', 'Thinking'] as const
 const faceFaces = [
   { key: 'requesting', label: 'Requesting', icon: 'sweep' },
   { key: 'thinking', label: 'Thinking', icon: 'brain' },

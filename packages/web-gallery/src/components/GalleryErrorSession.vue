@@ -7,8 +7,6 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
-import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
-import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import { accountSwitchBlocks, deviceOfflineErrorBlock, generationErrorBlock, notExposedErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock, WAITING_SHELL_SCRIPT, waitingShellCall } from '../fixtures/blocks'
@@ -44,16 +42,14 @@ import GallerySpecimen from './GallerySpecimen.vue'
  *   the dock adds nothing.
  *
  * A lost connection is not a failure: the runtime reconnects on its own. The
- * Connecting tail row is all the reader sees when only the conversation's
- * socket was lost. When the page cannot reach the backend at all, the
- * connection banner says so and the transcript adds nothing.
+ * spinner by the title, which replaces the Rename button, is all the reader
+ * sees when only the conversation's socket was lost, and when the page cannot
+ * reach the backend at all.
  */
 interface SessionCase {
   variant: SentenceText
   note: SentenceText
   session: ChatSessionState
-  /** The app's connection banner shows above the session: the backend is away. */
-  banner?: ConnectionProblem
   /**
    * Where the conversation runs now, whose runner the specimen connects and
    * disconnects; the offline card's move changes it.
@@ -194,34 +190,23 @@ const savedScrolls = reactive<Record<string, ChatSessionState['scroll']>>({})
 const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
-    note: 'The backend answered the transcript read with its own error, here that it could not read the conversation’s database. The status pane replaces the transcript and carries the reason, in the page’s words, and Retry; the backend’s message, which names its files, goes to the console. Nothing else says it; there is no composer. A read that cannot reach the backend never ends here: it waits under the banner, as the next specimen shows.',
+    note: 'The backend answered the transcript read with its own error, here that it could not read the conversation’s database. The status pane replaces the transcript and carries the reason, in the page’s words, and Retry; the backend’s message, which names its files, goes to the console. Nothing else says it; there is no composer. A read that cannot reach the backend never ends here: it waits, as the next specimen shows.',
     session: state('initial', { load: 'failed', lastError: refusalFailure('conversation_unreadable') }),
     composer: 'none',
   },
   {
-    variant: 'Opened while Demi restarts · loading under the banner',
-    note: 'Not a failure. The user opened a conversation the page had not loaded while it cannot reach Demi: the banner says so, and the conversation shows it loading until the page is back, then loads. Nothing to click.',
+    variant: 'Opened while Demi restarts · loading',
+    note: 'Not a failure. The user opened a conversation the page had not loaded while it cannot reach Demi: the conversation shows it loading until the page is back, then loads. Nothing to click.',
     session: state('opening-away', { load: 'loading' }),
-    banner: 'restarting',
     composer: 'default',
   },
   {
     variant: 'Connection lost · reconnecting on its own',
-    note: 'Not a failure. Only this conversation’s socket was lost while the page still reaches Demi: the transcript, the draft and the composer stay, and the “Connecting” tail row is the only signal while the runtime retries with backoff. Nothing to click.',
+    note: 'Not a failure. Only this conversation’s socket was lost while the page still reaches Demi: the transcript, the draft and the composer stay, and, after two seconds, a spinner by the title in place of the Rename button is the only signal while the runtime retries with backoff, as when the page cannot reach Demi at all, the browser offline included. Nothing to click.',
     session: state('reconnecting', {
       load: 'reconnecting',
       blocks: shortTranscriptBlocks(),
     }),
-    composer: 'default',
-  },
-  {
-    variant: 'Demi restarting · the banner says it',
-    note: 'Not a failure. The page cannot reach Demi, and the banner across the top of the app is the one place that says so: the conversation, whose socket waits for the same backend, adds no “Connecting” row of its own. The transcript, the draft and the composer stay. Nothing to click.',
-    session: state('backend-away', {
-      load: 'reconnecting',
-      blocks: shortTranscriptBlocks(),
-    }),
-    banner: 'restarting',
     composer: 'default',
   },
   {
@@ -399,11 +384,9 @@ const cases: SessionCase[] = [
             <div
               class="flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface-base"
             >
-              <ConnectionBanner v-if="item.banner" :problem="item.banner" />
               <ChatSession @show-subagents="() => {}"
                 :conversation="item.session"
                 has-provider
-                :backend-away="item.banner !== undefined"
                 :fork="forkFromAnswer"
                 :primary-host="item.primary"
                 v-model:resume-at-retry="galleryMessages.resumeAtRetry"
