@@ -118,33 +118,19 @@ impl Shard {
     ) -> Result<Option<Switched>, ChangeRefusal> {
         let host = self.host_shard();
         let record = self.owned_record(id).await?;
-        if let ConversationChange::Target(to) = change {
-            return self.move_conversation(&record, to, cancel).await;
-        }
-        // An archive, a restore and a detach read the record they change and
-        // what they release within the conversation's change boundary, which
-        // a move holds from its read to its commit.
-        let boundary = match &change {
-            ConversationChange::Record(change) if change_is_transition(change) => {
-                Some(self.conversations().slot(&record.id).changes.acquire().await)
-            }
-            _ => None,
-        };
-        let record = match &boundary {
-            Some(_) => self.owned_record(id).await?,
-            None => record,
-        };
         // An archived conversation takes nothing but its restore; the index
-        // transaction checks again when it applies the change.
+        // transaction checks again when it applies the change. A move
+        // refuses it itself, so that its log line is written.
         if record.archived
             && !matches!(
                 change,
-                ConversationChange::Record(RecordChange::Archived(_))
+                ConversationChange::Record(RecordChange::Archived(_)) | ConversationChange::Target(_)
             )
         {
             return Err(ChangeRefusal::Archived);
         }
         let change = match change {
+            ConversationChange::Target(to) => return self.move_conversation(&record, to, cancel).await,
             ConversationChange::Settings(change) => {
                 // A settings change waits while a transition holds the
                 // conversation, then takes its turn after the changes and
@@ -210,7 +196,6 @@ impl Shard {
             }
         };
         drop(hold);
-        drop(boundary);
         committed
     }
 
@@ -273,8 +258,8 @@ impl Shard {
     }
 
     /// The steps of [`move_conversation`](Self::move_conversation), each
-    /// timed into `steps`: the check and the wait for the change boundary,
-    /// which `cancel` ends, then the commit, which it does not.
+    /// timed into `steps`: the check, which `cancel` ends, then the commit,
+    /// which it does not.
     async fn move_steps(
         &self,
         record: &ConversationRecord,
@@ -282,6 +267,9 @@ impl Shard {
         cancel: &CancellationToken,
         steps: &mut MoveSteps,
     ) -> Result<Option<Switched>, ChangeRefusal> {
+        if record.archived {
+            return Err(ChangeRefusal::Archived);
+        }
         let host = self.host_shard();
         let slot = self.conversations().slot(&record.id);
         // A destination's directory is the one its Host names.
@@ -292,17 +280,11 @@ impl Shard {
         };
         steps.check = step.elapsed().as_millis() as u64;
         let to = to?;
-        let _boundary = tokio::select! {
-            boundary = slot.changes.acquire() => boundary,
-            () = cancel.cancelled() => return Err(ChangeRefusal::Cancelled),
-        };
-        // What an archive, a restore, a detach or another move made meanwhile
-        // is read within the boundary; a destination that selects the
-        // conversation's own target is no change.
-        let record = &self.owned_record(&record.id).await?;
-        if record.archived {
-            return Err(ChangeRefusal::Archived);
+        if cancel.is_cancelled() {
+            return Err(ChangeRefusal::Cancelled);
         }
+        // A destination that selects the conversation's own target is no
+        // change.
         if host.selection_for(record, &to).await? == record.target {
             return Ok(None);
         }
@@ -338,8 +320,8 @@ impl Shard {
     }
 
     /// Releases `device`, which a move of the conversation `id` left, once
-    /// nothing of the conversation runs there, as a task of the shard; the
-    /// shard's close ends the wait.
+    /// the commands running there ended, as a task of the shard; the shard's
+    /// close ends the wait.
     fn release_departed(&self, id: &ConversationId, device: DeviceId) {
         let shard = self.this();
         let id = id.clone();
@@ -389,12 +371,6 @@ impl Shard {
         let conversations = control
             .workspace_conversations(self.user().clone(), id.clone())
             .await?;
-        // Each conversation's change boundary before its record is read, as
-        // its archive takes it.
-        let mut boundaries = Vec::new();
-        for conversation in &conversations {
-            boundaries.push(self.conversations().slot(conversation).changes.acquire().await);
-        }
         let mut records = Vec::new();
         let mut holds = Vec::new();
         for conversation in &conversations {
@@ -413,7 +389,6 @@ impl Shard {
             .delete_workspace(self.user().clone(), id.clone(), conversations.clone())
             .await?;
         drop(holds);
-        drop(boundaries);
         match deleted {
             WorkspaceDeletion::Deleted => {}
             WorkspaceDeletion::Missing => return Err(ChangeRefusal::WorkspaceNotFound),
@@ -886,130 +861,6 @@ mod tests {
             device_id: device.clone(),
             path: path.into(),
         })
-    }
-
-    /// Between the moment nothing of the conversation runs on the Host a move
-    /// left and the answer to its release, no work of the conversation starts
-    /// there: a command on that Host, attached now, waits until the release
-    /// is answered, so the release never ends the services it uses.
-    ///
-    /// Planted defect this catches: a release that checks the Host is idle and
-    /// then sends the release without holding the Host's admissions.
-    // Two played runners: a few milliseconds.
-    #[tokio::test(flavor = "local")]
-    async fn work_on_the_host_a_move_left_waits_until_its_release_is_answered() {
-        let (_data, pool, _control, owner, one, two) = two_devices().await;
-        pool.shards()
-            .of(&owner)
-            .call(move |shard, _| async move {
-                let id = ConversationId::try_from(ID).unwrap();
-                let heard: Heard = Rc::new(tokio::sync::watch::Sender::new(Vec::new()));
-                let (answer, answering) = tokio::sync::watch::channel(false);
-                for device in [&one, &two] {
-                    holding_runner(&shard, device, anywhere, false, &heard, &answering).await;
-                }
-                shard.transition(&id, on(&one, "/work")).await.unwrap();
-                // A command runs on one while the conversation moves to two.
-                let (started, running) = tokio::sync::oneshot::channel();
-                let (finish, finished) = tokio::sync::oneshot::channel::<()>();
-                let command = tokio::task::spawn_local({
-                    let (shard, id) = (shard.clone(), id.clone());
-                    async move {
-                        shard
-                            .host_shard()
-                            .with_host(&id, None, &CancellationToken::new(), async |_| {
-                                started.send(()).unwrap();
-                                finished.await.unwrap();
-                            })
-                            .await
-                            .unwrap();
-                    }
-                });
-                running.await.unwrap();
-                shard.transition(&id, on(&two, "/work")).await.unwrap();
-                assert!(heard.borrow().is_empty(), "nothing is released while a command runs there");
-                finish.send(()).unwrap();
-                command.await.unwrap();
-                heard.subscribe().wait_for(|heard| heard.len() == 1).await.unwrap();
-                // While the release is on its way, a command on one waits.
-                let (entered, mut admitted) = tokio::sync::oneshot::channel();
-                let next = tokio::task::spawn_local({
-                    let (shard, id, one) = (shard.clone(), id.clone(), one.clone());
-                    async move {
-                        shard
-                            .host_shard()
-                            .with_host(&id, Some(&one), &CancellationToken::new(), async |_| {
-                                entered.send(()).unwrap();
-                            })
-                            .await
-                            .unwrap();
-                    }
-                });
-                let mut waiting = shard.conversations().slot(&id).host_gate(&one).waiting();
-                let early = tokio::select! {
-                    biased;
-                    _ = &mut admitted => true,
-                    _ = waiting.wait_for(|waiting| *waiting == 1) => false,
-                };
-                assert!(!early, "a command started on one while its release was on its way");
-                answer.send(true).unwrap();
-                next.await.unwrap();
-                admitted.await.unwrap();
-                assert_eq!(*heard.borrow(), [one]);
-            })
-            .await
-            .unwrap();
-        pool.close().await;
-    }
-
-    /// A move that comes while an archive releases the conversation waits for
-    /// the archive and is refused, so every Host the archived conversation
-    /// reaches has heard its release.
-    ///
-    /// Planted defect this catches: an archive that releases the Hosts of the
-    /// record it read before a move committed, leaving the new Host
-    /// unreleased.
-    // Two played runners: a few milliseconds.
-    #[tokio::test(flavor = "local")]
-    async fn a_move_during_an_archive_waits_for_it_and_every_host_it_reaches_is_released() {
-        let (_data, pool, control, owner, one, two) = two_devices().await;
-        pool.shards()
-            .of(&owner)
-            .call(move |shard, _| async move {
-                let id = ConversationId::try_from(ID).unwrap();
-                let heard: Heard = Rc::new(tokio::sync::watch::Sender::new(Vec::new()));
-                let (answer, answering) = tokio::sync::watch::channel(false);
-                for device in [&one, &two] {
-                    holding_runner(&shard, device, anywhere, false, &heard, &answering).await;
-                }
-                shard.transition(&id, on(&one, "/work")).await.unwrap();
-                let archive = tokio::task::spawn_local({
-                    let (shard, id) = (shard.clone(), id.clone());
-                    async move { shard.transition(&id, RecordChange::Archived(true).into()).await }
-                });
-                heard.subscribe().wait_for(|heard| heard.len() == 1).await.unwrap();
-                let mut moving = tokio::task::spawn_local({
-                    let (shard, id, two) = (shard.clone(), id.clone(), two.clone());
-                    async move { shard.transition(&id, on(&two, "/work")).await }
-                });
-                let mut waiting = shard.conversations().slot(&id).changes.waiting();
-                let moved = tokio::select! {
-                    biased;
-                    moved = &mut moving => Some(moved.unwrap()),
-                    _ = waiting.wait_for(|waiting| *waiting == 1) => None,
-                };
-                assert!(moved.is_none(), "the move did not wait for the archive: {moved:?}");
-                answer.send(true).unwrap();
-                archive.await.unwrap().unwrap();
-                assert_eq!(moving.await.unwrap().map_err(|refusal| refusal.code().0), Err(ErrorCode::ConversationArchived));
-                let record = control.conversation(id.clone()).await.unwrap().unwrap();
-                let target = control.execution_target(record.owner, record.id, record.target).await.unwrap();
-                assert_eq!(target.device(), Some(&one));
-                assert!(heard.borrow().contains(&one), "{:?}", heard.borrow());
-            })
-            .await
-            .unwrap();
-        pool.close().await;
     }
 
     /// A move whose caller goes away while its Host has not answered moves

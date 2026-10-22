@@ -46,7 +46,7 @@ pub mod driver;
 mod error;
 mod frame;
 pub mod ios;
-pub mod kept;
+mod kept;
 mod keys;
 mod live;
 mod operations;
@@ -205,7 +205,7 @@ impl Handler for DemiMobile {
                     Bytes::from_static(b"{}")
                 }
                 ConversationRequest::Status {} => Bytes::from(serde_json::to_vec(&ConversationStatus {
-                    conversations: devices.conversations().await,
+                    conversations: devices.conversations(),
                 })?),
             };
             context.output.stdout(body).await?;

@@ -108,13 +108,6 @@ impl Shard {
     async fn settle(&self, id: &ConversationId, tree: Option<Reservation>) -> bool {
         let control = &self.services().control;
         let host = self.host_shard();
-        // The detaches read what they change within the conversation's change
-        // boundary, as a user's detach does; its slot is keyed by the id as
-        // the record spells it.
-        let Ok(spelled) = host.owned_conversation(id).await else {
-            return false;
-        };
-        let _boundary = self.conversations().slot(&spelled.id).changes.acquire().await;
         match host.owned_conversation(id).await {
             Ok(record) if !record.archived => {}
             // An archive dropped the detaches; a gone conversation has none.

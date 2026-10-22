@@ -40,10 +40,6 @@ pub struct FakeDriver {
     shutdown_fails: Mutex<Option<String>>,
     /// While set, an attach that started waits for the test to let it end.
     attach_held: Mutex<Option<Arc<HeldAttaches>>>,
-    /// Why an attach fails, while it does.
-    attach_fails: Mutex<Option<String>>,
-    /// Why the list fails, while it does.
-    list_fails: Mutex<Option<String>>,
     pub log: Log,
 }
 
@@ -60,8 +56,6 @@ impl FakeDriver {
             held: Mutex::default(),
             shutdown_fails: Mutex::default(),
             attach_held: Mutex::default(),
-            attach_fails: Mutex::default(),
-            list_fails: Mutex::default(),
             log: Log::default(),
         })
     }
@@ -86,39 +80,6 @@ impl FakeDriver {
         });
         *self.attach_held.lock().unwrap() = Some(held.clone());
         held
-    }
-
-    /// Attaches fail with `reason` from now on, or succeed again with none.
-    pub fn fail_attaches(&self, reason: Option<&str>) {
-        *self.attach_fails.lock().unwrap() = reason.map(str::to_owned);
-    }
-
-    /// The list fails with `reason` from now on, or answers again with none.
-    pub fn fail_lists(&self, reason: Option<&str>) {
-        *self.list_fails.lock().unwrap() = reason.map(str::to_owned);
-    }
-
-    /// `native_id` is still booting: it lists as booting, in a boot of its
-    /// own, until `finish_boot`.
-    pub fn start_booting(&self, native_id: &str) {
-        self.log(format!("{native_id} starts booting"));
-        let boot = self.boots.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        for simulator in self.simulators.lock().unwrap().iter_mut() {
-            if simulator.native_id == native_id {
-                simulator.state = PowerState::Booting;
-                simulator.boot = Some(boot);
-            }
-        }
-    }
-
-    /// `native_id`'s boot ends: it lists as booted.
-    pub fn finish_boot(&self, native_id: &str) {
-        self.log(format!("{native_id} finishes booting"));
-        for simulator in self.simulators.lock().unwrap().iter_mut() {
-            if simulator.native_id == native_id {
-                simulator.state = PowerState::Booted;
-            }
-        }
     }
 
     /// Shutdowns fail with `reason` from now on, or succeed again with none.
@@ -199,12 +160,7 @@ impl Driver for FakeDriver {
     }
 
     fn list(&self) -> BoxFuture<'_, Result<Vec<Simulator>>> {
-        Box::pin(async {
-            if let Some(reason) = self.list_fails.lock().unwrap().clone() {
-                return Err(DriverError::Failed(reason));
-            }
-            Ok(self.simulators.lock().unwrap().clone())
-        })
+        Box::pin(async { Ok(self.simulators.lock().unwrap().clone()) })
     }
 
     fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
@@ -248,9 +204,6 @@ impl Driver for FakeDriver {
             if let Some(held) = held {
                 held.started.notify_one();
                 let _permit = held.permits.acquire().await.expect("the test keeps its gate");
-            }
-            if let Some(reason) = self.attach_fails.lock().unwrap().clone() {
-                return Err(DriverError::Failed(reason));
             }
             let (points, pixels) = self.portrait;
             let device = Arc::new(FakeDevice {

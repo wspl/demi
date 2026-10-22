@@ -11,8 +11,7 @@
 //!   (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
 //! - The program's end shuts nothing down and forgets nothing: the record
 //!   ([`Kept`]) holds the simulators Demi booted and the open devices with
-//!   their conversations, handles and owner, and is shared with every other
-//!   version of the service running now.
+//!   their conversations and handles.
 //! - A conversation's devices are taken back when it first reaches the
 //!   service, each under its handle, while it is *resuming*: listed as open,
 //!   its tab saying it reconnects, and a command on it waiting, as long as
@@ -33,10 +32,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    sync::{
-        Arc, Mutex, OnceLock,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex, OnceLock},
     time::Duration,
 };
 
@@ -66,9 +62,6 @@ use crate::{
 /// How long the view still says the agent uses a device after its last
 /// command on it ended (`crates/plugin-mobile/command/src/live.rs`).
 pub const AGENT_LINGER: Duration = Duration::from_secs(3);
-
-/// How often a service looks whether another one took over its devices.
-const TAKEOVER_POLL: Duration = Duration::from_secs(2);
 
 /// How long a command on a device being taken back waits for it.
 pub const RESUME_WAIT: Duration = Duration::from_secs(30);
@@ -293,9 +286,6 @@ enum Closing {
     Released,
     /// The device itself went away.
     Lost,
-    /// Another service took the device over: this one lets it go and
-    /// changes nothing the record holds.
-    Taken,
     /// The program ends: the device is let go and stays as it is.
     Ending,
 }
@@ -307,7 +297,6 @@ impl Closing {
             Self::Asked => "closed by the agent or its tab",
             Self::Released => "its conversation was released",
             Self::Lost => "it went away",
-            Self::Taken => "another service took it over",
             Self::Ending => "the service ends",
         }
     }
@@ -317,7 +306,7 @@ impl Closing {
 /// time or again: it is listed as open under its handle, and its tab says it
 /// reconnects.
 struct Resuming {
-    /// What the record holds of it, which names this service as its owner.
+    /// What the record holds of it.
     entry: Opened,
     /// The files the device's panel saved and its unfinished recording,
     /// which go to the connection that replaces the lost one.
@@ -331,20 +320,19 @@ struct State {
     /// The devices this service holds without a connection, by native id.
     resuming: HashMap<String, Resuming>,
     /// The conversations that reached this service, whose recorded devices
-    /// it took over then.
+    /// it took back then.
     served: HashSet<String>,
-    /// Closing began: no device is added to `open` any more.
-    closing: bool,
 }
 
 /// What the Host says of a device's simulator.
 enum Probe {
     /// It is not there, or shut down: the device is lost.
     Gone(String),
-    /// It is still booting: its boot ends before it is attached.
+    /// It is still booting.
     Booting,
     Booted(crate::driver::Simulator),
-    /// The Host could not say, which is no proof the device is gone.
+    /// The Host could not say whether the simulator is there, as while it
+    /// starts: no proof the device is gone, so taking it back tries again.
     Unknown(String),
 }
 
@@ -364,10 +352,8 @@ pub struct Devices {
     /// Cancelled once the service closes: its tasks end.
     stopping: CancellationToken,
     /// The simulators Demi booted and the open devices, across the
-    /// programs' ends and shared with the other versions running now.
+    /// programs' ends.
     kept: Kept,
-    /// Names this service in the record.
-    owner: String,
     /// Whether a conversation is still on this Host.
     exists: Box<dyn Fn(&str) -> bool + Send + Sync>,
 }
@@ -383,12 +369,8 @@ impl Devices {
         kept: Kept,
         exists: Box<dyn Fn(&str) -> bool + Send + Sync>,
     ) -> Arc<Self> {
-        static SERVICES: AtomicU64 = AtomicU64::new(0);
         let tasks = TaskTracker::new();
         let stopping = CancellationToken::new();
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| since.as_nanos());
         let devices = Arc::new(Self {
             drivers,
             state: Mutex::default(),
@@ -399,25 +381,10 @@ impl Devices {
             tasks,
             stopping,
             kept,
-            owner: format!("{}-{nanos}-{}", std::process::id(), SERVICES.fetch_add(1, Ordering::Relaxed)),
             exists,
         });
         devices.tasks.spawn(devices.clone().sweep());
-        devices.tasks.spawn(devices.clone().watch_takeover());
         devices
-    }
-
-    /// Lets go of a device another service took over soon after it did, so
-    /// two services never hold one simulator for long: the service that lost
-    /// it may be asked nothing more, as when a newer version took over.
-    async fn watch_takeover(self: Arc<Self>) {
-        loop {
-            tokio::select! {
-                () = self.stopping.cancelled() => return,
-                () = tokio::time::sleep(TAKEOVER_POLL) => {}
-            }
-            self.let_go_taken().await;
-        }
     }
 
     /// Releases what the record holds for the conversations that are no
@@ -459,11 +426,8 @@ impl Devices {
     }
 
     /// `conversation` reached this service: the devices the record holds for
-    /// it become this service's, each listed as open at once and taken back
-    /// under its handle by a task of its own. Only the first reach of a
-    /// conversation does it, and no other conversation's entry is touched,
-    /// so a service takes over no device of a conversation that is served
-    /// elsewhere.
+    /// it are each listed as open at once and taken back under its handle by
+    /// a task of its own. Only the first reach of a conversation does it.
     pub fn reached(self: &Arc<Self>, conversation: &str) {
         for entry in self.claim(conversation) {
             self.tasks.spawn(self.clone().resume(entry, Duration::ZERO));
@@ -474,10 +438,10 @@ impl Devices {
     /// service, as resuming ones.
     fn claim(&self, conversation: &str) -> Vec<Opened> {
         let mut state = self.state.lock().expect("the registry is intact");
-        if state.closing || !state.served.insert(conversation.to_owned()) {
+        if !state.served.insert(conversation.to_owned()) {
             return Vec::new();
         }
-        let claimed = self.kept.claim(conversation, &self.owner);
+        let claimed = self.kept.claim(conversation);
         for entry in &claimed {
             state.resuming.insert(
                 entry.native_id.clone(),
@@ -515,8 +479,8 @@ impl Devices {
     /// to finish booting, and tries again, with growing waits, while the
     /// Host cannot say whether the simulator is there or the device cannot
     /// be attached. Only a simulator that is not there, or is shut down,
-    /// closes the device as lost, and a close, a release, another service's
-    /// takeover or the service's end stops the task.
+    /// closes the device as lost, and a close, a release or the service's
+    /// end stops the task.
     ///
     /// Boxed, since taking a device back starts the task that takes it back
     /// again when its connection ends.
@@ -545,8 +509,7 @@ impl Devices {
                     retry_after(failures)
                 }
                 Probe::Booted(simulator) => {
-                    let driver = self.driver(entry.platform);
-                    match driver.attach(&entry.conversation, &entry.native_id).await {
+                    match self.driver(entry.platform).attach(&entry.conversation, &entry.native_id).await {
                         Ok(device) => {
                             self.install(&entry, simulator, device).await;
                             return;
@@ -573,44 +536,28 @@ impl Devices {
         }
     }
 
-    /// Whether `entry`'s device is still to be taken back by this service:
-    /// it was not closed, released or taken over, and the service is not
-    /// ending. A device another service took over is forgotten without a
-    /// word to the record.
+    /// Whether `entry`'s device is still to be taken back: it was not
+    /// closed or released meanwhile.
     fn pending(&self, entry: &Opened) -> bool {
-        let mut state = self.state.lock().expect("the registry is intact");
-        if state.closing || self.stopping.is_cancelled() {
-            return false;
-        }
-        let ours = state
+        self.state
+            .lock()
+            .expect("the registry is intact")
             .resuming
             .get(&entry.native_id)
-            .is_some_and(|resuming| resuming.entry.handle == entry.handle);
-        if !ours {
-            return false;
-        }
-        if !self.kept.owns(&entry.native_id, &self.owner) {
-            state.resuming.remove(&entry.native_id);
-            drop(state);
-            tracing::info!("{} ({}) was taken over by another service", entry.handle, entry.native_id);
-            self.changed(&entry.conversation);
-            return false;
-        }
-        true
+            .is_some_and(|resuming| resuming.entry.handle == entry.handle)
     }
 
     /// Puts the attached `device` of `entry` among the open ones, unless
-    /// the device is no longer to be taken back or closing began, when it is
-    /// detached, which leaves the simulator and the record as they are.
+    /// the device is no longer to be taken back, when it is detached, which
+    /// leaves the simulator and the record as they are.
     async fn install(self: &Arc<Self>, entry: &Opened, simulator: crate::driver::Simulator, device: Arc<dyn Device>) {
         let booted = self.kept.holds(entry.platform, &entry.native_id, simulator.boot);
         let installed = {
             let mut state = self.state.lock().expect("the registry is intact");
-            let wanted = !state.closing
-                && state
-                    .resuming
-                    .get(&entry.native_id)
-                    .is_some_and(|resuming| resuming.entry.handle == entry.handle);
+            let wanted = state
+                .resuming
+                .get(&entry.native_id)
+                .is_some_and(|resuming| resuming.entry.handle == entry.handle);
             if wanted {
                 let resuming = state.resuming.remove(&entry.native_id).expect("it was found");
                 let open = Arc::new(OpenDevice::new(
@@ -641,7 +588,8 @@ impl Devices {
         }
     }
 
-    /// `entry`'s device is lost: its simulator is not there or is shut down.
+    /// `entry`'s device is lost: the Host lists its devices without its
+    /// simulator, or the simulator is shut down.
     fn lose(&self, entry: &Opened, why: &str) {
         let removed = self
             .state
@@ -660,7 +608,7 @@ impl Devices {
             entry.handle,
             entry.native_id,
         );
-        self.kept.closed(&entry.native_id, &self.owner);
+        self.kept.closed(&entry.native_id);
         self.changed(&entry.conversation);
     }
 
@@ -681,7 +629,7 @@ impl Devices {
                 failure: None,
             };
         };
-        let owned = self.kept.closed(&entry.native_id, &self.owner);
+        self.kept.closed(&entry.native_id);
         for path in removed.carried {
             if let Err(error) = tokio::fs::remove_file(&path).await
                 && error.kind() != std::io::ErrorKind::NotFound
@@ -698,11 +646,7 @@ impl Devices {
             entry.native_id,
             why.words(),
         );
-        let (shut_down, failure) = if owned {
-            self.shut_down_if_demis(entry.platform, &entry.native_id).await
-        } else {
-            (false, None)
-        };
+        let (shut_down, failure) = self.shut_down_if_demis(entry.platform, &entry.native_id).await;
         self.changed(&entry.conversation);
         Ended { shut_down, failure }
     }
@@ -757,8 +701,7 @@ impl Devices {
     }
 
     /// The conversations that hold devices, for the runner's `status`.
-    pub async fn conversations(self: &Arc<Self>) -> Vec<String> {
-        self.let_go_taken().await;
+    pub fn conversations(&self) -> Vec<String> {
         let state = self.state.lock().expect("the registry is intact");
         let names: HashSet<&String> = state
             .open
@@ -769,18 +712,6 @@ impl Devices {
         let mut names: Vec<String> = names.into_iter().cloned().collect();
         names.sort();
         names
-    }
-
-    /// Lets go the open devices that another service took over, as a
-    /// conversation that reached it asked: this service keeps nothing of
-    /// them, and a service that holds nothing ends.
-    async fn let_go_taken(self: &Arc<Self>) {
-        let open: Vec<Arc<OpenDevice>> = self.state.lock().expect("the registry is intact").open.values().cloned().collect();
-        for open in open {
-            if !self.kept.owns(&open.native_id, &self.owner) {
-                self.end(&open, Closing::Taken).await;
-            }
-        }
     }
 
     /// `conversation`'s connected devices on this Host, by handle.
@@ -805,36 +736,27 @@ impl Devices {
         handle: &DeviceId,
         cancel: &CancellationToken,
     ) -> Result<Arc<OpenDevice>, MobileError> {
-        loop {
-            let found = self
-                .wait_until(cancel, |state| {
-                    let open = state
-                        .open
+        let found = self
+            .wait_until(cancel, |state| {
+                let open = state
+                    .open
+                    .values()
+                    .find(|open| open.conversation == conversation && &open.handle == handle);
+                match open {
+                    Some(open) => Some(Some(open.clone())),
+                    None => state
+                        .resuming
                         .values()
-                        .find(|open| open.conversation == conversation && &open.handle == handle);
-                    match open {
-                        Some(open) => Some(Some(open.clone())),
-                        None => state
-                            .resuming
-                            .values()
-                            .all(|resuming| !(resuming.entry.conversation == conversation && &resuming.entry.handle == handle))
-                            .then_some(None),
-                    }
-                })
-                .await?;
-            let Some(open) = found else {
-                return Err(MobileError::NotOpen(handle.clone()));
-            };
-            if self.kept.owns(&open.native_id, &self.owner) {
-                return Ok(open);
-            }
-            self.end(&open, Closing::Taken).await;
-        }
+                        .all(|resuming| !(resuming.entry.conversation == conversation && &resuming.entry.handle == handle))
+                        .then_some(None),
+                }
+            })
+            .await?;
+        found.ok_or_else(|| MobileError::NotOpen(handle.clone()))
     }
 
     /// Every simulator of the Host, as `conversation` sees them.
     pub async fn list(self: &Arc<Self>, conversation: &str) -> Result<ListResult, MobileError> {
-        self.let_go_taken().await;
         let mut devices = Vec::new();
         let mut unavailable = Vec::new();
         for driver in &self.drivers {
@@ -985,29 +907,15 @@ impl Devices {
             booted,
             device,
         ));
-        let added = {
+        {
             let mut state = self.state.lock().expect("the registry is intact");
-            if state.closing {
-                false
-            } else {
-                self.kept.opened(Opened {
-                    handle: open.handle.clone(),
-                    conversation: conversation.to_owned(),
-                    platform: open.platform,
-                    native_id: open.native_id.clone(),
-                    owner: self.owner.clone(),
-                });
-                state.open.insert(open.native_id.clone(), open.clone());
-                true
-            }
-        };
-        if !added {
-            // The service is closing: nothing is added now; the device is
-            // let go as it is, for the next service to take back.
-            if let Err(error) = open.device.detach().await {
-                tracing::warn!("{} did not detach cleanly: {error}", open.name);
-            }
-            return Err(MobileError::Cancelled);
+            self.kept.opened(Opened {
+                handle: open.handle.clone(),
+                conversation: conversation.to_owned(),
+                platform: open.platform,
+                native_id: open.native_id.clone(),
+            });
+            state.open.insert(open.native_id.clone(), open.clone());
         }
         self.changed(conversation);
         self.tasks.spawn(self.clone().lifetime(open.clone()));
@@ -1060,15 +968,9 @@ impl Devices {
     }
 
     /// Lets every device go as the service ends, shutting none down and
-    /// forgetting none: the next program takes them back. Stopping and
-    /// taking back share this boundary: once it began no device is added
-    /// to the registry, and one a take-back attached meanwhile is detached.
+    /// forgetting none: the next program takes them back.
     pub async fn close_all(self: &Arc<Self>) {
-        let open: Vec<Arc<OpenDevice>> = {
-            let mut state = self.state.lock().expect("the registry is intact");
-            state.closing = true;
-            state.open.values().cloned().collect()
-        };
+        let open: Vec<Arc<OpenDevice>> = self.state.lock().expect("the registry is intact").open.values().cloned().collect();
         futures_util::future::join_all(open.iter().map(|open| self.end(open, Closing::Ending)))
             .await;
         self.stopping.cancel();
@@ -1146,21 +1048,21 @@ impl Devices {
                 failure: None,
             };
         }
-        // The device is gone for its views, unless it only leaves this
-        // service to another, or the service ends, which they reconnect to.
-        if !matches!(why, Closing::Taken | Closing::Ending) {
+        // The device is gone for its views, unless the service ends, which
+        // they reconnect to.
+        if why != Closing::Ending {
             open.gone.cancel();
         }
         open.closed.cancel();
         // The recording ends with every frame it holds kept, before the device
         // is let go and the service may end.
         let reason = match why {
-            Closing::Ending | Closing::Taken => EndReason::Interrupted,
+            Closing::Ending => EndReason::Interrupted,
             _ => EndReason::Closed,
         };
         open.finish_recording(reason).await;
         let saved = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
-        if !matches!(why, Closing::Taken | Closing::Ending) {
+        if why != Closing::Ending {
             for path in saved {
                 // A file the user already moved or removed is gone as asked.
                 if let Err(error) = tokio::fs::remove_file(&path).await
@@ -1171,12 +1073,12 @@ impl Devices {
             }
         }
         let driver = self.driver(open.platform);
-        // What another service took over is not this one's to change.
-        let owned = match why {
-            Closing::Ending | Closing::Taken => false,
-            _ => self.kept.closed(&open.native_id, &self.owner),
-        };
-        let shut_down = owned && open.booted && !matches!(why, Closing::Lost);
+        // A service that ends forgets nothing: the next one takes the device
+        // back.
+        if why != Closing::Ending {
+            self.kept.closed(&open.native_id);
+        }
+        let shut_down = why != Closing::Ending && open.booted && why != Closing::Lost;
         // Every close says why, so a tab that went can be told apart from
         // another afterwards.
         tracing::info!(
@@ -1259,12 +1161,11 @@ impl Devices {
             conversation: open.conversation.clone(),
             platform: open.platform,
             native_id: open.native_id.clone(),
-            owner: self.owner.clone(),
         };
         let removed = {
             let mut state = self.state.lock().expect("the registry is intact");
             match state.open.get(&open.native_id) {
-                Some(current) if Arc::ptr_eq(current, open) && !state.closing => {
+                Some(current) if Arc::ptr_eq(current, open) => {
                     state.open.remove(&open.native_id);
                     let carried = std::mem::take(&mut *open.saved.lock().expect("the saved files are intact"));
                     state.resuming.insert(

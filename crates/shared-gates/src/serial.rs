@@ -11,40 +11,27 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 /// Admits one holder at a time, in arrival order.
 #[derive(Clone, Debug)]
-pub struct SerialGate {
-    permits: Arc<Semaphore>,
-    /// How many callers wait for their turn, for a test.
-    #[cfg(feature = "testing")]
-    waiting: Arc<tokio::sync::watch::Sender<usize>>,
-}
+pub struct SerialGate(Arc<Semaphore>);
 
 impl SerialGate {
     pub fn new() -> Self {
-        Self {
-            permits: Arc::new(Semaphore::new(1)),
-            #[cfg(feature = "testing")]
-            waiting: Arc::new(tokio::sync::watch::Sender::new(0)),
-        }
+        Self(Arc::new(Semaphore::new(1)))
     }
 
     /// Holds the gate once every earlier caller has released it.
     pub async fn acquire(&self) -> SerialPermit {
-        let acquire = self.permits.clone().acquire_owned();
-        #[cfg(feature = "testing")]
-        let acquire = crate::activity::counted(&self.waiting, acquire);
-        let permit = acquire.await.expect("a gate's semaphore is never closed");
+        let permit = self
+            .0
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("a gate's semaphore is never closed");
         SerialPermit(permit)
     }
 
     /// Holds the gate now, or none while someone holds or waits for it.
     pub fn try_acquire(&self) -> Option<SerialPermit> {
-        self.permits.clone().try_acquire_owned().ok().map(SerialPermit)
-    }
-
-    /// How many callers wait for their turn now (`testing`).
-    #[cfg(feature = "testing")]
-    pub fn waiting(&self) -> tokio::sync::watch::Receiver<usize> {
-        self.waiting.subscribe()
+        self.0.clone().try_acquire_owned().ok().map(SerialPermit)
     }
 }
 

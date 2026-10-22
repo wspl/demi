@@ -649,8 +649,7 @@ async fn view(
             _ = cancellation.cancelled() => break Err(None),
             () = open.closed.cancelled() => {
                 // Only a device that is over is gone; one whose connection
-                // was lost, or that another service took over, is
-                // reconnected to by the view's next stream.
+                // was lost is reconnected to by the view's next stream.
                 if open.gone.is_cancelled() {
                     writer.control(&LiveModuleMessage::Gone {}).await;
                     break Ok(());

@@ -23,10 +23,8 @@
 //! 3. commit the target and attachment changes against the expected selection
 //! 4. advance the execution-context revision; each agent's next request names
 //!    the new Host and directory
-//! 5. once nothing of the conversation runs on the device it left, reserve
-//!    the conversation's gate of that device, which every admission there
-//!    holds a lease of, and send the release, unless the conversation is back
-//!    on it
+//! 5. once the conversation's commands on the device it left ended, send the
+//!    release there, unless the conversation is back on it
 //! ```
 //!
 //! Commands already running finish where they started and report as usual;
@@ -314,45 +312,33 @@ impl dyn HostShard + '_ {
     }
 
     /// The release of `device`, which a move of the conversation `id` left
-    /// (§ step 5): once nothing of the conversation runs there, it reserves
-    /// the conversation's gate of the device in the same step, so no work
-    /// starts there until the release is answered, and sends the release
-    /// unless the conversation is back on the device. A release that fails
-    /// is logged and fails nothing.
+    /// (§ step 5): sent once the conversation's commands there ended, so the
+    /// services they use end after them, and not sent when the conversation is
+    /// back on it or where it runs cannot be known. A release that fails is
+    /// logged and fails nothing.
     pub async fn release_departed(&self, id: &ConversationId, device: &DeviceId) {
-        let gate = self.conversations().slot(id).host_gate(device);
-        loop {
-            // Subscribed before the attempt, so a lease that ends after it
-            // wakes the wait.
-            let mut changed = gate.subscribe();
-            if let Some(_released) = gate.try_reserve() {
-                if !self.runs_on(id, device).await {
-                    self.release_on(id.as_str(), device, false).await;
+        self.conversations().slot(id).jobs_ended_on(device).await;
+        let primary = match self.control().conversation(id.clone()).await {
+            Ok(Some(record)) => match self.resolve_target(&record).await {
+                Ok(target) => target.device().cloned(),
+                // As for a record that cannot be read: where the conversation
+                // runs now is not known.
+                Err(error) => {
+                    tracing::warn!(conversation = %id, "a moved conversation's target cannot be resolved: {error}");
+                    return;
                 }
-                return;
-            }
-            // Work there for a conversation back on the device is its own.
-            if self.runs_on(id, device).await || changed.changed().await.is_err() {
-                return;
-            }
-        }
-    }
-
-    /// Whether the conversation `id` runs on `device` as its primary Host;
-    /// true for one that is gone, which its deletion released. A record
-    /// that cannot be read counts as running there: releasing a device the
-    /// conversation is back on would end services its work uses.
-    async fn runs_on(&self, id: &ConversationId, device: &DeviceId) -> bool {
-        match self.control().conversation(id.clone()).await {
-            Ok(Some(record)) => self
-                .resolve_target(&record)
-                .await
-                .map_or(true, |target| target.device() == Some(device)),
-            Ok(None) => true,
+            },
+            // A conversation deleted meanwhile was released by its deletion.
+            Ok(None) => return,
+            // Releasing a device the conversation runs on again would only end
+            // its services early; one that is never released keeps them.
             Err(error) => {
                 tracing::warn!(conversation = %id, "a moved conversation's record cannot be read: {error}");
-                true
+                return;
             }
+        };
+        if primary.as_ref() != Some(device) {
+            self.release_on(id.as_str(), device, false).await;
         }
     }
 

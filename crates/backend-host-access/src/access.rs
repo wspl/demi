@@ -81,6 +81,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use futures_util::future::LocalBoxFuture;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::join_all;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
@@ -119,15 +120,8 @@ pub struct ConversationSlot {
     /// The admissions its running shell jobs hold, each with its job's
     /// device.
     jobs: RefCell<Vec<Rc<JobAdmission>>>,
-    /// One gate per device the conversation reaches: every admission on the
-    /// device holds a lease of it, and the release of a device a move left
-    /// reserves it (`crates/backend-host-access/src/transition.rs`), so no
-    /// work starts there between the check that none runs and the release.
-    hosts: RefCell<HashMap<DeviceId, ActivityGate>>,
-    /// The boundary of the changes of where the conversation runs and what
-    /// it reaches, a move, an archive, a restore and a detach: each reads
-    /// the record it changes and what it releases while it holds it.
-    pub changes: SerialGate,
+    /// Told whenever a job lets go of its admission.
+    jobs_ended: Notify,
     /// The agent's jobs whose start waits for the conversation's primary
     /// device to come back (§ Host operations).
     waiting: RefCell<Vec<Rc<WaitingJob>>>,
@@ -192,6 +186,7 @@ impl Drop for HeldJob {
             .jobs
             .borrow_mut()
             .retain(|entry| !Rc::ptr_eq(entry, &self.entry));
+        self.slot.jobs_ended.notify_waiters();
     }
 }
 
@@ -221,11 +216,25 @@ impl ConversationSlot {
             .filter_map(|entry| entry.admitted.take())
             .collect();
         drop(left);
+        self.jobs_ended.notify_waiters();
     }
 
-    /// The gate of the conversation's admissions on `device`.
-    pub fn host_gate(&self, device: &DeviceId) -> ActivityGate {
-        self.hosts.borrow_mut().entry(device.clone()).or_default().clone()
+    /// Resolves once no job of the conversation holds its admission on
+    /// `device`: at once when none runs there.
+    pub async fn jobs_ended_on(&self, device: &DeviceId) {
+        loop {
+            // Made before the check, so an end after it is not missed.
+            let ended = self.jobs_ended.notified();
+            let running = self
+                .jobs
+                .borrow()
+                .iter()
+                .any(|entry| entry.device == *device && entry.admitted.borrow().is_some());
+            if !running {
+                return;
+            }
+            ended.await;
+        }
     }
 
     /// Registers a job as waiting for `device`, the conversation's offline
@@ -274,8 +283,7 @@ impl Conversations {
                     settings: SerialGate::new(),
                     saved: SerialGate::new(),
                     jobs: RefCell::default(),
-                    hosts: RefCell::default(),
-                    changes: SerialGate::new(),
+                    jobs_ended: Notify::new(),
                     waiting: RefCell::default(),
                 })
             })
@@ -387,12 +395,11 @@ pub struct ConversationHost {
 }
 
 /// An admitted operation's hold. The fields drop in order: the Host, the
-/// file lease, the Cloud's admission, then the lease of the device's gate.
+/// file lease, then the Cloud's admission.
 pub struct Admitted {
     pub host: ConversationHost,
     _files: FileLease,
     _cloud: Option<CloudAdmission>,
-    _device: GateLease,
 }
 
 /// What an admission that never wakes the Host is to the conversation's
@@ -578,9 +585,6 @@ impl dyn HostShard + '_ {
         // until the admission ends, so that a move decided while the job
         // came back to the file gate still fails it.
         let mut waiting: Option<HeldWait> = None;
-        // The lease of the selected device's gate, which waits while the
-        // device is released, holding no file lease.
-        let mut device_lease: Option<(DeviceId, GateLease)> = None;
         loop {
             let files = waits.wait(slot.files.enter(Purpose::Demand)).await?;
             if let Some(reason) = waiting.as_ref().and_then(HeldWait::failed) {
@@ -646,28 +650,12 @@ impl dyn HostShard + '_ {
                 cloud = Some(waits.wait(self.enter_cloud(&selected.device)).await??);
                 continue;
             }
-            if device_lease.as_ref().is_none_or(|(device, _)| *device != selected.device.id) {
-                let gate = slot.host_gate(&selected.device.id);
-                device_lease = match gate.try_enter(Purpose::Demand) {
-                    Some(lease) => Some((selected.device.id.clone(), lease)),
-                    None => {
-                        drop(files);
-                        let lease = waits.wait(gate.enter(Purpose::Demand)).await?;
-                        device_lease = Some((selected.device.id.clone(), lease));
-                        continue;
-                    }
-                };
-            }
-            let Some((_, device)) = device_lease else {
-                unreachable!("the lease of the selected device was taken above");
-            };
             let host = self.open_host(&files, &selected, cloud.as_ref()).await?;
             self.track_idle(&record.id);
             return Ok(Admitted {
                 host,
                 _files: files,
                 _cloud: cloud,
-                _device: device,
             });
         }
     }
