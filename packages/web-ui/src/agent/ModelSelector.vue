@@ -41,6 +41,15 @@ const state = computed(() =>
     props.settings?.modelId,
   ),
 )
+// The menu marks the model the chip shows. Where nothing is chosen the chip
+// shows the first usable model, which the menu would not otherwise mark: the
+// automation's menu, with no such fall-through, leaves its row unmarked.
+const menuSettings = computed(() => {
+  const shown = selected.value
+  if (!shown || (props.settings?.providerId && props.settings.modelId))
+    return props.settings
+  return { thinkingEffort: null, serviceTierId: null, ...props.settings, providerId: shown.providerId, modelId: shown.modelId }
+})
 const icons = useIconPx()
 const unavailable = computed(() => state.value.kind === 'unavailable')
 const selected = computed(() =>
@@ -115,7 +124,7 @@ const labelText = computed(() => {
         <ModelMenu
           :providers="providers"
           :models="models"
-          :settings="settings"
+          :settings="menuSettings"
           @change="(change) => emit('change', change)"
           @context-limit="(change) => emit('contextLimit', change)"
         />

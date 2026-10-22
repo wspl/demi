@@ -104,10 +104,10 @@ export function modelMenuRows(
       : null,
     model: {
       // A choice the menu cannot send with still names itself, as the
-      // composer's chip does.
-      value: standInChosen
+      // composer's chip does; settings that name no model show none.
+      value: standInChosen || !settings?.providerId || !settings.modelId
         ? ''
-        : model?.name ?? composerModel(providers, models, settings?.providerId, settings?.modelId).label,
+        : model?.name ?? composerModel(providers, models, settings.providerId, settings.modelId).label,
       groups: providers
         .filter((provider) => (provider.isAvailable || provider.setupReason !== undefined) && (models[provider.id]?.length ?? 0) > 0)
         .map((provider) => ({

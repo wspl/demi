@@ -116,8 +116,9 @@ test('an unavailable last choice stays put when other models exist', () => {
   expect(resolveSelectedModel(providers, models, 'anthropic', 'gone')).toBeNull()
 })
 
-test('a session with no last choice falls through to the first usable model', () => {
-  expect(resolveSelectedModel(providers, models, null, null)?.modelId).toBe('gpt')
+test('a session with no last choice falls through to the first usable model, which a menu does not mark', () => {
+  expect(resolveSelectedModel(providers, models, null, null)).toBeNull()
+  expect(composerModel(providers, models, null, null).modelId).toBe('gpt')
   expect(composerModel(providers, models, null, null).kind).toBe('ready')
 })
 

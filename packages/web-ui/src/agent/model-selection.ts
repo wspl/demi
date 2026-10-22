@@ -246,7 +246,10 @@ export function composerModel(
 }
 
 /**
- * The model the chip can send with. Unusable last choices do not fall through.
+ * The model that `providerId` and `modelId` name, when the chip can send with
+ * it. Only a model a choice names counts: an unusable one does not fall
+ * through, and neither does the composer's first usable model for a settings
+ * that name none, so a menu over settings with no model marks no row.
  */
 export function resolveSelectedModel(
   providers: readonly ProviderInfo[],
@@ -254,6 +257,9 @@ export function resolveSelectedModel(
   providerId: string | null | undefined,
   modelId: string | null | undefined,
 ): SelectedModel | null {
+  if (!providerId || !modelId) {
+    return null
+  }
   const state = composerModel(providers, models, providerId, modelId)
   return state.kind === 'ready' ? state.selected : null
 }
