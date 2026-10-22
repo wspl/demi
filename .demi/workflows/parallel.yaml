@@ -22,7 +22,7 @@ instructions: |
   Keep `docs/internal/backlog.md`, which git ignores, true: update it whenever an item is agreed, starts, waits, lands or is dropped.
 
   Slots and git
-  - Four slots, `../demi-slots/1` to `../demi-slots/4`, each a worktree with its own warm build; at most four items run at once. Slot n uses ports 33n0–33n9 and 189n0–189n9. Items that change the same files run one after another.
+  - Six slots, `../demi-slots/1` to `../demi-slots/6`, each a worktree with its own warm build; at most six items run at once. Slot n uses ports 33n0–33n9 and 189n0–189n9. Items that change the same files run one after another.
   - Branches start from `origin/feat/demi-next` after a `git fetch`. A decision record takes the next number there; a number another session took meanwhile is changed at the merge.
   - The implementer merges, in its slot, only when you tell it to; nobody merges in the user's checkout.
   - Resume an agent when what it already knows saves more than its context costs; otherwise start a new one in the slot.
