@@ -58,7 +58,7 @@ const props = withDefaults(defineProps<{
   isDanger?: boolean
   /**
    * The row stands for what is still being read, such as a list that has not
-   * come: the spinner shows where an operation's does, and the row is not
+   * come: the spinner takes its icon's place, and the row is not
    * choosable.
    */
   loading?: boolean
@@ -118,6 +118,11 @@ const showIconGutter = computed(() => props.iconless !== true && layout?.iconles
 // The leading slot: the icon, or in a menu without icons the check, whose width every row keeps.
 const showGutter = computed(() => showIconGutter.value || checkLeading.value)
 const showTrailingCheck = computed(() => checkable.value && !checkLeading.value)
+// A row still being read, or a running row that is not a choice, spins in its icon's place; a
+// running choice spins in its check's place.
+const spinsInGutter = computed(
+  () => running.value && showGutter.value && (checkLeading.value || !isChoice.value || props.loading === true)
+)
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
 // The suffix column only exists when something renders in it, so empty rows add no width.
 const hasActions = computed(() => slots.actions != null)
@@ -305,7 +310,7 @@ const toneClass = computed(() => {
           <IndeterminateSpinner v-if="running" :size="ICON_PX.in28" />
           <Check v-else-if="isSelected" :size="ICON_PX.in28" class="text-fg-body" />
         </template>
-        <IndeterminateSpinner v-else-if="running && !isChoice" :size="ICON_PX.in28" />
+        <IndeterminateSpinner v-else-if="spinsInGutter" :size="ICON_PX.in28" />
         <component
           :is="icon"
           v-else-if="icon"
@@ -337,7 +342,7 @@ const toneClass = computed(() => {
             v-if="showTrailingCheck || (running && !showGutter)"
             class="flex size-3.5 shrink-0 items-center justify-center"
           >
-            <IndeterminateSpinner v-if="running" :size="14" class="text-fg-muted" />
+            <IndeterminateSpinner v-if="running && !spinsInGutter" :size="14" class="text-fg-muted" />
             <Check
               v-else-if="isSelected"
               :size="ICON_PX.in28"
