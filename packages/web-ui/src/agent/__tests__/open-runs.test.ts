@@ -3,6 +3,7 @@ import { effectScope, nextTick, reactive } from 'vue'
 import type { Block } from '@demicodes/protocol'
 import { useMessageRows, type MessageRowsSource } from '../message-rows'
 import { useOpenRuns } from '../open-runs'
+import { rowKey } from '../row-key'
 import { createdAt, model, userBlock } from './agent-harness'
 
 // A block brought into view inside a folded run, as a notice's title, a search
@@ -55,19 +56,19 @@ test('a block folded in a run opens the run and is shown by its own row; the run
   const scope = effectScope()
   const { rows, runs } = scope.run(() => {
     const list = useMessageRows(() => state)
-    return { rows: list.rows, runs: useOpenRuns(() => list.rows.value, () => state.conversationId, list.keyOf) }
+    return { rows: list.rows, runs: useOpenRuns(() => list.rows.value, () => state.conversationId, rowKey) }
   })!
-  const runRow = (step: string) => rows.value.find((row) => row.type === 'work_group' && row.steps.some((item) => item.id === step))!.id
+  const runRow = (step: string) => rows.value.find((row) => row.type === 'work_group' && row.steps.some((item) => item.id === step))!
   const sevenRun = runRow('c-5')
   expect(runs.isOpen(sevenRun)).toBe(false)
 
   // The notice's call, the fifth of seven: its own row, in the opened run.
-  expect(runs.reveal('c-5')).toEqual({ row: sevenRun, step: 'c-5' })
+  expect(runs.reveal('c-5')).toEqual({ row: sevenRun.id, step: 'c-5' })
   expect(runs.isOpen(sevenRun)).toBe(true)
   // The run's first call is a step of it too, never the run's row.
-  expect(runs.reveal('c-1')).toEqual({ row: sevenRun, step: 'c-1' })
+  expect(runs.reveal('c-1')).toEqual({ row: sevenRun.id, step: 'c-1' })
   // A lone call's run is the call's own row, which shows as it is.
-  expect(runs.reveal('l-1')).toEqual({ row: runRow('l-1'), step: null })
+  expect(runs.reveal('l-1')).toEqual({ row: runRow('l-1').id, step: null })
   expect(runs.isOpen(runRow('l-1'))).toBe(false)
   expect(runs.reveal('a-1')).toEqual({ row: 'a-1', step: null })
   expect(runs.reveal('gone')).toBeNull()

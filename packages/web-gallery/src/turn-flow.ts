@@ -33,12 +33,14 @@ import { printLive } from './live-command'
  * - `stream`: thinking then reply with nothing waited for.
  * - `work`: a turn of many steps, thinking without text and commands in a row,
  *   one failing, two changing files.
+ * - `rounds`: an answered message, then two messages sent one after the
+ *   other, each a whole turn, for the transcript's motion between them.
  *
  * Every fixture only changes conversation state, the way the product's runtime
  * does: the transcript's tail row, its faces and the handoff into a block are
  * `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'first' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue'
+export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'first' | 'resume' | 'retry' | 'connect' | 'stream' | 'work' | 'steer' | 'queue' | 'rounds'
 
 /**
  * A sent message as the composer showed it: what the page holds until the
@@ -78,6 +80,11 @@ const TOOL_LINES = [
 ]
 const USER_TEXT = 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
 const STEER_TEXT = 'Also check the sign-up test.'
+/** The answered message a `rounds` replay starts from, and the two it sends after it. */
+const ROUNDS_BEFORE = { ask: 'Which header carries the session cookie?', answer: 'The `Set-Cookie` header carries it, under the name `session`.' }
+const ROUNDS_SENT = [USER_TEXT, 'Now run the whole web suite and tell me what fails.']
+/** How long a `rounds` replay waits before it sends, and between a turn's end and the next message. */
+const ROUNDS_GAP_MS = 1200
 const RETRY_ERROR = 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.'
 /** The simulated server's acknowledgement of a recovery or a reconnect. */
 const ACK_MS = 800
@@ -104,6 +111,8 @@ const WAIT_MS = 80
  * enough to see the run's row go on shimmering while it is waited for.
  */
 const STEP_ANSWER_MS = 1500
+/** How long the session takes to be idle once the response has ended. */
+const END_MS = 120
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
 const TOOL_RUN_MS = 1400
@@ -170,6 +179,8 @@ export interface TurnFlowOptions {
 }
 
 export function useTurnFlow(options: TurnFlowOptions = {}) {
+  const baseId = options.id ?? 'turn-flow'
+  let replays = 0
   const state: TurnFlowState = reactive({
     id: options.id ?? 'turn-flow',
     cwd: options.cwd ?? '/',
@@ -232,9 +243,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
   let runningTool: string | null = null
+  /** The messages a `rounds` replay still sends, each once the turn before it has ended. */
+  let unsent: string[] = []
 
   function cancel(): void {
     token += 1
+    unsent = []
     for (const id of timers) {
       window.clearTimeout(id)
     }
@@ -349,13 +363,15 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  function textBlock(id: string, createdAt: string, text: string): Block {
+  function textBlock(id: string, createdAt: string, text: string, complete = false): Block {
     return {
       type: 'text',
       id,
       createdAt,
       model: demoModel,
       text,
+      // The backend marks a text complete (`forkable`) when its response ends.
+      ...(complete ? { forkable: true } : {}),
     }
   }
 
@@ -436,21 +452,27 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function reply(run: number, startMs: number, text: string): void {
     const id = nextId('text')
     let createdAt = ''
+    // The backend opens a text block with its first words, never empty.
+    const prefixes = feedPrefixes(text)
     at(run, startMs, () => {
       createdAt = now()
-      append(textBlock(id, createdAt, ''))
+      append(textBlock(id, createdAt, prefixes[0]!))
     })
     const end = streamTextInto(run, startMs + FEED_MS, text, (partial) => {
       replace(id, textBlock(id, createdAt, partial))
     })
     at(run, end + 160, () => {
+      // The response ends: its text is complete before the session is idle.
+      replace(id, textBlock(id, createdAt, text, true))
       // A steer that came during the reply is read before the turn ends.
       if (writeSteers()) {
         waitForModel()
         thinkThenReply(run, WAIT_MS, THINK_2)
         return
       }
-      state.phase = 'idle'
+      at(run, END_MS, () => {
+        state.phase = 'idle'
+      })
     })
   }
 
@@ -743,6 +765,24 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
     append({ type: 'resume', id: nextId('resume'), turnId: nextId('turn'), createdAt: now(), model: demoModel, reason: null })
   }
+
+  /** Sends the next message of a `rounds` replay. */
+  function sendRound(): void {
+    const rest = unsent
+    const text = rest.shift()
+    if (text !== undefined) {
+      // A send cancels what its flow had planned, which the later messages are not.
+      turn([{ type: 'text', text }], { text, attachments: [] })
+      unsent = rest
+    }
+  }
+
+  // A `rounds` replay sends its next message a moment after its turn ends.
+  watch(() => state.phase, (phase, before) => {
+    if (phase === 'idle' && before === 'running' && unsent.length > 0) {
+      at(token, ROUNDS_GAP_MS, sendRound)
+    }
+  })
 
   /** Send a message, with the comments it carries, on the current transcript; its turn runs once the server confirms it. */
   function turn(content: UserContentBlock[], message: SentMessage, comments: readonly MessageComment[] = []): void {
@@ -1338,6 +1378,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function play(kind: TurnFlowKind = 'turn'): void {
     cancel()
     forgetSubmissions()
+    // A replay is another conversation opened, which the list shows at once,
+    // never the rows of the one before moving into the new one's.
+    replays += 1
+    state.id = `${baseId}-${replays}`
     const run = token
     state.lastError = null
     state.pendingAction = null
@@ -1358,6 +1402,17 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         replace(id, thinkingBlock(id, createdAt, partial))
       })
       reply(run, thought + 240, REPLY)
+      return
+    }
+
+    if (kind === 'rounds') {
+      const id = nextId('text')
+      state.blocks = inRequests([
+        userBlock([{ type: 'text', text: ROUNDS_BEFORE.ask }]),
+        textBlock(id, now(), ROUNDS_BEFORE.answer, true),
+      ])
+      unsent = [...ROUNDS_SENT]
+      at(run, ROUNDS_GAP_MS, sendRound)
       return
     }
 

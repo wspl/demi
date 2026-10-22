@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue'
 import type { MessageListBlock } from './pending-steers'
-import { stepHolds } from './work-groups'
+import { stepHolds, workRowId } from './work-groups'
 
 /**
  * Where a block brought into view shows: `row`, the list's row that holds
@@ -14,9 +14,9 @@ export interface RevealTarget {
 }
 
 export interface OpenRuns {
-  /** Whether the run whose row the list draws under `key` is open. */
-  isOpen: (key: string) => boolean
-  setOpen: (key: string, open: boolean) => void
+  /** Whether the run `row` shows, or the step it shows alone, is open. */
+  isOpen: (row: MessageListBlock) => boolean
+  setOpen: (row: MessageListBlock, open: boolean) => void
   /**
    * Where the block `id` shows, opening the run that folds it, as a tree opens
    * the folders above a search result (`crates/agent-session/src/reports.rs`);
@@ -27,9 +27,12 @@ export interface OpenRuns {
 }
 
 /**
- * The runs of a transcript list that are open, by the keys the list draws their
- * rows under (`keyOf`): the row a lone step ran in is the run's row once the
- * step ended, so a step opened while it runs is still open as the run it
+ * The runs of a transcript list that are open, by the names of the blocks their
+ * rows show (`rowKey`), never by the keys the list draws the rows under: a row
+ * that takes the place of another takes its key (`succeedKeys`), and must not
+ * take its open state with it. A step that runs alone is named as a step of its
+ * own (`workRowId`) and, once it ended, as the run it started, so a run is open
+ * when its first step was opened while it ran: it stays open as the run it
  * starts.
  *
  * The list owns them rather than each run's row, so a reveal opens a run
@@ -45,11 +48,22 @@ export function useOpenRuns(
   const open = reactive(new Set<string>())
   watch(scope, () => open.clear())
 
-  function setOpen(run: string, value: boolean): void {
+  /** The names a row's open state is kept under: its own, and its first step's own row's. */
+  function names(row: MessageListBlock): string[] {
+    return row.type === 'work_group' ? [keyOf(row), workRowId(row.steps[0]!)] : [keyOf(row)]
+  }
+
+  function isOpen(row: MessageListBlock): boolean {
+    return names(row).some((name) => open.has(name))
+  }
+
+  function setOpen(row: MessageListBlock, value: boolean): void {
     if (value) {
-      open.add(run)
+      open.add(keyOf(row))
     } else {
-      open.delete(run)
+      for (const name of names(row)) {
+        open.delete(name)
+      }
     }
   }
 
@@ -74,5 +88,5 @@ export function useOpenRuns(
     return null
   }
 
-  return { isOpen: (run) => open.has(run), setOpen, reveal }
+  return { isOpen, setOpen, reveal }
 }

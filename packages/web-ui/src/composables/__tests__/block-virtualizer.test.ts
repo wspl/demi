@@ -169,3 +169,37 @@ afterEach(() => {
       Reflect.deleteProperty(HTMLElement.prototype, name)
   }
 })
+
+test('a row keeps the size it was measured at when another kind of row takes its key, even when it measured as its kind is estimated', async () => {
+  const drawn = ref<number[]>([])
+  const root = document.createElement('div')
+  document.body.append(root)
+  let blocks: { value: { id: string, type: string }[] } | undefined
+  let total = 0
+  const app = createApp(defineComponent({
+    setup() {
+      const container = ref<HTMLElement>()
+      // A waiting row, estimated at the 28 px it is, then a row of a kind
+      // estimated at 20 px in its place, as the agent's wait becomes thinking.
+      blocks = ref([{ id: 'wait', type: 'activity_slot' }])
+      const list = useBlockVirtualizer(container, blocks as never, undefined, { keyOf: () => 'tail' })
+      return () => {
+        drawn.value = list.virtualItems.value.map((item) => item.index)
+        total = list.totalSize.value
+        const rowRef = (el: unknown) => list.measureElement(el instanceof Element ? el : null)
+        return h('div', { ref: (el: unknown) => { container.value = el instanceof HTMLElement ? el : undefined }, 'data-height': '500' }, [
+          h('div', { style: { height: `${list.totalSize.value}px` } }, list.virtualItems.value.map((item) =>
+            h('div', { key: String(item.key), 'data-index': item.index, 'data-height': '28', ref: rowRef }))),
+        ])
+      }
+    },
+  }))
+  app.mount(root)
+  unmount = () => app.unmount()
+  await settled(drawn)
+  expect(total).toBe(28)
+
+  blocks!.value = [{ id: 'think', type: 'thinking' }]
+  await settled(drawn)
+  expect(total).toBe(28)
+})

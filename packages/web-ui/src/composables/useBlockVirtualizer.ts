@@ -1,8 +1,9 @@
 import { computed, nextTick, onScopeDispose, ref, shallowRef, type Ref, watch } from 'vue'
-import { measureElement as measureRow, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
+import { elementScroll, measureElement as measureRow, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
 import { revealOffset } from '../ui/reveal'
+import { moveRows, rowsBefore, scrolledRows, type RowsBefore } from './row-motion'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -136,6 +137,11 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
 
   const scrollOffset = ref(0)
   /**
+   * Where the list last scrolled itself to, by the virtualizer or here: a scroll
+   * event that stands elsewhere is the reader's.
+   */
+  let scrolledTo = Number.NaN
+  /**
    * How far the list's end lies below the view, as of the last scroll or
    * growth.
    */
@@ -206,15 +212,30 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       // exceeds: the first render covers the view, at worst a little more.
       initialRect: { width: 0, height: window.innerHeight },
       getScrollElement: () => scrollContainer.value ?? null,
+      scrollToFn: (offset, options, instance) => {
+        // The virtualizer scrolls to follow a row's growth or shrinking inside
+        // the observer's callback, before the list is updated: the rows are
+        // read before the scroll moves them.
+        seeRows()
+        elementScroll(offset, options, instance)
+        scrolledTo = scrollContainer.value?.scrollTop ?? Number.NaN
+      },
       estimateSize,
       // A row is measured only in the document (`measureElement` below), as
       // the observer reports only rows there.
       measureElement: (element, entry, instance) => {
         const size = measureRow(element, entry, instance)
         const index = instance.indexFromElement(element)
-        const known = instance.itemSizeCache.get(instance.options.getItemKey(index))
+        const key = instance.options.getItemKey(index)
+        const known = instance.itemSizeCache.get(key)
         if (known !== undefined && size < known)
           keepReaderControl(element)
+        // The virtualizer records a measurement only when it differs from the
+        // estimate. A row measured as estimated is a size too: kept by its key,
+        // it stays when the row's kind changes under the key, instead of
+        // falling back to the estimate of the new kind, which is another size.
+        if (known === undefined && size === estimateSize(index))
+          instance.itemSizeCache.set(key, size)
         revealMeasured(index, size)
         return size
       },
@@ -386,6 +407,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const target = el.scrollTop + moved
     virtualizer.value.scrollOffset = target
     el.scrollTop = target
+    scrolledTo = el.scrollTop
     scrollOffset.value = el.scrollTop
   }
 
@@ -575,6 +597,42 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
   watch(() => virtualizer.value.getTotalSize(), followEnd, { flush: 'post' })
 
+  // Content that comes or goes moves the rows to their places over
+  // `ROW_MOVE_MS`, not in one frame (`moveRows`). They move from where the
+  // reader saw them: the rows are read before the first update since the last
+  // frame was painted, and later updates before the next paint, such as the
+  // measure of rows that just mounted, move them from there too, so a place
+  // the reader never saw is never the start of a move. What the reader scrolls
+  // in between moves no row (`onScroll`), nor does a row they opened or a list
+  // not yet placed.
+  let seen: RowsBefore | null = null
+  let unpainted = false
+  // How tall the list placed each row, by key, when it last settled.
+  const placedHeights = () => new Map(virtualizer.value.getVirtualItems().map((item) => [String(item.key), item.size]))
+  let settled = new Map<string, number>()
+  const layout = () => `${virtualizer.value.getTotalSize()}|${virtualizer.value.getVirtualItems().map((item) => `${String(item.key)}:${item.start}`).join()}`
+  function seeRows(): void {
+    const el = scrollContainer.value
+    if (unpainted) {
+      if (!el || !isRestored.value || holdsView())
+        seen = null
+      return
+    }
+    seen = el && isRestored.value && !holdsView() ? rowsBefore(el, settled) : null
+    unpainted = true
+    // The frame that follows is painted at the end of the second callback.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      unpainted = false
+    }))
+  }
+  watch(layout, seeRows, { flush: 'pre' })
+  watch(layout, () => {
+    const el = scrollContainer.value
+    if (el && seen)
+      moveRows(el, seen, placedHeights(), shouldAutoScroll.value)
+    settled = placedHeights()
+  }, { flush: 'post' })
+
   watch(
     virtualizer,
     (instance) => {
@@ -654,6 +712,10 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const el = scrollContainer.value
     if (el) {
       scrollOffset.value = el.scrollTop
+      // What the reader scrolled is no move of any row: a place kept from before
+      // it stands further along.
+      if (seen && Math.abs(el.scrollTop - scrolledTo) >= 1)
+        seen = scrolledRows(seen, el.scrollTop)
       const dist = distanceFromBottom(el)
       endDistance.value = dist
       updateAutoScrollState(dist, BOTTOM_THRESHOLD_PX)
@@ -752,6 +814,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       const target = (virtualizer.value.scrollOffset ?? el.scrollTop) + moved - anchor.start
       virtualizer.value.scrollOffset = target
       el.scrollTop = target
+      scrolledTo = el.scrollTop
       updateAnchor()
     },
     { flush: 'post' },

@@ -323,10 +323,16 @@ export function useMessageRows(
 
   // A message on its way that starts a turn is the user's next message
   // already, so the answer before it keeps its footer while the turn starts
-  // and the message is written.
+  // and the message is written. A complete answer has it from the moment its
+  // text is complete.
   const footerIds = computed(() => assistantFooterIds(
     visibleBlocks.value,
-    replyEndIds(visibleBlocks.value, source().phase, startingTurn.value),
+    replyEndIds(visibleBlocks.value, {
+      phase: source().phase,
+      continuing: source().activity?.waitingSince != null || (source().activity?.pendingCalls.length ?? 0) > 0,
+      // The message the turn started with is still on its way until the turn writes it.
+      sending: startingTurn.value || source().starting != null,
+    }),
   ))
 
   return { visibleBlocks, transcriptRows, rows, keyOf, slot, footerIds }

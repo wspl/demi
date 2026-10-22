@@ -111,19 +111,50 @@ test('a step\'s extent read from its line on is the extent read from the reply\'
 })
 
 test('holdIncompleteMarkdown parks a block\'s opening line until its first text', () => {
-  const held = (text: string) => holdIncompleteMarkdown(text).held
-  expect(held('Intro\n\n- ')).toBe('- ')
-  expect(held('- one\n  - ')).toBe('  - ')
-  expect(held('Intro\n\n1. ')).toBe('1. ')
-  expect(held('Intro\n\n> ')).toBe('> ')
-  expect(held('> - ')).toBe('> - ')
-  expect(held('Intro\n\n```ts')).toBe('```ts')
-  expect(held('Intro\n\n```ts\n')).toBe('```ts\n')
-  expect(held('~~~\n')).toBe('~~~\n')
-  expect(held('- one')).toBe('')
-  expect(held('```ts\nconst')).toBe('')
-  expect(held('Intro\n\n---')).toBe('')
-  expect(held('Version 1.')).toBe('')
+  const visible = (text: string) => holdIncompleteMarkdown(text).visible
+  expect(visible('Intro\n\n- ')).toBe('Intro')
+  expect(visible('- one\n  - ')).toBe('- one')
+  expect(visible('Intro\n\n1. ')).toBe('Intro')
+  expect(visible('Intro\n\n> ')).toBe('Intro')
+  expect(visible('> - ')).toBe('')
+  expect(visible('Intro\n\n```ts')).toBe('Intro')
+  expect(visible('Intro\n\n```ts\n')).toBe('Intro')
+  expect(visible('~~~\n')).toBe('')
+  expect(visible('- one')).toBe('- one')
+  expect(visible('```ts\nconst')).toBe('```ts\nconst')
+  expect(visible('Version 1.')).toBe('Version 1.')
+})
+
+// What the text written so far would draw taller than its next characters make
+// of it is parked until they come, so a streaming reply never shrinks: a
+// paragraph that becomes a list item, a rule, a table or a formula.
+test('holdIncompleteMarkdown parks what the next characters make shorter', () => {
+  const visible = (text: string) => holdIncompleteMarkdown(text).visible
+  // The digits of a list item's number, and the dashes of a rule.
+  expect(visible('Intro\n\n6')).toBe('Intro')
+  expect(visible('1. one\n2')).toBe('1. one')
+  expect(visible('In 2024 it grew')).toBe('In 2024 it grew')
+  expect(visible('Intro\n\n--')).toBe('Intro')
+  expect(visible('Title\n=')).toBe('Title')
+  // A table's delimiter row until it has a cell for each cell of the row above.
+  expect(visible('| a | b |\n| --- | --')).toBe('| a | b |\n| --- | --')
+  expect(visible('| a | b | c |\n| --- | --')).toBe('| a | b | c |')
+  expect(visible('| a | b |\n| --- |')).toBe('| a | b |')
+  expect(visible('| a | b |\n| --- | --- |')).toBe('| a | b |\n| --- | --- |')
+  expect(visible('a | b\n:- | -:')).toBe('a | b\n:- | -:')
+  // A formula until its closing line, a fence's lines holding none.
+  expect(visible('Sum:\n\n$$\nx = 1')).toBe('Sum:')
+  expect(visible('Sum:\n\n$$\nx = 1\n$$')).toBe('Sum:\n\n$$\nx = 1\n$$')
+  expect(visible('```\n$$\nx')).toBe('```\n$$\nx')
+  // A tag at the start of a line until it is closed.
+  expect(visible('Intro\n\n<det')).toBe('Intro')
+  expect(visible('Intro\n\n<details>')).toBe('Intro\n\n<details>')
+  expect(visible('1 < 2 and <b')).toBe('1 < 2 and <b')
+  // The newline that ends the text, and an indent alone on the last line: an open
+  // fence's text ends in neither.
+  expect(visible('1. a\n\n   ```sh\n   npm i\n')).toBe('1. a\n\n   ```sh\n   npm i')
+  expect(visible('1. a\n\n   ```sh\n   npm i\n  ')).toBe('1. a\n\n   ```sh\n   npm i')
+  expect(visible('1. a\n\n   ```sh\n   npm i\n   `')).toBe('1. a\n\n   ```sh\n   npm i')
 })
 
 test('holdIncompleteMarkdown parks unmatched markers and links', () => {

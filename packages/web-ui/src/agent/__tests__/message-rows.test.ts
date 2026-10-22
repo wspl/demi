@@ -841,11 +841,10 @@ test('a run stays the same open row as parallel calls return out of order, and R
   const scope = effectScope()
   const { list, runs } = scope.run(() => {
     const list = useMessageRows(() => state)
-    return { list, runs: useOpenRuns(() => list.rows.value, () => state.conversationId, list.keyOf) }
+    return { list, runs: useOpenRuns(() => list.rows.value, () => state.conversationId, rowKey) }
   })!
   const runRow = () => list.rows.value.find((row) => row.type === 'work_group')
-  const lone = list.keyOf(list.rows.value.at(-1)!)
-  runs.setOpen(lone, true)
+  runs.setOpen(list.rows.value.at(-1)!, true)
 
   state.blocks = [...state.blocks, call('b', 'executing', 'a')]
   await nextTick()
@@ -854,7 +853,7 @@ test('a run stays the same open row as parallel calls return out of order, and R
   expect(runRow()?.steps.map((step) => step.id)).toEqual(['b'])
   expect(list.slot.value).toBeNull()
   const key = list.keyOf(runRow()!)
-  runs.setOpen(key, true)
+  runs.setOpen(runRow()!, true)
 
   // The last call returned: the turn asks the model again, as the server tells.
   state.blocks = state.blocks.map((block) => block.id === 'a' ? call('a', 'completed', 'a') : block)
@@ -862,7 +861,7 @@ test('a run stays the same open row as parallel calls return out of order, and R
   await nextTick()
   expect(runRow()?.steps.map((step) => step.id)).toEqual(['a', 'b'])
   expect(list.keyOf(runRow()!)).toBe(key)
-  expect(runs.isOpen(key)).toBe(true)
+  expect(runs.isOpen(runRow()!)).toBe(true)
   expect(list.slot.value?.kind).toBe('requesting')
   scope.stop()
 
@@ -871,15 +870,16 @@ test('a run stays the same open row as parallel calls return out of order, and R
   const second = effectScope()
   const opened = second.run(() => {
     const list = useMessageRows(() => alone)
-    return { list, runs: useOpenRuns(() => list.rows.value, () => alone.conversationId, list.keyOf) }
+    return { list, runs: useOpenRuns(() => list.rows.value, () => alone.conversationId, rowKey) }
   })!
   const ran = opened.list.keyOf(opened.list.rows.value.at(-1)!)
-  opened.runs.setOpen(ran, true)
+  opened.runs.setOpen(opened.list.rows.value.at(-1)!, true)
   alone.blocks = alone.blocks.map((block) => block.id === 'c' ? call('c', 'completed') : block)
   await nextTick()
   const ended = opened.list.rows.value.find((row) => row.type === 'work_group')!
   expect(opened.list.keyOf(ended)).toBe(ran)
-  expect(opened.runs.isOpen(ran)).toBe(true)
+  expect(rowKey(ended)).not.toBe(ran)
+  expect(opened.runs.isOpen(ended)).toBe(true)
   second.stop()
 })
 

@@ -63,9 +63,9 @@ function settled(text: string): string {
 }
 const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled, () => props.arrivals)
 
-// While the text arrives the steps show only what has settled; the stream's
-// end shows the rest as it is.
-const visible = computed(() => (props.streaming ? settled(shown.value) : shown.value))
+// While the text arrives, and while the rest of it still shows after the stream
+// ends, the steps show only what has settled; the last step shows it as it is.
+const visible = computed(() => (props.streaming || shown.value.length < props.content.length ? settled(shown.value) : shown.value))
 
 const renderVersion = useMarkdownRenderVersion()
 const agents = useMessageAgents()

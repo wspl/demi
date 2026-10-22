@@ -1,5 +1,5 @@
 import { sliceHead } from '@demicodes/utils'
-import { maskMath } from '../markdown/math-syntax'
+import { maskMath, openBlockMathAt } from '../markdown/math-syntax'
 import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
@@ -31,10 +31,37 @@ const TRAILING_OPENERS = /(?:^|[\s(])(?:\*{1,3}|_{1,3}|~{1,2}|`{1,3}|\\)$/
 const INCOMPLETE_LINK = /\[[^\]]*\]?$|\[[^\]]*\]\([^)]*$/
 /**
  * A last line that opens a block and has no text yet: a list item's or a
- * quote's markers, or a code fence. Shown alone it would draw the block's
- * marker, bar or well before any of its text.
+ * quote's markers, a code fence, the digits of a number that a `.` after them
+ * makes a list item's marker, the dashes of a rule or a heading's underline, or
+ * a tag at the start of a line that is not closed yet.
+ * Shown alone it would draw the block's marker, bar or well before any of its
+ * text, or a paragraph that the next character turns into a list item or a
+ * rule, which is shorter.
  */
-const EMPTY_BLOCK_OPENER = /(?<=^|\n)(?:[ \t]*(?:[-*+]|\d{1,9}[.)]|>)(?:[ \t]+|$))+$|(?<=^|\n) {0,3}(?:`{3,}|~{3,})[^`\n]*\n?$/
+const EMPTY_BLOCK_OPENER = /(?<=^|\n)(?:[ \t]*(?:[-*+]|\d{1,9}[.)]|>)(?:[ \t]+|$))+$|(?<=^|\n) {0,3}(?:`{3,}|~{3,})[^`\n]*\n?$|(?<=^|\n)[ \t]{0,3}(?:\d{1,9}|[-*_]{2,}|=+)[ \t]*$|(?<=^|\n) {0,3}<\/?(?:[A-Za-z][A-Za-z0-9-]*[^<>\n]*)?$/
+
+/** The cells of a table row, the pipes at its ends not counted. */
+function tableCells(row: string): string[] {
+  return row.trim().replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/)
+}
+
+/**
+ * Where a table's delimiter row, written so far as the last line, starts when
+ * it is not complete yet, or -1. Until it has a cell of dashes for each cell
+ * of the row above, the two lines are one paragraph, taller than the table's
+ * head they become.
+ */
+function openTableDelimiterAt(text: string): number {
+  const at = text.lastIndexOf('\n') + 1
+  const head = text.slice(0, Math.max(at - 1, 0))
+  const above = head.slice(head.lastIndexOf('\n') + 1)
+  const last = text.slice(at)
+  if (at === 0 || !above.includes('|') || !/^[ \t]{0,3}[|:\-\s]+$/.test(last))
+    return -1
+  const cells = tableCells(last)
+  const complete = cells.length >= tableCells(above).length && cells.every((cell) => /^:?-+:?$/.test(cell.trim()))
+  return complete ? -1 : at
+}
 
 let reducedMotionQuery: MediaQueryList | null | undefined
 
@@ -167,23 +194,57 @@ export function alignShown(shown: string, target: string): string {
 
 /**
  * Keep unmatched emphasis / link markers out of the markdown parse until they
- * close, and a block's opening line out until its first text.
+ * close, and a block's opening line out until its first text. What the text
+ * written so far would draw taller than what its next characters make of it
+ * stays out too: a formula until its closing line, a table's delimiter row
+ * until it is whole, a number until a `.` follows or does not.
  */
 export function holdIncompleteMarkdown(text: string): {
   visible: string;
   held: string
 } {
+  // What one rule holds can leave another's behind it: a backtick held leaves the
+  // indent before it, which an open fence's body is not drawn with.
+  let visible = text
+  let held = ''
+  for (;;) {
+    const next = holdLast(visible)
+    if (!next.held)
+      return { visible, held }
+    visible = next.visible
+    held = next.held + held
+  }
+}
+
+/** The part of `text` that one rule of `holdIncompleteMarkdown` holds. */
+function holdLast(text: string): { visible: string; held: string } {
   if (!text)
     return { visible: '', held: '' }
-  const openerAt = text.search(EMPTY_BLOCK_OPENER)
-  if (openerAt >= 0)
+  // The newline that ends the text shows nothing, except at the end of an open
+  // fence's text, where it draws an empty last line that the closing line takes away.
+  if (text.endsWith('\n'))
+    return { visible: text.slice(0, -1), held: '\n' }
+  const mathAt = openBlockMathAt(text)
+  if (mathAt >= 0)
+    return { visible: text.slice(0, mathAt), held: text.slice(mathAt) }
+  const delimiterAt = openTableDelimiterAt(text)
+  if (delimiterAt >= 0)
+    return { visible: text.slice(0, delimiterAt), held: text.slice(delimiterAt) }
+  // The last line when it is only an indent: too short, it may not keep the
+  // block that has the lines before it, which the whole indent does.
+  const indentAt = text.search(/(?<=\n)[ \t]+$/)
+  if (indentAt >= 0)
+    return { visible: text.slice(0, indentAt), held: text.slice(indentAt) }
+  let openerAt = text.search(EMPTY_BLOCK_OPENER)
+  if (openerAt >= 0) {
+    // A fence held leaves the newline before it too, as the newline that ends the text does.
+    if (openerAt > 0 && text[openerAt - 1] === '\n' && /^ {0,3}(?:`{3,}|~{3,})/.test(text.slice(openerAt)))
+      openerAt -= 1
     return { visible: text.slice(0, openerAt), held: text.slice(openerAt) }
+  }
   const linkAt = text.search(INCOMPLETE_LINK)
   if (linkAt >= 0)
-    return {
-    visible: text.slice(0, linkAt),
-    held: text.slice(linkAt)
-  }
+    return { visible: text.slice(0, linkAt), held: text.slice(linkAt) }
   const markers = text.match(TRAILING_OPENERS)
   if (markers) {
     const token = markers[0].replace(/^[(\s]/, '')

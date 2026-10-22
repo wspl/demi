@@ -1,6 +1,6 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { afterEach, expect, spyOn, test } from 'bun:test'
-import { effectScope, type EffectScope } from 'vue'
+import { afterEach, expect, jest, spyOn, test } from 'bun:test'
+import { effectScope, nextTick, ref, type EffectScope } from 'vue'
 import { applyTranscriptPatches, heldBlocks, type HeldTranscript } from '@demicodes/conversation-client'
 import type { Block, TranscriptPatch } from '@demicodes/protocol'
 import { useStreamReveal } from '../useStreamReveal'
@@ -62,4 +62,29 @@ test('a view that mounts again mid-stream goes on with each fade where it is, ne
     { start: 22, end: 39, at: 1300 },
     { start: 39, end: 45, at: 1500 },
   ])
+})
+
+test('the end of a stream goes on at the pace the text was showing, never showing the rest at once', async () => {
+  jest.useFakeTimers()
+  try {
+    const content = ref('')
+    const streaming = ref(true)
+    const scope = effectScope()
+    scopes.push(scope)
+    const { shown } = scope.run(() => useStreamReveal(content, streaming, (whole) => whole))!
+    // Text that arrived in one burst, and the stream ends before it all showed.
+    content.value = 'Sunlight looks white, but it is really a mix of every color the sky can make. '.repeat(4)
+    await nextTick()
+    streaming.value = false
+    await nextTick()
+    expect(shown.value.length).toBeLessThan(content.value.length)
+    const midway = shown.value.length
+    jest.advanceTimersByTime(STREAM_PACE.maxStepMs)
+    expect(shown.value.length).toBeGreaterThan(midway)
+    expect(shown.value.length).toBeLessThan(content.value.length)
+    jest.advanceTimersByTime(10_000)
+    expect(shown.value).toBe(content.value)
+  } finally {
+    jest.useRealTimers()
+  }
 })

@@ -1726,7 +1726,10 @@ html[data-theme="light"] .file-pill {
 
 /* A loose item's first paragraph starts on the marker's line; a list nested
    after the item's text, its first element too, keeps its own space. */
-.markdown-body li > :first-child:not(ul, ol) {
+/* The text a fade is wrapping is in a span for as long as it fades (`wrapSteps`):
+   the first element is the first that is no such span, so the block after a
+   line of an item's text is where it will stay when the fade is over. */
+.markdown-body li > :nth-child(1 of :not(span.stream-ink)):not(ul, ol) {
   margin-top: 0;
 }
 

@@ -143,6 +143,7 @@ import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
 import GalleryCommandWakeup from '../components/GalleryCommandWakeup.vue'
 import GalleryBusyRequest from '../components/GalleryBusyRequest.vue'
 import GalleryStreamingText from '../components/GalleryStreamingText.vue'
+import GalleryTranscriptMotion from '../components/GalleryTranscriptMotion.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryComments from '../components/GalleryComments.vue'
 import GalleryAsks from '../components/GalleryAsks.vue'
@@ -2748,6 +2749,7 @@ onBeforeUnmount(() => {
                 :activity="rootActivity(workFlow.state)"
                 :pending-steers="[]"
                 :queue="[]"
+                :starting="workFlow.state.starting"
                 :phase="workFlow.state.phase"
                 :load="workFlow.state.load"
                 :pending-action="workFlow.state.pendingAction"
@@ -3069,6 +3071,7 @@ onBeforeUnmount(() => {
 
     <template v-if="view === 'turns'">
       <GalleryStreamingText />
+      <GalleryTranscriptMotion />
       <GalleryBusyRequest />
       <GalleryCommandWakeup />
       <GallerySection

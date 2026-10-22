@@ -62,6 +62,38 @@ export function blockMathToken(src: string): Tokens.Generic | undefined {
 }
 
 /**
+ * Where, in `text` the reply has written so far, a block of math opens that its
+ * closing line has not yet closed, or -1. Before that line arrives its lines
+ * read as text, so what shows of them shrinks to the formula's height once it
+ * is closed. A fence's lines hold no math.
+ */
+export function openBlockMathAt(text: string): number {
+  let fence: string | null = null
+  let at = 0
+  while (at <= text.length) {
+    const end = text.indexOf('\n', at)
+    const line = text.slice(at, end === -1 ? text.length : end)
+    const mark = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
+    if (fence !== null) {
+      if (mark && mark[0] === fence[0] && mark.length >= fence.length)
+        fence = null
+    } else if (mark) {
+      fence = mark
+    } else if (/^\${1,2}$/.test(line)) {
+      const closed = BLOCK_MATH.exec(text.slice(at))
+      if (!closed)
+        return at
+      at += closed[0].length
+      continue
+    }
+    if (end === -1)
+      break
+    at = end + 1
+  }
+  return -1
+}
+
+/**
  * `text` with every piece of math in it replaced by a placeholder character
  * that is no Markdown, as the Markdown renders it: a closed `$…$` or `$$…$$`,
  * a block opened with `$$` or `$` alone on a line and what follows it, and a

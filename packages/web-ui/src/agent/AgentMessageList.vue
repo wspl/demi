@@ -404,7 +404,7 @@ onBeforeUnmount(() => {
 
 // The runs the reader or a reveal opened, which stay open while the list shows
 // this transcript.
-const runs = useOpenRuns(() => renderBlocks.value, () => props.conversationId, keyOf)
+const runs = useOpenRuns(() => renderBlocks.value, () => props.conversationId, rowKey)
 // The block a search result opened. It is shown once the history holds it and
 // the list has placed itself, and it is marked as it appears. The next request,
 // or leaving the list, ends a mark that still waits.
@@ -673,46 +673,53 @@ defineExpose({
       >
         <div ref="rowsRoot" class="relative w-full" :style="{ height: `${totalSize}px` }">
           <ReplyComments v-if="commenting" ref="comments" :root="rowsRoot" :commenting="commenting" :sent="sent" :asking="asking" />
-          <div
-            v-for="item in virtualItems"
-            :key="String(item.key)"
-            :data-index="item.index"
-            :data-block-id="renderBlocks[item.index]!.id"
-            :data-row-key="String(item.key)"
-            :ref="(el) => measureElement(el as Element)"
-            class="absolute inset-x-0 top-0 [--found-inset-x:max(0px,calc(var(--agent-pad-x,2rem)-0.5rem))]"
-            :style="{ transform: `translateY(${item.start}px)` }"
-          >
-            <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
-              <AgentMessageVirtualBlock
-                :block="renderBlocks[item.index]!"
-                :open="runs.isOpen(keyOf(renderBlocks[item.index]!))"
-                :is-thinking-streaming="isStreamingThinkingAt(item.index)"
-                :is-text-streaming="isStreamingTextAt(item.index)"
-                :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
-                :thinking-ended-at="thinkingEndedAt(item.index)"
-                :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
-                :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
-                :share="share ? answerShare(renderBlocks[item.index]!.id) : undefined"
-                :hide-fork="hideFork"
-                :failure="failures?.[renderBlocks[item.index]!.id]"
-                :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
-                :entering="isEntering(String(item.key))"
-                :editable="renderBlocks[item.index]!.id === editableUserId"
-                :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
-                :versions="versionChoices.get(renderBlocks[item.index]!.id)"
-                @update:open="(open) => runs.setOpen(keyOf(renderBlocks[item.index]!), open)"
-                @recall-steer="(id) => emit('recallSteer', id)"
-                @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
-                @recall-queued="(id) => emit('recallQueued', id)"
-                @send-queued="(id) => emit('sendQueued', id)"
-                @edit-user="(id) => emit('editUser', id)"
-                @edit-submission="(id) => emit('editSubmission', id)"
-                @delete-submission="(id) => emit('deleteSubmission', id)"
-                @retry-load="emit('retryLoad')"
-              >
-              </AgentMessageVirtualBlock>
-            </MessageEditRegion>
+          <!--
+            The rows slide to their places (`moveRows`): the clip keeps a sliding
+            row from enlarging the scrollable height, which would scroll the list.
+            The comments layer stands outside it, its cards reach past the last row.
+          -->
+          <div class="absolute inset-0 overflow-y-clip">
+            <div
+              v-for="item in virtualItems"
+              :key="String(item.key)"
+              :data-index="item.index"
+              :data-block-id="renderBlocks[item.index]!.id"
+              :data-row-key="String(item.key)"
+              :ref="(el) => measureElement(el as Element)"
+              class="absolute inset-x-0 top-0 [--found-inset-x:max(0px,calc(var(--agent-pad-x,2rem)-0.5rem))]"
+              :style="{ transform: `translateY(${item.start}px)` }"
+            >
+              <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
+                <AgentMessageVirtualBlock
+                  :block="renderBlocks[item.index]!"
+                  :open="runs.isOpen(renderBlocks[item.index]!)"
+                  :is-thinking-streaming="isStreamingThinkingAt(item.index)"
+                  :is-text-streaming="isStreamingTextAt(item.index)"
+                  :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
+                  :thinking-ended-at="thinkingEndedAt(item.index)"
+                  :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
+                  :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
+                  :share="share ? answerShare(renderBlocks[item.index]!.id) : undefined"
+                  :hide-fork="hideFork"
+                  :failure="failures?.[renderBlocks[item.index]!.id]"
+                  :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
+                  :entering="isEntering(String(item.key))"
+                  :editable="renderBlocks[item.index]!.id === editableUserId"
+                  :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
+                  :versions="versionChoices.get(renderBlocks[item.index]!.id)"
+                  @update:open="(open) => runs.setOpen(renderBlocks[item.index]!, open)"
+                  @recall-steer="(id) => emit('recallSteer', id)"
+                  @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
+                  @recall-queued="(id) => emit('recallQueued', id)"
+                  @send-queued="(id) => emit('sendQueued', id)"
+                  @edit-user="(id) => emit('editUser', id)"
+                  @edit-submission="(id) => emit('editSubmission', id)"
+                  @delete-submission="(id) => emit('deleteSubmission', id)"
+                  @retry-load="emit('retryLoad')"
+                >
+                </AgentMessageVirtualBlock>
+              </MessageEditRegion>
+            </div>
           </div>
         </div>
       </div>

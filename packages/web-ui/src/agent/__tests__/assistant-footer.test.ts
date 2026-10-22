@@ -5,8 +5,10 @@ import { assistantFooterIds as footerAmong, replyEndIds } from '../assistant-foo
 // Where a reply ends, after which its work is done: Copy and Fork wait for
 // it. Pure.
 
-function assistantFooterIds(blocks: readonly Pick<Block, 'id' | 'type'>[], phase: SessionPhase): Set<string> {
-  return footerAmong(blocks, replyEndIds(blocks, phase))
+type TestBlock = Pick<Block, 'id' | 'type'> & { forkable?: boolean }
+
+function assistantFooterIds(blocks: readonly TestBlock[], phase: SessionPhase, continuing = false): Set<string> {
+  return footerAmong(blocks, replyEndIds(blocks, { phase, continuing }))
 }
 
 test('tool and subagent continuations leave only the final reply footer', () => {
@@ -65,8 +67,18 @@ test('a reply the user stopped keeps its footer, Copy among it', () => {
 // sent, so the answer before it keeps Copy and Fork while the turn starts
 // and the message is written.
 test('the answer before a message being sent keeps its footer while the turn starts, and text the agent went on from does not gain one', () => {
-  expect([...footerAmong([{ id: 'answer', type: 'text' }], replyEndIds([{ id: 'answer', type: 'text' }], 'running', true))])
+  expect([...footerAmong([{ id: 'answer', type: 'text' }], replyEndIds([{ id: 'answer', type: 'text' }], { phase: 'running', continuing: false, sending: true }))])
     .toEqual(['answer'])
   const workedOn = [{ id: 'note', type: 'text' }, { id: 'step', type: 'tool_call' }] as const
-  expect(footerAmong(workedOn, replyEndIds(workedOn, 'running', true)).size).toBe(0)
+  expect(footerAmong(workedOn, replyEndIds(workedOn, { phase: 'running', continuing: false, sending: true })).size).toBe(0)
+})
+
+// The session is idle a moment after the response ends; the footer does not
+// wait for it, or it would push the list up late.
+test('a reply has its footer from the moment its text is complete, unless the agent goes on', () => {
+  const answered = [{ id: 'request', type: 'user' }, { id: 'answer', type: 'text', forkable: true }] as const
+  expect([...assistantFooterIds(answered, 'running')]).toEqual(['answer'])
+  expect(assistantFooterIds(answered, 'running', true).size).toBe(0)
+  // Text still arriving is not complete.
+  expect(assistantFooterIds([{ id: 'request', type: 'user' }, { id: 'streaming', type: 'text' }], 'running').size).toBe(0)
 })
