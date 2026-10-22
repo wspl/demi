@@ -8,6 +8,10 @@
 //! - Every JSON error carries it as `requestId`.
 //! - Every request logs one line as it is answered, or as its client abandons
 //!   it, so that an ID a user copies always finds its request.
+//! - The page that made a request names its load in `X-Demi-Page`, or in a
+//!   socket's `page` parameter; the span carries it as `page_id`, so the
+//!   backend's lines of a request the page made are found by the page's ID
+//!   beside the page's own lines.
 //!
 //! Work the request starts in another task is started inside its span: a
 //! session it opens, a Host operation it sends and a store write it waits for
@@ -27,6 +31,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use data_encoding::{Encoding, Specification};
 use demi_shared_types::RequestId;
+use demi_web_api_protocol::diagnostics::PAGE_HEADER;
 use demi_web_api_protocol::error::ErrorCode;
 
 /// The header every response names its request in.
@@ -86,10 +91,38 @@ pub(crate) async fn assign(mut request: Request, next: Next) -> Response {
     response
 }
 
+/// Whether `text` is a page load's ID: `pg_` and 16 characters of the
+/// request ID's alphabet. A value of any other shape is not taken, since it
+/// goes into the log as an ID.
+fn is_page_id(text: &str) -> bool {
+    text.strip_prefix("pg_").is_some_and(|rest| {
+        rest.len() == 16 && rest.bytes().all(|byte| ALPHABET_SYMBOLS.contains(&byte))
+    })
+}
+
+const ALPHABET_SYMBOLS: &[u8] = b"0123456789abcdefghjkmnpqrstvwxyz";
+
+/// The page load the request came from: its `X-Demi-Page`, or the `page`
+/// parameter of a socket's URL, which is the only part of the query read.
+fn page_of<B>(request: &axum::http::Request<B>) -> Option<&str> {
+    let header = request
+        .headers()
+        .get(PAGE_HEADER)
+        .and_then(|value| value.to_str().ok());
+    let parameter = || {
+        request
+            .uri()
+            .query()?
+            .split('&')
+            .find_map(|pair| pair.strip_prefix(concat!("page", "=")))
+    };
+    header.or_else(parameter).filter(|page| is_page_id(page))
+}
+
 /// The span every event of `request` is logged in: its ID, method and path,
-/// never its query, which can carry a file's path or a token, and
-/// Cloudflare's `cf-ray` when a proxy passes it. The session gate records
-/// the caller as `user_id`.
+/// never its query, which can carry a file's path or a token, the page load
+/// that made it and Cloudflare's `cf-ray` when a proxy passes it. The session
+/// gate records the caller as `user_id`.
 pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
     let id = request.extensions().get::<RequestId>();
     let ray = request
@@ -102,6 +135,7 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
         method = %request.method(),
         path = request.uri().path(),
         cf_ray = ray,
+        page_id = page_of(request),
         user_id = tracing::field::Empty,
     )
 }
@@ -143,9 +177,9 @@ impl Drop for Pending {
         let duration_ms = u64::try_from(ran.as_millis()).unwrap_or(u64::MAX);
         self.span.in_scope(|| {
             if ran > SLOW_ABANDONED {
-                tracing::warn!(duration_ms, "a request was abandoned");
+                tracing::warn!(event = "request.abandoned", duration_ms, "a request was abandoned");
             } else {
-                tracing::info!(duration_ms, "a request was abandoned");
+                tracing::info!(event = "request.abandoned", duration_ms, "a request was abandoned");
             }
         });
     }
@@ -163,8 +197,8 @@ pub(crate) fn answered<B>(response: &axum::http::Response<B>, took: Duration, _:
     let code = response.extensions().get::<ErrorCode>().map(tracing::field::display);
     let duration_ms = u64::try_from(took.as_millis()).unwrap_or(u64::MAX);
     if status.is_server_error() {
-        tracing::warn!(status = status.as_u16(), duration_ms, code, "a request was answered");
+        tracing::warn!(event = "request.answered", status = status.as_u16(), duration_ms, code, "a request was answered");
     } else {
-        tracing::info!(status = status.as_u16(), duration_ms, code, "a request was answered");
+        tracing::info!(event = "request.answered", status = status.as_u16(), duration_ms, code, "a request was answered");
     }
 }

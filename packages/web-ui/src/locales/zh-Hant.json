@@ -163,7 +163,6 @@
     "device_managed": "無法變更雲端的名稱。",
     "device_offline": "裝置已離線。",
     "not_a_paired_device": "無法直接連線到雲端。",
-    "log_unreadable": "無法讀取記錄。",
     "conversation_not_found": "找不到對話。",
     "block_not_found": "找不到對話的該部分。",
     "transcript_changed": "對話已變更。請重新載入以繼續。",

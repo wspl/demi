@@ -11,7 +11,8 @@ import { rootActivity } from '@demicodes/web-ui/agent/agent-activity'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { codeText, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { createPageI18n } from '@demicodes/web-ui/i18n/text'
-import { sendPageErrorReport } from '../api/page-errors'
+import { logPageError, logPageWith, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
+import { sendPageLog } from '../api/page-log'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { deleteAccountCache, readConversationCopy } from '../state/offline'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -1393,12 +1394,14 @@ test.each<{ holds: string; draft: string; comments: MessageComment[] }>([
 // failure: the message shows where the agent took it, with no toast and no
 // report of a defect, and what Recall put in the composer goes back out
 // unless the user changed it since. Before, it toasted "Could Not Recall the
-// Message" and posted it to /api/page-errors.
+// Message" and reported it as a defect.
 test.each([
   { since: 'left as it was', draft: '' },
   { since: 'edited', draft: `Compare ${ATTACHMENT_MARK} with the old one, please` },
 ] as const)('a Recall the agent beat leaves the message in the transcript with no toast and no report, and the composer it refilled, $since, holds "$draft"', async ({ since, draft }) => {
-  const stopReports = reportPageErrorsWith(sendPageErrorReport)
+  const stopLog = logPageWith(sendPageLog)
+  pageLogSignedIn(true)
+  const stopReports = reportPageErrorsWith(logPageError)
   try {
     await withRemovals(async (conversation, removal) => {
       const store = useConversations()
@@ -1423,13 +1426,14 @@ test.each([
       expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['second'])
       expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:third'])
       expect(toasts.slice(shown)).toEqual([])
-      expect(requests.filter((request) => request.path === '/api/page-errors')).toEqual([])
+      expect(requests.filter((request) => request.path === '/api/log')).toEqual([])
       expect(conversation.draft).toBe(draft)
       expect(conversation.attachmentIds).toEqual(since === 'edited' ? fileIds : [])
       expect(conversation.files.some((file) => fileIds.includes(file.id))).toBe(since === 'edited')
     })
   } finally {
     stopReports()
+    stopLog()
   }
 })
 

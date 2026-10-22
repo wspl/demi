@@ -49,7 +49,7 @@ use tokio_util::sync::CancellationToken;
 use super::{Transport, kept::Kept};
 use crate::{
     direct::HostOperations,
-    host_log::{self, HostLogReader},
+    host_log::{self, HostLogFollower},
     management::{Management, Phase, Revocation},
     state::{RunnerConfig, RunnerState},
     update,
@@ -86,7 +86,7 @@ pub struct Registered {
     pub index: watch::Sender<Arc<ContextIndex>>,
     pub paths: ContextPaths,
     pub pipes: PipeClient,
-    pub log: HostLogReader,
+    pub log: HostLogFollower,
     /// The job root (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,
     /// Where each conversation has its scratch directory.
@@ -143,6 +143,10 @@ struct Owner<'r> {
     live: Live,
     /// This connection's queue of job and process output.
     output: mpsc::Sender<wire::Frame>,
+    /// This connection's queue of the Host's log lines.
+    log: mpsc::Sender<wire::Frame>,
+    /// The task that sends the Host's log lines, once the backend asked.
+    following: Option<tokio::task::AbortHandle>,
     work: JoinSet<Work>,
     host: HostServer,
     streams: ServiceStreams,
@@ -217,6 +221,8 @@ pub async fn serve(
         kept,
         live,
         output: transport.output.clone(),
+        log: transport.log.clone(),
+        following: None,
         work: JoinSet::new(),
         host,
         streams,
@@ -689,44 +695,17 @@ impl Owner<'_> {
                     Work::Done
                 });
             }
-            Inbound::LogRead {
-                id,
-                since,
-                limit,
-                source,
-            } => {
-                let log = self.registered.log.clone();
-                let control = self.live.control.clone();
+            Inbound::LogFollow { since } => {
+                if let Some(previous) = self.following.take() {
+                    previous.abort();
+                }
+                let follower = self.registered.log.clone();
+                let queue = self.log.clone();
                 let closed = self.live.closed.clone();
-                self.work.spawn(async move {
-                    let query = host_log::Query {
-                        since,
-                        limit: limit as usize,
-                        source,
-                    };
-                    let reply = match log.read(query).await {
-                        Ok(page) => wire::encode(&wire::Outbound::LogLines {
-                            id: id.clone(),
-                            lines: page.lines.into_iter().map(Into::into).collect(),
-                            next: page.next,
-                        }),
-                        Err(error) => wire::encode(&wire::Outbound::LogError {
-                            id: id.clone(),
-                            message: error.to_string(),
-                        }),
-                    };
-                    match reply {
-                        Ok(reply) => {
-                            tokio::select! {
-                                _ = closed.cancelled() => {},
-                                // A disconnected backend no longer waits for the lines.
-                                _ = control.send(reply) => {},
-                            }
-                        }
-                        Err(error) => tracing::warn!("log reply encoding failed: {error}"),
-                    }
+                self.following = Some(self.work.spawn(async move {
+                    follow_log(follower, queue, closed, since).await;
                     Work::Done
-                });
+                }));
             }
             message => self.task(message).await?,
         }
@@ -927,6 +906,83 @@ impl Owner<'_> {
             {
                 tracing::warn!("the manifest was not installed: {error}");
             }
+        }
+    }
+}
+
+/// Sends the Host's log lines after `since`, then each new line, in frames of
+/// at most [`wire::LOG_FRAME_BYTES`], until the connection ends. The lines wait
+/// in the Host's files while the frames wait for room in the queue, which the
+/// connection writes after everything else. The follow logs its start and its
+/// end, with what it sent.
+async fn follow_log(
+    follower: HostLogFollower,
+    queue: mpsc::Sender<wire::Frame>,
+    closed: CancellationToken,
+    since: Option<u64>,
+) {
+    let started = std::time::Instant::now();
+    tracing::info!(event = "log.follow_started", since, "the backend follows the Host's log");
+    let mut sent = FollowSent::default();
+    let ended = send_log(follower, queue, closed, since, &mut sent).await;
+    tracing::info!(
+        event = "log.follow_ended",
+        how = ended,
+        frames = sent.frames,
+        lines = sent.lines,
+        missed = sent.missed,
+        ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "the backend's follow of the Host's log ended"
+    );
+}
+
+/// What a follow sent.
+#[derive(Default)]
+struct FollowSent {
+    frames: u64,
+    lines: u64,
+    missed: u64,
+}
+
+/// The follow's loop; answers how it ended.
+async fn send_log(
+    mut follower: HostLogFollower,
+    queue: mpsc::Sender<wire::Frame>,
+    closed: CancellationToken,
+    since: Option<u64>,
+    sent: &mut FollowSent,
+) -> &'static str {
+    let mut cursor = since;
+    loop {
+        let page = match follower.read_after(cursor).await {
+            Ok(page) => page,
+            Err(error) => {
+                tracing::warn!(event = "log.read_failed", error = &error as &dyn std::error::Error, "the Host's log could not be read");
+                return "read_failed";
+            }
+        };
+        if page.lines.is_empty() && page.missed == 0 {
+            tokio::select! {
+                () = closed.cancelled() => return "connection_ended",
+                () = follower.wait_after(cursor) => continue,
+            }
+        }
+        cursor = page.lines.last().map(|line| line.seq).or(cursor);
+        let frames = match host_log::frames(page) {
+            Ok(frames) => frames,
+            Err(error) => {
+                tracing::warn!(event = "log.frame_failed", error = &error as &dyn std::error::Error, "a frame of the Host's log could not be made");
+                return "frame_failed";
+            }
+        };
+        for (frame, lines, missed) in frames {
+            tokio::select! {
+                () = closed.cancelled() => return "connection_ended",
+                result = queue.send(frame) => if result.is_err() { return "connection_ended" },
+            }
+            sent.frames += 1;
+            sent.lines += lines;
+            sent.missed += missed;
         }
     }
 }

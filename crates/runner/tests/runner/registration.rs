@@ -44,28 +44,12 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
     tokio::time::timeout(Duration::from_secs(60), async {
         let host = Host::start(BTreeMap::new()).await;
         let mut host = host.online().await;
-        // The log answers from its files and waits for no queued line, so
-        // ask until the writer has put the start there.
-        loop {
-            host.send(Inbound::LogRead {
-                id: "log".into(),
-                since: None,
-                limit: 10,
-                source: Some("runner".into()),
-            })
+        // The backend follows the log, which holds the runner's start.
+        let started = format!("runner {} started", demi_shared_artifacts::WORKSPACE_VERSION);
+        let lines = host
+            .logged_until(|lines| lines.iter().any(|line| message(line) == started))
             .await;
-            let Outbound::LogLines { id, lines, next } = host.frame().await else {
-                panic!("expected log_lines");
-            };
-            assert_eq!(id, "log");
-            assert!(lines.iter().all(|line| line.source == "runner"));
-            let started = format!("runner {} started", demi_shared_artifacts::WORKSPACE_VERSION);
-            if lines.iter().any(|line| line.text == started) {
-                assert!(next > 0);
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+        assert!(lines.iter().all(|line| line.line.origin == wire::LogOrigin::Runner && line.seq > 0));
         let tree = json!({
             "name":"fixture", "summary":"Remote declaration", "kind":"rpc", "stdinField":"body",
             "input":{"type":"object", "properties":{"body":{"type":"string"}}, "required":["body"]}
@@ -196,27 +180,24 @@ async fn an_online_connection_that_fails_starts_its_retries_and_its_log_over() {
 /// runner's `online` line of its `onlines`th connection, which comes after
 /// every failure before it.
 async fn logged_failures(host: &mut Host, onlines: usize) -> Vec<String> {
-    loop {
-        host.send(Inbound::LogRead {
-            id: "log".into(),
-            since: None,
-            limit: 1000,
-            source: Some("runner".into()),
-        })
+    let lines = host
+        .logged_until(|lines| lines.iter().filter(|line| message(line) == "online").count() >= onlines)
         .await;
-        let Outbound::LogLines { lines, .. } = host.frame().await else {
-            panic!("expected log_lines");
-        };
-        if lines.iter().filter(|line| line.text == "online").count() >= onlines {
-            return lines
-                .into_iter()
-                .filter(|line| line.text.starts_with("connection ended: "))
-                .map(|line| line.text)
-                .collect();
-        }
-        // The log answers from its files and waits for no queued line.
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    lines
+        .iter()
+        .map(message)
+        .filter(|text| text.starts_with("connection ended: "))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The text of a log line: its message.
+fn message(line: &wire::HostLogLine) -> &str {
+    line.line
+        .fields
+        .get("message")
+        .and_then(|text| text.as_str())
+        .unwrap_or("")
 }
 
 /// Waits until the runner process has exited, while the backend end reads

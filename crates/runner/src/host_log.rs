@@ -1,36 +1,55 @@
-//! The Host's log: one bounded log of diagnostics per Host, kept in two files
-//! so the older can be replaced when the newer fills.
+//! The Host's log: the runner's `tracing` events as [`LogLine`]s, kept in two
+//! files on the Host and sent to the backend, which stores them in its log.
+//!
+//! ```text
+//!   tracing events --- layer --> queue --> writer thread --> host.log, host.log.1
+//!                                              |  (newest lines also in memory)
+//!                                              v
+//!   backend <-- log_lines (lowest-priority queue) <-- follower <-- log_follow
+//! ```
 //!
 //! Without it a resident service that fails on a Cloud and writes why to its
-//! standard error leaves nothing, and the page only sees a view that never
-//! learns its tabs.
+//! standard error leaves nothing once the Cloud is gone.
 //!
 //! # How lines get in
 //!
-//! Every part of the runner writes `tracing` events (the source and the
-//! conversation as fields). The log is a layer that writes them as lines, so no
-//! module holds a handle to the files, and a resident service's standard error
-//! enters the same way.
+//! Every part of the runner writes `tracing` events. The log is a layer that
+//! writes them as lines, so no module holds a handle to the files, and a
+//! resident service's standard error enters the same way, as `stderr` lines.
+//! An event names what happened in its `event` field, `noun.verb` in the past
+//! tense, and its IDs (`conversation`, `turn`, `request_id`) go to the line's
+//! own fields; the backend adds the Host's ID.
 //!
 //! Writing never holds up the work it describes:
 //!
 //! - The layer queues each line, and one writer thread owns the files.
-//! - A line the queue has no room for is dropped and counted.
-//! - The writer answers reads between two lines, so a read holds every line
-//!   queued before it and never races a write.
+//! - A line the queue has no room for is dropped and counted: the log says so
+//!   with a `log.dropped` line, and the next frame to the backend counts it
+//!   as missed.
+//! - The writer answers the follower's reads between two lines.
 //!
-//! A paired device keeps the log in `log/` of its installation state. A managed
-//! guest's state is temporary, so it keeps it in `/var/log/demi` on the system
-//! layer, which outlives a stop.
+//! # How lines reach the backend
+//!
+//! The files are a buffer for as long as the backend cannot be reached. After
+//! the backend's `log_follow { since }` the follower sends the lines after
+//! `since`, then each new line, in `log_lines` frames of at most
+//! [`LOG_FRAME_BYTES`], on the connection's lowest-priority queue: a command's
+//! exit or an answer leaves before a log frame. A frame's `missed` counts the
+//! lines the files no longer held and those the queue dropped since the last
+//! one.
+//!
+//! A paired device keeps the files in `log/` of its installation state. A
+//! managed guest's state is temporary, so it keeps them in `/var/log/demi` on
+//! the system layer, which outlives a stop.
 //!
 //! # What goes in
 //!
-//! What a source writes is diagnostics: what it tried and why it failed. Page
-//! content, typed text, cookies, tokens and file contents never go to the log.
-//! A failure the user's page is waiting on is also told to the page; the log is
-//! where the cause is found, never the only place a failure is told.
+//! What a source writes is IDs, counts, durations and states, and the
+//! diagnostics of what it tried and why it failed. Page content, typed text,
+//! cookies, tokens and file contents never go to the log.
 
 use std::{
+    collections::VecDeque,
     fmt::{self, Write as _},
     fs::{File, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
@@ -42,93 +61,49 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use serde_json::{Map, Value};
+use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{
-    Event, Subscriber,
+    Event, Level, Subscriber,
     field::{Field, Visit},
 };
 use tracing_subscriber::layer::{Context, Layer};
 
-use demi_runner_process::{lines::LineSplitter, private_files::chmod};
-use demi_runner_protocol::wire;
-
-/// The source of the runner's own diagnostics, and of every event that names
-/// no other.
-pub const RUNNER: &str = "runner";
+use demi_runner_process::private_files::chmod;
+use demi_runner_protocol::wire::{
+    self, HostLogLine, LOG_FRAME_BYTES, LogLevel, LogLine, LogOrigin,
+};
 
 const NEWER: &str = "host.log";
 const OLDER: &str = "host.log.1";
-/// Lines waiting for the writer; past it a line is dropped and counted.
+/// Lines waiting for the writer; past it a line is dropped and counted, since
+/// logging never holds up the work it records.
 const QUEUE: usize = 1024;
+/// Each of the two files holds this much, since the Host's disk is not the
+/// log's: the older file is replaced when the newer one fills.
+const FILE_BYTES: u64 = 4 * 1024 * 1024;
+/// The newest lines the writer also keeps in memory, so that a follower that
+/// is up to date reads them without reading the files for each new line; the
+/// files hold the rest, so memory does not grow with the log.
+const MEMORY_LINES: usize = 2048;
+/// The most bytes of a line's text: a longer one is cut, since a line must fit
+/// a frame of at most [`LOG_FRAME_BYTES`].
+const TEXT_BYTES: usize = 8 * 1024;
 
-/// How much the files and a page of the log hold.
-#[derive(Clone, Copy)]
-struct Limits {
-    /// Each of the two files holds this much.
-    file_bytes: u64,
-    /// A read stops here and its cursor continues.
-    page_bytes: usize,
-}
-
-/// Each file holds 4 MiB, and a page 2 MiB, so an
-/// answer stays well within the connection's message limit.
-const LIMITS: Limits = Limits {
-    file_bytes: 4 * 1024 * 1024,
-    page_bytes: 2 * 1024 * 1024,
-};
-
-/// One line as the files keep it, a JSON object per line. `seq` is the
-/// cursor: it grows by one per line across both files and across restarts.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub struct Line {
-    pub seq: u64,
-    /// Milliseconds since the Unix epoch.
-    pub at: i64,
-    pub source: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub conversation_id: Option<String>,
-    pub text: String,
-}
-
-pub struct Query {
-    /// The `next` of an earlier page; absent, the page ends at the newest line.
-    pub since: Option<u64>,
-    pub limit: usize,
-    pub source: Option<String>,
-}
-
+/// What a read of the log after a cursor gives.
 #[derive(Debug, PartialEq)]
 pub struct Page {
     /// Oldest first.
-    pub lines: Vec<Line>,
-    pub next: u64,
-}
-
-impl From<Line> for wire::LogLine {
-    fn from(line: Line) -> Self {
-        Self {
-            at: wire::Timestamp(line.at),
-            source: line.source,
-            conversation_id: line.conversation_id,
-            text: line.text,
-        }
-    }
-}
-
-struct Entry {
-    at: i64,
-    source: String,
-    conversation_id: Option<String>,
-    text: String,
+    pub lines: Vec<HostLogLine>,
+    /// The lines the files no longer held, between the cursor and these.
+    pub missed: u64,
 }
 
 /// What the writer thread is asked, in the order asked.
 enum Message {
-    Entry(Entry),
+    Line(LogLine),
     Read {
-        query: Query,
+        since: Option<u64>,
         reply: oneshot::Sender<io::Result<Page>>,
     },
     Close,
@@ -140,18 +115,23 @@ enum Message {
 pub async fn open(directory: PathBuf) -> io::Result<(HostLogWriter, HostLogLayer)> {
     tokio::fs::create_dir_all(&directory).await?;
     chmod(&directory, 0o700).await?;
-    let files = tokio::task::spawn_blocking(move || Files::open(directory, LIMITS))
+    let files = tokio::task::spawn_blocking(move || Files::open(directory, FILE_BYTES))
         .await
         .map_err(io::Error::other)??;
     let dropped = Arc::new(AtomicU64::new(0));
+    let lost = Arc::new(AtomicU64::new(0));
+    let (latest, newest) = watch::channel(files.last.unwrap_or(0));
     let (queue, queued) = mpsc::channel(QUEUE);
     let thread = std::thread::Builder::new().name("host-log".into()).spawn({
         let dropped = dropped.clone();
-        move || serve(files, queued, &dropped)
+        let lost = lost.clone();
+        move || serve(files, queued, &dropped, &lost, &latest)
     })?;
     Ok((
         HostLogWriter {
             queue: queue.clone(),
+            newest,
+            lost,
             thread,
         },
         HostLogLayer { queue, dropped },
@@ -160,24 +140,35 @@ pub async fn open(directory: PathBuf) -> io::Result<(HostLogWriter, HostLogLayer
 
 /// The writer thread: it writes each queued line, first saying how many the
 /// queue had no room for, and answers each read from the files as they are.
-fn serve(mut files: Files, mut queued: mpsc::Receiver<Message>, dropped: &AtomicU64) {
+fn serve(
+    mut files: Files,
+    mut queued: mpsc::Receiver<Message>,
+    dropped: &AtomicU64,
+    lost: &AtomicU64,
+    latest: &watch::Sender<u64>,
+) {
     while let Some(message) = queued.blocking_recv() {
         match message {
-            Message::Entry(entry) => {
+            Message::Line(line) => {
                 let missed = dropped.swap(0, Ordering::Relaxed);
                 if missed > 0 {
-                    files.append(Entry {
-                        at: entry.at,
-                        source: RUNNER.into(),
-                        conversation_id: None,
-                        text: format!("{missed} log lines were dropped: the log fell behind"),
-                    });
+                    lost.fetch_add(missed, Ordering::Relaxed);
+                    let mut dropping =
+                        LogLine::new(line.at, LogOrigin::Runner, LogLevel::Warn, "log.dropped");
+                    dropping.fields.insert("dropped".into(), missed.into());
+                    dropping
+                        .fields
+                        .insert("why".into(), "the writer fell behind".into());
+                    files.append(dropping);
                 }
-                files.append(entry);
+                files.append(line);
+                if let Some(last) = files.last {
+                    latest.send_replace(last);
+                }
             }
-            Message::Read { query, reply } => {
+            Message::Read { since, reply } => {
                 // The reader may have gone; the read cost nothing to keep.
-                let _gone = reply.send(files.read(&query));
+                let _gone = reply.send(files.read_after(since));
             }
             Message::Close => return,
         }
@@ -187,13 +178,18 @@ fn serve(mut files: Files, mut queued: mpsc::Receiver<Message>, dropped: &Atomic
 /// Owns the writer thread.
 pub struct HostLogWriter {
     queue: mpsc::Sender<Message>,
+    newest: watch::Receiver<u64>,
+    lost: Arc<AtomicU64>,
     thread: std::thread::JoinHandle<()>,
 }
 
 impl HostLogWriter {
-    pub fn reader(&self) -> HostLogReader {
-        HostLogReader {
+    /// What a connection follows the log with.
+    pub fn follower(&self) -> HostLogFollower {
+        HostLogFollower {
             queue: self.queue.clone(),
+            newest: self.newest.clone(),
+            lost: self.lost.clone(),
         }
     }
 
@@ -210,31 +206,41 @@ impl HostLogWriter {
     }
 }
 
-/// Reads the log for `log_read` requests.
+/// Reads the log after a cursor and waits for new lines, for a connection's
+/// follow.
 #[derive(Clone)]
-pub struct HostLogReader {
+pub struct HostLogFollower {
     queue: mpsc::Sender<Message>,
+    newest: watch::Receiver<u64>,
+    lost: Arc<AtomicU64>,
 }
 
-impl HostLogReader {
-    /// The writer thread answers between two lines it writes, so the page
-    /// holds every line queued before the read.
-    pub async fn read(&self, query: Query) -> io::Result<Page> {
+impl HostLogFollower {
+    /// The lines after `since` (all lines for none), counting the lines the
+    /// queue dropped since the last read as missed. The writer
+    /// thread answers between two lines it writes, so the page holds every
+    /// line queued before the read.
+    pub async fn read_after(&self, since: Option<u64>) -> io::Result<Page> {
         let (reply, answer) = oneshot::channel();
         let closed = || io::Error::other("the host log is closed");
         self.queue
-            .send(Message::Read { query, reply })
+            .send(Message::Read { since, reply })
             .await
             .map_err(|_| closed())?;
-        answer.await.map_err(|_| closed())?
+        let mut page = answer.await.map_err(|_| closed())??;
+        page.missed += self.lost.swap(0, Ordering::Relaxed);
+        Ok(page)
+    }
+
+    /// Returns once a line after `since` may exist.
+    pub async fn wait_after(&mut self, since: Option<u64>) {
+        let after = since.unwrap_or(0);
+        // The writer is gone only when the log closed with the process.
+        let _closed = self.newest.wait_for(|newest| *newest > after).await;
     }
 }
 
-/// The `tracing` layer that turns events into log lines: the `source` and
-/// `conversation` fields place each line, and every line of the message
-/// becomes one line of the log. It never waits and never fails: a line the
-/// writer has no room for is dropped and counted rather than holding up what
-/// it describes.
+/// The layer: each event it is given becomes a line in the files.
 pub struct HostLogLayer {
     queue: mpsc::Sender<Message>,
     dropped: Arc<AtomicU64>,
@@ -242,21 +248,134 @@ pub struct HostLogLayer {
 
 impl<S: Subscriber> Layer<S> for HostLogLayer {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let fields = Fields::of(event);
-        let at = now();
-        let mut splitter = LineSplitter::default();
-        let mut lines = splitter.push(fields.text.as_bytes());
-        lines.extend(splitter.finish());
-        for text in lines {
-            let entry = Entry {
-                at,
-                source: fields.source.clone().unwrap_or_else(|| RUNNER.into()),
-                conversation_id: fields.conversation.clone(),
-                text,
-            };
-            if self.queue.try_send(Message::Entry(entry)).is_err() {
-                self.dropped.fetch_add(1, Ordering::Relaxed);
-            }
+        let line = line_of(event);
+        if self.queue.try_send(Message::Line(line)).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+/// An event as a line: its `event` field names it, else its target does; an
+/// event of a resident service's standard error (it has a `source`) is a
+/// `stderr` line with the text in its fields.
+fn line_of(event: &Event<'_>) -> LogLine {
+    let mut collected = Collected::default();
+    event.record(&mut collected);
+    let metadata = event.metadata();
+    let mut values = collected.values;
+    let mut refused = false;
+    let mut text = |name: &str| match values.remove(name) {
+        Some(Value::String(text)) => Some(text),
+        Some(other) => Some(other.to_string()),
+        None => None,
+    };
+    // Only a string that is a name is the event's; any other value logged
+    // under `event`, a payload as much as a typo, is left out of the line.
+    let named = match text("event") {
+        Some(name) if wire::is_event_name(&name) => Some(name),
+        Some(_) => {
+            refused = true;
+            None
+        }
+        None => None,
+    };
+    let source = text("source").filter(|source| source != "runner");
+    let conversation = text("conversation").or_else(|| text("conversation_id"));
+    let turn = text("turn").or_else(|| text("turn_id"));
+    let request = text("request_id");
+    let (event_name, message_key) = match (&named, &source) {
+        (Some(name), _) => (name.clone(), "message"),
+        (None, Some(_)) => ("stderr".to_owned(), "text"),
+        (None, None) => (metadata.target().to_owned(), "message"),
+    };
+    let mut line = LogLine::new(now(), LogOrigin::Runner, level_of(*metadata.level()), event_name);
+    line.conversation_id = conversation;
+    line.turn_id = turn;
+    line.request_id = request;
+    if refused {
+        values.insert("event_refused".into(), true.into());
+    }
+    if let Some(source) = source {
+        values.insert("source".into(), source.into());
+    }
+    if !collected.message.is_empty() {
+        values.insert(message_key.into(), cut(collected.message).into());
+    }
+    line.fields = values;
+    line
+}
+
+/// `text`, cut to [`TEXT_BYTES`] at a character.
+fn cut(mut text: String) -> String {
+    if text.len() > TEXT_BYTES {
+        let mut end = TEXT_BYTES;
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.truncate(end);
+    }
+    text
+}
+
+fn level_of(level: Level) -> LogLevel {
+    match level {
+        Level::TRACE => LogLevel::Trace,
+        Level::DEBUG => LogLevel::Debug,
+        Level::INFO => LogLevel::Info,
+        Level::WARN => LogLevel::Warn,
+        Level::ERROR => LogLevel::Error,
+    }
+}
+
+/// An event's message and other fields, each as JSON.
+#[derive(Default)]
+struct Collected {
+    message: String,
+    values: Map<String, Value>,
+}
+
+impl Visit for Collected {
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.values.insert(field.name().into(), value.into());
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.values.insert(field.name().into(), value.into());
+    }
+
+    fn record_f64(&mut self, field: &Field, value: f64) {
+        self.values.insert(field.name().into(), value.into());
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.values.insert(field.name().into(), value.into());
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        if field.name() == "message" {
+            self.message = value.to_owned();
+        } else {
+            self.values.insert(field.name().into(), value.into());
+        }
+    }
+
+    fn record_error(&mut self, field: &Field, value: &(dyn std::error::Error + 'static)) {
+        let mut text = value.to_string();
+        let mut source = value.source();
+        while let Some(cause) = source {
+            // Writing to a String does not fail.
+            let _ = write!(text, ": {cause}");
+            source = cause.source();
+        }
+        self.values.insert(field.name().into(), text.into());
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+        let text = format!("{value:?}");
+        if field.name() == "message" {
+            self.message = text;
+        } else {
+            self.values.insert(field.name().into(), text.into());
         }
     }
 }
@@ -268,48 +387,20 @@ pub struct Console;
 
 impl<S: Subscriber> Layer<S> for Console {
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        crate::console::line(crate::console::runner_line(Fields::of(event).text));
-    }
-}
-
-/// An event's text, its message followed by any other fields, and its place
-/// in the log.
-#[derive(Default)]
-struct Fields {
-    text: String,
-    source: Option<String>,
-    conversation: Option<String>,
-}
-
-impl Fields {
-    fn of(event: &Event<'_>) -> Self {
-        let mut visitor = Visitor::default();
+        let mut visitor = ConsoleText::default();
         event.record(&mut visitor);
-        Self {
-            text: visitor.message + &visitor.others,
-            source: visitor.source,
-            conversation: visitor.conversation,
-        }
+        crate::console::line(crate::console::runner_line(visitor.message + &visitor.others));
     }
 }
 
+/// An event's message followed by any other fields.
 #[derive(Default)]
-struct Visitor {
+struct ConsoleText {
     message: String,
     others: String,
-    source: Option<String>,
-    conversation: Option<String>,
 }
 
-impl Visit for Visitor {
-    fn record_str(&mut self, field: &Field, value: &str) {
-        match field.name() {
-            "source" => self.source = Some(value.into()),
-            "conversation" => self.conversation = Some(value.into()),
-            _ => self.record_debug(field, &value),
-        }
-    }
-
+impl Visit for ConsoleText {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
         // Writing to a String does not fail.
         let _ = match field.name() {
@@ -321,8 +412,12 @@ impl Visit for Visitor {
 
 struct Files {
     directory: PathBuf,
-    limits: Limits,
+    file_bytes: u64,
     next_seq: u64,
+    /// The `seq` of the newest line, none for a log with no line.
+    last: Option<u64>,
+    /// The newest lines, oldest first.
+    memory: VecDeque<HostLogLine>,
     /// The newer file, opened for append, and its length.
     newer: Option<(File, u64)>,
     /// The last write failed.
@@ -330,7 +425,7 @@ struct Files {
 }
 
 impl Files {
-    fn open(directory: PathBuf, limits: Limits) -> io::Result<Self> {
+    fn open(directory: PathBuf, file_bytes: u64) -> io::Result<Self> {
         let mut last = None;
         for name in [OLDER, NEWER] {
             if let Some(line) = parse(&directory.join(name))?.pop() {
@@ -345,8 +440,10 @@ impl Files {
         };
         Ok(Self {
             directory,
-            limits,
+            file_bytes,
             next_seq,
+            last,
+            memory: VecDeque::new(),
             newer: None,
             failing: false,
         })
@@ -355,8 +452,8 @@ impl Files {
     /// A write that fails (a full disk, a removed directory) loses the line
     /// and nothing else: the file is reopened for the next line. The console
     /// learns of it once, not once per lost line.
-    fn append(&mut self, entry: Entry) {
-        match self.try_append(entry) {
+    fn append(&mut self, line: LogLine) {
+        match self.try_append(line) {
             Ok(()) => self.failing = false,
             Err(error) => {
                 self.newer = None;
@@ -368,18 +465,15 @@ impl Files {
         }
     }
 
-    fn try_append(&mut self, entry: Entry) -> io::Result<()> {
-        let mut bytes = serde_json::to_vec(&Line {
+    fn try_append(&mut self, line: LogLine) -> io::Result<()> {
+        let line = HostLogLine {
             seq: self.next_seq,
-            at: entry.at,
-            source: entry.source,
-            conversation_id: entry.conversation_id,
-            text: entry.text,
-        })
-        .map_err(io::Error::other)?;
+            line,
+        };
+        let mut bytes = serde_json::to_vec(&line).map_err(io::Error::other)?;
         bytes.push(b'\n');
         let size = bytes.len() as u64;
-        if self.newer()?.1 + size > self.limits.file_bytes {
+        if self.newer()?.1 + size > self.file_bytes {
             self.newer = None;
             std::fs::rename(self.directory.join(NEWER), self.directory.join(OLDER))?;
         }
@@ -387,6 +481,11 @@ impl Files {
         file.write_all(&bytes)?;
         *length += size;
         self.next_seq += 1;
+        self.last = Some(line.seq);
+        if self.memory.len() == MEMORY_LINES {
+            self.memory.pop_front();
+        }
+        self.memory.push_back(line);
         Ok(())
     }
 
@@ -417,63 +516,46 @@ impl Files {
         Ok(self.newer.as_mut().expect("opened above"))
     }
 
-    fn read(&self, query: &Query) -> io::Result<Page> {
-        let mut lines = parse(&self.directory.join(OLDER))?;
-        lines.extend(parse(&self.directory.join(NEWER))?);
-        let newest = lines.last().map(|line| line.seq);
-        // A cursor ahead of the newest line comes from a log that is gone
-        // (a reset, a clock set back): it continues from the oldest line.
-        let since = query
-            .since
-            .filter(|since| newest.is_some_and(|newest| *since <= newest));
-        let wanted = lines.into_iter().filter(|line| {
-            since.is_none_or(|since| line.seq > since)
-                && query
-                    .source
-                    .as_ref()
-                    .is_none_or(|source| line.source == *source)
-        });
-        let mut budget = self.limits.page_bytes;
-        let mut fits = |line: &Line| {
-            let size = line.source.len() + line.text.len() + 128;
-            let fit = budget >= size;
-            budget = budget.saturating_sub(size);
-            fit
-        };
-        if query.since.is_none() {
-            let mut page: Vec<_> = wanted
-                .rev()
-                .take(query.limit)
-                .take_while(|line| fits(line))
+    /// The lines after `since`, from memory when it holds the line after
+    /// `since` and from the files when not, and how many lines between
+    /// `since` and them the files no longer held. A cursor ahead of the newest
+    /// line comes from a log that is gone (a reset, a clock set back): it
+    /// continues from the oldest line.
+    fn read_after(&self, since: Option<u64>) -> io::Result<Page> {
+        let since = since.filter(|since| self.last.is_some_and(|last| *since <= last));
+        let covered = self
+            .memory
+            .front()
+            .is_some_and(|first| since.is_some_and(|since| first.seq <= since + 1));
+        if covered {
+            let lines = self
+                .memory
+                .iter()
+                .filter(|line| Some(line.seq) > since)
+                .cloned()
                 .collect();
-            page.reverse();
-            return Ok(Page {
-                lines: page,
-                next: newest.unwrap_or(0),
-            });
+            return Ok(Page { lines, missed: 0 });
         }
-        let mut wanted = wanted.peekable();
-        let mut page = Vec::new();
-        while page.len() < query.limit {
-            match wanted.next_if(|line| fits(line)) {
-                Some(line) => page.push(line),
-                None => break,
-            }
-        }
-        // With more to come, the next read continues after the last line
-        // returned; otherwise after everything this one looked at.
-        let next = match (wanted.peek(), page.last()) {
-            (Some(_), Some(last)) => last.seq,
-            _ => newest.or(query.since).unwrap_or(0),
+        let mut stored = parse(&self.directory.join(OLDER))?;
+        stored.extend(parse(&self.directory.join(NEWER))?);
+        let oldest = stored.first().map(|line| line.seq);
+        let missed = match (since, oldest) {
+            (Some(since), Some(oldest)) if oldest > since + 1 => oldest - (since + 1),
+            _ => 0,
         };
-        Ok(Page { lines: page, next })
+        stored.retain(|line| since.is_none_or(|since| line.seq > since));
+        Ok(Page {
+            lines: stored,
+            missed,
+        })
     }
 }
 
 /// The lines of one file, oldest first; a missing file has none. Text that is
-/// not a line (the half line a crash left, bytes a full disk cut short) is
-/// skipped: it is a diagnostic that was lost, not state to repair.
-fn parse(path: &Path) -> io::Result<Vec<Line>> {
+/// not a line (the half line a crash left, bytes a full disk cut short, a line
+/// of an older runner's shape) is skipped: it is a diagnostic that was lost,
+/// not state to repair.
+fn parse(path: &Path) -> io::Result<Vec<HostLogLine>> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -491,4 +573,37 @@ fn now() -> i64 {
         // A clock before 1970 has no meaningful time to record.
         Err(_) => 0,
     }
+}
+
+/// `page` as the frames the wire carries it in: lines up to
+/// [`LOG_FRAME_BYTES`] each (a line over it is alone in its frame), the missed
+/// count in the first.
+pub fn frames(page: Page) -> Result<Vec<(wire::Frame, u64, u64)>, wire::WireError> {
+    let mut frames = Vec::new();
+    let mut missed = page.missed;
+    let mut lines = Vec::new();
+    let mut bytes = 0;
+    let mut finish = |lines: &mut Vec<HostLogLine>, missed: &mut u64| -> Result<(), wire::WireError> {
+        let count = lines.len() as u64;
+        let frame = wire::encode(&wire::Outbound::LogLines {
+            lines: std::mem::take(lines),
+            missed: *missed,
+        })?;
+        frames.push((frame, count, *missed));
+        *missed = 0;
+        Ok(())
+    };
+    for line in page.lines {
+        let size = serde_json::to_vec(&line).map_or(0, |bytes| bytes.len());
+        if !lines.is_empty() && bytes + size > LOG_FRAME_BYTES {
+            finish(&mut lines, &mut missed)?;
+            bytes = 0;
+        }
+        bytes += size;
+        lines.push(line);
+    }
+    if !lines.is_empty() || missed > 0 {
+        finish(&mut lines, &mut missed)?;
+    }
+    Ok(frames)
 }

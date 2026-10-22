@@ -3,12 +3,10 @@
 //! The routes:
 //!
 //! - pairing, renaming and routes, and revocation;
-//! - browsing a paired device's directories to choose a target;
-//! - a Host's log.
+//! - browsing a paired device's directories to choose a target.
 //!
-//! Browsing and the log reach the device through device access, which wakes
-//! nothing: a device whose runner is not connected answers 409
-//! `device_offline`.
+//! Browsing reaches the device through device access, which wakes nothing: a
+//! device whose runner is not connected answers 409 `device_offline`.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -19,7 +17,7 @@ use demi_backend_runners::claims::ClaimRefusal;
 use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
-    ChangeDevice, Claim, DeviceAnswer, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery,
+    ChangeDevice, Claim, DeviceAnswer, DeviceKind,
     Devices, RevokedDevice,
 };
 use demi_web_api_protocol::error::ErrorCode;
@@ -231,63 +229,6 @@ pub(super) async fn make_directory(
         })
         .await??;
     Ok((StatusCode::CREATED, Json(made)))
-}
-
-/// Lines of a device's Host log, the Cloud's included.
-pub(super) async fn log(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-    QueryParams(query): QueryParams<DeviceLogQuery>,
-) -> Result<Json<DeviceLog>, ApiError> {
-    let device = owned_device(&state, &user.id, &id, None).await?;
-    let page = state
-        .shards
-        .of(&user.id)
-        .call(move |shard, _| async move {
-            let host = shard
-                .devices()
-                .device_access(&device.id)
-                .await
-                .ok_or_else(ApiError::device_offline)?;
-            let source = query.source.as_ref().map(|source| source.as_str());
-            host.read_log(query.since, query.limit.get(), source)
-                .await
-                .map_err(|error| {
-                    if error.kind == HostErrorKind::Offline {
-                        ApiError::device_offline()
-                    } else {
-                        ApiError::new(
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            ErrorCode::LogUnreadable,
-                            error.message,
-                        )
-                    }
-                })
-        })
-        .await??;
-    let lines = page
-        .lines
-        .into_iter()
-        .map(|line| {
-            Ok(DeviceLogLine {
-                at: demi_shared_types::Timestamp::from_millisecond(line.at.0).map_err(|error| {
-                    ApiError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        ErrorCode::LogUnreadable,
-                        error.to_string(),
-                    )
-                })?,
-                source: line.source,
-                conversation_id: line.conversation_id,
-                text: line.text,
-            })
-        })
-        .collect::<Result<_, ApiError>>()?;
-    Ok(Json(DeviceLog {
-        lines,
-        next: page.next,
-    }))
 }
 
 /// The caller's device `id`, of `kind` when one is named; 404 otherwise.

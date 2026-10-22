@@ -1,27 +1,85 @@
-//! Request IDs, the page's own error reports and the server log
+//! Request IDs and the log's lines of a request, as `log.sqlite` holds them
 //! (`crates/backend-http/src/request_id.rs`).
 
-use demi_web_api_protocol::auth::Role;
-use demi_web_api_protocol::diagnostics::{LogLevel, ServerLog};
+use demi_shared_types::LogLevel;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::support::{Answer, Harness, ServerLogCapture, Session, TestBackend, eventually};
+use crate::support::{Answer, Harness, ServerLogCapture, TestBackend, eventually};
 
 /// The ID an answer's `X-Request-Id` names.
 pub(crate) fn request_id(answer: &Answer) -> String {
     answer.headers["x-request-id"].to_str().unwrap().to_owned()
 }
 
-/// The lines the server log keeps of `request`, as an administrator reads
-/// them.
-pub(crate) async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
-    let read = backend
-        .get(&format!("/api/server/log?request={request}"), Some(admin))
-        .await;
-    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-    read.json()
+/// One line of the log as these scenarios read it: its event and message,
+/// its fields with the ID columns among them.
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct ServerLogLine {
+    pub level: LogLevel,
+    pub target: String,
+    pub message: String,
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+
+/// The lines of the log, oldest first.
+pub(crate) struct ServerLog {
+    pub lines: Vec<ServerLogLine>,
+}
+
+impl TestBackend {
+    /// The newest 1,000 lines of the log, or the lines of `request`, read
+    /// from `log.sqlite` as whoever diagnoses reads it.
+    pub(crate) fn server_log(&self, request: Option<&str>) -> ServerLog {
+        let path = self.data_dir.join("log.sqlite");
+        let Ok(connection) = rusqlite::Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        ) else {
+            return ServerLog { lines: Vec::new() };
+        };
+        let mut statement = connection
+            .prepare(
+                "SELECT level, event, request_id, user_id, conversation_id, turn_id, host_id, page_id, fields
+                 FROM (SELECT * FROM events WHERE ?1 IS NULL OR request_id = ?1 ORDER BY id DESC LIMIT 1000)
+                 ORDER BY id",
+            )
+            .unwrap();
+        let lines = statement
+            .query_map([request], |row| {
+                let level: String = row.get(0)?;
+                let mut fields: serde_json::Map<String, serde_json::Value> =
+                    serde_json::from_str(&row.get::<_, String>(8)?).unwrap();
+                for (index, name) in
+                    [(2, "request_id"), (3, "user_id"), (4, "conversation_id"), (5, "turn_id"), (6, "host_id"), (7, "page_id")]
+                {
+                    if let Some(value) = row.get::<_, Option<String>>(index)? {
+                        fields.insert(name.into(), value.into());
+                    }
+                }
+                let message = fields
+                    .get("message")
+                    .and_then(|message| message.as_str())
+                    .unwrap_or_default()
+                    .to_owned();
+                Ok(ServerLogLine {
+                    level: serde_json::from_value(level.into()).unwrap(),
+                    target: row.get(1)?,
+                    message,
+                    fields,
+                })
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        ServerLog { lines }
+    }
+}
+
+/// The lines the log keeps of `request`.
+pub(crate) fn lines_of(backend: &TestBackend, request: &str) -> ServerLog {
+    backend.server_log(Some(request))
 }
 
 /// Every answer names its request, and an error carries the same ID in its
@@ -53,11 +111,10 @@ async fn every_answer_names_its_request_and_an_error_carries_the_id() {
 }
 
 /// A request's work in the user's shard, on another thread, logs under the
-/// request's ID with its caller, and an administrator finds those lines by
-/// the ID; anyone else is refused. Polls the log, which commits at most every
-/// 200 ms; well under a second.
+/// request's ID with its caller, and the ID finds those lines. Polls the log,
+/// which commits at most every 200 ms; well under a second.
 #[tokio::test]
-async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrator_alone() {
+async fn the_log_finds_a_requests_lines_from_its_shard() {
     let harness = Harness::new();
     let log = ServerLogCapture::open(&harness);
     let (backend, master) = harness.start_set_up().await;
@@ -89,8 +146,7 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
     let id = request_id(&revealed);
 
     let revealed_line = || async {
-        lines_of(&backend, &master, &id)
-            .await
+        lines_of(&backend, &id)
             .lines
             .into_iter()
             .find(|line| line.message == "a page revealed an automation's secret")
@@ -114,8 +170,7 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
     let refused = backend.get("/api/no-such-route", Some(&master)).await;
     let refused_id = request_id(&refused);
     let answered_line = || async {
-        lines_of(&backend, &master, &refused_id)
-            .await
+        lines_of(&backend, &refused_id)
             .lines
             .into_iter()
             .find(|line| line.message == "a request was answered")
@@ -137,57 +192,11 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
     }
     assert!(answered.fields["duration_ms"].is_u64(), "{answered:?}");
 
-    harness.add_user("ana@example.com", "correct horse battery", Role::User);
-    let ana = backend.login("ana@example.com", "correct horse battery").await;
-    let refused = backend
-        .get(&format!("/api/server/log?request={id}"), Some(&ana))
+    // The route that read the log is gone.
+    let gone = backend
+        .get(&format!("/api/server/log?request={id}"), Some(&master))
         .await;
-    assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::Forbidden));
-    backend.close().await;
-    log.close().await;
-}
-
-/// A page's report of its own failure is logged as a warning under the
-/// report's ID; a session sends thirty a minute, and the next is refused
-/// with 429, which still names its request.
-#[tokio::test]
-async fn a_page_reports_its_own_errors_thirty_a_minute() {
-    let harness = Harness::new();
-    let log = ServerLogCapture::open(&harness);
-    let (backend, master) = harness.start_set_up().await;
-    let report = json!({
-        "title": "Could Not Read the Plugin's Data",
-        "message": "Invalid server response",
-        "detail": "sections.0.title: expected string, received number",
-    });
-    let mut ids = Vec::new();
-    for _ in 0..30 {
-        let reported = backend.post("/api/page-errors", Some(&master), report.clone()).await;
-        assert_eq!(reported.status, StatusCode::NO_CONTENT);
-        ids.push(request_id(&reported));
-    }
-    let refused = backend.post("/api/page-errors", Some(&master), report.clone()).await;
-    assert_eq!(refused.refusal(), (StatusCode::TOO_MANY_REQUESTS, ErrorCode::RateLimited));
-    assert_eq!(refused.error().request_id.as_str(), request_id(&refused));
-
-    let reported_line = || async {
-        lines_of(&backend, &master, &ids[0])
-            .await
-            .lines
-            .into_iter()
-            .find(|line| line.message == "the page reported an error")
-    };
-    eventually("the report is in the log", || async {
-        reported_line().await.is_some()
-    })
-    .await;
-    let line = reported_line().await.unwrap();
-    assert_eq!(line.level, LogLevel::Warn);
-    assert_eq!(line.fields["title"], json!("Could Not Read the Plugin's Data"));
-    assert_eq!(
-        line.fields["detail"],
-        json!("sections.0.title: expected string, received number")
-    );
+    assert_eq!(gone.status, StatusCode::NOT_FOUND);
     backend.close().await;
     log.close().await;
 }
@@ -241,9 +250,8 @@ async fn a_request_its_client_abandons_logs_its_line() {
     drop(client);
 
     let abandoned = || async {
-        let read = backend.get("/api/server/log", Some(&master)).await;
-        assert_eq!(read.status, StatusCode::OK);
-        read.json::<ServerLog>()
+        backend
+            .server_log(None)
             .lines
             .into_iter()
             .find(|line| line.message == "a request was abandoned")
@@ -264,7 +272,7 @@ async fn a_request_its_client_abandons_logs_its_line() {
     assert!(line.fields["duration_ms"].is_u64(), "{line:?}");
     // Its ID finds it as an answered request's would.
     let id = line.fields["request_id"].as_str().unwrap().to_owned();
-    let found = lines_of(&backend, &master, &id).await.lines;
+    let found = lines_of(&backend, &id).lines;
     assert!(
         found.iter().any(|line| line.message == "a request was abandoned"),
         "{found:?}"

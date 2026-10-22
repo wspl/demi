@@ -218,6 +218,11 @@ impl RunnerFixture {
             .unwrap_or_default()
     }
 
+    /// The runner's log lines the backend end stored, in order, as they come.
+    pub fn host_lines(&self) -> watch::Receiver<Vec<demi_runner_protocol::wire::HostLogLine>> {
+        self.policy.host_lines()
+    }
+
     /// The device's Host, starting work in its home.
     pub fn host(&self) -> RemoteHost {
         self.host_at(self.home())

@@ -1,18 +1,19 @@
 //! The `tracing` layer that turns each event into a row of the server log.
 //!
 //! A row holds the event's spans' fields, outermost first, then its own, the later
-//! naming a field winning. The request, user, conversation and turn IDs go to
-//! columns of their own.
+//! naming a field winning. The request, user, conversation, turn, Host and page
+//! IDs go to columns of their own.
+//!
+//! An event names what happened with its `event` field, `noun.verb` in the past
+//! tense; one that names nothing is logged under its target, its message
+//! among the fields.
 //!
 //! The layer never waits and never fails: an event the writer has no room for is
 //! dropped and counted rather than holding up what it describes.
 
 use std::fmt::{self, Write as _};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::SyncSender;
 
-use demi_web_api_protocol::diagnostics::LogLevel;
+use demi_shared_types::{LogLevel, LogLine, LogOrigin, is_event_name};
 use serde_json::{Map, Value};
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id, Record};
@@ -20,19 +21,18 @@ use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
-use super::{Message, Row};
+use super::{Row, Sink};
 
 /// The fields a span recorded, kept in its extensions.
 struct SpanFields(Map<String, Value>);
 
 pub struct ServerLogLayer {
-    queue: SyncSender<Message>,
-    dropped: Arc<AtomicU64>,
+    sink: Sink,
 }
 
 impl ServerLogLayer {
-    pub(super) fn new(queue: SyncSender<Message>, dropped: Arc<AtomicU64>) -> Self {
-        Self { queue, dropped }
+    pub(super) fn new(sink: Sink) -> Self {
+        Self { sink }
     }
 }
 
@@ -74,6 +74,17 @@ where
         event.record(&mut fields);
         values.extend(fields.values);
         let metadata = event.metadata();
+        // Only a string that is a name is taken for the event's: whatever
+        // else a call logged under `event`, a payload as much as a typo, is
+        // left out of the line, since it is not a name and may hold a message.
+        let named = match values.remove("event") {
+            Some(Value::String(name)) if is_event_name(&name) => Some(name),
+            Some(_) => {
+                values.insert("event_refused".into(), true.into());
+                None
+            }
+            None => None,
+        };
         let mut take = |names: &[&str]| {
             let mut taken = None;
             for name in names {
@@ -86,20 +97,24 @@ where
             }
             taken
         };
-        let row = Row {
-            at: super::store::now_ms(),
-            level: level_of(*metadata.level()),
-            target: metadata.target().to_owned(),
-            message: fields.message,
-            request_id: take(&["request_id"]),
-            user_id: take(&["user", "user_id"]),
-            conversation_id: take(&["conversation", "conversation_id"]),
-            turn_id: take(&["turn", "turn_id"]),
-            fields: values,
-        };
-        if self.queue.try_send(Message::Row(row)).is_err() {
-            self.dropped.fetch_add(1, Ordering::Relaxed);
+        let mut line = LogLine::new(
+            super::store::now_ms(),
+            LogOrigin::Backend,
+            level_of(*metadata.level()),
+            named.unwrap_or_else(|| metadata.target().to_owned()),
+        );
+        line.request_id = take(&["request_id"]);
+        line.user_id = take(&["user", "user_id"]);
+        line.conversation_id = take(&["conversation", "conversation_id"]);
+        line.turn_id = take(&["turn", "turn_id"]);
+        // The Host a line is about, by whichever name the code used for it.
+        line.host_id = take(&["host_id", "device", "device_id"]);
+        line.page_id = take(&["page_id"]);
+        if !fields.message.is_empty() {
+            values.insert("message".into(), fields.message.into());
         }
+        line.fields = values;
+        self.sink.push(Row { line, seq: None });
     }
 }
 

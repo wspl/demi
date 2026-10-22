@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { isAbortError } from '@demicodes/utils'
 import { coded } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -122,7 +123,10 @@ const pageKind = computed(() =>
 // A new conversation's address, as a reload of it shows, has nothing to read.
 watch(
   () => props.id,
-  (id) => {
+  (id, previous) => {
+    if (id) {
+      pageLog.info('view.opened', { view: 'conversation', from: previous === undefined ? 'load' : 'navigation' }, id)
+    }
     void store.activate(id ?? null, { newConversation: navigation.showsNewConversation() })
   },
   { immediate: true },

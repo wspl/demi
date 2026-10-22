@@ -17,7 +17,7 @@
 //! +-- control.sqlite               deployment-wide product records
 //! +-- conversations/<id>.sqlite    one agent tree per conversation
 //! +-- search/<userId>.sqlite       a user's search index, derived
-//! +-- log.sqlite                   the server log (`server_log`)
+//! +-- log.sqlite                   the log of backend, runners and pages (`server_log`)
 //! +-- blobs/<userId>/<sha256>      user-owned bytes        (`backend-blobs`)
 //! +-- native/, .attributes/        published packages, object attributes
 //! +-- instance-secret              seals credentials, unless configured
@@ -45,8 +45,8 @@
 //! database and the files. An operation that spans them, such as a Fork or a
 //! Cloud reset, records its intent and checks its completion instead.
 //!
-//! The server log, with its database, its writer thread and the `tracing` layer
-//! that feeds it, lives here too. The crate holds no domain's policy: the
+//! The log of the backend, the runners and the pages, with its database, its
+//! writer thread and the `tracing` layer that feeds it, lives here too. The crate holds no domain's policy: the
 //! domains above it decide and it stores.
 //!
 //! # Schemas and migrations

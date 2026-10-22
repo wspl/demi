@@ -71,12 +71,12 @@ pub use kept::{
 pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
-    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LogLine,
+    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget,
     LookPath, Looked, MAX_INSTALLED, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,
 };
-pub use demi_shared_types::ReadAt;
+pub use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin, ReadAt, is_event_name};
 pub use pipe_frames::{
     PIPE_DATA_BYTES, PIPE_IDLE, PipeEnd, PipeFrame, PipeFrameDecoder, PipeFrameError,
     encode_data, end_frame, idle_frame,
@@ -90,7 +90,7 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 56;
+pub const VERSION: u32 = 57;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
@@ -135,8 +135,11 @@ pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 /// The most subscriptions one `fs_changed` names; more changed at once go
 /// in as many messages as they take, within the frame limit.
 pub const CHANGES_PER_MESSAGE: usize = 16 * 1024;
-/// The most lines one `log_read` returns.
-pub const LOG_READ_LINES: usize = 1000;
+/// The most bytes of the lines one `log_lines` carries, a line over it being
+/// alone in its frame. A frame that is being written cannot be interrupted, and
+/// the messages behind it wait for it, so a frame of the Host's log is small
+/// (`crates/runner/src/host_log.rs`).
+pub const LOG_FRAME_BYTES: usize = 32 * 1024;
 /// The most of an invocation's standard error a `service_done` carries, in
 /// Unicode scalar values (`crates/shared-types/src/lib.rs`). The runner keeps the
 /// last this many bytes, which are never more characters.

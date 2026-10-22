@@ -3,6 +3,7 @@ import { readImage } from '@demicodes/web-ui/agent/message-editor/intake'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
 import type { KeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
 import { coded, environmental } from '@demicodes/web-ui/infra/errors'
+import { PAGE_HEADER, PAGE_ID } from '@demicodes/web-ui/infra/log'
 import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReached } from './client'
 import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
 
@@ -89,6 +90,7 @@ function sendBytes(
     }
     xhr.open(options.method ?? 'POST', apiUrl(path))
     xhr.withCredentials = true
+    xhr.setRequestHeader(PAGE_HEADER, PAGE_ID)
     xhr.setRequestHeader('Content-Type', options.mediaType ?? sentMediaType(file))
     xhr.upload.onprogress = (event) => {
       moved()

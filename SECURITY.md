@@ -42,8 +42,10 @@ Operators handling sensitive prompts should know where data rests:
 - **Hosts.**
   - A job's full output stays in files on its Host, and the backend receives
     bounded views (pipes and output: `crates/runner-jobs/src/tasks.rs`).
-  - Each runner keeps a Host log of its own and its services' diagnostics in
-    its data directory (Host log: `crates/runner/src/host_log.rs`).
+  - Each runner keeps its own and its services' diagnostics in files in its
+    data directory until the backend has them, and the backend keeps them in
+    its log, which holds IDs, counts and states, never content
+    (`crates/runner/src/host_log.rs`, `docs/delivery/diagnosis.md`).
 - **Claude Code.**
   - The selected account's token reaches the Claude Code CLI on the user's
     Cloud through the process environment, and never reaches a paired device

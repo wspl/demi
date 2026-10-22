@@ -25,7 +25,7 @@ use demi_host_interface::{
 use demi_runner_protocol::direct::{DialRefusal, Introduced, OfferRefusal, StunUrl};
 use demi_runner_protocol::forward::{Forward, ForwardRunState};
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
+    self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, HostLogLine, Inbound, Outbound,
     ReadAt,
 };
 use demi_shared_gates::GateLease;
@@ -135,6 +135,23 @@ pub trait LinkPolicy {
     /// with another runner (`crates/backend-user-shard/src/shard/port_forwards.rs`), in the order it said
     /// it; the policy answers through the link.
     fn forward_event(&self, event: ForwardEvent);
+
+    /// Where the Host's log lines go; none keeps the connection without one,
+    /// and then the backend never asks the runner to send them.
+    fn host_log(&self) -> Option<Rc<dyn HostLog>> {
+        None
+    }
+}
+
+/// The backend's store of one Host's log lines, which the runner's `log_lines`
+/// frames fill (`crates/runner/src/host_log.rs`).
+pub trait HostLog {
+    /// The highest `seq` stored for the Host; none for a Host with no line.
+    fn since(&self) -> LocalBoxFuture<'static, Option<u64>>;
+
+    /// Stores a frame's lines, `missed` being the lines the runner no longer
+    /// held.
+    fn store(&self, lines: Vec<HostLogLine>, missed: u64);
 }
 
 /// What a runner says of the user's port forwards (`crates/backend-user-shard/src/shard/port_forwards.rs`).
@@ -298,6 +315,8 @@ pub(crate) struct Inner {
     outbound: mpsc::Sender<Vec<u8>>,
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
+    /// Where the runner's log lines are stored, when the policy keeps them.
+    host_log: Option<Rc<dyn HostLog>>,
     state: RefCell<State>,
     /// The backend's work for the connection, such as its calls and artifact
     /// resolutions, which its end waits for.
@@ -385,7 +404,6 @@ fn prefetch_id(release: &str) -> String {
 pub(crate) enum Expected {
     Fs(&'static str),
     Git(&'static str),
-    Log,
     Release,
     PackageRelease,
     Sync,
@@ -402,7 +420,6 @@ pub(crate) enum Answer {
     /// the call.
     Fs(FsResult, ReadAt),
     Git(GitResult, ReadAt),
-    Log { lines: Vec<LogLine>, next: u64 },
     /// Which files of a read of several were read.
     Read(Vec<FileRead>),
     /// The runner's answer to a page's offer.
@@ -704,6 +721,7 @@ impl Link {
             device_jobs: options.jobs.clone(),
             outbound,
             pipes: options.pipes,
+            host_log: options.policy.host_log(),
             policy: options.policy,
             state: RefCell::default(),
             tasks: TaskTracker::new(),
@@ -716,6 +734,19 @@ impl Link {
             installed: watch::Sender::new(None),
             pongs: watch::Sender::new(()),
         }));
+        if let Some(log) = link.0.host_log.clone() {
+            let following = link.clone();
+            link.spawn("log follow", async move {
+                let since = log.since().await;
+                tracing::info!(
+                    event = "log.followed",
+                    host_id = %following.0.device,
+                    since,
+                    "the runner's log is followed"
+                );
+                following.post(&Inbound::LogFollow { since });
+            });
+        }
         let adoption = options.jobs.adopt(&link, options.hello);
         for job in adoption.stop {
             link.stop_unknown(job);
@@ -1446,11 +1477,10 @@ impl Link {
             Outbound::FsFailed { id, reason } => {
                 self.with_subscriptions(|subscriptions| subscriptions.failed(&id, reason));
             }
-            Outbound::LogLines { id, lines, next } => {
-                self.answer(&id, Expected::Log, Answer::Log { lines, next });
-            }
-            Outbound::LogError { id, message } => {
-                self.refuse(&id, HostError::failed(None, message))
+            Outbound::LogLines { lines, missed } => {
+                if let Some(log) = &self.0.host_log {
+                    log.store(lines, missed);
+                }
             }
             Outbound::ServiceOpened { stream_id } => {
                 self.answer(&stream_id, Expected::Service, Answer::Done);
@@ -1669,7 +1699,11 @@ impl Link {
     /// Queues `event` for the policy, behind the ones before it.
     fn package_event(&self, event: PackageEvent) {
         if let Err(mpsc::error::TrySendError::Full(event)) = self.0.package_events.try_send(event) {
-            tracing::warn!(device = %self.0.device, ?event, "a package event was dropped: the runner sent more than the connection holds");
+            let (package, kind) = match &event {
+                PackageEvent::Message { package, .. } => (package.as_str(), "message"),
+                PackageEvent::Lost { package } => (package.as_str(), "lost"),
+            };
+            tracing::warn!(device = %self.0.device, package, kind, "a package event was dropped: the runner sent more than the connection holds");
         }
     }
 

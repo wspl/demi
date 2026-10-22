@@ -163,7 +163,6 @@
     "device_managed": "The Cloud’s name can’t be changed.",
     "device_offline": "The device is offline.",
     "not_a_paired_device": "The Cloud can’t be reached directly.",
-    "log_unreadable": "The log couldn’t be read.",
     "conversation_not_found": "The conversation wasn’t found.",
     "block_not_found": "That part of the conversation wasn’t found.",
     "transcript_changed": "The conversation changed. Reload it to continue.",

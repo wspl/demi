@@ -3,22 +3,22 @@ import { z } from 'zod'
 import { waitFor } from '@demicodes/utils'
 import { reportError, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { ApiError, UnreadableResponse, apiRequest, readResponse } from './client'
-import { sendPageErrorReport } from './page-errors'
+import { PAGE_ID, logPageError, logPageWith, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
+import { sendPageLog } from './page-log'
 
 // The page keeps the ID the backend names each request by, so that an error
-// can show it, and reports its own failures, which the backend logs under
-// the report's ID (`crates/backend-http/src/request_id.rs`). Answers played
-// by a fetch stand-in; a few milliseconds.
+// can show it, and writes its own failures as error lines of its log, which
+// the backend stores. Answers played by a fetch stand-in; a few milliseconds.
 
 const realFetch = globalThis.fetch
-/** The reports the page sent, as their bodies. */
+/** The fields of the error lines the page sent. */
 let reports: unknown[]
-/** Whether the backend refuses the next report as one too many. */
-let tooMany: boolean
+/** The status the backend answers the next lines with, if not 204. */
+let refusal: number | null
 
 beforeEach(() => {
   reports = []
-  tooMany = false
+  refusal = null
   globalThis.fetch = (async (input, init) => {
     const request = `${init?.method ?? 'GET'} ${String(input)}`
     if (request === 'POST /api/conversations/c-1/fork') {
@@ -34,12 +34,13 @@ beforeEach(() => {
     if (request === 'GET /api/plugin-state') {
       return Response.json({ title: 31337, secret: 'sk-live-value' }, { headers: { 'X-Request-Id': 'req_state000000000001' } })
     }
-    if (request === 'POST /api/page-errors') {
-      reports.push(JSON.parse(String(init?.body)))
-      return tooMany
+    if (request === 'POST /api/log') {
+      const body = JSON.parse(String(init?.body)) as { lines: Array<{ fields: unknown }> }
+      reports.push(...body.lines.map((line) => line.fields))
+      return refusal !== null
         ? Response.json(
-            { code: 'rate_limited', message: 'Too many', requestId: 'req_refused000000001' },
-            { status: 429, headers: { 'X-Request-Id': 'req_refused000000001' } },
+            { code: 'bad_request', message: 'Not well formed', requestId: 'req_refused000000001' },
+            { status: refusal, headers: { 'X-Request-Id': 'req_refused000000001' } },
           )
         : new Response(null, { status: 204, headers: { 'X-Request-Id': 'req_report0000000001' } })
     }
@@ -73,9 +74,11 @@ test('an answer that does not read is the page’s own failure: its detail names
 
 // Only a defect is reported (`packages/web-ui/src/infra/errors.ts`): a
 // request that reached no backend is the environment's failure, told on the
-// console alone. Before, it was posted to /api/page-errors as a defect.
-test('a request that reached no backend posts no report; a defect does', async () => {
-  const stopReports = reportPageErrorsWith(sendPageErrorReport)
+// console alone.
+test('a request that reached no backend writes no error line; a defect does', async () => {
+  const stopLog = logPageWith(sendPageLog)
+  pageLogSignedIn(true)
+  const stopReports = reportPageErrorsWith(logPageError)
   try {
     const unreached = await apiRequest('/unreachable', { waits: false }).catch((error: unknown) => error)
     reportError('Could Not Read the Settings', unreached)
@@ -85,13 +88,19 @@ test('a request that reached no backend posts no report; a defect does', async (
     expect(reports).toEqual([expect.objectContaining({ title: 'Could Not Open the File' })])
   } finally {
     stopReports()
+    stopLog()
   }
 })
 
-test('a report answers the ID the backend logged it under, and one refused as too many answers none', async () => {
-  const report = { title: 'Could Not Read the Plugin’s Data', message: 'Invalid server response', detail: 'at title' }
-  expect(await sendPageErrorReport(report)).toBe('req_report0000000001')
-  tooMany = true
-  expect(await sendPageErrorReport(report)).toBeNull()
-  expect(reports).toEqual([report, report])
+test('lines answer the ID of the request that carried them, a refusal its status, and a signed-out page that it is not signed in', async () => {
+  const body = {
+    page: PAGE_ID,
+    lines: [{ at: 1, level: 'error' as const, event: 'error.reported', fields: { title: 'Could Not Read the Plugin’s Data' } }],
+  }
+  expect(await sendPageLog(body, false)).toEqual({ kind: 'stored', requestId: 'req_report0000000001' })
+  refusal = 400
+  expect(await sendPageLog(body, false)).toEqual({ kind: 'refused', status: 400, requestId: 'req_refused000000001' })
+  refusal = 401
+  expect(await sendPageLog(body, false)).toEqual({ kind: 'unauthorized' })
+  expect(reports).toHaveLength(3)
 })

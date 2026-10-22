@@ -61,6 +61,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use demi_backend_database::server_log::ServerLog;
 use demi_web_api_protocol::devices::{NotAStunUrl, StunUrl};
 use demi_shared_types::{Clock, SystemClock};
 use demi_web_api_protocol::settings::InstanceMode;
@@ -236,6 +237,43 @@ pub struct Config {
         default_value = "info"
     )]
     pub log: Targets,
+    /// How many days the log keeps a line
+    #[arg(
+        long,
+        env = "DEMI_LOG_KEEP_DAYS",
+        value_name = "DEMI_LOG_KEEP_DAYS",
+        default_value_t = 14,
+        value_parser = clap::value_parser!(u32).range(1..)
+    )]
+    pub log_keep_days: u32,
+    /// The most the log takes of the disk, in bytes, or a number with `MiB` or `GiB`
+    #[arg(
+        long,
+        env = "DEMI_LOG_MAX_SIZE",
+        value_name = "DEMI_LOG_MAX_SIZE",
+        default_value = "2GiB",
+        value_parser = parse_size
+    )]
+    pub log_max_size: u64,
+}
+
+/// A size in bytes, or a number with `MiB` or `GiB`.
+fn parse_size(text: &str) -> Result<u64, String> {
+    let text = text.trim();
+    let (digits, unit) = match text.strip_suffix("GiB") {
+        Some(digits) => (digits, 1024 * 1024 * 1024),
+        None => match text.strip_suffix("MiB") {
+            Some(digits) => (digits, 1024 * 1024),
+            None => (text, 1),
+        },
+    };
+    digits
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .and_then(|number| number.checked_mul(unit))
+        .filter(|bytes| *bytes > 0)
+        .ok_or_else(|| format!("{text:?} is not a size: bytes, or a number with MiB or GiB"))
 }
 
 /// Where the one object store lives (`crates/backend-blobs/src/store.rs`).
@@ -399,6 +437,9 @@ fn dev_codex_account(path: &Path, now: demi_shared_types::Timestamp) -> Result<S
 pub struct BackendConfig {
     /// The data directory (`crates/backend-database/src/lib.rs`).
     pub data_dir: PathBuf,
+    /// The log the runners' and the pages' lines are stored in; one with no
+    /// writer stores nothing (`crates/backend-database/src/server_log/mod.rs`).
+    pub log: ServerLog,
     /// The machine manager's Unix socket
     /// (`crates/machine-manager-protocol/src/lib.rs`): every deployment
     /// has Cloud.
@@ -508,6 +549,7 @@ impl BackendConfig {
         machines_socket: PathBuf,
     ) -> Self {
         Self {
+            log: ServerLog::detached(&data_dir),
             data_dir,
             machines_socket,
             runner_socket: None,

@@ -4,11 +4,10 @@ use demi_runner_protocol::direct::CANDIDATE_CHARS;
 /// The STUN servers' URLs, which the product state names to the page.
 pub use demi_runner_protocol::direct::{NotAStunUrl, StunUrl};
 use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
-use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
+use demi_shared_types::{Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_with::rust::unwrap_or_skip;
 
 use crate::ids::{DeviceId, WorkspaceId};
 use crate::text::Trimmed;
@@ -208,102 +207,6 @@ pub struct DeviceAnswer {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RevokedDevice {
     pub removed: Vec<WorkspaceId>,
-}
-
-/// One line of a Host's log (`crates/runner/src/host_log.rs`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceLogLine {
-    pub at: Timestamp,
-    pub source: String,
-    /// The conversation the work belonged to, when it belonged to one.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String")]
-    pub conversation_id: Option<String>,
-    pub text: String,
-}
-
-/// `GET /devices/:id/log`: lines oldest first, and the cursor the next read
-/// continues from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct DeviceLog {
-    pub lines: Vec<DeviceLogLine>,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub next: u64,
-}
-
-/// `?since=&limit=&source=` of the device log. Queries are the backend's
-/// alone and are not emitted.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
-pub struct DeviceLogQuery {
-    /// The `next` of an earlier answer; without it the answer ends at the
-    /// newest line.
-    #[serde(default)]
-    pub since: Option<u64>,
-    #[serde(default)]
-    pub limit: LogLimit,
-    #[serde(default)]
-    pub source: Option<LogSource>,
-}
-
-/// How many lines a device log read returns: 1 to what one runner read
-/// returns, 200 when omitted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "u64")]
-pub struct LogLimit(u64);
-
-impl LogLimit {
-    pub const DEFAULT: LogLimit = LogLimit(200);
-
-    pub fn get(self) -> u64 {
-        self.0
-    }
-}
-
-impl Default for LogLimit {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-impl TryFrom<u64> for LogLimit {
-    type Error = String;
-
-    fn try_from(limit: u64) -> Result<Self, String> {
-        let most = demi_runner_protocol::wire::LOG_READ_LINES as u64;
-        if (1..=most).contains(&limit) {
-            Ok(Self(limit))
-        } else {
-            Err(format!("limit must be 1 to {most}"))
-        }
-    }
-}
-
-/// The one source a device log read keeps, such as `runner`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "String")]
-pub struct LogSource(String);
-
-impl LogSource {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl TryFrom<String> for LogSource {
-    type Error = &'static str;
-
-    fn try_from(source: String) -> Result<Self, &'static str> {
-        if source.is_empty() {
-            Err("source must not be empty")
-        } else {
-            Ok(Self(source))
-        }
-    }
 }
 
 /// Which of the page's two peers with a device a signaling message is about

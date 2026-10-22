@@ -63,7 +63,7 @@ use crate::diagnostics::lines_of;
 use crate::support::{
     Harness, MASTER_EMAIL, PATIENCE, Paired, ServerLogCapture, Session, TestBackend, eventually,
 };
-use demi_web_api_protocol::diagnostics::LogLevel;
+use demi_shared_types::LogLevel;
 
 /// The conversation ids the tests create.
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
@@ -1685,8 +1685,7 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         Some(socket.request_id.as_str())
     );
     let refused_line = || async {
-        lines_of(&backend, &master, &socket.request_id)
-            .await
+        lines_of(&backend, &socket.request_id)
             .lines
             .into_iter()
             .find(|line| line.message == "a send was refused")

@@ -12,7 +12,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_backend_remote_host::{
-    CommandCatalog, CommandSelection, ContextSource, EnvironmentOptions, JobStart, LogPage, Pipe,
+    CommandCatalog, CommandSelection, ContextSource, EnvironmentOptions, JobStart, Pipe,
     PipeFailure, PipeReader, RemoteHost, RemoteShellEnvironment, ServiceCallError, ServiceRequest,
     ServiceStream,
     testing::{
@@ -30,7 +30,7 @@ use demi_host_interface::{
     testing::{CountingNumbers, TestPages, host_conformance_cases, test_command_context},
 };
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, Outbound, PipeRef, STDIN_CHUNK_BYTES,
+    self, ArtifactOwner, HostLogLine, JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, Outbound, PipeRef, STDIN_CHUNK_BYTES,
 };
 use demi_shared_types::{NodeId, StreamKind};
 use futures_util::{Stream, StreamExt};
@@ -2015,16 +2015,16 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
             .is_err()
     );
 
-    let page = log_until(&host, |page| said(page, "stream:result ended") > 0).await;
+    let page = log_until(&fixture, |lines| said(lines, "stream:result ended") > 0).await;
     let conversation = Some(user_context().conversation);
     let told: Vec<_> = page
-        .lines
         .iter()
         .map(|line| {
+            let field = |name: &str| line.line.fields.get(name).and_then(|value| value.as_str());
             (
-                line.source.as_str(),
-                line.conversation_id.clone(),
-                line.text.as_str(),
+                field("source").unwrap_or("runner"),
+                line.line.conversation_id.clone(),
+                field("text").unwrap_or_else(|| message(line)),
             )
         })
         .collect();
@@ -2087,24 +2087,27 @@ async fn a_call_whose_runner_goes_away_fails_as_the_device_offline() {
     fixture.stop().await;
 }
 
-/// The Host log from its start, once `done` holds for it: a read waits for
-/// no queued line, so it asks until the writer has put the lines `done`
-/// looks for in the files, and with them every line written before.
-async fn log_until(host: &RemoteHost, done: impl Fn(&LogPage) -> bool) -> LogPage {
-    let mut page = host.read_log(Some(0), 1000, None).await.unwrap();
-    for _ in 0..500 {
-        if done(&page) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        page = host.read_log(Some(0), 1000, None).await.unwrap();
-    }
-    page
+/// The Host's log lines the backend stored, once `done` holds for them.
+async fn log_until(
+    fixture: &RunnerFixture,
+    done: impl Fn(&[HostLogLine]) -> bool,
+) -> Vec<HostLogLine> {
+    let mut lines = fixture.host_lines();
+    let stored = tokio::time::timeout(Duration::from_secs(15), lines.wait_for(|lines| done(lines)))
+        .await
+        .expect("the lines arrive")
+        .expect("the fixture is running");
+    stored.clone()
 }
 
-/// How many lines of `page` say `text`.
-fn said(page: &LogPage, text: &str) -> usize {
-    page.lines.iter().filter(|line| line.text == text).count()
+/// The text of a line: its message.
+fn message(line: &HostLogLine) -> &str {
+    line.line.fields.get("message").and_then(|text| text.as_str()).unwrap_or("")
+}
+
+/// How many of `lines` say `text`.
+fn said(lines: &[HostLogLine], text: &str) -> usize {
+    lines.iter().filter(|line| message(line) == text).count()
 }
 
 /// A user stream's service stays for as long as the stream is open, and for
@@ -2153,11 +2156,11 @@ async fn user_calls_reuse_the_service_of_the_release_the_connection_bound_last()
     call(&second).await.unwrap();
     let stops = "service demicodes.runner-test holds no lease or conversation and stops";
     let stopped = "service demicodes.runner-test stopped";
-    let page = log_until(&host, |page| {
-        said(page, "stream:where ended") == 4 && said(page, stopped) == 1
+    let page = log_until(&fixture, |lines| {
+        said(lines, "stream:where ended") == 4 && said(lines, stopped) == 1
     })
     .await;
-    let texts: Vec<_> = page.lines.iter().map(|line| line.text.as_str()).collect();
+    let texts: Vec<_> = page.iter().map(message).collect();
     let starts = texts
         .iter()
         .filter(|text| text.starts_with("service demicodes.runner-test started "))
@@ -2168,46 +2171,6 @@ async fn user_calls_reuse_the_service_of_the_release_the_connection_bound_last()
         position(stops) > position("stream:echo ended"),
         "the first release's service stops only once its stream has ended: {texts:#?}"
     );
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn the_log_facet_reads_the_newest_lines_then_what_came_after() {
-    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
-    let host = fixture.host();
-    // The runner writes its start before it connects; the writer puts it in
-    // the files a moment later.
-    let mut page = host.read_log(None, 50, Some("runner")).await.unwrap();
-    for _ in 0..500 {
-        if page.lines.iter().any(|line| line.text == "online") {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        page = host.read_log(None, 50, Some("runner")).await.unwrap();
-    }
-    assert!(page.lines.iter().any(|line| line.text == "online"));
-    assert!(page.lines.iter().all(|line| line.source == "runner"));
-    let started = |text: &str| {
-        text.strip_prefix("runner ")
-            .and_then(|rest| rest.strip_suffix(" started"))
-            .is_some_and(|version| !version.is_empty() && !version.contains(' '))
-    };
-    assert!(
-        page.lines.iter().any(|line| started(&line.text)),
-        "{:#?}",
-        page.lines
-    );
-    assert!(page.next > 0);
-    let after = host.read_log(Some(page.next), 50, None).await.unwrap();
-    assert_eq!((after.lines.len(), after.next), (0, page.next));
-    let one = host.read_log(Some(0), 1, None).await.unwrap();
-    assert_eq!(one.lines.len(), 1);
-    assert!(one.next < page.next);
-    let other = host
-        .read_log(Some(0), 50, Some("service:none"))
-        .await
-        .unwrap();
-    assert_eq!((other.lines.len(), other.next), (0, page.next));
     fixture.stop().await;
 }
 

@@ -8,13 +8,13 @@ use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
     ServiceSequence, Viewable, conversation_name, digest, without_nul,
 };
-use demi_shared_types::BlobRef;
+use demi_shared_types::{BlobRef, HostLogLine};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::{
-    FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES, LOG_READ_LINES,
+    FsOk, GitOk, JOB_OUTLIVING_TASKS, JOB_TASK_LINE_BYTES,
     SERVICE_STDERR_CHARS, Timestamp, WireBytes,
 };
 use crate::values::DeviceToken;
@@ -298,25 +298,16 @@ pub enum Inbound {
         input: PipeRef,
         output: PipeRef,
     },
-    /// Read the Host's log: up to `limit` lines after `since`, oldest first,
-    /// of one `source` when named.
-    LogRead {
-        id: String,
+    /// Send the Host's log lines after `since`, then each new line as it is
+    /// written: the highest `seq` the backend stored for this Host, none for
+    /// a Host it has no line of.
+    LogFollow {
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
             with = "unwrap_or_skip"
         )]
         since: Option<u64>,
-        #[garde(range(min = 1, max = LOG_READ_LINES as u64))]
-        limit: u64,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[garde(inner(length(min = 1)))]
-        source: Option<String>,
     },
     /// The command manifest for the runner's cache, carried opaque; the
     /// runner verifies it as a [`crate::manifest::Manifest`].
@@ -1285,15 +1276,12 @@ pub enum Outbound {
         #[garde(length(chars, max = SERVICE_STDERR_CHARS))]
         stderr: String,
     },
+    /// Lines of the Host's log in `seq` order, on the lowest-priority queue.
+    /// `missed` counts the lines the Host's files no longer held since the
+    /// last frame.
     LogLines {
-        id: String,
-        #[garde(length(max = LOG_READ_LINES), dive)]
-        lines: Vec<LogLine>,
-        next: u64,
-    },
-    LogError {
-        id: String,
-        message: String,
+        lines: Vec<HostLogLine>,
+        missed: u64,
     },
     /// The runner's answer to a `direct_offer`, with its candidates.
     DirectAnswer {
@@ -2278,25 +2266,6 @@ pub enum JobPathChange {
         #[garde(length(min = 1), custom(without_nul))]
         path: String,
     },
-}
-
-/// One line of the Host's log: when it was written, which source wrote it,
-/// the conversation the work belonged to when there was one, and the text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[garde(allow_unvalidated)]
-pub struct LogLine {
-    pub at: Timestamp,
-    #[garde(length(min = 1))]
-    pub source: String,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[garde(inner(length(min = 1)))]
-    pub conversation_id: Option<String>,
-    pub text: String,
 }
 
 // Closed sets display as the wire spells them, for logs.

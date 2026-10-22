@@ -39,6 +39,7 @@ import { readonly, ref } from 'vue'
 import { defaultDocument, defaultNavigator, defaultWindow, useDocumentVisibility, useEventListener } from '@vueuse/core'
 import type { PagePing } from '@demicodes/protocol'
 import { reportError } from '../infra/errors'
+import { PAGE_ID, PAGE_PARAMETER, pageLog } from '../infra/log'
 import { t } from './locales/text'
 
 /** Two and a half of the longest heartbeat, the backend's 30 seconds: a socket silent this long is broken. */
@@ -141,7 +142,12 @@ function reconnectWait(failures: number): number {
  *   page closes, or the backend ends as expected (`EXPECTED_ENDS`), is not.
  */
 export function openSocket(url: string | URL, name: string): WebSocket {
-  const socket = new WebSocket(url)
+  // The page names its load in the URL, as in `X-Demi-Page` of its requests.
+  const target = new URL(url, globalThis.location?.href)
+  target.searchParams.set(PAGE_PARAMETER, PAGE_ID)
+  const socket = new WebSocket(target)
+  const startedAt = performance.now()
+  const ms = () => Math.round(performance.now() - startedAt)
   let opened = false
   let closedByPage = false
   // The close event does not say who started the close: a page's close of
@@ -178,10 +184,18 @@ export function openSocket(url: string | URL, name: string): WebSocket {
   })
   socket.addEventListener('open', () => {
     opened = true
+    pageLog.info('socket.opened', { socket: name, ms: ms() })
   }, { once: true })
   socket.addEventListener('open', settled)
   socket.addEventListener('close', settled)
   socket.addEventListener('close', (event: CloseEvent) => {
+    pageLog.info(opened ? 'socket.closed' : 'socket.failed', {
+      socket: name,
+      code: event.code,
+      reason: event.reason,
+      by: closedByPage ? 'page' : 'backend',
+      ms: ms(),
+    })
     // A socket that never opened is one more attempt that failed; 1000 is
     // a normal end, which its owner does not replace.
     if (opened && !closedByPage && event.code !== 1000 && !EXPECTED_ENDS.has(event.reason)) {

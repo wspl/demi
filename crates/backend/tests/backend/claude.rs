@@ -52,7 +52,6 @@ use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, LoginStage};
-use demi_web_api_protocol::diagnostics::{ServerLog, ServerLogLine};
 use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
@@ -62,7 +61,7 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::accounts::{awaited, ended, followed, login_state, start_login};
-use crate::diagnostics::{lines_of, request_id};
+use crate::diagnostics::{ServerLogLine, lines_of, request_id};
 use crate::conversations::{Socket, choose, create, last_text, on_device, send, transcript};
 use crate::support::{Harness, PATIENCE, ServerLogCapture, Session, TestBackend, eventually};
 
@@ -1134,13 +1133,13 @@ async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_direc
 /// started, once it holds the login's end: that it started, the stages it
 /// reached in order, each with the time the one before took, and how it
 /// ended; no line holds the link the CLI printed.
-async fn logged(backend: &TestBackend, admin: &Session, request: &str) -> (Vec<String>, String) {
+async fn logged(backend: &TestBackend, request: &str) -> (Vec<String>, String) {
     let ended = |line: &ServerLogLine| line.message.starts_with("the login ") && line.message != "the login reached a stage";
     eventually("the login's end is in the log", || async {
-        lines_of(backend, admin, request).await.lines.iter().any(ended)
+        lines_of(backend, request).lines.iter().any(ended)
     })
     .await;
-    let lines = lines_of(backend, admin, request).await.lines;
+    let lines = lines_of(backend, request).lines;
     let text = serde_json::to_string(&lines).unwrap();
     assert!(!text.contains("oauth/authorize"), "{text}");
     assert!(lines.iter().any(|line| line.message == "a login started"), "{text}");
@@ -1215,7 +1214,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
         }
     );
     assert_eq!(
-        logged(&backend, &master, &request).await,
+        logged(&backend, &request).await,
         (vec!["waiting_for_machine".to_owned()], "the login failed".to_owned())
     );
 
@@ -1231,7 +1230,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     assert!(message.starts_with(&format!("Claude Code {NEWEST} could not be installed")), "{message}");
     assert_eq!(request_id.as_str(), request);
     assert_eq!(
-        logged(&backend, &master, &request).await,
+        logged(&backend, &request).await,
         (
             vec!["waiting_for_machine".to_owned(), "installing".to_owned()],
             "the login failed".to_owned()
@@ -1266,7 +1265,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     let cancelled = backend.delete(&format!("{LOGIN}/{id}"), &master).await;
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
     assert_eq!(
-        logged(&backend, &master, &request).await,
+        logged(&backend, &request).await,
         (
             vec!["waiting_for_machine".to_owned(), "starting".to_owned(), "waiting_for_user".to_owned()],
             "the login was cancelled".to_owned()
@@ -1339,12 +1338,8 @@ impl Kept {
     /// Whether the server log holds a line whose message starts with
     /// `words`.
     async fn holds(&self, words: &str) -> bool {
-        let read = self
-            .backend
-            .get("/api/server/log?limit=1000", Some(&self.master))
-            .await;
-        assert_eq!(read.status, StatusCode::OK);
-        read.json::<ServerLog>()
+        self.backend
+            .server_log(None)
             .lines
             .iter()
             .any(|line| line.message.starts_with(words))
@@ -1527,8 +1522,7 @@ async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_as
     // are stopped.
     let second = "6a1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a04";
     eventually("the second start shares the ask", || async {
-        let read = kept.backend.get("/api/server/log?limit=1000", Some(&kept.master)).await;
-        read.json::<ServerLog>().lines.iter().any(|line| {
+        kept.backend.server_log(None).lines.iter().any(|line| {
             line.message == "a start shares the ask of the device's Claude Code versions under way"
                 && line.fields.get("session").and_then(|session| session.as_str()) == Some(second)
         })
@@ -1762,10 +1756,9 @@ async fn a_sign_in_the_vendor_refused_signs_the_account_out_until_it_signs_in_ag
 }
 
 /// Whether the server log holds a line whose message starts with `words`.
-async fn server_holds(backend: &TestBackend, master: &Session, words: &str) -> bool {
-    let read = backend.get("/api/server/log?limit=1000", Some(master)).await;
-    assert_eq!(read.status, StatusCode::OK);
-    read.json::<ServerLog>()
+async fn server_holds(backend: &TestBackend, _master: &Session, words: &str) -> bool {
+    backend
+        .server_log(None)
         .lines
         .iter()
         .any(|line| line.message.starts_with(words))

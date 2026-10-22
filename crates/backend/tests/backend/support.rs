@@ -880,6 +880,7 @@ impl Harness {
         let backend = Backend::start(config).await.unwrap();
         TestBackend {
             url: format!("http://{}", backend.local_addr()),
+            data_dir: self.data_dir(),
             backend,
             http: reqwest::Client::builder().no_proxy().build().unwrap(),
         }
@@ -895,6 +896,8 @@ impl Harness {
 
 pub struct TestBackend {
     pub url: String,
+    /// The data directory, whose `log.sqlite` the log reads open.
+    pub data_dir: PathBuf,
     backend: Backend,
     http: reqwest::Client,
 }
@@ -1862,7 +1865,7 @@ pub struct ServerLogCapture {
 impl ServerLogCapture {
     pub fn open(harness: &Harness) -> Self {
         use tracing_subscriber::layer::SubscriberExt as _;
-        let (writer, layer) = demi_backend_database::server_log::open(&harness.data_dir()).unwrap();
+        let (writer, layer) = demi_backend_database::server_log::open(&harness.data_dir(), Default::default()).unwrap();
         let default = demi_log_capture::capture(
             tracing_subscriber::registry()
                 .with(layer)

@@ -615,7 +615,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     };
     let options = Options {
         backend,
-        log: log.reader(),
+        log: log.follower(),
         // A Cloud keeps its artifacts on its home image, which its stops,
         // wakes and resets keep (`crates/runner-command-packages/src/cache.rs`).
         artifacts: artifacts.unwrap_or_else(|| match &boot {

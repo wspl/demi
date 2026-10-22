@@ -1,66 +1,44 @@
-//! The page's own error reports and the server log.
+//! The page's lines of the log: `POST /log`, the one route they reach the
+//! backend by.
 //!
-//! - `POST /page-errors` logs a failure the page found itself under the
-//!   report's request ID.
-//! - `GET /server/log` is how an administrator finds a request's lines.
+//! The route stores each line as the page's, with the user and the carrying
+//! request's ID, so that the ID a toast shows finds the line the failure wrote.
 
-use std::time::Duration;
-
-use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use demi_backend_database::server_log::LogQuery;
-use demi_web_api_protocol::diagnostics::{PageErrorReport, ServerLog, ServerLogQuery};
-use demi_web_api_protocol::error::ErrorCode;
+use demi_shared_types::{LogLine, LogOrigin};
+use demi_web_api_protocol::diagnostics::PageLog;
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
-use super::gate::{AdminUser, CurrentSession};
-use super::query::QueryParams;
+use super::gate::AuthUser;
+use super::request_id;
 
-/// `POST /page-errors`: logged as a warning under the request's ID, which
-/// the answer's `X-Request-Id` gives the page to show; 429 past thirty a
-/// minute.
-pub(super) async fn report(
-    State(state): State<AppState>,
-    session: CurrentSession,
-    JsonBody(report): JsonBody<PageErrorReport>,
-) -> Result<StatusCode, ApiError> {
-    if !state.services.page_errors.attempt(&session.id) {
-        return Err(ApiError::new(
-            StatusCode::TOO_MANY_REQUESTS,
-            ErrorCode::RateLimited,
-            "The page reported more errors than a minute allows",
-        )
-        .with_retry_after(Duration::from_secs(60)));
-    }
-    tracing::warn!(
-        title = report.title,
-        error = report.message,
-        detail = report.detail,
-        "the page reported an error"
-    );
-    Ok(StatusCode::NO_CONTENT)
-}
-
-/// `GET /server/log`: an administrator's.
+/// `POST /log`: 204 once the lines are stored.
 pub(super) async fn log(
     State(state): State<AppState>,
-    AdminUser(_): AdminUser,
-    QueryParams(query): QueryParams<ServerLogQuery>,
-) -> Result<Json<ServerLog>, ApiError> {
-    let read = state
-        .log
-        .read(LogQuery {
-            request: query.request,
-            since: query.since,
-            limit: query.limit.get(),
-            level: query.level,
+    AuthUser(user): AuthUser,
+    JsonBody(PageLog { page, lines }): JsonBody<PageLog>,
+) -> Result<StatusCode, ApiError> {
+    let request_id = request_id::current().map(|id| id.to_string());
+    let lines = lines
+        .into_iter()
+        .map(|line| {
+            let mut stored = LogLine::new(
+                i64::try_from(line.at).unwrap_or(i64::MAX),
+                LogOrigin::Page,
+                line.level.into(),
+                line.event,
+            );
+            stored.request_id.clone_from(&request_id);
+            stored.user_id = Some(user.id.to_string());
+            stored.conversation_id = line.conversation_id;
+            stored.page_id = Some(page.clone());
+            stored.fields = line.fields.into_iter().collect();
+            stored
         })
-        .await?;
-    Ok(Json(ServerLog {
-        lines: read.lines,
-        next: read.next,
-    }))
+        .collect();
+    state.services.log.store_page(lines);
+    Ok(StatusCode::NO_CONTENT)
 }

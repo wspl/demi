@@ -163,7 +163,6 @@
     "device_managed": "クラウドの名前は変更できません。",
     "device_offline": "デバイスはオフラインです。",
     "not_a_paired_device": "クラウドには直接接続できません。",
-    "log_unreadable": "ログを読み取れませんでした。",
     "conversation_not_found": "チャットが見つかりませんでした。",
     "block_not_found": "チャットのその部分が見つかりませんでした。",
     "transcript_changed": "チャットが変更されました。続けるには再読み込みしてください。",

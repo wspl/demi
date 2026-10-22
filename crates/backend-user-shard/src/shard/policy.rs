@@ -44,7 +44,9 @@ use demi_backend_database::sequences;
 use demi_backend_host_access::host_commands::{pairing_code, reachable, resolve_host};
 use demi_backend_host_access::root_of;
 use demi_backend_plugins::Lost;
-use demi_backend_remote_host::{DirectAdmission, ForwardEvent, JobOrigin, LinkPolicy, PackageEvent};
+use demi_backend_database::server_log::ServerLog;
+use demi_backend_remote_host::{DirectAdmission, ForwardEvent, HostLog, JobOrigin, LinkPolicy, PackageEvent};
+use demi_runner_protocol::wire::HostLogLine;
 use demi_backend_runners::host_key::conversation_of;
 use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
@@ -80,6 +82,33 @@ impl ShardPolicy {
     }
 }
 
+/// One Host's runner lines, stored in the backend's log under the Host's ID.
+struct HostLines {
+    log: ServerLog,
+    host: String,
+    /// Weak: the shard owns the connection this store serves.
+    shard: Weak<Shard>,
+}
+
+impl HostLog for HostLines {
+    fn since(&self) -> LocalBoxFuture<'static, Option<u64>> {
+        let log = self.log.clone();
+        let host = self.host.clone();
+        Box::pin(async move { log.host_since(&host).await })
+    }
+
+    fn store(&self, lines: Vec<HostLogLine>, missed: u64) {
+        let Some(shard) = self.shard.upgrade() else {
+            return;
+        };
+        // The Host's lines are its owner's, and name a conversation only as
+        // far as the owner has it.
+        let knows = |conversation: &str| shard.conversations().knows(conversation);
+        self.log
+            .store_host(&self.host, shard.user().as_str(), lines, missed, &knows);
+    }
+}
+
 /// A demand lease of the conversation's stream gate, which holds it active
 /// as a watched stream does, with its idle watch started, as a Host
 /// admission starts it (`crates/backend-user-shard/src/lifecycle/mod.rs`).
@@ -95,6 +124,15 @@ async fn watches(shard: &Shard, conversation: &ConversationId) -> GateLease {
 }
 
 impl LinkPolicy for ShardPolicy {
+    fn host_log(&self) -> Option<Rc<dyn HostLog>> {
+        let shard = self.shard.upgrade()?;
+        Some(Rc::new(HostLines {
+            log: shard.services().log.clone(),
+            host: self.device.to_string(),
+            shard: self.shard.clone(),
+        }))
+    }
+
     fn admit_call(&self, job: &JobOrigin) -> Result<(), String> {
         match conversation_of(&job.host) {
             Some(conversation) if conversation == job.context.conversation => Ok(()),

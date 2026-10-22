@@ -163,7 +163,6 @@
     "device_managed": "无法更改云端的名称。",
     "device_offline": "设备已离线。",
     "not_a_paired_device": "无法直接连接云端。",
-    "log_unreadable": "无法读取日志。",
     "conversation_not_found": "未找到对话。",
     "block_not_found": "未找到对话的该部分。",
     "transcript_changed": "对话已更改。请重新加载以继续。",

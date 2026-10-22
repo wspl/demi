@@ -41,7 +41,7 @@ pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER
 pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, ForwardEvent, HttpHead, HttpRequest, PackageEvent, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
-    LinkPolicy, SocketEnd,
+    HostLog, LinkPolicy, SocketEnd,
     END_GRACE, OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
@@ -54,7 +54,7 @@ pub use pipes::{
     PipeSink, PipeWriter, Pipes,
 };
 pub use remote_host::{
-    Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
+    Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
     ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity, host_paths,
 };
 #[cfg(feature = "edge")]

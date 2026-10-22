@@ -16,9 +16,9 @@ export interface ReportErrorOptions {
 }
 
 /**
- * The report of a failure the page found itself, which the backend logs under the
- * report's own request ID (`crates/backend-http/src/request_id.rs`): what failed
- * and where, never a value the page held.
+ * The report of a failure the page found itself, which the app writes as an error
+ * line of the page's log (`log.ts`): what failed and where, never a value the page
+ * held.
  */
 export interface PageErrorReport {
   title: string
@@ -27,14 +27,14 @@ export interface PageErrorReport {
 }
 
 /**
- * Sends a report and answers the ID of the request that carried it, or
- * null when the backend refused it, as past thirty a minute.
+ * Writes a report and answers the ID of the request that carried it, or
+ * null when it did not get in.
  */
 export type PageErrorReporter = (report: PageErrorReport) => Promise<string | null>
 
 let reporter: PageErrorReporter | null = null
 
-/** Sends the page's own failures with `report`, which the app supplies; returns the undo. */
+/** Writes the page's own failures with `report`, which the app supplies; returns the undo. */
 export function reportPageErrorsWith(report: PageErrorReporter): () => void {
   reporter = report
   return () => {
@@ -235,23 +235,20 @@ function withoutQueries(text: string): string {
   return text.replace(QUERY, '$1')
 }
 
-/** The backend's limits on a report's fields, in characters. */
-const REPORT_LIMITS = { title: 200, message: 2000, detail: 16000 } as const
-
-/** Sends a report of the page's own failure; the request ID when one carried it. */
+/** Writes a report of the page's own failure; the request ID when one carried it. */
 async function sendReport(report: PageErrorReport): Promise<string | null> {
   if (!reporter) {
     return null
   }
   try {
     return await reporter({
-      title: report.title.slice(0, REPORT_LIMITS.title),
-      message: withoutQueries(report.message).slice(0, REPORT_LIMITS.message),
-      detail: report.detail.slice(0, REPORT_LIMITS.detail),
+      title: report.title,
+      message: withoutQueries(report.message),
+      detail: report.detail,
     })
   } catch (error) {
-    // A report that did not reach the backend leaves the failure on the
-    // console alone; reporting that would only repeat it.
+    // A report that did not get in leaves the failure on the console
+    // alone; reporting that would only repeat it.
     console.error('[demi] The error report was not sent:', error)
     return null
   }
@@ -261,9 +258,9 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
  * Tells of a failure: on the console unless it was expected, and in a toast when
  * the user should see it, with the ID of the request it came from.
  *
- * A defect no request names, one the page found itself, is reported to the
- * backend, and its toast shows the report's ID once the report is in. A failure of
- * the environment (`environmental`) is not reported.
+ * A defect no request names, one the page found itself, is written to the log as an
+ * error line, and its toast shows the ID of the request that carried the line once
+ * it is in. A failure of the environment (`environmental`) is not reported.
  */
 export function reportError(
   title: HeadlineText,

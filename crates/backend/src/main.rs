@@ -88,7 +88,7 @@ async fn run(
             return ExitCode::FAILURE;
         }
     };
-    let settings = match config.backend(&release) {
+    let mut settings = match config.backend(&release) {
         Ok(settings) => settings,
         Err(error) => {
             eprintln!("demi-backend: {error}");
@@ -102,7 +102,11 @@ async fn run(
     }
     // What `DEMI_LOG` selects goes to standard error, which the process
     // supervisor keeps, and to the server log in the data directory.
-    let (log, log_layer) = match server_log::open(&settings.data_dir) {
+    let limits = server_log::Limits {
+        keep: std::time::Duration::from_secs(u64::from(config.log_keep_days) * 24 * 60 * 60),
+        max_bytes: config.log_max_size,
+    };
+    let (log, log_layer) = match server_log::open(&settings.data_dir, limits) {
         Ok(log) => log,
         Err(error) => {
             eprintln!("demi-backend: the server log cannot start: {error}");
@@ -114,6 +118,7 @@ async fn run(
         .with(log_layer)
         .with(config.log.clone())
         .init();
+    settings.log = log.log();
     // A refused raise leaves the limit as it was; the backend still works,
     // running out of files sooner.
     #[cfg(unix)]

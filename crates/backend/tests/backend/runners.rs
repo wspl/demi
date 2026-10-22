@@ -21,7 +21,7 @@ use demi_runner_protocol::wire::{
     RunnerPlatform, StreamArtifactOwner,
 };
 use demi_web_api_protocol::devices::{
-    DeviceAnswer, DeviceKind, DeviceLog, DeviceLogo, DeviceMark, DeviceRoute, DeviceState,
+    DeviceAnswer, DeviceKind, DeviceLogo, DeviceMark, DeviceRoute, DeviceState,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::Directory;
@@ -765,7 +765,7 @@ async fn a_pipe_is_reached_only_with_a_device_token() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
+async fn a_paired_device_is_browsed_through_device_access() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let mut laptop = backend.pair(&master, "laptop").await;
@@ -842,97 +842,9 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
         (StatusCode::NOT_FOUND, ErrorCode::FsError)
     );
 
-    // The log answers by cursor, limit and source; the runner writes a line
-    // to its files a moment after the event, so the read is repeated until
-    // it holds the line.
-    let path = format!("/api/devices/{}/log", laptop.id());
-    let mut tail = backend.get(&path, Some(&master)).await.json::<DeviceLog>();
-    for _ in 0..500 {
-        if tail.lines.iter().any(|line| line.text == "online") {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        tail = backend.get(&path, Some(&master)).await.json::<DeviceLog>();
-    }
-    assert!(
-        tail.lines.iter().any(|line| line.text == "online"),
-        "{:?}",
-        tail.lines
-    );
-    assert!(
-        tail.lines
-            .iter()
-            .any(|line| line.text == "waiting to be paired")
-    );
-    assert!(tail.lines.iter().all(|line| line.source == "runner"));
-    let code = laptop.runner.pairing_code(0).await;
-    // The pairing code is for the console alone.
-    assert!(!tail.lines.iter().any(|line| line.text.contains(&code)));
-    let after = backend
-        .get(&format!("{path}?since={}", tail.next), Some(&master))
-        .await;
-    assert_eq!(
-        after.json::<DeviceLog>(),
-        DeviceLog {
-            lines: Vec::new(),
-            next: tail.next
-        }
-    );
-    let first = backend
-        .get(&format!("{path}?since=0&limit=1"), Some(&master))
-        .await
-        .json::<DeviceLog>();
-    assert_eq!(first.lines, tail.lines[..1]);
-    let second = backend
-        .get(
-            &format!("{path}?since={}&limit=1", first.next),
-            Some(&master),
-        )
-        .await
-        .json::<DeviceLog>();
-    assert_eq!(second.lines, tail.lines[1..2]);
-    let other = backend
-        .get(
-            &format!("{path}?since=0&source=service%3Anone"),
-            Some(&master),
-        )
-        .await;
-    assert_eq!(
-        other.json::<DeviceLog>(),
-        DeviceLog {
-            lines: Vec::new(),
-            next: tail.next
-        }
-    );
-    for query in [
-        "limit=0",
-        "limit=1001",
-        "limit=many",
-        "since=-1",
-        "since=1.5",
-        "source=",
-    ] {
-        let refused = backend.get(&format!("{path}?{query}"), Some(&master)).await;
-        assert_eq!(
-            refused.refusal(),
-            (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery),
-            "{query}"
-        );
-    }
-    let unknown = backend.get("/api/devices/none/log", Some(&master)).await;
-    assert_eq!(
-        unknown.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
-    );
-
     // Offline, the device answers 409 instead of waking anything.
     laptop.runner.stop().await;
     backend.until_online(&master, laptop.id(), false).await;
-    let offline = backend.get(&path, Some(&master)).await;
-    assert_eq!(
-        offline.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
-    );
     let offline = backend
         .get(&format!("/api/devices/{}/fs", laptop.id()), Some(&master))
         .await;

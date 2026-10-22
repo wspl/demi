@@ -96,7 +96,7 @@ pub(crate) fn rows(harness: &Harness) -> Vec<Row> {
 /// message and its fields; read once its writer has closed.
 pub(crate) fn logged(harness: &Harness) -> Vec<(String, serde_json::Value)> {
     let database = rusqlite::Connection::open(harness.data_dir().join("log.sqlite")).unwrap();
-    let mut statement = database.prepare("SELECT message, fields FROM events ORDER BY id").unwrap();
+    let mut statement = database.prepare("SELECT COALESCE(json_extract(fields, '$.message'), event), fields FROM events ORDER BY id").unwrap();
     statement
         .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
         .unwrap()

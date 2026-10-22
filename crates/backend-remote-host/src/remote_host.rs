@@ -18,7 +18,7 @@ use demi_host_interface::{
     SymbolicLink, WhenExists, WholeOutput, WriteOptions,
 };
 use demi_runner_protocol::wire::{
-    self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitResult, Inbound, LogLine, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
+    self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitResult, Inbound, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
     WireBytes,
 };
 use demi_shared_gates::GateLease;
@@ -720,29 +720,6 @@ impl RemoteHost {
         Ok((collect_pipe(reader, usize::MAX).await?, read_at))
     }
 
-    /// Up to `limit` lines of the Host's log after `since`, oldest first, of
-    /// one `source` when named (`crates/runner/src/host_log.rs`).
-    pub async fn read_log(
-        &self,
-        since: Option<u64>,
-        limit: u64,
-        source: Option<&str>,
-    ) -> Result<LogPage, HostError> {
-        let link = self.link()?;
-        let reply = link
-            .call(Expected::Log, |id| Inbound::LogRead {
-                id,
-                since,
-                limit,
-                source: source.map(str::to_owned),
-            })
-            .await?;
-        match reply {
-            Answer::Log { lines, next } => Ok(LogPage { lines, next }),
-            _ => Err(protocol("the runner answered another request")),
-        }
-    }
-
     /// Opens a user stream: `request`'s operation in the resident service
     /// that holds the conversation's state, its input and output the two
     /// pipes (`crates/runner-jobs/src/commands/streams.rs`). It admits no work: a stream is
@@ -1276,14 +1253,6 @@ async fn send_stdin(
         link.send(&frame(WireBytes(chunk.to_vec()))).await?;
     }
     Ok(())
-}
-
-/// A page of the Host's log.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogPage {
-    pub lines: Vec<LogLine>,
-    /// The cursor the next read continues from.
-    pub next: u64,
 }
 
 /// A user stream to open, or a one-shot call.

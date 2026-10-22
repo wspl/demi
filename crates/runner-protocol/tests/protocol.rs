@@ -13,7 +13,7 @@ use demi_runner_protocol::files::{
 use demi_runner_protocol::installation::installation_name;
 use demi_runner_protocol::manifest::Manifest;
 use demi_runner_protocol::wire::{
-    self, Inbound, KeptRecord, LogLine, Outbound, OutputStream, Timestamp, WireBytes,
+    self, Inbound, KeptRecord, Outbound, OutputStream, Timestamp, WireBytes,
 };
 use serde_json::{Value, json};
 
@@ -66,7 +66,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 61);
+    assert_eq!(frames.len(), 60);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -121,7 +121,6 @@ fn refuses_disguised_binary_unknown_fields_trailing_data_and_optional_nulls() {
         json!({"type": "fs_stat", "id": "file", "path": "/work", "cwd": null}),
         json!({"type": "hello_error", "code": "unknown", "reason": "no"}),
         json!({"type": "rpc_exit", "callId": "call", "exitCode": 1.5}),
-        json!({"type": "log_read", "id": "log", "limit": 0}),
     ];
     for message in invalid {
         assert!(
@@ -193,26 +192,6 @@ fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
             );
         }
     }
-}
-
-#[test]
-fn log_reads_bound_their_limit_and_log_lines_name_their_source() {
-    for limit in [0, 1001] {
-        let invalid = json!({"type": "log_read", "id": "log", "limit": limit});
-        assert!(wire::decode::<Inbound>(&msgpack(&invalid)).is_err());
-    }
-    let line = LogLine {
-        at: Timestamp(1_700_000_000_123),
-        source: String::new(),
-        conversation_id: None,
-        text: "could not list tabs".into(),
-    };
-    let reply = Outbound::LogLines {
-        id: "log".into(),
-        lines: vec![line],
-        next: 42,
-    };
-    assert!(wire::encode(&reply).is_err());
 }
 
 #[test]

@@ -78,6 +78,7 @@ mod failure;
 mod file_types;
 mod ids;
 mod kept;
+mod log;
 mod media;
 mod model;
 #[cfg(feature = "mp4")]
@@ -134,6 +135,7 @@ pub use ids::{
     AutomationId, AutomationRunId, BlockId, CommandId, DeviceId, EmptyId, NodeId, OperationId, RequestId,
     Sequence, TurnId,
 };
+pub use log::{HostLogLine, LogLevel, LogLine, LogOrigin, is_event_name};
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,
     model_media_type_for, model_reads_images,

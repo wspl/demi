@@ -9,7 +9,6 @@
 mod autostart;
 mod connection;
 mod host;
-mod host_log;
 mod jobs;
 mod prefetch;
 mod registration;
@@ -43,6 +42,11 @@ pub struct Host {
     socket: WebSocketStream<TcpStream>,
     /// The hello of the runner's current connection.
     pub hello: Outbound,
+    /// The log lines the runner sent since the backend followed its log.
+    logged: Vec<wire::HostLogLine>,
+    /// Frames read while waiting for log lines, which `frame` returns first.
+    pending: std::collections::VecDeque<Outbound>,
+    following: bool,
 }
 
 impl Host {
@@ -84,6 +88,9 @@ impl Host {
             listener,
             socket,
             hello,
+            logged: Vec::new(),
+            pending: std::collections::VecDeque::new(),
+            following: false,
         }
     }
 
@@ -129,9 +136,39 @@ impl Host {
             .expect("the runner reads its socket");
     }
 
-    /// The next message the runner sends.
+    /// The next message the runner sends, but for its log lines, which
+    /// [`Host::logged_until`] collects.
     pub async fn frame(&mut self) -> Outbound {
-        next(&mut self.socket, &self.process).await
+        loop {
+            let frame = match self.pending.pop_front() {
+                Some(frame) => frame,
+                None => next(&mut self.socket, &self.process).await,
+            };
+            match frame {
+                Outbound::LogLines { lines, .. } => self.logged.extend(lines),
+                other => return other,
+            }
+        }
+    }
+
+    /// The runner's log lines, once `done` holds for them: the backend follows
+    /// the log from its start the first time, and the lines come as the runner
+    /// writes them.
+    pub async fn logged_until(
+        &mut self,
+        done: impl Fn(&[wire::HostLogLine]) -> bool,
+    ) -> Vec<wire::HostLogLine> {
+        if !self.following {
+            self.following = true;
+            self.send(Inbound::LogFollow { since: None }).await;
+        }
+        while !done(&self.logged) {
+            match next(&mut self.socket, &self.process).await {
+                Outbound::LogLines { lines, .. } => self.logged.extend(lines),
+                other => self.pending.push_back(other),
+            }
+        }
+        self.logged.clone()
     }
 
     /// Stops the runner, as a signal does, and answers its close frame; then

@@ -5,7 +5,6 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use bytes::Bytes;
 use demi_backend_accounts::email_change::{AccountMail, CodeKey, EmailChanges};
@@ -19,6 +18,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::{self, ConversationStores};
 use demi_backend_database::search::SearchIndexes;
+use demi_backend_database::server_log::ServerLog;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_backend_host_access::stream::UserStreams;
@@ -35,8 +35,6 @@ use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
 use demi_backend_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
-use demi_shared_gates::RateWindow;
-use demi_web_api_protocol::sessions::SessionId;
 use demi_backend_runners::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::install::RunnerReleases;
@@ -56,8 +54,6 @@ use crate::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, PageTuning
 const CONTROL_DATABASE: &str = "control.sqlite";
 const CONVERSATION_DATABASES: &str = "conversations";
 const SEARCH_INDEXES: &str = "search";
-/// How many error reports a page's session sends a minute; more are refused.
-const PAGE_ERRORS_PER_MINUTE: usize = 30;
 
 /// The services that span users, or that are needed before the user is
 /// known. The edge and every shard share them.
@@ -93,9 +89,9 @@ pub struct Services {
     pub logins: Arc<LoginFlows>,
     /// Runners waiting to be paired, which have no user yet.
     pub claims: PendingClaims,
-    /// The page error reports each session sent within the last minute, at
-    /// most thirty (`crates/backend-http/src/request_id.rs`).
-    pub page_errors: RateWindow<SessionId>,
+    /// The log, which the runners' and the pages' lines are stored in
+    /// (`crates/backend-database/src/server_log/mod.rs`).
+    pub log: ServerLog,
     /// The calls the automations' URLs took this minute.
     pub hook_limits: crate::automations::HookLimits,
     pub runners: RunnerTuning,
@@ -194,6 +190,7 @@ pub struct ServiceKeys {
 /// providers.
 pub struct ServiceSettings {
     pub mode: InstanceMode,
+    pub log: ServerLog,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
     pub runner_releases: RunnerReleases,
@@ -464,7 +461,7 @@ impl Services {
             operations,
             logins,
             claims: PendingClaims::new(settings.runners.claims_per_minute),
-            page_errors: RateWindow::new(PAGE_ERRORS_PER_MINUTE, Duration::from_secs(60)),
+            log: settings.log,
             hook_limits: crate::automations::HookLimits::default(),
             runners: settings.runners,
             conversation_tuning: settings.conversations,
@@ -553,6 +550,7 @@ impl Services {
             demi_backend_cloud::client::MachinesClient::new(data.join("machines.sock"));
         let settings = ServiceSettings {
             mode: InstanceMode::Shared,
+            log: ServerLog::detached(data),
             web_build: None,
             runner_releases: RunnerReleases::default(),
             stun: Vec::new(),

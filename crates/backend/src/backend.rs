@@ -58,7 +58,6 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
-use demi_backend_database::server_log::ServerLog;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, manage_socket, runner_socket, web_build};
 use demi_backend_user_shard::conversation::cost::follow_usage;
 use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
@@ -332,6 +331,7 @@ impl Backend {
             .transpose()?;
         let settings = ServiceSettings {
             mode: config.mode,
+            log: config.log,
             web_build,
             runner_releases: RunnerReleases::new(config.runner_releases),
             stun: config.stun,
@@ -508,7 +508,6 @@ impl Backend {
                 public_url: config.public_url,
                 origin_dropped: AtomicBool::new(false),
             }),
-            log: ServerLog::of(&config.data_dir),
         };
         let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {
             Ok(socket) => socket.flatten(),

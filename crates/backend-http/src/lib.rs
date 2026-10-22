@@ -98,7 +98,6 @@ use axum::http::Method;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
-use demi_backend_database::server_log::ServerLog;
 use demi_backend_runners::native;
 use hyper::body::Incoming;
 use axum::serve::{Listener as _, ListenerExt as _};
@@ -274,8 +273,6 @@ pub struct AppState {
     pub services: Arc<Services>,
     pub shards: Shards,
     pub site: Arc<Site>,
-    /// The server log, which administrators read.
-    pub log: ServerLog,
 }
 
 impl FromRef<AppState> for Arc<Services> {
@@ -381,8 +378,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/search", get(search::search))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
-        .route("/page-errors", post(diagnostics::report))
-        .route("/server/log", get(diagnostics::log))
+        .route("/log", post(diagnostics::log))
         .route(
             "/conversations",
             get(conversations::list).post(conversations::create),
@@ -531,7 +527,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(devices::browse).post(devices::make_directory),
         )
         .route("/devices/{id}/workflows", get(devices::workflows))
-        .route("/devices/{id}/log", get(devices::log))
         .route("/devices/{id}/direct", get(direct::open))
         .route("/devices/{id}/fs/watch", get(file_watch::open_device))
         .route(
@@ -720,7 +715,6 @@ mod tests {
             services,
             shards: pool.shards(),
             site: Arc::default(),
-            log: ServerLog::of(data.path()),
         };
         let closing = CancellationToken::new();
         let app = router(state, closing.clone(), None);

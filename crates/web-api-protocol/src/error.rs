@@ -160,8 +160,6 @@ pub enum ErrorCode {
     DeviceOffline,
     /// The device is the caller's Cloud, which no direct channel reaches.
     NotAPairedDevice,
-    /// The Host's log could not be read.
-    LogUnreadable,
     /// The caller owns no conversation of that id.
     ConversationNotFound,
     /// The transcript does not hold the block a page read names.

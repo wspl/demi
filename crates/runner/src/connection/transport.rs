@@ -51,6 +51,9 @@ pub struct Transport {
     pub output: mpsc::Sender<Frame>,
     /// Replies and requests, written first.
     pub control: mpsc::Sender<Frame>,
+    /// The Host's log lines, written last: a command's exit or an answer
+    /// leaves before a log frame (`crates/runner/src/host_log.rs`).
+    pub log: mpsc::Sender<Frame>,
     pub input: mpsc::Receiver<Inbound>,
     cancel: CancellationToken,
     owner: Option<JoinHandle<io::Result<()>>>,
@@ -133,6 +136,7 @@ impl Transport {
         let cancel = cancel.child_token();
         let (output, mut outgoing) = mpsc::channel::<Frame>(QUEUE_MESSAGES);
         let (control, mut controls) = mpsc::channel::<Frame>(128);
+        let (log, mut logs) = mpsc::channel::<Frame>(QUEUE_MESSAGES);
         let (incoming, input) = mpsc::channel(QUEUE_MESSAGES);
         let stopped = cancel.clone();
         let owner = tokio::spawn(async move {
@@ -205,6 +209,7 @@ impl Transport {
                         }
                         Some(message) = controls.recv() => message,
                         Some(message) = outgoing.recv() => message,
+                        Some(message) = logs.recv() => message,
                         else => break,
                     };
                     write(&mut writer, message).await?;
@@ -268,6 +273,7 @@ impl Transport {
         Self {
             output,
             control,
+            log,
             input,
             cancel,
             owner: Some(owner),

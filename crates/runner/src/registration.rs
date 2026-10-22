@@ -24,7 +24,7 @@ use crate::connection::{self, Connected, End, Kept, Registered, Transport};
 use demi_runner_protocol::console::HANDED_OVER;
 use crate::update::{Installed, Successor};
 use crate::{
-    host_log::HostLogReader,
+    host_log::HostLogFollower,
     management::{Endpoint, Management, Phase, Revocation},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
@@ -58,7 +58,7 @@ pub struct Options {
     /// The artifact cache (`crates/runner-command-packages/src/cache.rs`).
     pub artifacts: PathBuf,
     /// The Host's log, which `main` opened (`crates/runner/src/host_log.rs`).
-    pub log: HostLogReader,
+    pub log: HostLogFollower,
     /// The job root, where each shell job keeps its output under its
     /// conversation (`crates/runner-jobs/src/job_directories.rs`).
     pub jobs: PathBuf,

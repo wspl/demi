@@ -30,6 +30,7 @@ import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
 import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
+import { logPageError, logPageWith, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
@@ -42,7 +43,7 @@ import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
 import { useWorkPanel } from './conversation/work'
 import { onSessionExpired } from './api/client'
-import { sendPageErrorReport } from './api/page-errors'
+import { sendPageLog } from './api/page-log'
 import { useSession } from './auth/session'
 import ChatPage from './conversation/ChatPage.vue'
 import LoginPage from './auth/LoginPage.vue'
@@ -115,9 +116,14 @@ const conversations = useConversations(pinia)
 const session = useSession(pinia)
 const product = useProduct(pinia)
 const startup = new AbortController()
-// A failure the page finds itself goes to the backend's log, which the error
-// then names (`crates/backend-http/src/request_id.rs`).
-const stopReports = reportPageErrorsWith(sendPageErrorReport)
+// The page's lines go to the backend's log; a failure the page finds itself is
+// an error line there, and the error then names the request that carried it
+// (`crates/backend-http/src/diagnostics.rs`).
+const stopLog = logPageWith(sendPageLog)
+// A page that is not signed in sends no lines, which the backend would refuse,
+// and keeps them until it is.
+const stopLogSession = watch(() => session.signedIn, pageLogSignedIn, { immediate: true })
+const stopReports = reportPageErrorsWith(logPageError)
 // The synchronization channel starts beside the session check; a page the check
 // finds signed out has no channel.
 product.start()
@@ -343,6 +349,8 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     startup.abort()
     stopReports()
+    stopLog()
+    stopLogSession()
     stopIdentity()
     accountCache.stop()
     stopRetry()

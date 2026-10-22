@@ -88,6 +88,22 @@ pub struct CommandPolicy {
     blobs: Rc<RefCell<HashMap<BlobRef, Bytes>>>,
     /// The package events the connection handed on, in order.
     package_events: watch::Sender<Vec<crate::PackageEvent>>,
+    /// The runner's log lines the connection stored, in order.
+    host_lines: Rc<HostLines>,
+}
+
+/// A store of a runner's log lines that keeps them for a test to read.
+struct HostLines(watch::Sender<Vec<demi_runner_protocol::wire::HostLogLine>>);
+
+impl crate::HostLog for HostLines {
+    fn since(&self) -> LocalBoxFuture<'static, Option<u64>> {
+        let last = self.0.borrow().last().map(|line| line.seq);
+        Box::pin(async move { last })
+    }
+
+    fn store(&self, lines: Vec<demi_runner_protocol::wire::HostLogLine>, _: u64) {
+        self.0.send_modify(|stored| stored.extend(lines));
+    }
 }
 
 impl CommandPolicy {
@@ -97,7 +113,13 @@ impl CommandPolicy {
             sequences: RefCell::default(),
             blobs: Rc::default(),
             package_events: watch::Sender::new(Vec::new()),
+            host_lines: Rc::new(HostLines(watch::Sender::new(Vec::new()))),
         })
+    }
+
+    /// The runner's log lines the connection stored, in order, as they come.
+    pub fn host_lines(&self) -> watch::Receiver<Vec<demi_runner_protocol::wire::HostLogLine>> {
+        self.host_lines.0.subscribe()
     }
 
     /// The package events the connection hands on, in order, as they come.
@@ -115,6 +137,10 @@ impl CommandPolicy {
 }
 
 impl LinkPolicy for CommandPolicy {
+    fn host_log(&self) -> Option<Rc<dyn crate::HostLog>> {
+        Some(self.host_lines.clone())
+    }
+
     fn admit_call(&self, _: &JobOrigin) -> Result<(), String> {
         Ok(())
     }

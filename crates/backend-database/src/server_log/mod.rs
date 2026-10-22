@@ -1,13 +1,26 @@
-//! The server log (`crates/backend-http/src/request_id.rs`): every event
-//! `DEMI_LOG` selects, as a row of `log.sqlite` in the data directory, which an
-//! administrator searches by request.
+//! The log: every line `DEMI_LOG` selects of the backend's, every line of each
+//! Host's runner and of each page, as a row of `log.sqlite` in the data directory, which whoever
+//! diagnoses reads with `sqlite3` (`docs/delivery/diagnosis.md`).
 //!
-//! - A `tracing` layer turns each event into a row and queues it without waiting.
-//! - One writer thread owns the database. It inserts what the queue holds in one
-//!   transaction at most every 200 milliseconds, and each hour deletes what is
-//!   older than seven days or over 512 MiB.
-//! - The log is a record for diagnosis, not state: a database the writer cannot
-//!   open or write is removed and created again, never migrated.
+//! ```text
+//!   backend `tracing` events --- layer ---+
+//!   a runner's `log_lines` frames --------+--> queue --> writer thread --> log.sqlite
+//!   a page's `POST /log` lines -----------+     (4096)    commits every 200 ms,
+//!                                                         trims by batches
+//! ```
+//!
+//! - A `tracing` layer turns each backend event into a row and queues it
+//!   without waiting; the runner's and the page's lines enter the same queue
+//!   through [`ServerLog`].
+//! - One writer thread owns the database. It inserts what the queue holds in
+//!   one transaction at most every 200 milliseconds, and each hour deletes,
+//!   in batches of 10,000 lines between which it goes on writing, what is
+//!   older than [`Limits::keep`] or over [`Limits::max_bytes`].
+//! - The log is a record for diagnosis, not state: a database the writer
+//!   cannot open or write, or of an older schema, is removed and created
+//!   again, never migrated.
+//! - The log logs itself: a queue that dropped lines, a trim, a database
+//!   created again and the lines a runner no longer held are lines of it.
 //! - Nothing writes a request's body or query string, a credential, a secret's
 //!   value or a file's contents to the log.
 
@@ -16,33 +29,47 @@ mod store;
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::time::Duration;
+
+use demi_shared_types::{HostLogLine, LogLine, LogOrigin};
 
 pub use layer::ServerLogLayer;
-pub use store::{LogQuery, LogRead};
 
 /// The database's file in the data directory.
 pub const DATABASE: &str = "log.sqlite";
 
-/// Events waiting for the writer; past it an event is dropped and counted.
+/// Events waiting for the writer; past it an event is dropped and counted,
+/// since logging never holds up the work it records.
 const QUEUE: usize = 4096;
 
-/// One event as a row.
+/// How long and how much the log keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// How long a line is kept, since the server's disk is finite.
+    pub keep: Duration,
+    /// The most the lines may take of the database, for the same reason.
+    pub max_bytes: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            keep: Duration::from_secs(14 * 24 * 60 * 60),
+            max_bytes: 2 * 1024 * 1024 * 1024,
+        }
+    }
+}
+
+/// One line as a row: the line, and its number in its Host's files for a
+/// runner's.
 #[derive(Debug, Clone)]
 struct Row {
-    /// Milliseconds since the Unix epoch.
-    at: i64,
-    level: demi_web_api_protocol::diagnostics::LogLevel,
-    target: String,
-    message: String,
-    request_id: Option<String>,
-    user_id: Option<String>,
-    conversation_id: Option<String>,
-    turn_id: Option<String>,
-    /// The span's and the event's other fields.
-    fields: serde_json::Map<String, serde_json::Value>,
+    line: LogLine,
+    seq: Option<u64>,
 }
 
 /// What the writer thread is told, in the order told.
@@ -53,7 +80,7 @@ enum Message {
 
 /// Starts the log of the data directory `data_dir`: the writer thread, and
 /// the layer that goes into the process's `tracing` subscriber.
-pub fn open(data_dir: &Path) -> io::Result<(ServerLogWriter, ServerLogLayer)> {
+pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, ServerLogLayer)> {
     std::fs::create_dir_all(data_dir)?;
     let path = data_dir.join(DATABASE);
     let dropped = Arc::new(AtomicU64::new(0));
@@ -62,32 +89,62 @@ pub fn open(data_dir: &Path) -> io::Result<(ServerLogWriter, ServerLogLayer)> {
         .name("server-log".into())
         .spawn({
             let dropped = dropped.clone();
-            move || store::serve(&path, &queued, &dropped)
+            let path = path.clone();
+            move || store::serve(&path, limits, &queued, &dropped)
         })?;
+    let sink = Sink { queue, dropped };
     Ok((
         ServerLogWriter {
-            queue: queue.clone(),
+            log: ServerLog {
+                path,
+                sink: Some(sink.clone()),
+                hosts: Arc::default(),
+            },
             thread,
         },
-        ServerLogLayer::new(queue, dropped),
+        ServerLogLayer::new(sink),
     ))
+}
+
+/// Where lines wait for the writer.
+#[derive(Clone)]
+struct Sink {
+    queue: mpsc::SyncSender<Message>,
+    dropped: Arc<AtomicU64>,
+}
+
+impl Sink {
+    /// Queues `row` without waiting; one the queue has no room for is dropped
+    /// and counted, and the writer says so with its next commit.
+    fn push(&self, row: Row) {
+        if self.queue.try_send(Message::Row(row)).is_err() {
+            self.dropped.fetch_add(1, Ordering::Relaxed);
+        }
+    }
 }
 
 /// Owns the writer thread.
 pub struct ServerLogWriter {
-    queue: mpsc::SyncSender<Message>,
+    log: ServerLog,
     thread: std::thread::JoinHandle<()>,
 }
 
 impl ServerLogWriter {
+    /// The handle the backend's parts store lines with.
+    pub fn log(&self) -> ServerLog {
+        self.log.clone()
+    }
+
     /// Writes every event queued before it and stops the writer thread;
     /// events logged afterwards go to standard error alone.
     pub async fn close(self) {
-        let Self { queue, thread } = self;
+        let Self { log, thread } = self;
         let closed = tokio::task::spawn_blocking(move || {
             // The thread is gone only if it panicked; nothing is left to
             // write then.
-            let _gone = queue.send(Message::Close);
+            if let Some(sink) = &log.sink {
+                let _gone = sink.queue.send(Message::Close);
+            }
             thread.join()
         })
         .await;
@@ -97,23 +154,110 @@ impl ServerLogWriter {
     }
 }
 
-/// Reads the log of a data directory.
-#[derive(Debug, Clone)]
+/// The log of a data directory, which the runners' and the pages' lines are
+/// stored through. Cloning it is cheap.
+#[derive(Clone)]
 pub struct ServerLog {
     path: PathBuf,
+    sink: Option<Sink>,
+    /// What the backend has taken of each Host's lines, by the Host's ID.
+    hosts: Arc<Mutex<HashMap<String, HostState>>>,
+}
+
+/// What the backend knows of one Host's lines: the highest `seq` taken, so
+/// that a line a quick reconnect sends again, which is at or below it, is not
+/// stored twice.
+struct HostState {
+    taken: Option<u64>,
 }
 
 impl ServerLog {
-    pub fn of(data_dir: &Path) -> Self {
+    /// A log with no writer, which stores nothing, as a backend started
+    /// without [`open`] has.
+    pub fn detached(data_dir: &Path) -> Self {
         Self {
             path: data_dir.join(DATABASE),
+            sink: None,
+            hosts: Arc::default(),
         }
     }
 
-    /// The lines `query` asks for, oldest first. A log not yet written, or
-    /// being created again, has none.
-    pub async fn read(&self, query: LogQuery) -> Result<LogRead, crate::StorageError> {
+    /// Stores a runner's frame of lines as the Host `host_id`'s, which `owner`
+    /// owns; `missed` is the count of lines the runner no longer held.
+    ///
+    /// A runner is a Host's program and may be wrong or hostile, so its lines
+    /// are the runner's, its Host's and its owner's, whatever they claim:
+    /// - the user is the owner, and a request, a turn or a page the line names
+    ///   is not taken, since nothing here can check it;
+    /// - a conversation is taken when `knows` says the owner has it, and is
+    ///   otherwise left among the fields as the runner's claim;
+    /// - a line taken already, by its `seq`, is not stored again.
+    pub fn store_host(
+        &self,
+        host_id: &str,
+        owner: &str,
+        lines: Vec<HostLogLine>,
+        missed: u64,
+        knows: &dyn Fn(&str) -> bool,
+    ) {
+        if missed > 0 {
+            tracing::warn!(event = "log.missed", host_id, missed, "a runner no longer held lines of its log");
+        }
+        let Some(sink) = &self.sink else {
+            return;
+        };
+        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
+        let state = hosts.entry(host_id.to_owned()).or_insert(HostState { taken: None });
+        for HostLogLine { seq, mut line } in lines {
+            if state.taken.is_some_and(|taken| seq <= taken) {
+                continue;
+            }
+            state.taken = Some(seq);
+            line.origin = LogOrigin::Runner;
+            line.host_id = Some(host_id.to_owned());
+            line.user_id = Some(owner.to_owned());
+            line.request_id = None;
+            line.page_id = None;
+            line.turn_id = None;
+            if let Some(conversation) = line.conversation_id.take() {
+                if knows(&conversation) {
+                    line.conversation_id = Some(conversation);
+                } else {
+                    line.fields.insert("conversation".into(), conversation.into());
+                }
+            }
+            sink.push(Row { line, seq: Some(seq) });
+        }
+    }
+
+    /// Stores the lines of a page's `POST /log`, which the route has
+    /// checked and given their page, user and origin.
+    pub fn store_page(&self, lines: Vec<LogLine>) {
+        let Some(sink) = &self.sink else {
+            return;
+        };
+        for line in lines {
+            sink.push(Row { line, seq: None });
+        }
+    }
+
+    /// The highest number taken for the Host's runner lines, stored or still
+    /// queued; none for a Host with no line, or a log not yet written.
+    pub async fn host_since(&self, host_id: &str) -> Option<u64> {
         let path = self.path.clone();
-        tokio::task::spawn_blocking(move || store::read(&path, &query)).await?
+        let host = host_id.to_owned();
+        let read = tokio::task::spawn_blocking(move || store::last_seq(&path, &host)).await;
+        let stored = match read {
+            Ok(Ok(seq)) => seq,
+            Ok(Err(error)) => {
+                tracing::warn!(event = "log.since_failed", host_id, error = &error as &dyn std::error::Error, "a Host's last stored line could not be read");
+                None
+            }
+            Err(_) => None,
+        };
+        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
+        let state = hosts.entry(host_id.to_owned()).or_insert(HostState { taken: None });
+        state.taken = state.taken.max(stored);
+        state.taken
     }
 }
