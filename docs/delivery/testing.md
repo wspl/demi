@@ -1,34 +1,13 @@
 # Testing
 
-Test code is rare. Anything could be tested, and tests written freely
-outgrow the code they test; a test is written only for logic that is
-complex or uncertain, where running the product would not show whether it is
-right:
+Demi has no automated tests by default. A change is accepted by whoever made
+it, on the running product, and a problem is diagnosed from the log.
 
-- an algorithm, such as the transcript's virtual list;
-- a layout or a value computed from many inputs;
-- concurrency and ordering, such as streams that must not wait on each
-  other, or a reconnect.
-
-A test gives the logic input at its interface and checks its output, never
-its internal steps. The logic is changed often; a test of its steps goes
-stale with every change and is rewritten, where a test of its input and
-output still holds. Every other rule here follows from this one.
-
-Not tested:
-
-- A user's path through the product, such as pairing a device or sending a
-  message: an agent accepts it on the running product.
-- What the screen shows: the gallery and the product check's screenshots
-  show it.
-- Compatibility across versions, stored data or the messages between
-  programs: an agent accepts it when it upgrades.
-- Wording: a prompt, a help text, a UI string or a message.
-- Anything simple enough to be right by reading it.
-
-A fixed bug is verified where it was seen; being a bug does not make it need
-a test. A test is seen to fail with the defect it guards against, planted,
-before it is committed.
+A test is added only for a problem that came back after it was fixed, and
+only when the user agrees to it. It gives the logic input at its interface
+and checks its output, never its internal steps, which change too often for
+such a test to hold, and it is seen to fail with the defect, planted, before
+it is committed.
 
 The commands that run the tests are in `crates/xtask/src/main.rs`.
 
