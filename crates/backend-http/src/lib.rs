@@ -66,6 +66,7 @@ mod provider_cli;
 mod providers;
 mod query;
 mod request_id;
+mod revalidate;
 mod manage;
 mod runner_socket;
 
@@ -555,6 +556,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/changes/branches", get(files::branches))
         .route("/conversations/{id}/changes/log", get(files::log))
         .route("/conversations/{id}/changes/commit", get(files::commit))
+        // The reads' caching (`revalidate.rs`): the routes' answers only.
+        .layer(middleware::from_fn(revalidate::reads))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.

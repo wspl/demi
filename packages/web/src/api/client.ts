@@ -248,7 +248,6 @@ export function waitForBackendWith(wait: BackendWait): () => void {
 const NEVER = new AbortController().signal
 
 interface ApiRequestOptions extends RequestInit {
-  allowNotModified?: boolean
   /** For a request whose work is known to take longer than most, such as starting the conversation browser on a Cloud. */
   timeoutMs?: number
   /**
@@ -306,7 +305,7 @@ export async function apiRequest(
 
 /** One try of a request, with its own deadline. */
 async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'onUnreachable'>): Promise<Response> {
-  const { allowNotModified, timeoutMs, ...request } = options
+  const { timeoutMs, ...request } = options
   const timeout = AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS)
   const signal = options.signal
     ? AbortSignal.any([options.signal, timeout])
@@ -314,18 +313,16 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'on
   const response = await fetch(apiUrl(path), {
     ...request,
     credentials: 'same-origin',
-    cache: 'no-store',
     signal,
   }).catch((error: unknown) => {
     throw reachedOrNot(error)
   })
-  // An answer without content: a 204, or a 304 the caller allowed, which says
-  // the version it named is still the Host's.
-  if (response.status === 204 || (allowNotModified && response.status === 304)) {
-    // Chrome counts a request whose answer the page never reads as aborted
-    // (net::ERR_ABORTED), though the backend answered it, and a caller of an
-    // answer without content has nothing to read. It is read to its end
-    // here, and the caller gets the same answer with nothing left to read.
+  // An answer without content, a 204: Chrome counts a request whose answer the
+  // page never reads as aborted (net::ERR_ABORTED), though the backend answered
+  // it, and a caller of an answer without content has nothing to read. It is
+  // read to its end here, and the caller gets the same answer with nothing left
+  // to read.
+  if (response.status === 204) {
     await response.arrayBuffer()
     return new Response(null, { status: response.status, statusText: response.statusText, headers: response.headers })
   }

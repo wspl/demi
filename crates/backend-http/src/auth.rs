@@ -22,6 +22,7 @@ use super::body::JsonBody;
 use super::cookies::{self, Https, SESSION_COOKIE};
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::revalidate;
 use super::sessions::user_agent;
 use demi_backend_user_shard::services::Services;
 
@@ -133,7 +134,7 @@ pub(super) async fn logout(
             .end_session(&user.id, &TokenHash::of(cookie.value()));
         services.sync.mark(&user.id, Part::Sessions);
     }
-    Ok((cookies::remove(jar, https), StatusCode::NO_CONTENT).into_response())
+    Ok(revalidate::clear_cache((cookies::remove(jar, https), StatusCode::NO_CONTENT).into_response()))
 }
 
 pub(super) async fn me(AuthUser(user): AuthUser) -> Json<Identity> {

@@ -15,39 +15,29 @@ export function workingTreeReads(conversationId: string, directory?: string): Ch
   const id = encodeURIComponent(conversationId)
   // The routes read the conversation's directory unless a request names another.
   const tree: Record<string, string> = directory === undefined ? {} : { directory }
-  // Each read names the version the page holds: an unchanged answer is a
-  // 304 without its content.
-  const held = (version: string | null) => version === null
-    ? { allowNotModified: true }
-    : { headers: { 'if-none-match': version }, allowNotModified: true }
   return {
-    async list(version) {
+    async list() {
       try {
-        const response = await apiRequest(`/conversations/${id}/changes${directory === undefined ? '' : `?${new URLSearchParams(tree)}`}`, held(version))
+        const response = await apiRequest(`/conversations/${id}/changes${directory === undefined ? '' : `?${new URLSearchParams(tree)}`}`)
         const readAt = readAtOf(response.headers)
-        if (response.status === 304)
-          return { unchanged: true, readAt }
         const changes = await readResponse(response, workingTreeChangesSchema)
         const list = {
           files: changes.files,
           truncated: changes.truncated,
           repository: changes.repository,
-          version: response.headers.get('etag'),
         }
         return { value: list, readAt }
       } catch (error) {
         throw fileBrowserError(error)
       }
     },
-    async sides(path, version, from) {
+    async sides(path, from) {
       try {
         const query = new URLSearchParams({ path, ...(from === undefined ? {} : { from }), ...tree })
-        const response = await apiRequest(`/conversations/${id}/changes/file?${query}`, held(version))
+        const response = await apiRequest(`/conversations/${id}/changes/file?${query}`)
         const readAt = readAtOf(response.headers)
-        if (response.status === 304)
-          return { unchanged: true, readAt }
         const sides = await readResponse(response, changeSidesSchema)
-        return { value: { ...sides, version: response.headers.get('etag') }, readAt }
+        return { value: sides, readAt }
       } catch (error) {
         // A side that is not text is an answer, which the views show another way.
         throw fileBrowserError(error)

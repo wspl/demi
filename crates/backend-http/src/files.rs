@@ -417,7 +417,6 @@ fn tree_root(host: &ConversationHost, directory: Option<AbsolutePath>) -> String
 pub(super) async fn changes(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(ChangesQuery { directory }): QueryParams<ChangesQuery>,
 ) -> Result<Response, ApiError> {
@@ -432,7 +431,7 @@ pub(super) async fn changes(
         Ok((changes, read_at))
     })
     .await?;
-    Ok(read_answer(&read_at, unless_held(&headers, &changes)))
+    Ok(read_answer(&read_at, Json(changes)))
 }
 
 /// The local branches of the working tree's repository and the one checked
@@ -440,7 +439,6 @@ pub(super) async fn changes(
 pub(super) async fn branches(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(ChangesQuery { directory }): QueryParams<ChangesQuery>,
 ) -> Result<Response, ApiError> {
@@ -451,14 +449,13 @@ pub(super) async fn branches(
             .map_err(ApiError::history)
     })
     .await?;
-    Ok(read_answer(&read_at, unless_held(&headers, &branches)))
+    Ok(read_answer(&read_at, Json(branches)))
 }
 
 /// One page of a branch's first-parent history.
 pub(super) async fn log(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(LogQuery { directory, branch, after }): QueryParams<LogQuery>,
 ) -> Result<Response, ApiError> {
@@ -473,14 +470,13 @@ pub(super) async fn log(
             .map_err(ApiError::history)
     })
     .await?;
-    Ok(read_answer(&read_at, unless_held(&headers, &log)))
+    Ok(read_answer(&read_at, Json(log)))
 }
 
 /// One commit: its files against its first parent and the branches it is on.
 pub(super) async fn commit(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(CommitQuery { directory, commit }): QueryParams<CommitQuery>,
 ) -> Result<Response, ApiError> {
@@ -491,7 +487,7 @@ pub(super) async fn commit(
             .map_err(ApiError::history)
     })
     .await?;
-    Ok(read_answer(&read_at, unless_held(&headers, &commit)))
+    Ok(read_answer(&read_at, Json(commit)))
 }
 
 /// A commit's file's two sides as text: its first parent's at `before`, the
@@ -548,7 +544,6 @@ async fn commit_sides(
 pub(super) async fn changed_file(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(TreeFileQuery { path, from, directory, commit }): QueryParams<TreeFileQuery>,
 ) -> Result<Response, ApiError> {
@@ -592,7 +587,7 @@ pub(super) async fn changed_file(
         Ok((ChangeSides { original, modified }, read_at))
     })
     .await?;
-    let answer = unless_held(&headers, &sides);
+    let answer = Json(sides).into_response();
     Ok(match read_at {
         Some(read_at) => read_answer(&read_at, answer),
         None => answer,
@@ -611,31 +606,6 @@ async fn read_working_side(
         Err(TextError::Refused(refusal)) => Ok((Err(refusal), opened.read_at)),
         Err(TextError::Host(error)) => Err(error.with_read_at(opened.read_at)),
     }
-}
-
-/// `value` as JSON with an ETag of its content, or 304 when the request's
-/// `If-None-Match` names that ETag, compared weakly as RFC 9110 § 13.1.2
-/// asks, since a compressing proxy weakens the tag it passes on: the page
-/// then keeps what it holds and receives nothing.
-fn unless_held(headers: &HeaderMap, value: &impl serde::Serialize) -> Response {
-    use axum_extra::headers::{ETag, HeaderMapExt as _, IfNoneMatch};
-    use sha2::{Digest as _, Sha256};
-    let body = serde_json::to_vec(value).expect("an answer of the API serializes");
-    // As the assets' tags are made (`assets.rs`).
-    let tag: ETag = format!("\"{:x}\"", Sha256::digest(&body))
-        .parse()
-        .expect("a quoted hex digest is an entity tag");
-    let held = headers
-        .typed_get::<IfNoneMatch>()
-        .is_some_and(|held| !held.precondition_passes(&tag));
-    let mut answer = if held {
-        StatusCode::NOT_MODIFIED.into_response()
-    } else {
-        ([(axum::http::header::CONTENT_TYPE, HeaderValue::from_static("application/json"))], body)
-            .into_response()
-    };
-    answer.headers_mut().typed_insert(tag);
-    answer
 }
 
 /// A changed file's last committed bytes, or a commit's, by range. Git's

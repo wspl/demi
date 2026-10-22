@@ -42,9 +42,12 @@ export interface ContentReads {
 export interface FileReads extends Pick<FileBrowserSource, 'platform' | 'home' | 'createDirectory' | 'upload' | 'remove'> {
   list(path: string): Promise<Answered<FileBrowserEntry[]>>
   /**
-   * A file's text with its version; unchanged when the file still has the
-   * version `held` names, so its text did not travel. A file that is not
-   * text, or too large to read as text, rejects with that answer.
+   * A file's text with its version. A read the browser's cache does not
+   * hold, as a direct channel's, answers unchanged when the file still has
+   * the version `held` names, so its text did not travel; a read over HTTP
+   * has the browser's cache ask the Host and always answers the text, and
+   * takes no `held`. A file that is not text, or too large to read as text,
+   * rejects with that answer.
    */
   readText?(path: string, held: string | null): Promise<Read<FileText>>
   contents?: ContentReads
@@ -175,33 +178,29 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
 /**
  * The working tree's uncommitted changes as a host reads them, each a request with
  * the Host's number before it read.
- *
- * Each read names the version it holds, `held`, and answers unchanged when the
- * Host's answer is still that one.
  */
 export interface ChangeReads {
   /** The list of changes, or why there is none. */
-  list(held: string | null): Promise<Read<ChangesList>>
+  list(): Promise<Answered<ChangesList>>
   /**
    * Both sides of one changed file, by its path relative to the working
    * tree, the old side at `from` for a renamed file; a side that is not
    * text rejects with that answer.
    */
-  sides(path: string, held: string | null, from?: string): Promise<Read<KeptSides>>
+  sides(path: string, from?: string): Promise<Answered<KeptSides>>
   /** The committed side's bytes, by path relative to the working tree. */
   committed?: ContentReads
 }
 
-/** The kept changes list and what a view shows of it, with the version it was read at. */
+/** The kept changes list and what a view shows of it. */
 export interface ChangesList {
   files: WorkingTreeChange[]
   truncated: boolean
   repository: boolean
-  version: string | null
 }
 
-/** A changed file's two sides as kept, with the version they were read at. */
-export type KeptSides = ChangeSides & { version: string | null }
+/** A changed file's two sides as kept. */
+export type KeptSides = ChangeSides
 
 /**
  * The working tree under `root` as a change set over the kept files: the
@@ -216,15 +215,12 @@ export function keptChangeSet(
   const { files } = options
   const watch = options.watch ?? null
   const absolute = (path: string) => `${root.replace(/\/$/, '')}/${path}`
-  // Each is read again with the version held, and an unchanged answer
-  // keeps what is held, so a view shows nothing new.
   const listSpec: KeptSpec<ChangesList> = {
     kind: 'changes',
     path: root,
     watch,
-    read: (held) => reads.list(held),
+    read: () => reads.list(),
     size: (list) => list.files.reduce((sum, file) => sum + file.path.length, 0),
-    version: (list) => list.version,
   }
   const sidesSpec = (path: string, from?: string): KeptSpec<KeptSides> => ({
     kind: 'sides',
@@ -232,9 +228,8 @@ export function keptChangeSet(
     key: from === undefined ? root : `${root}\u0000${from}`,
     root,
     watch,
-    read: (held) => reads.sides(path, held, from),
+    read: () => reads.sides(path, from),
     size: (sides) => sides.original.length + sides.modified.length,
-    version: (sides) => sides.version,
   })
   const entry = () => files.peek(listSpec)
   const source = reactive({

@@ -383,18 +383,12 @@ export function fileReads(
     ...(rawEndpoint ? { contents: rawFileContents(rawEndpoint) } : {}),
     ...(textEndpoint
       ? {
-          // The text the page holds is read again with its version: an
-          // unchanged file answers 304 without it.
-          async readText(path: string, held: string | null): ReturnType<NonNullable<FileReads['readText']>> {
+          // The browser asks again on each read and keeps the text while the
+          // file has the version it holds (`crates/backend-http/src/revalidate.rs`).
+          async readText(path: string): ReturnType<NonNullable<FileReads['readText']>> {
             try {
-              const response = await apiRequest(`${textEndpoint}?${new URLSearchParams({ path })}`, {
-                headers: held === null ? {} : { 'if-none-match': held },
-                allowNotModified: true,
-              })
+              const response = await apiRequest(`${textEndpoint}?${new URLSearchParams({ path })}`)
               const readAt = readAtOf(response.headers)
-              if (response.status === 304) {
-                return { unchanged: true, readAt }
-              }
               const { text } = await readResponse(response, fileTextSchema)
               return { value: { text, version: response.headers.get('etag') }, readAt }
             } catch (error) {

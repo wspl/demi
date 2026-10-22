@@ -49,7 +49,6 @@ describe('cookie session', () => {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(input).toBe('/api/auth/me')
       expect(init?.credentials).toBe('same-origin')
-      expect(init?.cache).toBe('no-store')
       return Response.json({ user })
     }) as unknown as typeof fetch
     const session = useSession()

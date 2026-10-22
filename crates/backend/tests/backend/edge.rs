@@ -333,3 +333,54 @@ async fn a_shared_link_answers_its_own_entry_under_a_policy_that_reaches_only_it
     assert!(!product.contains("content-security-policy"), "{product}");
     backend.close().await;
 }
+
+// A browser reuses what a GET answered only after the server says it has not
+// changed: each read carries a tag and `no-cache`, the same read again with
+// the tag is a 304 without a body that keeps the answer's own headers, a
+// changed answer is sent whole, and what carries a secret or a session's own
+// state is never kept; signing out has the browser drop what it kept.
+#[tokio::test]
+async fn a_read_is_reused_only_once_the_server_says_it_has_not_changed() {
+    // Cost: one backend start; under a second.
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+
+    let first = backend.get("/api/settings/preferences", Some(&master)).await;
+    assert_eq!(first.status, StatusCode::OK);
+    assert_eq!(first.headers["cache-control"], "private, no-cache");
+    let tag = first.headers["etag"].to_str().unwrap().to_owned();
+
+    let again = backend.get_with("/api/settings/preferences", &master, &[("if-none-match", &tag)]).await;
+    assert_eq!(again.status, StatusCode::NOT_MODIFIED);
+    assert!(again.body.is_empty());
+    assert_eq!(again.headers["etag"], first.headers["etag"]);
+    assert_eq!(again.headers["cache-control"], "private, no-cache");
+
+    // A change is sent whole, under a new tag.
+    let saved = backend
+        .patch("/api/settings/preferences", &master, json!({ "resumeAfterRestart": false }))
+        .await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&saved.body));
+    let changed = backend.get_with("/api/settings/preferences", &master, &[("if-none-match", &tag)]).await;
+    assert_eq!(changed.status, StatusCode::OK);
+    assert_ne!(changed.headers["etag"], first.headers["etag"]);
+    assert_ne!(changed.body, first.body);
+
+    // The session's own state and the secrets are not kept at all.
+    for path in ["/api/auth/me", "/api/credentials", "/api/auth/sessions"] {
+        let read = backend.get(path, Some(&master)).await;
+        assert_eq!(read.status, StatusCode::OK, "{path}");
+        assert_eq!(read.headers["cache-control"], "private, no-store", "{path}");
+        assert!(!read.headers.contains_key("etag"), "{path}");
+    }
+    // A sign-in code is a secret, whether or not the sign-in exists.
+    let sign_in = backend.get("/api/providers/subscription-login/none", Some(&master)).await;
+    assert_eq!(sign_in.headers["cache-control"], "private, no-store");
+    assert!(!sign_in.headers.contains_key("etag"));
+
+    // Signing out has the browser drop what it kept.
+    let out = backend.post("/api/auth/logout", Some(&master), json!({})).await;
+    assert_eq!(out.status, StatusCode::NO_CONTENT);
+    assert_eq!(out.headers["clear-site-data"], "\"cache\"");
+    backend.close().await;
+}

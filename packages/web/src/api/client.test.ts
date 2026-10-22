@@ -180,20 +180,16 @@ test('a page loaded while the backend cannot be reached connects, never signs ou
   expect(product.connecting).toBe(false)
 })
 
-test('an unchanged answer is read to its end, so the browser counts it answered, not abandoned', async () => {
+test('an answer without content is read to its end, so the browser counts it answered, not abandoned', async () => {
   let answer: Response | null = null
   // The stub has fetch's shape; it answers every request the same.
   globalThis.fetch = (async (_input, _init) => {
-    // As Chrome gives a fetch its 304: an empty body still to read.
-    answer = new Response(new ReadableStream({ start: (stream) => stream.close() }), {
-      status: 304,
-      headers: { etag: '"v1"' },
-    })
+    // As Chrome gives a fetch its 204: an empty body still to read.
+    answer = new Response(new ReadableStream({ start: (stream) => stream.close() }), { status: 204 })
     return answer
   }) as typeof fetch
-  const response = await apiRequest('/conversations/c1/changes', { headers: { 'if-none-match': '"v1"' }, allowNotModified: true })
-  expect(response.status).toBe(304)
-  expect(response.headers.get('etag')).toBe('"v1"')
+  const response = await apiRequest('/conversations/c1/read', { method: 'POST' })
+  expect(response.status).toBe(204)
   expect(answer!.bodyUsed).toBe(true)
 })
 

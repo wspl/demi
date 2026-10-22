@@ -712,14 +712,13 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
         files: listing.unavailable ? [] : tree.changed,
         truncated: listing.truncated ?? false,
         repository: !listing.unavailable,
-        version: null,
       }
       return { value: list, readAt }
     },
     async sides(path) {
       const readAt = host.readAt()
       await delay(latencyMs)
-      return { value: { ...await gallerySides(path), version: null }, readAt }
+      return { value: await gallerySides(path), readAt }
     },
     committed: committedContents,
   }, tree.root, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
