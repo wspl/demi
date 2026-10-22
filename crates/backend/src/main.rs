@@ -107,7 +107,7 @@ async fn run(
         keep: std::time::Duration::from_secs(u64::from(config.log_keep_days) * 24 * 60 * 60),
         max_bytes: config.log_max_size,
     };
-    let (log, log_layer) = match server_log::open(&settings.data_dir, limits) {
+    let (log, log_layer) = match server_log::open(&settings.data_dir, limits, config.log.clone()) {
         Ok(log) => log,
         Err(error) => {
             eprintln!("demi-backend: the server log cannot start: {error}");

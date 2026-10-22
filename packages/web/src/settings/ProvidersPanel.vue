@@ -120,7 +120,7 @@ watch(
         saveModels(
           provider,
           provider.models.filter((entry) => entry.id !== model.id),
-        ).catch((error: unknown) => report(t('providers.removeModelFailed'), error))
+        ).catch((error: unknown) => report('providers.removeModelFailed', t('providers.removeModelFailed'), error))
     "
   />
   <ProviderLoginDialog

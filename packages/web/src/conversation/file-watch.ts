@@ -54,7 +54,7 @@ export function watchReceiver(handlers: WatchLinkHandlers, close: () => void): (
     }
     const parsed = fileWatchMessageSchema.safeParse(value)
     if (!parsed.success) {
-      reportError(t('failures.readFileWatch'), schemaRefusal(parsed.error))
+      reportError(t('failures.readFileWatch'), schemaRefusal(parsed.error), { site: 'failures.readFileWatch' })
       ended = true
       close()
       handlers.closed()

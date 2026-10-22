@@ -21,13 +21,14 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { coded, errorCode, errorMessage, reportError, requestIdOf, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { coded, errorCode, errorFields, errorMessage, reportError, requestIdOf, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { sessionShown, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
 import { pageLog } from '@demicodes/web-ui/infra/log'
+import { viewAbandoned, viewOpened, viewRead } from '@demicodes/web-ui/infra/view-timing'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
@@ -67,7 +68,7 @@ import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demi
 import { createConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
 import { SessionError } from '@demicodes/conversation-client'
 import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
-import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
+import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, logReadAnswered, logReadFailed, readResponse } from '../api/client'
 import { readSaved } from '../api/saved'
 import type { z } from 'zod'
 import { loadDraft } from '../api/drafts'
@@ -224,7 +225,7 @@ export const useConversations = defineStore('conversations', () => {
   /** How many changes made in one step are under way (`atOnce`); none is saved halfway. */
   let steps = 0
   const uploads = createConversationUploads(saveDrafts, (error) =>
-    report(t('failures.uploadAttachment'), error),
+    report('failures.uploadAttachment', t('failures.uploadAttachment'), error),
   )
   const { uploadInComposer, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
   const recordSync = createRecordSync({
@@ -275,12 +276,12 @@ export const useConversations = defineStore('conversations', () => {
   const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
   // A failed operation is a toast; server state is never replaced by a message.
-  function report(title: HeadlineText, error: unknown, options: ReportErrorOptions = {}): void {
+  function report(site: string, title: HeadlineText, error: unknown, options: Omit<ReportErrorOptions, 'site'> = {}): void {
     if (isAbortError(error)) {
       return
     }
     if (!lifetime.signal.aborted) {
-      reportError(title, error, { ...options, userVisible: true })
+      reportError(title, error, { ...options, site, userVisible: true })
     }
   }
 
@@ -299,18 +300,21 @@ export const useConversations = defineStore('conversations', () => {
     switch (kind) {
       case 'save':
         reportError(t('failures.saveDrafts'), error, {
+          site: 'failures.saveDrafts',
           userVisible: true,
           message: t('drafts.storeFailed'),
         })
         break
       case 'restore':
         reportError(t('failures.restoreDrafts'), error, {
+          site: 'failures.restoreDrafts',
           userVisible: true,
           message: t('drafts.readFailed'),
         })
         break
       case 'unreadable':
         reportError(t('failures.restoreStoredDraft'), error, {
+          site: 'failures.restoreStoredDraft',
           userVisible: true,
           detail,
           message: t('drafts.unreadable'),
@@ -1068,7 +1072,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     conversation.comments = comments
     saveDrafts()
-    void recordSync.save(conversation).catch((error) => report(t('failures.saveDraft'), error))
+    void recordSync.save(conversation).catch((error) => report('failures.saveDraft', t('failures.saveDraft'), error))
   }
 
   /** What the replies' comments do in the conversation's draft (`ReplyCommenting`). */
@@ -1142,6 +1146,13 @@ export const useConversations = defineStore('conversations', () => {
       }
       return
     }
+    pageLog.info('conversation.activated', {
+      previous: previous?.id ?? null,
+      held: cache.get(conversation.id) !== undefined,
+      load: conversation.load,
+      persistence: conversation.persistence,
+      rows_held: latestBlocks(conversation.history).length,
+    }, conversation.id)
     if (conversation.persistence === 'synced') {
       copies.opened(conversation.id)
     }
@@ -1209,6 +1220,7 @@ export const useConversations = defineStore('conversations', () => {
         reportError(
           node === null ? t('failures.readAgents') : t('failures.readMessages'),
           new Error(`A change of ${node ?? 'the agents'} did not follow what the page holds (${reason})`),
+          { site: node === null ? 'failures.readAgents' : 'failures.readMessages', conversation: id },
         )
       },
       conversationFrame: (frame: unknown) => {
@@ -1320,16 +1332,19 @@ export const useConversations = defineStore('conversations', () => {
     const path = `/conversations/${encodeURIComponent(id)}`
     const began = performance.now()
     const detail = apiRequest(path, { signal })
-      .then((response) => readResponse(response, conversationDetailSchema))
-      .then((read) => {
-        pageLog.info('read.answered', {
+      .then(async (response) => {
+        const read = await readResponse(response, conversationDetailSchema)
+        logReadAnswered(response, began, {
           read: 'conversation',
           agents: read.entries.length,
           revision: read.agents.revision,
           epoch: read.agents.epoch,
-          ms: Math.round(performance.now() - began),
         }, id)
         return read
+      })
+      .catch((error: unknown) => {
+        logReadFailed(error, began, { read: 'conversation' }, id)
+        throw error
       })
     if (!whole) {
       return { detail: await detail, whole: null }
@@ -1355,20 +1370,26 @@ export const useConversations = defineStore('conversations', () => {
   async function fetchTranscript(id: string, node: string, signal: AbortSignal, earlier: boolean): Promise<TranscriptRead> {
     const query = earlier ? 'latest=true&earlier=true' : 'latest=true'
     const began = performance.now()
-    const response = await apiRequest(`/conversations/${encodeURIComponent(id)}/agents/${encodeURIComponent(node)}/transcript?${query}`, { signal })
-    const page = await readResponse(response, transcriptPageSchema)
-    if (!page.version) {
-      throw new Error('The latest page names no version of its transcript')
+    try {
+      const response = await apiRequest(`/conversations/${encodeURIComponent(id)}/agents/${encodeURIComponent(node)}/transcript?${query}`, { signal })
+      const page = await readResponse(response, transcriptPageSchema)
+      if (!page.version) {
+        throw new Error('The latest page names no version of its transcript')
+      }
+      viewRead(id, node === id ? null : node)
+      logReadAnswered(response, began, {
+        read: 'transcript',
+        node,
+        earlier,
+        blocks: page.blocks.length,
+        revision: page.version.revision,
+        epoch: page.version.epoch,
+      }, id)
+      return { ...page, version: page.version }
+    } catch (error) {
+      logReadFailed(error, began, { read: 'transcript', node, earlier }, id)
+      throw error
     }
-    pageLog.info('read.answered', {
-      read: 'transcript',
-      node,
-      blocks: page.blocks.length,
-      revision: page.version.revision,
-      epoch: page.version.epoch,
-      ms: Math.round(performance.now() - began),
-    }, id)
-    return { ...page, version: page.version }
   }
 
   /** Starts the reads of a first load by address, which the opening takes. */
@@ -1549,7 +1570,7 @@ export const useConversations = defineStore('conversations', () => {
    * page's words; the error itself goes to the console.
    */
   function failOpening(conversation: Conversation, error: unknown): void {
-    console.error('The conversation did not open', error)
+    void pageLog.error('conversation.open_failed', errorFields(error), conversation.id)
     conversation.load = 'failed'
     // A refusal is worded from its code, as `conversation_unreadable` is in
     // the page's words rather than the server's, which name its files.
@@ -1888,12 +1909,14 @@ export const useConversations = defineStore('conversations', () => {
     }
     conversation.shownSubagent = id
     if (previous !== null) {
+      viewAbandoned(conversation.id, previous)
       history.release(conversation, previous)
     }
     if (id === null) {
       return
     }
     const agent = conversation.subagents.find((each) => each.id === id)
+    viewOpened(conversation.id, id, 'agents_window')
     pageLog.info('subagent.shown', {
       node: id,
       held: agent ? latestBlocks(agent.history).length : 0,
@@ -1942,7 +1965,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   const watchLastHour = createLastHourWatch({
     read: (conversationId, signal) => readLastHourCost(conversationId, signal),
-    failed: (error) => report(t('failures.readLastHour'), error),
+    failed: (error) => report('failures.readLastHour', t('failures.readLastHour'), error),
   })
 
   async function runtimeFor(
@@ -2046,7 +2069,7 @@ export const useConversations = defineStore('conversations', () => {
       reportError(
         t('failures.fieldsNotUpdated'),
         failed.map((field) => `${field.field}: ${field.message}`).join('\n'),
-        { userVisible: true, expected: true },
+        { site: 'failures.fieldsNotUpdated', userVisible: true, expected: true },
       )
     }
     return failed.length === 0
@@ -2179,7 +2202,7 @@ export const useConversations = defineStore('conversations', () => {
         return { success, changed }
       })
     } catch (error) {
-      report(t('failures.updateConversations'), error)
+      report('failures.updateConversations', t('failures.updateConversations'), error)
       return { success: false, changed }
     } finally {
       // A change the answer did not name, or one whose write failed, leaves.
@@ -2283,7 +2306,7 @@ export const useConversations = defineStore('conversations', () => {
       for (const removal of removals.values()) {
         removal.drop()
       }
-      report(t('failures.deleteConversations'), error)
+      report('failures.deleteConversations', t('failures.deleteConversations'), error)
       return false
     }
   }
@@ -2440,7 +2463,7 @@ export const useConversations = defineStore('conversations', () => {
         change.drop()
         // A conversation another page deleted meanwhile has no title to change.
         if (errorCode(error) !== 'conversation_not_found') {
-          report(t('failures.renameConversation'), error)
+          report('failures.renameConversation', t('failures.renameConversation'), error)
         }
       })
   }
@@ -2499,7 +2522,7 @@ export const useConversations = defineStore('conversations', () => {
         // A move naming a conversation another page deleted meanwhile has
         // nothing to say; the channel brings the order there is.
         if (errorCode(error) !== 'conversation_not_found') {
-          report(t('failures.reorderConversations'), error)
+          report('failures.reorderConversations', t('failures.reorderConversations'), error)
         }
       })
   }
@@ -2571,7 +2594,7 @@ export const useConversations = defineStore('conversations', () => {
         if (errorCode(error) === 'conversation_not_found') {
           return
         }
-        report(t('failures.updateReadStatus'), error)
+        report('failures.updateReadStatus', t('failures.updateReadStatus'), error)
       })
     return acknowledgement.done
   }
@@ -2589,7 +2612,7 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       // A conversation another page deleted meanwhile has nothing to reload.
       if (errorCode(error) !== 'conversation_not_found') {
-        report(t('failures.reloadConversation'), error)
+        report('failures.reloadConversation', t('failures.reloadConversation'), error)
       }
     }
   }
@@ -2621,7 +2644,7 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       // A conversation another page deleted meanwhile has no device attached.
       if (errorCode(error) !== 'conversation_not_found') {
-        report(t('failures.detachDevice'), error)
+        report('failures.detachDevice', t('failures.detachDevice'), error)
       }
     }
   }
@@ -2675,7 +2698,7 @@ export const useConversations = defineStore('conversations', () => {
       }
     } catch (error) {
       shown.drop()
-      report(t('failures.changeModel'), error)
+      report('failures.changeModel', t('failures.changeModel'), error)
     }
   }
 
@@ -2735,7 +2758,7 @@ export const useConversations = defineStore('conversations', () => {
       })
       .catch((error) => {
         change.drop()
-        report(t('failures.changeWorkflow'), error)
+        report('failures.changeWorkflow', t('failures.changeWorkflow'), error)
       })
   }
 
@@ -2837,7 +2860,7 @@ export const useConversations = defineStore('conversations', () => {
     try {
       await uploaded(conversation)
     } catch (error) {
-      report(t('failures.saveMessage'), error)
+      report('failures.saveMessage', t('failures.saveMessage'), error)
       return
     }
     await recordSync.saveForLater(conversation, crypto.randomUUID(), composerWriting(conversation).writing)
@@ -2903,7 +2926,7 @@ export const useConversations = defineStore('conversations', () => {
       },
       (error: unknown) => {
         if (!(error instanceof ApiError && error.code === 'saved_not_found')) {
-          report(t('failures.readSaved'), error)
+          report('failures.readSaved', t('failures.readSaved'), error)
         }
       },
     )
@@ -3107,7 +3130,32 @@ export const useConversations = defineStore('conversations', () => {
     const carried = comments.map((comment) => ({ ...comment }))
     conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, comments: carried, error: null, followers: [], ...(saved ? { saved } : {}), ...(edited ? { edited: true as const } : {}) }]
     sentNow(conversation, id)
+    pageLog.info('message.sent', {
+      message: id,
+      way,
+      saved: saved !== undefined,
+      attachments: fileIds.length,
+      comments: comments.length,
+      held_before: conversation.pendingSends.length - 1,
+    }, conversation.id)
     return conversation.pendingSends.find((pending) => pending.id === id)!
+  }
+
+  /**
+   * Writes each change of where a message on its way stands (`composing` is
+   * the composer, before the send; `uploading` waits for its files; `sending`
+   * has been given to the session; `delivered` is accepted; `failed` is
+   * refused), with how long it stood in the one it left. Answers the change.
+   */
+  function trackSend(conversationId: string, message: string): (to: 'uploading' | 'sending' | 'delivered' | 'failed', cause: string) => void {
+    let state: 'composing' | 'uploading' | 'sending' | 'delivered' | 'failed' = 'composing'
+    let since = performance.now()
+    return (to, cause) => {
+      const now = performance.now()
+      pageLog.info('message.state_changed', { message, from: state, to, cause, ms: Math.round(now - since) }, conversationId)
+      state = to
+      since = now
+    }
   }
 
   /**
@@ -3180,6 +3228,15 @@ export const useConversations = defineStore('conversations', () => {
     delete pending.requestId
     // The files in the order of their marks in the text.
     const files = filesById(conversation, pending.fileIds)
+    const moved = trackSend(conversation.id, pending.id)
+    moved(files.length > 0 ? 'uploading' : 'sending', 'delivery_started')
+    const sentFiles = async () => {
+      const content = await sentContent(conversation, pending)
+      if (files.length > 0) {
+        moved('sending', 'files_uploaded')
+      }
+      return content
+    }
     saveDrafts()
     // A backend out of reach fails nothing: the record's request waits in the
     // HTTP client, and the message waits in the runtime for the conversation
@@ -3189,6 +3246,7 @@ export const useConversations = defineStore('conversations', () => {
     try {
       if (pending.saved) {
         await deliverSaved(conversation, pending, pending.saved, way)
+        moved('delivered', 'accepted')
         return
       }
       if (way === 'message' && conversation.persistence !== 'synced') {
@@ -3196,20 +3254,23 @@ export const useConversations = defineStore('conversations', () => {
         // files are uploaded. It stays on its way until the session shows it,
         // which the socket's opening brings, so the tail row says Requesting
         // throughout.
-        const content = await sentContent(conversation, pending)
+        const content = await sentFiles()
         await persistConversation(conversation, {
           messageId: pending.id,
           content,
           ...(pending.comments.length > 0 ? { comments: pending.comments } : {}),
         })
         void runtimeFor(conversation).catch(() => {})
+        moved('delivered', 'created_with_conversation')
         return
       }
-      const [content] = await Promise.all([sentContent(conversation, pending), persistConversation(conversation)])
+      const [content] = await Promise.all([sentFiles(), persistConversation(conversation)])
       const runtime = await runtimeFor(conversation)
       await (way === 'steer' ? runtime.steer(content, pending.id, pending.comments) : runtime.submit(content, pending.id, pending.comments))
       clearSubmission(conversation, pending.id)
+      moved('delivered', 'accepted')
     } catch (error) {
+      moved('failed', errorCode(error) ?? (error instanceof Error ? error.name : 'unknown'))
       // The page let the conversations go, as a sign-out does, or the message is no longer one to send.
       if (!signal.aborted && current()) {
         const wish = wishes.get(pending.id)
@@ -3231,7 +3292,7 @@ export const useConversations = defineStore('conversations', () => {
           // others again, the draft and they as they were, and says why.
           withdrawSend(conversation, pending)
           setComments(conversation, [...conversation.comments, ...pending.comments])
-          report(t('failures.sendComment'), error)
+          report('failures.sendComment', t('failures.sendComment'), error)
         } else {
           // Its row comes back, undelivered with the reason and the request
           // it was refused on: a draft the composer holds is not to be
@@ -3433,7 +3494,7 @@ export const useConversations = defineStore('conversations', () => {
       conversation.comments = [...conversation.comments, ...pending.comments]
     })
     // The backend's draft may still hold the message as it was sent.
-    void recordSync.save(conversation).catch((error) => report(t('failures.saveDraft'), error))
+    void recordSync.save(conversation).catch((error) => report('failures.saveDraft', t('failures.saveDraft'), error))
   }
 
   /**
@@ -3497,7 +3558,7 @@ export const useConversations = defineStore('conversations', () => {
     // Once no message is on its way, the backend has accepted them all: the
     // draft they were written in goes too, everywhere, and a change another
     // page made meanwhile stays to restore.
-    void recordSync.save(conversation).catch((error) => report(t('failures.clearDraft'), error))
+    void recordSync.save(conversation).catch((error) => report('failures.clearDraft', t('failures.clearDraft'), error))
     return true
   }
 
@@ -3571,7 +3632,7 @@ export const useConversations = defineStore('conversations', () => {
           giveBack(conversation, back)
         }
         if (!(error instanceof RemovalRefusedError)) {
-          report(t('failures.recallMessage'), error)
+          report('failures.recallMessage', t('failures.recallMessage'), error)
         }
       })
       .finally(() => stopRemoving(conversation, id))
@@ -3737,13 +3798,13 @@ export const useConversations = defineStore('conversations', () => {
         // The socket dropped before the session answered: the page cannot
         // tell whether it got the request, and never sends it again. The drop
         // itself is reported where the socket was replaced.
-        report(t('failures.connectionLost'), error, {
+        report('failures.connectionLost', t('failures.connectionLost'), error, {
           expected: true,
           message: t('failures.connectionLostMessage'),
         })
       } else if (!isRecordedTurnFailure(error)) {
         // A turn that ran and failed is already a record in the transcript.
-        report(t('failures.requestNotAccepted'), error)
+        report('failures.requestNotAccepted', t('failures.requestNotAccepted'), error)
       }
       return false
     }
@@ -3880,9 +3941,9 @@ export const useConversations = defineStore('conversations', () => {
     deleteSaved,
     retrySaved,
     restoreReplaced: (conversation: Conversation) =>
-      void recordSync.act(conversation, 'restore').catch((error) => report(t('failures.restoreDraft'), error)),
+      void recordSync.act(conversation, 'restore').catch((error) => report('failures.restoreDraft', t('failures.restoreDraft'), error)),
     dismissReplaced: (conversation: Conversation) =>
-      void recordSync.act(conversation, 'dismiss').catch((error) => report(t('failures.dismissDraft'), error)),
+      void recordSync.act(conversation, 'dismiss').catch((error) => report('failures.dismissDraft', t('failures.dismissDraft'), error)),
     initialize,
     stopAll,
     abortSubagents: (conversation: Conversation) =>

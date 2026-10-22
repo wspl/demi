@@ -63,7 +63,7 @@ async function signOut(): Promise<void> {
     // A new document releases account-scoped stores, sockets and draft data.
     window.location.replace('/login')
   } catch (error) {
-    reportError(t('login.signOutFailed'), error, { userVisible: true })
+    reportError(t('login.signOutFailed'), error, { site: 'login.signOutFailed', userVisible: true })
   }
 }
 </script>

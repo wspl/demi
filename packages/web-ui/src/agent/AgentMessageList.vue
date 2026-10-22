@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { ShownError } from '../infra/errors'
+import { pageLog } from '../infra/log'
+import { viewReady } from '../infra/view-timing'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, onScopeDispose, ref, watch } from 'vue'
 import { useDebounceFn, useElementSize, useResizeObserver } from '@vueuse/core'
@@ -53,6 +55,12 @@ import { provideReplySelectionTools } from './reply-selection'
 
 const props = withDefaults(defineProps<{
   conversationId: string
+  /**
+   * The conversation the agent `node` belongs to, which the list's lines in the
+   * log are written under, since `conversationId` then names the agent. A list
+   * of a node that is told none writes its lines under no conversation.
+   */
+  conversation?: string
   /**
    * The agent whose transcript this is: null for the conversation's own, a
    * subagent's id otherwise.
@@ -225,6 +233,8 @@ function answerShare(blockId: string): AnswerShare {
   return { start: () => props.share!(blockId) }
 }
 
+/** The conversation the list's lines are written under; none for an agent's list that was not told which. */
+const logConversation = computed(() => props.node ? props.conversation : props.conversationId)
 const historyReading = useHistoryReading()
 const {
   visibleBlocks,
@@ -392,7 +402,10 @@ const {
   getPersistedState,
   anchorId,
 } =
-  useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, { keyOf })
+  useBlockVirtualizer(scrollContainer, renderBlocks, props.persistedScrollState, {
+    keyOf,
+    log: { conversation: () => logConversation.value, node: () => props.node ?? null },
+  })
 
 onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
@@ -487,6 +500,34 @@ const PREFETCH_SCREENS = 3
 const nearStart = computed(() => !props.atStart && scrollOffset.value < PREFETCH_SCREENS * viewportHeight.value)
 const nearEnd = computed(() =>
   !props.atEnd && totalSize.value - scrollOffset.value - viewportHeight.value < PREFETCH_SCREENS * viewportHeight.value)
+// The view's first rows: the moment the reader has something to read.
+watch(
+  [() => props.node ?? props.conversationId, () => renderBlocks.value.some((row) => row.type !== 'activity_slot' && row.type !== 'session_failure' && row.type !== 'history_edge')],
+  ([view, shown]) => {
+    if (shown) {
+      viewReady(view, renderBlocks.value.length)
+    }
+  },
+  { immediate: true, flush: 'post' },
+)
+// The view coming near an edge of the window, or leaving it, is the moment the
+// list asks for a page there: each crossing is a line, with what the window
+// holds, so a page that was never asked for shows as a crossing with no read.
+watch([nearStart, nearEnd], ([start, end], [wasStart, wasEnd]) => {
+  for (const [edge, near, was] of [['start', start, wasStart], ['end', end, wasEnd]] as const) {
+    if (near !== was && placed.value) {
+      pageLog.info(near ? 'list.edge_neared' : 'list.edge_left', {
+        edge,
+        ...(props.node ? { node: props.node } : {}),
+        rows: renderBlocks.value.length,
+        blocks: props.blocks.length,
+        at_start: props.atStart,
+        at_end: props.atEnd,
+        scroll_top_px: Math.round(scrollOffset.value),
+      }, logConversation.value)
+    }
+  }
+})
 /** A stale block, held from before a reset that could not vouch for it, is a hole the host reads again while it shows (`resetTranscript`). */
 const hasStale = computed(() => props.blocks.some((block) => block.stale))
 

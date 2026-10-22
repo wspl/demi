@@ -717,7 +717,7 @@ async function addModel(draft: SettingsModelDraft): Promise<void> {
   try {
     await answerInDialog(
       () => (modelSearch.value === search && search.open ? search : null),
-      t('providers.addModelFailed'),
+      'providers.addModelFailed', t('providers.addModelFailed'),
       (error) => formError(error, { invalid_body: null, duplicate_model: t('providers.duplicateModel') }),
       async () => {
         await props.saveModel(provider, model, null)
@@ -797,7 +797,7 @@ async function saveModel(draft: SettingsModelDraft): Promise<void> {
   // A refused field of the model is the user's to correct in the dialog.
   await answerInDialog(
     () => shownModelEditor(provider.id, original?.id ?? null),
-    t('providers.saveModelFailed'),
+    'providers.saveModelFailed', t('providers.saveModelFailed'),
     (error) => formError(error, { invalid_body: null, duplicate_model: t('providers.duplicateModel') }),
     async () => {
       await props.saveModel(provider, draft, original)

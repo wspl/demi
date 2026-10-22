@@ -47,6 +47,7 @@
 import { effectScope, reactive, ref, watch } from 'vue'
 import { z } from 'zod'
 import { defaultWindow } from '@vueuse/core'
+import { logStorageFailed, pageLog } from '@demicodes/web-ui/infra/log'
 import { browserOnline } from '@demicodes/web-ui/transport/liveness'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
@@ -152,7 +153,7 @@ function keptMeasurement(deviceId: string): MeterState {
   } catch (error) {
     // The browser's storage is optional, and an entry that is not a
     // measurement is shown as none rather than repaired.
-    console.warn('Could not read the last measurement of a device', error)
+    logStorageFailed('measurement', 'read', error, { host_id: deviceId })
     return meterState()
   }
 }
@@ -163,7 +164,7 @@ function keepMeasurement(deviceId: string, measured: MeterState): void {
     localStorage.setItem(measuredKey(deviceId), JSON.stringify({ figures: measured.figures, measuredAt: measured.measuredAt }))
   } catch (error) {
     // Private browsing and storage quotas only cost the figures next time.
-    console.warn('Could not keep the last measurement of a device', error)
+    logStorageFailed('measurement', 'write', error, { host_id: deviceId })
   }
 }
 
@@ -183,6 +184,15 @@ function pathStatus(state: DirectState): PathStatus {
   return { peer: state.peer, chosen: state.choice === 'direct', attempt: state.attempt }
 }
 
+/** Why a device's path is what it is, for the log: what of its state decided it. */
+function pathCause(state: DirectState): string {
+  if (state.blocked)
+    return 'blocked'
+  if (!state.peer)
+    return state.trying ? 'peer_lost_trying' : 'peer_lost'
+  return state.choice === 'direct' ? 'peer_chosen' : 'relay_chosen'
+}
+
 /** Where this browser keeps the path it found to paired device `deviceId`. */
 const lastPathKey = (deviceId: string) => `demi.devicePath.${deviceId}`
 const lastPathSchema = z.enum(DEVICE_PATHS)
@@ -199,7 +209,7 @@ export function lastDirectPath(deviceId: string): DevicePath | null {
   } catch (error) {
     // The browser's storage is optional, and an entry that is not a path
     // is shown as none rather than repaired.
-    console.warn('Could not read the last path to a device', error)
+    logStorageFailed('path', 'read', error, { host_id: deviceId })
     return null
   }
 }
@@ -210,7 +220,7 @@ function keepLastPath(deviceId: string, path: DevicePath): void {
     localStorage.setItem(lastPathKey(deviceId), path)
   } catch (error) {
     // Private browsing and storage quotas only cost the faint path next time.
-    console.warn('Could not keep the last path to a device', error)
+    logStorageFailed('path', 'write', error, { host_id: deviceId })
   }
 }
 
@@ -372,8 +382,11 @@ export function followDirect(): void {
       (paths, before) => {
         for (const [deviceId, path] of paths) {
           const previous = before.find(([id]) => id === deviceId)?.[1]
-          if (previous !== undefined && previous !== path)
+          if (previous !== undefined && previous !== path) {
+            const state = states.get(deviceId)
+            pageLog.info('direct_path.changed', { host_id: deviceId, from: previous, to: path, cause: state ? pathCause(state) : 'released' })
             void used.get(deviceId)?.meter.measure()
+          }
         }
       },
     )

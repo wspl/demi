@@ -52,7 +52,7 @@ setHistoryTraversal((delta) => router.options.history.go(delta, false))
 // answers with the report's request ID; the gallery has no backend, so its
 // reporter answers with a simulated ID a moment later.
 reportPageErrorsWith((report) => new Promise((resolve) => {
-  setTimeout(() => resolve(simulatedRequestId(`${report.title}\n${report.detail}`)), 400)
+  setTimeout(() => resolve(simulatedRequestId(`${report.site}\n${report.detail}`)), 400)
 }))
 const app = createApp(App).use(router).use(i18n)
 // As in the product, what no code caught is reported like any defect.

@@ -1,4 +1,6 @@
 import { computed, effectScope, ref, shallowRef, watch, watchEffect } from 'vue'
+import { errorFields } from '../infra/errors'
+import { pageLog } from '../infra/log'
 import { followAppearance, pageTopColor } from '../theme/themeColor'
 import { conversationDotTone } from './conversation-dot'
 import { t } from './locales/text'
@@ -172,7 +174,7 @@ export function followTabAttention(source: TabAttentionSource): () => void {
         // The tab keeps its plain icon, and the title still says what is new;
         // the next change reads the icon again.
         plainIcon = null
-        console.warn('The tab icon was not read', error)
+        pageLog.warn('tab_icon.read_failed', errorFields(error))
       },
     )
   }

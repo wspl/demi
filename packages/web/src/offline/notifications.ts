@@ -19,6 +19,14 @@ export const WORDS_KEY = '/words'
 /** What a page tells the worker of a click: open the conversation. */
 export const OPEN_CONVERSATION = 'demi-open-conversation'
 
+/**
+ * What the worker tells a page of a failure of its own, for the page to write in
+ * the log: the worker has no page ID and sends nothing to the log itself. The
+ * message is `{ type, event, fields }`; a push that comes while no page is open
+ * leaves no line.
+ */
+export const WORKER_LOG = 'demi-worker-log'
+
 /** How much of the answer a notification says, because a system notification shows only so much. */
 const ANSWER_START_CHARS = 120
 
@@ -112,17 +120,18 @@ const NO_WORDS: NotificationWords = {
 export async function pushedNotification(
   message: unknown,
   readWords: () => Promise<NotificationWords | null>,
+  failed: (event: string, fields: Record<string, string | number>) => void,
 ): Promise<{ title: string; options?: NotificationOptions }> {
   const parsed = pushMessageSchema.safeParse(message)
   if (!parsed.success) {
-    console.error('A push does not read', parsed.error)
+    failed('push.unreadable', { where: 'shape', error_class: parsed.error.name, issues: parsed.error.issues.length })
     return { title: 'demi' }
   }
   let words: NotificationWords | null = null
   try {
     words = await readWords()
   } catch (error) {
-    console.error('The notification words could not be read', error)
+    failed('notification_words.read_failed', { error_class: error instanceof Error ? error.name : typeof error })
   }
   return notificationOf(parsed.data, words ?? NO_WORDS)
 }

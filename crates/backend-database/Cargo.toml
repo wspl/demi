@@ -47,6 +47,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rusqlite = "0.8"
 tracing.workspace = true
+# `DEMI_LOG`'s targets, which a page's lines are held to (`server_log`).
+tracing-subscriber.workspace = true
 uuid = { version = "1", features = ["v4"] }
 # The passkeys and their challenges the control store keeps
 # (`crates/backend/src/config/secret.rs`), as `webauthn-rs` encodes them.

@@ -72,7 +72,7 @@ const useExposedPortStore = defineStore('exposed-port-settings', () => {
       product.answered(at, portsAnswer((current) => withPort(current, answer.port)))
       return answer.port.id
     } catch (error) {
-      reportError(t('exposedPorts.exposeFailed'), error, { userVisible: true })
+      reportError(t('exposedPorts.exposeFailed'), error, { site: 'exposedPorts.exposeFailed', userVisible: true })
       return null
     }
   }
@@ -91,7 +91,7 @@ const useExposedPortStore = defineStore('exposed-port-settings', () => {
       if (refusedField(error)) {
         throw error
       }
-      reportError(t('exposedPorts.saveFailed'), error, { userVisible: true })
+      reportError(t('exposedPorts.saveFailed'), error, { site: 'exposedPorts.saveFailed', userVisible: true })
     }
   }
 
@@ -101,7 +101,7 @@ const useExposedPortStore = defineStore('exposed-port-settings', () => {
       await apiRequest(`/exposed-ports/${encodeURIComponent(id)}`, { method: 'DELETE' })
       product.answered(at, portsAnswer((current) => current.filter((exposed) => exposed.id !== id)))
     } catch (error) {
-      reportError(t('exposedPorts.removeFailed'), error, { userVisible: true })
+      reportError(t('exposedPorts.removeFailed'), error, { site: 'exposedPorts.removeFailed', userVisible: true })
     }
   }
 

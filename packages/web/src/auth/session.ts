@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { coded, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { coded, errorFields, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import {
   identitySchema,
   setupStatusSchema,
@@ -254,7 +255,7 @@ export const useSession = defineStore('session', {
       }
       // Deleted before the page loads itself again, which could cut it short;
       // one that stays is replaced by the next account that signs in.
-      await deleteAccountCache().catch((cause: unknown) => console.error('The cache for opening offline was not deleted', cause))
+      await deleteAccountCache().catch((cause: unknown) => pageLog.warn('offline_cache.delete_failed', errorFields(cause)))
       this.current = { status: 'signedOut' }
     },
   },

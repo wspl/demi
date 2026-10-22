@@ -122,7 +122,7 @@ const usePasskeyStore = defineStore('passkeys', () => {
       })
       .catch((error) => {
         shown.drop()
-        reportError(t('passkeys.renameFailed'), error, { userVisible: true })
+        reportError(t('passkeys.renameFailed'), error, { site: 'passkeys.renameFailed', userVisible: true })
       })
   }
 
@@ -133,7 +133,7 @@ const usePasskeyStore = defineStore('passkeys', () => {
     } catch (error) {
       // A passkey already removed is what was asked: its row leaves all the same.
       if (!(error instanceof ApiError && error.code === 'passkey_not_found')) {
-        reportError(t('passkeys.removeFailed'), error, { userVisible: true })
+        reportError(t('passkeys.removeFailed'), error, { site: 'passkeys.removeFailed', userVisible: true })
         return
       }
     }

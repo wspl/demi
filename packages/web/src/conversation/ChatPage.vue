@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { isAbortError } from '@demicodes/utils'
 import { coded } from '@demicodes/web-ui/infra/errors'
-import { pageLog } from '@demicodes/web-ui/infra/log'
+import { viewAbandoned, viewOpened } from '@demicodes/web-ui/infra/view-timing'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -124,8 +123,11 @@ const pageKind = computed(() =>
 watch(
   () => props.id,
   (id, previous) => {
+    if (previous) {
+      viewAbandoned(previous, null)
+    }
     if (id) {
-      pageLog.info('view.opened', { view: 'conversation', from: previous === undefined ? 'load' : 'navigation' }, id)
+      viewOpened(id, null, previous === undefined ? 'load' : 'navigation')
     }
     void store.activate(id ?? null, { newConversation: navigation.showsNewConversation() })
   },
@@ -197,12 +199,8 @@ const hasProvider = computed(() =>
  * again, so it is only logged.
  */
 function readHistory(read: Promise<void>): void {
-  read.catch((error: unknown) => {
-    // A read nobody needed any more was stopped.
-    if (!isAbortError(error)) {
-      console.warn('A page of the transcript was not read', error)
-    }
-  })
+  // The read wrote its own failure (`history-reads.ts`).
+  read.catch(() => {})
 }
 
 // Once the first conversation has shown, what its regions need, the highlighter,

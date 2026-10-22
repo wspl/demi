@@ -73,6 +73,9 @@ const PONG_MS = 5_000
  */
 const EXPECTED_ENDS = new Set(['host_unreachable', 'conversation_changed', 'backend_closing'])
 
+/** The conversation a socket's URL names, as `/api/conversations/<id>/socket` does. */
+const CONVERSATION_OF_URL = /\/conversations\/([^/]+)/
+
 /** Why the page let an open socket go that had not closed. */
 type Break = 'silence' | 'return' | 'probe'
 
@@ -96,6 +99,10 @@ const watched = new Set<(judged: () => void) => void>()
 const opening = new Map<WebSocket, { since: number; abandon: () => void }>()
 /** How many times the page went away: hidden, frozen, put in the back-forward cache or offline. */
 let absences = 0
+/** When the page went away, by the wall clock; null while it is here. */
+let awaySince: number | null = null
+/** The sockets the return check let go, as broken or abandoned, which `page.returned` counts. */
+let letGoAtReturn = 0
 /** The number of the page's last ping, which each next one counts on from. */
 let lastPing = 0
 
@@ -115,7 +122,7 @@ const waiting = new Set<() => void>()
 
 /** Reports why the page replaced its socket named `name`, for a developer; the user sees what the page shows. */
 function reportReplaced(name: string, why: string): void {
-  reportError(t('socketReplaced'), `The ${name} ${why}`, { userVisible: false })
+  reportError(t('socketReplaced'), `The ${name} ${why}`, { site: 'socketReplaced', userVisible: false })
 }
 
 /**
@@ -148,6 +155,9 @@ export function openSocket(url: string | URL, name: string): WebSocket {
   const socket = new WebSocket(target)
   const startedAt = performance.now()
   const ms = () => Math.round(performance.now() - startedAt)
+  /** The conversation the socket is of, when its URL names one. */
+  const conversation = CONVERSATION_OF_URL.exec(target.pathname)?.[1]
+  let openMs = 0
   let opened = false
   let closedByPage = false
   // The close event does not say who started the close: a page's close of
@@ -178,24 +188,26 @@ export function openSocket(url: string | URL, name: string): WebSocket {
     abandon: () => {
       settled()
       abandoned = true
+      letGoAtReturn += 1
       reportReplaced(name, 'was still opening when the page returned')
       socket.close()
     },
   })
   socket.addEventListener('open', () => {
     opened = true
-    pageLog.info('socket.opened', { socket: name, ms: ms() })
+    openMs = ms()
+    pageLog.info('socket.opened', { socket: name, open_ms: openMs }, conversation)
   }, { once: true })
   socket.addEventListener('open', settled)
   socket.addEventListener('close', settled)
   socket.addEventListener('close', (event: CloseEvent) => {
-    pageLog.info(opened ? 'socket.closed' : 'socket.failed', {
-      socket: name,
-      code: event.code,
-      reason: event.reason,
-      by: closedByPage ? 'page' : 'backend',
-      ms: ms(),
-    })
+    // A socket that never opened could not be made: its time is the wait for the handshake.
+    const fields = { socket: name, code: event.code, reason: event.reason, by: closedByPage ? 'page' : 'backend' }
+    if (opened) {
+      pageLog.info('socket.closed', { ...fields, open_ms: openMs, life_ms: ms() }, conversation)
+    } else {
+      pageLog.warn('socket.failed', { ...fields, open_ms: ms() }, conversation)
+    }
     // A socket that never opened is one more attempt that failed; 1000 is
     // a normal end, which its owner does not replace.
     if (opened && !closedByPage && event.code !== 1000 && !EXPECTED_ENDS.has(event.reason)) {
@@ -296,6 +308,9 @@ export function watchSilence(name: string, broken: () => void, ping?: (id: numbe
     watched.delete(watch)
   }
   const lose = (why: Break) => {
+    if (why !== 'silence') {
+      letGoAtReturn += 1
+    }
     stop()
     reportReplaced(name, BREAK_WORDS[why])
     broken()
@@ -393,12 +408,16 @@ export function waitToReconnect(failures: number, connect: () => void): Reconnec
 
 /** Calls `connect` once, after `ms` or at the page's return. */
 function wait(ms: number, connect: () => void): ReconnectWait {
+  const began = performance.now()
   const cancel = () => {
     clearTimeout(timer)
     waiting.delete(now)
   }
   const now = () => {
     cancel()
+    // The wait ends here, by its timer or, sooner, by the page's return.
+    const waited = Math.round(performance.now() - began)
+    pageLog.info('reconnect.waited', { planned_ms: Math.round(ms), waited_ms: waited, by: waited >= ms ? 'timer' : 'return' })
     connect()
   }
   const timer = setTimeout(now, ms)
@@ -425,6 +444,7 @@ let returnCheck: { done: Promise<void>; absence: number } | null = null
  */
 export function pageWentAway(): void {
   absences += 1
+  awaySince ??= Date.now()
 }
 
 /**
@@ -459,8 +479,13 @@ export function pageReturned(): Promise<void> {
     return returnCheck.done
   }
   const absence = absences
+  const hiddenMs = awaySince === null ? 0 : Date.now() - awaySince
+  awaySince = null
   const done = new Promise<void>((resolve) => {
     afterQueuedTasks(() => {
+      const began = performance.now()
+      letGoAtReturn = 0
+      const checked = watched.size + [...opening.entries()].filter(([socket, { since }]) => since < absences && socket.readyState === WebSocket.CONNECTING).length
       for (const [socket, { since, abandon }] of [...opening]) {
         if (since < absences && socket.readyState === WebSocket.CONNECTING) {
           abandon()
@@ -474,6 +499,13 @@ export function pageReturned(): Promise<void> {
           if (returnCheck?.done === done) {
             returnCheck = null
           }
+          pageLog.info('page.returned', {
+            hidden_ms: hiddenMs,
+            sockets_checked: checked,
+            alive: Math.max(0, checked - letGoAtReturn),
+            dead: Math.min(checked, letGoAtReturn),
+            check_ms: Math.round(performance.now() - began),
+          })
           resolve()
         }
       }

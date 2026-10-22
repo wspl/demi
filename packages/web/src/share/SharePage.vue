@@ -9,7 +9,8 @@ import { pageTitle } from '@demicodes/web-ui/sidebar/tab-attention'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideHistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
-import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { errorFields, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
@@ -94,7 +95,7 @@ function retry(): void {
 function readBeside(side: 'before' | 'after'): void {
   const read = side === 'before' ? reads.readBefore() : reads.readAfter()
   // A page that failed is read again as the reader scrolls back to its edge.
-  read.catch((error: unknown) => console.warn('A page of the shared conversation was not read', error))
+  read.catch((error: unknown) => pageLog.warn('share_read.failed', { side, ...errorFields(error) }))
 }
 
 const attachments = { path: sharePath(props.token), blobUrl }

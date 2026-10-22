@@ -199,7 +199,10 @@ function fieldActions(blockId: string, anchor: TextAnchor & { at: number }, quot
           throw new Error('The picture is no longer in the reply.')
         make({ picture: await pictureSource(image, keepPicture) })
       } catch (error) {
-        reportError(t(kind === 'ask' ? 'ask.pictureFailed' : 'comments.pictureFailed'), error, { userVisible: true })
+        reportError(t(kind === 'ask' ? 'ask.pictureFailed' : 'comments.pictureFailed'), error, {
+          site: kind === 'ask' ? 'ask.pictureFailed' : 'comments.pictureFailed',
+          userVisible: true,
+        })
         throw error
       }
     })()

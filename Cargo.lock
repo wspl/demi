@@ -2037,6 +2037,7 @@ dependencies = [
  "tokio",
  "tokio-rusqlite",
  "tracing",
+ "tracing-subscriber",
  "uuid",
  "webauthn-rs",
 ]

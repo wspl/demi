@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { logStorageFailed } from '@demicodes/web-ui/infra/log'
 import { TAB_HISTORY } from '@demicodes/web-ui/agent/tab-close'
 import { SIDEBAR_GROUPS } from '@demicodes/web-ui/sidebar/list-model'
 
@@ -44,7 +45,7 @@ export function readLocalState(userId: string): LocalState {
     // The web browser's storage is optional. Invalid external entries are
     // discarded as a whole; no legacy keys or partially repaired records enter
     // product state.
-    console.warn('Could not read local preferences', error)
+    logStorageFailed('local_preferences', 'read', error)
     return emptyLocalState()
   }
 }
@@ -54,6 +55,6 @@ export function writeLocalState(userId: string, value: LocalState): void {
     localStorage.setItem(`demi.preferences.${userId}`, JSON.stringify(value))
   } catch (error) {
     // Private browsing and storage quotas must not prevent server operations.
-    console.warn('Could not save local preferences', error)
+    logStorageFailed('local_preferences', 'write', error)
   }
 }

@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { z } from 'zod'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { errorFields, reportError } from '@demicodes/web-ui/infra/errors'
+import { logStorageFailed, pageLog } from '@demicodes/web-ui/infra/log'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { pageLanguage } from '@demicodes/web-ui/i18n/text'
 import { requestTitleWords } from '@demicodes/web-ui/permissions/types'
@@ -65,7 +66,7 @@ function readSettings(): NotificationSettings {
   } catch (error) {
     // The browser's storage is optional: without it, or with an entry that
     // does not read, notifications are off until turned on.
-    console.warn('Could not read the notification settings', error)
+    logStorageFailed('notification_settings', 'read', error)
     return { ...DEFAULT_SETTINGS }
   }
 }
@@ -75,7 +76,7 @@ function writeSettings(settings: NotificationSettings): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
   } catch (error) {
     // Private browsing and storage quotas keep the setting for this page alone.
-    console.warn('Could not save the notification settings', error)
+    logStorageFailed('notification_settings', 'write', error)
   }
 }
 
@@ -87,7 +88,7 @@ function subscriptionMaker(): string | null {
     return localStorage.getItem(MAKER_KEY)
   } catch (error) {
     // Without storage, the page cannot tell: it makes a new subscription.
-    console.warn('Could not read which session subscribed the browser', error)
+    logStorageFailed('subscribed_session', 'read', error)
     return null
   }
 }
@@ -101,7 +102,7 @@ function rememberMaker(session: string | null): void {
     }
   } catch (error) {
     // The next session then finds no maker and makes a subscription of its own.
-    console.warn('Could not save which session subscribed the browser', error)
+    logStorageFailed('subscribed_session', 'write', error)
   }
 }
 
@@ -225,7 +226,7 @@ export async function unsubscribeOnSignOut(): Promise<void> {
     await apiRequest('/push/subscription', { method: 'DELETE', waits: false })
     await subscription?.unsubscribe()
   } catch (error) {
-    console.warn('Could not unsubscribe the browser from notifications', error)
+    pageLog.warn('push_subscription.removed_failed', errorFields(error))
   }
 }
 
@@ -285,7 +286,9 @@ export const useNotifications = defineStore('notifications', () => {
         }
       } catch (error) {
         if (!signal.aborted) {
-          reportError(wanted ? t('failures.turnOnNotifications') : t('failures.turnOffNotifications'), error)
+          reportError(wanted ? t('failures.turnOnNotifications') : t('failures.turnOffNotifications'), error, {
+            site: wanted ? 'failures.turnOnNotifications' : 'failures.turnOffNotifications',
+          })
         }
       }
     })
@@ -340,7 +343,7 @@ export const useNotifications = defineStore('notifications', () => {
       }
     }, (error: unknown) => {
       // A browser without the query keeps the permission it was asked for.
-      console.warn('Could not follow the notification permission', error)
+      pageLog.warn('notification_permission.follow_failed', errorFields(error))
     })
     navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
       const data = event.data
@@ -367,7 +370,7 @@ export const useNotifications = defineStore('notifications', () => {
     )
     const stopWords = watch(pageLanguage, () => {
       if (subscribed) {
-        void leaveWords().catch((error: unknown) => console.warn('Could not leave the notification words', error))
+        void leaveWords().catch((error: unknown) => pageLog.warn('notification_words.leave_failed', errorFields(error)))
       }
     })
     const stopShowing = watch(() => product.activeConversationId, reportShowing, { immediate: true })

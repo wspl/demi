@@ -225,6 +225,16 @@ function isRefusal(error: unknown): boolean {
   return error instanceof ApiError && error.status >= 400 && error.status < 500
 }
 
+/** A failure of a write: the ID the log names it by (`ReportErrorOptions.site`) and its title. */
+interface Failure {
+  site: string
+  title: HeadlineText
+}
+
+function failed(site: string, title: HeadlineText): Failure {
+  return { site, title }
+}
+
 /** The words a refusal stands in the list with. */
 function reasonOf(error: unknown): string {
   return errorMessage(error)
@@ -235,7 +245,7 @@ export function createRecordSync(options: {
   show: (conversation: Conversation, writing: Writing) => void
   /** Makes the conversation's backend record, when it has none yet. */
   persist: (conversation: Conversation) => Promise<void>
-  report: (title: HeadlineText, error: unknown) => void
+  report: (site: string, title: HeadlineText, error: unknown) => void
 }) {
   let lifetime = new AbortController()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -431,7 +441,7 @@ export function createRecordSync(options: {
       }
       // A refused save is reported, and tried again with the next change;
       // one the backend failed is tried again a few seconds later.
-      refused(conversation, change, isRefusal(error) ? t('failures.saveDraft') : null, error)
+      refused(conversation, change, isRefusal(error) ? failed('failures.saveDraft', t('failures.saveDraft')) : null, error)
       if (!isRefusal(error)) {
         schedule(conversation, DRAFT_RETRY_MS)
       }
@@ -456,18 +466,18 @@ export function createRecordSync(options: {
 
   /**
    * A write of `change` failed: the change leaves, the failure is reported
-   * when `title` names it, and what the user wrote in it is kept. Writing
+   * when `failure` names it, and what the user wrote in it is kept. Writing
    * the list or the composer shows already stays there; the composer's own
    * goes back to it while no later change of the draft took its place, and
    * any other stands in the list as Not Saved, the composer not showing it a
    * second time.
    */
-  function refused(conversation: Conversation, change: RecordChange, title: HeadlineText | null, error: unknown): void {
+  function refused(conversation: Conversation, change: RecordChange, failure: Failure | null, error: unknown): void {
     const record = conversation.record
     const carried = change.meta.carries
     record.drop([change])
-    if (title) {
-      options.report(title, error)
+    if (failure) {
+      options.report(failure.site, failure.title, error)
     }
     if (carried && !isBlank(carried)) {
       const shown = record.shown.value!
@@ -522,7 +532,7 @@ export function createRecordSync(options: {
   function write(
     conversation: Conversation,
     change: RecordChange,
-    title: HeadlineText,
+    failure: Failure,
     request: (signal: AbortSignal) => Promise<{ draft?: ConversationDraft; revisions: Revisions }>,
     sending?: () => void,
   ): Promise<'landed' | 'waiting' | 'refused'> {
@@ -539,7 +549,7 @@ export function createRecordSync(options: {
         return landed(conversation, change, answer) ? 'landed' as const : 'waiting' as const
       } catch (error) {
         if (!signal.aborted) {
-          refused(conversation, change, title, error)
+          refused(conversation, change, failure, error)
         }
         return 'refused' as const
       }
@@ -589,7 +599,7 @@ export function createRecordSync(options: {
       builtOn.set(conversation.id, kept)
     }
     follow(conversation)
-    const saved = write(conversation, change, t('failures.saveMessage'), async (signal) => {
+    const saved = write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
       await options.persist(conversation)
       return saveFromDraft(
         conversation.id,
@@ -632,7 +642,7 @@ export function createRecordSync(options: {
         meta: { kind: 'write', base: null, answered: null, carries: { id: crypto.randomUUID(), ...message, comments: [], into: 'list' } },
       },
     )
-    return write(conversation, change, t('failures.saveMessage'), async (signal) => {
+    return write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
       const answer = await putSaved(conversation.id, id, { text: message.text, files: message.files.map(namedFile) }, signal)
       return { revisions: answer.revisions }
     })
@@ -649,7 +659,7 @@ export function createRecordSync(options: {
       meta: { kind: 'delete', base: null, answered: null, carries: null },
     })
     let removed: Message | null = null
-    return write(conversation, change, t('failures.deleteMessage'), async (signal) => {
+    return write(conversation, change, failed('failures.deleteMessage', t('failures.deleteMessage')), async (signal) => {
       const answer = await deleteSaved(conversation.id, id, signal)
       removed = answer.message ? { text: answer.message.text, files: answer.message.files } : null
       return { revisions: answer.revisions }
@@ -667,7 +677,7 @@ export function createRecordSync(options: {
       parts: ['saved'],
       meta: { kind: 'resave', base: null, answered: null, carries: { id, text: writing.text, files: writing.files, comments: [], into: 'list' } },
     })
-    return write(conversation, change, t('failures.saveMessage'), async (signal) => {
+    return write(conversation, change, failed('failures.saveMessage', t('failures.saveMessage')), async (signal) => {
       const answer = await postSaved(conversation.id, { id, text: writing.text, files: writing.files.map(namedFile) }, signal)
       return { revisions: answer.revisions }
     })

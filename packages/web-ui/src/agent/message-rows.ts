@@ -21,6 +21,10 @@ import { shellRowRunning } from './terminals'
  */
 export interface MessageRowsSource {
   conversationId: string
+  /** The conversation of the agent `node`, when `conversationId` names the agent. */
+  conversation?: string
+  /** The agent the list shows; null for the root. */
+  node?: string | null
   blocks: readonly Block[]
   /** What the agent does now; absent for one at rest, as a share's. */
   activity?: AgentActivity
@@ -191,6 +195,7 @@ export function useMessageRows(
     phase: () => source().phase,
     pendingSubmissions: () => source().pendingSubmissions ?? [],
     activity: () => source().activity ?? AT_REST,
+    scope: () => ({ conversation: source().node ? source().conversation : source().conversationId, node: source().node ?? null }),
   })
   // The calls the model is writing are the newest steps of the work: each is a
   // row of its own after its run.

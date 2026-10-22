@@ -280,7 +280,7 @@ function reorder(request: SidebarReorder) {
         // A move naming a project another page deleted meanwhile has
         // nothing to say; the channel brings the order there is.
         if (errorCode(error) !== 'workspace_not_found') {
-          reportError(sidebarText('refused.reorderProjects'), error, { userVisible: true })
+          reportError(sidebarText('refused.reorderProjects'), error, { site: 'refused.reorderProjects', userVisible: true })
         }
       })
   } else {
@@ -296,7 +296,7 @@ async function removeProject(id: string) {
   } catch (error) {
     // A project another page deleted meanwhile is deleted: that is done.
     if (errorCode(error) !== 'workspace_not_found') {
-      reportError(sidebarText('refused.deleteProject'), error, { userVisible: true })
+      reportError(sidebarText('refused.deleteProject'), error, { site: 'refused.deleteProject', userVisible: true })
     }
   }
 }
@@ -306,7 +306,7 @@ async function signOut(): Promise<void> {
     // A new document releases account-scoped stores, sockets and draft data.
     window.location.replace('/login')
   } catch (error) {
-    reportError(authText('login.signOutFailed'), error, { userVisible: true })
+    reportError(authText('login.signOutFailed'), error, { site: 'login.signOutFailed', userVisible: true })
   }
 }
 /** The bindings from the keyboard settings, by the action each one names. */

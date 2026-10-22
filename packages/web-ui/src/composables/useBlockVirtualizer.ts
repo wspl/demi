@@ -2,6 +2,7 @@ import { computed, nextTick, onScopeDispose, ref, shallowRef, type Ref, watch } 
 import { elementScroll, measureElement as measureRow, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
+import { pageLog } from '../infra/log'
 import { revealOffset } from '../ui/reveal'
 import { moveRows, rowsBefore, rowTails, scrolledRows, type RowsBefore, type RowTail } from './row-motion'
 
@@ -113,7 +114,17 @@ export interface PersistedScrollState {
   heightCache: Map<string, number>
 }
 
+/**
+ * How many `row.missing` lines one list writes, since a list that drew a row it
+ * does not hold draws it again in every frame.
+ */
+const MISSING_LINES = 5
+/** How long the scroll stays still before the list writes where it stopped. */
+const SCROLL_SETTLE_MS = 250
+
 export interface BlockVirtualizerOptions<Block extends VirtualizedBlock> {
+  /** The conversation and agent the list shows, which its lines are written under. */
+  log?: { conversation: () => string | undefined, node: () => string | null | undefined }
   /**
    * What names a row across the forms its block takes; the block's id by
    * default. A row named the same is kept, with its measured height, rather
@@ -129,6 +140,25 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   options: BlockVirtualizerOptions<Block> = {},
 ) {
   const keyOf = options.keyOf ?? ((block: Block) => block.id)
+  /** Writes a line of the list under its conversation, with its agent and size. */
+  function logList(level: 'debug' | 'info' | 'error', event: string, fields: Record<string, unknown> = {}): void {
+    const node = options.log?.node()
+    pageLog[level](event, { ...(node ? { node } : {}), rows: blocks.value.length, ...fields }, options.log?.conversation())
+  }
+  /** The rows in view, as the first and last index the list's own measurements put there. */
+  function viewRows(): { first: number, last: number } | null {
+    const el = scrollContainer.value
+    const rows = virtualizer.value.measurementsCache
+    if (!el || rows.length === 0)
+      return null
+    const { startIndex, endIndex } = rowsInView(rows, { offset: el.scrollTop, height: el.clientHeight })
+    return { first: startIndex, last: endIndex }
+  }
+  /** What the virtualizer moved the view by to keep the row in view, since the last line of the scroll. */
+  let resizeCorrections = 0
+  let resizeCorrectedPx = 0
+  /** Lines written of rows the list drew and does not hold, by their count (`MISSING_LINES`). */
+  let missingLines = 0
   /**
    * The heights the list measured when it was last shown, by row key, until it
    * measures them again.
@@ -273,7 +303,22 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     return Math.max(0, virtualizer.value.getTotalSize() - window.innerHeight)
   }
 
-  const virtualItems = computed(() => virtualizer.value.getVirtualItems())
+  const virtualItems = computed(() => {
+    const items = virtualizer.value.getVirtualItems()
+    // A row the virtualizer draws that the list no longer holds is a defect of
+    // the page, which a render then fails on: the window says what it was.
+    const missing = items.find((item) => item.index >= blocks.value.length)
+    if (missing && missingLines < MISSING_LINES) {
+      missingLines += 1
+      logList('error', 'row.missing', {
+        index: missing.index,
+        window_first: items[0]?.index ?? null,
+        window_last: items.at(-1)?.index ?? null,
+        lines_written: missingLines,
+      })
+    }
+    return items
+  })
   const totalSize = computed(() => virtualizer.value.getTotalSize())
 
   /**
@@ -311,6 +356,13 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
 
   const shouldAutoScroll = ref(true)
+  /** Whether the list follows its end, as `shouldAutoScroll` says; every change is a line, with its cause. */
+  function follow(following: boolean, cause: string): void {
+    if (shouldAutoScroll.value === following)
+      return
+    shouldAutoScroll.value = following
+    logList('info', 'list.follow_changed', { following, cause, end_distance_px: Math.round(endDistance.value) })
+  }
   /**
    * The list follows its end, or its end is in view: otherwise the reader is
    * offered the way back to it. One rule for every way of leaving the end,
@@ -376,7 +428,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       const dist = distanceFromBottom(el)
       endDistance.value = dist
       if (resized || !shouldAutoScroll.value)
-        shouldAutoScroll.value = dist < AT_END_PX
+        follow(dist < AT_END_PX, 'reader_changed_layout')
       else
         scrollToBottom()
     }, READER_LAYOUT_MS)
@@ -409,6 +461,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     el.scrollTop = target
     scrolledTo = el.scrollTop
     scrollOffset.value = el.scrollTop
+    logList('debug', 'list.anchor_corrected', { reason: 'reader_control', delta_px: Math.round(moved) })
   }
 
   function scrollToBottom() {
@@ -431,11 +484,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
    */
   function reveal(id: string, coveredBottom = 0, part?: string): boolean {
     const index = blocks.value.findIndex((block) => block.id === id)
-    if (index < 0)
+    if (index < 0) {
+      logList('info', 'list.revealed', { block: id, row: -1, part: part !== undefined })
       return false
+    }
     // The list is placed: the restore of a saved position no longer applies.
     isRestored.value = true
-    shouldAutoScroll.value = false
+    follow(false, 'reveal')
+    logList('info', 'list.revealed', { block: id, row: index, part: part !== undefined })
     const key = keyOf(blocks.value[index]!)
     if (part !== undefined)
       revealing = { key, coveredBottom, part: { selector: part, until: performance.now() + READER_LAYOUT_MS } }
@@ -508,7 +564,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   }
 
   function scrollToBottomExplicit() {
-    shouldAutoScroll.value = true
+    follow(true, 'jump_to_end')
     scrollToBottom()
   }
 
@@ -522,17 +578,17 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (isProgrammaticScroll || placingPart())
       return
     if (pendingIntent === 'up') {
-      shouldAutoScroll.value = false
+      follow(false, 'reader_scrolled_up')
     } else if (pendingIntent === 'down' &&
       dist <= threshold &&
       furthestDistanceSinceDisengage > threshold) {
-      shouldAutoScroll.value = true
+      follow(true, 'reader_scrolled_to_end')
       furthestDistanceSinceDisengage = 0
     } else if (dist < AT_END_PX) {
-      shouldAutoScroll.value = true
+      follow(true, 'end_in_view')
       furthestDistanceSinceDisengage = 0
     } else if (dist > threshold) {
-      shouldAutoScroll.value = false
+      follow(false, 'left_end')
     }
   }
 
@@ -656,8 +712,14 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         const offset = currentInstance.scrollOffset ?? 0
         const isStreamingTail = item.index === blocks.value.length - 1
         const allowCorrection = shouldAutoScroll.value || !isStreamingTail
-        return allowCorrection
+        const adjusts = allowCorrection
           && item.start < offset + currentInstance.scrollAdjustments
+        if (adjusts) {
+          // Many a second as rows are measured: counted, and told with the scroll that follows.
+          resizeCorrections += 1
+          resizeCorrectedPx += Math.round(_delta)
+        }
+        return adjusts
       }
     },
     { immediate: true },
@@ -723,9 +785,50 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       endDistance.value = dist
       updateAutoScrollState(dist, BOTTOM_THRESHOLD_PX)
       pendingIntent = null
+      if (scrollSettle === undefined)
+        scrolledFrom = scrollOffsetAtStart(el)
+      clearTimeout(scrollSettle)
+      scrollSettle = setTimeout(() => {
+        scrollSettle = undefined
+        writeScrolled()
+      }, SCROLL_SETTLE_MS)
     }
     updateAnchor()
   }
+
+  /** Where the current scroll began, and the timer that ends it once the view stays still. */
+  let scrolledFrom = 0
+  let scrollSettle: ReturnType<typeof setTimeout> | undefined
+  function scrollOffsetAtStart(el: HTMLElement): number {
+    return lastScrollTop ?? el.scrollTop
+  }
+  /** The scroll position the list last wrote a line at, or knew at the last settle. */
+  let lastScrollTop: number | undefined
+  /** Writes where a scroll stopped: from and to, the rows in view, and what the list corrected by itself meanwhile. */
+  function writeScrolled(): void {
+    const el = scrollContainer.value
+    if (!el)
+      return
+    const to = Math.round(el.scrollTop)
+    const from = Math.round(scrolledFrom)
+    lastScrollTop = el.scrollTop
+    const inView = viewRows()
+    if (from !== to || resizeCorrections > 0) {
+      logList('debug', 'list.scrolled', {
+        from_px: from,
+        to_px: to,
+        first: inView?.first ?? null,
+        last: inView?.last ?? null,
+        following: shouldAutoScroll.value,
+        resize_corrections: resizeCorrections,
+        resize_corrected_px: resizeCorrectedPx,
+        total_px: Math.round(virtualizer.value.getTotalSize()),
+      })
+    }
+    resizeCorrections = 0
+    resizeCorrectedPx = 0
+  }
+  onScopeDispose(() => clearTimeout(scrollSettle))
 
   function restoreScroll() {
     const el = scrollContainer.value
@@ -736,6 +839,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (!persistedState) {
       scrollToBottom()
       scrollOffset.value = el.scrollTop
+      lastScrollTop = el.scrollTop
+      logList('info', 'list.placed', { how: 'end', saved: false, scroll_top_px: Math.round(el.scrollTop) })
       nextTick(() => updateAnchor())
       return
     }
@@ -744,11 +849,15 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (anchorIndex < 0) {
       scrollToBottom()
       scrollOffset.value = el.scrollTop
+      lastScrollTop = el.scrollTop
+      logList('info', 'list.placed', { how: 'end', saved: true, saved_row_held: false, scroll_top_px: Math.round(el.scrollTop) })
       nextTick(() => updateAnchor())
       return
     }
 
     el.scrollTop = persistedState.anchor.scrollTop
+    lastScrollTop = el.scrollTop
+    logList('info', 'list.placed', { how: 'saved_place', saved: true, saved_row_held: true, row: anchorIndex, scroll_top_px: Math.round(el.scrollTop) })
     correctUntilConverged(el, anchorIndex, persistedState.anchor.offsetPx, 3)
   }
 
@@ -769,6 +878,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         el.getBoundingClientRect().top -
         targetOffset
       if (Math.abs(correction) > 1 && maxPasses > 0) {
+        logList('debug', 'list.anchor_corrected', { reason: 'restore', delta_px: Math.round(correction), passes_left: maxPasses - 1 })
         el.scrollTop += correction
         correctUntilConverged(el, anchorIndex, targetOffset, maxPasses - 1)
       } else {
@@ -820,6 +930,12 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       virtualizer.value.scrollOffset = target
       el.scrollTop = target
       scrolledTo = el.scrollTop
+      logList('debug', 'list.anchor_corrected', {
+        reason: moved > anchor.start ? 'rows_added_above' : 'rows_removed_above',
+        delta_px: Math.round(moved - anchor.start),
+        row_from: anchor.anchorIndex,
+        row_to: index,
+      })
       updateAnchor()
     },
     { flush: 'post' },

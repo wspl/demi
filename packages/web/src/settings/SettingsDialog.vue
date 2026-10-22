@@ -108,11 +108,11 @@ watch(
   { immediate: true },
 )
 
-function report(title: HeadlineText, error: unknown): void {
+function report(site: string, title: HeadlineText, error: unknown): void {
   if (lifetime.signal.aborted) {
     return
   }
-  reportError(title, error, { userVisible: true })
+  reportError(title, error, { site, userVisible: true })
 }
 
 /** The display name's changes on their way, in the order the user made them. */
@@ -146,7 +146,7 @@ function rename(nickname: string): Promise<void> {
     })
     .catch((error) => {
       shown.drop()
-      report(t('dialog.nameFailed'), error)
+      report('dialog.nameFailed', t('dialog.nameFailed'), error)
     })
 }
 
@@ -212,7 +212,7 @@ async function submitEmail(email: string, password: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {
-        report(t('dialog.emailFailed'), error)
+        report('dialog.emailFailed', t('dialog.emailFailed'), error)
       }
       emailPhase.value = {
         ...previous,
@@ -275,7 +275,7 @@ async function verifyEmail(code: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {
-        report(t('dialog.emailFailed'), error)
+        report('dialog.emailFailed', t('dialog.emailFailed'), error)
       }
       emailPhase.value = {
         ...previous,
@@ -326,7 +326,7 @@ async function submitPassword(current: string, next: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!passwordOpen.value) {
-        report(t('dialog.passwordFailed'), error)
+        report('dialog.passwordFailed', t('dialog.passwordFailed'), error)
       }
       passwordPhase.value = {
         kind: 'form',

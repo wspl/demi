@@ -6,6 +6,15 @@ import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 export interface ReportErrorOptions {
   /**
+   * Which failure this is, as a stable English ID that does not change with the
+   * user's language, such as `failures.saveDrafts`: the i18n key of the title
+   * where the title has one. It is what the log says of the failure, so a query
+   * finds it by site; the title, which is in the user's words, is never logged.
+   */
+  site: string
+  /** The conversation the failure is about, when the page knows it. */
+  conversation?: string
+  /**
    * Whether a toast tells of it. Left out, a defect gets one when the user
    * chose to see them (`showUnexpectedErrors`) and a failure of any other kind
    * none; `false` never shows one, for a report that is a diagnostic.
@@ -22,7 +31,7 @@ export interface ReportErrorOptions {
   detail?: string
   /**
    * What the toast says in place of the error's own message, when that
-   * message is technical: the error's message then reaches only the console.
+   * message is technical: the error's message then reaches only the log.
    */
   message?: SentenceText
 }
@@ -33,9 +42,18 @@ export interface ReportErrorOptions {
  * held.
  */
 export interface PageErrorReport {
-  title: string
+  /** `ReportErrorOptions.site`. */
+  site: string
+  /** The error's own message, in English, without the query of any address. */
   message: string
   detail: string
+  /** The error's `code` (`errorCode`), or null. */
+  code: string | null
+  /** The error's class, such as `TypeError` or `ApiError`. */
+  errorClass: string
+  /** The request the backend named, when one did. */
+  requestId: string | null
+  conversation?: string
 }
 
 /**
@@ -97,7 +115,7 @@ export interface ShownError {
  * `errors.<code>`, and the `params` that text is filled with, as a refusal of the
  * backend carries them.
  *
- * The message stays English, for the console and the report; what the page shows is
+ * The message stays English, for the log; what the page shows is
  * the catalogue's.
  */
 export function coded<E extends Error>(error: E, code: string, params: Readonly<Record<string, string | number>> = {}): E {
@@ -253,9 +271,34 @@ export function formError(
  */
 const QUERY = /((?:[a-z][a-z0-9+.-]*:\/\/|(?<![\w.])\/)[^\s?#"'`]*)\?[^\s#"'`]*/gi
 
+/** A quoted piece of a message, which a `SyntaxError` of the browser takes from the text it could not read. */
+const QUOTED = /(["'`]).*?\1/g
+
+/** `message` of a `SyntaxError` with its quoted pieces taken out, which are the text the browser could not read. */
+export function withoutQuoted(message: string): string {
+  return message.replace(QUOTED, '…')
+}
+
 /** `text` with the query of every address in it removed. */
 function withoutQueries(text: string): string {
   return text.replace(QUERY, '$1')
+}
+
+/**
+ * What a line of the log says of `error`: its class, its `code` and the request
+ * the backend named, as scalars, and its message without the query of any
+ * address. A line says what failed, never a value the page held, so only these
+ * go in; `null` fields are kept so that a query reads the same column each time.
+ */
+export function errorFields(error: unknown): { error_class: string; code: string | null; request_id: string | null; message: string } {
+  // A `SyntaxError` of the browser quotes the text it could not read.
+  const message = error instanceof SyntaxError ? withoutQuoted(error.message) : error instanceof Error ? error.message : String(error)
+  return {
+    error_class: error instanceof Error ? error.name : typeof error,
+    code: errorCode(error),
+    request_id: requestIdOf(error),
+    message: withoutQueries(message),
+  }
 }
 
 /** Writes a report of the page's own failure; the request ID when one carried it. */
@@ -264,11 +307,7 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
     return null
   }
   try {
-    return await reporter({
-      title: report.title,
-      message: withoutQueries(report.message),
-      detail: report.detail,
-    })
+    return await reporter({ ...report, message: withoutQueries(report.message) })
   } catch (error) {
     // A report that did not get in leaves the failure on the console
     // alone; reporting that would only repeat it.
@@ -278,8 +317,9 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
 }
 
 /**
- * Tells of a failure: on the console unless it was expected, and in a toast when
- * the user should see it, with the ID of the request it came from.
+ * Tells of a failure: in a toast when the user should see it, with the ID of the
+ * request it came from. A failure the page found itself is written to the log;
+ * nothing goes to the console, which no one reads when a user reports a problem.
  *
  * A defect no request names, one the page found itself, is written to the log as an
  * error line, and its toast shows the ID of the request that carried the line once
@@ -292,16 +332,24 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
 export function reportError(
   title: HeadlineText,
   error: unknown,
-  options: ReportErrorOptions = {}
+  options: ReportErrorOptions,
 ): void {
   const message = error instanceof Error ? error.message : String(error)
   const detail = options.detail ?? detailOf(error)
-  if (!options.expected)
-    console.error(`[demi] ${title}: ${message}`, options.detail ?? '')
   const requestId = requestIdOf(error)
   const defect = !options.expected && !isEnvironmental(error) && (requestId === null || options.defect === true)
   const key = `${title}\n${message}\n${detail}`
-  const reported = defect ? sendReport({ title, message, detail }) : null
+  const reported = defect
+    ? sendReport({
+      site: options.site,
+      message,
+      detail,
+      code: errorCode(error),
+      errorClass: error instanceof Error ? error.name : typeof error,
+      requestId,
+      conversation: options.conversation,
+    })
+    : null
   if (!(options.userVisible ?? (defect && showDefects)))
     return
   const shown = defect ? shownToast(key) : undefined
@@ -332,11 +380,11 @@ export function reportError(
 /**
  * Tells of a defect of the page that no caller words: an error nothing caught, or
  * one a plugin's page reports as its own. Its toast is the catalogue's *Something
- * Went Wrong* over the error's message, and `what` says where it happened, for
- * the log.
+ * Went Wrong* over the error's message, `site` names it in the log, and `what`
+ * says where it happened, in English, for the log.
  */
-export function reportDefect(what: string, error: unknown): void {
+export function reportDefect(site: string, what: string, error: unknown): void {
   const requestId = requestIdOf(error)
   const where = requestId === null ? what : `${what} (request ${requestId})`
-  reportError(t('unexpected.title'), error, { defect: true, detail: `${where}\n${detailOf(error)}` })
+  reportError(t('unexpected.title'), error, { site, defect: true, detail: `${where}\n${detailOf(error)}` })
 }

@@ -4,7 +4,10 @@
  * worker hands it, and tells the worker the build it runs, which the worker
  * then keeps for opening offline.
  */
+import { pageLog } from '@demicodes/web-ui/infra/log'
+import { errorFields } from '@demicodes/web-ui/infra/errors'
 import { answerRawRequests } from '../direct/raw-bridge'
+import { WORKER_LOG } from './notifications'
 
 /** Where the built app and the development server serve the worker, so its scope is the whole origin. */
 export const SERVICE_WORKER_URL = '/service-worker.js'
@@ -23,7 +26,18 @@ export function startServiceWorker(): void {
     return
   container.register(SERVICE_WORKER_URL, { scope: '/', type: 'module' }).catch((error: unknown) => {
     // The page works without it; the reason is for a developer.
-    console.warn('The service worker did not register', error)
+    pageLog.warn('service_worker.register_failed', errorFields(error))
+  })
+  // The worker has no page ID of its own: it tells an open page of its failures, which the page writes.
+  container.addEventListener('message', (event: MessageEvent<unknown>) => {
+    const data = event.data
+    if (typeof data === 'object' && data !== null && Reflect.get(data, 'type') === WORKER_LOG) {
+      const name = Reflect.get(data, 'event')
+      const fields = Reflect.get(data, 'fields')
+      if (typeof name === 'string' && typeof fields === 'object' && fields !== null) {
+        pageLog.warn(name, { ...fields, origin: 'service_worker' })
+      }
+    }
   })
   answerRawRequests(container)
   // Vite's development server serves sources, which name no build: nothing

@@ -109,7 +109,9 @@ export function useShare(service: () => ShareService | undefined) {
         }
       },
       (error: unknown) => {
-        reportError(target.kind === 'conversation' ? t('share.failedConversation') : t('share.failedAnswer'), error)
+        reportError(target.kind === 'conversation' ? t('share.failedConversation') : t('share.failedAnswer'), error, {
+          site: target.kind === 'conversation' ? 'share.failedConversation' : 'share.failedAnswer',
+        })
         if (shown.value === attempt) {
           shown.value = { target, status: 'failed', error }
         }
@@ -161,7 +163,7 @@ export function useShare(service: () => ShareService | undefined) {
     try {
       await host.update(current.token)
     } catch (error) {
-      reportError(t('share.failedUpdate'), error, { userVisible: true })
+      reportError(t('share.failedUpdate'), error, { site: 'share.failedUpdate', userVisible: true })
       return
     } finally {
       if (shown.value === updating) {
@@ -182,7 +184,7 @@ export function useShare(service: () => ShareService | undefined) {
     } catch (error) {
       // A share another page stopped meanwhile is stopped: that is done.
       if (errorCode(error) !== 'share_not_found') {
-        reportError(t('share.failedStop'), error, { userVisible: true })
+        reportError(t('share.failedStop'), error, { site: 'share.failedStop', userVisible: true })
         return
       }
     }

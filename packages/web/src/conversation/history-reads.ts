@@ -12,7 +12,7 @@ import {
 import { boundedHistory, pageBeside, shownWindow } from '@demicodes/web-ui/agent/history'
 import type { HistoryReading } from '@demicodes/web-ui/agent/history-reading'
 import { oneRunPerKey } from '@demicodes/utils'
-import { ApiError, apiRequest, readResponse } from '../api/client'
+import { ApiError, apiRequest, logReadAnswered, logReadFailed, readResponse } from '../api/client'
 import { createReading } from './reading'
 import {
   transcriptPageSchema,
@@ -21,7 +21,7 @@ import {
 } from '../api/generated/web-api'
 import type { Block, CacheChart, ConversationAttachment, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
 import { describeAttachments } from './activity'
-import { pageLog } from '@demicodes/web-ui/infra/log'
+import { viewRead } from '@demicodes/web-ui/infra/view-timing'
 
 /** The blocks a disk copy holds whole, with the facts of their failures. */
 export interface KeptBlocks {
@@ -183,16 +183,17 @@ export function createHistoryReads<T extends HistoryHolder>(
       query.set('around', at.block)
     }
     const began = performance.now()
-    const response = await apiRequest(`${path(holder, node)}/transcript?${query}`, { signal: AbortSignal.any([signal(), stop]) })
-    const page = await readResponse(response, transcriptPageSchema)
-    pageLog.info('read.answered', {
-      read: 'page',
-      at: at.kind,
-      node: node ?? holder.id,
-      blocks: page.blocks.length,
-      ms: Math.round(performance.now() - began),
-    }, holder.id)
-    return page
+    const fields = { read: 'page', at: at.kind, node: node ?? holder.id }
+    try {
+      const response = await apiRequest(`${path(holder, node)}/transcript?${query}`, { signal: AbortSignal.any([signal(), stop]) })
+      const page = await readResponse(response, transcriptPageSchema)
+      viewRead(holder.id, node)
+      logReadAnswered(response, began, { ...fields, blocks: page.blocks.length }, holder.id)
+      return page
+    } catch (error) {
+      logReadFailed(error, began, fields, holder.id)
+      throw error
+    }
   }
 
   function agentOf(holder: T, node: string): HistoryAgent | undefined {

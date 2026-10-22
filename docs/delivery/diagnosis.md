@@ -86,8 +86,9 @@ on a million lines.
 ## What the log keeps
 
 - **Level.** The server keeps `info` and above by default; `DEMI_LOG` selects
-  more, as `info,demi_backend_http=debug` does. An event that happens many
-  times a second, such as a transcript patch, is `debug`, and its unit's end
+  more, as `info,demi_backend_http=debug` does. A page's lines are held to it as
+  the target `page`, so `info,page=debug` keeps the page's `debug` lines only.
+  An event that happens many times a second, such as a transcript patch, is `debug`, and its unit's end
   line at `info` carries its count.
 - **Time and size.** 14 days and 2 GiB, the newer kept. `DEMI_LOG_KEEP_DAYS`
   and `DEMI_LOG_MAX_SIZE` (bytes, or a number with `MiB` or `GiB`) set other

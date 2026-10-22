@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
-import { httpStatusLine } from '@demicodes/utils'
-import { coded, environmental } from '@demicodes/web-ui/infra/errors'
+import { httpStatusLine, isAbortError } from '@demicodes/utils'
+import { coded, environmental, errorFields } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
 // Every control operation is an ordinary HTTP request: one answer, a status and an
@@ -120,6 +121,35 @@ function tellExpiry(ended: boolean): void {
   for (const listener of [...expiryListeners]) {
     listener(ended)
   }
+}
+
+/**
+ * Writes that a read of the backend was answered and read: what it read
+ * (`fields`, such as `read`, `node` and counts), the request the backend named
+ * in its answer, the status and the milliseconds since `began`
+ * (`performance.now()`), so that the page's line is found beside the backend's
+ * `request.answered` by `request_id`.
+ */
+export function logReadAnswered(response: Response, began: number, fields: Record<string, unknown>, conversationId?: string): void {
+  pageLog.info('read.answered', {
+    ...fields,
+    status: response.status,
+    request_id: response.headers.get(REQUEST_ID_HEADER),
+    ms: Math.round(performance.now() - began),
+  }, conversationId)
+}
+
+/**
+ * Writes that a read of the backend failed, with what the error says
+ * (`errorFields`: its class, code and request) and the milliseconds since
+ * `began`. A read that was stopped on purpose (an abort) is no failure and
+ * writes nothing.
+ */
+export function logReadFailed(error: unknown, began: number, fields: Record<string, unknown>, conversationId?: string): void {
+  if (isAbortError(error)) {
+    return
+  }
+  pageLog.warn('read.failed', { ...fields, ...errorFields(error), ms: Math.round(performance.now() - began) }, conversationId)
 }
 
 export async function readResponse<T>(

@@ -283,7 +283,7 @@ function copy(event: ClipboardEvent): void {
   // clipboard takes it, with the forms above, while the copy is a gesture.
   if (forms.clipboard.image) {
     void navigator.clipboard.write([clipboard.item(forms)])
-      .catch((error: unknown) => reportError(t('attachments.couldntCopyPicture'), error))
+      .catch((error: unknown) => reportError(t('attachments.couldntCopyPicture'), error, { site: 'attachments.couldntCopyPicture' }))
   }
 }
 

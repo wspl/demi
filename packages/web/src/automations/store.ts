@@ -182,7 +182,7 @@ const useAutomationStore = defineStore('automations', () => {
       product.answered(at, (state) => ({ type: 'automations', automations: withAutomation(state.automations ?? [], automation), automationsUnread: state.automationsUnread }))
       return automation.id
     } catch (error) {
-      reportError(t('failed.create'), error, { userVisible: true })
+      reportError(t('failed.create'), error, { site: 'failed.create', userVisible: true })
       return null
     }
   }
@@ -218,7 +218,7 @@ const useAutomationStore = defineStore('automations', () => {
       .catch((error) => {
         pending.drop()
         failedSaves.set(id, (failedSaves.get(id) ?? 0) + 1)
-        reportError(t('failed.save'), error, { userVisible: true })
+        reportError(t('failed.save'), error, { site: 'failed.save', userVisible: true })
       })
   }
 
@@ -238,7 +238,7 @@ const useAutomationStore = defineStore('automations', () => {
         await apiRequest(`/automations/${encodeURIComponent(id)}/run`, { method: 'POST', ...jsonBody({ taskId } satisfies RunNow) })
       })
       .catch((error) => {
-        reportError(t('failed.run'), error, { userVisible: true })
+        reportError(t('failed.run'), error, { site: 'failed.run', userVisible: true })
       })
   }
 
@@ -251,7 +251,7 @@ const useAutomationStore = defineStore('automations', () => {
       } catch (error) {
         // A later editor tries again.
         holidaysRead = null
-        reportError(t('failed.holidays'), error, { userVisible: true })
+        reportError(t('failed.holidays'), error, { site: 'failed.holidays', userVisible: true })
       }
     })()
     return holidaysRead
@@ -263,7 +263,7 @@ const useAutomationStore = defineStore('automations', () => {
       await apiRequest(`/automations/${encodeURIComponent(id)}`, { method: 'DELETE' })
       product.answered(at, (state) => ({ type: 'automations', automations: (state.automations ?? []).filter((automation) => automation.id !== id), automationsUnread: state.automationsUnread }))
     } catch (error) {
-      reportError(t('failed.delete'), error, { userVisible: true })
+      reportError(t('failed.delete'), error, { site: 'failed.delete', userVisible: true })
     }
   }
 
@@ -274,7 +274,10 @@ const useAutomationStore = defineStore('automations', () => {
       const { secret } = await readResponse(response, automationSecretSchema)
       secrets.value = { ...secrets.value, [id]: secret }
     } catch (error) {
-      reportError(regenerate ? t('failed.regenerate') : t('failed.secret'), error, { userVisible: true })
+      reportError(regenerate ? t('failed.regenerate') : t('failed.secret'), error, {
+        site: regenerate ? 'failed.regenerate' : 'failed.secret',
+        userVisible: true,
+      })
     }
   }
 
@@ -288,7 +291,7 @@ const useAutomationStore = defineStore('automations', () => {
     try {
       await apiRequest(`/conversations/${encodeURIComponent(conversationId)}/move-to-conversations`, { method: 'POST' })
     } catch (error) {
-      reportError(t('failed.move'), error, { userVisible: true })
+      reportError(t('failed.move'), error, { site: 'failed.move', userVisible: true })
     }
   }
 

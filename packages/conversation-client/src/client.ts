@@ -1450,6 +1450,7 @@ export class ConversationClient {
       return
     }
     if (frame.version.revision <= state.version.revision) {
+      this.logged('transcript.patch_ignored', { node: frame.node, held: state.version.revision, arrived: frame.version.revision })
       return
     }
     if (frame.version.revision !== state.version.revision + 1) {
@@ -1590,6 +1591,16 @@ export class ConversationClient {
       held.version.epoch === read.version.epoch &&
       held.from >= read.start &&
       read.blocks[held.from - read.start]?.id === held.edge
+    this.logged('transcript.reset', {
+      node,
+      start: read.start,
+      length: read.length,
+      blocks: read.blocks.length,
+      held: held !== undefined,
+      vouched,
+      buffered_frames: buffered.length,
+      revision: read.version.revision,
+    })
     this.emit({
       type: 'transcript_reset',
       node,

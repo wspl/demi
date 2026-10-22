@@ -14,13 +14,39 @@ export interface ConnectionFacts {
   hasSnapshot: boolean
 }
 
+/** Where the page's connection to the backend stands. */
+export type ConnectionState = 'online' | 'reconnecting' | 'offline'
+
+/** Why the connection stands where it does, for the log. */
+export type ConnectionCause = 'browser_offline' | 'backend_restarting' | 'channel_failed' | 'reached'
+
 /**
- * Whether the page cannot reach the backend.
+ * Where the connection stands.
  *
- * - No network wins, since nothing else can be true of it.
- * - A lost channel counts only once its first new attempt failed as well, so a
- *   blip that the next connection mends is never unreachable.
+ * - No network wins, since nothing else can be true of it: `offline`.
+ * - A backend that said it restarts, or a lost channel whose first new attempt
+ *   failed as well, is `reconnecting`; a blip that the next connection mends
+ *   is never one.
  */
+export function connectionState(facts: ConnectionFacts): ConnectionState {
+  if (!facts.online) {
+    return 'offline'
+  }
+  return facts.restarting || (facts.hasSnapshot && facts.failedAttempts >= 2) ? 'reconnecting' : 'online'
+}
+
+/** What made the connection stand where `connectionState` says. */
+export function connectionCause(facts: ConnectionFacts): ConnectionCause {
+  if (!facts.online) {
+    return 'browser_offline'
+  }
+  if (facts.restarting) {
+    return 'backend_restarting'
+  }
+  return facts.failedAttempts > 0 ? 'channel_failed' : 'reached'
+}
+
+/** Whether the page cannot reach the backend. */
 export function backendUnreachable(facts: ConnectionFacts): boolean {
-  return !facts.online || facts.restarting || (facts.hasSnapshot && facts.failedAttempts >= 2)
+  return connectionState(facts) !== 'online'
 }

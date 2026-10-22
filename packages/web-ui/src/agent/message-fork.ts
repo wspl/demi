@@ -50,7 +50,7 @@ export function useMessageForks(
       if (states.value === scope) {
         failedRequests.set(blockId, request)
       }
-      reportError(t('transcript.assistant.forkFailed'), error, { userVisible: true })
+      reportError(t('transcript.assistant.forkFailed'), error, { site: 'transcript.assistant.forkFailed', userVisible: true })
     } finally {
       scope.delete(blockId)
     }
