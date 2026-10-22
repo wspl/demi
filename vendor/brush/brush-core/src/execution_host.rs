@@ -7,6 +7,16 @@ use crate::{openfiles::OpenFile, processes::ChildProcess};
 /// Completion of a redirected output stream owned by the embedding host.
 pub type OutputCompletion = std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + Sync>>;
 
+/// What runs a script file that the system cannot execute by itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScriptInterpreter {
+    /// A program, started with these leading arguments, the script's path and the script's own.
+    Program(std::path::PathBuf, Vec<std::ffi::OsString>),
+    /// This shell, which runs the script as a subshell, after setting these options as `set`
+    /// takes them.
+    Shell(Vec<std::ffi::OsString>),
+}
+
 /// IO behavior supplied by the embedding execution owner.
 pub trait FileControl: Send + Sync {
     /// Read without outliving the owning execution.
@@ -104,6 +114,17 @@ pub trait ExecutionHost: Any + Send + Sync {
     }
     /// Tells the host that a builtin starts, which runs in the shell's process.
     fn builtin_started(&self) {}
+    /// What runs the file `script` when the system cannot execute it by itself, as Windows
+    /// cannot a script, with `path` the `PATH` the command starts under. With none, the system
+    /// starts `script` itself.
+    fn script_interpreter(
+        &self,
+        script: &std::path::Path,
+        path: Option<&std::ffi::OsStr>,
+    ) -> io::Result<Option<ScriptInterpreter>> {
+        let _ = (script, path);
+        Ok(None)
+    }
 }
 
 impl OpenFile {

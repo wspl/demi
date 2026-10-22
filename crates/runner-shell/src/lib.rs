@@ -50,7 +50,8 @@
 //!
 //! On Windows a job takes drive paths as Windows writes them (`C:/Users/…`),
 //! never the Git Bash `/c/…` form, which would name `/c` at the root of the
-//! current drive.
+//! current drive, and runs a script file by the interpreter its first line
+//! names, as Git Bash does (`shebang.rs`).
 //!
 //! # Boundaries
 //!
@@ -65,6 +66,7 @@ mod interpreter;
 mod job;
 mod process_builtins;
 mod scope;
+mod shebang;
 mod signals;
 mod timeout;
 mod timing;

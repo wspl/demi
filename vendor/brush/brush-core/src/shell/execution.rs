@@ -231,6 +231,29 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
         Ok(result)
     }
 
+    /// Runs the script file `path` as a command of another shell would: `options` are set as
+    /// `set` takes them, then the file runs with `args` as its positional parameters, and the
+    /// shell's exit handling runs after it. The shell is not used again.
+    #[cfg(windows)]
+    pub(crate) async fn run_script_as_command(
+        &mut self,
+        path: &Path,
+        options: &[std::ffi::OsString],
+        args: Vec<String>,
+        params: &ExecutionParameters,
+    ) -> Result<ExecutionResult, error::Error> {
+        if !options.is_empty() {
+            let words = options.iter().map(|option| option.to_string_lossy()).collect::<Vec<_>>().join(" ");
+            let source_info = crate::SourceInfo::from(path.to_owned());
+            self.run_string(format!("set {words}"), &source_info, params).await?;
+        }
+        let result = self
+            .parse_and_execute_script_file(path, args.into_iter(), params, callstack::ScriptCallType::Run)
+            .await?;
+        let _ = self.on_exit().await;
+        Ok(result)
+    }
+
     pub(crate) async fn run_parsed_result(
         &mut self,
         parse_result: Result<brush_parser::ast::Program, brush_parser::ParseError>,

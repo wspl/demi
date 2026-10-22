@@ -414,3 +414,57 @@ async fn fg_refuses_without_job_control() {
     assert_eq!(output, "fg 1\n");
     assert!(errors.contains("fg: no job control"), "{errors}");
 }
+
+// A script file that a Windows job runs directly (`./x.sh`) is run by the
+// interpreter its first line names, as Git Bash runs it: the job's own shell
+// for `sh` and `bash`, however the line names them, and for any other
+// interpreter the program of that name on the job's PATH when the named file
+// does not exist. The extension names no interpreter.
+#[test]
+fn a_script_runs_by_the_interpreter_its_first_line_names() {
+    use demi_runner_shell::testing::{ScriptInterpreter, script_command};
+    use std::ffi::OsString;
+
+    let root = tempfile::tempdir().unwrap();
+    let bin = root.path().join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    // A `bash` on the PATH is never the one that runs a script.
+    for program in ["interp", "lang", "bash"] {
+        std::fs::write(bin.join(program), b"").unwrap();
+    }
+    let path = std::env::join_paths([&bin]).unwrap();
+    let script = |text: &str| {
+        let file = root.path().join("x.sh");
+        std::fs::write(&file, text).unwrap();
+        script_command(&file, Some(&path))
+    };
+    let run = |text: &str| script(text).unwrap();
+    let leading = |words: &[&str]| words.iter().map(OsString::from).collect::<Vec<_>>();
+    let program = |name: &str, words: &[&str]| Some(ScriptInterpreter::Program(bin.join(name), leading(words)));
+    let shell = |words: &[&str]| Some(ScriptInterpreter::Shell(leading(words)));
+
+    assert_eq!(run("#!/nonexistent/interp\necho hi\n"), program("interp", &[]));
+    assert_eq!(run("#!/nonexistent/interp -e\r\necho hi\r\n"), program("interp", &["-e"]));
+    assert_eq!(run("#! /usr/bin/env lang -u\nprint(1)\n"), program("lang", &["-u"]));
+    // The job's shell runs a script that names `sh` or `bash`.
+    assert_eq!(run("#!/bin/sh\necho hi\n"), shell(&[]));
+    assert_eq!(run("#!/bin/bash\necho hi\n"), shell(&[]));
+    assert_eq!(run("#!/usr/bin/env bash\necho hi\n"), shell(&[]));
+    assert_eq!(run("#!/usr/bin/bash -e\r\necho hi\r\n"), shell(&["-e"]));
+    assert_eq!(run("#!/usr/bin/env -S bash -eu\necho hi\n"), shell(&["-eu"]));
+    // The interpreter's file wins where it exists.
+    let named = bin.join("lang");
+    assert_eq!(
+        run(&format!("#!{}\n", named.display())),
+        Some(ScriptInterpreter::Program(named, vec![]))
+    );
+    // No first line of the kind: the system starts the file itself.
+    assert_eq!(run("echo hi\n"), None);
+    assert_eq!(run("# a comment\n"), None);
+    let error = script("#!/bin/nosuch\n").unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    assert_eq!(
+        error.to_string(),
+        "/bin/nosuch: bad interpreter: No such file or directory"
+    );
+}

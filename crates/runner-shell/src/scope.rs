@@ -628,6 +628,14 @@ impl ExecutionHost for Scope {
         self.timings.builtin_started();
     }
 
+    fn script_interpreter(
+        &self,
+        script: &Path,
+        path: Option<&std::ffi::OsStr>,
+    ) -> io::Result<Option<brush_core::execution_host::ScriptInterpreter>> {
+        crate::shebang::command(script, path)
+    }
+
     fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
         self.descriptors(std::io::pipe)
     }

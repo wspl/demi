@@ -181,7 +181,32 @@ pub fn compose_std_command<S: AsRef<OsStr>, SE: extensions::ShellExtensions>(
     // it, and cmd.exe reads the slashes of `C:/Windows/System32/cmd.exe` as
     // switches, so on Windows the path is given with the system's separator.
     #[cfg(windows)]
-    let mut cmd = std::process::Command::new(command_name.replace('/', "\\"));
+    let mut cmd = {
+        // Windows runs no script by itself: the interpreter the script's first line names
+        // does, as Git Bash starts it, with the script as its argument.
+        let interpreter = match context.shell.execution_host() {
+            Some(host) => {
+                let path = context.shell.env_str("PATH");
+                host.script_interpreter(
+                    std::path::Path::new(command_name),
+                    path.as_deref().map(std::ffi::OsStr::new),
+                )
+                .map_err(|error| error::ErrorKind::FailedToExecuteCommand(command_name.to_owned(), error))?
+            }
+            None => None,
+        };
+        match interpreter {
+            Some(crate::execution_host::ScriptInterpreter::Program(program, leading)) => {
+                let mut cmd = std::process::Command::new(program);
+                cmd.args(leading).arg(command_name);
+                cmd
+            }
+            // A script this shell runs itself never reaches here: `execute_via_external` starts it.
+            Some(crate::execution_host::ScriptInterpreter::Shell(_)) | None => {
+                std::process::Command::new(command_name.replace('/', "\\"))
+            }
+        }
+    };
     #[cfg(not(windows))]
     let mut cmd = std::process::Command::new(command_name);
 
@@ -593,7 +618,63 @@ impl<'a, SE: extensions::ShellExtensions> SimpleCommand<'a, SE> {
         result
     }
 
+    /// The options this shell sets before it runs the script file `path` as a command, when
+    /// its host has this shell run it, as on Windows, where no system loader reads the
+    /// file's first line.
+    #[cfg(windows)]
+    fn options_of_script_run_here(&self, path: &Path) -> Result<Option<Vec<std::ffi::OsString>>, error::Error> {
+        let Some(host) = self.shell.execution_host() else {
+            return Ok(None);
+        };
+        let search = self.shell.env_str("PATH");
+        let interpreter = host
+            .script_interpreter(path, search.as_deref().map(std::ffi::OsStr::new))
+            .map_err(|error| error::ErrorKind::FailedToExecuteCommand(self.command_name.clone(), error))?;
+        Ok(match interpreter {
+            Some(crate::execution_host::ScriptInterpreter::Shell(options)) => Some(options),
+            _ => None,
+        })
+    }
+
+    /// Runs the script file `path` in a copy of this shell, as a process the shell started
+    /// would run it: the script's arguments are its positional parameters, and what it sets
+    /// stays in the copy.
+    #[cfg(windows)]
+    fn execute_via_subshell(
+        self,
+        path: &Path,
+        options: Vec<std::ffi::OsString>,
+    ) -> Result<ExecutionSpawnResult, error::Error> {
+        let mut shell = self.shell;
+        let last_arg = Self::take_last_arg(&self.args);
+        let mut subshell: Shell<SE> = (*shell).clone();
+        let guard = subshell.execution_guard();
+        let path = path.to_owned();
+        let args: Vec<String> = self.args[1..].iter().map(ToString::to_string).collect();
+        let params = self.params;
+        let task = tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            tokio::runtime::Handle::current().block_on(async move {
+                let result = subshell.run_script_as_command(&path, &options, args, &params).await?;
+                Ok(ExecutionResult::from(result.exit_code))
+            })
+        });
+
+        // Update $_ after command execution.
+        shell.update_last_arg_variable(last_arg);
+
+        if let Some(post_execute) = self.post_execute {
+            let _ = post_execute(&mut shell);
+        }
+
+        Ok(ExecutionSpawnResult::StartedTask(task))
+    }
+
     fn execute_via_external(self, path: &Path) -> Result<ExecutionSpawnResult, error::Error> {
+        #[cfg(windows)]
+        if let Some(options) = self.options_of_script_run_here(path)? {
+            return self.execute_via_subshell(path, options);
+        }
         let mut shell = self.shell;
         let last_arg = Self::take_last_arg(&self.args);
 
