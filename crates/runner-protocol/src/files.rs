@@ -121,7 +121,9 @@ pub struct Subject {
 }
 
 /// The most subscriptions one page's file watch holds, and the most of them
-/// outside the conversation's working tree.
+/// outside the conversation's working tree: each is a record the runner keeps,
+/// and one outside the tree is a watch of its own on the operating system,
+/// whose watches are limited.
 pub const MAX_PAGE_SUBSCRIPTIONS: usize = 4096;
 pub const MAX_OUTSIDE_SUBSCRIPTIONS: usize = 64;
 

@@ -27,7 +27,8 @@ pub const RETRY_WAITS: [Duration; 4] = [
     Duration::from_secs(10 * 60),
 ];
 
-/// The most characters of a Connect To address, `host:port`.
+/// The most characters of a Connect To address, `host:port`: a host name is at
+/// most 253 characters (RFC 1035) and a port five.
 pub const ADDRESS_CHARS: usize = 260;
 
 /// A forward the runner is an end of, as the backend tells it: whether it

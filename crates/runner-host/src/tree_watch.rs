@@ -295,11 +295,10 @@ mod platform {
     /// - The thread receives an explicit stop message: it must not wait for all
     ///   folder-event senders to disappear, since the watcher it owns owns one
     ///   of those senders.
-    /// - Its queue is bounded. If it fills, the watch reports failure rather
-    ///   than silently missing new folders.
+    /// - Its queue has no length limit, so no new folder is missed.
     /// - Failure to start the thread is a watch failure too.
     struct FolderAdder {
-        added: mpsc::SyncSender<FolderChange>,
+        added: mpsc::Sender<FolderChange>,
         thread: Option<std::thread::JoinHandle<()>>,
     }
 
@@ -312,8 +311,8 @@ mod platform {
         fn drop(&mut self) {
             // The worker owns a watcher whose callback owns another sender,
             // so dropping our sender cannot end its receive loop. Watch
-            // destruction runs on the blocking pool, where sending and
-            // joining may wait without stopping the control runtime.
+            // destruction runs on the blocking pool, where joining may wait
+            // without stopping the control runtime.
             if self.added.send(FolderChange::Stop).is_err() {
                 // The worker already exited, so there is nothing to stop.
             }
@@ -333,7 +332,7 @@ mod platform {
         ) -> Result<Watch, String> {
             let listener = Arc::new(Mutex::new(listener));
             let tree_by_folder = cfg!(target_os = "linux") && reach == Reach::Tree;
-            let (added, adding) = mpsc::sync_channel::<FolderChange>(128);
+            let (added, adding) = mpsc::channel::<FolderChange>();
             let handler = {
                 let listener = listener.clone();
                 let added = added.clone();
@@ -347,20 +346,11 @@ mod platform {
                             if let Raw::Changed { path, entry: true, .. } = raw
                                 && path.is_dir()
                             {
-                                match added.try_send(FolderChange::Added(path.clone())) {
-                                    Ok(()) => {}
-                                    Err(mpsc::TrySendError::Full(_)) => {
-                                        lock(&listener).deliver(vec![Raw::Failed(
-                                            "The folder watch queue is full".into(),
-                                        )]);
-                                        return;
-                                    }
-                                    Err(mpsc::TrySendError::Disconnected(_)) => {
-                                        lock(&listener).deliver(vec![Raw::Failed(
-                                            "The folder watch thread stopped".into(),
-                                        )]);
-                                        return;
-                                    }
+                                if added.send(FolderChange::Added(path.clone())).is_err() {
+                                    lock(&listener).deliver(vec![Raw::Failed(
+                                        "The folder watch thread stopped".into(),
+                                    )]);
+                                    return;
                                 }
                             }
                         }
@@ -534,7 +524,8 @@ fn from_flags(path: PathBuf, flags: fsevent_sys::FSEventStreamEventFlags) -> Raw
 }
 
 /// The most paths a stream remembers the file of; past it, it forgets them
-/// all, and the next doubtful event of each counts as one that came.
+/// all, and the next doubtful event of each counts as one that came. A stream
+/// lives as long as its watch, and would remember every path it saw.
 #[cfg(target_os = "macos")]
 const ARRIVALS_KEPT: usize = 65_536;
 

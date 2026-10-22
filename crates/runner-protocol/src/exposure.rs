@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 /// connection fails the request, as for an unreachable endpoint.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The most headers one request or answer carries.
+/// The most headers one request or answer carries: the HTTP/1 parser that
+/// reads an answer holds its headers in an array of a fixed size.
 pub const MAX_HEADERS: usize = 256;
 
 /// Which scheme the address had: `http` reaches `127.0.0.1:<port>`,

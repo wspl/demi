@@ -44,9 +44,11 @@ use serde::{Deserialize, Serialize};
 /// How long a pipe's writer goes without a frame before it sends an idle
 /// one, and a stream pipe's WebSocket without a message before a ping.
 pub const PIPE_IDLE: Duration = Duration::from_secs(30);
-/// The most bytes of one data frame; a writer splits larger chunks.
+/// The most bytes of one data frame; a writer splits larger chunks, so a
+/// reader holds one frame at a time.
 pub const PIPE_DATA_BYTES: usize = 64 * 1024;
-/// The most bytes of an end frame's map, its cause's words included.
+/// The most bytes of an end frame's map, its cause's words included: a reader
+/// holds the frame whole.
 const PIPE_END_BYTES: usize = 64 * 1024;
 
 const DATA: u8 = 0x01;

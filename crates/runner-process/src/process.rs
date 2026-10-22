@@ -112,6 +112,9 @@ impl ChildProcess {
         let mut stdin = child.stdin().take().expect("piped stdin");
         let stdout = child.stdout().take().expect("piped stdout");
         let stderr = child.stderr().take().expect("piped stderr");
+        // Bulk bytes pass through these two: a pipe's body feeds the input and
+        // a program's output feeds the pipe, so each waits for its taker rather
+        // than the runner holding them without end.
         let (input, mut input_rx) = mpsc::channel(4);
         let (output_tx, output) = mpsc::channel(4);
         let (signals, mut signal_rx) = mpsc::unbounded_channel::<Signal>();

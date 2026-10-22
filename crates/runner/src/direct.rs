@@ -51,7 +51,9 @@ use futures_util::{StreamExt, future::BoxFuture};
 use tokio::{runtime::Handle, sync::mpsc};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
-/// What a stream's invocation may send ahead of the page taking it.
+/// What a stream's invocation may send ahead of the page taking it: its output
+/// is bulk, so the invocation waits for the page rather than the runner holding
+/// it without end.
 const STREAM_OUTPUT: usize = 4;
 
 /// The Host operations and service streams of one backend connection, which

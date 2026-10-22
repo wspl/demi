@@ -1411,14 +1411,10 @@ pub enum Outbound {
     /// online and whenever an install or a retirement changes them
     /// (`crates/runner-command-packages/src/cache.rs`).
     Installed {
-        #[garde(length(max = MAX_INSTALLED), dive)]
+        #[garde(dive)]
         artifacts: Vec<HostArtifact>,
     },
 }
-
-/// The most artifacts one list of a cache's holds carries: the cache keeps
-/// one version of each line, so a Host holds a few.
-pub const MAX_INSTALLED: usize = 256;
 
 /// One artifact a Host holds: its package, its line's name and its
 /// version, such as `demi.browser`, `Chrome for Testing` and

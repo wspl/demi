@@ -35,10 +35,12 @@ pub struct ReleaseArtifact {
 }
 
 /// How much larger than what it decodes to a compressed copy may be: zstd
-/// adds a little to bytes it cannot compress.
+/// adds a little to bytes it cannot compress. A file past it is not the one
+/// named, and is not read without end.
 const ENCODED_MARGIN: u64 = 1 << 20;
 
-/// How many redirects a download of a release's file follows.
+/// How many redirects a download of a release's file follows: a server that
+/// redirects in a loop would otherwise never answer.
 const REDIRECTS: usize = 10;
 
 /// The store and the release's files it takes artifacts from.

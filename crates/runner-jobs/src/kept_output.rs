@@ -29,7 +29,7 @@ use demi_runner_protocol::wire::{self, JOB_KEPT_PART_BYTES, KeptRecord, OutputSt
 
 /// How many bytes of records one segment of the kept output's end holds
 /// before the next one begins: the granularity at which the end lets old
-/// output go.
+/// output go, so that the disk it takes stays bounded.
 const SEGMENT_BYTES: u64 = 1024 * 1024;
 
 /// The size of the chunks a snapshot is read in.

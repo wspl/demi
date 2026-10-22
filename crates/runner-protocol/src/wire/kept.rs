@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use super::{OutputStream, WireBytes, WireError};
 
 /// The most bytes of records of reads a kept output holds; below it, it holds
-/// every read.
+/// every read. A job that prints without end would otherwise fill the disk.
 pub const JOB_KEPT_BYTES: usize = 16 * 1024 * 1024;
 
 /// Beyond [`JOB_KEPT_BYTES`], the bytes of records kept at the start, and at

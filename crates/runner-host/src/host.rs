@@ -29,6 +29,9 @@ pub struct HostServer {
     shared_watches: Watches,
     output: mpsc::UnboundedSender<wire::Frame>,
     filesystem: TaskTracker,
+    /// The slots of filesystem and working-tree requests, which bound the
+    /// blocking threads and the disk load a flood of requests would take
+    /// (`crates/runner-host/src/lib.rs`).
     filesystem_capacity: Arc<Semaphore>,
     git: GitService,
     git_capacity: Arc<Semaphore>,

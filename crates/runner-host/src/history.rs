@@ -29,7 +29,8 @@ use demi_runner_protocol::wire::{self, ChangeKind};
 
 use crate::git::{GitError, Located, MAX_BLOB_BYTES, discover, internal, locate, root_relative_path};
 
-/// The most commits one page of a log holds.
+/// The most commits one page of a log holds: a page is one answer, and a log
+/// is read by the page as it is scrolled.
 pub const LOG_PAGE: usize = 50;
 /// The fewest hex digits that name a commit.
 const MIN_ABBREVIATION: usize = 7;

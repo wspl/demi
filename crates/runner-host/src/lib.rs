@@ -44,7 +44,8 @@
 //! | Syncs | 4 |
 //!
 //! A request beyond that waits for a slot, still ending when its connection
-//! closes.
+//! closes. The slots bound the blocking threads and the disk and processor
+//! load that a flood of requests would otherwise take without limit.
 //!
 //! The crate knows no jobs, commands or the connection that carries the
 //! requests.

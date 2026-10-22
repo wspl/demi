@@ -10,7 +10,8 @@ use demi_command_sdk::{Output, OutputSink, ServiceError};
 
 use crate::job_media::JobMedia;
 
-/// The most JSON output a command may produce.
+/// The most JSON output a command may produce: it is captured whole in memory
+/// to be checked against its schema.
 const JSON_BYTES: usize = 1024 * 1024;
 
 /// One command's output. With `--json` its standard output is captured whole,

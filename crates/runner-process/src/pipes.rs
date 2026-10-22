@@ -33,7 +33,8 @@ const RECONNECT_FOR: Duration = Duration::from_secs(60);
 const RECONNECT_PAUSE: Duration = Duration::from_secs(1);
 
 /// The most of a pipe's answer the runner reads: a confirmation, or the words
-/// of a refusal.
+/// of a refusal, which a server that answers without end could otherwise grow
+/// in memory.
 const ANSWER_BYTES: usize = 16 * 1024;
 
 #[derive(Clone)]

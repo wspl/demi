@@ -39,7 +39,8 @@ use std::{
 pub const LOG: &str = "runner.log";
 /// The log before it.
 pub const PREVIOUS_LOG: &str = "runner.log.1";
-/// The size past which the log starts again.
+/// The size past which the log starts again, so a runner that logs without end
+/// does not fill the disk.
 const LIMIT: u64 = 10 * 1024 * 1024;
 
 /// The log the console goes to, once [`to_log`] made it so.

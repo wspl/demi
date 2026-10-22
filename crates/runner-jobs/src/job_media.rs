@@ -27,10 +27,11 @@ use tokio::sync::{mpsc, oneshot};
 /// The directory of a job's directory that holds its media.
 pub const MEDIA_DIRECTORY: &str = "media";
 
-/// The most media a job keeps.
+/// The most media a job keeps: they stay in the job's directory on the
+/// device's disk until it is released.
 pub const JOB_MEDIA: u32 = 32;
 
-/// The most bytes of media a job keeps.
+/// The most bytes of media a job keeps, for the same reason.
 pub const JOB_MEDIA_BYTES: u64 = 64 * 1024 * 1024;
 
 /// A medium as it reaches the job's output: its line, then the `job_medium`

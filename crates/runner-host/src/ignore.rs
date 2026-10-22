@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 
 use gix::bstr::BString;
 
-/// The most folders the cache keeps; past it, it starts over.
+/// The most folders the cache keeps; past it, it starts over. The cache lives
+/// as long as its watch, and would judge every folder it saw.
 const CACHED_FOLDERS: usize = 65_536;
 
 /// The rules of one repository and the folders already judged. It lives on

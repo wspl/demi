@@ -17,17 +17,23 @@ use demi_shared_types::ReadAt;
 
 use crate::files::{DirectoryEntry, FileWatchRequest};
 
-/// The most bytes of one binary message on a channel.
+/// The most bytes of one binary message on a channel: a data channel's own
+/// messages are limited by the browsers and by SCTP.
 pub const MESSAGE_BYTES: usize = 64 * 1024;
 /// The most bytes either end keeps queued on one channel; it writes more as
-/// the queue drains. Larger queues measured slower, not faster.
+/// the queue drains, so that a channel holds a bounded amount in memory.
+/// Larger queues measured slower, not faster.
 pub const QUEUE_BYTES: usize = 256 * 1024;
-/// The most bytes the runner keeps queued on a live view's `video` channel:
-/// the view's own window, not the queue, limits it (`crates/runner-direct/src/lib.rs`).
+/// The most bytes the runner keeps queued on a live view's `video` channel,
+/// so that a view the network cannot keep up with does not hold frames without
+/// end: the view's own window, not the queue, limits it
+/// (`crates/runner-direct/src/lib.rs`).
 pub const VIDEO_QUEUE_BYTES: usize = 2 * 1024 * 1024;
-/// The most peers a runner keeps; it refuses another offer with `busy`.
+/// The most peers a runner keeps; it refuses another offer with `busy`. Each
+/// peer holds sockets and a thread of the runner.
 pub const MAX_PEERS: usize = 8;
-/// The most channels one peer keeps open; another is refused with `busy`.
+/// The most channels one peer keeps open; another is refused with `busy`. A
+/// peer's channels share one SCTP association, whose streams are limited.
 pub const MAX_CHANNELS: usize = 64;
 /// How long the page waits for a peer to connect, and the runner keeps one
 /// that has not.
@@ -40,9 +46,10 @@ pub const WATCH_HEARTBEAT: Duration = Duration::from_secs(30);
 /// on which the runner sends back each message as it arrives.
 pub const PROBE_LABEL: &str = "probe";
 
-/// The most STUN servers a backend names.
+/// The most STUN servers a backend names: a browser's ICE agent asks each one.
 pub const MAX_STUN_URLS: usize = 8;
-/// The most characters of a candidate a page or a runner trickles.
+/// The most characters of a candidate a page or a runner trickles: a decoded
+/// candidate is not trusted to be short.
 pub const CANDIDATE_CHARS: usize = 512;
 
 /// A STUN server pages and runners ask for the address the internet sees

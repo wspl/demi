@@ -74,16 +74,22 @@ use demi_runner_protocol::wire::{self, ChangeKind, Frame, Inbound};
 use crate::tree_watch::{Change as Seen, Event, Reach};
 use crate::watches::{Follower, Key, Status, Watches};
 
-/// The list stops here and reports `truncated`.
+/// The list stops here and reports `truncated`: the answer is one message,
+/// which cannot outgrow the wire's frame.
 pub const MAX_FILES: usize = 5_000;
-/// Files beyond this size count no lines; `git_show` refuses them.
+/// Files beyond this size count no lines; `git_show` refuses them: a blob is
+/// read into memory whole.
 pub const MAX_BLOB_BYTES: u64 = 8 * 1024 * 1024;
 /// Beyond this many recorded paths a whole walk is cheaper: a walk over some
 /// paths checks every index entry against each of them.
 const MAX_TOUCHED: usize = 100;
+/// The most directories whose state is kept at once; the oldest makes room.
+/// Each holds a watch and a baseline of its tree in memory.
 const MAX_ROOTS: usize = 8;
 const IDLE: Duration = Duration::from_secs(15 * 60);
 const TIMEOUT: Duration = Duration::from_secs(30);
+/// The most computations at once: each reads a whole tree on a blocking
+/// thread and its disk.
 const CONCURRENT_COMPUTATIONS: usize = 2;
 
 /// How the working tree differs from HEAD at a path.
@@ -199,7 +205,7 @@ pub(crate) fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -
 /// wait for the next computation, which they all share.
 #[derive(Clone)]
 pub struct GitService {
-    requests: mpsc::Sender<ChangesRequest>,
+    requests: mpsc::UnboundedSender<ChangesRequest>,
     /// A commit's file list stops here, as the working tree's does.
     max_files: usize,
     /// How many whole walks the service made.
@@ -213,9 +219,6 @@ struct ChangesRequest {
     reply: oneshot::Sender<Result<Changes, GitError>>,
     cancel: CancellationToken,
 }
-
-/// Requests waiting for the owner; a sender waits for room.
-const REQUESTS: usize = 64;
 
 struct Owner {
     roots: HashMap<PathBuf, Root>,
@@ -352,7 +355,7 @@ impl GitService {
 
     /// The service of a connection whose watches are `watches`.
     pub fn new(watches: Watches, max_files: usize) -> Self {
-        let (requests, received) = mpsc::channel(REQUESTS);
+        let (requests, received) = mpsc::unbounded_channel();
         let walks = Arc::new(AtomicU64::new(0));
         let owner = Owner {
             roots: HashMap::new(),
@@ -393,10 +396,7 @@ impl GitService {
             cancel: cancel.clone(),
         };
         let ended = || GitError::Internal("the working-tree service ended".into());
-        tokio::select! {
-            _ = cancel.cancelled() => return Err(GitError::Cancelled),
-            sent = self.requests.send(request) => sent.map_err(|_| ended())?,
-        }
+        self.requests.send(request).map_err(|_| ended())?;
         tokio::select! {
             _ = cancel.cancelled() => Err(GitError::Cancelled),
             answer = answer => answer.map_err(|_| ended())?,
@@ -511,7 +511,7 @@ async fn history<T: Send + 'static>(
 }
 
 impl Owner {
-    async fn run(mut self, mut requests: mpsc::Receiver<ChangesRequest>) {
+    async fn run(mut self, mut requests: mpsc::UnboundedReceiver<ChangesRequest>) {
         let mut idle = tokio::time::interval(Duration::from_secs(60));
         idle.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {

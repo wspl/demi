@@ -28,7 +28,8 @@ use demi_shared_gates::RateWindow;
 
 use crate::codes::{ClaimCode, new_device_token};
 
-/// The window claim attempts are counted in.
+/// The window claim attempts are counted in. Attempts are limited because a
+/// pairing code is short, and unlimited tries would let a user guess one.
 const ATTEMPT_WINDOW: Duration = Duration::from_secs(60);
 
 /// The runners waiting to be paired, and each user's recent claims.

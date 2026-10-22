@@ -27,6 +27,7 @@ impl Volumes {
             output,
             stop,
             syncs: TaskTracker::new(),
+            // A sync flushes the disks, which more at once would not speed up.
             sync_capacity: Arc::new(Semaphore::new(4)),
         }
     }

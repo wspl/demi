@@ -155,7 +155,9 @@ impl Serving {
             answer,
         } = request;
         // The answer pipe opens first and stays open while the port takes
-        // its time, so only the caller decides how long that is.
+        // its time, so only the caller decides how long that is. The body is
+        // bulk, so each chunk waits for its taker rather than the runner
+        // holding them without end.
         let (chunks, read) = mpsc::channel(1);
         let streamed = futures_util::stream::unfold(read, |mut read| async move {
             read.recv().await.map(|chunk| (chunk, read))

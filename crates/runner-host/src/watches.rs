@@ -22,7 +22,8 @@ use crate::ignore::IgnoreFilter;
 use crate::tree_watch::{Change, Event, Reach, TreeWatch};
 
 /// The most watches of single files and folders a connection keeps on
-/// macOS, each a kqueue or a stream of its own (`tree_watch`).
+/// macOS, each a kqueue or a stream of its own (`tree_watch`), of which the
+/// system gives a process few.
 pub(crate) const MAX_SINGLE_WATCHES: usize = 64;
 
 /// Where a shared watch is.
