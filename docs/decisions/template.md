@@ -2,66 +2,34 @@
 status: proposed
 ---
 
-# A sentence that says what the decision makes true
+# One sentence: what the decision makes true
 
-Supersedes, in part: NNNN (its title), where it says what no longer holds.
+Supersedes: NNNN (its title), the part that no longer holds.
 
-## Summary
+## Problem
 
-One paragraph: what changes, for whom, and why.
+What happens today, in one concrete case, and what it costs the user.
 
-## Motivation
+## Decision
 
-What happens today, in a concrete case the reader can picture, with the
-measurements that show it, and what it costs the user.
-
-## Guide-level explanation
-
-What a user sees and does, or what a model reads and runs, after the
-change, told as the user or the model would meet it. A change on screen
-draws the screen as an ASCII sketch.
-
-## Reference-level explanation
-
-The design in enough detail to build it from:
-
-* Interfaces: each route with its method, path, parameters, body, answer
-  and status codes; each socket frame and message; each command and its
-  output; written as the Rust or TypeScript types they become.
-* State: what is stored, where, under which version, and who owns it.
-* Behavior: order, concurrency, errors, limits and edge cases, each as a
-  rule the code keeps.
-
-## Upgrade and version skew
-
-What happens when parts of different versions meet: an open page of the
-old build and the new backend, an old runner and a new backend, data
-written by the release before. What migrates, and what is read as it is.
-
-## Performance
-
-What the change costs and saves, as the spike measured it before the build,
-and which lines of the log show it once it runs.
-
-## Drawbacks
-
-Why this might not be done.
-
-## Rationale and alternatives
-
-The options considered, and why this one; what not doing it means.
+What the user sees or the model reads afterwards, with an ASCII sketch for
+a screen. Then the design to build from: the interfaces as the Rust or
+TypeScript types they become, what is stored and who owns it, and what an
+older page, runner or data meets.
 
 ## Spike
 
-What the spike ran and what it showed: that the library, protocol or
-mechanism the design rests on does what the design needs of it, and how.
-None when the decision rests on no such behavior.
+What ran, what it showed, and what the design costs: time, memory, bytes.
+None when the design rests on nothing unproven.
 
 ## Prior art
 
-How leading projects of the kind do it, with sources, and where this design
-departs from them.
+How leading open-source projects do it, with links, and where this departs.
 
-## Unresolved questions
+## Alternatives
 
-What is still open, for the user to decide before or while it is built.
+The other options, and why not.
+
+## Open questions
+
+What the user decides.
