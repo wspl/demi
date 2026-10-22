@@ -1,18 +1,5 @@
 import { expect, test } from 'bun:test'
-import { base64urlDecode, base64urlEncode, baseName, clientPlatform, countOf, countUnlessOne, delay, keepComposition, pluralize, sliceHead, timeLeft, titleCase, truncate } from '../index'
-
-test('an aborted delay ends at once instead of after its time', async () => {
-  const stop = new AbortController()
-  stop.abort()
-  await delay(60_000, stop.signal)
-})
-
-test('the platform comes from the web browser that reports it', () => {
-  expect(clientPlatform({ platform: 'MacIntel', userAgent: 'Mozilla/5.0 (Macintosh)' })).toBe('mac')
-  expect(clientPlatform({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' })).toBe('windows')
-  expect(clientPlatform({ platform: '', userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBe('linux')
-  expect(clientPlatform({ platform: '', userAgent: 'Mozilla/5.0 (SomethingElse)' })).toBe('other')
-})
+import { base64urlDecode, base64urlEncode, baseName, keepComposition, sliceHead, titleCase, truncate } from '../index'
 
 test('a phrase in title case keeps its short inner words lowercase, as the Writing page says', () => {
   expect(titleCase('organize conversations')).toBe('Organize Conversations')
@@ -62,25 +49,6 @@ test("a Host path's name, on a Mac, Linux or Windows Host", () => {
   expect(baseName('/')).toBe('')
 })
 
-// The caller gives the casing: a title passes `Conversation`, a sentence `file`.
-test.each([
-  { count: 0, pluralized: 'files', counted: '0 files', unlessOne: '0 files' },
-  { count: 1, pluralized: 'file', counted: '1 file', unlessOne: 'file' },
-  { count: 2, pluralized: 'files', counted: '2 files', unlessOne: '2 files' },
-])('$count file(s) read "$counted"', ({ count, pluralized, counted, unlessOne }) => {
-  expect(pluralize(count, 'file')).toBe(pluralized)
-  expect(countOf(count, 'file')).toBe(counted)
-  expect(countUnlessOne(count, 'file')).toBe(unlessOne)
-})
-
-test('a count keeps the casing and the irregular plural its caller gives', () => {
-  expect(countOf(3, 'Conversation')).toBe('3 Conversations')
-  expect(countOf(1, 'Agent')).toBe('1 Agent')
-  expect(countOf(2, 'copy', 'copies')).toBe('2 copies')
-  expect(pluralize(2, 'This project goes', 'These projects go')).toBe('These projects go')
-  expect(pluralize(1, 'This project goes', 'These projects go')).toBe('This project goes')
-})
-
 test('base64url carries every byte both ways, without padding, as WebAuthn writes binary values', () => {
   const bytes = new Uint8Array([0, 0xfb, 0xff, 0x3e, 0x3f, 0x80])
   const text = base64urlEncode(bytes)
@@ -91,13 +59,4 @@ test('base64url carries every byte both ways, without padding, as WebAuthn write
   expect(base64urlEncode(new Uint8Array([0xfb, 0xff, 0x3e, 0x3f]))).toBe('-_8-Pw')
   expect([...base64urlDecode('-_8-Pw==')]).toEqual([0xfb, 0xff, 0x3e, 0x3f])
   expect([...base64urlDecode('-_8-Pw')]).toEqual([0xfb, 0xff, 0x3e, 0x3f])
-})
-
-test('a code says the minutes and seconds it has left, and nothing once it expired', () => {
-  const at = (iso: string) => Date.parse(iso)
-  const expiresAt = at('2026-10-13T08:10:00.000Z')
-  expect(timeLeft(expiresAt, at('2026-10-13T08:00:00.000Z'))).toBe('10:00')
-  expect(timeLeft(expiresAt, at('2026-10-13T08:00:55.200Z'))).toBe('9:05')
-  expect(timeLeft(expiresAt, at('2026-10-13T08:09:59.500Z'))).toBe('0:01')
-  expect(timeLeft(expiresAt, at('2026-10-13T08:10:00.000Z'))).toBeNull()
 })

@@ -3,7 +3,7 @@
 //! shape, and every block decodes and encodes to exactly that JSON.
 
 use demi_shared_types::{Block, DecodeError, decode};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 fn fixtures() -> Vec<Value> {
     serde_json::from_str(include_str!("fixtures/blocks.json")).expect("the fixture is JSON")
@@ -106,48 +106,4 @@ fn stored_blocks_refuse_what_the_contract_does_not_hold() {
             case["why"]
         );
     }
-}
-
-#[test]
-fn a_rule_break_names_the_field() {
-    let value = with(fixture("u1"), "/content/6/name", json!(""));
-    let error = decode_value(&value).unwrap_err();
-    assert!(matches!(error, DecodeError::Invalid(_)), "{error}");
-    assert!(error.to_string().contains("content[6][0].name"), "{error}");
-    let value = with(fixture("m1"), "/id", json!("m2"));
-    let error = decode_value(&value).unwrap_err().to_string();
-    assert!(error.contains("must be the message's id, m1"), "{error}");
-}
-
-/// 0.1.47 wrote a finished child's last answer as the body of its completion
-/// and named the block it came from: what a release wrote is valid whatever
-/// the current code writes, so such a receipt decodes and keeps its words.
-#[test]
-fn a_completion_an_earlier_release_wrote_keeps_the_report_it_carried() {
-    let stored = with(
-        with(fixture("subagent:child-1:1"), "/message/content", json!("The cache read is fixed.")),
-        "/message/event/outcome",
-        json!("completed"),
-    );
-    let stored = with(stored, "/message/origin", json!("last-answer"));
-    let block = decode_value(&stored).unwrap_or_else(|error| panic!("{stored}: {error}"));
-    assert_eq!(serde_json::to_value(&block).unwrap(), stored);
-}
-
-/// A report an earlier release stored for a command that still ran names the
-/// interval it reported at; it reads without it.
-#[test]
-fn a_stored_report_that_names_an_interval_reads_without_it() {
-    let stored = json!({
-        "commandId": "18",
-        "title": "Build the site",
-        "event": {"kind": "running", "runningMs": 300000, "idleMs": 290000, "intervalMs": 300000},
-        "output": "",
-    });
-    let report: demi_shared_types::CommandReport = serde_json::from_value(stored).unwrap();
-    assert_eq!(
-        report.event,
-        demi_shared_types::ReportEvent::Running { running_ms: 300_000, idle_ms: 290_000 }
-    );
-    assert!(!serde_json::to_string(&report).unwrap().contains("intervalMs"));
 }

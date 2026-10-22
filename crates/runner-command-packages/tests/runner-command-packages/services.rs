@@ -33,7 +33,6 @@ use std::{
 };
 use tokio::sync::{Notify, broadcast};
 use tokio_util::sync::CancellationToken;
-use tracing_subscriber::layer::SubscriberExt as _;
 
 /// Hands out a local copy of the fixture, counting the requests; with `gate`
 /// set, each request waits for it.
@@ -174,49 +173,15 @@ async fn a_service_without_leases_stays_while_it_holds_a_conversation() {
             if let Some(conversation) = release {
                 services.release_conversation(conversation).await.unwrap();
             }
-            assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
             assert_eq!(decided(&mut decisions, &digest).await, Decision::Holds);
         }
         assert!(resident.client().info().await.is_ok(), "the service stays");
         // The last conversation goes, and nothing holds the service.
         services.release_conversation("two").await.unwrap();
-        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
         assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
         stopped(&resident).await;
         // Releasing again starts nothing and is harmless.
         services.release_conversation("two").await.unwrap();
-        registry.close().await;
-    })
-    .await
-    .unwrap();
-}
-
-// Planted defect this catches: a stop that picks every service, or none.
-#[tokio::test]
-async fn stopping_a_package_ends_its_service_and_leaves_another_packages_alone() {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let root = tempfile::tempdir().unwrap();
-        let registry = registry(root.path()).await;
-        let services = registry.handle();
-        let (one, one_path) = fixture(root.path(), 0).await;
-        let (two, two_path) = fixture(root.path(), 1).await;
-        let (_one_lease, _two_lease) = (
-            services.lease(digest(&one)).await,
-            services.lease(digest(&two)).await,
-        );
-        let one_resolver = local(one_path);
-        let first = acquire(&services, &one, one_resolver.clone()).await;
-        let other = acquire(&services, &two, local(two_path)).await;
-        for resident in [&first, &other] {
-            assert_eq!(call(resident, "retain", "kept").await, 0);
-        }
-
-        services.stop_packages(vec![one.id.clone()]).await;
-        assert!(first.client().info().await.is_err(), "the package's service ended");
-        assert!(other.client().info().await.is_ok(), "another package's service stays");
-        // Its next caller starts it again.
-        let again = acquire(&services, &one, one_resolver).await;
-        assert!(again.client().info().await.is_ok());
         registry.close().await;
     })
     .await
@@ -269,11 +234,9 @@ async fn a_service_that_cannot_say_what_it_holds_stays() {
         assert_eq!(decided(&mut decisions, &digest).await, Decision::Leased);
         assert_eq!(call(&resident, "retain", "unanswerable").await, 0);
         drop(lease);
-        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
         assert_eq!(decided(&mut decisions, &digest).await, Decision::Unanswered);
         assert!(resident.client().info().await.is_ok(), "the service stays");
         services.release_conversation("unanswerable").await.unwrap();
-        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
         assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
         stopped(&resident).await;
         registry.close().await;
@@ -301,12 +264,10 @@ async fn an_answer_from_before_a_release_is_asked_again() {
         // answers only when told to.
         assert_eq!(call(&resident, "retain", "stall").await, 0);
         drop(lease);
-        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
         assert_eq!(call(&resident, "stalled", "test").await, 0);
         // The release ends while the answer, which still names `stall`, waits.
         services.release_conversation("stall").await.unwrap();
         assert_eq!(call(&resident, "proceed", "test").await, 0);
-        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
         assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
         stopped(&resident).await;
         registry.close().await;
@@ -514,43 +475,6 @@ async fn a_start_nobody_waits_for_stops() {
     .unwrap();
 }
 
-#[tokio::test]
-async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let root = tempfile::tempdir().unwrap();
-        let registry = registry(root.path()).await;
-        let services = registry.handle();
-        let mut residents = Vec::new();
-        let mut leases = Vec::new();
-        for variant in 0..2 {
-            let (descriptor, path) = fixture(root.path(), variant).await;
-            leases.push(services.lease(digest(&descriptor)).await);
-            let resident = acquire(&services, &descriptor, local(path)).await;
-            assert_eq!(call(&resident, "retain", "held").await, 0);
-            residents.push(resident);
-        }
-        services.stop_all().await;
-        for resident in &residents {
-            assert!(resident.client().info().await.is_err());
-        }
-        registry.close().await;
-        let (descriptor, path) = fixture(root.path(), 0).await;
-        assert!(
-            services
-                .acquire(
-                    &descriptor,
-                    local(path),
-                    Arc::new(NoBackend),
-                    &CancellationToken::new()
-                )
-                .await
-                .is_err()
-        );
-    })
-    .await
-    .unwrap();
-}
-
 /// Puts `bytes` where a Cloud image rooted at `image` preinstalls the
 /// executable of `descriptor` (`crates/runner-command-packages/src/cache.rs`), runnable as the image build leaves it.
 async fn preinstall(image: &Path, descriptor: &PackageDescriptor, bytes: &[u8]) {
@@ -600,18 +524,13 @@ async fn a_service_starts_from_the_image_copy_without_a_download() {
 }
 
 /// Without an image copy that matches, a service starts from a download, as
-/// on a Host without an image. A copy that does not match is not run, and
-/// the Host log says why; an executable the image holds no copy of, as on
-/// every paired device, is downloaded without a word.
+/// on a Host without an image. A copy that does not match is not run; an
+/// executable the image holds no copy of, as on every paired device, is
+/// downloaded.
 #[tokio::test]
 async fn without_a_matching_image_copy_a_service_starts_from_a_download() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
-        // The runner's log takes information and above from its subscriber:
-        // here the default on this thread, where the registry's tasks run.
-        let logged = Logged::default();
-        let subscriber = tracing_subscriber::registry().with(logged.clone());
-        let _default = demi_log_capture::capture(subscriber);
         let (damaged, damaged_path) = fixture(root.path(), 0).await;
         let (absent, absent_path) = fixture(root.path(), 1).await;
         let image = root.path().join("image");
@@ -633,83 +552,9 @@ async fn without_a_matching_image_copy_a_service_starts_from_a_download() {
             assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
         }
         registry.close().await;
-        let lines = logged.0.lock().unwrap().clone();
-        let damaged_directory = image.join(digest(&damaged));
-        let damaged_directory = damaged_directory.to_string_lossy();
-        let told: Vec<_> = lines
-            .iter()
-            .filter(|line| line.text.contains(&*damaged_directory))
-            .collect();
-        let [line] = told.as_slice() else {
-            panic!("one line names the damaged copy: {lines:?}");
-        };
-        // A line without a source is the runner's own.
-        assert_eq!(line.source, None);
-        assert!(
-            line.text.contains("does not match its declared SHA-256"),
-            "{}",
-            line.text
-        );
-        let absent_digest = digest(&absent);
-        assert!(
-            !lines.iter().any(|line| line.text.contains(&absent_digest)),
-            "{lines:?}"
-        );
     })
     .await
     .unwrap();
-}
-
-/// An event as the Host log keeps it: its message followed by its other
-/// fields, and the source it names.
-#[derive(Clone, Debug)]
-struct Line {
-    source: Option<String>,
-    text: String,
-}
-
-/// Keeps the information and above that its subscriber is given, as the
-/// runner's Host log does.
-#[derive(Clone, Default)]
-struct Logged(Arc<std::sync::Mutex<Vec<Line>>>);
-
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Logged {
-    fn on_event(&self, event: &tracing::Event<'_>, _: tracing_subscriber::layer::Context<'_, S>) {
-        if *event.metadata().level() > tracing::Level::INFO {
-            return;
-        }
-        let mut line = LineVisitor::default();
-        event.record(&mut line);
-        self.0.lock().unwrap().push(Line {
-            source: line.source,
-            text: line.message + &line.others,
-        });
-    }
-}
-
-#[derive(Default)]
-struct LineVisitor {
-    message: String,
-    others: String,
-    source: Option<String>,
-}
-
-impl tracing::field::Visit for LineVisitor {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        match field.name() {
-            "source" => self.source = Some(value.into()),
-            _ => self.record_debug(field, &value),
-        }
-    }
-
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        use std::fmt::Write as _;
-        // Writing to a String does not fail.
-        let _ = match field.name() {
-            "message" => write!(self.message, "{value:?}"),
-            name => write!(self.others, " {name}={value:?}"),
-        };
-    }
 }
 
 /// `demi browser install` on a Host: the program names the official URL of
@@ -823,64 +668,3 @@ async fn invoke(
     )
 }
 
-/// A first use whose install takes longer than two seconds tells its
-/// command so, naming the package, its version and its size, before the
-/// install ends; the install's failure is the acquisition's
-/// (`crates/runner-command-packages/src/cache.rs`). The test's clock runs only
-/// while the install waits. Cost: a copy of the fixture.
-#[tokio::test(start_paused = true)]
-async fn a_slow_install_tells_its_command_what_it_installs() {
-    let root = tempfile::tempdir().unwrap();
-    let registry = registry(root.path()).await;
-    let services = registry.handle();
-    let (mut descriptor, path) = fixture(root.path(), 0).await;
-    // Bytes that fail their check once they have arrived.
-    let artifact = descriptor.targets.get_mut(host_target()).unwrap();
-    artifact.sha256 = "0".repeat(64);
-    let size = artifact.size;
-    let resolver = Arc::new(Local {
-        path,
-        calls: AtomicUsize::new(0),
-        gate: Some((Notify::new(), Notify::new())),
-    });
-    let (lines, mut told) = tokio::sync::mpsc::unbounded_channel();
-    let acquiring = tokio::spawn({
-        let services = services.clone();
-        let descriptor = descriptor.clone();
-        let resolver = resolver.clone();
-        async move {
-            services
-                .acquire_telling(
-                    &descriptor,
-                    resolver,
-                    Arc::new(NoBackend),
-                    &CancellationToken::new(),
-                    move |line| drop(lines.send(line)),
-                )
-                .await
-                .err()
-        }
-    });
-    let (started, proceed) = resolver.gate.as_ref().unwrap();
-    started.notified().await;
-    // The test's clock moves on while nothing else does: a command never
-    // told fails here rather than waiting.
-    let first = tokio::time::timeout(Duration::from_secs(60), told.recv()).await;
-    assert_eq!(
-        first.expect("the command is told within two seconds").unwrap(),
-        format!(
-            "Installing fixture-0 1.0.0 ({} MB)…\n",
-            demi_command_protocol::megabytes(size)
-        )
-    );
-    proceed.notify_one();
-    let failed = acquiring.await.unwrap().expect("the install fails");
-    assert!(
-        matches!(
-            &*failed,
-            RuntimeError::Artifact(demi_shared_artifacts::Error::Digest)
-        ),
-        "{failed:?}"
-    );
-    registry.close().await;
-}

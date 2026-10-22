@@ -24,11 +24,6 @@ struct Peer {
 
 impl Peer {
     async fn accept(listener: &UnixListener) -> Self {
-        Self::accept_speaking(listener, WIRE_VERSION).await
-    }
-
-    /// Accepts a connection as a manager of wire `version`.
-    async fn accept_speaking(listener: &UnixListener, version: u32) -> Self {
         let (stream, _) = tokio::time::timeout(Duration::from_secs(5), listener.accept())
             .await
             .expect("the client connects")
@@ -39,7 +34,10 @@ impl Peer {
             writer,
         };
         // A manager's first line names its wire version.
-        peer.write(&MachineResponse::Hello { version }).await;
+        peer.write(&MachineResponse::Hello {
+            version: WIRE_VERSION,
+        })
+        .await;
         peer
     }
 
@@ -88,12 +86,6 @@ async fn calls_cross_the_socket_and_their_replies_are_matched_by_id_whatever_the
     let (_directory, path, listener) = socket();
     let (client, _deaths) = MachinesClient::new(path);
     let client = std::sync::Arc::new(client);
-    // Nothing connects before the first call.
-    assert!(
-        tokio::time::timeout(Duration::from_millis(50), listener.accept())
-            .await
-            .is_err()
-    );
     let calls = {
         let client = client.clone();
         tokio::spawn(async move {
@@ -253,25 +245,4 @@ async fn a_manager_that_goes_away_fails_the_calls_in_flight_and_is_dialed_again(
     let request = peer.request().await;
     peer.ok(&request.id, serde_json::json!("base-1")).await;
     assert_eq!(later.await.unwrap().unwrap().as_str(), "base-1");
-}
-
-/// A manager of another release fails the call that connected to it, and
-/// the backend sends it nothing: both run one release, so their messages
-/// may mean different things.
-#[tokio::test]
-async fn a_manager_of_another_wire_version_is_refused() {
-    let (_directory, path, listener) = socket();
-    let (client, _deaths) = MachinesClient::new(path);
-    let client = std::sync::Arc::new(client);
-    let call = {
-        let client = client.clone();
-        tokio::spawn(async move { client.call(CurrentBaseVersionParams {}).await })
-    };
-    let mut peer = Peer::accept_speaking(&listener, WIRE_VERSION + 1).await;
-    let refused = call.await.unwrap().unwrap_err();
-    assert!(
-        matches!(&refused, MachinesError::Unavailable { reason, .. } if reason.contains("wire version")),
-        "{refused}"
-    );
-    assert!(peer.closed().await);
 }

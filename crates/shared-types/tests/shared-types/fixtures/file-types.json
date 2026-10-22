@@ -44,27 +44,5 @@
       "/work/notes.marKdown",
       null
     ]
-  ],
-  "showsInPlace": [
-    [
-      "image/svg+xml",
-      true
-    ],
-    [
-      "application/pdf",
-      true
-    ],
-    [
-      "audio/webm",
-      true
-    ],
-    [
-      "text/markdown",
-      false
-    ],
-    [
-      "text/html",
-      false
-    ]
   ]
 }

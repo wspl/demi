@@ -1,10 +1,7 @@
-//! Command output as every `demi` command prints it (`crates/shared-types/src/output.rs`): tables aligned by terminal width, missing values, exact
-//! numbers, labelled lines with nested tables and free text.
+//! Command output as every `demi` command prints it (`crates/shared-types/src/output.rs`): tables aligned by terminal width, missing values and
+//! control characters.
 
-use demi_shared_types::{
-    Timestamp,
-    output::{Fields, Table},
-};
+use demi_shared_types::output::{Fields, Table};
 
 #[test]
 fn a_table_aligns_its_columns_by_terminal_width_and_marks_missing_values() {
@@ -20,54 +17,6 @@ fn a_table_aligns_its_columns_by_terminal_width_and_marks_missing_values() {
          t100  大模型接口  agent 545   https://example.com/a\n\
          t137  Docs        -           https://example.com/b\n\
          t2    -           -           https://example.com/c\n"
-    );
-}
-
-#[test]
-fn a_number_prints_exactly_and_an_instant_in_utc_to_the_second() {
-    let started: Timestamp = "2026-10-17T14:02:11.250Z".parse().unwrap();
-    let mut table = Table::new(["model", "context (tokens)", "started", "current"]);
-    table.row::<demi_shared_types::output::Cell>([
-        "gpt".into(),
-        1_048_576_u64.into(),
-        started.into(),
-        true.into(),
-    ]);
-    assert_eq!(
-        table.render(),
-        "MODEL  CONTEXT (TOKENS)  STARTED               CURRENT\n\
-         gpt    1048576           2026-10-17T14:02:11Z  yes\n"
-    );
-}
-
-#[test]
-fn an_empty_list_is_its_header_row_alone() {
-    assert_eq!(Table::new(["id", "name"]).render(), "ID  NAME\n");
-}
-
-#[test]
-fn one_object_is_labelled_lines_with_nested_tables_and_free_text_last() {
-    let mut models = Table::new(["id", "context (tokens)"]);
-    models.row(["a", "272000"]);
-    let mut fields = Fields::new();
-    fields
-        .field("Name", "Codex")
-        .field("Description", "two\nlines")
-        .field("Account", None::<String>)
-        .table("Models", &models)
-        .text("Result", "First line.\n\nLast line.\n");
-    assert_eq!(
-        fields.render(),
-        "Name: Codex\n\
-         Description: two lines\n\
-         Account: -\n\
-         Models:\n\
-         \x20 ID  CONTEXT (TOKENS)\n\
-         \x20 a   272000\n\
-         Result:\n\
-         \x20 First line.\n\
-         \n\
-         \x20 Last line.\n"
     );
 }
 

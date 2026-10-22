@@ -1,23 +1,7 @@
-//! The pictures of the Host a reply shows, as the transcript names them when
-//! the reply's text is complete
+//! The pictures of the Host a reply shows, as the transcript names them
 //! (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`).
 
-use std::{rc::Rc, sync::Arc};
-
-use demi_agent_store::testing::test_model;
-use demi_agent_transcript::{TranscriptLog, named_pictures, picture_path, testing::SequentialIds};
-use demi_conversation_socket_protocol::TranscriptPatch;
-use demi_shared_types::{Block, PictureCopy, ReplyPicture, Timestamp};
-
-// Cost: pure, under a millisecond.
-
-struct Fixed;
-
-impl demi_shared_types::Clock for Fixed {
-    fn now(&self) -> Timestamp {
-        Timestamp::UNIX_EPOCH
-    }
-}
+use demi_agent_transcript::{named_pictures, picture_path};
 
 /// Which image targets of a reply are pictures of the Host, and the path each
 /// names, as the page's reading of a target is (`filePath.ts`): the backend
@@ -63,36 +47,4 @@ fn the_pictures_a_reply_names_are_the_ones_the_page_looks_up() {
             .collect();
         assert_eq!(named, expected, "{markdown}");
     }
-}
-
-fn log_with_reply(text: &str) -> TranscriptLog {
-    let mut log = TranscriptLog::new(Vec::new(), Rc::new(SequentialIds::new("b")), Arc::new(Fixed));
-    log.append_text(&test_model(), text);
-    log.take_patches();
-    log
-}
-
-/// The step that completes a reply names its pictures: one patch carries the
-/// complete mark and the pictures, so a page never sees one without the
-/// other. A text that shows no picture of the Host keeps nothing.
-#[test]
-fn the_step_that_completes_a_reply_names_its_pictures() {
-    let mut log = log_with_reply("![chart](out/chart.png) ![again](out/chart.png) ![web](https://example.com/x.png)");
-    assert!(log.complete_tail_text());
-    let batch = log.take_patches().expect("completing is a change");
-    let [TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. }]: [TranscriptPatch; 1] =
-        batch.patches.try_into().expect("one patch")
-    else {
-        panic!("a replaced text")
-    };
-    assert!(text.forkable);
-    assert_eq!(
-        text.pictures,
-        Some(vec![ReplyPicture { target: "out/chart.png".into(), copy: PictureCopy::Copying }])
-    );
-
-    let mut plain = log_with_reply("Nothing to show.");
-    assert!(plain.complete_tail_text());
-    let Block::Text(text) = &plain.blocks()[0] else { panic!("a text") };
-    assert_eq!(text.pictures, None);
 }

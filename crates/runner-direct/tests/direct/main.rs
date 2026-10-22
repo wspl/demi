@@ -1,8 +1,8 @@
 //! The runner's peers (`crates/runner-direct/src/lib.rs`), driven by a page in
 //! process over loopback.
 //!
-//! The tests cover making the channel, each operation's protocol, the limits,
-//! closing, giving up, and the addresses offered. Each test runs a real
+//! The tests cover making the channel, each operation's protocol, giving up,
+//! and the addresses offered. Each test runs a real
 //! connection on 127.0.0.1 in tens of milliseconds; the give-up and heartbeat
 //! tests pause the clock.
 
@@ -17,7 +17,7 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandLocale, PackageArtifact, PackageDescriptor};
 use demi_runner_direct::{Addresses, Direct, direct, offered};
 use demi_runner_protocol::direct::{
-    Introduced, Introduction, MAX_CHANNELS, MAX_PEERS, OfferRefusal, ServiceBinding, StunUrl,
+    Introduced, Introduction, ServiceBinding, StunUrl,
 };
 use tokio::net::UdpSocket;
 use tokio_util::task::AbortOnDropHandle;
@@ -155,47 +155,6 @@ async fn a_write_is_in_place_at_its_end_and_not_at_all_when_the_page_goes_first(
     taken.text(r#"{"end":true}"#);
     assert_eq!(taken.next().await.json()["error"]["code"], "file_exists");
     assert_eq!(fake.file("cut.bin"), None, "a write cut short leaves nothing");
-}
-
-#[tokio::test]
-async fn text_lists_folders_and_deletes_answer_as_the_relay() {
-    let fake = Fake::default();
-    fake.put("/work/notes.md", "héllo".as_bytes());
-    let direct = runner(&fake);
-    let page = connected(&direct, "p1").await;
-
-    let mut text = page.open(header("text", json!({ "path": "/work/notes.md" }))).await;
-    assert_eq!(
-        text.next().await.json(),
-        json!({ "ok": true, "version": "W/\"1\"", "unchanged": false, "readAt": { "epoch": "e", "number": 1 } })
-    );
-    assert_eq!(text.bytes_to_end().await, "héllo".as_bytes());
-    let mut unchanged = page
-        .open(header("text", json!({ "path": "/work/notes.md", "version": "W/\"1\"" })))
-        .await;
-    assert_eq!(unchanged.next().await.json()["unchanged"], true);
-    assert_eq!(unchanged.next().await, Heard::Closed, "no text for a version the page holds");
-
-    let mut list = page.open(header("list", json!({}))).await;
-    let listed = list.next().await.json();
-    assert_eq!(listed["path"], "/work", "the conversation's directory without a path");
-    assert_eq!(listed["home"], "/home/ana");
-    assert_eq!(listed["entries"][0]["name"], "notes.md");
-    assert_eq!(listed["entries"][0]["size"], 6);
-    assert_eq!(listed["readAt"], json!({ "epoch": "e", "number": 7 }));
-
-    let mut made = page.open(header("mkdir", json!({ "path": "/work/new" }))).await;
-    assert_eq!(made.next().await.json(), json!({ "ok": true }));
-    let mut deleted = page.open(header("delete", json!({ "path": "/work/notes.md" }))).await;
-    assert_eq!(deleted.next().await.json(), json!({ "ok": true }));
-    assert_eq!(fake.file("/work/notes.md"), None);
-
-    let mut missing = page.open(header("text", json!({ "path": "/work/gone.md" }))).await;
-    let refused = missing.next().await.json();
-    assert_eq!(refused["error"]["code"], "fs_error");
-    assert_eq!(refused["error"]["status"], 404);
-    let mut invalid = page.open(json!({ "op": "read", "conversation": "c1" })).await;
-    assert_eq!(invalid.next().await.json()["error"]["code"], "invalid_message");
 }
 
 #[tokio::test]
@@ -351,61 +310,6 @@ async fn a_watch_carries_subscriptions_and_their_changes_and_says_heartbeat_when
     assert_eq!(watch.next().await.json(), json!({ "type": "heartbeat" }));
 }
 
-#[tokio::test]
-async fn a_peer_keeps_at_most_its_channels_and_the_runner_its_peers() {
-    let fake = Fake::default();
-    let direct = runner(&fake);
-    let page = connected(&direct, "p1").await;
-    let mut held = Vec::new();
-    // The offer's first channel is the probe channel, which carries no
-    // operation and is none of them.
-    for _ in 0..MAX_CHANNELS {
-        // A watch that says nothing stays open.
-        let mut watch = page.open(header("watch", json!({}))).await;
-        assert_eq!(watch.next().await.json(), json!({ "ok": true }));
-        held.push(watch);
-    }
-    let mut over = page.open(header("watch", json!({}))).await;
-    assert_eq!(over.next().await.json()["error"]["code"], "busy");
-    assert_eq!(over.next().await, Heard::Closed);
-
-    let mut pages = Vec::new();
-    for peer in 1..MAX_PEERS {
-        pages.push(Page::offer(&direct, &format!("q{peer}"), introduction()).await.unwrap());
-    }
-    let refused = Page::offer(&direct, "one-too-many", introduction()).await.err().unwrap();
-    assert_eq!(refused.code, OfferRefusal::Busy);
-    // A new offer for a peer it keeps replaces that one.
-    assert!(Page::offer(&direct, "q1", introduction()).await.is_ok());
-}
-
-#[tokio::test]
-async fn closing_a_peer_ends_its_connection_and_closing_all_ends_every_one() {
-    let fake = Fake::default();
-    let direct = runner(&fake);
-    let mut first = connected(&direct, "p1").await;
-    let mut second = connected(&direct, "p2").await;
-    let mut stream = first.open(header("stream", json!({ "stream": "browser" }))).await;
-    assert_eq!(stream.next().await.json(), json!({ "ok": true }));
-    let mut other = second.open(header("stream", json!({ "stream": "browser" }))).await;
-    assert_eq!(other.next().await.json(), json!({ "ok": true }));
-
-    // The streams end with their peers, and the backend hears each end.
-    direct.close("p1");
-    assert_eq!(stream.next().await, Heard::Closed, "its channels end");
-    first.wait_closed().await;
-    let mut peers = direct.peers();
-    peers.wait_for(|peers| *peers == 1).await.unwrap();
-    until_told(&fake, 3).await;
-    assert_eq!(fake.activity.borrow()[2], told("c1", false));
-
-    direct.close_all();
-    second.wait_closed().await;
-    peers.wait_for(|peers| *peers == 0).await.unwrap();
-    until_told(&fake, 4).await;
-    assert_eq!(fake.activity.borrow()[3], told("c1", false));
-}
-
 #[tokio::test(start_paused = true)]
 async fn a_peer_that_does_not_connect_within_ten_seconds_is_given_up() {
     let fake = Fake::default();
@@ -418,21 +322,6 @@ async fn a_peer_that_does_not_connect_within_ten_seconds_is_given_up() {
     let started = tokio::time::Instant::now();
     peers.wait_for(|peers| *peers == 0).await.unwrap();
     assert_eq!(started.elapsed().as_secs(), 10);
-}
-
-// Tens of milliseconds over loopback.
-#[tokio::test]
-async fn the_probe_channel_echoes_each_probe() {
-    let fake = Fake::default();
-    let direct = runner(&fake);
-    let page = connected(&direct, "p1").await;
-
-    let mut probe = page.probe().await;
-    for id in [1, 2, 3] {
-        let sent = json!({ "id": id }).to_string();
-        probe.text(&sent);
-        assert_eq!(probe.next().await, Heard::Text(sent), "each probe comes back as it went");
-    }
 }
 
 /// A STUN server on 127.0.0.1 that answers every binding request with

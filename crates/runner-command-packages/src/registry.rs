@@ -93,10 +93,8 @@ const DECISIONS: usize = 64;
 #[cfg(feature = "testing")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
-    /// A lease still holds it, and nothing is asked.
+    /// A lease still holds it.
     Leased,
-    /// It is asked what it holds; a decision about the answer follows.
-    Asks,
     /// It holds a conversation, and stays.
     Holds,
     /// It could not say what it holds, and stays.
@@ -708,8 +706,6 @@ impl Owner {
             let holds = status(&client).await;
             Checked { holds, ..checked }
         });
-        #[cfg(feature = "testing")]
-        decided(&self.decisions, digest, Decision::Asks);
     }
 
     fn checked(&mut self, checked: Checked) {

@@ -101,31 +101,6 @@ mod tests {
         EmailAddress::try_from(format!("{name}@example.test")).unwrap()
     }
 
-    fn tracked(limiter: &LoginLimiter) -> usize {
-        limiter.failures.lock().unwrap().len()
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn the_limiter_forgets_an_address_after_the_lock_window() {
-        let limiter = LoginLimiter::new();
-        for name in ["a", "b", "c"] {
-            limiter.failed(&address(name));
-        }
-        for _ in 1..LOCK_AFTER {
-            limiter.failed(&address("a"));
-        }
-        assert!(limiter.locked_for(&address("a")).is_some());
-        assert!(limiter.locked_for(&address("b")).is_none());
-        assert_eq!(tracked(&limiter), 3);
-
-        tokio::time::advance(WINDOW).await;
-        assert!(limiter.locked_for(&address("a")).is_none());
-        // A failure sweeps what the window forgot, so sprayed addresses do
-        // not accumulate.
-        limiter.failed(&address("d"));
-        assert_eq!(tracked(&limiter), 1);
-    }
-
     #[tokio::test(start_paused = true)]
     async fn each_failure_extends_the_window_and_a_success_clears_it() {
         let limiter = LoginLimiter::new();

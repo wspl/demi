@@ -167,7 +167,6 @@ async fn a_newer_release_of_a_package_takes_its_lease_and_the_older_service_stop
             }
         }
         // The fixture holds no conversation, so asked, it stops.
-        assert_eq!(decided(&mut decisions, &old_digest).await, Decision::Asks);
         assert_eq!(decided(&mut decisions, &old_digest).await, Decision::Stops);
         drop(manifests);
         registry.close().await;

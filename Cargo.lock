@@ -3397,7 +3397,6 @@ dependencies = [
  "bytes",
  "demi-command-protocol",
  "demi-command-sdk",
- "demi-log-capture",
  "demi-runner-command-packages",
  "demi-runner-process",
  "demi-runner-protocol",
@@ -3413,7 +3412,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3620,7 +3618,6 @@ dependencies = [
  "bzip2",
  "clap",
  "demi-backend-database",
- "demi-command-protocol",
  "demi-machine-manager-protocol",
  "demi-runner-protocol",
  "demi-shared-artifacts",

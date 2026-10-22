@@ -65,8 +65,7 @@ pub use reqwest::Client;
 pub mod testing {
     //! Test support: a fixture HTTP server on `127.0.0.1` and the zip and
     //! tar archives it serves, which [`crate::client_allowing_http`] downloads
-    //! from, the count of the process's waits for install locks, and the
-    //! installation of a release a test was given unpacked.
+    //! from, and the installation of a release a test was given unpacked.
 
     pub use crate::archive::install_unpacked;
 
@@ -77,26 +76,9 @@ pub mod testing {
             Arc,
             atomic::{AtomicUsize, Ordering},
         },
-        time::Duration,
     };
 
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-
-    /// Every acquisition of an install lock in this process that found the
-    /// lock held.
-    static LOCK_WAITS: AtomicUsize = AtomicUsize::new(0);
-
-    pub(crate) fn count_lock_wait() {
-        LOCK_WAITS.fetch_add(1, Ordering::SeqCst);
-    }
-
-    /// How many acquisitions of an install lock in this process have found it
-    /// held and waited ([`crate::InstallLock`]). Nothing else shows that an
-    /// installer waits for another instead of installing beside it, so a test
-    /// of concurrent installers watches this count.
-    pub fn lock_waits() -> usize {
-        LOCK_WAITS.load(Ordering::SeqCst)
-    }
 
     /// A zip archive of `entries`, each a path and its contents.
     pub fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -144,12 +126,8 @@ pub mod testing {
         /// Whether the answer declares its length; without one, the body
         /// ends when the connection closes.
         pub length: bool,
-        /// How long the server waits after the request before it answers.
-        pub delay: Duration,
         /// The `Content-Encoding` the answer declares, if any.
         pub coding: Option<&'static str>,
-        /// The `Location` the answer declares, if any, as a redirect does.
-        pub location: Option<String>,
     }
 
     impl Answer {
@@ -159,18 +137,7 @@ pub mod testing {
                 status: 200,
                 body: body.into(),
                 length: true,
-                delay: Duration::ZERO,
                 coding: None,
-                location: None,
-            }
-        }
-
-        /// `302` to `location`, as GitHub answers for a release's asset.
-        pub fn redirect(location: impl Into<String>) -> Self {
-            Self {
-                status: 302,
-                location: Some(location.into()),
-                ..Self::ok(Vec::new())
             }
         }
     }
@@ -215,7 +182,6 @@ pub mod testing {
                                 ..Answer::ok(Vec::new())
                             };
                             let answer = answers.get(path).unwrap_or(&missing);
-                            tokio::time::sleep(answer.delay).await;
                             let length = if answer.length {
                                 format!("content-length: {}\r\n", answer.body.len())
                             } else {
@@ -225,13 +191,8 @@ pub mod testing {
                                 .coding
                                 .map(|coding| format!("content-encoding: {coding}\r\n"))
                                 .unwrap_or_default();
-                            let location = answer
-                                .location
-                                .as_ref()
-                                .map(|location| format!("location: {location}\r\n"))
-                                .unwrap_or_default();
                             let head = format!(
-                                "HTTP/1.1 {} Fixture\r\n{length}{coding}{location}connection: close\r\n\r\n",
+                                "HTTP/1.1 {} Fixture\r\n{length}{coding}connection: close\r\n\r\n",
                                 answer.status
                             );
                             // The client may hang up first, as on a failed

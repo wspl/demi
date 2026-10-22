@@ -15,7 +15,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::channel::Kind;
 use crate::operation::{Input, OUTPUT_MESSAGES, Output};
-use crate::peer::{LocalOpen, Peer, PeerStatus, Remote, Signals, probe_config};
+use crate::peer::{LocalOpen, Peer, PeerStatus, Remote, Signals};
 use crate::{Direct, Refused};
 
 /// A message the runner sent on a channel, or its close.
@@ -177,12 +177,6 @@ impl Page {
         state.unwrap()
     }
 
-    /// Waits until the connection fails or closes.
-    pub async fn wait_closed(&mut self) {
-        // A page whose task ended is closed too.
-        let _ = self.connected.wait_for(|state| *state == Some(false)).await;
-    }
-
     /// Opens a channel and sends `header` as its first message.
     pub async fn open(&self, header: serde_json::Value) -> PageChannel {
         let config = ChannelConfig {
@@ -205,12 +199,6 @@ impl Page {
         let channel = self.channel(config).await;
         channel.text(r#"{"op":"video"}"#);
         channel
-    }
-
-    /// Opens a probe channel, unordered and never retransmitted, as the
-    /// page's (`packages/web/src/direct/measure.ts`).
-    pub async fn probe(&self) -> PageChannel {
-        self.channel(probe_config()).await
     }
 
     async fn channel(&self, config: ChannelConfig) -> PageChannel {

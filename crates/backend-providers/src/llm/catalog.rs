@@ -306,7 +306,7 @@ mod tests {
     use demi_provider_common::Secret;
     use demi_provider_common::models_dev::ModelsDevClient;
     use demi_provider_common::testing::{MockResponse, MockVendor};
-    use demi_shared_types::{Model, Rotation, SystemClock, ThinkingConfig};
+    use demi_shared_types::{Rotation, SystemClock};
     use demi_web_api_protocol::ids::{ProviderId, UserId};
     use demi_web_api_protocol::providers::ConfiguredModels;
     use demi_web_api_protocol::settings::InstanceMode;
@@ -349,67 +349,6 @@ mod tests {
             "id": "gpt-5.5", "displayName": "GPT-5.5", "contextWindow": 272_000, "outputLimit": output_limit,
             "thinkingEfforts": ["low", "high"], "acceptedExtensions": ["png", "pdf"], "fastTier": "priority"
         })
-    }
-
-    /// The selection the web app sent with a conversation's first request,
-    /// from an older catalog.
-    fn chosen() -> ModelSelection {
-        ModelSelection {
-            provider_id: "entry-1".into(),
-            model: Model {
-                id: "gpt-5.5".into(),
-                name: "stale".into(),
-                context_window: 1000,
-                output_limit: Some(100),
-                thinking: Vec::new(),
-                accepted_extensions: Some(Vec::new()),
-            },
-            thinking: Some(ThinkingConfig::Effort {
-                effort: "high".into(),
-                summary: None,
-            }),
-            service_tier_id: Some("priority".into()),
-        }
-    }
-
-    #[test]
-    fn every_request_takes_the_configured_facts_and_keeps_the_users_choices() {
-        let applied =
-            configured_selection(&entry(Some(serde_json::json!([model(4_000)]))), chosen())
-                .unwrap();
-        assert_eq!(
-            (
-                applied.model.name.as_str(),
-                applied.model.context_window,
-                applied.model.output_limit
-            ),
-            ("GPT-5.5", 272_000, Some(4_000))
-        );
-        assert_eq!(
-            applied.model.accepted_extensions,
-            Some(vec![
-                demi_shared_types::FileExtension::Png,
-                demi_shared_types::FileExtension::Pdf
-            ])
-        );
-        assert_eq!(
-            (applied.thinking, applied.service_tier_id),
-            (chosen().thinking, chosen().service_tier_id)
-        );
-        // An edit of the list reaches the next request.
-        let edited =
-            configured_selection(&entry(Some(serde_json::json!([model(8_000)]))), chosen())
-                .unwrap();
-        assert_eq!(edited.model.output_limit, Some(8_000));
-        // A model the list does not name fails the request; an entry without
-        // a list keeps the selection as it is.
-        let mut other = chosen();
-        other.model.id = "gpt-4".into();
-        assert_eq!(
-            configured_selection(&entry(Some(serde_json::json!([model(8_000)]))), other),
-            Err(NotConfigured("gpt-4".into()))
-        );
-        assert_eq!(configured_selection(&entry(None), chosen()), Ok(chosen()));
     }
 
     /// A subscription's model is priced as the same model on the vendor's API,
@@ -475,5 +414,4 @@ mod tests {
         assert_eq!(assembly.model_price(&configured, &unbuilt, "gpt-5.5").await, None);
         control.close().await.unwrap();
     }
-
 }

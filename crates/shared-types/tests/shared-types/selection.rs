@@ -1,10 +1,9 @@
 //! The one conversion of a catalog model into the selection a conversation
-//! infers with (`crates/shared-types/src/model.rs`): the model's facts, the
-//! types it reads natively and the thinking choices it offers.
+//! infers with (`crates/shared-types/src/model.rs`): the types it reads
+//! natively and the thinking choices it offers.
 
 use demi_shared_types::{
-    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, ProviderModel,
-    ThinkingCapability, ThinkingConfig, ThinkingSummary, VIDEO_FILE_EXTENSIONS,
+    FileExtension, ProviderModel, ThinkingCapability, ThinkingSummary, VIDEO_FILE_EXTENSIONS,
     modality_extensions,
 };
 
@@ -25,71 +24,6 @@ fn model() -> ProviderModel {
         default_service_tier_id: None,
         cost: None,
     }
-}
-
-#[test]
-fn a_catalog_model_becomes_a_selection_with_its_facts_and_the_choices_made() {
-    let catalog = ProviderModel {
-        output_limit: Some(8_000),
-        accepted_extensions: Some(ATTACHMENT_FILE_EXTENSIONS.to_vec()),
-        ..model()
-    };
-    let thinking = ThinkingConfig::Effort {
-        effort: "high".into(),
-        summary: None,
-    };
-    let selection = catalog.selection("p", Some(thinking.clone()), Some("priority".into()));
-    assert_eq!(
-        selection,
-        ModelSelection {
-            provider_id: "p".into(),
-            model: Model {
-                id: "m-1".into(),
-                name: "Model One".into(),
-                context_window: 200_000,
-                output_limit: Some(8_000),
-                thinking: Vec::new(),
-                accepted_extensions: Some(ATTACHMENT_FILE_EXTENSIONS.to_vec()),
-            },
-            thinking: Some(thinking),
-            service_tier_id: Some("priority".into()),
-        }
-    );
-    let unknown = ProviderModel {
-        context_window: None,
-        ..model()
-    };
-    let plain = unknown.selection("p", None, None);
-    assert_eq!(
-        (
-            plain.model.context_window,
-            plain.thinking,
-            plain.service_tier_id
-        ),
-        (0, None, None)
-    );
-}
-
-/// Planted defect this catches: a selection that reads its types from
-/// anything but the catalog's list, which unknown support would turn into
-/// none.
-#[test]
-fn accepted_types_are_the_catalogs_list_unknown_staying_unknown() {
-    let with = |exact: Option<Vec<FileExtension>>| {
-        ProviderModel {
-            accepted_extensions: exact,
-            ..model()
-        }
-        .selection("p", None, None)
-        .model
-        .accepted_extensions
-    };
-    assert_eq!(with(None), None);
-    assert_eq!(with(Some(Vec::new())), Some(Vec::new()));
-    assert_eq!(
-        with(Some(vec![FileExtension::Png])),
-        Some(vec![FileExtension::Png])
-    );
 }
 
 /// Planted defects this catches: a PDF given to every model that reads

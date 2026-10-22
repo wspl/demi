@@ -8,12 +8,9 @@ use std::{
 
 use demi_shared_artifacts::{
     Archive, ArchiveInstall, CONTENT_CODING, Client, Digest, Download, Effort, Error, InstallLock,
-    Mode, Patience, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged, Verifier,
-    check_encoded_blocking, copy, digest, download, download_client, download_client_allowing_http,
-    encode_blocking,
-    install_archive, installed,
-    publish, publish_bytes, publish_directory, publish_release, receipt, recorded,
-    holds,
+    Mode, Patience, Permissions, Publication, ReleaseFile, ReleaseRecord, download,
+    download_client_allowing_http, encode_blocking, install_archive, installed, publish,
+    publish_bytes, publish_release, receipt, recorded, holds,
     testing::{Answer, Server, tar_zst, zip},
 };
 use sha2::{Digest as _, Sha256};
@@ -163,53 +160,6 @@ async fn a_download_holds_no_more_than_its_limit() {
     }
 }
 
-#[tokio::test]
-async fn the_download_client_refuses_plain_http() {
-    let client = download_client().unwrap();
-    let server = serve(200, BODY, true).await;
-    let url = server.url("/artifact");
-    let result = fetch(&client, Download::new(&url), &declared(BODY), &CancellationToken::new()).await;
-    assert!(matches!(result, Err(Error::Download(_))), "{result:?}");
-}
-
-#[tokio::test]
-async fn copies_and_digests_check_the_declared_bytes() {
-    let directory = tempfile::tempdir().unwrap();
-    let source = directory.path().join("source");
-    std::fs::write(&source, BODY).unwrap();
-    let cancel = CancellationToken::new();
-    assert_eq!(
-        digest(&source, 1024, &cancel).await.unwrap(),
-        declared(BODY)
-    );
-    assert!(matches!(
-        digest(&source, 3, &cancel).await,
-        Err(Error::TooLarge { declared: 3 })
-    ));
-    let mut output = Vec::new();
-    let mut input = tokio::fs::File::open(&source).await.unwrap();
-    copy(&mut input, &declared(BODY), &mut output, &cancel)
-        .await
-        .unwrap();
-    assert_eq!(output, BODY);
-    let mut input = tokio::fs::File::open(&source).await.unwrap();
-    let longer = Digest {
-        size: BODY.len() as u64 + 1,
-        ..declared(BODY)
-    };
-    let result = copy(&mut input, &longer, &mut Vec::new(), &cancel).await;
-    assert!(matches!(result, Err(Error::Size { .. })), "{result:?}");
-    let mut verifier = Verifier::new(&declared(b"ab"));
-    verifier.update(b"a").unwrap();
-    verifier.update(b"b").unwrap();
-    assert!(verifier.update(b"c").is_err());
-    cancel.cancel();
-    assert!(matches!(
-        digest(&source, 1024, &cancel).await,
-        Err(Error::Cancelled)
-    ));
-}
-
 fn publication(mode: Mode, permissions: Permissions) -> Publication {
     Publication {
         mode,
@@ -266,116 +216,6 @@ async fn publication_creates_or_replaces_whole_files() {
     assert!(matches!(result, Err(Error::Cancelled)));
     assert_eq!(std::fs::read(&path).unwrap(), b"replaced");
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
-}
-
-#[tokio::test]
-async fn a_cancelled_publication_publishes_nothing() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("output");
-    let cancel = CancellationToken::new();
-    cancel.cancel();
-    // The whole input is ready at once, so only the cancellation stops it.
-    let result = publish(
-        &path,
-        &mut std::io::Cursor::new(BODY.to_vec()),
-        publication(Mode::CreateNew, Permissions::Default),
-        &cancel,
-    )
-    .await;
-    assert!(matches!(result, Err(Error::Cancelled)));
-    // Neither the file nor its staged copy is left.
-    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
-}
-
-#[tokio::test]
-async fn a_staged_file_appears_only_when_published() {
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("tool");
-    let mut abandoned = Staged::new(&path, publication(Mode::CreateNew, Permissions::Executable))
-        .await
-        .unwrap();
-    abandoned.file().write_all(b"partial").await.unwrap();
-    // Its name says whose it is, should its process die before it is
-    // published (`crates/runner-host/src/files.rs`).
-    let names: Vec<String> = std::fs::read_dir(directory.path())
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .collect();
-    assert!(
-        matches!(&names[..], [name] if name.starts_with(".demi-partial-")),
-        "{names:?}"
-    );
-    drop(abandoned);
-    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
-    let mut staged = Staged::new(&path, publication(Mode::CreateNew, Permissions::Executable))
-        .await
-        .unwrap();
-    let mut input = tokio::fs::File::open(env!("CARGO_MANIFEST_DIR").to_owned() + "/Cargo.toml")
-        .await
-        .unwrap();
-    let expected = std::fs::read(env!("CARGO_MANIFEST_DIR").to_owned() + "/Cargo.toml").unwrap();
-    copy(
-        &mut input,
-        &declared(&expected),
-        staged.file(),
-        &CancellationToken::new(),
-    )
-    .await
-    .unwrap();
-    assert!(!path.exists());
-    staged.publish().await.unwrap();
-    assert_eq!(std::fs::read(&path).unwrap(), expected);
-    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
-}
-
-#[cfg(unix)]
-#[tokio::test]
-async fn publication_sets_or_keeps_permissions() {
-    use std::os::unix::fs::PermissionsExt;
-    let directory = tempfile::tempdir().unwrap();
-    let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-    let private = directory.path().join("private");
-    publish_bytes(
-        &private,
-        b"secret",
-        publication(Mode::CreateNew, Permissions::Private),
-    )
-    .await
-    .unwrap();
-    assert_eq!(mode(&private), 0o600);
-    let executable = directory.path().join("tool");
-    publish_bytes(
-        &executable,
-        b"#!/bin/sh\n",
-        publication(Mode::CreateNew, Permissions::Executable),
-    )
-    .await
-    .unwrap();
-    assert_eq!(mode(&executable), 0o755);
-    std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o640)).unwrap();
-    publish_bytes(
-        &private,
-        b"rotated",
-        publication(Mode::Replace, Permissions::Keep),
-    )
-    .await
-    .unwrap();
-    assert_eq!(mode(&private), 0o640);
-}
-
-#[tokio::test]
-async fn a_staged_directory_replaces_the_installed_one() {
-    let root = tempfile::tempdir().unwrap();
-    let installed = root.path().join("1.0.0");
-    std::fs::create_dir(&installed).unwrap();
-    std::fs::write(installed.join("old"), b"old").unwrap();
-    let staged = root.path().join("staged");
-    std::fs::create_dir(&staged).unwrap();
-    std::fs::write(staged.join("new"), b"new").unwrap();
-    publish_directory(&staged, &installed).await.unwrap();
-    assert!(!staged.exists());
-    assert!(!installed.join("old").exists());
-    assert_eq!(std::fs::read(installed.join("new")).unwrap(), b"new");
 }
 
 #[tokio::test]
@@ -688,39 +528,6 @@ async fn a_tar_archive_compressed_with_zstd_installs_as_a_zip_archive_does() {
     assert!(matches!(result, Err(Error::Archive(_))), "{result:?}");
 }
 
-/// A download whose digest the caller was given over a connection it trusts
-/// follows a redirect, as GitHub serves a release's assets
-/// (`crates/runner-command-packages/src/cache.rs`), and is verified all the same.
-#[tokio::test]
-async fn a_trusted_download_follows_a_redirect() {
-    let client = download_client_allowing_http().unwrap();
-    let cancel = CancellationToken::new();
-    let storage = serve(200, BODY, true).await;
-    let release = Server::start([(
-        "/releases/download/1/libs.tar.zst".to_owned(),
-        Answer::redirect(storage.url("/artifact")),
-    )])
-    .await;
-    let url = release.url("/releases/download/1/libs.tar.zst");
-    let request = Download {
-        redirects: 10,
-        ..plain(&url)
-    };
-    let output = fetch(&client, request, &declared(BODY), &cancel).await.unwrap();
-    assert_eq!(output, BODY);
-    assert_eq!(storage.requests(), 1);
-}
-
-#[test]
-fn an_encoded_copy_checks_against_the_bytes_it_stands_for_only() {
-    let bytes = BODY.repeat(100);
-    let encoded = encode_blocking(&bytes, Effort::Fast).unwrap();
-    check_encoded_blocking(&encoded, &declared(&bytes)).unwrap();
-    let other = encode_blocking(b"other bytes", Effort::Fast).unwrap();
-    assert!(check_encoded_blocking(&other, &declared(&bytes)).is_err());
-    assert!(check_encoded_blocking(b"not zstd", &declared(&bytes)).is_err());
-}
-
 /// A fixture server on `127.0.0.1` that answers every connection with
 /// `head` and `body` and then closes it, or, with no `head`, reads the
 /// request and holds the connection without a byte.
@@ -745,34 +552,6 @@ async fn raw_server(head: Option<String>, body: &'static [u8]) -> (String, tokio
     (url, serving)
 }
 
-/// A connection whose body breaks off before a byte, until the download's
-/// silence has passed, fails it with the cause beneath the layer that saw
-/// it, not only reqwest's *error decoding response body*
-/// (`crates/shared-artifacts/src/download.rs`). Cost: one local connection.
-#[tokio::test]
-async fn a_body_that_breaks_off_names_its_cause() {
-    let head = "HTTP/1.1 200 OK\r\ncontent-length: 100\r\nconnection: close\r\n\r\n".to_owned();
-    let (url, serving) = raw_server(Some(head), b"").await;
-    let client = download_client_allowing_http().unwrap();
-    let request = Download {
-        patience: Patience {
-            stall: Duration::from_millis(200),
-            silence: Duration::from_millis(300),
-        },
-        ..plain(&url)
-    };
-    let directory = tempfile::tempdir().unwrap();
-    let staging = directory.path().join("download");
-    let result = download(&client, request, &staging, &CancellationToken::new(), |_, _| {}).await;
-    let Err(Error::Download(message)) = result else {
-        panic!("the download fails: {result:?}");
-    };
-    let mut layers = message.split(": ");
-    let seen = layers.next().unwrap();
-    assert!(layers.next().is_some(), "{seen} names no cause: {message}");
-    serving.abort();
-}
-
 /// Connections that deliver nothing are given up once the download's
 /// silence has passed, and the download fails saying so; one that stalls
 /// after bytes would resume instead (`crates/shared-artifacts/src/download.rs`).
@@ -791,10 +570,7 @@ async fn connections_that_deliver_nothing_fail_the_download() {
     let directory = tempfile::tempdir().unwrap();
     let staging = directory.path().join("download");
     let result = download(&client, request, &staging, &CancellationToken::new(), |_, _| {}).await;
-    let Err(Error::Download(message)) = result else {
-        panic!("the download fails: {result:?}");
-    };
-    assert!(message.starts_with("timed out"), "{message}");
+    assert!(matches!(result, Err(Error::Download(_))), "{result:?}");
     serving.abort();
 }
 

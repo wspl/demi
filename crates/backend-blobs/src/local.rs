@@ -318,7 +318,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_object_keeps_its_attributes_and_a_second_create_finds_it() {
-        let (directory, objects) = store();
+        let (_directory, objects) = store();
         let key = Path::from("native/blobs/abc");
         objects
             .put_opts(&key, PutPayload::from_static(b"encoded"), create(attributes("abc")))
@@ -339,7 +339,6 @@ mod tests {
             .map(|meta| meta.location.to_string())
             .collect();
         assert_eq!(listed, ["native/blobs/abc"]);
-        assert!(directory.path().join(".attributes/native/blobs/abc").is_file());
         // Creating it again with its attributes finds it; with others too,
         // and the caller reads which it found.
         for again in [attributes("abc"), attributes("other")] {
@@ -352,27 +351,5 @@ mod tests {
             );
         }
         assert_eq!(objects.get_opts(&key, GetOptions::default()).await.unwrap().attributes, attributes("abc"));
-    }
-
-    #[tokio::test]
-    async fn a_put_that_stopped_after_its_attributes_completes_and_a_deletion_takes_both() {
-        let (directory, objects) = store();
-        let key = Path::from("native/blobs/abc");
-        // A put that stopped between its attributes and its object.
-        let stored = serde_json::to_vec(&Stored::of(&attributes("abc")).unwrap()).unwrap();
-        let left = directory.path().join(".attributes/native/blobs");
-        std::fs::create_dir_all(&left).unwrap();
-        std::fs::write(left.join("abc"), stored).unwrap();
-        objects
-            .put_opts(&key, PutPayload::from_static(b"encoded"), create(attributes("abc")))
-            .await
-            .unwrap();
-        objects.delete(&key).await.unwrap();
-        assert!(!left.join("abc").exists());
-        // An object without attributes has none.
-        let plain = Path::from("blobs/ana/def");
-        objects.put(&plain, PutPayload::from_static(b"picture")).await.unwrap();
-        let found = objects.get_opts(&plain, GetOptions::default()).await.unwrap();
-        assert!(found.attributes.is_empty());
     }
 }

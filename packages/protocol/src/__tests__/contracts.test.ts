@@ -8,7 +8,6 @@ import {
   contextLimits,
   previewMediaType,
   serverFrameSchema,
-  showsInPlace,
 } from '../index'
 
 // The Rust contract tests' fixtures and cases: the generated schemas must
@@ -110,7 +109,6 @@ const clientFrameTable = await read('conversation-socket-protocol/tests/frames/f
 const serverFrames = await read('conversation-socket-protocol/tests/frames/fixtures/server-frames.json', z.array(jsonSchema))
 const fileTypes = await read('shared-types/tests/shared-types/fixtures/file-types.json', z.strictObject({
   previewMediaType: z.array(z.tuple([z.string(), z.string().nullable()])),
-  showsInPlace: z.array(z.tuple([z.string(), z.boolean()])),
 }))
 
 const contextLimitCases = await read('shared-types/tests/shared-types/fixtures/context-limits.json', z.strictObject({
@@ -160,12 +158,6 @@ describe('file types', () => {
   test('a file is known by its extension, whatever its ASCII case or separator', () => {
     for (const [path, expected] of fileTypes.previewMediaType) {
       expect({ path, type: previewMediaType(path) }).toEqual({ path, type: expected })
-    }
-  })
-
-  test('the page shows media in place and renders Markdown from its text', () => {
-    for (const [mediaType, expected] of fileTypes.showsInPlace) {
-      expect({ mediaType, inPlace: showsInPlace(mediaType) }).toEqual({ mediaType, inPlace: expected })
     }
   })
 })

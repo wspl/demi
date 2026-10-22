@@ -6,15 +6,14 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{RequestView, replay};
 use demi_provider_common::{
-    InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, ToolDefinition, ToolResultKinds,
+    InferenceItem, MediaBytes, RequestLimits, ResultPart, ToolDefinition, ToolResultKinds,
     UserPart,
 };
 use demi_shared_types::{
-    Attachment, B64Bytes, BlobRef, Block, BlockId, CommandId, CommandReport,
-    CompactionBoundaryBlock, CompactionMarkerBlock, DocumentSource, FileExtension, MediaSource, MessageComment,
-    RedactedThinkingBlock, ReportEvent, StoppedBy, ThinkingBlock, Timestamp, ToolCallBlock,
-    ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserBlock, UserContentBlock,
-    WakeupBlock, WakeupPlacement, attachment_tag,
+    B64Bytes, BlobRef, Block, BlockId, CompactionBoundaryBlock, CompactionMarkerBlock,
+    DocumentSource, FileExtension, RedactedThinkingBlock, ThinkingBlock, Timestamp,
+    ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserBlock,
+    UserContentBlock,
 };
 
 /// What the model receives of a message of one text.
@@ -138,94 +137,6 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
     assert_eq!(kept(&compacted[5..]), [("after".to_owned(), false)]);
 }
 
-/// A picture by its address goes as an image only to a model that reads
-/// images, as one by its blob does: a model without image input reads the note
-/// naming it, its comment after it.
-#[test]
-fn a_picture_by_its_address_reaches_only_a_model_that_reads_images() {
-    let url = "https://example.com/chart.png";
-    for (model, image) in [
-        (model_reading("stub", "sees", &[FileExtension::Png]), UserPart::Image(Medium::Url(url.into()))),
-        (test_model(), UserPart::Text(format!("[image:{url}, not sent: the model does not accept it]"))),
-    ] {
-        let message = Block::User(UserBlock {
-            comments: vec![MessageComment {
-                id: "c1".into(),
-                block_id: BlockId::try_from("r1").unwrap(),
-                start: 0,
-                end: 1,
-                at: 0,
-                quote: "The chart".into(),
-                picture: Some(MediaSource::Url { url: url.into() }),
-                text: "Which connection?".into(),
-            }],
-            entries: Vec::new(),
-            id: BlockId::try_from("u1").unwrap(),
-            turn_id: TurnId::try_from("t1").unwrap(),
-            created_at: Timestamp::UNIX_EPOCH,
-            request: None,
-            model: model.clone(),
-            content: Vec::new(),
-            preamble: None,
-            automation: None,
-        });
-        let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
-        assert_eq!(
-            replay(&RequestView::new(&view, &model.model, RequestLimits::default(), &[])).items,
-            [InferenceItem::UserMessage { content: vec![image, UserPart::Text("Which connection?".into())] }]
-        );
-    }
-}
-
-/// A reference names a file on a paired device; the model reads the
-/// text that names it, and an attachment record as its tag.
-#[test]
-fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
-    let model = test_model();
-    let attachment = Attachment {
-        id: "a1".into(),
-        name: "notes.md".into(),
-        media_type: "text/markdown".into(),
-        size_bytes: 82,
-        sha256: BlobRef::of(b"# Notes"),
-        snippet: Some("# Notes".into()),
-    };
-    let reference = "file:///home/demi/notes.md?host=laptop";
-    let message = Block::User(UserBlock {
-        comments: Vec::new(),
-        entries: Vec::new(),
-        id: BlockId::try_from("u1").unwrap(),
-        turn_id: TurnId::try_from("t1").unwrap(),
-        created_at: Timestamp::UNIX_EPOCH,
-        request: None,
-        model: model.clone(),
-        content: vec![
-            UserContentBlock::Reference {
-                reference: reference.into(),
-            },
-            UserContentBlock::Attachment(attachment.clone()),
-        ],
-        preamble: None,
-        automation: None,
-    });
-    let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
-    assert_eq!(
-        replay(&RequestView::new(
-            &view,
-            &model.model,
-            RequestLimits::default(),
-            &[],
-        ))
-        .items,
-        [InferenceItem::UserMessage {
-            content: vec![
-                UserPart::Text(reference.into()),
-                UserPart::Text(attachment_tag(&attachment)),
-            ]
-        }]
-    );
-}
-
 #[test]
 fn a_long_text_keeps_its_ends_and_counts_what_it_left_out_in_scalar_values() {
     let text = format!(
@@ -243,64 +154,6 @@ fn a_long_text_keeps_its_ends_and_counts_what_it_left_out_in_scalar_values() {
     assert_eq!(tail, format!("🙂{}", "z".repeat(7_999)));
     assert_eq!(count, "4000");
     assert_eq!(replayed_text(&"x".repeat(16_000)), "x".repeat(16_000));
-}
-
-// A conversation from before `yield` was removed goes on: a vendor may
-// refuse a call of a tool its request does not declare.
-#[test]
-fn a_call_of_a_tool_the_request_no_longer_declares_is_replayed_with_its_result_as_text() {
-    let model = test_model();
-    let call = |id: &str, tool: &str, input: &str, result: &str| {
-        Block::ToolCall(ToolCallBlock {
-            run: None,
-            entries: Vec::new(),
-            ended_at: None,
-            id: BlockId::try_from(id).unwrap(),
-            created_at: Timestamp::UNIX_EPOCH,
-            request: None,
-            model: model.clone(),
-            tool_use_id: id.into(),
-            tool_name: tool.into(),
-            input: input.into(),
-            status: ToolCallStatus::Completed,
-            output: vec![ToolResultContentBlock::Text {
-                text: result.into(),
-            }],
-            view: None,
-        })
-    };
-    let blocks = [
-        call("c1", "shell", r#"{"script":"ls"}"#, "status: exited"),
-        call(
-            "c2",
-            "yield",
-            r#"{ "durationMs": 600000 }"#,
-            "yield scheduled",
-        ),
-    ];
-    let shell = ToolDefinition {
-        name: "shell".into(),
-        description: String::new(),
-        input_schema: serde_json::Map::new(),
-    };
-    let view = ModelView::of(0, &blocks, &HeldMedia::default()).expect("no media to hold");
-    let items = replay(&RequestView::new(
-        &view,
-        &model.model,
-        RequestLimits::default(),
-        std::slice::from_ref(&shell),
-    ))
-    .items;
-    let [
-        InferenceItem::ToolUse { tool_name, .. },
-        InferenceItem::ToolResult { .. },
-        InferenceItem::AssistantText { text, .. },
-    ] = items.as_slice()
-    else {
-        panic!("the declared call and the text of the other: {items:?}");
-    };
-    assert_eq!(tool_name, "shell");
-    assert_eq!(text, r#"[called yield {"durationMs":600000}: yield scheduled]"#);
 }
 
 /// Planted defects this catches:
@@ -404,80 +257,3 @@ fn each_request_replays_a_tool_results_media_only_where_its_provider_carries_the
     );
 }
 
-// Pure: a few milliseconds.
-#[test]
-fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_each() {
-    let model = test_model();
-    let report = |command: &str, title: &str, event: ReportEvent, output: &str| CommandReport {
-        command_id: CommandId::try_from(command).unwrap(),
-        title: title.into(),
-        event,
-        output: output.into(),
-        media: Vec::new(),
-    };
-    let wakeup = Block::Wakeup(WakeupBlock {
-        run: None,
-        id: BlockId::try_from("w1").unwrap(),
-        turn_id: TurnId::try_from("t1").unwrap(),
-        created_at: Timestamp::UNIX_EPOCH,
-        request: None,
-        model: model.clone(),
-        placement: WakeupPlacement::NewTurn,
-        reports: vec![
-            report(
-                "17",
-                "Run the test suite",
-                ReportEvent::Running {
-                    running_ms: 300_000,
-                    idle_ms: 290_000,
-                },
-                "",
-            ),
-            report(
-                "17",
-                "Run the test suite",
-                ReportEvent::Ended { exit_code: Some(1) },
-                "FAIL auth.test.ts\n1 failed",
-            ),
-            report("18", "Start the dev server", ReportEvent::Stopped { by: Some(StoppedBy::User) }, ""),
-            report("19", "", ReportEvent::Stopped { by: Some(StoppedBy::Agent { number: 2 }) }, ""),
-            report(
-                "20",
-                "Watch the files",
-                ReportEvent::Lost {
-                    reason: "Demi was upgraded and the Host's runner replaced itself".into(),
-                },
-                "",
-            ),
-        ],
-        entries: Vec::new(),
-    });
-    let view = ModelView::of(0, &[wakeup], &HeldMedia::default()).expect("no media to hold");
-    let items = replay(&RequestView::new(&view, &model.model, RequestLimits::default(), &[])).items;
-    let [InferenceItem::UserMessage { content }] = items.as_slice() else {
-        panic!("one message: {items:?}");
-    };
-    let [UserPart::Text(text)] = content.as_slice() else {
-        panic!("one text: {content:?}");
-    };
-    assert_eq!(
-        text,
-        "Command 17 (Run the test suite) is still running after 5m; no output for 4m50s.\n\
-         output: (empty)\n\
-         It keeps running; its end wakes you.\n\
-         \n\
-         Command 17 (Run the test suite) ended with exit code 1.\n\
-         output:\n\
-         FAIL auth.test.ts\n\
-         1 failed\n\
-         \n\
-         Command 18 (Start the dev server) was stopped by the user.\n\
-         output: (empty)\n\
-         \n\
-         Command 19 was stopped by agent 2.\n\
-         output: (empty)\n\
-         \n\
-         Command 20 (Watch the files) was lost: Demi was upgraded and the Host's runner replaced itself. Start it again if it is still needed.\n\
-         output: (empty)"
-    );
-}

@@ -6,8 +6,8 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the lockout's internals, so they are unit tests and the crate
-# has no integration tests (`ARCHITECTURE.md`). It has no doc examples.
+# Its tests are unit tests and the crate has no integration tests
+# (`ARCHITECTURE.md`). It has no doc examples.
 doctest = false
 bench = false
 

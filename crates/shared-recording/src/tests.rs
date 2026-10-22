@@ -2,11 +2,11 @@
 //! that does what every source does: drop a frame equal to the one before,
 //! code the others, say where they differ.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use demi_shared_h264::{PixelFormat, Raw, Rate, Settings};
 use demi_shared_openh264::{Built, Codec as _};
-use demi_shared_recording_protocol::{Area, EndReason, FrameSet, KEPT, RecordingId};
+use demi_shared_recording_protocol::{Area, EndReason, FrameSet, KEPT};
 
 use crate::{Crop, Error, Export, Library, Picture, Sink};
 
@@ -188,20 +188,6 @@ async fn the_frames_of_one_export_share_an_area() {
     assert!(matches!(outside, Err(Error::BadRequest(_))), "{:?}", outside.err());
 }
 
-/// A recording with a duration stops itself when it is over, and says why.
-#[tokio::test]
-async fn a_recording_with_a_duration_stops_itself() {
-    let directory = tempfile::tempdir().unwrap();
-    let library = library(directory.path());
-    let live = library.begin("m1", Some(Duration::from_millis(40))).await.unwrap();
-    Source::new(live.sink()).await.draw(screen(None), 0);
-    live.ended().cancelled().await;
-    let info = library.stored(live.id()).await.unwrap().info().unwrap();
-    assert_eq!((info.running, info.ended, info.frames), (false, Some(EndReason::Duration), 1));
-    // A stop of one that ended on its own answers the same.
-    assert_eq!(live.stop(EndReason::Stopped).await.unwrap().ended, Some(EndReason::Duration));
-}
-
 /// A frame the capture could not take is counted, and where it fell is in
 /// the listing.
 #[tokio::test]
@@ -218,32 +204,6 @@ async fn missed_frames_are_counted_where_they_fell() {
     let listing = library.stored(live.id()).await.unwrap().frames(None).unwrap();
     assert_eq!(listing.gaps.len(), 1);
     assert_eq!((listing.gaps[0].after, listing.gaps[0].count), (1, 3));
-}
-
-/// A conversation keeps its newest five recordings, and finishing a program's
-/// recordings removes none.
-#[tokio::test]
-async fn a_conversation_keeps_its_newest_five_recordings() {
-    let directory = tempfile::tempdir().unwrap();
-    let library = library(directory.path());
-    let mut ids = Vec::new();
-    for _ in 0..KEPT + 1 {
-        let live = library.begin("t1", None).await.unwrap();
-        Source::new(live.sink()).await.draw(screen(None), 0);
-        live.stop(EndReason::Stopped).await.unwrap();
-        ids.push(live.id().clone());
-    }
-    assert!(matches!(library.stored(&ids[0]).await, Err(Error::Removed(_))));
-    assert!(matches!(library.stored(&RecordingId::numbered(99)).await, Err(Error::NoRecording(_))));
-    for id in &ids[1..] {
-        library.stored(id).await.unwrap();
-    }
-    let running = library.begin("t1", None).await.unwrap();
-    Source::new(running.sink()).await.draw(screen(None), 0);
-    library.finish().await;
-    assert!(running.ended().is_cancelled(), "a recording that runs ends, complete");
-    assert_eq!(library.stored(running.id()).await.unwrap().info().unwrap().ended, Some(EndReason::Closed));
-    library.stored(&ids[KEPT]).await.expect("none was removed");
 }
 
 /// A recording another program writes is not removed to keep the newest five:

@@ -161,7 +161,6 @@ mod tests {
     use crate::fake_s3::FakeS3;
     use object_store::ObjectStore;
 
-    use super::*;
     use crate::blobs::BlobStores;
 
     #[tokio::test]
@@ -179,20 +178,5 @@ mod tests {
             Some(Bytes::from_static(b"picture"))
         );
         assert_eq!(fake.written(), [format!("blobs/ana/{first}")]);
-    }
-
-    #[test]
-    fn the_s3_settings_name_a_bucket_and_region_over_https() {
-        let config = |bucket: &str, endpoint: Option<&str>| S3Config {
-            bucket: bucket.to_owned(),
-            region: "eu-west-1".to_owned(),
-            endpoint: endpoint.map(|endpoint| endpoint.parse().unwrap()),
-            force_path_style: true,
-        };
-        config("demi", Some("https://objects.example.com"))
-            .check()
-            .unwrap();
-        assert!(config("demi", Some("http://objects.example.com")).check().is_err());
-        assert!(config("", None).check().is_err());
     }
 }

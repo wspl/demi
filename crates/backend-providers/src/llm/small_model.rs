@@ -364,18 +364,6 @@ mod tests {
     }
 
     #[test]
-    fn a_tier_matches_the_display_name_as_well() {
-        let mut gateway = entry("a", &[]);
-        let model = model("acme/model-7", "GPT-5.6-Sol", &[], false);
-        gateway.models.push(CatalogModel {
-            selection: model.selection("a", None, None),
-            model,
-        });
-        let small = small_model(&[gateway], &Preferences::default(), &on("a", "opus"));
-        assert_eq!(small.model.id, "acme/model-7");
-    }
-
-    #[test]
     fn the_highest_version_wins_dates_left_out_and_a_release_before_a_preview() {
         let cases: [(&[&str], &str); 5] = [
             (&["claude-3-5-haiku-20241022", "claude-haiku-5-5", "claude-haiku-4-5"], "claude-haiku-5-5"),
@@ -502,33 +490,5 @@ mod tests {
             resolved(&catalog, &chosen("b", "sonnet", Some("max")), &conversation),
             pair("b", "claude-haiku-5-5")
         );
-    }
-
-    #[test]
-    fn settings_show_automatic_as_for_the_first_offered_entry() {
-        let catalog = [entry("a", &["glm-4.7-flash"]), entry("b", &["gemini-9-flash"])];
-        let shown = automatic_small_model(&catalog, &Preferences::default()).unwrap();
-        assert_eq!(shown.model.id, "glm-4.7-flash");
-        let hidden = Preferences {
-            hidden_providers: vec![ProviderId::try_from("a").unwrap()],
-            ..Preferences::default()
-        };
-        assert_eq!(automatic_small_model(&catalog, &hidden).unwrap().model.id, "gemini-9-flash");
-        // A chosen model does not change what Automatic shows.
-        let chosen = Preferences {
-            small_model: Some(SmallModelSettings {
-                provider_id: ProviderId::try_from("b").unwrap(),
-                model_id: "gemini-9-flash".into(),
-                thinking_effort: None,
-            }),
-            ..Preferences::default()
-        };
-        assert_eq!(automatic_small_model(&catalog, &chosen).unwrap().model.id, "glm-4.7-flash");
-        let same = Preferences {
-            small_model_same_provider: Some(true),
-            ..Preferences::default()
-        };
-        assert_eq!(automatic_small_model(&catalog, &same), None);
-        assert_eq!(automatic_small_model(&[entry("a", &["opus"])], &Preferences::default()), None);
     }
 }

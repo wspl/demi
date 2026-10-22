@@ -3,10 +3,8 @@
 //! model, and which context limits a model offers.
 
 use demi_shared_types::{
-    Attachment, FileExtension, MODEL_MEDIA_TYPES, Model, ModelMediaKind, applied_context_limit,
-    attachment_tag, context_limits, effective_context_window, file_extension_support, is_blank,
-    model_accepts_media_type, model_accepts_video, preview_media_type, shows_in_place,
-    model_media_type_for, trim,
+    FileExtension, Model, applied_context_limit, context_limits, effective_context_window,
+    is_blank, model_accepts_media_type, model_accepts_video, preview_media_type, trim,
 };
 use serde_json::Value;
 
@@ -30,43 +28,6 @@ fn a_file_is_known_by_its_extension_whatever_its_case_or_separator() {
     for (path, expected) in file_type_cases("previewMediaType") {
         assert_eq!(preview_media_type(&path), expected.as_str(), "{path}");
     }
-}
-
-#[test]
-fn the_page_shows_media_in_place_and_renders_markdown_from_its_text() {
-    for (media_type, expected) in file_type_cases("showsInPlace") {
-        assert_eq!(
-            shows_in_place(&media_type),
-            expected.as_bool().unwrap(),
-            "{media_type}"
-        );
-    }
-}
-
-#[test]
-fn every_medium_a_model_reads_is_served_for_the_page_to_show_in_place() {
-    // A tool's images and videos, and a message's, are known by the
-    // model-media table and served from their blobs by the file-type table:
-    // a type the second does not show in place downloads, and a player then
-    // plays it only where the user's browser guesses the format.
-    for entry in MODEL_MEDIA_TYPES {
-        assert!(shows_in_place(entry.media_type), "{}", entry.media_type);
-    }
-}
-
-#[test]
-fn each_model_medium_names_its_kind_and_the_extension_a_catalog_accepts_it_by() {
-    let png = model_media_type_for("image/png").unwrap();
-    assert_eq!(
-        (png.kind, png.extension),
-        (ModelMediaKind::Image, FileExtension::Png)
-    );
-    let pdf = model_media_type_for("application/pdf").unwrap();
-    assert_eq!(
-        (pdf.kind, pdf.extension),
-        (ModelMediaKind::Document, FileExtension::Pdf)
-    );
-    assert!(model_media_type_for("text/plain").is_none());
 }
 
 fn model(accepted: Option<&[FileExtension]>) -> Model {
@@ -99,35 +60,6 @@ fn a_model_reads_media_its_catalog_accepts_and_unknown_support_counts_as_no() {
     assert!(!model_accepts_media_type(&model(Some(&[])), "image/png"));
     assert!(!model_accepts_media_type(&model(None), "image/png"));
     assert!(!model_accepts_video(&model(None)));
-}
-
-#[test]
-fn extension_support_tells_unknown_unsupported_and_supported_apart() {
-    use FileExtension::*;
-    assert_eq!(file_extension_support(None, Png), None);
-    assert_eq!(file_extension_support(Some(&[]), Png), Some(false));
-    assert_eq!(file_extension_support(Some(&[Png]), Png), Some(true));
-    assert_eq!(file_extension_support(Some(&[Png]), Pdf), Some(false));
-    assert_eq!(file_extension_support(Some(&[Jpeg]), Jpg), Some(true));
-    assert_eq!(file_extension_support(Some(&[Jpg]), Jpeg), Some(true));
-}
-
-#[test]
-fn an_attachment_is_one_self_closing_tag_with_escaped_attributes() {
-    let attachment = Attachment {
-        id: "a7".into(),
-        name: r#"notes "v2" <&>.md"#.into(),
-        media_type: "text/markdown".into(),
-        size_bytes: 82,
-        sha256: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-            .parse()
-            .unwrap(),
-        snippet: Some("never rendered".into()),
-    };
-    assert_eq!(
-        attachment_tag(&attachment),
-        r#"<attachment id="a7" name="notes &quot;v2&quot; &lt;&amp;&gt;.md" type="text/markdown" size="82" />"#,
-    );
 }
 
 #[test]

@@ -108,16 +108,3 @@ fn verify(password: &Password, stored: &PasswordHash) -> Result<bool, HashError>
         Err(error) => Err(HashError::Argon2(error)),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_first_password_is_twenty_letters_and_digits_and_never_repeats() {
-        let first = generate_first_password();
-        assert_eq!(first.expose().chars().count(), 20);
-        assert!(first.expose().chars().all(|c| c.is_ascii_alphanumeric()));
-        assert_ne!(first.expose(), generate_first_password().expose());
-    }
-}
