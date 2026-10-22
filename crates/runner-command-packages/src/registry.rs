@@ -287,8 +287,9 @@ impl ServiceHandle {
 
     /// [`Self::acquire`] for a command, which `tell`s its caller of an
     /// install of the service's executable that takes longer than two
-    /// seconds: a first line that names it, then a line at each tenth of
-    /// its download (`crates/runner-command-packages/src/cache.rs`).
+    /// seconds, in one line that names it, so that what the command prints
+    /// after it is not pushed out of a reader that keeps only the first
+    /// lines.
     pub async fn acquire_telling(
         &self,
         descriptor: &PackageDescriptor,
@@ -314,22 +315,12 @@ impl ServiceHandle {
         let mut state = acquired.state;
         let quiet = tokio::time::sleep(QUIET_INSTALL);
         tokio::pin!(quiet);
-        // What the caller was told last, once it was told of the install.
-        let mut told: Option<Option<ArtifactProgress>> = None;
+        // Whether the caller was told of the install, or nothing installs.
+        let mut told = false;
         loop {
             let current = state.borrow_and_update().clone();
             match current {
-                State::Starting(None) => {}
-                State::Starting(Some(installing)) => {
-                    if let Some(said) = &mut told
-                        && *said != installing.progress
-                    {
-                        *said = installing.progress;
-                        if let Some(progress) = installing.progress {
-                            tell(progress.line(&descriptor.id));
-                        }
-                    }
-                }
+                State::Starting(_) => {}
                 State::Ready { client, info } => {
                     if !descriptor.serves(&info) {
                         return Err(Arc::new(RuntimeError::CatalogMismatch));
@@ -340,10 +331,10 @@ impl ServiceHandle {
             }
             tokio::select! {
                 _ = cancel.cancelled() => return Err(Arc::new(RuntimeError::Cancelled)),
-                () = &mut quiet, if told.is_none() => {
+                () = &mut quiet, if !told => {
+                    told = true;
                     let State::Starting(Some(installing)) = *state.borrow() else {
                         // Nothing installs: nothing is ever told.
-                        told = Some(None);
                         continue;
                     };
                     let size = match installing.progress {
@@ -359,10 +350,6 @@ impl ServiceHandle {
                         descriptor.version,
                         megabytes(size)
                     ));
-                    if let Some(progress) = installing.progress {
-                        tell(progress.line(&descriptor.id));
-                    }
-                    told = Some(installing.progress);
                 }
                 changed = state.changed() => {
                     if changed.is_err() {
