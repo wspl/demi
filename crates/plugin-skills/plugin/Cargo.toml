@@ -11,10 +11,6 @@ test = false
 doctest = false
 bench = false
 
-[features]
-# Git repositories a test makes and a factory that fetches them.
-testing = []
-
 [dependencies]
 demi-host-interface = { path = "../../host-interface" }
 demi-plugin-interface = { path = "../../plugin-interface" }

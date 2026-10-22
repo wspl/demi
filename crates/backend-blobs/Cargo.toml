@@ -7,23 +7,17 @@ publish.workspace = true
 
 [lib]
 # No doc examples.
+test = false
 doctest = false
 bench = false
-
-[features]
-# An S3 fake (`fake_s3::FakeS3`) and an object store that counts what reaches
-# it (`counting::ObjectCounts`).
-testing = ["dep:axum"]
 
 [dependencies]
 demi-agent-store = { path = "../agent-store" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 # Implements `object_store`'s trait for the local store, which keeps its
-# objects' attributes beside them, and the counting store of `testing`.
+# objects' attributes beside them.
 async-trait = "0.1"
-# Serves the S3 fake of `testing`.
-axum = { version = "0.8", optional = true }
 bytes.workspace = true
 futures-util.workspace = true
 object_store = { workspace = true, features = ["aws", "fs"] }

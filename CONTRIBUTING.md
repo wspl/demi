@@ -38,17 +38,14 @@ human contribution, which this guide covers:
 Set up the repository and check a change with these commands:
 
 ```sh
-cargo check --workspace --all-targets --features demi-runner/test-fixtures
-cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests and the crate boundary check
+cargo check --workspace --all-targets
+cargo test --workspace  # the compaction tests
 
 bun install
 bun run typecheck:web   # type-check web-ui, web-gallery and web
-bun run test            # the TypeScript tests and the package boundary check
 ```
 
-Every Rust command selects the whole workspace with the runner's test
-fixtures, so they share one build. `crates/xtask/src/main.rs` lists the Chrome
-suite and how a test finds the programs it starts.
+Every Rust command selects the whole workspace, so they share one build.
 
 Rust types are the only definition of every wire and stored format
 ([Contracts](ARCHITECTURE.md#contracts)). The browser's TypeScript types and
@@ -108,15 +105,8 @@ Four rules apply across the code:
   the code and the rules across it. What each crate and package owns and must
   not do is in its entry comment (`lib.rs`, `main.rs`, `index.ts`).
 
-  The boundary checks read its two dependency graphs:
-
-  - The Rust tests fail when a crate's dependencies differ from the Rust
-    graph.
-  - `bun run test` fails when a browser package's dependencies differ from the
-    TypeScript graph.
-
   A new crate, package or dependency between them starts with a change to its
-  graph line.
+  graph line in ARCHITECTURE.md.
 - **One owner per helper.** Before you write a helper, search these places in
   order:
 
@@ -141,19 +131,17 @@ coding standards.
 
 ## Tests
 
-[Testing](docs/delivery/testing.md) describes what a test protects, where it
-runs, how it proves itself, what it can cost and how coverage is used. Read it
-before you add or change a test.
+[Testing](docs/delivery/testing.md) says what Demi tests: only compaction.
+Read it before you add or change a test.
 
 Two rules apply to the suite:
 
-- Rust unit tests sit beside the code, and each crate has one integration test
-  binary ([Test binaries](ARCHITECTURE.md#test-binaries)).
-  [Tests and time](ARCHITECTURE.md#tests-and-time) covers clocks, real
-  processes and built binaries.
-- Keep the suite green. Before every commit, run the Rust tests. When a
-  browser package or JavaScript that a crate ships changed, also run
-  `bun run typecheck:web` and `bun run test`.
+- The only test binary is the compaction tests'
+  (`crates/agent-session/tests/agent-session`).
+  [Tests and time](ARCHITECTURE.md#tests-and-time) covers clocks.
+- Keep the suite green. Before every commit that touches compaction, run
+  `cargo test --workspace`. When a browser package or JavaScript that a crate
+  ships changed, run `bun run typecheck:web`.
 
 ## Commits
 

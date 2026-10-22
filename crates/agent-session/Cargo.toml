@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# The compaction tests are the crate's one test binary; no doc examples.
 test = false
 doctest = false
 bench = false

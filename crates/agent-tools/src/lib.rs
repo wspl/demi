@@ -69,7 +69,7 @@ mod prompt;
 mod reports;
 mod result;
 mod workflow;
-#[cfg(any(test, feature = "testing"))]
+#[cfg(feature = "testing")]
 pub mod testing;
 
 use std::{
@@ -579,4 +579,3 @@ impl From<ShellError> for CallError {
         Self::Failed(error.to_string())
     }
 }
-

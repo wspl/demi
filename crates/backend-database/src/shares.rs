@@ -458,9 +458,7 @@ fn keep_attachments(
 /// a link or an image to `attachment:a3`.
 ///
 /// The web app's renderer follows the same rule
-/// (`packages/web-ui/src/markdown/attachment-block.ts`); both are held to the
-/// cases of
-/// `crates/shared-types/tests/shared-types/fixtures/attachment-blocks.json`.
+/// (`packages/web-ui/src/markdown/attachment-block.ts`).
 ///
 /// CommonMark reads the tag as raw HTML, which starts an HTML block that runs on
 /// to the next blank line, while the renderer gives the tag's line a block of its

@@ -43,8 +43,6 @@ pub(crate) enum Kind {
     /// A forwarded connection's bytes, its end as `{ end: true }`, and the
     /// other side's grants.
     Forward,
-    /// Every message as it comes: a test's page.
-    Raw,
 }
 
 /// Where a channel is.
@@ -249,11 +247,7 @@ impl Channel {
             return true;
         };
         let message = match (kind, binary) {
-            (Kind::Raw, false) => match String::from_utf8(data) {
-                Ok(text) => Some(Input::Text(text)),
-                Err(_) => None,
-            },
-            (Kind::Raw | Kind::Forward | Kind::Write | Kind::Stream, true) => {
+            (Kind::Forward | Kind::Write | Kind::Stream, true) => {
                 Some(Input::Bytes(Bytes::from(data)))
             }
             (Kind::Forward, false) => {

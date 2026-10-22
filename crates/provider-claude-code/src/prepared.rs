@@ -53,8 +53,8 @@ const MOST_ON_A_MACHINE: usize = 2;
 #[derive(Default)]
 pub struct PreparedProcesses {
     seats: RefCell<VecDeque<SeatRecord>>,
-    /// How many preparations began on the machine, which also numbers them.
-    begun: tokio::sync::watch::Sender<u64>,
+    /// How many preparations began on the machine, which numbers them.
+    begun: std::cell::Cell<u64>,
 }
 
 struct SeatRecord {
@@ -68,8 +68,8 @@ impl PreparedProcesses {
     /// A seat for a process `entry`'s runtime prepares; the oldest seat
     /// beyond the machine's two is told to close.
     fn seat(self: &Rc<Self>, entry: &str) -> Seat {
-        let id = *self.begun.borrow();
-        self.begun.send_replace(id + 1);
+        let id = self.begun.get();
+        self.begun.set(id + 1);
         let close = CancellationToken::new();
         let mut seats = self.seats.borrow_mut();
         seats.push_back(SeatRecord {
@@ -107,14 +107,6 @@ impl PreparedProcesses {
         for seat in self.seats.borrow_mut().drain(..) {
             seat.close.cancel();
         }
-    }
-
-    /// Resolves once `count` preparations began on the machine since it was
-    /// first used, for a check of what starts one.
-    pub async fn until_begun(&self, count: u64) {
-        let mut begun = self.begun.subscribe();
-        // The sender lives in `self`, which this call borrows.
-        let _ = begun.wait_for(|begun| *begun >= count).await;
     }
 
     /// How many prepared processes the machine holds unused.

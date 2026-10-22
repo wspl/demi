@@ -163,7 +163,6 @@ impl ImageStore {
         let stage = generations.join(format!(".publish-{}", uuid::Uuid::new_v4()));
         fs_err::create_dir(&stage)?;
         let staged = stage_generation(off, &stage, state, &sources).and_then(|()| {
-            crate::fault::point("generation-staged");
             fs_err::rename(&stage, generations.join(&state.generation))
         });
         if let Err(error) = staged {
@@ -175,7 +174,6 @@ impl ImageStore {
             return Err(error.into());
         }
         sync(off, &generations)?;
-        crate::fault::point("generation-renamed");
         write_json(off, &directory.join("current.json"), state)?;
         sync(off, &directory)?;
         // Keep the fallback generation where the retention has one; older

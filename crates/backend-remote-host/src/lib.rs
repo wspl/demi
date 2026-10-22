@@ -34,8 +34,6 @@ mod shell_environment;
 mod runner_socket;
 #[cfg(feature = "edge")]
 mod stream_pipe;
-#[cfg(feature = "testing")]
-pub mod testing;
 
 pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UPGRADED};
 pub use file_watch::{HostEvent, HostSubscriber};

@@ -6,16 +6,10 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the pending claims' window, the codes' alphabet and the
-# publication's object layout, so they are unit tests and the crate has no
-# integration tests (`ARCHITECTURE.md`). It has no doc examples.
+# No doc examples.
+test = false
 doctest = false
 bench = false
-
-[features]
-# A bound connection's driver without its socket (`Serving::into_driver`),
-# for tests that play a device's runner.
-testing = []
 
 [dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts" }
@@ -42,17 +36,9 @@ semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer = "0.3"
-sha2 = "0.10"
 shlex = "2"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 url = { version = "2", features = ["serde"] }
-
-[dev-dependencies]
-demi-backend-blobs = { path = "../backend-blobs", features = ["testing"] }
-demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-command-package-browser-protocol = { path = "../plugin-browser/protocol" }
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

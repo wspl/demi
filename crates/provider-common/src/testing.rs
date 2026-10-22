@@ -1,39 +1,19 @@
-//! Test support (feature `testing`).
-//!
-//! It provides a scripted runtime for the tests of what sits above providers, a
-//! scripted vendor server for the tests of providers, waits for a run's events
-//! that fail instead of hanging, the check of an API-key entry's built-in
-//! catalog, event builders and a fixed clock. No test calls a real model.
+//! The scripted provider runtime and clocks the compaction tests build on: a
+//! runtime that plays scripted runs in order, the events a run yields and
+//! wall clocks. No test calls a real model.
 
-use std::{
-    cell::RefCell,
-    collections::{HashMap, VecDeque},
-    net::SocketAddr,
-    rc::Rc,
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
-use axum::{
-    Router,
-    body::{Body, Bytes},
-    extract::{Request, State},
-    response::Response,
-};
 use demi_shared_types::{Clock, Model, Timestamp, TokenUsage};
 use futures_util::{
-    Stream, StreamExt,
+    StreamExt,
     future::LocalBoxFuture,
-    stream::{self, BoxStream, LocalBoxStream},
+    stream::{self, LocalBoxStream},
 };
-use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
-use tokio::sync::{Notify, watch};
-use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    Ahead, InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
-    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolResultKinds,
-    UserPart,
+    Ahead, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime,
+    RequestLimits, ToolCall, ToolResultKinds,
 };
 
 /// Builders of the events a scripted run yields.
@@ -42,10 +22,6 @@ pub mod event {
 
     pub fn text(text: &str) -> ProviderEvent {
         ProviderEvent::TextDelta(text.to_owned())
-    }
-
-    pub fn thinking(text: &str) -> ProviderEvent {
-        ProviderEvent::ThinkingDelta(text.to_owned())
     }
 
     pub fn tool_call(
@@ -58,22 +34,6 @@ pub mod event {
             tool_name: tool_name.to_owned(),
             input,
         })
-    }
-
-    /// The model opened the call `tool_use_id` of `tool_name`.
-    pub fn tool_call_start(tool_use_id: &str, tool_name: &str) -> ProviderEvent {
-        ProviderEvent::ToolCallStart {
-            tool_use_id: tool_use_id.to_owned(),
-            tool_name: tool_name.to_owned(),
-        }
-    }
-
-    /// A piece of the call `tool_use_id`'s input JSON.
-    pub fn tool_call_input(tool_use_id: &str, piece: &str) -> ProviderEvent {
-        ProviderEvent::ToolCallInput {
-            tool_use_id: tool_use_id.to_owned(),
-            partial_json: piece.to_owned(),
-        }
     }
 
     /// A response whose usage is `input_tokens` in and `output_tokens` out.
@@ -94,33 +54,6 @@ pub mod event {
             diagnostics: None,
             retry_after: None,
         })
-    }
-}
-
-/// A request with a user message `hello` and nothing else; tests replace the
-/// fields they care about.
-pub fn inference_request() -> InferenceRequest {
-    InferenceRequest {
-        session_id: "session-1".into(),
-        affinity: None,
-        turn_id: "turn-1".into(),
-        request_id: "request-1".into(),
-        model_id: "model-1".into(),
-        output_limit: None,
-        output_cap: None,
-        system_prompt: String::new(),
-        items: Arc::new([InferenceItem::UserMessage {
-            content: vec![UserPart::Text("hello".into())],
-        }]),
-        blocks: Arc::new([]),
-        tools: Arc::new([]),
-        thinking: None,
-        service_tier_id: None,
-        prompt_cache: PromptCache::Off,
-        cancel: CancellationToken::new(),
-        account: None,
-        purpose: RequestPurpose::Turn,
-        agent: Some(0),
     }
 }
 
@@ -159,8 +92,6 @@ impl Turn {
 #[derive(Clone)]
 pub struct ScriptedRuntime {
     script: Rc<RefCell<Script>>,
-    /// What the runtime was asked to ready ahead, in order.
-    readied: Rc<watch::Sender<Vec<(Ahead, InferenceRequest)>>>,
 }
 
 struct Script {
@@ -182,30 +113,7 @@ impl ScriptedRuntime {
                     ..RequestLimits::default()
                 },
             })),
-            readied: Rc::new(watch::Sender::new(Vec::new())),
         }
-    }
-
-    /// What the runtime was asked to ready ahead, once it was asked at
-    /// least `count` times.
-    pub async fn readied(&self, count: usize) -> Vec<(Ahead, InferenceRequest)> {
-        self.readied_until(|readied| readied.len() >= count).await
-    }
-
-    /// What the runtime was asked to ready ahead, once that holds `done`.
-    pub async fn readied_until(
-        &self,
-        done: impl Fn(&[(Ahead, InferenceRequest)]) -> bool,
-    ) -> Vec<(Ahead, InferenceRequest)> {
-        let mut readied = self.readied.subscribe();
-        let asked = guarded("the runtime to be asked to ready ahead", async {
-            readied
-                .wait_for(|readied| done(readied))
-                .await
-                .map(|readied| readied.clone())
-        })
-        .await;
-        asked.expect("the sender lives in this runtime")
     }
 
     /// The runtime of a vendor that takes requests within `limits`, for
@@ -266,66 +174,13 @@ impl ProviderRuntime for ScriptedRuntime {
         true
     }
 
-    fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
-        self.readied.send_modify(|readied| readied.push((ahead, request)));
+    fn prepare(&mut self, _request: InferenceRequest, _ahead: Ahead) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
     }
 
     fn request_limits(&self, _model: &Model) -> RequestLimits {
         self.script.borrow().limits
     }
-}
-
-/// How long a provider test waits for what it awaits before it fails.
-///
-/// It only guards against a hang (`testing.md` § Time and stability): every
-/// wait of these tests ends far sooner, on a paused clock too, where the
-/// longest is the Claude Code runtime's five seconds before it kills a process.
-const HANG_GUARD: Duration = Duration::from_secs(10);
-
-/// Awaits `future`, and fails the test when it has not completed within the
-/// hang guard; `what` names what the test waits for.
-pub async fn guarded<T>(what: &str, future: impl Future<Output = T>) -> T {
-    let Ok(value) = tokio::time::timeout(HANG_GUARD, future).await else {
-        panic!("{what} did not come within {HANG_GUARD:?}");
-    };
-    value
-}
-
-/// The run's next event the agent receives, or `None` once it has ended:
-/// the calls a run reports are the usage ledger's, which the metered
-/// runtime keeps from the agent ([`ProviderEvent::Call`]).
-pub async fn next_event(run: &mut ProviderRun<'_>) -> Option<ProviderEvent> {
-    loop {
-        match guarded("the run's next event or its end", run.next()).await {
-            Some(ProviderEvent::Call(_)) => {}
-            event => return event,
-        }
-    }
-}
-
-/// Every event of `run` the agent receives, once it has ended
-/// ([`next_event`]).
-pub async fn all_events(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderEvent> {
-    let events = every_event(run).await;
-    events
-        .into_iter()
-        .filter(|event| !matches!(event, ProviderEvent::Call(_)))
-        .collect()
-}
-
-/// Every event of `run`, the calls it reports to the usage ledger
-/// included, once it has ended.
-pub async fn every_event(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderEvent> {
-    guarded("the run's end", run.collect()).await
-}
-
-/// Runs `request` on `runtime` and returns every event of the run.
-pub async fn run(
-    runtime: &mut dyn ProviderRuntime,
-    request: InferenceRequest,
-) -> Vec<ProviderEvent> {
-    all_events(runtime.run(request)).await
 }
 
 /// A wall clock that always reads the same moment.
@@ -335,42 +190,6 @@ pub struct FixedClock(pub Timestamp);
 impl Clock for FixedClock {
     fn now(&self) -> Timestamp {
         self.0
-    }
-}
-
-/// A wall clock that reads the moment the test last set.
-#[derive(Debug)]
-pub struct ManualClock(std::sync::Mutex<Timestamp>);
-
-impl ManualClock {
-    pub fn new(start: Timestamp) -> Self {
-        Self(std::sync::Mutex::new(start))
-    }
-
-    /// Moves the clock `by`, forward or back.
-    pub fn advance(&self, by: jiff::SignedDuration) {
-        let mut now = self.0.lock().unwrap();
-        let moved = now
-            .to_jiff()
-            .checked_add(by)
-            .expect("a test's time stays in range");
-        *now = Timestamp::truncate(moved);
-    }
-
-    pub fn set(&self, to: Timestamp) {
-        *self.0.lock().unwrap() = to;
-    }
-
-    /// Sets the clock to the system's time, for a test that compares times
-    /// with those the file system gives what it writes.
-    pub fn follow_system(&self) {
-        self.set(Timestamp::truncate(jiff::Timestamp::now()));
-    }
-}
-
-impl Clock for ManualClock {
-    fn now(&self) -> Timestamp {
-        *self.0.lock().unwrap()
     }
 }
 
@@ -397,432 +216,5 @@ impl Clock for TokioClock {
         let elapsed = i64::try_from(self.origin.elapsed().as_millis()).unwrap_or(i64::MAX);
         Timestamp::from_millisecond(self.start.as_millisecond().saturating_add(elapsed))
             .expect("a test's time stays in range")
-    }
-}
-
-/// A JWT whose payload is `claims`, with a signature nobody checks, as the
-/// tokens vendors issue: providers read claims without verifying them.
-pub fn jwt(claims: &serde_json::Value) -> String {
-    use base64::Engine;
-    let encode = |value: &str| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value);
-    format!(
-        "{}.{}.signature",
-        encode(r#"{"alg":"none","typ":"JWT"}"#),
-        encode(&claims.to_string())
-    )
-}
-
-/// A server-sent events body with one `data:` frame per payload.
-pub fn sse_body(payloads: &[serde_json::Value]) -> String {
-    payloads
-        .iter()
-        .map(|payload| format!("data: {payload}\n\n"))
-        .collect()
-}
-
-/// An in-process HTTP server that answers each request with the next
-/// scripted response and records every request. It stops when dropped.
-pub struct MockVendor {
-    address: SocketAddr,
-    /// `http`, or `https` for a vendor started with
-    /// [`start_tls`](Self::start_tls).
-    scheme: &'static str,
-    state: Arc<VendorState>,
-    _server: AbortOnDropHandle<()>,
-}
-
-struct VendorState {
-    // Shared by the server's handler tasks and the test for sections that
-    // never await.
-    script: Mutex<VendorScript>,
-    /// Signalled when a client leaves a response that was still open.
-    disconnected: Notify,
-    /// Signalled whenever a request arrives.
-    requested: Notify,
-}
-
-#[derive(Default)]
-struct VendorScript {
-    responses: VecDeque<MockResponse>,
-    /// Answers for one path, which a request to it takes before the others.
-    routes: HashMap<String, VecDeque<MockResponse>>,
-    requests: Vec<RecordedRequest>,
-}
-
-/// A request the vendor received.
-#[derive(Debug, Clone)]
-pub struct RecordedRequest {
-    pub method: Method,
-    /// The path and query.
-    pub uri: Uri,
-    pub headers: HeaderMap,
-    pub body: Bytes,
-    /// When the vendor read it, on the test's clock, which a paused clock
-    /// makes exact.
-    pub at: tokio::time::Instant,
-}
-
-impl RecordedRequest {
-    pub fn json(&self) -> serde_json::Value {
-        serde_json::from_slice(&self.body).expect("the request body is JSON")
-    }
-
-    /// The value of the header `name`, as text.
-    pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers.get(name)?.to_str().ok()
-    }
-}
-
-/// A scripted answer.
-#[derive(Debug, Clone)]
-pub struct MockResponse {
-    status: StatusCode,
-    headers: Vec<(HeaderName, HeaderValue)>,
-    chunks: Vec<Bytes>,
-    ending: Ending,
-    /// Holds the answer until it reads true.
-    gate: Option<watch::Receiver<bool>>,
-    /// Holds the chunks from this one on until it reads true.
-    pause: Option<(usize, watch::Receiver<bool>)>,
-}
-
-/// What a response does after its chunks.
-#[derive(Debug, Clone, Copy)]
-enum Ending {
-    /// The body ends.
-    Complete,
-    /// The body stays open until the client leaves.
-    Open,
-    /// The server never answers: no status, no headers.
-    Silent,
-}
-
-impl MockResponse {
-    /// An empty answer with `status`.
-    pub fn status(status: u16) -> Self {
-        Self {
-            status: StatusCode::from_u16(status).expect("a scripted status is valid"),
-            headers: Vec::new(),
-            chunks: Vec::new(),
-            ending: Ending::Complete,
-            gate: None,
-            pause: None,
-        }
-    }
-
-    /// A 200 event stream whose body is `text`, sent in one chunk.
-    pub fn event_stream(text: impl Into<String>) -> Self {
-        Self::status(200)
-            .header("content-type", "text/event-stream")
-            .chunk(text.into())
-    }
-
-    /// Adds a header; a repeated name sends the header again.
-    pub fn header(mut self, name: &str, value: &str) -> Self {
-        let name = HeaderName::try_from(name).expect("a scripted header name is valid");
-        let value = HeaderValue::try_from(value).expect("a scripted header value is valid");
-        self.headers.push((name, value));
-        self
-    }
-
-    /// Adds a body chunk, sent as one write.
-    pub fn chunk(mut self, chunk: impl Into<Bytes>) -> Self {
-        self.chunks.push(chunk.into());
-        self
-    }
-
-    /// Keeps the response open after its chunks until the client leaves.
-    /// The server sends an event-stream comment every 10 ms meanwhile, so that
-    /// it notices the client leaving.
-    pub fn stay_open(mut self) -> Self {
-        self.ending = Ending::Open;
-        self
-    }
-
-    /// Holds the answer, status and all, until `open` reads true: for a
-    /// test that makes something happen while the client waits for it.
-    pub fn held(mut self, open: watch::Receiver<bool>) -> Self {
-        self.gate = Some(open);
-        self
-    }
-
-    /// Holds the chunks added after this call until `open` reads true, once
-    /// the ones before went: for a test that makes something happen while
-    /// the client reads a body that streams.
-    pub fn then_held(mut self, open: watch::Receiver<bool>) -> Self {
-        self.pause = Some((self.chunks.len(), open));
-        self
-    }
-
-    /// A request that is never answered: the server reads it and sends
-    /// nothing, not even a status.
-    pub fn silent() -> Self {
-        Self {
-            ending: Ending::Silent,
-            ..Self::status(200)
-        }
-    }
-}
-
-impl MockVendor {
-    pub async fn start() -> Self {
-        Self::serve(bind().await, "http")
-    }
-
-    /// The vendor over HTTPS, presenting `certificate`, a PEM certificate chain
-    /// for `127.0.0.1`, with its PEM `key`.
-    ///
-    /// It is for a client that accepts nothing but `https`, such as
-    /// `demi.claude-code` downloading from a distribution. The client trusts
-    /// the chain's issuer by its own means.
-    pub async fn start_tls(certificate: &[u8], key: &[u8]) -> Self {
-        Self::serve(TlsListener::bind(certificate, key).await, "https")
-    }
-
-    /// Serves the vendor's answers on `listener`, whose URLs have `scheme`.
-    fn serve<L>(listener: L, scheme: &'static str) -> Self
-    where
-        L: axum::serve::Listener<Addr = SocketAddr>,
-    {
-        let address = listener
-            .local_addr()
-            .expect("a bound listener has an address");
-        let state = Arc::new(VendorState {
-            script: Mutex::new(VendorScript::default()),
-            disconnected: Notify::new(),
-            requested: Notify::new(),
-        });
-        let router = Router::new().fallback(answer).with_state(state.clone());
-        let server = tokio::spawn(async move {
-            // The server ends only when the vendor is dropped and its task
-            // aborted; a failed accept ends the test's server early, which
-            // the test sees as refused requests.
-            let _ = axum::serve(listener, router).await;
-        });
-        Self {
-            address,
-            scheme,
-            state,
-            _server: AbortOnDropHandle::new(server),
-        }
-    }
-
-    /// The URL of `path` on this server, such as `/v1`.
-    pub fn url(&self, path: &str) -> String {
-        format!("{}://{}{path}", self.scheme, self.address)
-    }
-
-    /// Queues the answer to the next request.
-    pub fn respond(&self, response: MockResponse) {
-        self.lock().responses.push_back(response);
-    }
-
-    /// Queues the answer to the next request to `path`, such as `/oauth/token`,
-    /// which it takes before the answers of [`respond`](Self::respond).
-    ///
-    /// Concurrent requests to different paths then get their own answers
-    /// whatever order they arrive in.
-    pub fn respond_at(&self, path: &str, response: MockResponse) {
-        self.lock()
-            .routes
-            .entry(path.to_owned())
-            .or_default()
-            .push_back(response);
-    }
-
-    /// Every request received so far, in order.
-    pub fn requests(&self) -> Vec<RecordedRequest> {
-        self.lock().requests.clone()
-    }
-
-    /// Waits until the vendor has received `count` requests, at most five
-    /// seconds.
-    pub async fn received(&self, count: usize) {
-        tokio::time::timeout(Duration::from_secs(5), self.requested(count))
-            .await
-            .expect("the vendor receives the requests");
-    }
-
-    /// Waits until the vendor has received `count` requests, with no deadline
-    /// of its own.
-    ///
-    /// It is for a test on a paused clock, whose deadline is the caller's and
-    /// which lets the clock run to the timer that sends the request, as
-    /// [`received`](Self::received)'s would fire first.
-    pub async fn requested(&self, count: usize) {
-        loop {
-            // Created before the count is read, so a request that arrives
-            // in between still wakes it.
-            let next = self.state.requested.notified();
-            if self.lock().requests.len() >= count {
-                return;
-            }
-            next.await;
-        }
-    }
-
-    /// Waits until a client leaves a response that was still open, at most
-    /// five seconds.
-    pub async fn disconnected(&self) {
-        tokio::time::timeout(Duration::from_secs(5), self.state.disconnected.notified())
-            .await
-            .expect("the client left the open response");
-    }
-
-    fn lock(&self) -> std::sync::MutexGuard<'_, VendorScript> {
-        self.state
-            .script
-            .lock()
-            .expect("the vendor script is not poisoned")
-    }
-}
-
-async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Response {
-    let (parts, body) = request.into_parts();
-    let body = axum::body::to_bytes(body, usize::MAX)
-        .await
-        .expect("the request body arrives");
-    let next = {
-        let mut script = state
-            .script
-            .lock()
-            .expect("the vendor script is not poisoned");
-        let routed = script
-            .routes
-            .get_mut(parts.uri.path())
-            .and_then(VecDeque::pop_front);
-        script.requests.push(RecordedRequest {
-            method: parts.method,
-            uri: parts.uri,
-            headers: parts.headers,
-            body,
-            at: tokio::time::Instant::now(),
-        });
-        state.requested.notify_waiters();
-        routed.or_else(|| script.responses.pop_front())
-    };
-    let Some(scripted) = next else {
-        let mut response = Response::new(Body::from("MockVendor: no response scripted"));
-        *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-        return response;
-    };
-    if let Some(mut gate) = scripted.gate.clone() {
-        // A gate whose sender is gone stays shut, as the test left it.
-        if gate.wait_for(|open| *open).await.is_err() {
-            return std::future::pending().await;
-        }
-    }
-    if let Ending::Silent = scripted.ending {
-        // The handler never returns, so the server sends nothing; the
-        // connection closes when the client leaves or the vendor stops.
-        return std::future::pending().await;
-    }
-    let mut before = scripted.chunks;
-    let (after, pause) = match scripted.pause {
-        Some((at, open)) => (before.split_off(at), Some(open)),
-        None => (Vec::new(), None),
-    };
-    let held = stream::once(async move {
-        if let Some(mut open) = pause {
-            // A gate whose sender is gone stays shut, as the test left it.
-            if open.wait_for(|open| *open).await.is_err() {
-                std::future::pending::<()>().await;
-            }
-        }
-        stream::iter(after)
-    })
-    .flatten();
-    let chunks = stream::iter(before).chain(held).map(Ok::<_, std::io::Error>);
-    let body: BoxStream<'static, Result<Bytes, std::io::Error>> = match scripted.ending {
-        Ending::Complete | Ending::Silent => chunks.boxed(),
-        Ending::Open => {
-            let guard = LeaveGuard(state.clone());
-            let pings = stream::unfold(guard, |guard| async move {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                Some((Ok(Bytes::from_static(b": ping\n\n")), guard))
-            });
-            chunks.chain(pings).boxed()
-        }
-    };
-    let mut response = Response::new(Body::from_stream(body));
-    *response.status_mut() = scripted.status;
-    for (name, value) in scripted.headers {
-        response.headers_mut().append(name, value);
-    }
-    response
-}
-
-/// A port of the loopback interface for a vendor.
-async fn bind() -> tokio::net::TcpListener {
-    tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a test port is free")
-}
-
-/// How long a client has to complete its TLS handshake.
-const HANDSHAKE: Duration = Duration::from_secs(10);
-
-/// A listener on a free port of `127.0.0.1` that completes each
-/// connection's TLS handshake before its server serves it, for a test's
-/// HTTPS server that `axum::serve` runs.
-pub struct TlsListener {
-    tcp: tokio::net::TcpListener,
-    acceptor: tokio_rustls::TlsAcceptor,
-}
-
-impl TlsListener {
-    /// A listener presenting `certificate`, a PEM chain for `127.0.0.1`,
-    /// with its PEM `key`. The client trusts the chain's issuer by its own
-    /// means.
-    pub async fn bind(certificate: &[u8], key: &[u8]) -> Self {
-        use tokio_rustls::rustls::pki_types::pem::PemObject as _;
-        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-        use tokio_rustls::rustls::{ServerConfig, crypto::aws_lc_rs};
-
-        let chain = CertificateDer::pem_slice_iter(certificate)
-            .collect::<Result<Vec<_>, _>>()
-            .expect("the server's certificate is PEM");
-        let key = PrivateKeyDer::from_pem_slice(key).expect("the server's key is PEM");
-        let config = ServerConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
-            .with_safe_default_protocol_versions()
-            .expect("aws-lc-rs offers the default protocol versions")
-            .with_no_client_auth()
-            .with_single_cert(chain, key)
-            .expect("the key is the certificate's");
-        Self {
-            tcp: bind().await,
-            acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
-        }
-    }
-}
-
-impl axum::serve::Listener for TlsListener {
-    type Io = tokio_rustls::server::TlsStream<tokio::net::TcpStream>;
-    type Addr = SocketAddr;
-
-    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
-        loop {
-            let (stream, address) = axum::serve::Listener::accept(&mut self.tcp).await;
-            // A client that fails its handshake, or leaves it unfinished, sent
-            // no request; the vendor goes on with the next one.
-            let handshake = tokio::time::timeout(HANDSHAKE, self.acceptor.accept(stream)).await;
-            if let Ok(Ok(stream)) = handshake {
-                return (stream, address);
-            }
-        }
-    }
-
-    fn local_addr(&self) -> std::io::Result<Self::Addr> {
-        self.tcp.local_addr()
-    }
-}
-
-/// Held by an open response's body; the server drops the body when the
-/// client leaves.
-struct LeaveGuard(Arc<VendorState>);
-
-impl Drop for LeaveGuard {
-    fn drop(&mut self) {
-        self.0.disconnected.notify_one();
     }
 }

@@ -52,9 +52,6 @@ mod origin;
 mod project;
 mod skill;
 mod sources;
-#[cfg(feature = "testing")]
-pub mod testing;
-
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;

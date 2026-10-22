@@ -261,7 +261,7 @@ impl Provider for ClaudeCodeProvider {
 }
 
 /// Test support (feature `testing`): the session a new process resumes for
-/// a request, for the tests of what sends this provider's requests.
+/// a request, for the compaction tests.
 #[cfg(feature = "testing")]
 pub mod testing {
     use demi_provider_common::InferenceRequest;

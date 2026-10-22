@@ -6,7 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -28,20 +28,10 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
-# A stream pipe's WebSocket (`edge`), and the test support's backend end of
-# a runner over HTTP and a WebSocket.
+# A stream pipe's WebSocket (`edge`).
 axum = { version = "0.8", features = ["ws"], optional = true }
-sha2 = { version = "0.10", optional = true }
-tempfile = { version = "3", optional = true }
-
-# The test support's runner processes, and its pseudo-terminal.
-[target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["process", "pty"], optional = true }
 
 [features]
-# The relay of a stream pipe's WebSocket, which the backend's pipe route and
-# the test fixture's edge accept.
+# The relay of a stream pipe's WebSocket, which the backend's pipe route
+# accepts.
 edge = ["dep:axum"]
-# A real runner for one device (`RunnerFixture`) and an in-process fake
-# runner (`TestLink`).
-testing = ["edge", "dep:sha2", "dep:tempfile", "dep:rustix", "demi-command-protocol/testing", "demi-host-interface/testing"]

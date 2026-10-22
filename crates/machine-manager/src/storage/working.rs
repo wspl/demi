@@ -22,7 +22,6 @@ use super::{
 };
 use crate::{
     blocking::{self, OffLoop},
-    fault,
     tools::Tools,
 };
 
@@ -105,7 +104,6 @@ impl WorkingPair {
         let device = device.clone();
         blocking::run(move |off| -> Result<(), SaveError> {
             store.publish(off, &device, &saved, images.as_deref(), retention)?;
-            fault::point("working-published");
             remove_tree(off, pair.directory())?;
             let parent = pair
                 .directory()

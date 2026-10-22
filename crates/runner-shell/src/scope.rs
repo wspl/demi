@@ -47,58 +47,6 @@ use crate::work::{Stop, Work};
 #[error("shell job cancelled")]
 pub struct Cancelled;
 
-/// What a test sees of a job's work, so that it can cancel the job at a
-/// known point: how many of the job's units wait inside an interruptible
-/// read, write or sleep, how many are inside the opening of a file, past
-/// their last check, which no cancellation reaches, and how often the job
-/// has checked for cancellation, which a loop does at every step.
-#[cfg(feature = "testing")]
-#[derive(Default)]
-pub struct Activity {
-    waiting: std::sync::atomic::AtomicUsize,
-    opening: std::sync::atomic::AtomicUsize,
-    checks: std::sync::atomic::AtomicUsize,
-}
-
-#[cfg(feature = "testing")]
-impl Activity {
-    pub fn waiting(&self) -> usize {
-        self.waiting.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    pub fn opening(&self) -> usize {
-        self.opening.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    pub fn checks(&self) -> usize {
-        self.checks.load(std::sync::atomic::Ordering::SeqCst)
-    }
-
-    /// Counts a unit as waiting until the guard drops.
-    fn wait(&self) -> Counted<'_> {
-        Counted::new(&self.waiting)
-    }
-}
-
-/// Counts a unit in `counter` until it drops.
-#[cfg(feature = "testing")]
-struct Counted<'a>(&'a std::sync::atomic::AtomicUsize);
-
-#[cfg(feature = "testing")]
-impl<'a> Counted<'a> {
-    fn new(counter: &'a std::sync::atomic::AtomicUsize) -> Self {
-        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Self(counter)
-    }
-}
-
-#[cfg(feature = "testing")]
-impl Drop for Counted<'_> {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
 /// A pipe that becomes readable when a token is cancelled: a task closes its
 /// write end then. It lives as long as the scope that made it.
 #[cfg(unix)]
@@ -235,8 +183,6 @@ pub struct Scope {
     files: Arc<Mutex<HashMap<FileIdentity, PathBuf>>>,
     /// The pipelines `time` measures in the scope's part of the job.
     timings: crate::timing::Timings,
-    #[cfg(feature = "testing")]
-    activity: Arc<Activity>,
 }
 
 impl Scope {
@@ -259,22 +205,10 @@ impl Scope {
             timings: crate::timing::Timings::default(),
             #[cfg(unix)]
             interrupt: Arc::new(Mutex::new(None)),
-            #[cfg(feature = "testing")]
-            activity: Arc::default(),
         }
     }
 
-    /// What the job's units are doing, for a test.
-    #[cfg(feature = "testing")]
-    pub fn activity(&self) -> &Activity {
-        &self.activity
-    }
-
     pub fn check(&self) -> io::Result<()> {
-        #[cfg(feature = "testing")]
-        self.activity
-            .checks
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if self.cancellation.is_cancelled() {
             // Read/Write helpers retry Interrupted; cancellation must escape them.
             Err(io::Error::other(Cancelled))
@@ -383,8 +317,6 @@ impl Scope {
         if buffer.is_empty() {
             return Ok(0);
         }
-        #[cfg(feature = "testing")]
-        let _waiting = self.activity.wait();
         self.ready(file, false)?;
         #[cfg(windows)]
         let _operation = self.interruptible_io()?;
@@ -399,8 +331,6 @@ impl Scope {
         if buffer.is_empty() {
             return Ok(0);
         }
-        #[cfg(feature = "testing")]
-        let _waiting = self.activity.wait();
         self.ready(file, true)?;
         #[cfg(windows)]
         let _operation = self.interruptible_io()?;
@@ -424,8 +354,6 @@ impl Scope {
         self.check()?;
         let open = || {
             self.descriptors(|| {
-                #[cfg(feature = "testing")]
-                let _opening = Counted::new(&self.activity.opening);
                 options.open(path)
             })
         };
@@ -533,8 +461,6 @@ impl Scope {
     #[cfg(unix)]
     pub fn sleep(&self, duration: Duration) -> io::Result<()> {
         use rustix::event::{PollFd, PollFlags, Timespec};
-        #[cfg(feature = "testing")]
-        let _waiting = self.activity.wait();
         self.check()?;
         let interrupt = self.interrupt()?;
         let deadline = std::time::Instant::now() + duration;
@@ -555,8 +481,6 @@ impl Scope {
 
     #[cfg(windows)]
     pub fn sleep(&self, duration: Duration) -> io::Result<()> {
-        #[cfg(feature = "testing")]
-        let _waiting = self.activity.wait();
         let started = std::time::Instant::now();
         loop {
             self.check()?;

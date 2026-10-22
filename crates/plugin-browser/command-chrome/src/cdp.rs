@@ -19,8 +19,6 @@
 mod catalog;
 pub mod commands;
 mod sessions;
-#[cfg(feature = "testing")]
-pub mod testing;
 pub mod webmcp;
 
 use crate::driver::operation::Result;

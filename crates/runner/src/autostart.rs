@@ -50,9 +50,6 @@ use std::{
 use demi_shared_artifacts::{Mode, Permissions, Publication};
 use demi_runner_protocol::{SUPERVISED, wire::AutostartUnavailable};
 
-#[cfg(feature = "test-fixtures")]
-use demi_runner_protocol::SERVICE_MANAGER_STAND_IN as STAND_IN;
-
 /// What a registration that is in place does for the runner.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Supervision {
@@ -157,17 +154,6 @@ impl Registration {
 fn user_name() -> Option<String> {
     let user = uzers::get_user_by_uid(uzers::get_current_uid())?;
     user.name().to_str().map(str::to_owned)
-}
-
-/// One of the service manager's commands, or its stand-in in a test.
-fn system(program: &str) -> tokio::process::Command {
-    #[cfg(feature = "test-fixtures")]
-    if let Some(stand_in) = std::env::var_os(STAND_IN) {
-        let mut command = tokio::process::Command::new(stand_in);
-        command.arg(program);
-        return command;
-    }
-    tokio::process::Command::new(program)
 }
 
 /// Runs `command`, named `program`: its standard output, or why it failed,
@@ -411,7 +397,7 @@ fn task(user: &str, description: &str, arguments: &str, home: &str) -> String {
 /// A LaunchAgent in the user's `gui` domain.
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::{AutostartUnavailable, Registration, Supervision, plist, run, system, write};
+    use super::{AutostartUnavailable, Registration, Supervision, plist, run, write};
     use std::path::PathBuf;
 
     impl Registration {
@@ -436,7 +422,7 @@ mod macos {
     }
 
     async fn launchctl(arguments: &[&str]) -> Result<String, String> {
-        let mut command = system("launchctl");
+        let mut command = tokio::process::Command::new("launchctl");
         command.args(arguments);
         run("launchctl", command).await
     }
@@ -505,7 +491,7 @@ mod macos {
         super::remove_file(&path)
             .await
             .map_err(|error| format!("{}: {error}", path.display()))?;
-        let mut bootout = system("launchctl");
+        let mut bootout = tokio::process::Command::new("launchctl");
         bootout.args(["bootout", &registration.service()]);
         // Unloading the agent ends the process it runs, after waiting for
         // it: when that is this one, which ends next, nobody waits. The
@@ -531,7 +517,7 @@ use macos as manager;
 /// A systemd user unit, with lingering for the user.
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{AutostartUnavailable, Registration, Supervision, run, system, unit, write};
+    use super::{AutostartUnavailable, Registration, Supervision, run, unit, write};
     use std::path::{Path, PathBuf};
 
     impl Registration {
@@ -566,10 +552,6 @@ mod linux {
 
     /// Whether systemd runs the system, as `sd_booted` tells.
     fn booted() -> bool {
-        #[cfg(feature = "test-fixtures")]
-        if std::env::var_os(super::STAND_IN).is_some() {
-            return true;
-        }
         Path::new("/run/systemd/system").is_dir()
     }
 

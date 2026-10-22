@@ -13,8 +13,7 @@ description = "The sample Sec-WebSocket-Key of RFC 6455, and the 16 bytes it enc
 regexes = ['''^MDEyMzQ1Njc4OWFiY2RlZg==$''', '''^0123456789abcdef$''']
 
 [[allowlists]]
-description = "The test-only key of the Claude Code suite's local distribution, and the public key that fixes the capture extension's id"
+description = "The public key that fixes the capture extension's id"
 paths = [
-  '''(^|/)crates/backend/tests/backend/claude_code/distribution\.key$''',
   '''(^|/)crates/plugin-browser/command-chrome/src/driver/capture/manifest\.json$''',
 ]

@@ -291,11 +291,6 @@ enum Action {
         /// runner the installer or `start` starts in the background does.
         #[arg(long, hide = true)]
         log: bool,
-        /// How long a test's runner waits for a download's next byte, in
-        /// milliseconds, in place of `DOWNLOAD_STALL`.
-        #[cfg(feature = "test-fixtures")]
-        #[arg(long, env = "DEMI_DOWNLOAD_STALL_MS", hide = true)]
-        download_stall_ms: Option<u64>,
     },
     /// Reports whether the installation's runner is active; exits with 3
     /// when it runs another release.
@@ -352,10 +347,6 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
-    #[cfg(feature = "test-fixtures")]
-    let mut download_stall = update::DOWNLOAD_STALL;
-    #[cfg(not(feature = "test-fixtures"))]
-    let download_stall = update::DOWNLOAD_STALL;
     let (installation, boot_path, name, managed, artifacts, log, removing) = match cli.action {
         Action::Run {
             installation,
@@ -364,13 +355,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             managed,
             artifacts,
             log,
-            #[cfg(feature = "test-fixtures")]
-            download_stall_ms,
         } => {
-            #[cfg(feature = "test-fixtures")]
-            if let Some(stall) = download_stall_ms {
-                download_stall = std::time::Duration::from_millis(stall);
-            }
             // First of all: until it leaves, the terminal reaches it.
             #[cfg(unix)]
             if log && let console::Departure::Restarted = console::leave_terminal()? {
@@ -509,7 +494,6 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             &directory,
             installation.release.as_deref(),
             &executable,
-            download_stall,
         ),
     };
     // A managed guest is never paired, so nobody removes its runner; one that

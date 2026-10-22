@@ -1,5 +1,5 @@
-//! Test support (feature `testing`): a Host type for agents that run no
-//! shell tools, and readers of a shell tool's result.
+//! A Host type for agents that run no shell tools, with its shell
+//! environment factory (feature `testing`).
 
 use std::rc::Rc;
 
@@ -49,39 +49,4 @@ impl ShellEnvironmentFactory<NoHost> for NoShells {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         match *host {}
     }
-}
-
-/// The value of a shell tool result's `name: value` line, such as its
-/// `commandId` (`crates/agent-tools/src/result.rs`).
-pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
-    result
-        .lines()
-        .find_map(|line| line.strip_prefix(name)?.strip_prefix(": "))
-        .unwrap_or_else(|| panic!("the result has no {name}:\n{result}"))
-}
-
-/// The lines a shell tool result shows, each with a newline; empty when it
-/// shows none.
-///
-/// An unfinished line may repeat on successive looks: these are displayed
-/// lines, not a reconstruction of the command's raw bytes. A running command's
-/// lines after it, its newest output's line and its next step, are not part of
-/// it.
-pub fn shown_output(result: &str) -> String {
-    let Some((_, output)) = result.split_once("\noutput:\n") else {
-        return String::new();
-    };
-    let output = output.split("\nnext: ").next().unwrap_or(output);
-    // The line that says the command moved to the background follows it.
-    let output = output
-        .split("\n[The command is still running, so it moved to the background.")
-        .next()
-        .unwrap_or(output);
-    let output = match output.find(" bytes not shown so far; the newest: ") {
-        Some(at) => output[..at]
-            .rsplit_once("\n[... ")
-            .map_or("", |(shown, _)| shown),
-        None => output,
-    };
-    format!("{output}\n")
 }

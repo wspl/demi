@@ -10,9 +10,8 @@
 //! `--artifacts <directory>` gives its Cloud runners that artifact cache,
 //! which outlives them.
 
-// The program uses only part of the module.
-#[allow(dead_code)]
 mod machines;
+mod runner;
 
 use std::io::Read as _;
 
@@ -20,22 +19,20 @@ use tokio::signal::unix::{SignalKind, signal};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let manager = machines::ScriptedManager::start();
     let mut arguments = std::env::args().skip(1);
-    match (
+    let artifacts = match (
         arguments.next().as_deref(),
         arguments.next(),
         arguments.next(),
     ) {
-        (None, ..) => {}
-        (Some("--artifacts"), Some(cache), None) => {
-            manager.script(|script| script.artifacts = Some(cache));
-        }
+        (None, ..) => None,
+        (Some("--artifacts"), Some(cache), None) => Some(cache),
         _ => {
             eprintln!("Usage: scripted_machines [--artifacts <directory>]");
             std::process::exit(2);
         }
-    }
+    };
+    let manager = machines::ScriptedManager::start(artifacts);
     println!("{}", manager.socket().display());
     // The input closes when the process that started this one ends, however
     // it ends. A plain thread reads it: the runtime would wait for a blocking

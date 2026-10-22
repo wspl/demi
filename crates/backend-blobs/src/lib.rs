@@ -4,10 +4,6 @@
 //! The crate holds no records other than the blobs'.
 
 pub mod blobs;
-#[cfg(any(test, feature = "testing"))]
-pub mod counting;
-#[cfg(any(test, feature = "testing"))]
-pub mod fake_s3;
 pub mod local;
 pub mod store;
 

@@ -1,74 +1,43 @@
-//! Test support that tests at both ends of the command wire name: the
-//! programs a test finds beside itself and the operations of the runner's
-//! native fixture service.
+//! The programs the workspace built beside the running one, refusing a stale
+//! one.
 
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// The operations of the runner's native fixture service
-/// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
-/// backend-remote-host's tests name in its descriptors.
-pub const FIXTURE_OPERATIONS: [&str; 15] = [
-    "where",
-    "tell",
-    "echo",
-    "first",
-    "spin",
-    "result",
-    "retain",
-    "stall_release",
-    "held",
-    "crash",
-    "stalled",
-    "proceed",
-    "number",
-    "medium",
-    "install",
-];
-
 /// The build that places every program of the workspace in the target
-/// directory, in the one selection the tests use (`AGENTS.md` § Building
-/// and Testing).
-pub const BUILD_PROGRAMS: &str =
-    "cargo build --workspace --all-targets --features demi-runner/test-fixtures";
+/// directory.
+pub const BUILD_PROGRAMS: &str = "cargo build --workspace --all-targets";
 
-/// A program Cargo built into the target directory this test runs from,
-/// such as a workspace crate's executable: Cargo places the programs in the
-/// profile's directory, the nearest one above the test that holds Cargo's
-/// lock file, and the test itself somewhere below it. Panics when the
-/// program is missing or older than its sources ([`current_program`]).
+/// A program Cargo built into the target directory the running program runs
+/// from, such as a workspace crate's executable: Cargo places the programs in
+/// the profile's directory, the nearest one above the running program that
+/// holds Cargo's lock file. Panics when the program is missing or older than
+/// its sources ([`current_program`]).
 pub fn built_program(name: &str) -> PathBuf {
-    let executable = std::env::current_exe().expect("the test knows its executable");
+    let executable = std::env::current_exe().expect("the running program knows its executable");
     let directory = executable
         .ancestors()
         .find(|directory| directory.join(".cargo-lock").is_file())
-        .expect("a test runs below its profile's directory");
+        .expect("the running program lies below its profile's directory");
     current_program(directory, name)
 }
 
 /// The program `name` in `directory`, built from the sources as they are now.
 ///
-/// Cargo builds with a test only the programs of the test's own package. So
-/// after `cargo test --test backend` the `demi-runner` beside the test is
-/// whatever an earlier build left: a test that started it would fail as a
-/// runner of another wire, or pass on its old behavior.
-///
-/// Neither Cargo's `CARGO_BIN_EXE_<name>`, which only covers the test's own
-/// package, nor its artifact dependencies, unstable (`-Z bindeps`), can make
-/// Cargo build another package's program for a test.
+/// Cargo builds a package's programs for its own targets only, so a program
+/// of another package beside the running one is whatever an earlier build
+/// left: started, it would run as a program of another wire, or on its old
+/// behavior.
 ///
 /// Cargo writes beside each program it places the files it was built from, its
 /// dep-info `<name>.d`. A program older than one of them is stale, as Cargo
 /// itself judges it.
 ///
-/// Call it on the test's own thread: a panic in a task the test does not await
-/// leaves whoever waits on that task waiting.
-///
 /// # Panics
 ///
 /// Panics at once when the program is stale, with what it saw (the program's
 /// and the newest source's times) and the build that renews it.
-pub fn current_program(directory: &Path, name: &str) -> PathBuf {
+fn current_program(directory: &Path, name: &str) -> PathBuf {
     let program = directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
     if let Some(problem) = staleness(&program) {
         panic!("{problem}; build the workspace's programs first: {BUILD_PROGRAMS}");

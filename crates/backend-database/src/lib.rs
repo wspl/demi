@@ -126,8 +126,6 @@ pub mod references;
 pub mod running;
 pub mod saved;
 mod schema;
-#[cfg(feature = "testing")]
-pub use schema::testing as schema_testing;
 pub use schema::{DatabaseKind, SchemaFit, schema_fit};
 mod selection;
 pub use selection::{CLOUD_HOME, Selection, Unselectable};

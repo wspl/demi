@@ -810,7 +810,6 @@ impl Link {
             inputs,
             ping: options.ping,
             writes: None,
-            tap: None,
         };
         (link, driver)
     }
@@ -2173,7 +2172,6 @@ pub struct LinkDriver {
     controls: mpsc::UnboundedReceiver<Vec<u8>>,
     inputs: mpsc::UnboundedReceiver<Vec<u8>>,
     ping: Option<Duration>,
-    tap: Option<mpsc::Sender<Outbound>>,
     /// Whether the socket's writes move; without it a write has no deadline.
     writes: Option<std::sync::Arc<wire::WriteProgress>>,
 }
@@ -2183,13 +2181,6 @@ impl LinkDriver {
     /// [`wire::LINK_WRITE_TIMEOUT`].
     pub fn watching_writes(mut self, writes: std::sync::Arc<wire::WriteProgress>) -> Self {
         self.writes = Some(writes);
-        self
-    }
-
-    /// Copies every message the runner sends into `tap`, for tests that
-    /// audit the wire; a full tap loses the copy, never the message.
-    pub fn tap(mut self, tap: mpsc::Sender<Outbound>) -> Self {
-        self.tap = Some(tap);
         self
     }
 
@@ -2209,7 +2200,6 @@ impl LinkDriver {
             mut controls,
             mut inputs,
             ping,
-            tap,
             writes,
         } = self;
         let reading = async {
@@ -2227,13 +2217,7 @@ impl LinkDriver {
                 };
                 link.heard();
                 match wire::decode::<Outbound>(&frame) {
-                    Ok(message) => {
-                        if let Some(tap) = &tap {
-                            // A full tap loses a copy, never the message.
-                            let _ = tap.try_send(message.clone());
-                        }
-                        link.receive(message);
-                    }
+                    Ok(message) => link.receive(message),
                     Err(error) => return LinkEnd::Refused(wire::refusal(&frame, &error)),
                 }
             }

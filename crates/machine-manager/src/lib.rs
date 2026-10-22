@@ -86,7 +86,6 @@
 
 pub mod blocking;
 pub mod config;
-pub mod fault;
 #[cfg(target_os = "linux")]
 pub mod linux;
 #[cfg(target_os = "linux")]

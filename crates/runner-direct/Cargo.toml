@@ -32,8 +32,3 @@ tokio-util.workspace = true
 tracing.workspace = true
 # A STUN request's transaction id, which only has to be unpredictable.
 uuid = { version = "1", features = ["v4"] }
-
-[features]
-# A page in process that connects to a runner's peers, for the tests of
-# this crate and the backend's.
-testing = []

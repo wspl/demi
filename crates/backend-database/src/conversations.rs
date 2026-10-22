@@ -19,7 +19,7 @@ use demi_shared_gates::KeyedSerialGate;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::ConversationId;
 use hashlink::LruCache;
-use rusqlite::{Connection, OpenFlags, Transaction};
+use rusqlite::{Connection, OpenFlags};
 
 use super::{StorageError, schema, sqlite};
 
@@ -69,14 +69,6 @@ struct Stores {
     /// Opening a database takes its file's turn, so two first calls cannot
     /// both create it and give it its schema.
     opening: KeyedSerialGate<DatabaseFile>,
-    /// The hold a test put on the checkpoints' commits. A `std` mutex: the
-    /// test's thread sets it and the shard threads read it as a save
-    /// starts, without awaiting.
-    #[cfg(feature = "testing")]
-    hold: Mutex<Option<Arc<Hold>>>,
-    /// The hold a test put on the migrations, as `hold`.
-    #[cfg(feature = "testing")]
-    migrations: Mutex<Option<Arc<MigrationHolds>>>,
 }
 
 struct Writers {
@@ -127,10 +119,6 @@ impl ConversationStores {
                 closed: false,
             }),
             opening: KeyedSerialGate::new(),
-            #[cfg(feature = "testing")]
-            hold: Mutex::new(None),
-            #[cfg(feature = "testing")]
-            migrations: Mutex::new(None),
         })))
     }
 
@@ -196,34 +184,6 @@ impl ConversationStores {
         }
         Ok(())
     }
-
-    /// Holds every commit of a checkpoint or of a stored attachment from
-    /// now on, until the hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_commits(&self) -> CommitHold {
-        let (hold, waiting) = Hold::new();
-        *self.0.hold.lock().unwrap_or_else(PoisonError::into_inner) = Some(hold.clone());
-        CommitHold { hold, waiting }
-    }
-
-    /// Holds every migration of a conversation's database from now on,
-    /// until the hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_migrations(&self) -> MigrationHold {
-        let (hold, waiting) = Hold::new();
-        let (reads, reading) = tokio::sync::watch::channel(0);
-        let holds = Arc::new(MigrationHolds { hold, reads });
-        *self
-            .0
-            .migrations
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = Some(holds.clone());
-        MigrationHold {
-            holds,
-            waiting,
-            reading,
-        }
-    }
 }
 
 impl Stores {
@@ -231,18 +191,6 @@ impl Stores {
         // No section panics while it holds the lock, so a poisoned one still
         // holds whole writers.
         self.writers.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Where the next migration starts.
-    fn migration_point(&self) -> MigrationPoint {
-        MigrationPoint {
-            #[cfg(feature = "testing")]
-            holds: self
-                .migrations
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone(),
-        }
     }
 }
 
@@ -279,7 +227,6 @@ impl ConversationDb {
             &self.file.path(&self.stores.directory),
             self.stores.blobs.clone(),
             self.conversation.clone(),
-            self.stores.migration_point(),
         )
         .await?;
         let mut writers = self.stores.lock();
@@ -323,38 +270,16 @@ impl ConversationDb {
         // giving up on its write lock after the busy timeout, which left the
         // conversation listed without its facts (0.1.22).
         //
-        // Only a read that finds the turn taken waits for it, which a test's hold
-        // counts (`MigrationHold::until_reads_wait`).
-        let point = self.stores.migration_point();
-        let _turn = match self.stores.opening.try_acquire(self.file.clone()) {
-            Some(turn) => turn,
-            None => {
-                point.read_waits();
-                self.stores.opening.acquire(self.file.clone()).await
-            }
-        };
+        let _turn = self.stores.opening.acquire(self.file.clone()).await;
         let (blobs, conversation) = (self.stores.blobs.clone(), self.conversation.clone());
         tokio::task::spawn_blocking(move || {
             let blobs = BlobsOf {
                 blobs: &*blobs,
                 conversation,
             };
-            migrate_and_read(&path, &blobs, &point, work)
+            migrate_and_read(&path, &blobs, work)
         })
         .await?
-    }
-
-    /// Where a save's transaction, or a stored attachment's, commits.
-    pub fn commit_point(&self) -> CommitPoint {
-        CommitPoint {
-            #[cfg(feature = "testing")]
-            hold: self
-                .stores
-                .hold
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .clone(),
-        }
     }
 
     /// The writer, if it is open, as the most recently used.
@@ -367,205 +292,12 @@ impl ConversationDb {
     }
 }
 
-/// Where a save's transaction, or a stored attachment's, commits: at once,
-/// unless a test holds the commits there (`CommitHold`).
-pub struct CommitPoint {
-    #[cfg(feature = "testing")]
-    hold: Option<Arc<Hold>>,
-}
-
-impl CommitPoint {
-    /// Commits `transaction`, on its writer's thread.
-    pub fn commit(self, transaction: Transaction<'_>) -> rusqlite::Result<()> {
-        #[cfg(feature = "testing")]
-        {
-            if let Some(hold) = self.hold {
-                hold.pass();
-            }
-        }
-        transaction.commit()
-    }
-}
-
-/// A hold on the commits of the conversations' checkpoints and stored
-/// attachments, for the scenarios that stop a save at its commit or a call while
-/// its attachment's commit waits (`attachment_commands`).
-///
-/// From `Backend::hold_commits` until it is released or dropped, a save has
-/// written its rows and waits before its transaction commits, on its database's
-/// writer thread: where a process that dies inside the save leaves it.
-#[cfg(feature = "testing")]
-pub struct CommitHold {
-    hold: Arc<Hold>,
-    waiting: tokio::sync::watch::Receiver<usize>,
-}
-
-#[cfg(feature = "testing")]
-impl CommitHold {
-    /// Waits until `count` commits wait at the hold.
-    pub async fn until_waiting(&self, count: usize) {
-        let mut waiting = self.waiting.clone();
-        waiting
-            .wait_for(|waiting| *waiting >= count)
-            .await
-            .expect("the stores keep the hold while it is held");
-    }
-
-    /// Lets the waiting commits and every later one through.
-    pub fn release(self) {
-        drop(self);
-    }
-}
-
-/// Dropping a hold releases it, so one that a failed test leaves behind
-/// holds nothing.
-#[cfg(feature = "testing")]
-impl Drop for CommitHold {
-    fn drop(&mut self) {
-        self.hold.release();
-    }
-}
-
-/// A hold on the migrations of the conversations' databases, for the scenarios
-/// that race a read against a migration.
-///
-/// From `Backend::held_migrations` until it is released or dropped, a migration
-/// holds its database's write lock and waits before it changes the database, on
-/// the thread that migrates it: where a long migration, such as one that rewrites
-/// every block of a large conversation, keeps its database.
-#[cfg(feature = "testing")]
-pub struct MigrationHold {
-    holds: Arc<MigrationHolds>,
-    waiting: tokio::sync::watch::Receiver<usize>,
-    reading: tokio::sync::watch::Receiver<usize>,
-}
-
-#[cfg(feature = "testing")]
-impl MigrationHold {
-    /// Waits until `count` migrations wait at the hold.
-    pub async fn until_migrating(&self, count: usize) {
-        let mut waiting = self.waiting.clone();
-        waiting
-            .wait_for(|waiting| *waiting >= count)
-            .await
-            .expect("the stores keep the hold while it is held");
-    }
-
-    /// Waits until `count` reads have found their database of an earlier
-    /// schema and wait for the file's opening turn, which another holds, to
-    /// migrate it, counting those that have done so since.
-    pub async fn until_reads_wait(&self, count: usize) {
-        let mut reading = self.reading.clone();
-        reading
-            .wait_for(|reading| *reading >= count)
-            .await
-            .expect("the stores keep the hold while it is held");
-    }
-
-    /// Lets the waiting migrations and every later one through.
-    pub fn release(self) {
-        drop(self);
-    }
-}
-
-/// Dropping a hold releases it, so one that a failed test leaves behind
-/// holds nothing.
-#[cfg(feature = "testing")]
-impl Drop for MigrationHold {
-    fn drop(&mut self) {
-        self.holds.hold.release();
-    }
-}
-
-/// A migration hold's own hold, and how many reads came to wait for a
-/// migration.
-#[cfg(feature = "testing")]
-struct MigrationHolds {
-    hold: Arc<Hold>,
-    reads: tokio::sync::watch::Sender<usize>,
-}
-
-/// Where a migration of a conversation's database starts changing it: at
-/// once, unless a test holds the migrations there (`MigrationHold`).
-struct MigrationPoint {
-    #[cfg(feature = "testing")]
-    holds: Option<Arc<MigrationHolds>>,
-}
-
-impl MigrationPoint {
-    /// Passes the point, on the thread that migrates the database.
-    fn pass(&self) {
-        #[cfg(feature = "testing")]
-        {
-            if let Some(holds) = &self.holds {
-                holds.hold.pass();
-            }
-        }
-    }
-
-    /// Counts a read that found its database of an earlier schema and now
-    /// waits for the file's opening turn, which another holds, to migrate it.
-    fn read_waits(&self) {
-        #[cfg(feature = "testing")]
-        {
-            if let Some(holds) = &self.holds {
-                holds.reads.send_modify(|reads| *reads += 1);
-            }
-        }
-    }
-}
-
-/// Whether a hold is released, and how many commits or migrations wait at
-/// it.
-#[cfg(feature = "testing")]
-struct Hold {
-    /// A `std` mutex with a condition variable: a commit or a migration
-    /// waits on its database's thread, which has no runtime to await on, and
-    /// the lock is held only to read or set the flag.
-    released: Mutex<bool>,
-    opened: std::sync::Condvar,
-    waiting: tokio::sync::watch::Sender<usize>,
-}
-
-#[cfg(feature = "testing")]
-impl Hold {
-    /// A hold not released yet, and the count of what waits at it.
-    fn new() -> (Arc<Self>, tokio::sync::watch::Receiver<usize>) {
-        let (waiting, watched) = tokio::sync::watch::channel(0);
-        let hold = Arc::new(Self {
-            released: Mutex::new(false),
-            opened: std::sync::Condvar::new(),
-            waiting,
-        });
-        (hold, watched)
-    }
-
-    /// Lets what waits through, and everything that comes later.
-    fn release(&self) {
-        *self.released.lock().unwrap_or_else(PoisonError::into_inner) = true;
-        self.opened.notify_all();
-    }
-
-    /// Waits, on the database's thread, until the hold is released.
-    fn pass(&self) {
-        self.waiting.send_modify(|waiting| *waiting += 1);
-        let released = self.released.lock().unwrap_or_else(PoisonError::into_inner);
-        drop(
-            self.opened
-                .wait_while(released, |released| !*released)
-                .unwrap_or_else(PoisonError::into_inner),
-        );
-        self.waiting.send_modify(|waiting| *waiting -= 1);
-    }
-}
-
 /// Opens the writer of the database at `path`, under its file's opening
 /// turn, which the caller holds.
 async fn open_writer(
     path: &Path,
     blobs: Arc<dyn ConversationBlobs>,
     conversation: ConversationId,
-    point: MigrationPoint,
 ) -> Result<tokio_rusqlite::Connection, StorageError> {
     let writer = tokio_rusqlite::Connection::open(path).await?;
     let path = path.to_owned();
@@ -575,7 +307,7 @@ async fn open_writer(
                 blobs: &*blobs,
                 conversation,
             };
-            migrate(connection, &path, &blobs, &point)
+            migrate(connection, &path, &blobs)
         })
         .await
         .map_err(sqlite::flatten)?;
@@ -589,10 +321,9 @@ fn migrate(
     connection: &mut Connection,
     path: &Path,
     blobs: &BlobsOf<'_>,
-    point: &MigrationPoint,
 ) -> Result<(), StorageError> {
     sqlite::configure(connection)?;
-    schema::CONVERSATION.apply_with(connection, path, blobs, || point.pass())
+    schema::CONVERSATION.apply(connection, path, blobs)
 }
 
 /// What a read of a database of the current schema answered, or the work of
@@ -641,7 +372,6 @@ where
 fn migrate_and_read<T, W>(
     path: &Path,
     blobs: &BlobsOf<'_>,
-    point: &MigrationPoint,
     work: W,
 ) -> Result<Option<T>, StorageError>
 where
@@ -656,7 +386,7 @@ where
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )?;
-    migrate(&mut connection, path, blobs, point)?;
+    migrate(&mut connection, path, blobs)?;
     let transaction = connection.transaction()?;
     work(&transaction).map(Some)
 }

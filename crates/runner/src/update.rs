@@ -39,7 +39,6 @@ use std::{
     io,
     path::{Path, PathBuf},
     process::Command,
-    time::Duration,
 };
 
 use demi_command_protocol::host_target;
@@ -50,19 +49,11 @@ use demi_runner_protocol::{
 use demi_shared_artifacts::{Digest, Mode, Permissions, Publication};
 use tokio_util::sync::CancellationToken;
 
-/// How long a download of a runner executable waits for its next byte
-/// before it gives that connection up and resumes on a new one
-///.
-pub const DOWNLOAD_STALL: Duration = demi_shared_artifacts::Patience::DEFAULT.stall;
-
 /// An installation that an installer made, whose runner this process is:
 /// its executable is `<root>/releases/<release>/demi-runner`.
 pub struct Installed {
     root: PathBuf,
     release: String,
-    /// How long a download waits for its next byte: [`DOWNLOAD_STALL`],
-    /// shorter in a test.
-    stall: Duration,
 }
 
 /// The runner that takes this one's place.
@@ -74,14 +65,8 @@ pub struct Successor {
 impl Installed {
     /// The installation at `root` when `executable` is its runner of
     /// `release`; none for a runner started otherwise, such as a managed
-    /// guest's or one a developer runs from a build. Its downloads give a
-    /// connection up after `stall` without a byte.
-    pub fn of(
-        root: &Path,
-        release: Option<&str>,
-        executable: &Path,
-        stall: Duration,
-    ) -> Option<Self> {
+    /// guest's or one a developer runs from a build.
+    pub fn of(root: &Path, release: Option<&str>, executable: &Path) -> Option<Self> {
         let release = release?;
         let installed = root
             .join("releases")
@@ -93,7 +78,6 @@ impl Installed {
         (installed == running).then(|| Self {
             root: root.to_owned(),
             release: release.to_owned(),
-            stall,
         })
     }
 
@@ -202,8 +186,7 @@ impl Installed {
         // The digest came from the backend this runner trusts, as an
         // installer's does, so the transport cannot change what is kept; the
         // token lets the backend count the device's progress. Connections
-        // that deliver nothing for twice the stall fail it, as the default
-        // patience does.
+        // that deliver nothing for the default patience fail it.
         let client = demi_shared_artifacts::download_client_allowing_http().map_err(io::Error::other)?;
         let headers = |_: &reqwest::Url| {
             let mut headers = reqwest::header::HeaderMap::new();
@@ -215,10 +198,6 @@ impl Installed {
             headers
         };
         let request = demi_shared_artifacts::Download {
-            patience: demi_shared_artifacts::Patience {
-                stall: self.stall,
-                silence: self.stall * 2,
-            },
             headers: &headers,
             ..demi_shared_artifacts::Download::new(url.as_str())
         };

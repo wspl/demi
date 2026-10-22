@@ -5,15 +5,6 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[features]
-# The test support of the runner libraries, which the one test selection
-# turns on: the native fixture program, the registry's decisions, a job's
-# activity and a dispatcher on channels.
-test-fixtures = [
-  "demi-runner-command-packages/testing",
-  "demi-runner-shell/testing",
-]
-
 [dependencies]
 bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }

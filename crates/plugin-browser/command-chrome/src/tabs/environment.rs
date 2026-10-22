@@ -1121,21 +1121,3 @@ async fn retire_browser(
     group?;
     task
 }
-
-/// What only the Chrome tests reach: Chrome's own view of its targets.
-#[cfg(feature = "testing")]
-impl BrowserEnvironment {
-    /// Every target Chrome runs, the capture extension's included.
-    pub async fn targets(
-        &self,
-    ) -> Result<Vec<chromiumoxide::cdp::browser_protocol::target::TargetInfo>> {
-        use chromiumoxide::cdp::browser_protocol::target::GetTargetsParams;
-        Ok(self
-            .browser
-            .call()?
-            .execute(GetTargetsParams::default())
-            .await?
-            .result
-            .target_infos)
-    }
-}

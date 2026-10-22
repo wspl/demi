@@ -12,11 +12,9 @@ doctest = false
 bench = false
 
 [features]
-# Scripted provider runtimes and a test client that drives a connection
-# (`agent::testing`), for the tests of the agent and of what sits above it,
-# with the test support of the agent's lower crates and the view of the
-# actions waiting at a tree's admission (`demi-shared-gates/testing`).
-testing = ["demi-agent-tools/testing", "demi-shared-gates/testing", "demi-provider-common/testing"]
+# A client that drives a connection (`agent::testing`), for the compaction
+# fixture's harness.
+testing = []
 
 [dependencies]
 bytes.workspace = true
@@ -43,15 +41,12 @@ tracing.workspace = true
 
 [dev-dependencies]
 # The compaction fixture's harness (`fixtures/compaction/README.md`) talks
-# to a real model with the crate's test support and the scripted provider
-# runtimes. It is an example, so every build of the one selection compiles it
-# and no test runs it; its provider is a dev-dependency, so the library never
-# links one.
+# to a real model with the crate's test support. It is an example, so every
+# build of the one selection compiles it and no test runs it; its provider is a
+# dev-dependency, so the library never links one.
 demi-agent-server = { path = ".", features = ["testing"] }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
-demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 flate2 = "1"
 reqwest.workspace = true

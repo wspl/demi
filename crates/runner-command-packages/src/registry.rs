@@ -85,33 +85,12 @@ const ANSWER_BYTES: usize = 1024 * 1024;
 /// Requests waiting for the owner; a sender waits for room, so that a slow
 /// owner does not grow memory.
 const REQUESTS: usize = 64;
-/// The decisions a test's view holds before the test reads them.
-#[cfg(feature = "testing")]
-const DECISIONS: usize = 64;
-
-/// What the registry does about a service whose leases or conversations
-/// changed, as a test sees it (`testing`): the registry keeps a service
-/// by doing nothing, which a test could otherwise only wait out.
-#[cfg(feature = "testing")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Decision {
-    /// A lease still holds it.
-    Leased,
-    /// It holds a conversation, and stays.
-    Holds,
-    /// It could not say what it holds, and stays.
-    Unanswered,
-    /// It holds nothing, and stops.
-    Stops,
-}
 
 /// The registry's owner task and the handle to it.
 pub struct ServiceRegistry {
     handle: ServiceHandle,
     contents: watch::Receiver<Vec<HostArtifact>>,
     owner: tokio::task::JoinHandle<()>,
-    #[cfg(feature = "testing")]
-    decisions: tokio::sync::broadcast::Sender<(String, Decision)>,
 }
 
 impl ServiceRegistry {
@@ -130,8 +109,6 @@ impl ServiceRegistry {
         let contents = cache.contents();
         let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);
-        #[cfg(feature = "testing")]
-        let (decisions, _) = tokio::sync::broadcast::channel(DECISIONS);
         let owner = Owner {
             cache,
             invocations: invocations.clone(),
@@ -144,8 +121,6 @@ impl ServiceRegistry {
             checks: JoinSet::new(),
             work: JoinSet::new(),
             stop: CancellationToken::new(),
-            #[cfg(feature = "testing")]
-            decisions: decisions.clone(),
         };
         Ok(Self {
             handle: ServiceHandle {
@@ -154,8 +129,6 @@ impl ServiceRegistry {
             },
             contents,
             owner: tokio::spawn(owner.run(receiver)),
-            #[cfg(feature = "testing")]
-            decisions,
         })
     }
 
@@ -167,13 +140,6 @@ impl ServiceRegistry {
     /// (`crates/runner-command-packages/src/cache.rs`).
     pub fn installed(&self) -> watch::Receiver<Vec<HostArtifact>> {
         self.contents.clone()
-    }
-
-    /// What the registry decides from now on, with each service's digest,
-    /// in the order it decides.
-    #[cfg(feature = "testing")]
-    pub fn decisions(&self) -> tokio::sync::broadcast::Receiver<(String, Decision)> {
-        self.decisions.subscribe()
     }
 
     /// Stops every service and waits until each has ended. The owner also
@@ -463,8 +429,6 @@ struct Owner {
     work: JoinSet<Work>,
     /// Stops every service; each one's own token is a child of it.
     stop: CancellationToken,
-    #[cfg(feature = "testing")]
-    decisions: tokio::sync::broadcast::Sender<(String, Decision)>,
 }
 
 /// One artifact digest: the leases on it and its current service.
@@ -670,8 +634,6 @@ impl Owner {
             return;
         };
         if entry.leases > 0 {
-            #[cfg(feature = "testing")]
-            decided(&self.decisions, digest, Decision::Leased);
             return;
         }
         let Some(current) = &mut entry.current else {
@@ -690,8 +652,6 @@ impl Owner {
             );
             current.stop.cancel();
             self.entries.remove(digest);
-            #[cfg(feature = "testing")]
-            decided(&self.decisions, digest, Decision::Stops);
             return;
         };
         if current.checking {
@@ -723,8 +683,6 @@ impl Owner {
         };
         current.checking = false;
         if entry.leases > 0 {
-            #[cfg(feature = "testing")]
-            decided(&self.decisions, &checked.digest, Decision::Leased);
             return;
         }
         // Leases came and went while the service answered: what it holds
@@ -734,10 +692,7 @@ impl Owner {
             return;
         }
         match checked.holds {
-            Ok(true) => {
-                #[cfg(feature = "testing")]
-                decided(&self.decisions, &checked.digest, Decision::Holds);
-            }
+            Ok(true) => {}
             Ok(false) => {
                 tracing::info!(
                     "service {} holds no lease or conversation and stops",
@@ -745,8 +700,6 @@ impl Owner {
                 );
                 current.stop.cancel();
                 self.entries.remove(&checked.digest);
-                #[cfg(feature = "testing")]
-                decided(&self.decisions, &checked.digest, Decision::Stops);
             }
             // A service that cannot say what it holds is not one that holds
             // nothing: stopping it would end every conversation it serves.
@@ -755,8 +708,6 @@ impl Owner {
                     "service {} did not say which conversations it holds ({error}); it stays",
                     current.id
                 );
-                #[cfg(feature = "testing")]
-                decided(&self.decisions, &checked.digest, Decision::Unanswered);
             }
         }
     }
@@ -993,17 +944,6 @@ async fn live(
     // What it kept for its conversations went with it, unsaid
     // (`crates/command-protocol/src/messages.rs`).
     start.backend.lost(descriptor.id.clone()).await;
-}
-
-/// Tells a test's view what the registry decided about `digest`'s service.
-#[cfg(feature = "testing")]
-fn decided(
-    decisions: &tokio::sync::broadcast::Sender<(String, Decision)>,
-    digest: &str,
-    decision: Decision,
-) {
-    // Nothing receives it unless a test reads the view.
-    let _unread = decisions.send((digest.to_owned(), decision));
 }
 
 /// Whether the service holds any conversation (`crates/command-protocol/src/conversation.rs`).

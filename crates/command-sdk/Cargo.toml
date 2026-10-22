@@ -11,11 +11,6 @@ test = false
 doctest = false
 bench = false
 
-[features]
-# A started service binary, counting numbers and the count of pauses for
-# tests (`command_service::testing`), with the protocol's test support.
-testing = ["demi-command-protocol/testing"]
-
 [dependencies]
 bytes.workspace = true
 clap = { version = "4", default-features = false, features = ["derive", "error-context", "std", "usage"] }

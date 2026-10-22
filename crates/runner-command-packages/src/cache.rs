@@ -115,10 +115,6 @@ struct Line {
 /// Where an install reports how its download goes.
 pub type Progress<'a> = &'a (dyn Fn(ArtifactProgress) + Send + Sync);
 
-/// The progress of an install nobody follows, such as a program's own
-/// executable, which installs before the command that needs it starts.
-pub const SILENT: Progress<'static> = &|_| {};
-
 /// An install of one digest that its callers share, from its fetch to its
 /// publication.
 type Install = BoxFuture<'static, Result<PathBuf, RuntimeError>>;

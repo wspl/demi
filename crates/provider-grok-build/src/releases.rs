@@ -38,15 +38,6 @@ impl GrokReleases {
         Self(KeptRelease::new(source(url), http, clock))
     }
 
-    /// The release built into the provider, believed by `clock` as read
-    /// now, so that a request reads no pointer while `clock` stays within
-    /// six hours.
-    #[cfg(feature = "testing")]
-    pub fn built_in(clock: Arc<dyn Clock>) -> Self {
-        let url = Self::URL.parse().expect("the pointer's address is a URL");
-        Self(KeptRelease::built_in(source(url), clock))
-    }
-
     /// The version a request names now, as header text, reading the pointer
     /// again in the background when the version is stale.
     pub(crate) fn current(&self) -> HeaderValue {

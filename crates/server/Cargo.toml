@@ -8,6 +8,7 @@ publish.workspace = true
 [[bin]]
 name = "demi-server"
 path = "src/main.rs"
+test = false
 doctest = false
 bench = false
 

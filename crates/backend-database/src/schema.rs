@@ -3766,153 +3766,6 @@ fn tables(connection: &Connection) -> rusqlite::Result<i64> {
     )
 }
 
-/// The versions a database of `kind` records, for the tests of what reads
-/// only a database's version, as an upgrade's preparation does.
-#[cfg(feature = "testing")]
-pub mod testing {
-    use std::path::Path;
-
-    use rusqlite::Connection;
-
-    use super::{DatabaseKind, version_of};
-
-    /// The version of this build's schema.
-    pub fn current_version(kind: DatabaseKind) -> i32 {
-        kind.schema().version()
-    }
-
-    /// The version of the newest schema a published release shipped before
-    /// this build's.
-    pub fn shipped_version(kind: DatabaseKind) -> i32 {
-        let shipped = kind.schema().history.last().expect("a schema has a history");
-        version_of(shipped.sql)
-    }
-
-    /// The columns a shipped schema has that this build's dropped, each with
-    /// the value of a row of this build's that it holds: a node's block
-    /// count is the length of its current path.
-    const DROPPED: &[(&str, &str, &str)] = &[
-        (
-            "nodes",
-            "block_count",
-            "(SELECT coalesce(max(own.start + own.length), 0) FROM current.path_runs AS own WHERE own.node_id = id)",
-        ),
-        ("nodes", "result", "CASE WHEN closed_phase = 'completed' THEN '' END"),
-        ("running_commands", "interval_ms", "CASE WHEN background = 1 THEN NULL ELSE 60000 END"),
-    ];
-
-    /// Whether the shipped schema's `table` has `column`.
-    fn shipped_has(connection: &rusqlite::Connection, table: &str, column: &str) -> bool {
-        connection
-            .query_row(
-                "SELECT count(*) FROM pragma_table_info(?1, 'main') WHERE name = ?2",
-                [table, column],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("the columns are listed")
-            > 0
-    }
-
-    /// Turns the closed database of `kind` at `path`, of this build's schema, into
-    /// one of the newest schema a published release shipped before it, as an
-    /// upgrade finds it.
-    ///
-    /// The result has the tables, columns and indexes of that schema, with the rows
-    /// of this one in the columns both have, and that schema's version. Its values
-    /// stay as this build wrote them.
-    pub fn store_as_shipped(path: &Path, kind: DatabaseKind) {
-        store_as_shipped_before(path, kind, 0);
-    }
-
-    /// The same, as the schema shipped `newer` schemas before the last one
-    /// in the history, for a test of a migration that the schemas shipped
-    /// since have moved away from the end of the history.
-    pub fn store_as_shipped_before(path: &Path, kind: DatabaseKind, newer: usize) {
-        let history = kind.schema().history;
-        let shipped = history
-            .get(history.len().checked_sub(newer + 1).expect("the history goes back that far"))
-            .expect("a schema has a history");
-        let earlier = path.with_extension("shipped");
-        let connection = Connection::open(&earlier).expect("a database opens beside it");
-        connection
-            .execute_batch(shipped.sql)
-            .expect("the shipped schema applies");
-        connection
-            .execute(
-                "ATTACH DATABASE ?1 AS current",
-                [path.to_str().expect("a test's path is UTF-8")],
-            )
-            .expect("the database attaches");
-        let tables = connection
-            .prepare("SELECT name FROM main.sqlite_schema WHERE type = 'table'")
-            .and_then(|mut statement| {
-                statement
-                    .query_map([], |row| row.get::<_, String>(0))?
-                    .collect::<rusqlite::Result<Vec<_>>>()
-            })
-            .expect("the shipped tables are listed");
-        for table in tables {
-            let columns = connection
-                .prepare(
-                    "SELECT name FROM pragma_table_info(?1, 'main')
-                     WHERE name IN (SELECT name FROM pragma_table_info(?1, 'current'))",
-                )
-                .and_then(|mut statement| {
-                    statement
-                        .query_map([&table], |row| row.get::<_, String>(0))?
-                        .collect::<rusqlite::Result<Vec<_>>>()
-                })
-                .expect("the columns are listed");
-            if columns.is_empty() {
-                continue;
-            }
-            // A column this build dropped holds what it was derived into.
-            let derived: Vec<(&str, &str)> = DROPPED
-                .iter()
-                .filter(|(owner, column, _)| *owner == table && shipped_has(&connection, &table, column))
-                .map(|(_, column, value)| (*column, *value))
-                .collect();
-            let names = columns
-                .iter()
-                .map(String::as_str)
-                .chain(derived.iter().map(|(column, _)| *column))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let values = columns
-                .iter()
-                .map(String::as_str)
-                .chain(derived.iter().map(|(_, value)| *value))
-                .collect::<Vec<_>>()
-                .join(", ");
-            connection
-                .execute_batch(&format!(
-                    "INSERT INTO main.{table} ({names}) SELECT {values} FROM current.{table}"
-                ))
-                .expect("the rows are copied");
-        }
-        connection
-            .execute_batch("DETACH DATABASE current")
-            .expect("the database detaches");
-        connection
-            .pragma_update(None, "user_version", version_of(shipped.sql))
-            .expect("the version is recorded");
-        drop(connection);
-        // The copy read the write-ahead log of the database it replaces,
-        // which would otherwise be applied to the copy.
-        for suffix in ["-wal", "-shm"] {
-            let mut log = path.as_os_str().to_owned();
-            log.push(suffix);
-            match std::fs::remove_file(&log) {
-                Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                    panic!("{log:?} is removed: {error}")
-                }
-                _ => {}
-            }
-        }
-        std::fs::rename(&earlier, path).expect("the copy replaces the database");
-    }
-}
-
 /// The version a database of the schema `sql` records in `user_version`:
 /// the first 31 bits of its SHA-256, never 0, which SQLite gives a database
 /// that records none. Any edit of the SQL is another version.
@@ -3938,29 +3791,27 @@ impl Schema {
         Some(&self.history[from..])
     }
 
-    /// [`Schema::apply`] for a database whose migrations re-encode sealed
-    /// values with `seals`: the control database.
+    /// Gives `connection`'s database this schema, migrating one of an earlier
+    /// release's, for a database whose migrations re-encode sealed values with
+    /// `seals`: the control database.
     pub(crate) fn apply_sealed(
         &self,
         connection: &mut Connection,
         path: &Path,
         seals: &dyn ResealConfigs,
     ) -> Result<(), StorageError> {
-        self.migrate(connection, path, &NoBlobs, seals, || {})
+        self.migrate(connection, path, &NoBlobs, seals)
     }
 
-    /// [`Schema::apply`], which calls `migrating` once its transaction holds
-    /// the database's write lock and before it migrates a database of a
-    /// schema in the history: where a test holds a conversation's migration
-    /// (`conversations::MigrationHold`).
-    pub(crate) fn apply_with(
+    /// Gives `connection`'s database this schema, migrating one of an earlier
+    /// release's, for a database that holds no sealed values: a conversation's.
+    pub(crate) fn apply(
         &self,
         connection: &mut Connection,
         path: &Path,
         blobs: &dyn ReadBlob,
-        migrating: impl FnOnce(),
     ) -> Result<(), StorageError> {
-        self.migrate(connection, path, blobs, &NoSealedConfigs, migrating)
+        self.migrate(connection, path, blobs, &NoSealedConfigs)
     }
 
     fn migrate(
@@ -3969,7 +3820,6 @@ impl Schema {
         path: &Path,
         blobs: &dyn ReadBlob,
         seals: &dyn ResealConfigs,
-        migrating: impl FnOnce(),
     ) -> Result<(), StorageError> {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let recorded: i32 =
@@ -3988,7 +3838,6 @@ impl Schema {
             .ok_or_else(|| StorageError::OtherSchema {
                 path: path.to_owned(),
             })?;
-        migrating();
         // A migration runs once per database, on its first open or read
         // after an upgrade, and that open or read waits for it: the log says
         // when it ran and what it cost.

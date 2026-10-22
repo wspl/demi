@@ -55,7 +55,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant, SystemTime},
 };
@@ -208,8 +208,6 @@ pub struct GitService {
     requests: mpsc::UnboundedSender<ChangesRequest>,
     /// A commit's file list stops here, as the working tree's does.
     max_files: usize,
-    /// How many whole walks the service made.
-    walks: Arc<AtomicU64>,
     /// The owner ends with the last handle.
     _owner: Arc<AbortOnDropHandle<()>>,
 }
@@ -225,7 +223,6 @@ struct Owner {
     watches: Watches,
     computations: Arc<Semaphore>,
     max_files: usize,
-    walks: Arc<AtomicU64>,
     /// Each computation hands back its root's state with the answer.
     running: JoinSet<(PathBuf, RootState, Result<Changes, GitError>)>,
 }
@@ -356,27 +353,18 @@ impl GitService {
     /// The service of a connection whose watches are `watches`.
     pub fn new(watches: Watches, max_files: usize) -> Self {
         let (requests, received) = mpsc::unbounded_channel();
-        let walks = Arc::new(AtomicU64::new(0));
         let owner = Owner {
             roots: HashMap::new(),
             watches,
             computations: Arc::new(Semaphore::new(CONCURRENT_COMPUTATIONS)),
             max_files,
-            walks: walks.clone(),
             running: JoinSet::new(),
         };
         GitService {
             requests,
             max_files,
-            walks,
             _owner: Arc::new(AbortOnDropHandle::new(tokio::spawn(owner.run(received)))),
         }
-    }
-
-    /// How many times the service walked a whole tree: what a build's
-    /// thousands of ignored files must not cost.
-    pub fn whole_walks(&self) -> u64 {
-        self.walks.load(Ordering::Relaxed)
     }
 
     /// The uncommitted changes under `root`.
@@ -586,7 +574,6 @@ impl Owner {
         let computations = self.computations.clone();
         let max_files = self.max_files;
         let watches = self.watches.clone();
-        let walks = self.walks.clone();
         self.running.spawn(async move {
             let mut state = state;
             let result = changes(
@@ -596,7 +583,6 @@ impl Owner {
                 &watches,
                 &computations,
                 max_files,
-                &walks,
                 &cancel,
             )
             .await;
@@ -648,7 +634,6 @@ async fn changes(
     watches: &Watches,
     computations: &Arc<Semaphore>,
     max_files: usize,
-    walks: &AtomicU64,
     cancel: &CancellationToken,
 ) -> Result<Changes, GitError> {
     let root_path = path.to_owned();
@@ -726,9 +711,6 @@ async fn changes(
         }
         _ => Scope::Whole,
     };
-    if matches!(scope, Scope::Whole) {
-        walks.fetch_add(1, Ordering::Relaxed);
-    }
     // Past the computation limit a request waits its turn (`crates/runner-host/src/lib.rs`).
     let _permit = tokio::select! {
         permit = computations.clone().acquire_owned() => {

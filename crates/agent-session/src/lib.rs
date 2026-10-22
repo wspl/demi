@@ -96,7 +96,7 @@ use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
     MessageComment,
-    AgentMessage, AutomationMark, Block, BlockId, Clock, CommandId, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
+    AgentMessage, AutomationMark, Block, BlockId, Clock, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
     PendingSteer, PictureCopy, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
     TextBlock, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
@@ -897,11 +897,6 @@ impl AgentSession {
         self.shared.read(SessionCore::request_output)
     }
 
-    /// Whether no action runs or waits.
-    pub fn is_settled(&self) -> bool {
-        self.shared.read(|core| core.settle()) != Settle::Busy
-    }
-
     /// Waits until no action runs or waits.
     pub async fn settled(&self) {
         let mut status = self.shared.status.subscribe();
@@ -1425,12 +1420,6 @@ impl AgentSession {
     /// [`hold`](Self::hold), and opens one when nothing runs.
     pub fn release(&self) {
         self.shared.update(SessionCore::release);
-    }
-
-    /// How `command`, which one of the session's calls left running, wakes the
-    /// node; none when the session does not watch it.
-    pub fn watch_of(&self, command: &CommandId) -> Option<Watch> {
-        self.shared.read(|core| core.watched.get(command))
     }
 
     /// Stops one thing: the running action, which has recorded the stop

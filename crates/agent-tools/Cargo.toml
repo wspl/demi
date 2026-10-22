@@ -7,13 +7,13 @@ publish.workspace = true
 
 [lib]
 # No doc examples.
+test = false
 doctest = false
 bench = false
 
 [features]
-# A Host type for agents without shell tools and the readers of a shell
-# tool's result (`agent_tools::testing`), with the session's test support.
-testing = ["demi-agent-session/testing"]
+# A Host type for agents without shell tools (`agent_tools::testing`).
+testing = []
 
 [dependencies]
 demi-command-protocol = { path = "../command-protocol" }

@@ -3,9 +3,7 @@
  * places it (a list item's marker, a quote's `>`), is the tag `<attachment
  * id="a3" />`, the space before `/>` optional and nothing else varying. The
  * backend follows the same rule to know which attachments a share serves
- * (`named_attachments` in `crates/backend-database/src/shares.rs`); both are
- * held to the cases of
- * `crates/shared-types/tests/shared-types/fixtures/attachment-blocks.json`.
+ * (`named_attachments` in `crates/backend-database/src/shares.rs`).
  */
 const TAG = String.raw`<attachment id="(a[1-9]\d*)" ?\/>[ \t]*`
 

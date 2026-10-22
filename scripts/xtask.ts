@@ -22,7 +22,7 @@ process.env.PATH = [dirname(cargo), process.env.PATH].filter(Boolean).join(delim
 
 await runSteps([
   {
-    command: [cargo, 'build', '--workspace', '--all-targets', '--features', 'demi-runner/test-fixtures'],
+    command: [cargo, 'build', '--workspace', '--all-targets'],
     cwd: repository,
   },
   { command: [resolve(repository, 'target/debug/xtask'), ...Bun.argv.slice(2)], cwd: repository, detached: true },
