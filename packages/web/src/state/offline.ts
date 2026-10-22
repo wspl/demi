@@ -128,8 +128,6 @@ const nodeRecordSchema = z.object({
   instructions: z.array(instructionEntrySchema),
   summaries: z.record(z.string(), z.int().nonnegative()),
   viewedAt: z.number(),
-  /** About how many bytes its blocks take, counted as they are written. */
-  bytes: z.number().nonnegative(),
 })
 
 /** A block as the page held it: whole, or light when it was read from a page, with its failure's facts. */
@@ -419,32 +417,14 @@ export async function writeNode(userId: string, node: string, write: NodeWrite):
     await withRoom(write.conversation, () => database.across([NODES, BLOCKS], 'readwrite', (transaction) => {
       const nodes = transaction.objectStore(NODES)
       const blocks = transaction.objectStore(BLOCKS)
-      // What its blocks take changes by what the write adds less what it
-      // cuts or replaces, each about what its text takes, which is most of
-      // it. A transaction runs its requests in order, so each read before a
-      // change answers what the change replaces.
-      const size = (value: unknown) => JSON.stringify(value).length
-      let change = 0
-      const replaced: IDBRequest[] = []
       if (write.cutFrom !== undefined) {
-        const range = IDBKeyRange.bound([node, write.cutFrom], [node, Number.MAX_SAFE_INTEGER])
-        replaced.push(blocks.getAll(range))
-        blocks.delete(range)
+        blocks.delete(IDBKeyRange.bound([node, write.cutFrom], [node, Number.MAX_SAFE_INTEGER]))
       }
       for (const { index, block, failure } of write.blocks) {
-        const record = failure ? { block, failure } : { block }
-        change += size(record)
-        replaced.push(blocks.get([node, index]))
-        blocks.put(record, [node, index])
+        blocks.put(failure ? { block, failure } : { block }, [node, index])
       }
       const held = nodes.get(node)
       held.onsuccess = () => {
-        for (const read of replaced) {
-          const values: unknown[] = Array.isArray(read.result) ? read.result : read.result === undefined ? [] : [read.result]
-          for (const value of values) {
-            change -= size(value)
-          }
-        }
         const before = ours(nodeRecordSchema, held.result, userId)
         nodes.put({
           build: cacheBuild(),
@@ -456,7 +436,6 @@ export async function writeNode(userId: string, node: string, write: NodeWrite):
           instructions: write.instructions,
           summaries: write.summaries,
           viewedAt: before?.viewedAt ?? Date.now(),
-          bytes: (before?.bytes ?? 0) + change,
         } satisfies NodeRecord, node)
       }
       return () => {}
@@ -577,58 +556,113 @@ async function evictStep(node: string): Promise<boolean> {
   })
 }
 
-/** The bound the disk keeps under: `DISK_BYTES`, or what the browser grants if less. */
-async function diskBound(): Promise<number> {
-  const quota = (await navigator.storage?.estimate?.())?.quota
-  return quota === undefined ? DISK_BYTES : Math.min(DISK_BYTES, quota)
+/**
+ * The bound the disk keeps under, `DISK_BYTES` or what the browser grants if
+ * less, and what the browser reports the page's storage takes, when it
+ * reports.
+ */
+async function diskBound(): Promise<{ bound: number, reported: number | undefined }> {
+  const estimate = await navigator.storage?.estimate?.()
+  const quota = estimate?.quota
+  return { bound: quota === undefined ? DISK_BYTES : Math.min(DISK_BYTES, quota), reported: estimate?.usage }
 }
 
-/** How many bytes the nodes' blocks take, about, and the node viewed longest ago. */
-async function diskUse(): Promise<{ bytes: number, oldest: string | null }> {
-  return database.across([NODES], 'readonly', (transaction) => {
-    let bytes = 0
-    let oldest: string | null = null
-    const cursor = transaction.objectStore(NODES).index('viewedAt').openCursor()
-    cursor.onsuccess = () => {
-      const at = cursor.result
+/**
+ * What each node's blocks take on disk, about, the node viewed longest ago
+ * first. Measured when asked, as the text of each block, never kept as a
+ * count: a count carried from one write to the next goes wrong whenever the
+ * disk holds blocks the count never saw, as those another build left.
+ */
+async function diskUse(): Promise<{ node: string, bytes: number }[]> {
+  return database.across([NODES, BLOCKS], 'readonly', (transaction) => {
+    const sizes = new Map<string, number>()
+    const order: string[] = []
+    const blocks = transaction.objectStore(BLOCKS).openCursor()
+    blocks.onsuccess = () => {
+      const at = blocks.result
       if (!at) {
         return
       }
-      oldest ??= String(at.primaryKey)
-      const counted = (at.value as { bytes?: unknown }).bytes
-      bytes += typeof counted === 'number' ? counted : 0
+      const node = String((at.key as [string, number])[0])
+      sizes.set(node, (sizes.get(node) ?? 0) + JSON.stringify(at.value).length)
       at.continue()
     }
-    return () => ({ bytes, oldest })
+    const nodes = transaction.objectStore(NODES).index('viewedAt').openCursor()
+    nodes.onsuccess = () => {
+      const at = nodes.result
+      if (!at) {
+        return
+      }
+      order.push(String(at.primaryKey))
+      at.continue()
+    }
+    return () => order.map((node) => ({ node, bytes: sizes.get(node) ?? 0 }))
   })
 }
 
 let evicting = false
+/** Whether a write came while the disk was being brought under its bound, which the bound then measures again. */
+let written = false
 
 /**
  * Keeps the disk under its bound once the page is idle: one batch of the
- * node viewed longest ago at each idle moment, until the disk fits.
+ * node viewed longest ago at each idle moment, until the disk fits. A write
+ * asks the browser how much the page stores, and the blocks are measured, once
+ * for the nodes it evicts, only past the bound; again when a write came
+ * meanwhile.
  */
 function scheduleEviction(): void {
   if (evicting) {
+    written = true
     return
   }
   evicting = true
-  const step = () => {
+  const finish = () => {
+    evicting = false
+  }
+  const fail = (error: unknown) => {
+    finish()
+    reportError(t('failures.keepOffline'), error)
+  }
+  const measure = () => {
+    written = false
     void (async () => {
-      const [use, bound] = await Promise.all([diskUse(), diskBound()])
-      if (use.bytes <= bound || use.oldest === null) {
-        evicting = false
+      // The browser's report costs nothing and is above what the blocks take
+      // (it counts the page's other storage too): the blocks are measured
+      // only once it passes the bound, or when the browser reports nothing.
+      const { bound, reported } = await diskBound()
+      if (reported !== undefined && reported <= bound) {
+        finish()
         return
       }
-      await evictStep(use.oldest)
-      idle(step)
-    })().catch((error: unknown) => {
-      evicting = false
-      reportError(t('failures.keepOffline'), error)
-    })
+      const use = await diskUse()
+      let total = use.reduce((sum, each) => sum + each.bytes, 0)
+      const oldest = total > bound ? use[0] : undefined
+      if (!oldest) {
+        finish()
+        return
+      }
+      const evict = (node: string, rest: { node: string, bytes: number }[]) => {
+        void evictStep(node).then((gone) => {
+          if (!gone) {
+            idle(() => evict(node, rest))
+            return
+          }
+          total -= use.find((each) => each.node === node)!.bytes
+          const [next, ...later] = rest
+          if (total > bound && next) {
+            idle(() => evict(next.node, later))
+          } else if (written) {
+            idle(measure)
+          } else {
+            finish()
+          }
+        }).catch(fail)
+      }
+      evict(oldest.node, use.slice(1))
+    })().catch(fail)
   }
-  idle(step)
+  idle(measure)
 }
 
 /** Runs `step` when the page is idle; a browser without idle callbacks runs it after the current task. */

@@ -458,7 +458,7 @@ test('past the disk\'s bound, the node viewed longest ago goes once the page is 
   const bytes = (id: string) => transcripts.get(id)!.reduce((sum, block) => sum + JSON.stringify({ block }).length, 0)
   // Room for the first and the third, which the second's and the first's fit in too.
   const quota = bytes(FIRST) + Math.max(bytes(SECOND), bytes(THIRD))
-  Object.defineProperty(navigator, 'storage', { configurable: true, value: { estimate: async () => ({ quota }) } })
+  Object.defineProperty(navigator, 'storage', { configurable: true, value: { estimate: async () => ({ quota, usage: quota * 2 }) } })
   // The eviction's last step deletes the node's record.
   const evicted = deferred<string>()
   const remove = IDBObjectStore.prototype.delete
