@@ -210,7 +210,7 @@ onBeforeUnmount(() => {
       <Button size="sm" variant="ghost" @click="reset">Reset Example</Button>
     </div>
     <div class="flex h-[32rem] overflow-hidden rounded-xl border border-line">
-      <ChatSession @show-subagents="() => {}"
+      <ChatSession @show-subagent="() => {}"
         :conversation="session" has-provider
         :edit-version="{ epoch: 'gallery-editing', revision }"
         :message-edit="messageEdit"

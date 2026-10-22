@@ -8,6 +8,7 @@ import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/ag
 import { NO_COST, agentCost, conversationCost, lastHourOf, type CostShown } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
+import { finishedSubagents, runningSubagents } from '@demicodes/web-ui/agent/subagents'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
   beginSavedEdit,
@@ -23,7 +24,7 @@ import {
 import { coded, errorCode, errorMessage, reportError, requestIdOf, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
-import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
+import { sessionShown, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
 import { pageLog } from '@demicodes/web-ui/infra/log'
@@ -480,7 +481,8 @@ export const useConversations = defineStore('conversations', () => {
       attachedHosts: markRaw(new Slot<AttachedHost[]>([])),
       attachmentDescriptions: {},
       subagents: [],
-      shownSubagents: [],
+      shownSubagent: null,
+      turnStartedAt: null,
       sides: [],
       terminals: [],
       load: 'loading',
@@ -1577,7 +1579,7 @@ export const useConversations = defineStore('conversations', () => {
       state: conversation,
       client: createConversationClient(streamUrl(conversation.id), clientOptions(conversation.id), () => archiving.get(conversation.id)),
       holding: () => holding,
-      nodes: () => subscribedNodes(conversation),
+      nodes: () => sideNodes(conversation),
       held: (node) => {
         const record = conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
         return record ? heldEdge(record.history) : undefined
@@ -1593,11 +1595,26 @@ export const useConversations = defineStore('conversations', () => {
       },
     })
     entry.runtime = runtime
-    // The socket follows the nodes the page shows, as windows open and
-    // close and side questions' cards fold, for as long as the cache keeps
+    // The socket follows the subagents read ahead and the one the Agents
+    // window shows, as they join and leave, and the side questions whose
+    // cards are open, as they open and fold, for as long as the cache keeps
     // the conversation.
-    const stopFollowing = watch(() => subscribedNodes(conversation), (now, before) => followNodes(runtime, now, before))
-    signal.addEventListener('abort', stopFollowing, { once: true })
+    const stopListing = watch(
+      () => wantedSubagents(conversation),
+      (now, before) => listChanged(conversation, now, before),
+      { immediate: true },
+    )
+    const stopNoting = watch(() => conversation.history, () => noteTurnStart(conversation), { immediate: true })
+    const following = createFollowing(conversation, runtime, signal)
+    const stopFollowing = watch(() => followedNodes(conversation), following.changed)
+    // A subagent chosen before its turn is read next.
+    const stopPreferring = watch(() => conversation.shownSubagent, following.prefer)
+    signal.addEventListener('abort', () => {
+      stopListing()
+      stopNoting()
+      stopFollowing()
+      stopPreferring()
+    }, { once: true })
     try {
       await runtime.connect()
     } catch (error) {
@@ -1632,6 +1649,10 @@ export const useConversations = defineStore('conversations', () => {
     conversation.failures = {}
     conversation.instructions = []
     conversation.summaries = {}
+    conversation.turnStartedAt = null
+    for (const child of conversation.subagents) {
+      childrenRead.delete(child.id)
+    }
     conversation.subagents = []
     conversation.sides = conversation.sides.filter((side) => !side.listed)
     conversation.agentsHeld = null
@@ -1660,31 +1681,168 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The children whose disk copy the page has looked for since their window
-   * opened: a child's subscription names the blocks the page holds, so it
-   * waits for that copy, as the root's opening waits for the root's.
+   * The subagents the page keeps whose disk copy it has looked for: a node's
+   * subscription names the blocks the page holds, so it waits for that copy,
+   * as the root's opening waits for the root's.
    */
   const childrenRead = reactive(new Set<string>())
 
   /**
-   * The nodes besides the root whose messages the page shows: the child
-   * the Agents window shows once its disk copy is read, and each side
-   * question whose card is open.
+   * Notes where the user's last turn starts in the root's transcript: the time
+   * of the last `user` block the page holds. A transcript the page holds only
+   * the tail of, a turn so long that its `user` block was let go, keeps the
+   * time it noted; one opened in the middle of such a turn notes the first
+   * block it holds, as the nearest it knows.
    */
-  function subscribedNodes(conversation: Conversation): string[] {
-    return [
-      ...conversation.shownSubagents.filter((id) => childrenRead.has(id)),
-      ...conversation.sides.flatMap((side) => (side.listed && !side.record.folded ? [side.id] : [])),
-    ]
+  function noteTurnStart(conversation: Conversation): void {
+    const blocks = latestBlocks(conversation.history)
+    const asked = blocks.findLast((block) => block.type === 'user')
+    const at = asked?.createdAt ?? (conversation.turnStartedAt === null ? blocks[0]?.createdAt : undefined)
+    if (at !== undefined) {
+      conversation.turnStartedAt = Date.parse(at)
+    }
   }
 
-  /** The socket follows the nodes the page shows `now`, from `before`. */
-  function followNodes(runtime: ConversationRuntime, now: readonly string[], before: readonly string[]): void {
-    for (const node of before.filter((each) => !now.includes(each))) {
-      runtime.unsubscribeNode(node)
+  /**
+   * The subagents read ahead: the running ones on the current path, then those
+   * that ended since the user's last message, failed, stopped or finished, the
+   * latest ended first, as the Agents window orders them. Those ended before
+   * the turn the page knows (`turnStartedAt`) are read when chosen.
+   */
+  function readAheadSubagents(conversation: Conversation): string[] {
+    const listed = conversation.subagents.filter((agent) => agent.onPath)
+    const since = conversation.turnStartedAt
+    const recent = listed.filter((agent) => since !== null && agent.endedAt !== undefined && Date.parse(agent.endedAt) >= since)
+    return [...runningSubagents(listed), ...finishedSubagents(recent)].map((agent) => agent.id)
+  }
+
+  /**
+   * The subagents the page keeps read and followed: those read ahead, once the
+   * session is shown so that the root never waits for them, and the one the
+   * Agents window shows, whatever the session does, so that a window that
+   * opens while the socket cannot connect, or after an opening failed, still
+   * reads it.
+   */
+  function wantedSubagents(conversation: Conversation): string[] {
+    const ahead = sessionShown(conversation.load) ? readAheadSubagents(conversation) : []
+    const shown = conversation.shownSubagent
+    return shown !== null && !ahead.includes(shown) && conversation.subagents.some((agent) => agent.id === shown) ? [...ahead, shown] : ahead
+  }
+
+  /** The side questions whose cards are open, whose latest pages the opening reads with the root's. */
+  function sideNodes(conversation: Conversation): string[] {
+    return conversation.sides.flatMap((side) => (side.listed && !side.record.folded ? [side.id] : []))
+  }
+
+  /**
+   * The nodes the conversation's socket follows besides the root: the
+   * wanted subagents whose disk copies are read, and every side question
+   * whose card is open. Derived from the agents' entries; never stored.
+   */
+  function followedNodes(conversation: Conversation): string[] {
+    return [...wantedSubagents(conversation).filter((id) => childrenRead.has(id)), ...sideNodes(conversation)]
+  }
+
+  /**
+   * Follows the nodes of `conversation` as `followedNodes` changes: a side
+   * question's at once, a subagent's one read at a time, in the order they
+   * joined, so that they share the connection and the backend without
+   * crowding one another. A node whose first read failed does not hold the
+   * next back; the client reads it again after a wait. `prefer` moves a
+   * subagent the window shows to the front of those waiting.
+   */
+  function createFollowing(conversation: Conversation, runtime: ConversationRuntime, signal: AbortSignal) {
+    /** The subagents waiting to be read, with when each joined, and which of them the window asked for first. */
+    const waiting: { node: string; queued: number; front: boolean }[] = []
+    let reading = false
+
+    async function pump(): Promise<void> {
+      if (reading) {
+        return
+      }
+      reading = true
+      try {
+        for (let next = waiting.shift(); next && !signal.aborted; next = waiting.shift()) {
+          if (!followedNodes(conversation).includes(next.node)) {
+            continue
+          }
+          const began = performance.now()
+          await runtime.subscribeNode(next.node, 'attempt')
+          pageLog.info('readahead.ended', {
+            node: next.node,
+            queue_ms: Math.round(began - next.queued),
+            ms: Math.round(performance.now() - began),
+            front: next.front,
+          }, conversation.id)
+        }
+      } finally {
+        reading = false
+      }
     }
-    for (const node of now.filter((each) => !before.includes(each))) {
-      runtime.subscribeNode(node)
+
+    function prefer(node: string | null): void {
+      const at = waiting.findIndex((each) => each.node === node)
+      if (at > 0) {
+        waiting.unshift({ ...waiting.splice(at, 1)[0]!, front: true })
+      }
+    }
+
+    return {
+      prefer,
+      changed(now: readonly string[], before: readonly string[]): void {
+        for (const node of before.filter((each) => !now.includes(each))) {
+          runtime.unsubscribeNode(node)
+          const at = waiting.findIndex((each) => each.node === node)
+          if (at >= 0) {
+            waiting.splice(at, 1)
+          }
+        }
+        for (const node of now.filter((each) => !before.includes(each))) {
+          if (conversation.sides.some((side) => side.id === node)) {
+            void runtime.subscribeNode(node)
+            continue
+          }
+          waiting.push({ node, queued: performance.now(), front: false })
+          prefer(conversation.shownSubagent)
+        }
+        void pump()
+      },
+    }
+  }
+
+  /**
+   * The set of subagents the page keeps changed: one that left it, its turn
+   * past and its window not showing it, is let go, its transcript with it, and
+   * the disk copies of those that joined are looked for, after which they are
+   * followed.
+   */
+  function listChanged(conversation: Conversation, now: readonly string[], before: readonly string[] = []): void {
+    const left = before.filter((id) => !now.includes(id))
+    const joined = now.filter((id) => !before.includes(id))
+    if (left.length === 0 && joined.length === 0) {
+      return
+    }
+    for (const id of left) {
+      const agent = conversation.subagents.find((each) => each.id === id)
+      if (agent) {
+        agent.history = EMPTY_TRANSCRIPT
+        agent.failures = {}
+      }
+      delete conversation.charts[id]
+      childrenRead.delete(id)
+      history.release(conversation, id)
+    }
+    pageLog.info('subagents.kept', { kept: now.length, joined: joined.length, left: left.length }, conversation.id)
+    void takeCopies(conversation, joined)
+  }
+
+  /** Looks for the disk copies of the subagents `ids`, one at a time, and lets each be followed once looked for. */
+  async function takeCopies(conversation: Conversation, ids: readonly string[]): Promise<void> {
+    for (const id of ids.filter((each) => !childrenRead.has(each))) {
+      await showChildFromDisk(conversation, id)
+      if (wantedSubagents(conversation).includes(id)) {
+        childrenRead.add(id)
+      }
     }
   }
 
@@ -1712,59 +1870,39 @@ export const useConversations = defineStore('conversations', () => {
       }
       cache.delete(id)
       copies.released(id)
-      // Its children's copies show again when their windows open.
-      for (const child of conversation.subagents) {
-        childrenRead.delete(child.id)
-      }
-      closedChildren.delete(id)
       startLoading(conversation)
       // Not open now: the next showing opens it.
       conversation.load = 'loading'
     }
   }
 
-  /** The children whose transcripts the page holds in memory once their windows close, the most recent, because the page's memory would otherwise grow with every child. */
-  const KEPT_CHILDREN = 8
-  /** The children whose windows closed, most recent last, whose transcripts the page still holds. */
-  const closedChildren = new Map<string, string[]>()
-
   /**
-   * Takes `ids` as the children whose windows the page shows, which the
-   * socket subscribes to. A child it stops showing keeps the transcript the
-   * page holds, among the `KEPT_CHILDREN` closed most recently, so its
-   * window opens again at once and catches up by changes; an older one's is
-   * let go, which the disk keeps.
+   * The Agents window shows the subagent `id`, or none. It shows at once from
+   * what the page holds, read ahead; choosing reads and follows nothing, and
+   * only lets the reads the window made of the one it showed before go.
    */
-  function showSubagents(conversation: Conversation, ids: string[]): void {
-    const dropped = conversation.shownSubagents.filter((id) => !ids.includes(id))
-    if (dropped.length === 0 && ids.every((id) => conversation.shownSubagents.includes(id))) {
+  function showSubagent(conversation: Conversation, id: string | null): void {
+    const previous = conversation.shownSubagent
+    if (previous === id) {
       return
     }
-    conversation.shownSubagents = ids
-    const closed = [...(closedChildren.get(conversation.id) ?? []).filter((id) => !ids.includes(id) && !dropped.includes(id)), ...dropped]
-    for (const id of closed.splice(0, Math.max(0, closed.length - KEPT_CHILDREN))) {
-      const agent = conversation.subagents.find((each) => each.id === id)
-      if (agent) {
-        agent.history = EMPTY_TRANSCRIPT
-        agent.failures = {}
-      }
+    conversation.shownSubagent = id
+    if (previous !== null) {
+      history.release(conversation, previous)
     }
-    closedChildren.set(conversation.id, closed)
-    for (const child of dropped) {
-      delete conversation.charts[child]
-      childrenRead.delete(child)
-      history.release(conversation, child)
+    if (id === null) {
+      return
     }
-    for (const id of ids.filter((each) => !childrenRead.has(each))) {
-      void showChildFromDisk(conversation, id).finally(() => {
-        if (conversation.shownSubagents.includes(id)) {
-          childrenRead.add(id)
-        }
-      })
-    }
+    const agent = conversation.subagents.find((each) => each.id === id)
+    pageLog.info('subagent.shown', {
+      node: id,
+      held: agent ? latestBlocks(agent.history).length : 0,
+      phase: agent?.phase ?? null,
+    }, conversation.id)
+    void takeCopies(conversation, [id])
   }
 
-  /** A child whose window opens shows what the disk keeps of it, when the page holds none of it. */
+  /** A subagent the page keeps shows what the disk keeps of it, when the page holds none of it. */
   async function showChildFromDisk(conversation: Conversation, id: string): Promise<void> {
     const userId = session.user?.id
     const agent = conversation.subagents.find((each) => each.id === id)
@@ -3652,7 +3790,6 @@ export const useConversations = defineStore('conversations', () => {
   function stopAll(): void {
     copies.clear()
     acknowledgements.clear()
-    closedChildren.clear()
     pendingChanges.value = []
     cache.clear()
     earlyReads.clear()
@@ -3752,7 +3889,7 @@ export const useConversations = defineStore('conversations', () => {
       action(conversation, (runtime) => runtime.abortSubagents()),
     abortSubagent: (conversation: Conversation, id: string) =>
       action(conversation, (runtime) => runtime.abortSubagent(id)),
-    showSubagents,
+    showSubagent,
     /** The metadata of the conversation `id` as the page shows it; null while it holds none. */
     metadataOf: (id: string): ConversationMetadata | null =>
       items.value.find((item) => item.id === id)?.metadata.shown.value ?? null,
@@ -3760,9 +3897,9 @@ export const useConversations = defineStore('conversations', () => {
     watchLastHour,
     /**
      * Whether the page has, or is opening, a session of the conversation,
-     * which sends a live child's transcript once the page shows it
-     * (`crates/agent-server/src/server/tree.rs`): none when the opening started none, as
-     * for a conversation whose model is gone, or failed.
+     * whose socket follows the children it reads ahead: none when
+     * the opening started none, as for a conversation whose model is gone, or
+     * failed.
      */
     streamsSubagents: (conversation: Conversation) =>
       conversation.load === 'opening' || (cache.get(conversation.id)?.runtime != null && conversation.load !== 'failed'),

@@ -104,9 +104,10 @@ export interface ConversationRuntimeOptions {
   client: ConversationClient
   onEvent?: (event: ClientSessionEvent) => void
   /**
-   * The nodes besides the root whose messages the page shows now, which each
-   * connection reads and follows once opened; `subscribeNode` and
-   * `unsubscribeNode` follow a change.
+   * The nodes besides the root whose messages the page shows now and needs
+   * with the first screen, which each connection reads and follows once opened;
+   * `subscribeNode` and `unsubscribeNode` follow a change, and a node the
+   * connection holds already is followed again with no read.
    */
   nodes?: () => readonly string[]
   /** The blocks the page holds of the node `node`, other than the root, which the root's `history` says. */
@@ -469,14 +470,19 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).abort()
   }
 
-  /** The page shows the node `node`'s messages now: the connection, and each later one, reads and follows them. */
-  subscribeNode(node: string): void {
-    this.client.value?.followNode(node)
+  /**
+   * The page follows the node `node`'s messages from now on: the client reads
+   * its latest page, which a connection that is not open yet follows once it
+   * is. Resolves once the page holds the read, or with `until` `attempt`, once
+   * the first read has ended (`ConversationClient.followNode`).
+   */
+  subscribeNode(node: string, until: 'read' | 'attempt' = 'read'): Promise<void> {
+    return this.options.client.followNode(node, until)
   }
 
-  /** The page stops showing the node `node`'s messages. */
+  /** The page stops following the node `node`'s messages. */
   unsubscribeNode(node: string): void {
-    this.client.value?.unfollowNode(node)
+    this.options.client.unfollowNode(node)
   }
 
   private shown(): boolean {

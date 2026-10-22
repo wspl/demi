@@ -48,7 +48,7 @@ function send(...args: Parameters<typeof flow.turn>): void {
 </script>
 
 <template>
-  <ChatSession @show-subagents="() => {}"
+  <ChatSession @show-subagent="() => {}"
     :conversation="session"
     :files="messageFiles()"
     has-provider

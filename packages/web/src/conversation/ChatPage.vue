@@ -407,7 +407,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @read-subagent="(id) => readHistory(store.history.readBefore(conversation!, id))"
     @read-subagent-after="(id) => readHistory(store.history.readAfter(conversation!, id))"
     @shown="(node, block, within) => store.history.showAt(conversation!, node, block, within)"
-    @show-subagents="store.showSubagents(conversation!, $event)"
+    @show-subagent="store.showSubagent(conversation!, $event)"
     @open-aside="work.setOpen(conversation.id, true)"
     :usage-limits="card.limitsOf"
     @compact-subagent="store.compact(conversation, $event)"

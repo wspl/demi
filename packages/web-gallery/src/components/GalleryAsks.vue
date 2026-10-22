@@ -317,7 +317,7 @@ onMounted(async () => {
 
 <template>
   <div ref="root" :data-asks-seed="seed" class="h-full">
-    <ChatSession @show-subagents="() => {}"
+    <ChatSession @show-subagent="() => {}"
       :conversation="session"
       :files="messageFiles()"
       :commenting="commenting"

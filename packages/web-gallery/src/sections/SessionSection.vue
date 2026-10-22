@@ -3782,7 +3782,7 @@ onBeforeUnmount(() => {
                   @sign-out="productWould('Sign Out')"
                 />
               </template>
-              <ChatSession @show-subagents="() => {}"
+              <ChatSession @show-subagent="() => {}"
                 :conversation="session"
                 has-provider
                 :reveal="frameReveal"
@@ -4167,7 +4167,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'session'">
-      <ChatSession @show-subagents="() => {}"
+      <ChatSession @show-subagent="() => {}"
         :conversation="session"
         has-provider
         :share="shareService"

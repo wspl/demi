@@ -156,6 +156,10 @@ interface Subscription {
   state: TranscriptState
   /** Resolves once the node's transcript is read. */
   ready: Promise<void>
+  /** Resolves once the first read of it has ended, whether it succeeded or failed. */
+  attempted: Promise<void>
+  /** Stops its read when the page stops following the node, so that nothing is downloaded for a node nobody shows. */
+  stop: AbortController
 }
 
 /** The entity tags the page holds of the conversation's own values, which it follows them by. */
@@ -370,8 +374,9 @@ export class ConversationClient {
     }
     for (const node of nodes) {
       if (this.subscriptions.get(node)?.state.status !== 'current') {
+        this.subscriptions.get(node)?.stop.abort()
         this.subscriptions.delete(node)
-        reads.push(this.follow(node, false))
+        reads.push(this.follow(node, false).ready)
       }
     }
     await Promise.all(reads)
@@ -388,7 +393,7 @@ export class ConversationClient {
       this.emitWaiting({ queue: true, pending: true, starting: true })
     }
     for (const [node, version] of Object.entries(holding.nodes)) {
-      this.subscriptions.set(node, { state: { status: 'current', version: { ...version }, readings: false }, ready: Promise.resolve() })
+      this.subscriptions.set(node, { state: { status: 'current', version: { ...version }, readings: false }, ready: Promise.resolve(), attempted: Promise.resolve(), stop: new AbortController() })
     }
   }
 
@@ -705,38 +710,49 @@ export class ConversationClient {
   /**
    * Shows the node `node`'s messages from now on: reads its latest page, which
    * the page holds as a reset, then follows the node from the version the read
-   * names. Resolves once it holds the read; a read that fails is tried again
-   * after a wait.
+   * names. A read that fails is tried again after a wait. Resolves once it
+   * holds the read, or with `until` `attempt`, once the first read has ended,
+   * for a caller that goes on to the next node while a failed one is tried
+   * again.
    */
-  followNode(node: string): Promise<void> {
-    return this.follow(node, true)
+  followNode(node: string, until: 'read' | 'attempt' = 'read'): Promise<void> {
+    const subscription = this.follow(node, true)
+    return until === 'read' ? subscription.ready : subscription.attempted
   }
 
   /** Reads `node` and follows it; `retrying` says whether a failed read is tried again. */
-  private follow(node: string, retrying: boolean): Promise<void> {
+  private follow(node: string, retrying: boolean): Subscription {
     const held = this.subscriptions.get(node)
     if (held) {
-      return held.ready
+      return held
     }
+    let attempted = () => {}
     const subscription: Subscription = {
       state: { status: 'reading', frames: [] },
       ready: Promise.resolve(),
+      attempted: new Promise<void>((resolve) => {
+        attempted = resolve
+      }),
+      stop: new AbortController(),
     }
     this.subscriptions.set(node, subscription)
-    subscription.ready = this.readNode(node, subscription, retrying)
+    subscription.ready = this.readNode(node, subscription, retrying, false, attempted)
     if (retrying) {
       // The caller that wants the outcome holds the promise; one that does
       // not hears nothing of a connection that ended.
       subscription.ready.catch(() => {})
     }
-    return subscription.ready
+    return subscription
   }
 
   /** Stops following the node `node`'s messages; a frame of it still on its way is dropped. */
   unfollowNode(node: string): void {
-    if (!this.subscriptions.delete(node)) {
+    const subscription = this.subscriptions.get(node)
+    if (!subscription) {
       return
     }
+    this.subscriptions.delete(node)
+    subscription.stop.abort()
     this.sendFrame({ type: 'unfollow', value: { kind: 'transcript', node } })
   }
 
@@ -1489,39 +1505,51 @@ export class ConversationClient {
    * the version it names when the connection is open. A failed read is tried
    * again after a wait, unless the open asks it once, which fails with it.
    */
-  private async readNode(node: string, subscription: Subscription, retrying: boolean, staled = false): Promise<void> {
-    const reader = this.reader!
-    const live = () => !this.disposed && this.subscriptions.get(node) === subscription
-    if (staled) {
-      await this.sleep(this.staleDelayMs())
-    }
-    for (let failures = 0; ; ) {
-      if (!live()) {
-        return
+  private async readNode(
+    node: string,
+    subscription: Subscription,
+    retrying: boolean,
+    staled = false,
+    attempted: () => void = () => {},
+  ): Promise<void> {
+    try {
+      const reader = this.reader!
+      const live = () => !this.disposed && this.subscriptions.get(node) === subscription
+      if (staled) {
+        await this.sleep(this.staleDelayMs())
       }
-      let read: TranscriptRead
-      try {
-        // The root's first read of a page that holds none of it brings the
-        // page before the latest too, which the view would ask for next.
-        read = await reader.transcript(node, this.detached.signal, {
-          earlier: node === this.root && this.held(node) === undefined,
-        })
-      } catch (error) {
+      for (let failures = 0; ; ) {
         if (!live()) {
           return
         }
-        if (!retrying) {
-          throw error
+        let read: TranscriptRead
+        try {
+          // The root's first read of a page that holds none of it brings the
+          // page before the latest too, which the view would ask for next.
+          read = await reader.transcript(node, AbortSignal.any([this.detached.signal, subscription.stop.signal]), {
+            earlier: node === this.root && this.held(node) === undefined,
+          })
+        } catch (error) {
+          attempted()
+          if (!live()) {
+            return
+          }
+          if (!retrying) {
+            throw error
+          }
+          failures += 1
+          await this.wait(failures)
+          continue
         }
-        failures += 1
-        await this.wait(failures)
-        continue
-      }
-      if (!live()) {
+        if (!live()) {
+          return
+        }
+        this.adoptTranscript(node, subscription, read)
         return
       }
-      this.adoptTranscript(node, subscription, read)
-      return
+    } finally {
+      // The success, and a node left before its read ended, settle it too.
+      attempted()
     }
   }
 

@@ -384,7 +384,7 @@ const cases: SessionCase[] = [
             <div
               class="flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface-base"
             >
-              <ChatSession @show-subagents="() => {}"
+              <ChatSession @show-subagent="() => {}"
                 :conversation="item.session"
                 has-provider
                 :fork="forkFromAnswer"

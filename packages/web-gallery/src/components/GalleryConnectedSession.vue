@@ -155,7 +155,7 @@ function detach(id: string): void {
           />
         </div>
       </template>
-      <ChatSession @show-subagents="() => {}"
+      <ChatSession @show-subagent="() => {}"
         :conversation="session"
         :files="messageFiles()"
         @rename="session.title = $event"

@@ -170,9 +170,9 @@ const props = withDefaults(defineProps<{
    */
   readSubagentLatest?: (id: string) => Promise<void>
   /**
-   * Whether the page has, or is opening, a session that sends a live child's
-   * transcript once its panel shows it
-   * (`crates/agent-server/src/server/tree.rs`).
+   * Whether the page has, or is opening, a session whose socket follows the
+   * children the panel shows and those read ahead, so that the panel reads
+   * none itself.
    */
   subagentsStreamed?: boolean
   /**
@@ -341,11 +341,10 @@ const emit = defineEmits<{
    */
   shown: [node: string | null, blockId: string | null, within: number]
   /**
-   * The children whose transcripts the page shows, the whole set, at first and
-   * whenever it changes. They are the child the Agents window shows, or none
-   * while it is closed (`crates/agent-server/src/server/tree.rs`).
+   * The child the Agents window shows, at first and whenever it changes; null
+   * while the window is closed or shows none.
    */
-  showSubagents: [ids: string[]]
+  showSubagent: [id: string | null]
   /**
    * Compact in a child's context card, in the Agents window: that child's
    * context.
@@ -698,11 +697,11 @@ provideMessageAgents(() => ({
     }
   },
 }))
-// The child the Agents window shows is the one whose transcript streams, as
-// a receipt's name and a followed link open it there.
+// The page is told which child the Agents window shows, which a receipt's name
+// and a followed link open it on, and keeps that child read and followed.
 watch(
   () => (agentsOpen.value ? activeSubagentId.value : null),
-  (id) => emit('showSubagents', id === null ? [] : [id]),
+  (id) => emit('showSubagent', id),
   { immediate: true },
 )
 // A block in a subagent's transcript shows in the panel, on that subagent's

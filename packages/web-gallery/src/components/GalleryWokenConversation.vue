@@ -38,7 +38,7 @@ provideAutomationOpener((id) => emit('openAutomation', id))
 </script>
 
 <template>
-  <ChatSession @show-subagents="() => {}"
+  <ChatSession @show-subagent="() => {}"
     :conversation="session"
     :files="messageFiles()"
     :automations="links"

@@ -89,7 +89,7 @@ const step = computed(() => {
 <template>
   <div class="space-y-2">
     <div class="flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface-base">
-      <ChatSession @show-subagents="() => {}"
+      <ChatSession @show-subagent="() => {}"
         :conversation="session"
         has-provider
         @retry="productWould('Resume the Turn')"

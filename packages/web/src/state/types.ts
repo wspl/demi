@@ -145,12 +145,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    */
   attachmentDescriptions: Record<string, ConversationAttachment>
   subagents: SubagentRecord[]
+  /** The child the Agents window shows; null when it shows none. */
+  shownSubagent: string | null
   /**
-   * The children whose transcripts the page shows, the child its Agents
-   * window shows, to whose nodes the socket subscribes besides the root's
-   * (`crates/agent-server/src/server/tree.rs`).
+   * When the user's last turn starts, as the page noted it from the root's
+   * transcript, which it holds only the tail of: the time of the last `user`
+   * block it held. Null before it holds one.
    */
-  shownSubagents: string[]
+  turnStartedAt: number | null
   /**
    * Its side questions as its agents name them, each with the transcript
    * the page holds of it, in the order they were asked.

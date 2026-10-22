@@ -60,9 +60,9 @@ const props = withDefaults(
      */
     readLatest?: (id: string) => Promise<void>
     /**
-     * Whether the page has, or is opening, a session that sends a child's
-     * transcript once the panel shows it, live or finished. Without one, the
-     * panel reads the child's latest page.
+     * Whether the page has, or is opening, a session whose socket follows the
+     * child the panel shows and those read ahead, live or finished. Without
+     * one, the panel reads the child's latest page when it shows it.
      */
     streamed?: boolean
   }>(),
@@ -143,9 +143,9 @@ function readLatest(id: string): Promise<void> | undefined {
   )
 }
 // A child the panel holds none of reads its latest page when it shows, unless
-// the session sends it. The session sends a child's transcript, live or
-// finished, with its reset once the page shows it, and a page that held it
-// catches up from there (`crates/agent-server/src/server/tree.rs`).
+// the session follows it. The page reads the running and recently ended
+// children ahead and follows them, so one shows at once; a child not read yet,
+// as one that ended in an earlier turn, shows loading until its read comes in.
 //
 // - A child whose read failed waits for Retry.
 // - A child whose page loses its session before its reset came reads then.
