@@ -1284,13 +1284,6 @@ impl Link {
         let _ = self.send(message);
     }
 
-    /// Sends `frame` to the runner as it is, for a test of a message the
-    /// runner cannot decode.
-    #[cfg(feature = "testing")]
-    pub fn send_raw(&self, frame: Vec<u8>) -> Result<(), HostError> {
-        self.queue(false, frame)
-    }
-
     fn queue(&self, input: bool, frame: Vec<u8>) -> Result<(), HostError> {
         let queue = if input { &self.0.input } else { &self.0.control };
         queue.send(frame).map_err(|_| self.offline())

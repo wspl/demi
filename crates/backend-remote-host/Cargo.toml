@@ -38,13 +38,6 @@ tempfile = { version = "3", optional = true }
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process", "pty"], optional = true }
 
-[dev-dependencies]
-# The crate's own tests use its test support and the Host conformance cases.
-demi-backend-remote-host = { path = ".", features = ["testing"] }
-demi-host-interface = { path = "../host-interface", features = ["testing"] }
-schemars.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
-
 [features]
 # The relay of a stream pipe's WebSocket, which the backend's pipe route and
 # the test fixture's edge accept.

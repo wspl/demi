@@ -22,5 +22,3 @@ pub mod job_media;
 pub mod kept_output;
 pub mod scratch;
 pub mod tasks;
-#[cfg(feature = "testing")]
-pub mod testing;

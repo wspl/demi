@@ -48,25 +48,6 @@ pub struct FixtureOptions {
     pub commands: CommandSet,
     /// Receives a copy of every message the runner sends.
     pub tap: Option<mpsc::Sender<Outbound>>,
-    /// How long a pipe waits for its ends, rather than [`crate::ARRIVAL`].
-    pub arrival: Option<Duration>,
-    /// The first answer to a download of an offered file breaks off after
-    /// this many bytes, as on a flaky link.
-    pub offer_breaks_after: Option<usize>,
-    /// Receives each sink's `GET` once the backend claimed the sink, and
-    /// holds its response head until the test releases it.
-    pub held_sinks: Option<mpsc::Sender<HeldSink>>,
-}
-
-/// A device's sink `GET` whose sink the backend claimed and whose response
-/// waits.
-pub struct HeldSink {
-    pub pipe_id: String,
-    /// Sends the response head.
-    pub release: oneshot::Sender<()>,
-    /// Cancelled when the request went away while held: the device dropped
-    /// its read before it was answered.
-    pub abandoned: CancellationToken,
 }
 
 /// A real runner connected to a backend end of its own.
@@ -103,17 +84,13 @@ enum Request {
 struct Edge {
     requests: mpsc::Sender<Request>,
     token: Arc<str>,
-    /// Where the next answer to an offer's download from its start breaks
-    /// off, until one has.
-    offer_breaks_after: Arc<std::sync::Mutex<Option<usize>>>,
-    held_sinks: Option<mpsc::Sender<HeldSink>>,
 }
 
 impl RunnerFixture {
     /// Starts the backend end and the runner, and waits until the runner is
     /// online. It must run where local tasks can, such as a `local` test.
     pub async fn start(options: FixtureOptions) -> Self {
-        let pipes = Pipes::new(options.arrival.unwrap_or(crate::ARRIVAL));
+        let pipes = Pipes::new(crate::ARRIVAL);
         let policy = CommandPolicy::new(options.commands);
         let device = Rc::new(watch::Sender::new(DeviceLink::Offline { last: None }));
         let jobs = DeviceJobs::default();
@@ -127,8 +104,6 @@ impl RunnerFixture {
         let edge = Edge {
             requests,
             token: TOKEN.into(),
-            offer_breaks_after: Arc::new(std::sync::Mutex::new(options.offer_breaks_after)),
-            held_sinks: options.held_sinks,
         };
         let router = Router::new()
             .route("/api/runner", get(runner_socket))
@@ -200,15 +175,9 @@ impl RunnerFixture {
         self.process.home_dir()
     }
 
-    /// The runner's job root, where each job's directory lives until the
-    /// backend has what it needs of the job.
-    pub fn job_root(&self) -> std::path::PathBuf {
-        self.process.state_dir().join("jobs")
-    }
-
     /// The job directories the runner holds now.
     pub fn job_directories(&self) -> Vec<std::path::PathBuf> {
-        std::fs::read_dir(self.job_root())
+        std::fs::read_dir(self.process.state_dir().join("jobs"))
             .map(|entries| {
                 entries
                     .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -216,11 +185,6 @@ impl RunnerFixture {
                     .collect()
             })
             .unwrap_or_default()
-    }
-
-    /// The runner's log lines the backend end stored, in order, as they come.
-    pub fn host_lines(&self) -> watch::Receiver<Vec<demi_runner_protocol::wire::HostLogLine>> {
-        self.policy.host_lines()
     }
 
     /// The device's Host, starting work in its home.
@@ -525,22 +489,7 @@ async fn offer(
         .and_then(|value| value.strip_suffix('-'))
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
-    let breaks = if from == 0 {
-        edge.offer_breaks_after.lock().expect("the break is intact").take()
-    } else {
-        None
-    };
-    match breaks {
-        Some(after) => {
-            let sent = bytes.slice(..after.min(bytes.len()));
-            let body = futures_util::stream::iter([
-                Ok(sent),
-                Err(std::io::Error::other("the link broke off")),
-            ]);
-            Body::from_stream(body).into_response()
-        }
-        None => crate::offer_response(bytes, from),
-    }
+    crate::offer_response(bytes, from)
 }
 
 /// A stream pipe's source, relayed as the backend's route relays it.
@@ -603,23 +552,6 @@ async fn pipe_sink(
         Ok(Err(refusal)) => return refused(refusal),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    if let Some(held) = &edge.held_sinks {
-        let (release, released) = oneshot::channel();
-        let abandoned = CancellationToken::new();
-        let guard = abandoned.clone().drop_guard();
-        let sent = held
-            .send(HeldSink {
-                pipe_id: id,
-                release,
-                abandoned,
-            })
-            .await;
-        // A test that no longer holds sinks lets the response go.
-        if sent.is_ok() {
-            let _released = released.await;
-        }
-        guard.disarm();
-    }
     // As the backend's edge answers (`crates/runner-protocol/src/wire/pipe_frames.rs`).
     let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     Response::builder()

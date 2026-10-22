@@ -224,20 +224,6 @@ impl Watches {
         }
         self.0.tasks.wait().await;
     }
-
-    /// What FSEvents would say of `path` on the stream watching `watched`,
-    /// with `flags`, such as that it dropped events, which nothing else can
-    /// make it say; false while no stream of that path runs.
-    #[cfg(all(feature = "testing", target_os = "macos"))]
-    pub fn said(&self, watched: &Path, path: &Path, flags: u32) -> bool {
-        let watched = std::fs::canonicalize(watched).unwrap_or_else(|_| watched.to_path_buf());
-        let slots = lock(&self.0.slots);
-        slots
-            .iter()
-            .filter(|(key, _)| key.path == watched)
-            .filter_map(|(_, slot)| slot.tree.as_ref())
-            .any(|tree| tree.said(path.to_path_buf(), flags))
-    }
 }
 
 impl Follower {

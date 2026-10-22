@@ -173,6 +173,7 @@ impl Default for RunnerProcessOptions {
 pub struct RunnerProcess {
     /// The runner executable it starts, again after each stop.
     program: PathBuf,
+    #[allow(dead_code, reason = "held for its drop, which removes the home")]
     home: tempfile::TempDir,
     home_path: String,
     state: tempfile::TempDir,
@@ -257,11 +258,6 @@ impl RunnerProcess {
     /// The runner's installation state, which holds its device token.
     pub fn state_dir(&self) -> &Path {
         self.state.path()
-    }
-
-    /// The service-manager commands the runner gave, one line each.
-    pub fn service_manager_calls(&self) -> String {
-        std::fs::read_to_string(self.home.path().join(SERVICE_MANAGER_CALLS)).unwrap_or_default()
     }
 
     /// How the runner process ended, once it has.
