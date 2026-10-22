@@ -29,8 +29,7 @@ mod store;
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -98,7 +97,6 @@ pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, Ser
             log: ServerLog {
                 path,
                 sink: Some(sink.clone()),
-                hosts: Arc::default(),
             },
             thread,
         },
@@ -160,15 +158,6 @@ impl ServerLogWriter {
 pub struct ServerLog {
     path: PathBuf,
     sink: Option<Sink>,
-    /// What the backend has taken of each Host's lines, by the Host's ID.
-    hosts: Arc<Mutex<HashMap<String, HostState>>>,
-}
-
-/// What the backend knows of one Host's lines: the highest `seq` taken, so
-/// that a line a quick reconnect sends again, which is at or below it, is not
-/// stored twice.
-struct HostState {
-    taken: Option<u64>,
 }
 
 impl ServerLog {
@@ -178,7 +167,6 @@ impl ServerLog {
         Self {
             path: data_dir.join(DATABASE),
             sink: None,
-            hosts: Arc::default(),
         }
     }
 
@@ -189,43 +177,22 @@ impl ServerLog {
     /// are the runner's, its Host's and its owner's, whatever they claim:
     /// - the user is the owner, and a request, a turn or a page the line names
     ///   is not taken, since nothing here can check it;
-    /// - a conversation is taken when `knows` says the owner has it, and is
-    ///   otherwise left among the fields as the runner's claim;
-    /// - a line taken already, by its `seq`, is not stored again.
-    pub fn store_host(
-        &self,
-        host_id: &str,
-        owner: &str,
-        lines: Vec<HostLogLine>,
-        missed: u64,
-        knows: &dyn Fn(&str) -> bool,
-    ) {
+    ///   The follow resumes from the highest `seq` stored for the Host, so a
+    ///   runner sends no line below it.
+    pub fn store_host(&self, host_id: &str, owner: &str, lines: Vec<HostLogLine>, missed: u64) {
         if missed > 0 {
             tracing::warn!(event = "log.missed", host_id, missed, "a runner no longer held lines of its log");
         }
         let Some(sink) = &self.sink else {
             return;
         };
-        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
-        let state = hosts.entry(host_id.to_owned()).or_insert(HostState { taken: None });
         for HostLogLine { seq, mut line } in lines {
-            if state.taken.is_some_and(|taken| seq <= taken) {
-                continue;
-            }
-            state.taken = Some(seq);
             line.origin = LogOrigin::Runner;
             line.host_id = Some(host_id.to_owned());
             line.user_id = Some(owner.to_owned());
             line.request_id = None;
             line.page_id = None;
             line.turn_id = None;
-            if let Some(conversation) = line.conversation_id.take() {
-                if knows(&conversation) {
-                    line.conversation_id = Some(conversation);
-                } else {
-                    line.fields.insert("conversation".into(), conversation.into());
-                }
-            }
             sink.push(Row { line, seq: Some(seq) });
         }
     }
@@ -241,23 +208,19 @@ impl ServerLog {
         }
     }
 
-    /// The highest number taken for the Host's runner lines, stored or still
-    /// queued; none for a Host with no line, or a log not yet written.
+    /// The highest `seq` stored for the Host's runner lines; none for a Host
+    /// with no line, or a log not yet written.
     pub async fn host_since(&self, host_id: &str) -> Option<u64> {
         let path = self.path.clone();
         let host = host_id.to_owned();
         let read = tokio::task::spawn_blocking(move || store::last_seq(&path, &host)).await;
-        let stored = match read {
+        match read {
             Ok(Ok(seq)) => seq,
             Ok(Err(error)) => {
                 tracing::warn!(event = "log.since_failed", host_id, error = &error as &dyn std::error::Error, "a Host's last stored line could not be read");
                 None
             }
             Err(_) => None,
-        };
-        let mut hosts = self.hosts.lock().unwrap_or_else(PoisonError::into_inner);
-        let state = hosts.entry(host_id.to_owned()).or_insert(HostState { taken: None });
-        state.taken = state.taken.max(stored);
-        state.taken
+        }
     }
 }

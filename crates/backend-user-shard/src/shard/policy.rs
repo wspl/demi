@@ -101,11 +101,9 @@ impl HostLog for HostLines {
         let Some(shard) = self.shard.upgrade() else {
             return;
         };
-        // The Host's lines are its owner's, and name a conversation only as
-        // far as the owner has it.
-        let knows = |conversation: &str| shard.conversations().knows(conversation);
+        // The Host's lines are its owner's.
         self.log
-            .store_host(&self.host, shard.user().as_str(), lines, missed, &knows);
+            .store_host(&self.host, shard.user().as_str(), lines, missed);
     }
 }
 

@@ -112,8 +112,7 @@ on a million lines.
   since a frame being written cannot be interrupted, behind its answers and
   its commands' exits. A Host that is offline keeps its lines in its files
   until it connects again. The backend stores them as the Host's owner's: a
-  request, page or turn ID a runner names is not taken, a conversation ID only
-  if the owner has it, and a line it has by `seq` is not stored twice.
+  request, page or turn ID a runner names is not taken.
 - **A page's** lines go to `POST /log` every 5 seconds while it has lines, at
   once for an error, and in one request when the page is hidden, which the
   browser finishes after the page is gone and which is small (16 KiB) because

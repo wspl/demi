@@ -184,11 +184,9 @@ The backend stores each frame's lines with the Host's ID and its `seq` (a
 column of runner lines), and logs `log.missed` with the count when it is not
 zero. A runner is a Host's program, so the backend does not take its word for
 who a line is about: the line's user is the Host's owner; a request, a page or
-a turn ID the line names is not taken, since nothing can check it; a
-conversation ID is taken when the owner has that conversation and is otherwise
-kept in `fields.conversation`. A line the backend stored already, which a
-quick reconnect sends again, is told by its `seq` (the backend takes only
-lines above the highest it has) and is not stored twice. The runner sends
+a turn ID the line names is not taken, since nothing can check it. The follow
+resumes from the highest `seq` stored for the Host, so the runner sends no line
+below it. The runner sends
 a frame of at most 32 KiB (a line over it is alone in its frame): a frame being
 written cannot be interrupted, and the messages behind it wait for it. Log frames
 go on the runner connection's lowest-priority queue, behind its control and

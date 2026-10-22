@@ -271,12 +271,6 @@ impl ConversationSlot {
 }
 
 impl Conversations {
-    /// Whether the shard has used the conversation `id`, which only a
-    /// conversation of the shard's user can have been.
-    pub fn knows(&self, id: &str) -> bool {
-        ConversationId::try_from(id).is_ok_and(|id| self.slots.borrow().contains_key(&id))
-    }
-
     pub fn slot(&self, id: &ConversationId) -> Rc<ConversationSlot> {
         self.slots
             .borrow_mut()
