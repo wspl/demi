@@ -552,22 +552,6 @@ impl ControlService {
         .await
     }
 
-    /// The latest run whose message went to the conversation `id`, of any
-    /// age.
-    pub async fn run_of_conversation(&self, id: ConversationId) -> Result<Option<StoredRun>, StorageError> {
-        self.call(move |connection, _| {
-            connection
-                .prepare_cached(&format!(
-                    "SELECT {RUN_COLUMNS} FROM automation_runs WHERE conversation_id = ?1 ORDER BY at DESC, rowid DESC
-                     LIMIT 1"
-                ))?
-                .query_row([id.as_str()], |row| Ok(run_row(row)))
-                .optional()?
-                .transpose()
-        })
-        .await
-    }
-
     /// Records a run, as it starts or as it is skipped.
     pub async fn insert_automation_run(&self, run: StoredRun) -> Result<(), StorageError> {
         self.call(move |connection, _| {

@@ -1376,23 +1376,6 @@ impl AgentSession {
         })
     }
 
-    /// The tool-use IDs of the calls still executing, the calls of the
-    /// model's response that run at the same time.
-    pub fn executing_calls(&self) -> Vec<String> {
-        self.shared.read(|core| {
-            core.transcript
-                .blocks()
-                .iter()
-                .filter_map(|block| match block {
-                    Block::ToolCall(call) if call.status == demi_shared_types::ToolCallStatus::Executing => {
-                        Some(call.tool_use_id.clone())
-                    }
-                    _ => None,
-                })
-                .collect()
-        })
-    }
-
     /// A Fork's seed from this live session, through the completed text `end`
     /// names.
     ///

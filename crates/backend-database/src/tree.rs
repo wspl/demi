@@ -1374,12 +1374,6 @@ fn each_block(
     Ok(())
 }
 
-/// A node's whole current path.
-fn whole_path(connection: &Connection, node: &NodeId) -> Result<Vec<Block>, StorageError> {
-    let path = Path::read(connection, node.as_str())?;
-    path_blocks(connection, node, &path, 0..path.len())
-}
-
 fn gap(node: &NodeId, index: usize) -> StorageError {
     StorageError::Corrupt {
         table: "blocks",
@@ -2005,12 +1999,6 @@ fn saved_nodes(connection: &Connection) -> Result<Vec<(NodeId, u64, SavedVersion
     Ok(nodes)
 }
 
-/// The saved version of the root's transcript; the empty one, revision 0
-/// with no block, when the tree has no root yet.
-pub fn root_version(connection: &Connection) -> Result<SavedVersion, StorageError> {
-    Ok(saved_root(connection)?.map_or_else(SavedVersion::default, |(_, version)| version))
-}
-
 /// The searchable text of every agent's current path with the saved
 /// version it makes, read together; each block is decoded and dropped in
 /// turn, so no transcript is held whole.
@@ -2034,25 +2022,6 @@ pub fn search_texts(connection: &Connection) -> Result<Vec<IndexedAgent>, Storag
     Ok(agents)
 }
 
-/// The root's id and the saved version of its transcript.
-fn saved_root(connection: &Connection) -> Result<Option<(NodeId, SavedVersion)>, StorageError> {
-    let root: Option<(String, i64, i64)> = connection
-        .query_row(
-            &format!("SELECT id, output_revision, {PATH_LENGTH} FROM nodes WHERE parent_id IS NULL"),
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .optional()?;
-    let Some((root, revision, blocks)) = root else {
-        return Ok(None);
-    };
-    let version = SavedVersion {
-        revision: decode("nodes", "output_revision", u64::try_from(revision))?,
-        blocks: decode("path_runs", "length", u64::try_from(blocks))?,
-    };
-    Ok(Some((decode("nodes", "id", NodeId::try_from(root))?, version)))
-}
-
 /// Whether the tree `connection` holds has its root; a Fork's destination
 /// is committed once it does.
 pub fn has_root(connection: &Connection) -> Result<bool, StorageError> {
@@ -2062,18 +2031,6 @@ pub fn has_root(connection: &Connection) -> Result<bool, StorageError> {
         |row| row.get(0),
     )?;
     Ok(exists)
-}
-
-/// The root's blocks as the database holds them; none when the tree has
-/// no root yet.
-pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> {
-    let root: Option<String> = connection
-        .query_row("SELECT id FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
-        .optional()?;
-    let Some(root) = root else {
-        return Ok(Vec::new());
-    };
-    whole_path(connection, &decode("nodes", "id", NodeId::try_from(root))?)
 }
 
 /// A transcript a page is read from: an agent's in the tree, or what a share's list
@@ -2142,53 +2099,6 @@ impl Transcript {
         length
             .map(|length| decode("path_runs", "length", usize::try_from(length)))
             .transpose()
-    }
-
-    /// The indices of the `user` blocks among its first `length` blocks,
-    /// where its requests start. A share's are found through the
-    /// transcript's index of block types, and its few copies, without
-    /// reading a listed row.
-    pub fn user_blocks(&self, connection: &Connection, length: usize) -> Result<Vec<usize>, StorageError> {
-        let agent_sql = format!(
-            "SELECT {POSITION} FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-               ON blocks.node_id = {RUN_NODE} AND json_extract(blocks.block, '$.type') = 'user'
-                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE run.node_id = ?1 AND {POSITION} < ?2
-             ORDER BY 1"
-        );
-        let (sql, parameters): (&str, Vec<Value>) = match self {
-            Self::Agent(node) => (
-                &agent_sql,
-                vec![Value::Text(node.as_str().to_owned()), Value::Integer(count(length))],
-            ),
-            Self::Shared { token } => (
-                // From the root's user blocks in the index of block types
-                // to their entries, so no other block is visited; and the
-                // messages the share holds as copies, the few a write
-                // rewrote after the list was made (`shares::keep_rewritten`).
-                "SELECT entry.position FROM nodes
-                   CROSS JOIN blocks AS row INDEXED BY blocks_by_type
-                     ON row.node_id = nodes.id AND json_extract(row.block, '$.type') = 'user'
-                   CROSS JOIN share_entries AS entry INDEXED BY share_entries_by_row
-                     ON entry.token = ?1 AND entry.node_id = row.node_id AND entry.idx = row.idx
-                 WHERE nodes.parent_id IS NULL AND entry.position < ?2
-                 UNION
-                 SELECT entry.position FROM share_blocks AS copy
-                   JOIN share_entries AS entry ON entry.token = copy.token AND entry.position = copy.idx
-                 WHERE copy.token = ?1 AND json_extract(copy.block, '$.type') = 'user'
-                   AND entry.node_id IS NULL AND entry.position < ?2
-                 ORDER BY 1",
-                vec![Value::Text(token.as_str().to_owned()), Value::Integer(count(length))],
-            ),
-        };
-        let mut statement = connection.prepare(sql)?;
-        let mut rows = statement.query(params_from_iter(parameters))?;
-        let mut users = Vec::new();
-        while let Some(row) = rows.next()? {
-            let index: i64 = row.get(0)?;
-            users.push(decode(self.table(), "idx", usize::try_from(index))?);
-        }
-        Ok(users)
     }
 
     /// Its entries at the indices `range`, all of which it holds.
