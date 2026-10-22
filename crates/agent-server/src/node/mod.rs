@@ -196,7 +196,13 @@ impl<H: HostResolver> Node<H> {
         if let Err(error) = self.runtime.environments.replace_commands(&commands) {
             // The catalog serves every set the product composes, so this is a
             // defect; the shell keeps the commands it had.
-            tracing::error!(node = %self.runtime.node, %error, "a shell refused the node's new commands");
+            tracing::error!(
+                event = "node_commands.replace_failed",
+                conversation = %self.runtime.root,
+                node = %self.runtime.node,
+                %error,
+                "a shell refused the node's new commands"
+            );
         }
     }
 
@@ -248,7 +254,14 @@ impl<H: HostResolver> Node<H> {
             .await
             .unwrap_or_else(|error| {
                 // The look shows the output from its start.
-                tracing::warn!(node = %self.runtime.node, %command, %error, "a place in a command's output could not be read");
+                tracing::warn!(
+                    event = "command_place.read_failed",
+                    conversation = %self.runtime.root,
+                    node = %self.runtime.node,
+                    %command,
+                    %error,
+                    "a place in a command's output could not be read"
+                );
                 None
             })
             .unwrap_or_default()
@@ -262,7 +275,14 @@ impl<H: HostResolver> Node<H> {
         if let Err(error) = self.runtime.store.record_place(command, &self.runtime.node, seen).await {
             // The node keeps its place; a backend that starts again shows
             // it the output from its last recorded place.
-            tracing::warn!(node = %self.runtime.node, %command, %error, "a place in a command's output was not recorded");
+            tracing::warn!(
+                event = "command_place.record_failed",
+                conversation = %self.runtime.root,
+                node = %self.runtime.node,
+                %command,
+                %error,
+                "a place in a command's output was not recorded"
+            );
         }
     }
 
@@ -353,7 +373,13 @@ impl<H: HostResolver> Node<H> {
         let running = match runtime.store.running_commands(&closed.id).await {
             Ok(running) => running,
             Err(error) => {
-                tracing::warn!(node = %closed.id, %error, "a closed node's running commands could not be read");
+                tracing::warn!(
+                    event = "closed_node_commands.read_failed",
+                    conversation = %runtime.root,
+                    node = %closed.id,
+                    %error,
+                    "a closed node's running commands could not be read"
+                );
                 return Vec::new();
             }
         };
@@ -455,13 +481,36 @@ async fn adopt_all<H: HostResolver>(
     now: i64,
 ) -> Option<String> {
     let mut left = None;
+    let mut failed = 0_u64;
+    let began = std::time::Instant::now();
     for command in running {
         // A clock that went back counts no time.
         let ran = u64::try_from(now - command.started.as_millisecond()).unwrap_or(0);
         if let Err(error) = access.adopt(command, std::time::Duration::from_millis(ran)).await {
-            tracing::warn!(node = %access.node, command = %command.command, %error, "a running command was not taken up");
+            tracing::warn!(
+                event = "command.adopt_failed",
+                conversation = %access.root,
+                node = %access.node,
+                command = %command.command,
+                %error,
+                "a running command was not taken up"
+            );
             left = Some(error.to_string());
+            failed += 1;
         }
+    }
+    if !running.is_empty() {
+        let taken = u64::try_from(running.len()).unwrap_or(u64::MAX) - failed;
+        tracing::info!(
+            event = "commands.taken_up",
+            conversation = %access.root,
+            node = %access.node,
+            running = running.len(),
+            taken,
+            failed,
+            ms = crate::millis(began.elapsed()),
+            "a node's running commands were taken up"
+        );
     }
     left
 }
@@ -583,10 +632,22 @@ impl<H: HostResolver> NodeRuntime<H> {
     /// the failure logged, when where the conversation works cannot be read.
     async fn child_directory(&self) -> Option<String> {
         self.record.borrow().cwd.as_ref()?;
+        self.directory_now().await
+    }
+
+    /// The node's working directory now; none, with the failure logged, when
+    /// where the conversation works cannot be read.
+    async fn directory_now(&self) -> Option<String> {
         match self.placement().await {
             Ok(now) => Some(self.directory_at(&now)),
             Err(error) => {
-                tracing::warn!(node = %self.node, %error, "where the conversation works could not be read");
+                tracing::warn!(
+                    event = "node_directory.read_failed",
+                    conversation = %self.root,
+                    node = %self.node,
+                    %error,
+                    "where the conversation works could not be read"
+                );
                 None
             }
         }
@@ -601,7 +662,13 @@ impl<H: HostResolver> NodeRuntime<H> {
     /// restore tries again.
     async fn take_up(&self, which: impl Fn(&RunningCommand) -> bool) -> Result<bool, String> {
         let running = self.store.running_commands(&self.node).await.map_err(|error| {
-            tracing::warn!(node = %self.node, %error, "the node's running commands could not be read");
+            tracing::warn!(
+                event = "node_commands.read_failed",
+                conversation = %self.root,
+                node = %self.node,
+                %error,
+                "the node's running commands could not be read"
+            );
             error.to_string()
         })?;
         let picked: Vec<RunningCommand> = running.into_iter().filter(|command| which(command)).collect();
@@ -650,7 +717,14 @@ impl<H: HostResolver> NodeRuntime<H> {
     /// in a product without a keeper, ended as its environment says.
     async fn end_of(&self, command: &CommandId) -> EndOf {
         let recorded = self.store.command_end(command).await.unwrap_or_else(|error| {
-            tracing::warn!(%command, %error, "how a command ended could not be read");
+            tracing::warn!(
+                event = "command_end.read_failed",
+                conversation = %self.root,
+                node = %self.node,
+                %command,
+                %error,
+                "how a command ended could not be read"
+            );
             None
         });
         let stopper = self.environments.stopper(command);
@@ -674,7 +748,14 @@ impl<H: HostResolver> NodeRuntime<H> {
     /// environment holds any more; none when it stored nothing of it.
     async fn stored(&self, command: &CommandId) -> Option<StoredCommand> {
         self.store.command_output(command).await.unwrap_or_else(|error| {
-            tracing::warn!(%command, %error, "the output of an ended command could not be read");
+            tracing::warn!(
+                event = "command_output.read_failed",
+                conversation = %self.root,
+                node = %self.node,
+                %command,
+                %error,
+                "the output of an ended command could not be read"
+            );
             None
         })
     }
@@ -715,15 +796,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     /// The root's is where the conversation works, a child's its own while
     /// the conversation works where it was set.
     fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {
-        Box::pin(async move {
-            match self.placement().await {
-                Ok(now) => Some(self.directory_at(&now)),
-                Err(error) => {
-                    tracing::warn!(node = %self.node, %error, "where the conversation works could not be read");
-                    None
-                }
-            }
-        })
+        Box::pin(self.directory_now())
     }
 
     /// A root's turns and a side question's, whose card offers Retry: a
@@ -827,10 +900,13 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     }),
                     Ok(None) => {}
                     Err(error) => tracing::warn!(
+                        event = "context_source.failed",
+                        conversation = %self.root,
                         node = %self.node,
                         source = name,
                         %error,
-                        "a context source failed; it is asked again before the next request"
+                        retry = "before_next_request",
+                        "a context source failed"
                     ),
                 }
             }
@@ -860,6 +936,12 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             .upgrade()
             .and_then(|server| server.tree(&self.root))
             .is_some_and(|tree| tree.is_below(node, &self.node))
+    }
+
+    /// The node's lines name its conversation and itself; its work outlives
+    /// the request that started it, so the span has no parent.
+    fn log_span(&self) -> tracing::Span {
+        tracing::info_span!(parent: None, "node", conversation = %self.root, node = %self.node)
     }
 
     /// A side question's requests name the root's session to their
@@ -961,7 +1043,21 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 .owning(command)
                 .and_then(|environment| environment.media(command).ok())
                 .unwrap_or_default();
+            // A report the node has nothing to tell of is dropped, and why
+            // is all that says a command did not wake it.
+            let dropped = |kind: &'static str, reason: &'static str| {
+                tracing::info!(
+                    event = "command_report.dropped",
+                    conversation = %self.root,
+                    node = %self.node,
+                    %command,
+                    kind,
+                    reason,
+                    "a command report was dropped"
+                );
+            };
             if self.environments.end_seen(command) && media.is_empty() {
+                dropped("end", "seen_in_look");
                 return None;
             }
             if let Some(environment) = self.environments.owning(command)
@@ -973,6 +1069,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 // start waits for its Host, which never ran
                 // (`crates/backend-host-access/src/access.rs`).
                 if environment.unreachable(command).is_some() {
+                    dropped("silence", "host_away");
                     return None;
                 }
                 let view = environment
@@ -980,6 +1077,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     .into_iter()
                     .find(|view| &view.command_id == command);
                 if view.as_ref().is_some_and(|view| matches!(view.state, PageState::Waiting { .. })) {
+                    dropped("silence", "awaiting_user");
                     return None;
                 }
                 let running_ms = view.map_or(0, |view| view.running_ms);
@@ -990,6 +1088,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 return Some(progress_report(command, &title, running_ms, idle_ms));
             }
             if self.environments.stopper(command) == Some(Stopper::Itself) {
+                dropped("end", "stopped_by_node");
                 return None;
             }
             let end = self.end_of(command).await;

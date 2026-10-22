@@ -123,6 +123,14 @@ pub trait SessionRuntime {
     /// neither what the model is sent nor when a turn ends.
     fn is_below(&self, node: &NodeId) -> bool;
 
+    /// The span the session's own work logs in, which holds the IDs of its
+    /// conversation, node and user: a session's work outlives the request that
+    /// started it, so it never logs in that request's span. None by default,
+    /// as for a session copy, whose work logs nothing.
+    fn log_span(&self) -> tracing::Span {
+        tracing::Span::none()
+    }
+
     /// The session the node's requests name to their provider for its prompt
     /// cache and its routing, when it is not the node's own.
     ///

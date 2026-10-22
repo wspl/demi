@@ -151,8 +151,21 @@ pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId) {
         return;
     };
     let silence = s.config.silence;
+    s.read(|core| {
+        session_log!(
+            core,
+            info,
+            event = "command_watch.started",
+            node = %core.id,
+            turn = core.running_turn().map(tracing::field::display),
+            command = %command,
+            wakes = if watch == Watch::Foreground { "end_and_silence" } else { "end" },
+            silence_ms = u64::try_from(silence.as_millis()).unwrap_or(u64::MAX),
+            "a command was watched for its end"
+        );
+    });
     let task = tokio::task::spawn_local(
-        watch_command(Rc::downgrade(s), command.clone(), watch, silence).in_current_span(),
+        watch_command(Rc::downgrade(s), command.clone(), watch, silence).instrument(s.span.clone()),
     );
     s.update(|core| core.watched.set_task(command, AbortOnDropHandle::new(task)));
 }

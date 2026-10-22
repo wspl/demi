@@ -33,6 +33,49 @@ tagged_wire! {
         "error" => Error(ErrorLine),
         "transcript_mirror" => TranscriptMirror(MirrorLine),
         "rate_limit_event" => RateLimit(RateLimitLine),
+        "system" => System(SystemLine),
+    }
+}
+
+/// A status line of the CLI. Only its `compact_boundary` is read, which says
+/// the CLI compacted the conversation by itself, not at Demi's request;
+/// whatever else a `system` line says is skipped, as an unread line is.
+#[derive(Deserialize)]
+pub(crate) struct SystemLine {
+    #[serde(default)]
+    subtype: ReportedString,
+    /// Read as it came, so that a field of a CLI release that changed shape
+    /// fails nothing: it is only logged.
+    #[serde(default)]
+    compact_metadata: Option<serde_json::Value>,
+}
+
+/// What a `compact_boundary` line says of a compaction the CLI ran.
+pub(crate) struct CliCompaction {
+    /// `auto` for a context over its limit, `manual` for the user's `/compact`.
+    pub(crate) trigger: Option<String>,
+    pub(crate) pre_tokens: Option<u64>,
+    pub(crate) post_tokens: Option<u64>,
+    pub(crate) duration_ms: Option<u64>,
+}
+
+impl SystemLine {
+    /// The compaction the line reports; none for any other status line.
+    pub(crate) fn compaction(&self) -> Option<CliCompaction> {
+        if self.subtype.as_deref() != Some("compact_boundary") {
+            return None;
+        }
+        let metadata = self.compact_metadata.as_ref();
+        let number = |name: &str| metadata.and_then(|metadata| metadata.get(name)).and_then(serde_json::Value::as_u64);
+        Some(CliCompaction {
+            trigger: metadata
+                .and_then(|metadata| metadata.get("trigger"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            pre_tokens: number("pre_tokens"),
+            post_tokens: number("post_tokens"),
+            duration_ms: number("duration_ms"),
+        })
     }
 }
 
@@ -376,7 +419,10 @@ impl LastCall {
             }
             StreamEvent::MessageDelta(MessageDelta {
                 usage: Some(counts),
-            }) => self.0.delta(*counts),
+            }) => {
+                log_usage("message_delta", counts);
+                self.0.delta(*counts);
+            }
             _ => {}
         }
     }
@@ -386,6 +432,7 @@ impl LastCall {
     pub(crate) fn answered(&mut self, id: Option<String>, counts: Option<MessagesUsage>) {
         self.0.start(id, None);
         if let Some(counts) = counts {
+            log_usage("whole_message", &counts);
             self.0.delta(counts);
         }
     }
@@ -403,6 +450,20 @@ impl LastCall {
     pub(crate) fn take(&mut self) -> Option<TokenUsage> {
         std::mem::take(&mut self.0).usage()
     }
+}
+
+/// Says which counts the latest call took, and from which line of the CLI's
+/// output: the `result` line's own is the turn's sum and is never read.
+fn log_usage(source: &'static str, counts: &MessagesUsage) {
+    tracing::debug!(
+        event = "usage.read",
+        source,
+        input_tokens = counts.input_tokens,
+        output_tokens = counts.output_tokens,
+        cache_read_tokens = counts.cache_read_input_tokens,
+        cache_write_tokens = counts.cache_creation_input_tokens,
+        "a call's token counts were read"
+    );
 }
 
 /// A failure the CLI reports on a line of its own.

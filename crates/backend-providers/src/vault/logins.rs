@@ -677,12 +677,18 @@ impl LoginFlows {
         }
         let code_error = match pending.code_error {
             Some(refused) if refused.code == codes_taken => {
-                tracing::info!(event = "login.code_refused", attempt = refused.code, "the login's sign-in refused a code");
+                tracing::info!(
+                    event = "login.code_refused",
+                    login = %id,
+                    attempt = refused.code,
+                    "the login's sign-in refused a code"
+                );
                 Some(refused.message)
             }
             Some(refused) => {
                 tracing::info!(
                     event = "login.code_refused",
+                    login = %id,
                     attempt = refused.code,
                     newer_attempt = codes_taken,
                     "the login's sign-in refused a code the user has pasted another after"

@@ -349,6 +349,7 @@ impl Refresh {
             // a token.
             let refusal = TokenRefusal::of(&response.bytes().await.unwrap_or_default());
             tracing::warn!(
+                event = "codex_token.refresh_refused",
                 status,
                 error = refusal.named(),
                 "Codex refused a token refresh"

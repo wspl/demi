@@ -296,7 +296,13 @@ async fn ask<H: HostResolver>(
         let cwd = match runtime.placement().await {
             Ok(now) => runtime.directory_at(&now),
             Err(error) => {
-                tracing::warn!(node = %runtime.node, %error, "a reply's code paths were not looked at");
+                tracing::warn!(
+                    event = "reply_paths.look_failed",
+                    conversation = %runtime.root,
+                    node = %runtime.node,
+                    %error,
+                    "a reply's code paths were not looked at"
+                );
                 return keep(&session, &text.id, Vec::new());
             }
         };
@@ -357,7 +363,13 @@ async fn copy<H: HostResolver>(
             (now.device, cwd)
         }
         Err(error) => {
-            tracing::warn!(node = %runtime.node, %error, "a reply's pictures were not copied");
+            tracing::warn!(
+                event = "reply_pictures.copy_failed",
+                conversation = %runtime.root,
+                node = %runtime.node,
+                %error,
+                "a reply's pictures were not copied"
+            );
             for (target, _) in &named {
                 settle(target, PictureCopy::Failed { reason: PictureFailure::HostUnavailable });
             }

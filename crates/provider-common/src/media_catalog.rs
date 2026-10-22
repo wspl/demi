@@ -542,10 +542,48 @@ impl MediaCatalog {
     /// Downloads the file once and uses it when it is newer than the
     /// catalog now; a failure, or a file that does not decode or is not
     /// newer, is logged and changes nothing.
+    ///
+    /// The refresh logs one line, whatever came of it.
     pub async fn refresh(&self) {
         let Some(url) = &self.inner.url else {
             return;
         };
+        let began = std::time::Instant::now();
+        let mut facts = Refreshed::default();
+        let outcome = self.download(url, &mut facts).await;
+        let ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let line = |level: tracing::Level| match level {
+            tracing::Level::WARN => tracing::warn!(
+                event = "media_catalog.refreshed",
+                url = %url,
+                outcome,
+                status = facts.status,
+                error = facts.error,
+                ms,
+                updated = facts.updated,
+                in_use_updated = facts.in_use_updated,
+                "the media catalog was refreshed"
+            ),
+            _ => tracing::info!(
+                event = "media_catalog.refreshed",
+                url = %url,
+                outcome,
+                status = facts.status,
+                ms,
+                updated = facts.updated,
+                in_use_updated = facts.in_use_updated,
+                "the media catalog was refreshed"
+            ),
+        };
+        line(if matches!(outcome, "downloaded" | "not_modified" | "unused") {
+            tracing::Level::INFO
+        } else {
+            tracing::Level::WARN
+        });
+    }
+
+    /// One download and its use, saying in `facts` what it found.
+    async fn download(&self, url: &reqwest::Url, facts: &mut Refreshed) -> &'static str {
         let validators = self.inner.lock().validators.clone();
         let answer = tokio::time::timeout(
             DOWNLOAD_TIMEOUT,
@@ -553,46 +591,54 @@ impl MediaCatalog {
         )
         .await;
         let (body, validators) = match answer {
-            Ok(Ok(Answer::NotModified)) => return,
+            Ok(Ok(Answer::NotModified)) => return "not_modified",
             Ok(Ok(Answer::Fetched { body, validators })) => (body, validators),
             Ok(Err(Failure::Status(status))) => {
-                tracing::warn!("the media catalog at {url} was not downloaded: HTTP {}", status.as_u16());
-                return;
+                facts.status = Some(status.as_u16());
+                return "http_status";
             }
             Ok(Err(Failure::Transport(error))) => {
-                tracing::warn!("the media catalog at {url} was not downloaded: {error}");
-                return;
+                facts.error = Some(error.to_string());
+                return "error";
             }
-            Err(_) => {
-                tracing::warn!("the media catalog at {url} was not downloaded within {DOWNLOAD_TIMEOUT:?}");
-                return;
-            }
+            Err(_) => return "timeout",
         };
         let decoded = Catalog::decode(&body);
         self.inner.lock().validators = Some(validators);
         let downloaded = match decoded {
             Ok(downloaded) => downloaded,
             Err(error) => {
-                tracing::warn!("the media catalog at {url} is not used: {error}");
-                return;
+                facts.error = Some(error.to_string());
+                return "unused";
             }
         };
+        facts.updated = Some(downloaded.updated.to_string());
+        let mut outcome = "downloaded";
         self.inner.catalog.send_if_modified(|catalog| {
+            facts.in_use_updated = Some(catalog.updated.to_string());
             if downloaded.updated > catalog.updated {
                 *catalog = Arc::new(downloaded);
                 return true;
             }
-            // An equal date is the file in use.
-            if downloaded.updated < catalog.updated {
-                tracing::warn!(
-                    "the media catalog at {url} is not used: it was updated at {}, before the one in use, of {}",
-                    downloaded.updated,
-                    catalog.updated
-                );
-            }
+            // An equal date is the file in use; an older one is not used.
+            outcome = if downloaded.updated < catalog.updated { "stale" } else { "unused" };
             false
         });
+        outcome
     }
+}
+
+/// What a refresh found, for its line.
+#[derive(Default)]
+struct Refreshed {
+    /// The vendor's HTTP status of a refused download.
+    status: Option<u16>,
+    /// Why a download or a file was not used, when it says.
+    error: Option<String>,
+    /// The date the downloaded file says it was updated.
+    updated: Option<String>,
+    /// The date of the catalog in use.
+    in_use_updated: Option<String>,
 }
 
 impl Inner {

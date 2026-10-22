@@ -125,21 +125,31 @@ impl AccountRotation {
     ) -> Option<Choice> {
         let mut state = self.lock();
         let rooms = rooms(&state, entry, candidates, model, now);
-        let index = match rotation {
+        let (mode, picked) = match rotation {
             Rotation::Manual => return None,
-            Rotation::InOrder => rooms.iter().position(|room| room.usable()),
+            Rotation::InOrder => ("order", rooms.iter().position(|room| room.usable()).map(|index| (index, 1))),
             Rotation::Balanced => {
                 let running = |index: usize| {
                     let key = (entry.clone(), candidates[index].id.clone());
                     state.running.get(&key).copied().unwrap_or(0)
                 };
-                most_room(&rooms, running)
+                ("balance", most_room(&rooms, running))
             }
         };
-        let Some(index) = index else {
-            return Some(Choice::AllUsedUp {
-                earliest: earliest(&rooms),
-            });
+        let usable = rooms.iter().filter(|room| room.usable()).count();
+        let Some((index, tied)) = picked else {
+            let earliest = earliest(&rooms);
+            tracing::info!(
+                event = "account.chosen",
+                provider = %entry,
+                mode,
+                candidates = candidates.len(),
+                usable,
+                reason = "all_used_up",
+                earliest_ms = earliest.map(|moment| moment.as_millisecond()),
+                "no account of the entry can be used now"
+            );
+            return Some(Choice::AllUsedUp { earliest });
         };
         let account = (entry.clone(), candidates[index].id.clone());
         let running = state.running.entry(account.clone()).or_default();
@@ -148,15 +158,19 @@ impl AccountRotation {
             event = "account.chosen",
             provider = %entry,
             account = %account.1,
-            mode = if rotation == Rotation::InOrder { "order" } else { "balance" },
+            mode,
             candidates = candidates.len(),
-            usable = rooms.iter().filter(|room| room.usable()).count(),
+            usable,
             room_pct = match rooms[index] {
                 Room::Left { room, .. } => Some((room * 100.0).round().clamp(0.0, 10_000.0) as u64),
                 Room::UsedUp(_) => None,
             },
             running = *running as u64,
-            reason = if rotation == Rotation::InOrder { "first_usable" } else { "most_room" },
+            reason = match (rotation, tied) {
+                (Rotation::InOrder, _) => "first_usable",
+                (_, 1) => "most_room",
+                _ => "fewest_running_among_equal_room",
+            },
             "an account was chosen for an agent"
         );
         *running += 1;
@@ -193,7 +207,7 @@ impl AccountRotation {
             let key = (entry.clone(), candidates[index].id.clone());
             state.running.get(&key).copied().unwrap_or(0)
         };
-        most_room(&rooms, running).map(|index| candidates[index].id.clone())
+        most_room(&rooms, running).map(|(index, _)| candidates[index].id.clone())
     }
 
     /// When every account among `candidates` is used up for `model`, the
@@ -339,14 +353,15 @@ fn applies(window: &QuotaWindow, model: &Model) -> bool {
     model.name.to_lowercase().contains(&name) || model.id.to_lowercase().contains(&name)
 }
 
-/// The index of the account with the most room.
+/// The index of the account with the most room, and how many accounts were
+/// equal in room to it.
 ///
 /// - A window over 90% used leaves its account out while another account has
 ///   room.
 /// - Among the accounts within a tenth of the best room, the one `running` says
 ///   fewest agents run a turn on wins.
 /// - Then the first in the list wins.
-fn most_room(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<usize> {
+fn most_room(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<(usize, usize)> {
     let left: Vec<(usize, f64, f64)> = rooms
         .iter()
         .enumerate()
@@ -361,11 +376,15 @@ fn most_room(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<usize> 
         .filter(|(_, _, most_used)| !roomy || *most_used <= NEARLY_USED_UP)
         .collect();
     let best = eligible.iter().map(|(_, room, _)| *room).fold(f64::NAN, f64::max);
-    eligible
+    let equal: Vec<&(usize, f64, f64)> = eligible
         .into_iter()
         .filter(|(_, room, _)| *room >= best * (1.0 - EQUAL_ROOM))
+        .collect();
+    let tied = equal.len();
+    equal
+        .into_iter()
         .min_by_key(|(index, _, _)| (running(*index), *index))
-        .map(|(index, _, _)| *index)
+        .map(|(index, _, _)| (*index, tied))
 }
 
 /// The earliest moment an account of `rooms`, all used up, can be used

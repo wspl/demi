@@ -8,10 +8,14 @@
 //! - counted from the request, when the process was ready for the request's
 //!   input and when the first content delta came.
 //!
-//! The run logs them at `info` when it ends, so the time to a first word can be
-//! read from a backend's log without the wire trace.
+//! The run logs them at `info` when it ends, with how it ended, so the time to a
+//! first word can be read from a backend's log without the wire trace.
 
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
+
+use demi_provider_common::ProviderEvent;
 
 use tokio::time::Instant;
 use tracing::Span;
@@ -30,7 +34,7 @@ pub(crate) enum Took {
 }
 
 impl Took {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Kept => "kept",
             Self::Prepared => "prepared",
@@ -49,14 +53,20 @@ pub(crate) struct StartTiming {
     pub(crate) initialize: Option<Duration>,
 }
 
-/// The span of a run, with the fields its timing fills in.
-pub(crate) fn run_span(provider: &str, session: &str, request: &str) -> Span {
+/// The span of a run, with the fields its timing fills in. `node` is the
+/// session the run belongs to, which is its node's.
+pub(crate) fn run_span(provider: &str, node: &str, provider_request_id: &str, turn: &str) -> Span {
     tracing::info_span!(
         "claude_code_run",
         provider = %provider,
-        session = %session,
-        request = %request,
+        node = %node,
+        provider_request_id = %provider_request_id,
+        turn = %turn,
         process = tracing::field::Empty,
+        outcome = tracing::field::Empty,
+        error_code = tracing::field::Empty,
+        ms = tracing::field::Empty,
+        first_thinking_ms = tracing::field::Empty,
         admit_ms = tracing::field::Empty,
         executable_ms = tracing::field::Empty,
         directories_ms = tracing::field::Empty,
@@ -77,6 +87,10 @@ pub(crate) struct RunTiming {
     span: Span,
     start: Instant,
     first_delta: bool,
+    first_thinking: bool,
+    /// How the run ended, which the stream the agent reads sets as the run's
+    /// last event passes it; none when the agent dropped the stream first.
+    outcome: Rc<Cell<Option<&'static str>>>,
 }
 
 impl RunTiming {
@@ -85,7 +99,14 @@ impl RunTiming {
             span,
             start: Instant::now(),
             first_delta: false,
+            first_thinking: false,
+            outcome: Rc::new(Cell::new(None)),
         }
+    }
+
+    /// Where the stream that carries the run's events says how it ended.
+    pub(crate) fn outcome(&self) -> Rc<Cell<Option<&'static str>>> {
+        self.outcome.clone()
     }
 
     /// The run took a process as `took` says, whose start went as `start`
@@ -114,18 +135,30 @@ impl RunTiming {
         self.span.record("ready_ms", millis(self.start.elapsed()));
     }
 
-    /// A content delta reached the agent; the first one counts.
-    pub(crate) fn delta(&mut self) {
+    /// A content event reached the agent; the first counts, and the first of
+    /// the model's reasoning counts apart from the first text.
+    pub(crate) fn delta(&mut self, event: &ProviderEvent) {
         if !self.first_delta {
             self.first_delta = true;
             self.span.record("first_delta_ms", millis(self.start.elapsed()));
+        }
+        if !self.first_thinking
+            && matches!(
+                event,
+                ProviderEvent::ThinkingStart | ProviderEvent::ThinkingDelta(_) | ProviderEvent::RedactedThinking(_)
+            )
+        {
+            self.first_thinking = true;
+            self.span.record("first_thinking_ms", millis(self.start.elapsed()));
         }
     }
 }
 
 impl Drop for RunTiming {
     fn drop(&mut self) {
-        self.span.in_scope(|| tracing::info!("Claude Code run ended"));
+        self.span.record("outcome", self.outcome.get().unwrap_or("dropped"));
+        self.span.record("ms", millis(self.start.elapsed()));
+        self.span.in_scope(|| tracing::info!(event = "claude_code_run.ended", "Claude Code run ended"));
     }
 }
 

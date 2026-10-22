@@ -37,6 +37,7 @@ use tokio_util::sync::CancellationToken;
 use crate::Shared;
 use crate::live::{LiveCli, ProcessKey};
 use crate::placement::Placement;
+use crate::timing::Took;
 
 /// How long a prepared process waits for its request before it is closed.
 pub(crate) const UNUSED_FOR: Duration = Duration::from_secs(10 * 60);
@@ -80,6 +81,12 @@ impl PreparedProcesses {
         while seats.len() > MOST_ON_A_MACHINE {
             if let Some(oldest) = seats.pop_front() {
                 oldest.close.cancel();
+                tracing::info!(
+                    event = "claude_code_prepared.evicted",
+                    provider = oldest.entry,
+                    limit = MOST_ON_A_MACHINE,
+                    "a prepared process was closed for a newer one: the machine holds two"
+                );
             }
         }
         Seat {
@@ -247,7 +254,7 @@ async fn wait(
     let unused = tokio::time::sleep(UNUSED_FOR);
     tokio::pin!(unused);
     let started = async {
-        let mut live = LiveCli::start(&shared, &*placement, &request).await?;
+        let mut live = LiveCli::start(&shared, &*placement, &request, Took::Prepared).await?;
         live.prepare(&request).await?;
         Ok::<_, demi_provider_common::ProviderFailure>(live)
     };
@@ -270,10 +277,11 @@ async fn wait(
         Ok(live) => live,
         Err(failure) => {
             tracing::warn!(
+                event = "claude_code_prepared.start_failed",
                 provider = %shared.id,
-                session,
-                "a Claude Code process prepared ahead did not start: {}",
-                failure.message
+                node = session,
+                error = failure.message,
+                "a Claude Code process prepared ahead did not start"
             );
             return;
         }
@@ -298,8 +306,10 @@ async fn wait(
             }
             () = &mut unused => {
                 tracing::info!(
+                    event = "claude_code_prepared.unused",
                     provider = %shared.id,
-                    session,
+                    node = session,
+                    ms = u64::try_from(UNUSED_FOR.as_millis()).unwrap_or(u64::MAX),
                     "a Claude Code process prepared ahead went unused and was closed"
                 );
                 live.close().await;
@@ -309,10 +319,11 @@ async fn wait(
         };
         if let Err(failure) = live.answer_waiting(waited).await {
             tracing::warn!(
+                event = "claude_code_prepared.wait_failed",
                 provider = %shared.id,
-                session,
-                "a Claude Code process prepared ahead failed while it waited: {}",
-                failure.message
+                node = session,
+                error = failure.message,
+                "a Claude Code process prepared ahead failed while it waited"
             );
             live.close().await;
             return;

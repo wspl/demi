@@ -348,6 +348,24 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
+        let began = std::time::Instant::now();
+        let call_id = call.tool_use_id.clone();
+        let turn = call.turn.clone();
+        let ended = |command: Option<&CommandId>, outcome: &'static str, moved: Option<&'static str>, exit: Option<i32>| {
+            tracing::info!(
+                event = "shell_call.ended",
+                conversation = %self.root,
+                node = %self.node,
+                turn = %turn,
+                call = call_id,
+                command = command.map(tracing::field::display),
+                outcome,
+                moved,
+                held_ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX),
+                exit,
+                "a shell call returned"
+            );
+        };
         let cwd = self.cwd().await?;
         let (_, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         let request = ExecRequest {
@@ -380,9 +398,13 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             // the call's result is its offline error as it is, worded for
             // the model (`crates/backend-host-access/src/access.rs`).
             Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
+                ended(None, "failed_to_start", None, None);
                 return Ok(ToolOutcome::error(error.message));
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => {
+                ended(None, "failed_to_start", None, None);
+                return Err(error.into());
+            }
         };
         call.command.started(StartedCommand {
             command: command.clone(),
@@ -403,6 +425,21 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             (None, true) => Some(Moved::TimePassed),
             _ => None,
         };
+        let (outcome_name, exit) = match &status.state {
+            CommandState::Running { .. } => ("moved_to_background", None),
+            CommandState::Exited { exit_code, .. } => ("exited", Some(*exit_code)),
+            CommandState::Aborted => ("stopped", None),
+            CommandState::Lost { .. } => ("lost", None),
+        };
+        ended(
+            Some(&command),
+            outcome_name,
+            moved.map(|moved| match moved {
+                Moved::SentNow => "sent_now",
+                Moved::TimePassed => "time",
+            }),
+            exit,
+        );
         let mut outcome = result::shell_outcome(
             &status,
             &call.model.model,

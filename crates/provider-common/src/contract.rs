@@ -380,6 +380,31 @@ impl InferenceRequest {
     pub fn cache_session(&self) -> &str {
         self.affinity.as_deref().unwrap_or(&self.session_id)
     }
+
+    /// The hashes of the system prompt and of the tool definitions the request
+    /// sends, each the first 16 hex digits of a SHA-256: enough to tell two
+    /// prompts apart, which the usage ledger and the log both say.
+    pub fn prompt_hashes(&self) -> (String, String) {
+        use sha2::{Digest, Sha256};
+        let short = |text: &str| -> String {
+            Sha256::digest(text.as_bytes())[..8]
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect()
+        };
+        let tools: Vec<serde_json::Value> = self
+            .tools
+            .iter()
+            .map(|tool| {
+                serde_json::json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "inputSchema": tool.input_schema,
+                })
+            })
+            .collect();
+        (short(&self.system_prompt), short(&serde_json::Value::Array(tools).to_string()))
+    }
 }
 
 /// What a request is for (`crates/backend-database/src/usage.rs`).
@@ -729,6 +754,7 @@ impl ProviderEvent {
     pub fn response(usage: Option<TokenUsage>, provider: &str, model: &str) -> Self {
         if usage.is_none() {
             tracing::error!(
+                event = "usage.missing",
                 provider,
                 model,
                 "the vendor sent no usage for a response; the response reports none"

@@ -712,7 +712,14 @@ impl<H: HostResolver> Tree<H> {
         }
         for side in sides {
             if let Err(error) = side.node.session().dispose().await {
-                tracing::error!(node = %side.node.id(), %error, "the final checkpoint was not saved");
+                tracing::error!(
+                    event = "checkpoint.save_failed",
+                    conversation = %self.root.id(),
+                    node = %side.node.id(),
+                    stage = "side",
+                    %error,
+                    "the final checkpoint was not saved"
+                );
             }
         }
     }

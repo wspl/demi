@@ -58,6 +58,9 @@ pub(crate) struct SessionCore {
     /// only.
     request_blocks: RequestBlocks,
     pub(super) id: NodeId,
+    /// What the session's lines log in, with its conversation, node and user
+    /// (`SessionRuntime::log_span`).
+    pub(super) span: tracing::Span,
     /// The selection current now; every block records the one current when
     /// it was written.
     pub(super) model: ModelSelection,
@@ -141,6 +144,116 @@ pub(crate) struct SessionCore {
     runtime: Rc<dyn SessionRuntime>,
     requests: Requests,
     published: Published,
+    /// What made the execution change, which the next publication says: the
+    /// last cause set since it.
+    state_cause: &'static str,
+}
+
+/// Logs a call that completes as interrupted, in `span`, and what ended it. A
+/// crash is a restart that found calls with no result; any other end is the
+/// session's own.
+pub(crate) fn log_interrupted(
+    span: &tracing::Span,
+    node: &NodeId,
+    turn: Option<&TurnId>,
+    call: &demi_agent_transcript::PendingCall,
+    end: &CallEnd<'_>,
+    command: Option<&CommandId>,
+) {
+    let end_name = match end {
+        CallEnd::Stopped => "stopped",
+        CallEnd::Held(_) => "held",
+        CallEnd::Shutdown => "shutdown",
+        CallEnd::Crashed => "crashed",
+        CallEnd::Failed(_) => "failed",
+    };
+    let turn = turn.map(tracing::field::display);
+    let command = command.map(tracing::field::display);
+    if matches!(end, CallEnd::Crashed | CallEnd::Failed(_)) {
+        tracing::warn!(
+            parent: span,
+            event = "tool_call.interrupted",
+            node = %node,
+            turn,
+            call = call.tool_use_id,
+            tool = call.tool_name,
+            end = end_name,
+            command,
+            "a tool call ended without its result"
+        );
+    } else {
+        tracing::info!(
+            parent: span,
+            event = "tool_call.interrupted",
+            node = %node,
+            turn,
+            call = call.tool_use_id,
+            tool = call.tool_name,
+            end = end_name,
+            command,
+            "a tool call ended without its result"
+        );
+    }
+}
+
+/// What made the node wait for the model's answer.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum WaitStart {
+    /// The action started.
+    TurnStart,
+    /// The calls of a step returned, and the next request follows them.
+    ToolRound,
+    /// Input arrived while the turn ran, and the next request carries it.
+    InputArrived,
+    /// A failed request is asked again.
+    Retry,
+    /// The model finished a text and goes on within its run.
+    TextEnded,
+    /// A compaction pass ended inside the turn.
+    CompactionEnd,
+}
+
+impl WaitStart {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::TurnStart => "turn_start",
+            Self::ToolRound => "tool_round",
+            Self::InputArrived => "input_arrived",
+            Self::Retry => "retry",
+            Self::TextEnded => "text_ended",
+            Self::CompactionEnd => "compaction_end",
+        }
+    }
+}
+
+/// What ended the node's wait for the model's answer.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum WaitEnd {
+    /// The model began to answer, reasoning or text.
+    FirstOutput,
+    /// The model named a call it is still writing.
+    CallTitle,
+    /// A compaction pass began, which the page shows in its place.
+    CompactionPass,
+    /// The action ended.
+    ActionEnd,
+    /// The user sent a message now, which restarts the wait.
+    SteerNow,
+    /// Dispose closed the session.
+    Shutdown,
+}
+
+impl WaitEnd {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::FirstOutput => "first_output",
+            Self::CallTitle => "call_title",
+            Self::CompactionPass => "compaction_pass",
+            Self::ActionEnd => "action_end",
+            Self::SteerNow => "steer_now",
+            Self::Shutdown => "shutdown",
+        }
+    }
 }
 
 /// What the session is doing.
@@ -175,6 +288,26 @@ pub(super) struct ActionRun {
     send_now: Option<SendNow>,
     /// Taken by the worker when it starts the action.
     start: Option<StartedAction>,
+    /// When the action started, for its end's line.
+    began: Timestamp,
+    /// How long the message that started the action waited in the queue.
+    queued_ms: u64,
+    /// When the user stopped the action, until it records the stop.
+    stop_at: Option<Timestamp>,
+    /// What the log calls the action.
+    kind_name: &'static str,
+    /// What the action's turn did, which its end's line counts.
+    tally: TurnTally,
+}
+
+/// What a running action's turn did, which its end line counts.
+#[derive(Default)]
+struct TurnTally {
+    requests: u32,
+    tool_rounds: u32,
+    compactions: u32,
+    /// A message the user sent now ended the turn at a boundary.
+    yielded: bool,
 }
 
 /// What the user sent now. A queued message outranks a steer: both are
@@ -212,6 +345,8 @@ pub(super) struct PendingAction {
     turn: TurnId,
     /// Answered when the action ends, or when it leaves the queue.
     reply: Option<ActionReply>,
+    /// When it was admitted, for the line that says how long it waited.
+    admitted_at: Timestamp,
 }
 
 impl PendingAction {
@@ -303,6 +438,21 @@ pub(super) enum ActionKind {
     },
 }
 
+impl ActionKind {
+    /// The name the log gives the action.
+    pub(super) fn name(&self) -> &'static str {
+        match self {
+            Self::Send { .. } => "send",
+            Self::Continue => "continue",
+            Self::Retry => "retry",
+            Self::Resume { .. } => "resume",
+            Self::Compact => "compact",
+            Self::Edit => "edit",
+            Self::Switch { .. } => "switch",
+        }
+    }
+}
+
 /// What one `abort` found to stop.
 pub(super) enum AbortStep {
     /// The running action, which records the stop; `abort` waits for that.
@@ -348,6 +498,9 @@ struct Published {
     edits: usize,
     waiting_since: Option<Timestamp>,
     output: Option<StreamedOutput>,
+    execution: Execution,
+    /// When it changed to it; none until it first changes.
+    execution_at: Option<Timestamp>,
 }
 
 /// The output of one request: estimated as it streams, then the response's
@@ -473,6 +626,7 @@ impl SessionCore {
             writing: Vec::new(),
             request_blocks: RequestBlocks::default(),
             id: parts.id,
+            span: parts.runtime.log_span(),
             model: parts.model,
             provider: ProviderSlot::Held(parts.provider),
             switch: None,
@@ -518,7 +672,10 @@ impl SessionCore {
                 edits: 0,
                 waiting_since: None,
                 output: None,
+                execution: Execution::Idle,
+                execution_at: None,
             },
+            state_cause: "",
         };
         // What the checkpoint holds counts as published: only later changes
         // make a save due.
@@ -743,6 +900,23 @@ impl SessionCore {
         if self.knows_turn(&id) {
             return Ok(ActionHandle::ended(ActionEnd::Duplicate));
         }
+        let path = if matches!(self.activity, Activity::Idle) && self.pending.is_empty() {
+            "starts_turn"
+        } else {
+            "after_turn"
+        };
+        session_log!(
+            self,
+            info,
+            event = "input.admitted",
+            node = %self.id,
+            turn = %id,
+            input = %id,
+            kind = "user",
+            path,
+            queued_ahead = self.pending.len(),
+            "a message was admitted"
+        );
         Ok(self.push_action(ActionKind::Send { content, comments, automation }, id))
     }
 
@@ -759,6 +933,7 @@ impl SessionCore {
             kind,
             turn,
             reply: Some(reply),
+            admitted_at: self.clock.now(),
         });
         if matches!(self.activity, Activity::Idle) {
             self.start_next();
@@ -788,20 +963,27 @@ impl SessionCore {
             self.activity = Activity::Closed { interrupted: false };
             return;
         }
-        let (kind, turn, reply) = match self.pending.pop_front() {
-            Some(action) => (action.kind, action.turn, action.reply),
-            None if self.wants_continuation() => (ActionKind::Continue, self.new_turn(), None),
+        let (kind, turn, reply, queued_ms) = match self.pending.pop_front() {
+            Some(action) => {
+                let queued_ms = self.ms_since(action.admitted_at);
+                (action.kind, action.turn, action.reply, queued_ms)
+            }
+            None if self.wants_continuation() => {
+                let cause = if self.inputs.has_report() { "report" } else { "agent_message" };
+                self.log_wakeup(cause);
+                (ActionKind::Continue, self.new_turn(), None, 0)
+            }
             None => {
                 self.activity = Activity::Idle;
                 self.write_into_failed_turn();
                 return;
             }
         };
-        self.start_action(kind, turn, reply);
+        self.start_action(kind, turn, reply, queued_ms);
     }
 
     /// Runs `kind` as the session's action, writing `turn`.
-    fn start_action(&mut self, kind: ActionKind, turn: TurnId, reply: Option<ActionReply>) {
+    fn start_action(&mut self, kind: ActionKind, turn: TurnId, reply: Option<ActionReply>, queued_ms: u64) {
         let cancel = TurnCancel::new();
         self.held = false;
         let unwritten = match &kind {
@@ -816,9 +998,8 @@ impl SessionCore {
         // A turn waits for the model's answer from its start, through the
         // hooks and the Host reads that build its request; a compaction
         // alone asks for none.
-        if !matches!(kind, ActionKind::Compact) {
-            self.start_waiting();
-        }
+        let waits = !matches!(kind, ActionKind::Compact);
+        let kind_name = kind.name();
         self.activity = Activity::Running(ActionRun {
             turn: turn.clone(),
             cancel: cancel.clone(),
@@ -826,6 +1007,11 @@ impl SessionCore {
             started_at: self.transcript.version().revision,
             unwritten,
             send_now: None,
+            began: self.clock.now(),
+            queued_ms,
+            stop_at: None,
+            kind_name,
+            tally: TurnTally::default(),
             start: Some(StartedAction {
                 kind,
                 turn,
@@ -833,6 +1019,10 @@ impl SessionCore {
                 reply,
             }),
         });
+        if waits {
+            self.start_waiting(WaitStart::TurnStart);
+        }
+        self.state_cause = "action_started";
         self.requests.wake_worker = true;
     }
 
@@ -872,7 +1062,7 @@ impl SessionCore {
         let Some(turn) = self.transcript.last_turn().cloned() else {
             return;
         };
-        self.write_inputs_into(turn, Take::Everything);
+        self.write_inputs_into(turn, Take::Everything, "failed_turn");
     }
 
     /// Keeps waiting input from opening a continuation until the node's
@@ -904,7 +1094,8 @@ impl SessionCore {
     fn wake_for_user(&mut self) {
         if matches!(self.activity, Activity::Idle) && self.pending.is_empty() && !self.disposing {
             let turn = self.new_turn();
-            self.start_action(ActionKind::Continue, turn, None);
+            self.log_wakeup("user_decision");
+            self.start_action(ActionKind::Continue, turn, None, 0);
         }
     }
 
@@ -918,6 +1109,12 @@ impl SessionCore {
     pub(super) fn set_stage(&mut self, stage: TurnStage) {
         if let Activity::Running(run) = &mut self.activity {
             run.stage = stage;
+            self.state_cause = match stage {
+                TurnStage::Preparing => "step_ended",
+                TurnStage::Streaming => "request_sent",
+                TurnStage::Tools => "calls_requested",
+                TurnStage::Compacting => "compaction_pass",
+            };
         }
     }
 
@@ -932,6 +1129,112 @@ impl SessionCore {
     pub(super) fn turn(&self) -> TurnId {
         self.running_turn()
             .unwrap_or_else(|| unreachable!("only a running action writes a turn"))
+    }
+
+    /// Counts a provider request of the running turn, and says its number.
+    pub(super) fn count_request(&mut self) -> u32 {
+        match &mut self.activity {
+            Activity::Running(run) => {
+                run.tally.requests += 1;
+                run.tally.requests
+            }
+            _ => 0,
+        }
+    }
+
+    /// Milliseconds from `at` to now.
+    fn ms_since(&self, at: Timestamp) -> u64 {
+        u64::try_from(self.clock.now().as_millisecond() - at.as_millisecond()).unwrap_or(0)
+    }
+
+    /// An idle session opens a turn of its own for waiting input or a decision.
+    fn log_wakeup(&self, cause: &'static str) {
+        session_log!(
+            self,
+            info,
+            event = "wakeup.opened_turn",
+            node = %self.id,
+            cause,
+            reports = self.inputs.reports(Opens::Turn).len(),
+            held = self.held,
+            "waiting input opened a turn"
+        );
+    }
+
+    /// How many provider requests the running turn has made.
+    pub(super) fn requests_so_far(&self) -> u32 {
+        match &self.activity {
+            Activity::Running(run) => run.tally.requests,
+            _ => 0,
+        }
+    }
+
+    /// Counts a step of tool calls the running turn ran.
+    pub(super) fn count_tool_round(&mut self) {
+        if let Activity::Running(run) = &mut self.activity {
+            run.tally.tool_rounds += 1;
+        }
+    }
+
+    /// Counts a compaction pass that compacted inside the running action.
+    pub(super) fn count_compaction(&mut self) {
+        if let Activity::Running(run) = &mut self.activity {
+            run.tally.compactions += 1;
+        }
+    }
+
+    /// The running turn ends at a boundary for a message the user sent now.
+    pub(super) fn yield_turn(&mut self) {
+        if let Activity::Running(run) = &mut self.activity {
+            run.tally.yielded = true;
+        }
+    }
+
+    /// Says the running turn goes on with another provider request, and why.
+    pub(super) fn log_continued(&self, why: &'static str) {
+        let Activity::Running(run) = &self.activity else {
+            return;
+        };
+        session_log!(
+            self,
+            info,
+            event = "turn.continued",
+            node = %self.id,
+            turn = %run.turn,
+            request_no = run.tally.requests + 1,
+            why,
+            "the turn asks the model again"
+        );
+    }
+
+    /// The running action ends, as `outcome` says: one line with what its
+    /// turn did.
+    pub(super) fn log_turn_ended(&self, outcome: &'static str, code: Option<&str>) {
+        let Activity::Running(run) = &self.activity else {
+            return;
+        };
+        let ms = self.ms_since(run.began);
+        session_log!(
+            self,
+            info,
+            event = "turn.ended",
+            node = %self.id,
+            turn = %run.turn,
+            action = run.kind_name,
+            outcome = match outcome {
+                "answered" if run.tally.yielded => "yielded",
+                // An action that asks the model nothing, such as a compaction
+                // or an edit's save, ends as completed, not as answered.
+                "answered" if matches!(run.kind_name, "compact" | "edit" | "switch") => "completed",
+                outcome => outcome,
+            },
+            code,
+            requests = run.tally.requests,
+            tool_rounds = run.tally.tool_rounds,
+            compactions = run.tally.compactions,
+            ms,
+            "an action ended"
+        );
     }
 
     /// The turn of the running action; none while no action runs.
@@ -954,13 +1257,14 @@ impl SessionCore {
     /// still pending are dropped.
     pub(super) fn end_action(&mut self) {
         self.activity = Activity::Finishing;
+        self.state_cause = "action_ended";
         // The closing save records the session idle, also after an action
         // whose last save recorded it running and that changed nothing
         // since, as a compaction pass.
         if self.persist.recorded != SessionPhase::Idle {
             self.mark_state_changed();
         }
-        self.stop_waiting();
+        self.stop_waiting(WaitEnd::ActionEnd);
         self.end_turn_output();
         self.editing = None;
         self.inputs.discard_steers();
@@ -990,15 +1294,18 @@ impl SessionCore {
         self.reject_edit(EditError::Closed);
         if began {
             self.record_stop(CancelReason::Shutdown);
+            self.log_turn_ended("interrupted", None);
         } else if let ActionKind::Send { content, comments, automation } = kind {
             self.pending.push_front(PendingAction {
                 kind: ActionKind::Send { content, comments, automation },
                 turn: turn.clone(),
                 reply: None,
+                admitted_at: self.clock.now(),
             });
         }
+        self.stop_waiting(WaitEnd::Shutdown);
+        self.state_cause = "closed";
         self.activity = Activity::Closed { interrupted: began };
-        self.stop_waiting();
         began
     }
 
@@ -1010,20 +1317,33 @@ impl SessionCore {
         if self.disposing {
             return AbortStep::Nothing;
         }
-        if let Activity::Running(run) = &self.activity
+        let now = self.clock.now();
+        if let Activity::Running(run) = &mut self.activity
             && !run.cancel.is_cancelled()
         {
-            let target = match run.stage {
-                TurnStage::Preparing => AbortTarget::ActiveTurn,
-                TurnStage::Streaming => AbortTarget::ActiveProviderStream,
-                TurnStage::Tools => AbortTarget::ActiveTool,
-                TurnStage::Compacting => AbortTarget::ActiveCompaction,
+            let (target, stage) = match run.stage {
+                TurnStage::Preparing => (AbortTarget::ActiveTurn, "preparing"),
+                TurnStage::Streaming => (AbortTarget::ActiveProviderStream, "streaming"),
+                TurnStage::Tools => (AbortTarget::ActiveTool, "tools"),
+                TurnStage::Compacting => (AbortTarget::ActiveCompaction, "compacting"),
             };
             run.cancel.cancel(CancelReason::Stop);
-            return AbortStep::Running {
-                target,
-                cancel: run.cancel.clone(),
-            };
+            run.stop_at = Some(now);
+            let cancel = run.cancel.clone();
+            let turn = run.turn.clone();
+            session_log!(
+                self,
+                info,
+                event = "stop.requested",
+                node = %self.id,
+                turn = %turn,
+                stage,
+                target = %target,
+                commands_running = self.watched.commands().len(),
+                pending_calls = self.transcript.pending_tool_calls().len(),
+                "the user stopped the running action"
+            );
+            return AbortStep::Running { target, cancel };
         }
         if let Some(mut action) = self.pending.pop_front() {
             action.end(ActionEnd::Dropped);
@@ -1031,8 +1351,27 @@ impl SessionCore {
                 ActionKind::Send { .. } => AbortTarget::QueuedMessage,
                 _ => AbortTarget::QueuedAction,
             };
+            session_log!(
+                self,
+                info,
+                event = "stop.requested",
+                node = %self.id,
+                stage = "pending",
+                target = %target,
+                commands_running = self.watched.commands().len(),
+                "the user stopped a waiting action"
+            );
             return AbortStep::Removed(target);
         }
+        session_log!(
+            self,
+            info,
+            event = "stop.requested",
+            node = %self.id,
+            stage = "idle",
+            commands_running = self.watched.commands().len(),
+            "the user stopped a session with nothing to stop"
+        );
         AbortStep::Nothing
     }
 
@@ -1073,27 +1412,52 @@ impl SessionCore {
             CancelReason::Stop | CancelReason::Hold(_) => Take::Everything,
             CancelReason::Shutdown => Take::Steers,
         };
-        self.write_inputs(take);
+        self.write_inputs(take, if matches!(reason, CancelReason::Shutdown) { "shutdown" } else { "stop" });
         let end = match &reason {
             CancelReason::Stop => CallEnd::Stopped,
             CancelReason::Hold(hold) => CallEnd::Held(hold),
             CancelReason::Shutdown => CallEnd::Shutdown,
         };
-        self.abort_executing_calls(&end);
-        match reason {
+        let calls_aborted = self.abort_executing_calls(&end);
+        let marker_written = match reason {
             CancelReason::Stop | CancelReason::Hold(_) if self.action_began() => {
-                self.transcript.push_abort(&self.model)
+                self.transcript.push_abort(&self.model);
+                true
             }
-            CancelReason::Stop | CancelReason::Hold(_) => {}
-            CancelReason::Shutdown => self.append_interruption(),
-        }
+            CancelReason::Stop | CancelReason::Hold(_) => false,
+            CancelReason::Shutdown => {
+                self.append_interruption();
+                true
+            }
+        };
         self.commit();
+        let (turn, stopped_ms) = match &self.activity {
+            Activity::Running(run) => (Some(run.turn.clone()), run.stop_at.map(|at| self.ms_since(at))),
+            _ => (None, None),
+        };
+        session_log!(
+            self,
+            info,
+            event = "stop.settled",
+            node = %self.id,
+            turn = turn.as_ref().map(tracing::field::display),
+            reason = match &reason {
+                CancelReason::Stop => "user",
+                CancelReason::Hold(_) => "hold",
+                CancelReason::Shutdown => "shutdown",
+            },
+            ms = stopped_ms,
+            calls_aborted,
+            commands_left_running = self.watched.commands().len(),
+            marker_written,
+            "a stopped action recorded its stop"
+        );
     }
 
     /// A failed action writes all waiting input and completes the calls it
     /// did not run, then reports the failure.
     pub(super) fn fail(&mut self, report: &ErrorReport) {
-        self.write_inputs(Take::Everything);
+        self.write_inputs(Take::Everything, "failure");
         self.abort_executing_calls(&CallEnd::Failed(&report.message));
         self.commit();
         self.outbox.push(SessionEvent::Error {
@@ -1129,12 +1493,15 @@ impl SessionCore {
     /// later report and notice find their call. A command the backend's
     /// shutdown leaves running reports to the node from its next start, as one
     /// a call left running does.
-    fn abort_executing_calls(&mut self, end: &CallEnd<'_>) {
-        for call in self.transcript.pending_tool_calls() {
+    fn abort_executing_calls(&mut self, end: &CallEnd<'_>) -> usize {
+        let calls = self.transcript.pending_tool_calls();
+        let aborted = calls.len();
+        for call in calls {
             let started = self
                 .calls
                 .remove(&call.tool_use_id)
                 .and_then(|handle| handle.command());
+            self.log_call_interrupted(&call, end, started.as_ref().map(|started| &started.command));
             let mut text = interrupted_text(end, started.as_ref().map(|started| &started.command));
             let view = started.as_ref().map(|started| {
                 // The call shows how far its command got, as a result does.
@@ -1167,6 +1534,14 @@ impl SessionCore {
                 true,
                 view,
             );
+        }
+        aborted
+    }
+
+    /// Says that a call's result is an interruption, and what ended it.
+    fn log_call_interrupted(&self, call: &demi_agent_transcript::PendingCall, end: &CallEnd<'_>, command: Option<&CommandId>) {
+        if !self.one_request {
+            log_interrupted(&self.span, &self.id, self.running_turn().as_ref(), call, end, command);
         }
     }
 
@@ -1211,8 +1586,21 @@ impl SessionCore {
         let Some(mut action) = self.take_queued(id) else {
             return false;
         };
+        self.log_recalled(id.as_str(), "queued");
         action.end(ActionEnd::Dropped);
         true
+    }
+
+    fn log_recalled(&self, input: &str, from: &'static str) {
+        session_log!(
+            self,
+            info,
+            event = "input.recalled",
+            node = %self.id,
+            input,
+            from,
+            "a waiting message was taken back"
+        );
     }
 
     /// Moves a queued message ahead of every other, so it runs next.
@@ -1240,6 +1628,17 @@ impl SessionCore {
             return false;
         }
         self.cut_round(SendNow::Message);
+        session_log!(
+            self,
+            info,
+            event = "input.admitted",
+            node = %self.id,
+            turn = self.running_turn().map(tracing::field::display),
+            input = %id,
+            kind = "queued",
+            path = "send_now",
+            "a queued message was sent now"
+        );
         true
     }
 
@@ -1247,16 +1646,19 @@ impl SessionCore {
         if self.disposing {
             return 0;
         }
-        let mut cleared = 0;
+        let mut cleared = Vec::new();
         self.pending.retain_mut(|action| {
             if !action.is_send() {
                 return true;
             }
             action.end(ActionEnd::Dropped);
-            cleared += 1;
+            cleared.push(action.turn.clone());
             false
         });
-        cleared
+        for turn in &cleared {
+            self.log_recalled(turn.as_str(), "queued");
+        }
+        cleared.len()
     }
 
     fn take_queued(&mut self, id: &TurnId) -> Option<PendingAction> {
@@ -1297,6 +1699,19 @@ impl SessionCore {
             return Ok(());
         }
         let turn = self.steerable_turn()?;
+        session_log!(
+            self,
+            info,
+            event = "input.admitted",
+            node = %self.id,
+            turn = %turn,
+            input = %id,
+            kind = "steer",
+            path = "pending_for_boundary",
+            pending = self.inputs.pending_steers().len() + 1,
+            "a steer was admitted for the turn's next boundary"
+        );
+        self.inputs.note_admitted(id.as_str(), self.clock.now());
         self.inputs.add(Input::Steer(PendingSteer {
             id,
             turn_id: turn,
@@ -1322,7 +1737,11 @@ impl SessionCore {
     }
 
     pub(super) fn cancel_steer(&mut self, id: &BlockId) -> bool {
-        self.inputs.cancel_steer(id)
+        let recalled = self.inputs.cancel_steer(id);
+        if recalled {
+            self.log_recalled(id.as_str(), "pending");
+        }
+        recalled
     }
 
     /// Delivers the pending steer `id` now: the turn's round is cut
@@ -1337,8 +1756,20 @@ impl SessionCore {
             return;
         }
         self.cut_round(SendNow::Steer);
+        session_log!(
+            self,
+            info,
+            event = "input.admitted",
+            node = %self.id,
+            turn = self.running_turn().map(tracing::field::display),
+            input = %id,
+            kind = "steer",
+            path = "send_now",
+            "a pending steer was sent now"
+        );
         if self.send_now_pending() && self.waiting_since.is_some() {
-            self.waiting_since = Some(self.clock.now());
+            self.stop_waiting(WaitEnd::SteerNow);
+            self.start_waiting(WaitStart::InputArrived);
         }
     }
 
@@ -1421,6 +1852,20 @@ impl SessionCore {
             _ => TurnId::try_from(message.id.as_str()).expect("a message id is never empty"),
         };
         let from_product = message.event.is_from_product();
+        session_log!(
+            self,
+            info,
+            event = "input.admitted",
+            node = %self.id,
+            turn = %turn_id,
+            input = %message.id,
+            kind = "agent_message",
+            from_node = message.sender.as_ref().map(|sender| sender.id.to_string()),
+            path = if matches!(self.activity, Activity::Running(_)) { "pending_for_boundary" } else { "starts_turn" },
+            held = self.held,
+            "an agent message was admitted"
+        );
+        self.inputs.note_admitted(message.id.as_str(), self.clock.now());
         self.inputs.add(Input::Agent(PendingAgentInput {
             turn_id,
             model: self.model.clone(),
@@ -1440,13 +1885,13 @@ impl SessionCore {
     /// The command reports among it are one `wakeup` block, one paragraph each,
     /// where the first of them arrived. Returns whether an agent message was
     /// written, which is saved at once.
-    pub(super) fn write_inputs(&mut self, take: Take) -> bool {
+    pub(super) fn write_inputs(&mut self, take: Take, boundary: &'static str) -> bool {
         let turn = self.turn();
-        self.write_inputs_into(turn, take)
+        self.write_inputs_into(turn, take, boundary)
     }
 
     /// [`write_inputs`](Self::write_inputs) into `turn`.
-    fn write_inputs_into(&mut self, turn: TurnId, take: Take) -> bool {
+    fn write_inputs_into(&mut self, turn: TurnId, take: Take, boundary: &'static str) -> bool {
         self.drop_seen_ends();
         let inputs = self.inputs.take(take);
         if inputs.is_empty() {
@@ -1463,16 +1908,18 @@ impl SessionCore {
         for input in inputs {
             match input {
                 Input::Steer(steer) => {
+                    self.log_written(&turn, steer.id.as_str(), "steer", boundary);
                     self.transcript
                         .push_steer(steer.id, turn.clone(), &steer.model, steer.content, steer.comments);
                 }
                 Input::Report(..) if reports.is_empty() => {}
                 Input::Report(..) => {
                     let reports = mem::take(&mut reports);
-                    self.push_reports(turn.clone(), WakeupPlacement::Steer, reports);
+                    self.push_reports(turn.clone(), WakeupPlacement::Steer, reports, boundary);
                 }
                 Input::Agent(input) => {
                     agent_message = true;
+                    self.log_written(&turn, input.message.id.as_str(), "agent_message", boundary);
                     // A message no agent sent is the user's or Demi's,
                     // which ends a run wherever it stands.
                     let sender_below = input
@@ -1489,6 +1936,23 @@ impl SessionCore {
         agent_message
     }
 
+    /// A steer or an agent message is written into `turn` at `boundary`.
+    fn log_written(&mut self, turn: &TurnId, input: &str, kind: &'static str, boundary: &'static str) {
+        let pending_ms = self.inputs.take_admitted(input).map(|at| self.ms_since(at));
+        session_log!(
+            self,
+            info,
+            event = "input.written",
+            node = %self.id,
+            turn = %turn,
+            input,
+            kind,
+            boundary,
+            pending_ms,
+            "waiting input was written into its turn"
+        );
+    }
+
     /// Writes what a continuation opens with: the command reports as one
     /// `wakeup` block that opens the turn, or else the waiting agent messages.
     ///
@@ -1499,12 +1963,12 @@ impl SessionCore {
         let reports = self.inputs.take_reports();
         if !reports.is_empty() {
             let turn = self.turn();
-            self.push_reports(turn, WakeupPlacement::NewTurn, reports);
+            self.push_reports(turn, WakeupPlacement::NewTurn, reports, "continuation");
             self.commit();
             return Some(false);
         }
         if self.inputs.has_agent_input() {
-            return Some(self.write_inputs(Take::Everything));
+            return Some(self.write_inputs(Take::Everything, "continuation"));
         }
         None
     }
@@ -1512,7 +1976,26 @@ impl SessionCore {
     /// A `wakeup` block of command reports, in the order they arrived, each
     /// readied as it is written: only now does it move the node's place in
     /// its command's output.
-    fn push_reports(&mut self, turn: TurnId, placement: WakeupPlacement, mut reports: Vec<CommandReport>) {
+    fn push_reports(
+        &mut self,
+        turn: TurnId,
+        placement: WakeupPlacement,
+        mut reports: Vec<CommandReport>,
+        boundary: &'static str,
+    ) {
+        session_log!(
+            self,
+            info,
+            event = "command_report.written",
+            node = %self.id,
+            turn = %turn,
+            placement = %placement,
+            boundary,
+            reports = reports.len(),
+            commands = reports.iter().map(|report| report.command_id.as_str()).collect::<std::collections::BTreeSet<_>>().len(),
+            ends = reports.iter().filter(|report| is_end(report)).count(),
+            "command reports were written into a turn"
+        );
         for report in &mut reports {
             self.runtime.write_report(report);
         }
@@ -1538,11 +2021,52 @@ impl SessionCore {
     /// (`crates/agent-session/src/reports.rs`). A session that is closing keeps
     /// no more input.
     pub(super) fn admit_report(&mut self, report: CommandReport, opens: Opens) {
-        if self.disposing || end_seen(self.runtime.as_ref(), &report) {
+        let dropped = if self.disposing {
+            Some("closing")
+        } else if end_seen(self.runtime.as_ref(), &report) {
+            Some("seen_in_look")
+        } else {
+            None
+        };
+        if let Some(reason) = dropped {
+            self.log_report_dropped(&report, reason);
             return;
         }
+        let running = matches!(self.activity, Activity::Running(_));
+        let waits = self.held || self.failed_turn_holds();
+        session_log!(
+            self,
+            info,
+            event = "command_report.admitted",
+            node = %self.id,
+            turn = self.running_turn().map(tracing::field::display),
+            command = %report.command_id,
+            kind = report_kind(&report),
+            placement = match (running, opens, waits) {
+                (true, ..) => "into_open_turn",
+                (false, Opens::Turn, false) => "opens_turn",
+                _ => "waits",
+            },
+            turn_open = running,
+            held = self.held,
+            "a command report was admitted"
+        );
         self.inputs.add(Input::Report(report, opens));
         self.wake();
+    }
+
+    fn log_report_dropped(&self, report: &CommandReport, reason: &'static str) {
+        session_log!(
+            self,
+            info,
+            event = "command_report.dropped",
+            node = %self.id,
+            turn = self.running_turn().map(tracing::field::display),
+            command = %report.command_id,
+            kind = report_kind(report),
+            reason,
+            "a command report was dropped"
+        );
     }
 
     /// Whether input arrived since `before` that is still to be written:
@@ -1556,7 +2080,9 @@ impl SessionCore {
     /// since they were made.
     fn drop_seen_ends(&mut self) {
         let runtime = self.runtime.clone();
-        self.inputs.retain_reports(|report| !end_seen(runtime.as_ref(), report));
+        for report in self.inputs.retain_reports(|report| !end_seen(runtime.as_ref(), report)) {
+            self.log_report_dropped(&report, "seen_in_look");
+        }
     }
 
     // The model selection.
@@ -1599,10 +2125,25 @@ impl SessionCore {
             return Vec::new();
         };
         let mut replaced = mem::take(&mut self.retired);
+        let new_runtime = switch.runtime.is_some();
         if let Some(runtime) = switch.runtime {
             replaced.extend(self.place_runtime(runtime));
         }
         if self.model != *switch.model {
+            session_log!(
+                self,
+                info,
+                event = "model_switch.applied",
+                node = %self.id,
+                turn = self.running_turn().map(tracing::field::display),
+                from_provider = %self.model.provider_id,
+                to_provider = %switch.model.provider_id,
+                from_model = self.model.model.id,
+                to_model = switch.model.model.id,
+                new_runtime,
+                replayed_blocks = self.replayed().len(),
+                "a model switch landed"
+            );
             self.model = *switch.model;
             self.persist.dirty = true;
             self.requests.save = true;
@@ -1637,6 +2178,21 @@ impl SessionCore {
         preamble: Option<String>,
         automation: Option<AutomationMark>,
     ) {
+        session_log!(
+            self,
+            info,
+            event = "input.written",
+            node = %self.id,
+            turn = %turn,
+            input = %turn,
+            kind = "user",
+            boundary = "turn_start",
+            pending_ms = match &self.activity {
+                Activity::Running(run) => run.queued_ms,
+                _ => 0,
+            },
+            "a message was written into its turn"
+        );
         self.transcript
             .push_user(turn, &self.model, content, comments, preamble, automation);
         if let Activity::Running(run) = &mut self.activity {
@@ -1693,8 +2249,10 @@ impl SessionCore {
         self.count_output(&event);
         let before = self.transcript.len();
         self.apply_event_to_transcript(event);
-        if shows || self.writing.iter().any(|writing| writing.call.description.is_some()) {
-            self.stop_waiting();
+        if shows {
+            self.stop_waiting(WaitEnd::FirstOutput);
+        } else if self.writing.iter().any(|writing| writing.call.description.is_some()) {
+            self.stop_waiting(WaitEnd::CallTitle);
         }
         // The blocks a run's events write, which its entries name by
         // position (`EntriesOf::Output`).
@@ -1931,15 +2489,36 @@ impl SessionCore {
     /// The node's turn needs the model's next answer: it waits from now,
     /// unless a wait runs already, whose clock runs on, as across a
     /// retry.
-    pub(super) fn start_waiting(&mut self) {
+    pub(super) fn start_waiting(&mut self, cause: WaitStart) {
         if self.waiting_since.is_none() {
             self.waiting_since = Some(self.clock.now());
+            session_log!(
+                self,
+                info,
+                event = "model_wait.started",
+                node = %self.id,
+                turn = self.running_turn().map(tracing::field::display),
+                cause = cause.as_str(),
+                "the node began to wait for the model"
+            );
         }
     }
 
     /// The model's output shows, a compaction pass begins, or the action
     /// ended.
-    pub(super) fn stop_waiting(&mut self) {
+    pub(super) fn stop_waiting(&mut self, by: WaitEnd) {
+        if let Some(ms) = self.waited_ms() {
+            session_log!(
+                self,
+                info,
+                event = "model_wait.ended",
+                node = %self.id,
+                turn = self.running_turn().map(tracing::field::display),
+                ms,
+                by = by.as_str(),
+                "the node stopped waiting for the model"
+            );
+        }
         self.waiting_since = None;
     }
 
@@ -2575,6 +3154,25 @@ impl SessionCore {
             self.published.pending_calls = pending_calls.clone();
             events.push(SessionEvent::PendingCallsChanged { pending_calls });
         }
+        let execution = self.execution();
+        if execution != self.published.execution {
+            let ms_in_from = self.published.execution_at.map(|at| self.ms_since(at));
+            session_log!(
+                self,
+                info,
+                event = "node.state_changed",
+                node = %self.id,
+                turn = self.running_turn().map(tracing::field::display),
+                from = self.published.execution.as_str(),
+                to = execution.as_str(),
+                cause = if self.state_cause.is_empty() { "state_changed" } else { self.state_cause },
+                ms_in_from,
+                "the node changed what it does"
+            );
+            self.published.execution = execution;
+            self.published.execution_at = Some(self.clock.now());
+            self.state_cause = "";
+        }
         let phase = self.phase();
         if phase != self.published.phase {
             self.published.phase = phase;
@@ -2677,6 +3275,16 @@ fn replace_switch(
 /// no look attaches, without the output the look showed.
 fn end_seen(runtime: &dyn SessionRuntime, report: &CommandReport) -> bool {
     is_end(report) && report.media.is_empty() && runtime.end_seen(&report.command_id)
+}
+
+/// What a report tells, as the log names it.
+fn report_kind(report: &CommandReport) -> &'static str {
+    match report.event {
+        ReportEvent::Running { .. } => "silence",
+        ReportEvent::Ended { .. } => "end",
+        ReportEvent::Stopped { .. } => "stopped",
+        ReportEvent::Lost { .. } => "lost",
+    }
 }
 
 /// Whether `report` tells its command's end, not its progress.

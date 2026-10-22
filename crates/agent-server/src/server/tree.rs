@@ -942,11 +942,17 @@ impl<H: HostResolver> Tree<H> {
     ) -> Result<(), StoreError> {
         let continued = self.root.continue_from(continuation).await;
         let restoring = std::time::Instant::now();
+        tracing::info!(
+            event = "tree.restore_started",
+            conversation = %self.root.id(),
+            "a restored tree's subagents are being restored"
+        );
         self.restore_children(&self.root).await;
         tracing::info!(
-            root = %self.root.id(),
+            event = "tree.restored",
+            conversation = %self.root.id(),
             children = self.children.borrow().len(),
-            restore_ms = restoring.elapsed().as_millis(),
+            restore_ms = crate::millis(restoring.elapsed()),
             "a restored tree's subagents were restored"
         );
         self.restore_sides().await;
@@ -1009,13 +1015,27 @@ impl<H: HostResolver> Tree<H> {
             .collect();
         let disposals = children.iter().map(|child| async move {
             if let Err(error) = child.node().session().dispose().await {
-                tracing::error!(node = %child.node().id(), %error, "the final checkpoint was not saved");
+                tracing::error!(
+                    event = "checkpoint.save_failed",
+                    conversation = %self.root.id(),
+                    node = %child.node().id(),
+                    stage = "final",
+                    %error,
+                    "the final checkpoint was not saved"
+                );
             }
         });
         join_all(disposals).await;
         self.dispose_sides().await;
         if let Err(error) = self.root.session().dispose().await {
-            tracing::error!(root = %self.root.id(), %error, "the final checkpoint was not saved");
+            tracing::error!(
+                event = "checkpoint.save_failed",
+                conversation = %self.root.id(),
+                node = %self.root.id(),
+                stage = "root",
+                %error,
+                "the final checkpoint was not saved"
+            );
             self.sink.emit(ServerFrame::Error {
                 message: error.to_string(),
                 code: Some(AgentCode::SaveFailed.to_string()),
@@ -1033,7 +1053,12 @@ impl<H: HostResolver> Tree<H> {
 
     /// Reports a failure of the tree's own work, which no action answers.
     fn report(&self, message: String) {
-        tracing::error!(root = %self.root.id(), %message, "subagent lifecycle failure");
+        tracing::error!(
+            event = "subagent.lifecycle_failed",
+            conversation = %self.root.id(),
+            reason = %message,
+            "a subagent's lifecycle failed"
+        );
         self.sink.emit(ServerFrame::Error {
             message,
             code: Some(AgentCode::SubagentFailed.to_string()),

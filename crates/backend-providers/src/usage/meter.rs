@@ -24,7 +24,6 @@ use demi_shared_types::{Clock, Model, ModelCost, QuotaWindow, Timestamp, TokenUs
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{Stream, StreamExt, stream};
-use sha2::{Digest, Sha256};
 
 
 /// Whose calls a runtime makes: the ledger rows' user, conversation, entry
@@ -48,41 +47,21 @@ pub struct Ledger {
 /// none when the catalog has none.
 pub type ModelPrices = Rc<dyn Fn(String) -> LocalBoxFuture<'static, Option<ModelCost>>>;
 
-/// The first 16 hex digits of the SHA-256 of `text`: enough to tell two
-/// prompts apart, as the ledger's hashes do.
-fn short_hash(text: &str) -> String {
-    let digest = Sha256::digest(text.as_bytes());
-    hex::encode(&digest[..8])
-}
-
 /// The hashes of the system prompt and of the tool definitions `request`
 /// sends; none for a request outside a session (`crates/backend-database/src/usage.rs`).
 fn prompt_hashes(request: &InferenceRequest) -> (Option<String>, Option<String>) {
     if request.agent.is_none() {
         return (None, None);
     }
-    let tools: Vec<serde_json::Value> = request
-        .tools
-        .iter()
-        .map(|tool| {
-            serde_json::json!({
-                "name": tool.name,
-                "description": tool.description,
-                "inputSchema": tool.input_schema,
-            })
-        })
-        .collect();
-    (
-        Some(short_hash(&request.system_prompt)),
-        Some(short_hash(&serde_json::Value::Array(tools).to_string())),
-    )
+    let (system, tools) = request.prompt_hashes();
+    (Some(system), Some(tools))
 }
 
 /// Writes `row` and answers its id; a failure is logged and the row is
 /// lost.
 async fn write(control: &ControlService, row: UsageRow) -> Option<String> {
-    let (conversation, user, provider, model) =
-        (row.conversation.clone(), row.user.clone(), row.provider.clone(), row.model.clone());
+    let (conversation, user, provider, model, request) =
+        (row.conversation.clone(), row.user.clone(), row.provider.clone(), row.model.clone(), row.request.clone());
     match control.append_usage(row).await {
         Ok(id) => Some(id),
         Err(error) => {
@@ -93,6 +72,7 @@ async fn write(control: &ControlService, row: UsageRow) -> Option<String> {
                 %user,
                 %provider,
                 model,
+                provider_request_id = request,
                 error = &error as &dyn std::error::Error,
                 "a usage ledger row was not written"
             );
@@ -160,6 +140,8 @@ struct Calls {
     /// The HTTP status the vendor refused the run with, once its failure
     /// came.
     status: Option<u16>,
+    /// How many calls the run has made, the open one included.
+    call_no: u32,
     /// The row of the call that ended last, which a window the vendor
     /// reports before the next call starts is added to.
     last_row: Option<String>,
@@ -185,6 +167,7 @@ impl Calls {
             observed: Vec::new(),
             first_output: None,
             status: None,
+            call_no: 1,
             last_row: None,
             span,
         }
@@ -193,6 +176,7 @@ impl Calls {
     fn start(&mut self) {
         if self.open.is_none() {
             self.open = Some(self.ledger.clock.now());
+            self.call_no += 1;
             self.last_row = None;
             self.first_output = None;
         }
@@ -270,6 +254,7 @@ impl Calls {
             outcome,
             error_code = refused.then_some(outcome.as_str()),
             status = self.status,
+            call_no = self.call_no,
             ms = ms(started_at, ended_at),
             first_token_ms = self.first_output.take().map(|first| ms(started_at, first)),
             vendor_id = vendor_id.as_deref(),
@@ -375,14 +360,14 @@ impl ProviderRuntime for MeteredRuntime {
             conversation = %self.ledger.conversation,
             user = %self.ledger.user,
             turn = tracing::field::Empty,
-            node = tracing::field::Empty,
+            agent = tracing::field::Empty,
             account = tracing::field::Empty,
             purpose = request.purpose.as_str(),
             provider = %self.ledger.provider,
             model = %request.model_id,
         );
         if let Some(agent) = request.agent {
-            span.record("node", agent);
+            span.record("agent", agent);
         }
         // A title request belongs to no turn.
         if request.purpose != RequestPurpose::Title {

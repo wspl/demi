@@ -233,6 +233,7 @@ impl QuotaSnapshotStore for AccountQuota {
                     used_pct_to = window.used_percent,
                     source,
                     observed_at_ms = snapshot.observed_at.as_millisecond(),
+                    requested_at_ms = window.requested_at.map(|at| at.as_millisecond()),
                     "an account's usage window changed"
                 );
             }

@@ -173,11 +173,20 @@ impl ClaudeAuth {
         };
         let document = self.pool.document(account);
         match document.replace(None, version).await {
-            Ok(_) => tracing::info!(account, "a Claude Code sign-in of an earlier release was handed over to its directory"),
+            Ok(_) => tracing::info!(
+                event = "claude_code_account.handed_over",
+                account,
+                "a Claude Code sign-in of an earlier release was handed over to its directory"
+            ),
             Err(error) => {
                 // The next start finds the directory's sign-in and clears it
                 // then, writing nothing.
-                tracing::warn!(account, "a handed-over Claude Code sign-in was not cleared from its record: {error}");
+                tracing::warn!(
+                    event = "claude_code_account.hand_over_clear_failed",
+                    account,
+                    %error,
+                    "a handed-over Claude Code sign-in was not cleared from its record"
+                );
             }
         }
     }
@@ -189,9 +198,21 @@ impl ClaudeAuth {
         let Ok(account) = self.account() else {
             return;
         };
-        tracing::info!(account, "Claude signed a Claude Code account out");
+        tracing::info!(
+            event = "claude_code_account.signed_out",
+            account,
+            by = "claude",
+            from = "signed_in",
+            to = "signed_out",
+            "Claude signed a Claude Code account out"
+        );
         if let Err(error) = self.pool.sign_out(account).await {
-            tracing::warn!(account, "a signed-out Claude Code account was not marked: {error}");
+            tracing::warn!(
+                event = "claude_code_account.sign_out_mark_failed",
+                account,
+                %error,
+                "a signed-out Claude Code account was not marked"
+            );
         }
     }
 }

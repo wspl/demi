@@ -44,7 +44,7 @@ use crate::mirror::Mirror;
 use crate::output::{ControlRequestLine, LastCall, Line, Replaced, Streaming};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
-use crate::timing::StartTiming;
+use crate::timing::{StartTiming, Took};
 use crate::{FAMILY, Shared, cli};
 
 /// The `tracing` target of the raw stream-json exchange, at trace level.
@@ -112,6 +112,80 @@ impl ProcessKey {
             model_id: request.model_id.clone(),
             thinking: request.thinking.clone(),
         }
+    }
+}
+
+/// What the log says of a process's life: its start, and its end, which it
+/// says once, however the process ends.
+struct ProcessLog {
+    /// The node whose session the process serves.
+    node: String,
+    started: std::time::Instant,
+    /// How many runs took the process.
+    runs: u32,
+    exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
+    stderr: Rc<RefCell<Tail>>,
+    /// The span the process was started in, which names its conversation and
+    /// whose request started it.
+    span: tracing::Span,
+    logged: bool,
+}
+
+impl ProcessLog {
+    /// Says how the process ended, as `end` tells, and why it was ended as
+    /// `cause` says.
+    fn finish(&mut self, end: &ProcessEnd, cause: &'static str) {
+        if std::mem::replace(&mut self.logged, true) {
+            return;
+        }
+        let (exit, signal) = match end {
+            ProcessEnd::Exited(code) => (Some(*code), None),
+            ProcessEnd::Signalled(signal) => (None, Some(signal.as_str())),
+            ProcessEnd::NotStarted(_) | ProcessEnd::Lost(_) => (None, None),
+        };
+        let cause = match (cause, end) {
+            (_, ProcessEnd::Lost(_)) => "machine_gone",
+            (_, ProcessEnd::NotStarted(_)) => "not_started",
+            ("ended", ProcessEnd::Exited(code)) if *code != 0 => "crashed",
+            ("ended", ProcessEnd::Signalled(_)) => "killed",
+            (cause, _) => cause,
+        };
+        tracing::info!(
+            parent: &self.span,
+            event = "claude_code_process.exited",
+            node = self.node,
+            exit,
+            signal,
+            ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            stderr_bytes = self.stderr.borrow().len(),
+            runs = self.runs,
+            cause,
+            "a Claude Code process ended"
+        );
+    }
+}
+
+impl Drop for ProcessLog {
+    /// A process nobody closed or read the end of is closed by its handle, as
+    /// a task of its own: its end is logged when it comes.
+    fn drop(&mut self) {
+        if self.logged {
+            return;
+        }
+        self.logged = true;
+        let mut late = ProcessLog {
+            node: std::mem::take(&mut self.node),
+            started: self.started,
+            runs: self.runs,
+            exit: self.exit.clone(),
+            stderr: self.stderr.clone(),
+            span: self.span.clone(),
+            logged: false,
+        };
+        tokio::task::spawn_local(async move {
+            let end = late.exit.clone().await;
+            late.finish(&end, "dropped");
+        });
     }
 }
 
@@ -221,6 +295,7 @@ pub(crate) struct LiveCli {
     /// How the process's start went, until the first run that takes it
     /// reports it.
     pub(crate) started: Option<StartTiming>,
+    log: ProcessLog,
     /// When the call the output belongs to now started, as the usage ledger
     /// counts calls: a run's first call with the run, each later one when its
     /// first line is read.
@@ -247,7 +322,9 @@ impl LiveCli {
         shared: &Arc<Shared>,
         placement: &dyn Placement,
         request: &InferenceRequest,
+        took: Took,
     ) -> Result<Self, ProviderFailure> {
+        let began = std::time::Instant::now();
         let account = shared
             .auth
             .work()
@@ -267,17 +344,9 @@ impl LiveCli {
         let session_build = building.elapsed();
         let args = cli::args(request, &file.id.to_string());
         let start = Arc::new(move |site: &CliSite| {
-            let start = cli::start(site, args.clone(), &file);
-            // The environment is left out: the machine's own may hold
-            // anything.
-            tracing::trace!(
-                target: WIRE,
-                direction = "spawn",
-                command = %start.spawn.command,
-                cwd = ?start.spawn.cwd,
-                args = ?start.spawn.args,
-            );
-            start
+            // The spawn request, its environment and arguments, is never
+            // logged: the machine's own environment may hold anything.
+            cli::start(site, args.clone(), &file)
         });
         let Placed {
             process,
@@ -304,6 +373,22 @@ impl LiveCli {
         let mcp = (!request.tools.is_empty()).then(|| Mcp::start(request.tools.clone()));
         let cut = Rc::new(Cell::new(false));
         let exit = exit.shared();
+        tracing::info!(
+            event = "claude_code_process.started",
+            node = %request.session_id,
+            process = took.as_str(),
+            ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "a Claude Code process started"
+        );
+        let log = ProcessLog {
+            node: request.session_id.clone(),
+            started: std::time::Instant::now(),
+            runs: 0,
+            exit: exit.clone(),
+            stderr: stderr.clone(),
+            span: tracing::Span::current(),
+            logged: false,
+        };
         Ok(Self {
             shared: shared.clone(),
             key: ProcessKey::of(request),
@@ -338,6 +423,7 @@ impl LiveCli {
                 session_build,
                 initialize: None,
             }),
+            log,
             // No call starts before a run gives the process input.
             call_requested_at: shared.clock.now(),
             first_call_unseen: false,
@@ -347,6 +433,7 @@ impl LiveCli {
     /// A run that started at `at` takes the process: its first call
     /// started with it.
     pub(crate) fn run_started(&mut self, at: Timestamp) {
+        self.log.runs += 1;
         self.call_requested_at = at;
         self.first_call_unseen = true;
     }
@@ -578,8 +665,16 @@ impl LiveCli {
                         return false;
                     }
                 }
+                // A status line, such as the CLI's note that it compacted, is
+                // no answer.
+                Read::Line(_, Some(Line::System(line))) => self.note_system(&line),
                 Read::Line(text, _) => {
-                    tracing::warn!(line = %text, "a kept Claude Code process printed output that answers no request");
+                    tracing::warn!(
+                        event = "claude_code.stray_output",
+                        node = self.log.node,
+                        bytes = text.len(),
+                        "a kept Claude Code process printed output that answers no request"
+                    );
                     return false;
                 }
                 Read::End | Read::Broken(_) => return false,
@@ -601,7 +696,7 @@ impl LiveCli {
         if text.trim().is_empty() {
             return Read::Blank;
         }
-        tracing::trace!(target: WIRE, direction = "out", line = %text);
+        tracing::trace!(target: WIRE, event = "claude_code_process.line_read", bytes = text.len());
         let value: serde_json::Value = match serde_json::from_str(&text) {
             Ok(value) => value,
             Err(error) => return Read::Broken(undecodable(&error, text)),
@@ -807,7 +902,7 @@ impl LiveCli {
                 .split(|byte| *byte == b'\n')
                 .filter(|line| !line.is_empty())
             {
-                tracing::trace!(target: WIRE, direction = "in", line = %String::from_utf8_lossy(line));
+                tracing::trace!(target: WIRE, event = "claude_code_process.line_written", bytes = line.len());
             }
         }
         self.handle
@@ -824,7 +919,7 @@ impl LiveCli {
         let unasked = self.mcp.as_ref().map(Mcp::unasked).unwrap_or_default();
         let stderr = self.stderr.borrow().text();
         let exit = self.exit.clone().await;
-        tracing::trace!(target: WIRE, direction = "exit", end = ?exit);
+        self.log.finish(&exit, "ended");
         self.handle.ended().await;
         if matches!(exit, ProcessEnd::Lost(_)) {
             return Some(ended(&exit, exit_message(&exit)));
@@ -866,6 +961,26 @@ impl LiveCli {
     pub(crate) async fn close(mut self) {
         drop(self.mcp.take());
         self.handle.close().await;
+        let end = self.exit.clone().await;
+        self.log.finish(&end, "closed");
+    }
+
+    /// Says what a status line of the CLI reports that matters to the
+    /// session: a compaction the CLI ran on its own, which Demi did not ask
+    /// for, and so changes what the model holds.
+    pub(crate) fn note_system(&self, line: &crate::output::SystemLine) {
+        let Some(compaction) = line.compaction() else {
+            return;
+        };
+        tracing::warn!(
+            event = "claude_code_cli.compacted",
+            node = self.log.node,
+            trigger = compaction.trigger,
+            pre_tokens = compaction.pre_tokens,
+            post_tokens = compaction.post_tokens,
+            duration_ms = compaction.duration_ms,
+            "the Claude Code CLI compacted the conversation by itself"
+        );
     }
 }
 
@@ -947,14 +1062,10 @@ async fn close(parts: Parts) {
     // A process that already ended, or whose machine went away, takes no
     // signal; its end is known either way.
     let _ = control.kill(Signal::Terminate).await;
-    let end = match tokio::time::timeout(CLOSE_GRACE, exit.clone()).await {
-        Ok(end) => end,
-        Err(_) => {
-            let _ = control.kill(Signal::Kill).await;
-            exit.await
-        }
-    };
-    tracing::trace!(target: WIRE, direction = "exit", end = ?end);
+    if tokio::time::timeout(CLOSE_GRACE, exit.clone()).await.is_err() {
+        let _ = control.kill(Signal::Kill).await;
+        exit.await;
+    }
     if let Some(config) = config {
         config.remove().await;
     }
@@ -1014,7 +1125,7 @@ async fn drain(
                 let _ = stdout.unbounded_send(Ok(chunk.bytes));
             }
             StreamKind::Stderr => {
-                tracing::trace!(target: WIRE, direction = "err", text = %String::from_utf8_lossy(&chunk.bytes));
+                tracing::trace!(target: WIRE, event = "claude_code_process.stderr", bytes = chunk.bytes.len());
                 stderr.borrow_mut().push(&chunk.bytes);
             }
         }
@@ -1033,6 +1144,11 @@ impl Tail {
     }
 
     /// The tail as text, trimmed; a character the cut split is left out.
+    /// How many bytes the tail holds.
+    pub(crate) fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub(crate) fn text(&self) -> String {
         let start = self
             .0
