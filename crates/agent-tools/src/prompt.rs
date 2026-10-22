@@ -40,19 +40,17 @@ use demi_host_interface::CapabilityIndex;
 
 use crate::input::DESCRIPTION;
 
-/// The rules of the `shell` tool, which every node's system prompt carries.
-///
-/// They say what the tool does and the one duty a command brings, never how
-/// to wait or which flag to use: rules of method taught agents to silence a
-/// command's reports, so a command that hung went unnoticed until its end,
-/// which never came. What each `demi shell` command does is its help's.
+/// The rules of the `shell` tool, which every node's system prompt carries:
+/// what the tool has and does, in as few words as carry it, never what the
+/// model ought to do; each `demi shell` command's help says the rest.
 const TOOL_RULES: &[&str] = &[
     "The shell tool:",
-    "- Use shell to run a script. Every call starts in your working directory. A call returns when its command ends, or after 10 seconds with the command still running. intervalMs says how a command still running reports to you: a number from 15000 to 600000 for a command that ends, such as a build or a test suite, which reports every interval until it ends, and when it ends; null for a command that runs until it is stopped, such as a dev server or a watcher, whose call returns once its start-up output is quiet and which reports only its end.",
-    "- Commands in one response run at the same time.",
-    "- A result shows the output since your last look at the command, and while it runs, runningMs and idleMs. A long output shows its first and last lines, and names the command that reads the rest.",
-    "- A command you start is yours until it ends: each report and each look is where you see whether it still makes progress, and one that has stopped making progress is yours to find out about. demi shell looks at, answers, reads and stops commands by their commandIds.",
-    "- While a command or a subagent runs, do other work or end your turn: its report, its message or its end wakes you. A reply that ends your turn to wait says what you are waiting for, since the user reads only what you wrote.",
+    "- Runs a script in your working directory; a call returns when it ends or after 10 s.",
+    "- intervalMs: how often a running command reports, 15000–600000; null for a server, which reports only its end.",
+    "- Commands in one response run in parallel.",
+    "- Results and reports show new output, runningMs and idleMs (time without output).",
+    "- `demi shell status|input|output|stop <commandId>`",
+    "- Reports, subagent messages and ends wake you; the user reads only your replies.",
 ];
 
 /// What the model identity line names of the model that serves a node,
