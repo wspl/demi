@@ -20,7 +20,7 @@ import type { HostChoice } from '@demicodes/web-ui/hosts/types'
  * Every move the two menus start, to another Host or another directory, comes
  * through `move`, which asks first when the conversation has messages; so does
  * one the offline primary Host's card above the composer starts, through
- * `choose`. A move stops nothing (`docs/decisions/0027-a-move-applies-at-once.md`).
+ * `choose`. A move stops nothing.
  */
 const props = defineProps<{
   project?: Project

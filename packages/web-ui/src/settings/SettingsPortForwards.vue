@@ -32,8 +32,6 @@ const props = defineProps<{
   hosts: readonly ForwardHost[]
   /** The forward whose page is shown; null shows the list. */
   shown?: string | null
-  /** The most characters a forward's name has. */
-  nameMaxLength: number
   overlayStore: OverlayStore
   /** Add Forward: creates one with the defaults; its page opens once it exists. */
   onAdd?: Action
@@ -70,7 +68,6 @@ function turn(forward: SettingsPortForward, enabled: boolean): Promise<void> | u
     :key="page.id"
     :forward="page"
     :hosts="hosts"
-    :name-max-length="nameMaxLength"
     :overlay-store="overlayStore"
     :on-change="changeShown"
     :on-try-again="() => onTryAgain?.(page!.id)"

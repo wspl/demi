@@ -278,26 +278,6 @@ impl ControlState {
 }
 
 impl ConnectionControl {
-    /// A control of no connection, whose closing a test observes.
-    #[cfg(test)]
-    pub(crate) fn detached() -> Self {
-        Self(Arc::new(ControlState {
-            closed: CancellationToken::new(),
-            opened: Instant::now(),
-            moved: AtomicU64::new(0),
-        }))
-    }
-
-    /// As if bytes moved on the connection just now.
-    #[cfg(test)]
-    pub(crate) fn touched(&self) {
-        self.0.touch();
-    }
-
-    #[cfg(test)]
-    pub(crate) fn is_closed(&self) -> bool {
-        self.0.closed.is_cancelled()
-    }
 
     /// Closes the connection now.
     pub(crate) fn close(&self) {

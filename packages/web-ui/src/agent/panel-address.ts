@@ -4,8 +4,7 @@ import type { PanelKind } from '../plugins/page'
 import type { PlaceFields } from '../plugins/place'
 
 /**
- * The work panel's part of the page's address
- * (`docs/decisions/0014-the-work-panel-has-addresses.md`):
+ * The work panel's part of the page's address:
  *
  * ```text
  * /chat/c1                                  the panel closed

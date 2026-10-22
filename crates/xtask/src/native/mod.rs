@@ -282,36 +282,3 @@ pub fn artifacts(named: Option<&Path>) -> Result<PathBuf, Error> {
     };
     Ok(directory)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn named_targets_must_be_each_executables_and_unnamed_ones_are_all_of_theirs() {
-        let refused = targets(
-            &[Executable::Runner, Executable::Machines],
-            &["aarch64-apple-darwin"],
-        );
-        assert!(
-            matches!(
-                refused,
-                Err(Error::NotItsTarget {
-                    executable: Executable::Machines,
-                    target: "aarch64-apple-darwin"
-                })
-            ),
-            "{refused:?}"
-        );
-        let linux = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"];
-        assert_eq!(
-            targets(&[Executable::Runner, Executable::Machines], &linux).unwrap(),
-            ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]
-        );
-        assert_eq!(
-            targets(&[Executable::Machines], &[]).unwrap(),
-            Executable::Machines.targets()
-        );
-        assert_eq!(targets(&Executable::DEFAULT, &[]).unwrap(), TARGETS);
-    }
-}

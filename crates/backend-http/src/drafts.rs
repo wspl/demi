@@ -14,7 +14,7 @@ use demi_backend_database::drafts::{DraftRefusal, StagedFile};
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::ClientContent;
 use demi_web_api_protocol::drafts::{
-    ATTACHMENT_MARK, DRAFT_BYTES_MAX, DraftAnswer, DraftSave, DraftWritten, ReplacedDraftAction,
+    ATTACHMENT_MARK, DraftAnswer, DraftSave, DraftWritten, ReplacedDraftAction,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::AttachmentId;
@@ -128,12 +128,6 @@ fn refused(refusal: DraftRefusal) -> ApiError {
             ErrorCode::UploadNotFound,
             format!("No upload {id}"),
         ),
-        DraftRefusal::TooLarge => ApiError::new(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            ErrorCode::TooLarge,
-            format!("The draft is over its {DRAFT_BYTES_MAX}-byte limit"),
-        )
-        .with_param("limitBytes", DRAFT_BYTES_MAX),
         DraftRefusal::Changed => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::DraftChanged,

@@ -22,7 +22,7 @@ import {
 } from '../api/generated/web-api'
 import { confirmationHost, makeSignInCode } from '../auth/handoff'
 import { useSession } from '../auth/session'
-import { useProduct } from '../state/product'
+import { useHeldList, useProduct } from '../state/product'
 
 /** A listed account as Settings › Users shows it; one without a nickname is named by its email there. */
 function row(user: ListedUser): SettingsUser {
@@ -45,7 +45,7 @@ function row(user: ListedUser): SettingsUser {
  * password choice, so no action reads it again. A refusal the user corrects is
  * said in the dialog that asked; any other is reported.
  */
-export const useUserSettings = defineStore('user-settings', () => {
+const useUserStore = defineStore('user-settings', () => {
   const session = useSession()
   const product = useProduct()
   const users = computed(() => (product.snapshot?.users ?? []).map(row))
@@ -145,3 +145,9 @@ export const useUserSettings = defineStore('user-settings', () => {
 
   return { users, host }
 })
+
+/** The user settings, which hold the accounts while a view shows them. */
+export function useUserSettings(): ReturnType<typeof useUserStore> {
+  useHeldList('users')
+  return useUserStore()
+}

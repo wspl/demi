@@ -735,6 +735,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
 
     if (!persistedState) {
       scrollToBottom()
+      scrollOffset.value = el.scrollTop
       nextTick(() => updateAnchor())
       return
     }
@@ -742,6 +743,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     const anchorIndex = blocks.value.findIndex((b) => b.id === persistedState.anchor.blockId)
     if (anchorIndex < 0) {
       scrollToBottom()
+      scrollOffset.value = el.scrollTop
       nextTick(() => updateAnchor())
       return
     }
@@ -848,6 +850,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     totalSize,
     measureElement,
     scrollOffset,
+    /** Whether the list placed itself, at the end or where it was left or a reveal put it: before, `scrollOffset` is its first layout's, not the reader's. */
+    placed: isRestored,
     isAtBottom,
     scrollToBottom: scrollToBottomExplicit,
     reveal,

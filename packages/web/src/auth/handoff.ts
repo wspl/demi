@@ -16,7 +16,7 @@ import {
   type PasskeySignIn,
   type VerifyPassword,
 } from '../api/generated/web-api'
-import { useProduct } from '../state/product'
+import { useHeldList, useProduct } from '../state/product'
 import { browserHasPasskeys, signWithPasskey } from './webauthn'
 
 /**
@@ -70,7 +70,7 @@ export async function verifyWithPassword(password: string): Promise<HandoffVerif
  */
 export function confirmationHost(): VerificationHost {
   const state = useProduct().snapshot
-  const passkeys = state?.passkeyRpId && state.passkeys.passkeys.length > 0 && browserHasPasskeys()
+  const passkeys = state?.passkeyRpId && state.passkeys && state.passkeys.passkeys.length > 0 && browserHasPasskeys()
   return { verifyPassword: verifyWithPassword, verifyPasskey: passkeys ? verifyWithPasskey : undefined }
 }
 
@@ -127,7 +127,7 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
  * of the phone from the session that carries the code, the one the code made or
  * the phone's own.
  */
-export const useSessions = defineStore('sessions', () => {
+const useSessionStore = defineStore('sessions', () => {
   const product = useProduct()
   const sessions = computed<SettingsSession[]>(() =>
     (product.snapshot?.sessions ?? []).map((session) => ({
@@ -153,7 +153,7 @@ export const useSessions = defineStore('sessions', () => {
     }
     product.answered(at, (read) => ({
       type: 'sessions',
-      sessions: read.sessions.filter((session) => session.id !== id),
+      sessions: (read.sessions ?? []).filter((session) => session.id !== id),
     }))
   }
 
@@ -162,9 +162,15 @@ export const useSessions = defineStore('sessions', () => {
     return {
       makeCode: () => makeHandoffCode(to()),
       ...confirmationHost(),
-      handedOffTo: (id) => product.snapshot?.sessions.find((session) => session.handoffId === id)?.name ?? null,
+      handedOffTo: (id) => product.snapshot?.sessions?.find((session) => session.handoffId === id)?.name ?? null,
     }
   }
 
   return { sessions, signOut, handoffHost }
 })
+
+/** The signed-in browsers, which the page holds while a view shows them. */
+export function useSessions(): ReturnType<typeof useSessionStore> {
+  useHeldList('sessions')
+  return useSessionStore()
+}

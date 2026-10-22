@@ -27,15 +27,15 @@ use axum::http::{HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::headers::{ETag, HeaderMapExt as _, IfNoneMatch};
-use sha2::{Digest as _, Sha256};
+use demi_backend_user_shard::sync::etag_of_json;
 
 /// Whether the answer of a `GET` of `path`, relative to `/api`, holds a secret
-/// or is a session's own: the authentication routes, a credential's values, an
-/// automation's URL secret, the direct channel's offer and a subscription
-/// sign-in's code.
+/// or is a session's own: the authentication routes except the passkey list,
+/// which names no secret, a credential's values, an automation's URL secret,
+/// the direct channel's offer and a subscription sign-in's code.
 fn is_sensitive(path: &str) -> bool {
     path == "/auth"
-        || path.starts_with("/auth/")
+        || (path.starts_with("/auth/") && path != "/auth/passkeys")
         || path == "/credentials"
         || path.starts_with("/providers/subscription-login/")
         || path.ends_with("/secret")
@@ -78,7 +78,7 @@ pub(super) async fn reads(request: Request, next: Next) -> Response {
     let Ok(bytes) = to_bytes(body, usize::MAX).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let etag: ETag = format!("\"{:x}\"", Sha256::digest(&bytes))
+    let etag: ETag = etag_of_json(&bytes)
         .parse()
         .expect("a quoted hex digest is an entity tag");
     let unchanged = held.is_some_and(|held| !held.precondition_passes(&etag));

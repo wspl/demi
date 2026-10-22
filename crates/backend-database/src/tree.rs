@@ -28,7 +28,7 @@ use std::sync::Arc;
 use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput, StoredSubagent, Switched};
 use demi_agent_store::{
     Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, EarlierRows, Kind, NodeClose, NodeRecord, Reprofile,
-    Placement, Rows, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
+    Placement, Rows, SavedVersions, SideOf, StoreError, StoredPrefix, SwitchedBefore, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
 use demi_conversation_socket_protocol::{BlockVersions, PageAt, TurnSpeed, page};
@@ -301,7 +301,6 @@ fn insert_node(transaction: &Transaction<'_>, record: &NodeRecord, initial: &Che
     Ok(())
 }
 
-
 /// One node's checkpoint in its conversation's database.
 struct SqliteSessionStore {
     db: ConversationDb,
@@ -365,6 +364,10 @@ impl AgentTreeStore for SqliteTreeStore {
 
     fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>> {
         Box::pin(async move { self.db.call(|connection| sides(connection)).await.map_err(store_error) })
+    }
+
+    fn saved_versions(&self) -> LocalBoxFuture<'_, Result<SavedVersions, StoreError>> {
+        Box::pin(async move { self.db.call(|connection| saved_versions(connection)).await.map_err(store_error) })
     }
 
     fn create_node(
@@ -1132,7 +1135,6 @@ fn is_output(block: &Block) -> bool {
     )
 }
 
-
 /// A node's checkpoint: its state row and its window, the blocks of its
 /// current path from the last `compaction_boundary` on with the versions
 /// there; none when the node does not exist. No row before the window is
@@ -1434,6 +1436,48 @@ fn children_of(connection: &Connection, parent: &NodeId) -> Result<Vec<NodeRecor
         children.push(node_row(row)?);
     }
     Ok(children)
+}
+
+/// The versions of the tree's stored state: each node's transcript at its
+/// output revision with its path's length, and the agents at a hash of the rows
+/// that decide their entries. A save that changes what a page shows of either
+/// changes its version, so a page compares what it read with what the store
+/// holds now; a tree with no row has the empty one.
+pub fn saved_versions(connection: &Connection) -> Result<SavedVersions, StorageError> {
+    // Revisions and lengths stay below these bounds, so the pair is one
+    // number a page holds exactly.
+    const LENGTH_BITS: u32 = 26;
+    const SAFE: u64 = (1 << 53) - 1;
+    let mut statement = connection.prepare(&format!(
+        "SELECT id, output_revision, {PATH_LENGTH}, round, closed_phase, closed_at, delivered, number \
+         FROM nodes ORDER BY id"
+    ))?;
+    let mut rows = statement.query([])?;
+    let mut nodes = BTreeMap::new();
+    // FNV-1a over the rows' columns.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |bytes: &[u8]| {
+        for byte in bytes.iter().chain(&[0xff]) {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        let revision: i64 = row.get(1)?;
+        let length: i64 = row.get(2)?;
+        feed(id.as_bytes());
+        feed(&revision.to_le_bytes());
+        feed(&length.to_le_bytes());
+        feed(&row.get::<_, i64>(3)?.to_le_bytes());
+        feed(row.get::<_, Option<String>>(4)?.unwrap_or_default().as_bytes());
+        feed(&row.get::<_, Option<i64>>(5)?.unwrap_or(-1).to_le_bytes());
+        feed(&row.get::<_, i64>(6)?.to_le_bytes());
+        feed(&row.get::<_, Option<i64>>(7)?.unwrap_or(-1).to_le_bytes());
+        let version = (u64::try_from(revision).unwrap_or(0) << LENGTH_BITS) | u64::try_from(length).unwrap_or(0);
+        nodes.insert(decode("nodes", "id", NodeId::try_from(id))?, version & SAFE);
+    }
+    Ok(SavedVersions { agents: hash & SAFE, nodes })
 }
 
 /// The tree's side questions, in the order they were asked.
@@ -2441,31 +2485,15 @@ pub fn read_page(
     } else {
         transcript.entries_in(connection, range.clone())?
     };
-    // A marker's boundary may be on another page, so only its size is read.
-    let mut summaries = Vec::new();
-    for entry in &blocks {
-        if let Entry::Block(Block::CompactionMarker(marker)) = entry
-            && let Some(index) = transcript.block_index(connection, &marker.boundary_id, length)?
-            && let [Value::Text(kind), tokens] =
-                &transcript.extract_at(connection, index, &["$.type", "$.summaryTokens"])?[..]
-            && kind == "compaction_boundary"
-        {
-            let tokens = match tokens {
-                Value::Integer(tokens) => decode(transcript.table(), "block", u64::try_from(*tokens))?,
-                _ => {
-                    return Err(StorageError::Corrupt {
-                        table: transcript.table(),
-                        column: "block",
-                        reason: format!("compaction boundary {} has no summary size", marker.boundary_id),
-                    });
-                }
-            };
-            summaries.push(CompactionSummary {
-                marker: marker.id.clone(),
-                summary_tokens: tokens,
-            });
-        }
-    }
+    let summaries = summaries_of(
+        connection,
+        transcript,
+        length,
+        blocks.iter().filter_map(|entry| match entry {
+            Entry::Block(block) => Some(block),
+            Entry::StepsNotShared(_) => None,
+        }),
+    )?;
     let versions = match transcript {
         Transcript::Agent(node) => {
             let path = Path::read(connection, node.as_str())?;
@@ -2489,6 +2517,60 @@ pub fn read_page(
         summaries,
         versions,
     })
+}
+
+/// The summary size of each compaction marker's boundary among `blocks`, a
+/// transcript of `length` blocks holding them: a marker's boundary may be on
+/// another page, so only its size is read.
+fn summaries_of<'a>(
+    connection: &Connection,
+    transcript: &Transcript,
+    length: usize,
+    blocks: impl IntoIterator<Item = &'a Block>,
+) -> Result<Vec<CompactionSummary>, StorageError> {
+    let mut summaries = Vec::new();
+    for block in blocks {
+        if let Block::CompactionMarker(marker) = block
+            && let Some(index) = transcript.block_index(connection, &marker.boundary_id, length)?
+            && let [Value::Text(kind), tokens] =
+                &transcript.extract_at(connection, index, &["$.type", "$.summaryTokens"])?[..]
+            && kind == "compaction_boundary"
+        {
+            let tokens = match tokens {
+                Value::Integer(tokens) => decode(transcript.table(), "block", u64::try_from(*tokens))?,
+                _ => {
+                    return Err(StorageError::Corrupt {
+                        table: transcript.table(),
+                        column: "block",
+                        reason: format!("compaction boundary {} has no summary size", marker.boundary_id),
+                    });
+                }
+            };
+            summaries.push(CompactionSummary {
+                marker: marker.id.clone(),
+                summary_tokens: tokens,
+            });
+        }
+    }
+    Ok(summaries)
+}
+
+/// What a page of `blocks` of `transcript` carries beside them, read from the
+/// store alone: the entries of the transcript's newest instructions block and
+/// the summary size of each compaction marker's boundary among `blocks`. It is
+/// what a page read from a live window lacks.
+pub fn read_context(
+    connection: &Connection,
+    transcript: &Transcript,
+    blocks: &[Block],
+) -> Result<(Vec<InstructionEntry>, Vec<CompactionSummary>), StorageError> {
+    let Some(length) = transcript.length(connection)? else {
+        return Ok((Vec::new(), Vec::new()));
+    };
+    Ok((
+        transcript.newest_instructions(connection, length)?,
+        summaries_of(connection, transcript, length, blocks)?,
+    ))
 }
 
 /// What a read of one block whole found.
@@ -2605,662 +2687,5 @@ pub fn command_call(
             column: "block",
             reason: format!("a block that is not a call names command {command}"),
         }),
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod tests {
-    use std::collections::BTreeMap;
-    use std::num::NonZeroUsize;
-    use std::sync::Mutex;
-
-    use demi_agent_store::testing::{store_contract, test_model, text};
-    use demi_shared_types::{
-        B64Bytes, BlobRef, ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock,
-    };
-    use demi_web_api_protocol::ids::ConversationId;
-
-    use super::*;
-    use crate::conversations::ConversationStores;
-
-    /// The owner's blobs in memory, named by their SHA-256 as the object
-    /// store names them.
-    #[derive(Default)]
-    struct Blobs(Mutex<BTreeMap<BlobRef, B64Bytes>>);
-
-    impl BlobStore for Blobs {
-        fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
-            let blob = BlobRef::of(bytes.as_bytes());
-            self.0.lock().unwrap().insert(blob.clone(), bytes);
-            Box::pin(async move { Ok(blob) })
-        }
-
-        fn get<'a>(
-            &'a self,
-            blob: &'a BlobRef,
-        ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
-            let bytes = self.0.lock().unwrap().get(blob).cloned();
-            Box::pin(async move { Ok(bytes) })
-        }
-    }
-
-    /// A tree store over a new conversation database and its owner's blob
-    /// namespace, with the stores that hold it.
-    pub(crate) async fn store() -> (SqliteTreeStore, ConversationStores, tempfile::TempDir) {
-        let data = tempfile::tempdir().unwrap();
-        let stores = ConversationStores::open(
-            data.path().join("conversations"),
-            NonZeroUsize::new(4).unwrap(),
-            std::sync::Arc::new(crate::schema::NoBlobs),
-        )
-        .await
-        .unwrap();
-        let store = SqliteTreeStore::new(
-            stores.db(&conversation()),
-            Arc::new(Blobs::default()),
-            Rc::new(|_: &NodeId, _: Option<TranscriptChange>| {}),
-        );
-        (store, stores, data)
-    }
-
-    pub(crate) fn conversation() -> ConversationId {
-        ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap()
-    }
-
-    pub(crate) fn id(value: &str) -> NodeId {
-        NodeId::try_from(value).unwrap()
-    }
-
-    /// A node in its first round, agent `number` of the conversation.
-    pub(crate) fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
-        NodeRecord {
-            id: id(node),
-            number,
-            parent: parent.map(id),
-            description: format!("{node} task"),
-            profile: None,
-            instructions: None,
-            context_limit: None,
-            model: parent.map(|_| state().model),
-            round: 1,
-            started_at: Timestamp::UNIX_EPOCH,
-            can_spawn_subagents: true,
-            closed: None,
-            delivered: false,
-            forked_from: None,
-            started_by: None,
-            cwd: parent.map(|_| ChildDirectory {
-                cwd: "/w".to_owned(),
-                under: Placement {
-                    device: Some("laptop".to_owned()),
-                    directory: "/w".to_owned(),
-                },
-            }),
-            side: None,
-        }
-    }
-
-    pub(crate) fn state() -> CheckpointState {
-        CheckpointState {
-            phase: SessionPhase::Idle,
-            queue: Vec::new(),
-            agent_inputs: Vec::new(),
-            reports: Vec::new(),
-            next_turn_reports: Vec::new(),
-            watches: Vec::new(),
-            model: test_model(),
-            edits: Vec::new(),
-            account: None,
-            turn_speed: None,
-        }
-    }
-
-    pub(crate) fn update(blocks: Vec<(usize, Block)>, block_count: usize) -> CheckpointUpdate {
-        CheckpointUpdate {
-            state: state(),
-            changed_blocks: blocks,
-            block_count,
-            moved_from: None,
-            version: false,
-        }
-    }
-
-    /// The ids of `entries`' blocks, in order.
-    fn ids_of(entries: &[Entry]) -> Vec<String> {
-        entries.iter().filter_map(|entry| entry.id().map(|id| id.as_str().to_owned())).collect()
-    }
-
-    pub(crate) fn user(block: &str) -> Block {
-        Block::User(UserBlock {
-            comments: Vec::new(),
-            id: block.try_into().unwrap(),
-            turn_id: TurnId::try_from("t1").unwrap(),
-            created_at: Timestamp::UNIX_EPOCH,
-            request: None,
-            model: test_model(),
-            content: text("hi"),
-            preamble: None,
-            automation: None,
-            entries: Vec::new(),
-        })
-    }
-
-    pub(crate) fn reply(block: &str) -> Block {
-        Block::Text(TextBlock {
-            id: block.try_into().unwrap(),
-            created_at: Timestamp::UNIX_EPOCH,
-            request: None,
-            code_files: None,
-            pictures: None,
-            model: test_model(),
-            text: "hello".into(),
-            forkable: false,
-            entries: Vec::new(),
-        })
-    }
-
-    pub(crate) fn response(block: &str) -> Block {
-        Block::Response(ResponseBlock {
-            id: block.try_into().unwrap(),
-            created_at: Timestamp::UNIX_EPOCH,
-            request: None,
-            model: test_model(),
-            usage: Some(TokenUsage::default()),
-        })
-    }
-
-    /// A completed `shell` call that started the command `command`.
-    pub(crate) fn shell_call(block: &str, command: &str) -> Block {
-        serde_json::from_value(serde_json::json!({
-            "type": "tool_call",
-            "id": block,
-            "createdAt": Timestamp::UNIX_EPOCH,
-            "model": test_model(),
-            "toolUseId": "call-1",
-            "toolName": "shell",
-            "input": "{}",
-            "status": "completed",
-            "output": [],
-            "endedAt": Timestamp::UNIX_EPOCH,
-            "view": {
-                "kind": "shell",
-                "status": "exited",
-                "commandId": command,
-                "exitCode": 0,
-                "runningMs": 1,
-                "idleMs": 0,
-                "chunks": [],
-                "viewTruncated": false,
-            },
-        }))
-        .unwrap()
-    }
-
-    // A conversation Fork names the source's rows before its window, and the
-    // destination's store copies them from the source's database file with the
-    // blobs they name, never reading them into the process.
-    //
-    // The commands its shell calls name are found in the source's database the same
-    // way.
-    #[tokio::test(flavor = "local")]
-    async fn a_fork_copies_the_rows_it_names_from_the_source_conversations_database() {
-        let (source, stores, _data) = store().await;
-        let root = id(conversation().as_str());
-        let path = vec![user("u1"), shell_call("c1", "cmd-1"), response("r1"), reply("a1")];
-        source
-            .create_node(record(root.as_str(), None, 0), update(path.iter().cloned().enumerate().collect(), path.len()))
-            .await
-            .unwrap();
-        let prefix = source.session_store(&root).prefix(3).await.unwrap().unwrap();
-        let commands = stores
-            .read(&conversation(), {
-                let prefix = prefix.clone();
-                move |connection| command_outputs::commands_of_prefix(connection, &prefix)
-            })
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(commands, [CommandId::try_from("cmd-1").unwrap()]);
-
-        let other = ConversationId::try_from("7d1e2f3a-4b5c-4d6e-8f70-819a2b3c4d5e").unwrap();
-        let destination = SqliteTreeStore::new(
-            stores.db(&other),
-            Arc::new(Blobs::default()),
-            Rc::new(|_: &NodeId, _: Option<TranscriptChange>| {}),
-        );
-        let forked = id(other.as_str());
-        destination
-            .create_node_after(
-                record(forked.as_str(), None, 0),
-                Some(&root),
-                &prefix,
-                update(vec![(3, reply("forked"))], 4),
-            )
-            .await
-            .unwrap();
-        let loaded = destination.session_store(&forked).load().await.unwrap().unwrap();
-        assert_eq!(loaded.transcript, [path[..3].to_vec(), vec![reply("forked")]].concat());
-        // The source's database is detached again: a second Fork attaches it anew.
-        destination
-            .create_node_after(record("child", Some(forked.as_str()), 1), Some(&root), &prefix, update(Vec::new(), 3))
-            .await
-            .unwrap();
-        assert_eq!(destination.session_store(&id("child")).load().await.unwrap().unwrap().transcript, path[..3]);
-    }
-
-    /// A side question of the root, asked of the root's `reply`.
-    fn side_record(node: &str) -> NodeRecord {
-        NodeRecord {
-            cwd: None,
-            model: None,
-            side: Some(SideOf {
-                block: BlockId::try_from("a1").unwrap(),
-                start: 0,
-                end: 5,
-                quote: "hello".to_owned(),
-                picture: None,
-                question: "Why?".to_owned(),
-                asked_at: Timestamp::UNIX_EPOCH,
-            }),
-            ..record(node, Some("root"), 0)
-        }
-    }
-
-    // A side question starts where its source is: its path names the source's
-    // rows and copies none, and the node reads, pages and finds its history
-    // through them as it does its own rows. What the source does afterwards,
-    // an edit that makes another branch current included, leaves the rows the
-    // node starts from, also when the source's path had left them before the
-    // node was made.
-    #[tokio::test(flavor = "local")]
-    async fn a_node_that_starts_at_rows_of_the_tree_names_them_and_copies_none() {
-        let (tree, stores, _data) = store().await;
-        let root = id("root");
-        let path = vec![user("u1"), shell_call("c1", "cmd-1"), response("r1"), reply("a1")];
-        tree.create_node(record("root", None, 0), update(path.iter().cloned().enumerate().collect(), 4))
-            .await
-            .unwrap();
-        let captured = tree.session_store(&root).prefix(4).await.unwrap().unwrap();
-        tree.create_node_after(side_record("early"), None, &captured, update(vec![(4, reply("answer"))], 5))
-            .await
-            .unwrap();
-        // The root's edit of its first message makes another branch current,
-        // which the capture no longer ends.
-        let edit = CheckpointUpdate {
-            state: state(),
-            changed_blocks: vec![(0, user("u1-edited")), (1, reply("a1-edited"))],
-            block_count: 2,
-            moved_from: Some(0),
-            version: true,
-        };
-        tree.session_store(&root).save(edit).await.unwrap();
-        tree.create_node_after(side_record("late"), None, &captured, update(vec![(4, reply("answer"))], 5))
-            .await
-            .unwrap();
-
-        for side in ["early", "late"] {
-            let store = tree.session_store(&id(side));
-            let own: i64 = stores
-                .read(&conversation(), move |connection| {
-                    Ok(connection.query_row("SELECT count(*) FROM blocks WHERE node_id = ?1", [side], |row| row.get(0))?)
-                })
-                .await
-                .unwrap()
-                .unwrap();
-            assert_eq!(own, 1, "{side} holds only its own row");
-            let loaded = store.load().await.unwrap().unwrap();
-            assert_eq!(loaded.transcript, [path.clone(), vec![reply("answer")]].concat(), "{side}");
-            assert_eq!(store.blocks(1..3).await.unwrap().blocks, path[1..3], "{side}");
-            assert_eq!(store.position(&BlockId::try_from("c1").unwrap()).await.unwrap(), Some(1));
-            assert_eq!(store.position(&BlockId::try_from("answer").unwrap()).await.unwrap(), Some(4));
-            assert_eq!(store.last_of(Kind::User, 5).await.unwrap(), Some(0));
-            assert_eq!(store.turn_position(&TurnId::try_from("t1").unwrap()).await.unwrap(), Some(0));
-            assert_eq!(
-                store.blocks_of(vec![Kind::ToolCall, Kind::CompletedText], 0..5).await.unwrap().len(),
-                1,
-                "the call, and no completed text"
-            );
-            let earlier = store.earlier(4).await.unwrap();
-            assert_eq!((earlier.user_turns.len(), earlier.calls.len()), (1, 1));
-
-            // A page of its history reads through the rows it starts from.
-            let name = id(side);
-            let read = stores
-                .read(&conversation(), move |connection| {
-                    read_page(
-                        connection,
-                        &Transcript::Agent(name),
-                        PageQuery { before: None, after: None, around: None, edge: None },
-                    )
-                })
-                .await
-                .unwrap()
-                .unwrap();
-            let PageRead::Page { start, length, blocks, versions, .. } = read else {
-                panic!("a page");
-            };
-            assert_eq!((start, length, blocks.len(), versions.len()), (0, 5, 5, 0), "{side}");
-            let name = id(side);
-            let call = stores
-                .read(&conversation(), move |connection| {
-                    read_block(connection, &Transcript::Agent(name), &BlockId::try_from("c1").unwrap())
-                })
-                .await
-                .unwrap()
-                .unwrap();
-            assert!(matches!(call, BlockRead::Block(Block::ToolCall(_))), "{side}");
-        }
-
-        // The node goes on after the rows it starts from: its first row of
-        // its own follows none, and a retry of its answer is a row beside it.
-        let side = tree.session_store(&id("early"));
-        side.save(update(vec![(5, reply("more"))], 6)).await.unwrap();
-        let mut retry = update(vec![(4, reply("answer-retried"))], 5);
-        retry.moved_from = Some(4);
-        side.save(retry).await.unwrap();
-        let loaded = side.load().await.unwrap().unwrap();
-        assert_eq!(loaded.transcript, [path.clone(), vec![reply("answer-retried")]].concat());
-        let rows: Vec<(i64, Option<i64>)> = stores
-            .read(&conversation(), |connection| {
-                Ok(connection
-                    .prepare("SELECT idx, follows FROM blocks WHERE node_id = 'early' ORDER BY idx")?
-                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-                    .collect::<rusqlite::Result<_>>()?)
-            })
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(rows, [(0, None), (1, Some(0)), (2, None)]);
-
-        // The rows it starts from are settled: a save that cuts the path
-        // inside them, or rewrites one, is refused and changes nothing.
-        let mut cut = update(vec![(2, reply("other"))], 3);
-        cut.moved_from = Some(2);
-        assert!(side.save(cut).await.is_err());
-        assert!(side.save(update(vec![(2, reply("rewritten"))], 5)).await.is_err());
-        assert_eq!(side.load().await.unwrap().unwrap(), loaded);
-
-        // The source deletes with the node that starts from it, and no
-        // alone: the first of two nodes of a tree that the second starts at.
-        tree.create_node(record("child", Some("root"), 1), update(vec![(0, user("c-u1")), (1, reply("c-a1"))], 2))
-            .await
-            .unwrap();
-        let from_child = tree.session_store(&id("child")).prefix(2).await.unwrap().unwrap();
-        tree.create_node_after(record("after", Some("root"), 2), None, &from_child, update(Vec::new(), 2))
-            .await
-            .unwrap();
-        let removed = stores
-            .db(&conversation())
-            .call(|connection| Ok(connection.execute("DELETE FROM nodes WHERE id = 'child'", []).is_ok()))
-            .await
-            .unwrap();
-        assert!(!removed, "a node another node starts from stays");
-        let removed = stores
-            .db(&conversation())
-            .call(|connection| {
-                connection.execute("DELETE FROM nodes WHERE id = 'root'", [])?;
-                Ok(connection.query_row("SELECT (SELECT count(*) FROM path_runs) + (SELECT count(*) FROM blocks)", [], |row| row.get::<_, i64>(0))?)
-            })
-            .await
-            .unwrap();
-        assert_eq!(removed, 0, "with the tree, every node goes");
-    }
-
-    async fn facts(stores: &ConversationStores) -> SummaryFacts {
-        stores
-            .read(&conversation(), summary)
-            .await
-            .unwrap()
-            .unwrap()
-    }
-
-    // A fork of a child copies the child's calls, with their times
-    // (`crates/agent-server/src/server/tree/supervisor.rs`); the call that
-    // started a command is still the source's, also when the fork saved its
-    // copy before the source saved the call, as a fork of a running child can.
-    #[tokio::test(flavor = "local")]
-    async fn a_commands_call_is_its_source_agents_when_a_fork_holds_a_copy() {
-        let (tree, stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
-            .await
-            .unwrap();
-        tree.create_node(record("source", Some("root"), 1), update(Vec::new(), 0))
-            .await
-            .unwrap();
-        let call = || vec![(0, user("u1")), (1, shell_call("call", "c1"))];
-        tree.create_node(record("fork", Some("root"), 2), update(call(), 2))
-            .await
-            .unwrap();
-        tree.session_store(&id("source"))
-            .save(update(call(), 2))
-            .await
-            .unwrap();
-
-        let command = CommandId::try_from("c1").unwrap();
-        let found = stores
-            .read(&conversation(), move |connection| command_call(connection, &command))
-            .await
-            .unwrap()
-            .unwrap()
-            .map(|(node, _)| node);
-        assert_eq!(found, Some(id("source")));
-    }
-
-    // A conversation's subagent list finds each child's start by the block
-    // id index: a scan of that index per child took a minute on a tree of
-    // 668 children over 178k blocks. The plan says which it does, whatever
-    // the machine's speed; a few dozen children check the answer as well.
-    #[tokio::test(flavor = "local")]
-    async fn the_subagent_list_searches_the_block_index_for_each_childs_start() {
-        let (tree, stores, _data) = store().await;
-        let blocks: Vec<(usize, Block)> = (0..400).map(|index| (index, user(&format!("u{index}")))).collect();
-        tree.create_node(record("root", None, 0), update(blocks, 400))
-            .await
-            .unwrap();
-        for number in 1..=40_u64 {
-            let mut child = record(&format!("child{number}"), Some("root"), number);
-            child.started_by = Some(BlockId::try_from(format!("u{}", number * 7)).unwrap());
-            tree.create_node(child, update(Vec::new(), 0)).await.unwrap();
-        }
-
-        let (listed, plan) = stores
-            .read(&conversation(), |connection| {
-                let listed = subagents(connection)?;
-                let mut explain = connection.prepare(&format!("EXPLAIN QUERY PLAN {}", subagents_sql()))?;
-                let plan = explain
-                    .query_map([], |row| row.get::<_, String>("detail"))?
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok::<_, StorageError>((listed, plan))
-            })
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(listed.len(), 40);
-        assert!(listed.iter().all(|child| child.started_on_path && child.on_path));
-        let starts: Vec<&String> = plan.iter().filter(|detail| detail.contains(" start ")).collect();
-        assert!(!starts.is_empty(), "{plan:#?}");
-        assert!(
-            starts.iter().all(|detail| detail.starts_with("SEARCH start USING INDEX blocks_by_id")),
-            "{plan:#?}"
-        );
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn output_advances_the_revision_and_input_alone_does_not() {
-        let (tree, stores, _data) = store().await;
-        assert_eq!(stores.read(&conversation(), summary).await.unwrap(), None);
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
-            .await
-            .unwrap();
-        let root = tree.session_store(&id("root"));
-        assert_eq!(facts(&stores).await, SummaryFacts::EMPTY);
-
-        root.save(update(vec![(0, user("u1"))], 1)).await.unwrap();
-        assert_eq!(facts(&stores).await.revision, 0, "the user's message alone");
-        root.save(update(vec![(1, reply("a1")), (2, response("r1"))], 3))
-            .await
-            .unwrap();
-        let answered = facts(&stores).await;
-        assert_eq!(
-            (answered.revision, answered.last),
-            (1, Some(Terminal::Response))
-        );
-        // A rewrite that drops rows is a change of the output.
-        root.save(update(Vec::new(), 1)).await.unwrap();
-        let rewritten = facts(&stores).await;
-        assert_eq!((rewritten.revision, rewritten.last), (2, None));
-    }
-
-    /// Every page of a long request is a thousand blocks, wherever its requests
-    /// begin and end, with no byte limit, and reads no row outside it
-    /// (`crates/conversation-socket-protocol/src/transcript.rs`).
-    ///
-    /// A row long before the latest page is never decoded, which a row that does
-    /// not decode shows; the first page is the blocks that remain. Planted
-    /// defect: a page of whole requests, which reads the request's every row.
-    // Cost: one database on disk with about two thousand rows, under a second.
-    #[tokio::test(flavor = "local")]
-    async fn a_page_of_a_long_request_is_a_thousand_blocks_and_reads_no_row_outside_it() {
-        let latest = PageQuery { before: None, after: None, around: None, edge: None };
-        let (tree, stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
-            .await
-            .unwrap();
-        // One request: its message and two thousand replies.
-        let mut blocks = vec![user("u0")];
-        blocks.extend((0..2000).map(|n| reply(&format!("a{n}"))));
-        let length = blocks.len();
-        tree.session_store(&id("root"))
-            .save(update(blocks.into_iter().enumerate().collect(), length))
-            .await
-            .unwrap();
-        stores
-            .db(&conversation())
-            .call(move |connection| {
-                // A text block without its fields, which the database
-                // indexes and no read decodes.
-                Ok(connection.execute(r#"UPDATE blocks SET block = '{"type":"text","id":"broken"}' WHERE idx = 1"#, [])?)
-            })
-            .await
-            .unwrap();
-        let read = stores
-            .read(&conversation(), move |connection| {
-                read_page(connection, &Transcript::Agent(id("root")), latest)
-            })
-            .await
-            .unwrap()
-            .unwrap();
-        let PageRead::Page { start, blocks, .. } = read else {
-            panic!("a page");
-        };
-        assert_eq!((start, blocks.len()), (length - 1000, 1000));
-    }
-
-    /// The pages before and after a block, from the latest back to the start:
-    /// each is a thousand blocks that end or start where the next begins, the
-    /// first page holds what remains, and a page around a block holds it with
-    /// half a page on each side (`crates/conversation-socket-protocol/src/transcript.rs`).
-    // Cost: one database on disk with 2,500 rows, under a second.
-    #[tokio::test(flavor = "local")]
-    async fn pages_before_and_after_a_block_run_from_the_latest_to_the_start() {
-        let (tree, stores, _data) = store().await;
-        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
-            .await
-            .unwrap();
-        // One request: its message and 2,499 replies, `a1` at index 1.
-        let mut blocks = vec![user("u0")];
-        blocks.extend((1..2500).map(|n| reply(&format!("a{n}"))));
-        let length = blocks.len();
-        tree.session_store(&id("root"))
-            .save(update(blocks.into_iter().enumerate().collect(), length))
-            .await
-            .unwrap();
-        let page = |query: PageQuery<'static>| {
-            let stores = stores.clone();
-            async move {
-                let read = stores
-                    .read(&conversation(), move |connection| {
-                        read_page(connection, &Transcript::Agent(id("root")), query)
-                    })
-                    .await
-                    .unwrap()
-                    .unwrap();
-                let PageRead::Page { start, blocks, .. } = read else {
-                    panic!("a page");
-                };
-                (start, blocks.len(), ids_of(&blocks))
-            }
-        };
-        let edge = |n: usize| -> &'static BlockId { Box::leak(Box::new(BlockId::try_from(format!("a{n}")).unwrap())) };
-
-        let (start, len, _) = page(PageQuery { before: None, after: None, around: None, edge: None }).await;
-        assert_eq!((start, len), (1500, 1000));
-        let (start, len, ids) = page(PageQuery { before: Some(1500), after: None, around: None, edge: Some(edge(1500)) }).await;
-        assert_eq!((start, len), (500, 1000));
-        assert_eq!((ids.first().map(String::as_str), ids.last().map(String::as_str)), (Some("a500"), Some("a1499")));
-        let (start, len, ids) = page(PageQuery { before: Some(500), after: None, around: None, edge: Some(edge(500)) }).await;
-        assert_eq!((start, len, ids.first().map(String::as_str)), (0, 500, Some("u0")));
-        let (start, len, ids) = page(PageQuery { before: None, after: Some(499), around: None, edge: Some(edge(499)) }).await;
-        assert_eq!((start, len, ids.first().map(String::as_str)), (500, 1000, Some("a500")));
-        let (start, len, _) = page(PageQuery { before: None, after: Some(2400), around: None, edge: Some(edge(2400)) }).await;
-        assert_eq!((start, len), (2401, 99));
-        let (start, len, ids) = page(PageQuery { before: None, after: None, around: Some(edge(1200)), edge: None }).await;
-        assert_eq!((start, len), (700, 1000));
-        assert!(ids.iter().any(|id| id == "a1200"));
-    }
-
-    // A child off the current path takes its own children off it, whose
-    // starts are on its path.
-    #[tokio::test(flavor = "local")]
-    async fn a_child_off_the_current_path_takes_its_subtree_with_it() {
-        let (tree, stores, _data) = store().await;
-        store_contract::a_subagent_tells_whether_its_start_is_on_its_parents_path(&tree).await;
-        let on_path: Vec<(u64, bool)> = stores
-            .db(&conversation())
-            .call(|connection| subagents(connection))
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|subagent| (subagent.record.number, subagent.on_path))
-            .collect();
-        assert_eq!(on_path, [(1, true), (2, false), (3, false), (4, true)]);
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn the_database_keeps_the_tree_store_contract() {
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_compaction_keeps_the_versions_of_what_it_carries(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_load_reads_the_window_and_the_rest_on_demand(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_subagent_tells_whether_its_start_is_on_its_parents_path(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::create_queues_the_first_message_with_the_node_and_a_save_replaces_it(&tree)
-            .await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_save_delivers_the_completions_its_transcript_carries_and_only_those(
-            &tree,
-        )
-        .await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::reopen_makes_a_closed_node_live_with_its_message(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_reopen_with_a_profile_replaces_what_the_profile_chose(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(&tree)
-            .await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::children_list_in_spawn_order_and_a_close_keeps_its_phase(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::the_blob_namespace_names_bytes_by_their_sha256(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::each_sequence_gives_its_numbers_once_in_order(&tree).await;
-        let (tree, _stores, _data) = store().await;
-        store_contract::a_side_question_is_no_subagent_and_keeps_what_it_asks(&tree).await;
     }
 }

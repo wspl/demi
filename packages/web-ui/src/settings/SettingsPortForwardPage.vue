@@ -41,7 +41,6 @@ import {
 const props = defineProps<{
   forward: SettingsPortForward
   hosts: readonly ForwardHost[]
-  nameMaxLength: number
   overlayStore: OverlayStore
   /** Saves a change; a refusal the user can fix is thrown, and its field shows it. */
   onChange: (change: PortForwardChange) => Promise<void>
@@ -66,8 +65,8 @@ async function save(field: keyof PortForwardChange, change: PortForwardChange): 
 
 function nameProblem(value: string): SentenceText | null {
   const name = value.trim()
-  if (!name || name.length > props.nameMaxLength) {
-    return t('portForwards.page.nameProblem', { max: props.nameMaxLength })
+  if (!name) {
+    return t('portForwards.page.nameProblem')
   }
   return null
 }

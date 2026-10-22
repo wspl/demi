@@ -1,7 +1,7 @@
 /**
- * A plugin's stores (`docs/decisions/0008-plugin-architecture.md`): what a page
- * keeps live for as long as the user has its plugin on, apart from any panel
- * or conversation the page shows, as Pinia stores the shell holds.
+ * A plugin's stores: what a page keeps live for as long as the user has its
+ * plugin on, apart from any panel or conversation the page shows, as Pinia
+ * stores the shell holds.
  *
  * - A page declares a store with `definePluginStore` and reaches it through
  *   its page context's `store`, which names it under the page's own plugin and

@@ -170,7 +170,6 @@
     "permission_request_not_found": "This request was already answered.",
     "invalid_answer": "The answer doesn’t fit the request.",
     "invalid_answer_missing": "Enter a value for “{field}”.",
-    "invalid_answer_too_large": "The value of “{field}” can be at most {limitBytes}.",
     "credential_not_found": "The credential wasn’t found.",
     "credential_name_taken": "Another credential has this name.",
     "port_forward_name_taken": "A forward named {name} already exists.",

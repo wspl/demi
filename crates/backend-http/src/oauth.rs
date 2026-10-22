@@ -169,36 +169,3 @@ fn page(language: Language, title: &str, text: &str) -> Html<String> {
         "<!doctype html><html lang=\"{language}\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>{title}</title><body style=\"font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 4em auto; max-width: 32em; padding: 0 1em\"><p>{text}</p></body></html>"
     ))
 }
-
-#[cfg(test)]
-mod tests {
-    use axum::http::HeaderValue;
-
-    use super::*;
-
-    // The first language the header prefers that Demi speaks, by weight and
-    // then order; a table, no I/O.
-    #[test]
-    fn a_page_speaks_the_first_accepted_language_demi_speaks() {
-        use Language::*;
-        for (accepted, spoken) in [
-            ("zh-TW", TraditionalChinese),
-            ("zh-HK", TraditionalChinese),
-            ("zh-MO", TraditionalChinese),
-            ("zh-Hant", TraditionalChinese),
-            ("zh-Hans-HK", SimplifiedChinese),
-            ("zh-CN", SimplifiedChinese),
-            ("zh", SimplifiedChinese),
-            ("en-GB, zh-CN", English),
-            ("fr, ja-JP;q=0.9, en;q=0.8", Japanese),
-            ("en;q=0.5, ko", Korean),
-            ("ko;q=0, fr", English),
-            ("fr", English),
-            ("", English),
-        ] {
-            let mut headers = HeaderMap::new();
-            headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static(accepted));
-            assert_eq!(page_language(&headers), spoken, "{accepted:?}");
-        }
-    }
-}

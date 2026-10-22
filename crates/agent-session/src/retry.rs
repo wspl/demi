@@ -20,7 +20,8 @@ use demi_provider_common::{ErrorCode, ProviderFailure};
 /// When and how long a failed request is retried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
-    /// Attempts per request, the first included.
+    /// Attempts per request, the first included. Bounded so a request that
+    /// keeps failing ends instead of retrying without end.
     pub max_attempts: u32,
     /// The cap of the random wait before the second attempt; it doubles with
     /// each retry.

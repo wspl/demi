@@ -25,7 +25,9 @@ use demi_agent_transcript::{
     COMPACTION_NOTE, RequestView, estimate::block_tokens, testing::RESUME_TEXT,
 };
 use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits, testing::TokioClock};
-use demi_shared_types::{BlockId, MediaSource, QueuedMessage, TokenUsage};
+use demi_shared_types::{
+    BlockId, EditCopies, EditKind, EditSegment, EditedFile, MediaSource, PathChange, QueuedMessage, TokenUsage,
+};
 
 use super::*;
 
@@ -3267,12 +3269,11 @@ async fn a_session_of_many_compactions_holds_only_its_last_window_and_reads_the_
     let held = session.transcript();
     assert_eq!((held.start, held.blocks), (next, path[next..].to_vec()));
 
-    // The earlier history is read from the store whole; a page that holds it
-    // from its second block is answered with the latest page, which the
-    // window holds, and reads the rest when it shows it.
+    // The earlier history is read from the store whole; the latest page is
+    // the window's, and a page reads the rest when it shows it.
     assert_eq!(session.history().await.unwrap().blocks, path);
-    let reset = session.reset(Some(1), Some(path[1].id()));
-    assert_eq!((reset.start, reset.length), (next, path.len()));
+    let latest = session.latest_page();
+    assert_eq!((latest.start, latest.length), (next, path.len()));
 
     // An edit of the first message, before every boundary, replaces the
     // history from it.
@@ -3322,7 +3323,7 @@ async fn a_request_that_a_compaction_cut_lists_its_calls_from_its_own_message() 
     ]);
     let store = MemoryTreeStore::new();
     let (_release, released) = oneshot::channel();
-    let session = small_session(&provider, vec![super::lists::shell_tool(released)], &store).await;
+    let session = small_session(&provider, vec![shell_tool(released)], &store).await;
     session.send(text("Tidy up"), turn("t1")).unwrap().await.unwrap();
 
     let held = session.transcript();
@@ -3334,7 +3335,89 @@ async fn a_request_that_a_compaction_cut_lists_its_calls_from_its_own_message() 
         .find(|block| matches!(block, Block::ToolCall(call) if call.tool_use_id == "call-2"))
         .unwrap();
     assert_eq!(
-        super::lists::listed(second, false),
+        listed(second, false),
         [("/w/a.txt".to_owned(), EditKind::Added), ("/w/b.txt".to_owned(), EditKind::Modified)]
     );
+}
+
+/// A shell tool whose input says what its command did: the files it wrote,
+/// each `[path, kind, before, after]`, and the paths it removed. The call
+/// whose input says `slow` returns once `release` fires.
+fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
+    let release = Rc::new(RefCell::new(Some(release)));
+    tool("shell", move |call| {
+        let input = &call.input;
+        let files: Vec<EditedFile> = input["writes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|write| {
+                let text = |at: usize| write[at].as_str().unwrap();
+                let kind = if text(1) == "added" { EditKind::Added } else { EditKind::Modified };
+                EditedFile {
+                    path: text(0).into(),
+                    kind,
+                    from: None,
+                    added: 1,
+                    removed: 0,
+                    outside: false,
+                    edits: vec![EditSegment {
+                        copies: Some(EditCopies {
+                            original: BlobRef::of(text(2).as_bytes()),
+                            modified: BlobRef::of(text(3).as_bytes()),
+                        }),
+                        binary: false,
+                    }],
+                }
+            })
+            .collect();
+        let path_changes = input["removes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|path| PathChange::Removed {
+                path: path.as_str().unwrap().into(),
+            })
+            .collect();
+        let view = ToolView::Shell(ShellToolView {
+            status: ShellViewStatus::Exited,
+            command_id: CommandId::try_from(input["command"].as_str().unwrap()).unwrap(),
+            exit_code: Some(0),
+            lost_reason: None,
+            running_ms: 1,
+            idle_ms: 0,
+            chunks: Vec::new(),
+            view_truncated: false,
+            files_truncated: (!files.is_empty()).then_some(false),
+            files: (!files.is_empty()).then_some(files),
+            path_changes,
+            run_files: None,
+            request_files: None,
+        });
+        let waits = if input["slow"] == true { release.borrow_mut().take() } else { None };
+        Box::pin(async move {
+            if let Some(waits) = waits {
+                let _ = waits.await;
+            }
+            Ok(ToolOutcome {
+                view: Some(view),
+                ..output("exit code: 0")
+            })
+        })
+    })
+}
+
+fn listed(block: &Block, run: bool) -> Vec<(String, EditKind)> {
+    let Block::ToolCall(call) = block else {
+        panic!("not a call: {block:?}");
+    };
+    let Some(ToolView::Shell(view)) = &call.view else {
+        panic!("not a shell call: {block:?}");
+    };
+    let files = if run { &view.run_files } else { &view.request_files };
+    files
+        .iter()
+        .flatten()
+        .map(|file| (file.path.clone(), file.kind))
+        .collect()
 }

@@ -170,7 +170,6 @@
     "permission_request_not_found": "このリクエストにはすでに回答済みです。",
     "invalid_answer": "回答がリクエストに合っていません。",
     "invalid_answer_missing": "「{field}」の値を入力してください。",
-    "invalid_answer_too_large": "「{field}」の値は {limitBytes} 以下にしてください。",
     "credential_not_found": "認証情報が見つかりませんでした。",
     "credential_name_taken": "この名前は別の認証情報で使用されています。",
     "port_forward_name_taken": "「{name}」という名前の転送はすでに存在します。",

@@ -14,7 +14,7 @@ const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
   id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running',
   load: 'ready', lastError: null, pendingAction: null, failures: {}, archived: false, queue: [], pendingSteers: [], starting: null, pendingCalls: [],
-  waitingSince: null, requestOutput: null, turnSpeed: null,
+  waitingSince: null, requestOutputs: {}, turnSpeed: null,
   scroll: null, subagents: [], terminals: [], shownAt: null, summaries: {},
   history: wholeHistory([
     { type: 'user', id: 'user-1', turnId: 'turn-1', model: demoModel, createdAt,
@@ -32,7 +32,7 @@ const source = reactive<ChatSessionState>({
   ]),
 })
 const current = ref<ChatSessionState>(source)
-const { shares, service: share } = useGalleryShares()
+const { service: share } = useGalleryShares()
 const outcome = ref<'success' | 'hold' | 'failure'>('success')
 const completion = shallowRef<Deferred<void> | null>(null)
 const failed = new Set<string>()
@@ -76,7 +76,7 @@ onBeforeUnmount(() => completion.value?.reject(new Error('Preview closed')))
       <Button v-if="current.id !== source.id" @click="current = source">Back to Source</Button>
     </div>
     <div class="gallery-frame flex h-[440px] bg-surface">
-      <ChatSession @show-subagents="() => {}" :conversation="current" :has-provider="true" :fork="fork" :share="share" :shares="shares" />
+      <ChatSession @show-subagents="() => {}" :conversation="current" :has-provider="true" :fork="fork" :share="share" />
     </div>
   </div>
 </template>

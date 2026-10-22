@@ -6,12 +6,23 @@
 use axum::extract::State;
 use axum::http::StatusCode;
 use demi_backend_accounts::instructions::personal_instructions;
-use demi_web_api_protocol::instructions::InstructionsBody;
+use axum::Json;
+use demi_web_api_protocol::instructions::{InstructionsAnswer, InstructionsBody};
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
+
+/// `GET /settings/instructions`: the caller's instructions, empty when they
+/// have none.
+pub(super) async fn read(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<InstructionsAnswer>, ApiError> {
+    let instructions = state.services.control.instructions(user.id).await?;
+    Ok(Json(InstructionsAnswer { instructions }))
+}
 
 /// `PUT /instructions { text }`.
 pub(super) async fn replace(

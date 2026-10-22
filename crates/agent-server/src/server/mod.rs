@@ -39,7 +39,7 @@ use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, Se
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::task::TaskTracker;
 
-pub use connection::{Connection, FrameRx, Outgoing};
+pub use connection::{Connection, Follows, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
 pub use tree::{AskError, KeptAgents, QuiescenceWatch, SideCard, Tree, side_instruction};
 
@@ -150,7 +150,8 @@ pub type TreeStores = Rc<dyn Fn(&NodeId) -> Rc<dyn AgentTreeStore>>;
 pub struct ServerConfig {
     pub session: SessionConfig,
     /// The most steps a connection's outbox holds, each the frames of one
-    /// change; a connection whose client lags this far is closed.
+    /// change; a connection whose client lags this far is closed. Bounded
+    /// because a client that never reads would grow the outbox without end.
     pub outbox_steps: usize,
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
@@ -332,8 +333,8 @@ impl<H: HostResolver> AgentServer<H> {
 
     /// The agents of the conversation `root` as its metadata lists them, and
     /// their version: the live tree's own, or, with no tree live, as its store
-    /// keeps them while the conversation works at `placement`, at a version of
-    /// their own that an open answers whole.
+    /// keeps them while the conversation works at `placement`, at the stored
+    /// version, which a collection no live session runs keeps.
     pub async fn agents(
         &self,
         root: &NodeId,
@@ -345,6 +346,7 @@ impl<H: HostResolver> AgentServer<H> {
         let store = (self.deps.stores)(root);
         let subagents = store.subagents().await?;
         let sides = store.sides().await?;
+        let saved = store.saved_versions().await?.agents;
         let selections: Vec<ModelSelection> = subagents.iter().map(|stored| stored.model().clone()).collect();
         let models = self.deps.subagents.runs_on(&selections).await;
         let kept = self.deps.agents.kept(root).await;
@@ -354,13 +356,43 @@ impl<H: HostResolver> AgentServer<H> {
             return Ok(tree.agents());
         }
         Ok(tree::stored_agents(
-            self.deps.ids.next_id(),
             root,
             subagents.into_iter().zip(models).collect(),
             sides,
             placement,
             kept,
+            saved,
         ))
+    }
+
+    /// The cache chart of the node `node` of the conversation `root`: the live
+    /// tree's, or as the product kept it while none is live; an empty chart
+    /// for an agent that made no turn call, none for a node that has no chart,
+    /// such as a side question or a node the conversation does not have.
+    pub async fn cache_chart(&self, root: &NodeId, node: &NodeId) -> Result<Option<CacheChart>, StoreError> {
+        if let Some(tree) = self.tree(root) {
+            return Ok(tree.cache_chart(node));
+        }
+        let number = if node == root {
+            Some(0)
+        } else {
+            let store = (self.deps.stores)(root);
+            store
+                .subagents()
+                .await?
+                .into_iter()
+                .find(|stored| stored.record.id == *node)
+                .map(|stored| stored.record.number)
+        };
+        let Some(number) = number else {
+            return Ok(None);
+        };
+        let mut charts = self.deps.agents.charts(root).await;
+        // A tree opened meanwhile answers instead, as `agents` does.
+        if let Some(tree) = self.tree(root) {
+            return Ok(tree.cache_chart(node));
+        }
+        Ok(Some(charts.remove(&number).unwrap_or_default()))
     }
 
     /// Restores the conversation `root`'s tree with no connection attached, as
@@ -651,8 +683,7 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Stops every live tree at once, then disposes each and waits for the
-    /// evictions under way: no agent runs on while a close waits for another
-    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`).
+    /// evictions under way: no agent runs on while a close waits for another.
     pub async fn shutdown(&self) {
         let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
         for tree in &trees {

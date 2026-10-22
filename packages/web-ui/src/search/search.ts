@@ -32,9 +32,6 @@ export type SearchSource = (query: string, signal: AbortSignal) => Promise<Searc
 /** How long typing pauses before the field's text is searched. */
 export const SEARCH_PAUSE_MS = 200
 
-/** The most characters a query has, as the backend bounds it. */
-export const SEARCH_QUERY_MAX = 256
-
 /** What the window shows under its field. */
 export type SearchView =
   | { kind: 'recent'; rows: SearchRow[] }

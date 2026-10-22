@@ -352,6 +352,7 @@ async fn print_shown(
         .field("Next run", automation.next_at)
         .field("Created", automation.created_at);
     let mut runs = Table::new(["at", "task", "state", "conversation", "line"]);
+    // Ten of the runs, because the table goes into the agent's context window.
     for run in automation.runs.iter().take(10) {
         runs.row::<Cell>([
             run.at.into(),

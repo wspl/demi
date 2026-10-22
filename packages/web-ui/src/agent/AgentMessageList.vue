@@ -192,8 +192,7 @@ const emit = defineEmits<{
   /**
    * The block in view once the scroll settles, which bounds what of the
    * transcript the host holds; null at the end of a window that reaches the
-   * transcript's, for the latest
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * transcript's, for the latest.
    */
   shown: [blockId: string | null, within: number]
 }>()
@@ -384,6 +383,7 @@ const {
   totalSize,
   measureElement,
   scrollOffset,
+  placed,
   isAtBottom,
   scrollToBottom,
   reveal,
@@ -474,8 +474,7 @@ useFollowSentMessages(() => renderBlocks.value, rowKey, scrollToBottom)
 
 /**
  * How many screens from an edge of the window the next page is read: far
- * enough that the page has arrived before the reader reaches the edge
- * (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`).
+ * enough that the page has arrived before the reader reaches the edge.
  */
 const PREFETCH_SCREENS = 3
 
@@ -499,11 +498,13 @@ const hasStale = computed(() => props.blocks.some((block) => block.stale))
 // the transcript the reader is at when the page arrives. The host reads each
 // page once.
 watch(
-  [nearStart, nearEnd, hasStale, () => props.blocks, () => props.revealBlockId],
+  [nearStart, nearEnd, hasStale, () => props.blocks, () => props.revealBlockId, placed],
   () => {
     // A block being brought into view places the list first. Until then, the
-    // list's scroll position belongs to the window shown before.
-    if (paneStatus.value || props.revealBlockId) {
+    // list's scroll position belongs to the window shown before. A list that
+    // has not placed itself yet is at its first layout, whose offset is 0:
+    // it is not near the start, it is not anywhere yet.
+    if (paneStatus.value || props.revealBlockId || !placed.value) {
       return
     }
     const before = nearStart.value || hasStale.value

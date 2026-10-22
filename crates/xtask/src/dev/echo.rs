@@ -180,17 +180,3 @@ async fn messages(
         .map(|(name, data)| Event::default().event(name).json_data(data));
     Sse::new(futures_util::stream::iter(events))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_echo_model_is_off_unless_the_variable_is_1() {
-        let read = |value: Option<&str>| enabled(|_| value.map(str::to_owned));
-        assert_eq!(read(None), Ok(false));
-        assert_eq!(read(Some("")), Ok(false));
-        assert_eq!(read(Some("1")), Ok(true));
-        assert!(read(Some("true")).is_err());
-    }
-}

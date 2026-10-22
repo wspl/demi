@@ -17,7 +17,7 @@
       "30d": "Kept for 30 days",
       "always": "Kept until you remove it"
     },
-    "needsValues": "Every field needs a value of up to 64 KiB.",
+    "needsValues": "Every field needs a value.",
     "allowCredentialTitle": "Allow this conversation to use the credential “{name}”?",
     "removed": "Removed",
     "youRemoved": "You removed this credential.",

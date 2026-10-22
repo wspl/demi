@@ -28,7 +28,7 @@ const session = reactive<ChatSessionState>({
   queue: [],
   pendingSteers: [], starting: null,
   pendingCalls: [],
-  waitingSince: null, requestOutput: null, turnSpeed: null,
+  waitingSince: null, requestOutputs: {}, turnSpeed: null,
   phase: 'idle',
   load: 'loading',
   lastError: null,

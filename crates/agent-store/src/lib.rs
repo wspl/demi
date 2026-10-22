@@ -170,6 +170,10 @@ pub trait AgentTreeStore {
     /// asked.
     fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>>;
 
+    /// The versions the store's state has now, which a page that read the
+    /// tree while no session lived follows it at.
+    fn saved_versions(&self) -> LocalBoxFuture<'_, Result<SavedVersions, StoreError>>;
+
     /// The node's record and its first checkpoint in one commit, so that a
     /// node the process loses before its first turn still has the message
     /// queued in it. A node that exists is refused.
@@ -360,6 +364,18 @@ pub enum StoreError {
     /// The operation failed, such as a transaction the database refused.
     #[error("{0}")]
     Failed(String),
+}
+
+/// The versions of a tree's stored state, at the epoch
+/// [`STORED_EPOCH`](demi_conversation_socket_protocol::STORED_EPOCH): they
+/// change with every save that changes what the value shows, so a page that
+/// holds one knows whether what it read is what the store holds now.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SavedVersions {
+    /// The tree's agents, of the rows that decide their entries.
+    pub agents: u64,
+    /// Each node's transcript: its output revision with its path's length.
+    pub nodes: BTreeMap<NodeId, u64>,
 }
 
 /// A node as the store holds it: identity and relationship, never runtime

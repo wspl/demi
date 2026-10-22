@@ -1,18 +1,16 @@
 //! A conversation's agents as its metadata lists them: the root, each subagent
-//! and each side question, every one a node of its tree and an agent session
-//! (`docs/decisions/0009-agent-sessions-and-sync.md`).
+//! and each side question, every one a node of its tree and an agent session.
 //!
-//! The list is a collection kept in sync by its [`Version`]: the `agents`
-//! frame carries it whole, or the entries changed since a revision the page
-//! holds, and each `agent` frame one changed entry with the revision one past
-//! the previous. A page that meets a gap asks for the changes since the
-//! revision it holds (`agents_since`). An entry carries no result: a child
-//! reports to its parent by message, and its parent's transcript holds the
-//! messages and the notice of its end.
+//! The list is a collection kept in sync by its [`Version`]: the conversation's
+//! route answers it whole at a version, and each `agent` frame carries one
+//! changed entry at the version after it. A page that meets a gap or another
+//! epoch reads the route again. An entry carries no result: a child reports to
+//! its parent by message, and its parent's transcript holds the messages and
+//! the notice of its end.
 //!
 //! An entry also carries the agent's waiting inputs, its queue and its
 //! pending steers, so a command that changes them settles on the entry, never
-//! on its answer (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+//! on its answer.
 
 use demi_shared_types::{
     BlockId, ContextUsage, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, PendingCall, PendingSteer, QueuedMessage,
@@ -21,7 +19,7 @@ use demi_shared_types::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{AgentCost, JobModel, JobPhase, Version};
+use crate::{AgentCost, JobModel, JobPhase};
 
 /// One agent of the conversation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -179,18 +177,4 @@ pub struct SideQuestion {
     pub folded: bool,
     #[garde(skip)]
     pub asked_at: Timestamp,
-}
-
-/// The blocks of a node's transcript a page holds, as it names them when it
-/// subscribes: the version it holds them at, and the first block of its
-/// latest run that may have changed since, at `from`, as `edge`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HeldEdge {
-    #[garde(dive)]
-    pub version: Version,
-    #[garde(skip)]
-    pub from: u32,
-    #[garde(skip)]
-    pub edge: BlockId,
 }

@@ -514,22 +514,6 @@ pub struct BackendConfig {
     /// The STUN servers pages and runners ask for their public address;
     /// none keeps direct channels to one network, as a test's are.
     pub stun: Vec<StunUrl>,
-    /// Counts what reaches the object store, for the scenarios that prove
-    /// what the backend reads and writes there.
-    #[cfg(feature = "testing")]
-    pub object_counts: Option<demi_backend_blobs::counting::ObjectCounts>,
-    /// The authorities the plugins' outbound requests trust besides the
-    /// system's, for a test's HTTPS servers.
-    #[cfg(feature = "testing")]
-    pub web_roots: Vec<reqwest::Certificate>,
-    /// Where push messages go instead of the internet's push services.
-    #[cfg(feature = "testing")]
-    pub push_transport: Option<std::sync::Arc<dyn demi_backend_accounts::push::PushTransport>>,
-    /// Holds the migrations of the conversations' databases from the moment
-    /// the stores open, before anything the start runs, such as the search
-    /// index's catch-up, reads one (`Backend::held_migrations`).
-    #[cfg(feature = "testing")]
-    pub migrations_held: bool,
 }
 
 impl BackendConfig {
@@ -586,14 +570,6 @@ impl BackendConfig {
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             stun: Vec::new(),
-            #[cfg(feature = "testing")]
-            object_counts: None,
-            #[cfg(feature = "testing")]
-            web_roots: Vec::new(),
-            #[cfg(feature = "testing")]
-            push_transport: None,
-            #[cfg(feature = "testing")]
-            migrations_held: false,
         }
     }
 }

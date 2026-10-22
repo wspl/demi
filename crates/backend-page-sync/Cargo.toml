@@ -6,8 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# No tests of its own: the synchronization scenarios of `demi-backend` cover
-# the registry at the page's channel (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false

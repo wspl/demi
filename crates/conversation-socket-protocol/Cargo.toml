@@ -7,8 +7,7 @@ publish.workspace = true
 
 
 [lib]
-# No doc examples: rustdoc has nothing to test. The tests are in
-# tests/frames, so the library needs no test harness of its own.
+# No doc examples: rustdoc has nothing to test.
 doctest = false
 test = false
 bench = false

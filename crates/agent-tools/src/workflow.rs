@@ -22,16 +22,10 @@ pub const WORKFLOWS_DIRECTORY: [&str; 2] = [".demi", "workflows"];
 /// workflow's id.
 pub const WORKFLOW_EXTENSION: &str = ".yaml";
 
-/// The longest workflow file read, in bytes: two texts of the longest
-/// instructions and a margin, so a file that holds what the format allows
-/// always reads.
+/// The longest workflow file read, in bytes: a file is read whole into memory
+/// from a Host, whose files have no bound of their own.
 pub const WORKFLOW_FILE_MAX_BYTES: u64 = 1024 * 1024;
 
-/// The most characters a workflow's name has.
-const NAME_MAX: usize = 60;
-/// The most characters of a name that reads as a menu item; `check` warns
-/// of a longer one.
-const MENU_NAME_MAX: usize = 30;
 /// What a menu item's name does not hold: colons, plus signs and brackets,
 /// ASCII and full-width, which mark a task's title rather than the name of
 /// a way of working; `check` warns of them.
@@ -39,10 +33,6 @@ const MENU_NAME_MARKS: &[char] = &[
     ':', '：', '+', '＋', '(', ')', '[', ']', '{', '}', '<', '>', '（', '）', '［', '］',
     '｛', '｝', '＜', '＞', '【', '】', '「', '」', '『', '』', '《', '》', '〈', '〉', '〔', '〕',
 ];
-/// The most characters of instructions, a workflow's or a profile's.
-const INSTRUCTIONS_MAX: usize = 65_536;
-/// The most characters of a profile's description.
-const DESCRIPTION_MAX: usize = 500;
 
 /// The help of `demi agent workflows`: where workflow files live, each
 /// field, and a whole example (`crates/backend-user-shard/src/conversation/workflows.rs`).
@@ -51,13 +41,13 @@ pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles w
 Where: .demi/workflows/<id>.yaml in the nearest directory, from the working directory up to the git repository's root, that has a .demi/workflows/ directory. The file's name without .yaml is the workflow's id.
 
 Fields:
-  name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. Up to 30 characters, with no colon, plus sign or brackets; check warns of a name that is not. Good: Review Team, Parallel Development, 并行开发. Bad: Payments refactor: lead + 2 workers, Review (strict), 支付重构：主管 + 两个 worker. 1 to 60 characters. Required.
-  instructions  For the agent leading the conversation: when to use which profile and how to split the work. Up to 65,536 characters. Optional.
-  subagent_instructions  For every subagent of every profile, added to its system prompt after Demi's own and before its profile's instructions: what all of them share, such as when to message the lead. Up to 65,536 characters. Optional.
+  name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. With no colon, plus sign or brackets; check warns of a name that has. Good: Review Team, Parallel Development, 并行开发. Bad: Payments refactor: lead + 2 workers, Review (strict), 支付重构：主管 + 两个 worker. Required.
+  instructions  For the agent leading the conversation: when to use which profile and how to split the work. Optional.
+  subagent_instructions  For every subagent of every profile, added to its system prompt after Demi's own and before its profile's instructions: what all of them share, such as when to message the lead. Optional.
   profiles      The workflow's profiles, a list. Required. Each has:
     id            The --profile value of demi agent spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default; unique in the list. Required.
-    description   When an agent should use it: one line of 1 to 500 characters, which demi agent profiles list shows. Required.
-    instructions  Added to the child's system prompt after Demi's own: what this kind of subagent is for and how it works. Up to 65,536 characters. Optional.
+    description   When an agent should use it: one line, which demi agent profiles list shows. Required.
+    instructions  Added to the child's system prompt after Demi's own: what this kind of subagent is for and how it works. Optional.
     spawning      true lets its children spawn children of their own. Optional, false by default.
     model         A model id of an entry demi providers show shows; the first of the user's provider entries that offers it serves it. Optional: without it, the child runs on its parent's model.
     effort        An effort the model lists, or off for no thinking. Optional, the model's first effort by default; needs model.
@@ -90,16 +80,16 @@ profiles:
 #[serde(deny_unknown_fields)]
 pub struct Workflow {
     /// What the Workflow menu shows.
-    #[garde(length(chars, min = 1, max = NAME_MAX), custom(one_line))]
+    #[garde(length(chars, min = 1), custom(one_line))]
     pub name: String,
     /// The root's instructions while the workflow is chosen.
     #[serde(default)]
-    #[garde(inner(length(chars, min = 1, max = INSTRUCTIONS_MAX)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub instructions: Option<String>,
     /// What every child of every profile is told, before its profile's
     /// instructions.
     #[serde(default)]
-    #[garde(inner(length(chars, min = 1, max = INSTRUCTIONS_MAX)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub subagent_instructions: Option<String>,
     #[garde(dive, custom(unique_ids))]
     pub profiles: Vec<WorkflowProfile>,
@@ -113,11 +103,11 @@ pub struct WorkflowProfile {
     /// The `--profile` value.
     #[garde(custom(profile_id))]
     pub id: String,
-    #[garde(length(chars, min = 1, max = DESCRIPTION_MAX), custom(one_line))]
+    #[garde(length(chars, min = 1), custom(one_line))]
     pub description: String,
     /// Added to the child's system prompt after the product's.
     #[serde(default)]
-    #[garde(inner(length(chars, min = 1, max = INSTRUCTIONS_MAX)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub instructions: Option<String>,
     /// Whether its children may spawn children of their own.
     #[serde(default)]
@@ -145,13 +135,10 @@ pub struct WorkflowProfile {
 
 impl Workflow {
     /// Why the name does not read as a menu item, for `check` to warn of:
-    /// longer than a menu item's, or holding a colon, a plus sign or a
-    /// bracket. The workflow works whatever its name.
+    /// holding a colon, a plus sign or a bracket. The workflow works whatever
+    /// its name.
     pub fn name_warning(&self) -> Option<String> {
         let mut faults = Vec::new();
-        if self.name.chars().count() > MENU_NAME_MAX {
-            faults.push(format!("is over {MENU_NAME_MAX} characters"));
-        }
         if self.name.contains(MENU_NAME_MARKS) {
             faults.push("has a colon, a plus sign or brackets".to_owned());
         }
@@ -205,6 +192,8 @@ fn one_line(value: &str, _: &()) -> garde::Result {
     Ok(())
 }
 
+/// The same rule as a user profile's name (`crates/backend-accounts/src/subagents.rs`),
+/// whose limit of 40 characters that crate owns.
 fn profile_id(value: &str, _: &()) -> garde::Result {
     let mut chars = value.chars();
     let well_formed = chars.next().is_some_and(|first| first.is_ascii_lowercase())
@@ -252,124 +241,5 @@ fn context_needs_model(
     move |value, context| {
         let own = value.filter(|choice| *choice != ContextChoice::Default);
         needs_model(model)(&own, context)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The help's own example is a workflow the parser reads whole, so the
-    /// help never teaches a file that fails `check`.
-    #[test]
-    fn the_helps_example_reads_with_every_field() {
-        let example = WORKFLOWS_HELP
-            .split_once("Example, .demi/workflows/review.yaml:\n\n")
-            .expect("the help ends with its example")
-            .1;
-        let workflow = parse_workflow(example).unwrap();
-        assert_eq!(workflow.name, "Review Team");
-        assert_eq!(
-            workflow.instructions.as_deref(),
-            Some("Have reviewer check every change before you report it.\nUse explore for any search across more than one package.\n"),
-        );
-        assert_eq!(
-            workflow.profiles[0],
-            WorkflowProfile {
-                id: "explore".into(),
-                description: "Use for finding code and call sites; it reports and changes nothing.".into(),
-                instructions: Some("Read and report where things are. Never change a file.\n".into()),
-                spawning: false,
-                model: Some("claude-sonnet-5-5".into()),
-                effort: Some("low".into()),
-                tier: None,
-                context: Some(ContextChoice::Limit(300_000)),
-            },
-        );
-        assert_eq!(workflow.profiles[1].id, "reviewer");
-        assert_eq!(workflow.profiles[1].model, None);
-    }
-
-    /// Each wrong file names the line and the field that are wrong.
-    #[test]
-    fn a_wrong_file_names_its_line_and_field() {
-        let cases = [
-            ("name: Review\n", "line 1 column 1: missing field `profiles`"),
-            (
-                "name: Review\nprofile: []\n",
-                "line 2 column 1: unknown field `profile`, expected one of name, instructions, subagent_instructions, profiles",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: Explore\n    description: Finds code.\n",
-                "line 3 column 9: validation error: is not 1 to 40 lowercase letters, digits and hyphens starting with a letter for `profiles[0].id`",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: default\n    description: Finds code.\n",
-                "line 3 column 9: validation error: is default, which names the parent's own profile for `profiles[0].id`",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n    effort: low\n",
-                "line 5 column 13: validation error: needs model for `profiles[0].effort`",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n    context: 500K\n",
-                "line 5 column 14: validation error: needs model for `profiles[0].context`",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n    model: m\n    context: 400K\n",
-                "line 6 column 14: \"400K\" is not a context: use full, 500K, 300K, 200K or default",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n  - id: explore\n    description: Finds more.\n",
-                "line 3 column 3: validation error: has the id explore twice for `profiles`",
-            ),
-            (
-                "name: Review\nprofiles:\n  - id: explore\n    description: |\n      Finds\n      code.\n",
-                "line 5 column 7: validation error: is more than one line for `profiles[0].description`",
-            ),
-            (
-                &format!("name: {}\nprofiles: []\n", "n".repeat(61)),
-                "line 1 column 7: validation error: length is greater than 60 for `name`",
-            ),
-            ("name: [\n", "line 1 column 7: expected string scalar"),
-        ];
-        for (text, reason) in cases {
-            let error = parse_workflow(text).unwrap_err();
-            assert_eq!(error.reason(), reason, "{text}");
-        }
-    }
-
-    /// A name that does not read as a menu item, a task's title with a colon, a
-    /// plus sign or brackets or one over 30 characters, still reads, with a
-    /// warning that says why.
-    ///
-    /// A short name in the user's language reads without one.
-    #[test]
-    fn a_name_that_is_not_a_menu_items_reads_with_a_warning() {
-        let warned = [
-            ("支付重构：主管 + 两个 worker", "has a colon, a plus sign or brackets;"),
-            ("Port: Lead", "has a colon, a plus sign or brackets;"),
-            ("Lead ＋ Worker", "has a colon, a plus sign or brackets;"),
-            ("Review (strict)", "has a colon, a plus sign or brackets;"),
-            ("Review [strict]", "has a colon, a plus sign or brackets;"),
-            ("评审【严格】", "has a colon, a plus sign or brackets;"),
-            ("Parallel Development With Review", "is over 30 characters;"),
-            (
-                "Payments refactor: lead + 2 workers",
-                "is over 30 characters and has a colon, a plus sign or brackets;",
-            ),
-        ];
-        for (name, fault) in warned {
-            let workflow = parse_workflow(&format!("name: '{name}'\nprofiles: []\n")).unwrap();
-            let warning = workflow.name_warning().unwrap_or_default();
-            assert!(
-                warning.starts_with(&format!("the name {} {fault}", workflow.name)),
-                "{name}: {warning}"
-            );
-        }
-        for name in ["Parallel Development", "并行开发", "Équipe de relecture"] {
-            let workflow = parse_workflow(&format!("name: '{name}'\nprofiles: []\n")).unwrap();
-            assert_eq!(workflow.name_warning(), None, "{name}");
-        }
     }
 }

@@ -6,9 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the stores' internals, so they are unit tests and the crate
-# has no integration tests (`ARCHITECTURE.md`); no doc
-# examples.
+# No doc examples.
 doctest = false
 bench = false
 
@@ -64,9 +62,3 @@ webauthn-rs = { version = "=0.5.5", default-features = false, features = ["condi
 # backend and `demi-server` need no system OpenSSL. No runner, command
 # package or Host program depends on this crate.
 openssl = { version = "0.10", features = ["vendored"] }
-
-[dev-dependencies]
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
-demi-agent-store = { path = "../agent-store", features = ["testing"] }
-tempfile = "3"
-tokio-util.workspace = true

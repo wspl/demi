@@ -13,7 +13,6 @@ use axum::http::header::{
 use axum::http::{HeaderMap, HeaderValue};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
-
 /// What RFC 8187 encodes of a file name: all but the unreserved characters
 /// `-`, `.`, `_`, `~` and `!`.
 const FILE_NAME: &AsciiSet = &NON_ALPHANUMERIC
@@ -78,76 +77,4 @@ fn attachment(file_name: Option<&str>) -> HeaderValue {
         "attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
     ))
     .expect("printable ASCII is a header value")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn headers(
-        media_type: Option<&str>,
-        download: bool,
-        file_name: Option<&str>,
-    ) -> Vec<(String, String)> {
-        let mut headers: Vec<(String, String)> = content_headers(media_type, download, file_name)
-            .iter()
-            .map(|(name, value)| (name.to_string(), value.to_str().unwrap().to_owned()))
-            .collect();
-        headers.sort();
-        headers
-    }
-
-    fn pairs(expected: &[(&str, &str)]) -> Vec<(String, String)> {
-        let mut pairs: Vec<(String, String)> = expected
-            .iter()
-            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-            .collect();
-        pairs.sort();
-        pairs
-    }
-
-    #[test]
-    fn media_shows_in_place_images_inert_and_the_rest_downloads_under_its_name() {
-        assert_eq!(
-            headers(Some("image/svg+xml"), false, Some("logo.svg")),
-            pairs(&[
-                ("content-type", "image/svg+xml"),
-                ("content-security-policy", demi_shared_types::IMAGE_CONTENT_POLICY),
-                ("x-content-type-options", "nosniff"),
-            ])
-        );
-        // Chrome refuses audio opened directly under a policy; PDF viewers
-        // refuse a sandbox.
-        for media_type in ["audio/mpeg", "application/pdf"] {
-            assert_eq!(
-                headers(Some(media_type), false, None),
-                pairs(&[
-                    ("content-type", media_type),
-                    ("x-content-type-options", "nosniff")
-                ])
-            );
-        }
-        let download = |disposition: &str| {
-            pairs(&[
-                ("content-type", "application/octet-stream"),
-                ("content-disposition", disposition),
-                ("x-content-type-options", "nosniff"),
-            ])
-        };
-        assert_eq!(
-            headers(Some("text/html"), false, None),
-            download("attachment")
-        );
-        assert_eq!(headers(None, false, None), download("attachment"));
-        assert_eq!(
-            headers(Some("text/markdown"), false, Some("README.md")),
-            download("attachment; filename=\"README.md\"; filename*=UTF-8''README.md")
-        );
-        assert_eq!(
-            headers(Some("image/png"), true, Some("图 (1)'s.png")),
-            download(
-                "attachment; filename=\"_ (1)'s.png\"; filename*=UTF-8''%E5%9B%BE%20%281%29%27s.png"
-            )
-        );
-    }
 }

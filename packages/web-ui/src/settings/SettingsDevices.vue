@@ -40,8 +40,6 @@ const props = defineProps<{
   shown?: string | null
   /** The runner release the server's devices follow; null on a server without them. */
   runnerRelease: string | null
-  /** The most characters a device's name has; null for no limit. */
-  nameMaxLength: number | null
   /** The user's projects, each on a device; a revoked device's go with it. */
   projects?: readonly { deviceId: string; path: string }[]
   overlayStore: OverlayStore
@@ -109,7 +107,6 @@ const pageProjects = computed(() =>
     :page="page"
     :runner-release="runnerRelease"
     :projects="pageProjects"
-    :name-max-length="nameMaxLength"
     :overlay-store="overlayStore"
     :exposed-ports="(exposedPorts ?? []).filter((exposed) => exposed.deviceId === shown)"
     :on-expose-port="onExposePort && (() => onExposePort!(shown!))"

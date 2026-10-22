@@ -96,7 +96,7 @@
     },
     "page": {
       "name": "名前",
-      "nameProblem": "{max} 文字以内の名前を入力してください。",
+      "nameProblem": "名前を入力してください。",
       "on": "オン",
       "onDescription": "オンの間、待ち受けるホストがオンラインなら動作します。",
       "listenOn": "待ち受け",
@@ -359,7 +359,7 @@
     "home": "ホーム",
     "homeDescription": "ファイルとクラウドプロジェクト。",
     "note": "サイズは次にクラウドが起動したときに適用されます。すでにこれより大きいディスクはそのサイズのままです。",
-    "problem": "1〜{max} の整数を GB 単位で入力してください。"
+    "problem": "1 以上の整数で GB を入力してください。"
   },
   "addPasskey": {
     "title": "パスキーを追加",
@@ -455,7 +455,6 @@
     "notePlaceholder": "エージェントが必要とする理由",
     "fields": "項目",
     "addField": "項目を追加",
-    "fieldsMax": "1 つの認証情報の項目は最大 {max} 個です。",
     "labelPlaceholder": "API キー",
     "labelOf": "項目 {n} のラベル",
     "needsField": "認証情報には 1 つ以上の項目が必要です。",
@@ -466,9 +465,7 @@
     "create": "認証情報を作成"
   },
   "credentialFields": {
-    "required": "必須",
-    "maxChars": "{max} 文字以内にしてください。",
-    "maxBytes": "64 KiB 以内にしてください。"
+    "required": "必須"
   },
   "subagents": {
     "title": "サブエージェント",

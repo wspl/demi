@@ -11,14 +11,15 @@ import {
   resetTranscript,
   windowOf,
   type ConversationClient,
+  type ConversationHeld,
   type ClientSessionEvent,
+  type HeldEdge,
 } from '@demicodes/conversation-client'
 import { asError, createId, deferred } from '@demicodes/utils'
 import type {
   AgentEntry,
   ClientContent,
   EditRequest,
-  HeldEdge,
   MessageComment,
   RegenerateRequest,
   SavedDelivery,
@@ -84,7 +85,7 @@ export type RuntimeState = Pick<
   | 'starting'
   | 'pendingCalls'
   | 'waitingSince'
-  | 'requestOutput'
+  | 'requestOutputs'
   | 'lastError'
   | 'load'
   | 'pendingAction'
@@ -94,20 +95,29 @@ export type RuntimeState = Pick<
 
 export interface ConversationRuntimeOptions {
   state: RuntimeState
-  connect: (signal: AbortSignal) => Promise<ConversationClient>
+  /**
+   * The conversation's client, which lives as long as the runtime: it reads
+   * what the view shows, connects after its reads, and holds what it read
+   * across connections, so a connection that is lost is followed again from
+   * what it held.
+   */
+  client: ConversationClient
   onEvent?: (event: ClientSessionEvent) => void
   /**
    * The nodes besides the root whose messages the page shows now, which each
-   * connection subscribes to before its `open`; `subscribe` and
-   * `unsubscribe` follow a change.
+   * connection reads and follows once opened; `subscribeNode` and
+   * `unsubscribeNode` follow a change.
    */
   nodes?: () => readonly string[]
   /** The blocks the page holds of the node `node`, other than the root, which the root's `history` says. */
   held?: (node: string) => HeldEdge | undefined
-  /** The version of the conversation's agents the page holds; absent before it holds any. */
-  agents?: () => Version | undefined
   /** The revision of the draft the page holds; absent before it read one. */
   draft?: () => number | undefined
+  /**
+   * What the page shows already of the agents and the nodes, as from a copy on
+   * disk, which a client that holds nothing follows from with no read.
+   */
+  holding?: () => ConversationHeld | undefined
   /**
    * Whether the page shows the transcript before the session opens, as from
    * what it kept on disk: without, a first opening shows the pane loading
@@ -149,7 +159,11 @@ export class ConversationRuntime {
   private readonly client = shallowRef<ConversationClient | null>(null)
   private opening: Promise<ConversationClient> | null = null
   private controller: AbortController | null = null
-  private unsubscribe: (() => void) | null = null
+  private readonly unsubscribe: () => void
+  /** Whether the runtime itself lets the connection go, whose end it does not take for a loss. */
+  private releasing = false
+  /** Whether an attempt to open is under way: the connection's end then fails the attempt, which tells it. */
+  private attempting = false
   /**
    * The clients whose session has listed its pending steers, the last of the
    * frames that show the conversation as it opens.
@@ -166,6 +180,21 @@ export class ConversationRuntime {
 
   constructor(options: ConversationRuntimeOptions) {
     this.options = options
+    this.unsubscribe = options.client.subscribe((event) => {
+      if (event.type === 'pending_steers') {
+        this.listedSteers.add(options.client)
+      }
+      if (this.disposed || (this.releasing && event.type === 'disconnected')) {
+        return
+      }
+      // The reads of an opening come before its connection and show as they
+      // answer; the end of a connection that never opened, and the session's refusal of its open, are the attempt's.
+      if ((event.type === 'disconnected' || event.type === 'error') && this.attempting) {
+        return
+      }
+      this.applyEvent(event)
+      triggerRef(this.client)
+    })
   }
 
   get connected(): boolean {
@@ -440,14 +469,14 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).abort()
   }
 
-  /** The page shows the node `node`'s messages now: the connection, and each later one, sends them. */
+  /** The page shows the node `node`'s messages now: the connection, and each later one, reads and follows them. */
   subscribeNode(node: string): void {
-    this.client.value?.subscribeTo(node)
+    this.client.value?.followNode(node)
   }
 
   /** The page stops showing the node `node`'s messages. */
   unsubscribeNode(node: string): void {
-    this.client.value?.unsubscribeFrom(node)
+    this.client.value?.unfollowNode(node)
   }
 
   private shown(): boolean {
@@ -544,16 +573,21 @@ export class ConversationRuntime {
   dispose(): void {
     this.disposed = true
     this.releaseConnection()
+    this.unsubscribe()
+    this.options.client.dispose()
   }
 
   private releaseConnection(): void {
     this.settlePendingAction()
-    this.unsubscribe?.()
-    this.unsubscribe = null
     const controller = this.controller
     this.controller = null
     controller?.abort()
-    this.client.value?.disconnect()
+    this.releasing = true
+    try {
+      this.options.client.disconnect()
+    } finally {
+      this.releasing = false
+    }
     this.client.value = null
     this.opening = null
   }
@@ -640,8 +674,7 @@ export class ConversationRuntime {
   }
 
   private async openOnce(controller: AbortController): Promise<ConversationClient> {
-    let client: ConversationClient | null = null
-    let unsubscribe: (() => void) | null = null
+    const client = this.options.client
     // Each attempt has its own deadline; the opening's controller ends them
     // all.
     const attempt = new AbortController()
@@ -653,67 +686,31 @@ export class ConversationRuntime {
     )
     // A deadline or a release while the session opens ends the connection,
     // which ends the wait.
-    const disconnect = () => client?.disconnect(asError(attempt.signal.reason))
+    const disconnect = () => client.disconnect(asError(attempt.signal.reason))
     attempt.signal.addEventListener('abort', disconnect, { once: true })
-    // The handshake's frames, held until the session has opened, so what
-    // they show joins the conversation in one change with the session open,
-    // and an attempt that fails shows none of them.
-    let handshake: ClientSessionEvent[] | null = []
+    this.attempting = true
     try {
-      client = await this.options.connect(attempt.signal)
-      attempt.signal.throwIfAborted()
-      const opened = client
-      unsubscribe = client.subscribe((event) => {
-        if (event.type === 'pending_steers') {
-          this.listedSteers.add(opened)
-        }
-        if (this.controller !== controller) {
-          return
-        }
-        if (this.client.value !== opened) {
-          // Until the session opens, the connection's end is this attempt's:
-          // `open` fails with it, and the opening decides what follows.
-          if (event.type !== 'closed' && event.type !== 'disconnected') {
-            handshake?.push(event)
-          }
-          return
-        }
-        this.applyEvent(event)
-        triggerRef(this.client)
-      })
-      // The nodes the page shows now, whose messages the open's handshake brings.
+      // The nodes the page shows now, whose latest pages the open reads.
       const root = this.options.state.id
       const named = this.shownNodes()
       await client.open({
         root,
         nodes: named,
         held: (node) => (node === root ? heldEdge(this.options.state.history) : this.options.held?.(node)),
-        agents: this.options.agents?.(),
         draft: this.options.draft?.(),
+        holding: this.options.holding?.(),
+        signal: attempt.signal,
       })
       attempt.signal.throwIfAborted()
       this.client.value = client
-      this.unsubscribe = unsubscribe
       const shown = this.shownNodes()
       for (const node of shown) {
-        client.subscribeTo(node)
+        client.followNode(node)
       }
-      // A node the page stopped showing while the handshake came takes
+      // A node the page stopped showing while the session opened takes
       // none of what it brought.
-      const dropped = named.filter((id) => !shown.includes(id))
-      for (const node of dropped) {
-        client.unsubscribeFrom(node)
-      }
-      // Applied once, then let go: the subscription lives as long as the
-      // connection, and the frames it held must not.
-      const held = handshake
-      handshake = null
-      for (const event of held) {
-        const transcript = event.type === 'transcript_reset' || event.type === 'transcript_patch'
-        if (transcript && dropped.includes(event.node)) {
-          continue
-        }
-        this.applyEvent(event)
+      for (const node of named.filter((id) => !shown.includes(id))) {
+        client.unfollowNode(node)
       }
       this.opened = true
       this.options.state.load = 'ready'
@@ -721,10 +718,10 @@ export class ConversationRuntime {
       this.options.state.lastError = null
       return client
     } catch (error) {
-      unsubscribe?.()
-      client?.disconnect()
+      client.disconnect(asError(error))
       throw error
     } finally {
+      this.attempting = false
       clearTimeout(timeout)
       controller.signal.removeEventListener('abort', abortAttempt)
       attempt.signal.removeEventListener('abort', disconnect)
@@ -771,7 +768,13 @@ export class ConversationRuntime {
       case 'transcript_reset':
         // Another node's messages are the host's, which keeps its record.
         if (event.node === state.id) {
-          state.history = boundedHistory(resetTranscript(state.history, event, event.asked), state)
+          // The page just read stays whole, the page before the latest too
+          // when the read brought it: the view is about to reach it.
+          state.history = boundedHistory(
+            resetTranscript(state.history, event, event.asked),
+            state,
+            { start: event.start, end: event.start + event.blocks.length },
+          )
           state.failures = { ...state.failures, ...event.failures }
         }
         break
@@ -805,7 +808,7 @@ export class ConversationRuntime {
         state.starting = event.starting
         break
       case 'request_output':
-        state.requestOutput = event.output
+        state.requestOutputs[event.node] = event.output
         break
       case 'error': {
         // Worded from its code as the transcript's record of a failed turn
@@ -840,5 +843,10 @@ export class ConversationRuntime {
         break
     }
     this.options.onEvent?.(event)
+    // The root's read is in, and the host has taken what comes with it: the
+    // pane shows it while the session opens, as it shows a copy from the disk.
+    if (event.type === 'transcript_reset' && event.node === state.id && state.load === 'loading' && !this.opened) {
+      state.load = 'opening'
+    }
   }
 }

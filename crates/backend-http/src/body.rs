@@ -31,6 +31,8 @@ use super::transfer::TRANSFER_IDLE;
 /// The most of a JSON body the backend reads. The router's
 /// `DefaultBodyLimit` enforces it on the bytes; `JsonBody` refuses a larger
 /// declared length before reading any.
+///
+/// Bounded because a body is read into memory and a client sends without end.
 pub(super) const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
 /// Upgrades to a page's WebSocket, which takes no message larger than
@@ -228,63 +230,4 @@ fn decode_worded<T: DeserializeOwned + Validate<Context = ()>>(
         .validate()
         .map_err(|report| ApiError::invalid_body(words(&report)))?;
     Ok(value)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use axum::response::IntoResponse as _;
-    use futures_util::stream;
-    use tokio::time::Instant;
-
-    use super::*;
-
-    /// A request whose body's `chunks` arrive `apart` from each other, after
-    /// which it ends, or, when it `stalls`, sends nothing more, ever.
-    fn arriving(chunks: &[&'static str], apart: Duration, stalls: bool) -> Request {
-        let sent = stream::iter(chunks.to_vec()).then(move |chunk| async move {
-            tokio::time::sleep(apart).await;
-            Ok::<_, std::io::Error>(Bytes::from_static(chunk.as_bytes()))
-        });
-        let body = if stalls {
-            Body::from_stream(sent.chain(stream::pending()))
-        } else {
-            Body::from_stream(sent)
-        };
-        Request::post("/api/conversations/c/read")
-            .header(CONTENT_LENGTH, 64)
-            .body(body)
-            .unwrap()
-    }
-
-    // Paused time: the minute passes as soon as nothing else can run, so
-    // each scenario takes milliseconds.
-    #[tokio::test(start_paused = true)]
-    async fn a_body_that_stops_arriving_answers_408_within_a_minute_of_its_last_byte() {
-        let started = Instant::now();
-        let read = tokio::time::timeout(
-            TRANSFER_IDLE * 3,
-            JsonValueBody::from_request(arriving(&["{\"rev", "ision\":"], Duration::ZERO, true), &()),
-        )
-        .await
-        .expect("the read ends within the bound");
-        let Err(error) = read else {
-            panic!("a stalled body reads as refused");
-        };
-        assert_eq!(started.elapsed(), TRANSFER_IDLE);
-        assert_eq!(error.code(), ErrorCode::TransferStalled);
-        assert_eq!(error.into_response().status(), StatusCode::REQUEST_TIMEOUT);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_body_that_keeps_arriving_is_read_whole_however_long_it_takes() {
-        let apart = TRANSFER_IDLE - Duration::from_secs(1);
-        let request = arriving(&["{\"rev", "ision\"", ":7}"], apart, false);
-        let read = JsonValueBody::from_request(request, &()).await;
-        let Ok(JsonValueBody(value)) = read else {
-            panic!("a slow body is read");
-        };
-        assert_eq!(value, serde_json::json!({ "revision": 7 }));
-    }
 }

@@ -13,7 +13,7 @@ import {
   type PasskeyDto,
   type PasskeyPatch,
 } from '../api/generated/web-api'
-import { useProduct, type Answer } from '../state/product'
+import { useHeldList, useProduct, type Answer } from '../state/product'
 import { verifyWithPassword } from './handoff'
 import { browserHasPasskeys, createPasskey, signalAccount, signalUnknownPasskey } from './webauthn'
 
@@ -21,8 +21,8 @@ import { browserHasPasskeys, createPasskey, signalAccount, signalUnknownPasskey 
 function passkeysAnswer(next: (current: PasskeyDto[]) => PasskeyDto[]): Answer {
   return (read) => ({
     type: 'passkeys',
-    passkeys: next(read.passkeys.passkeys),
-    userHandle: read.passkeys.userHandle,
+    passkeys: next(read.passkeys?.passkeys ?? []),
+    userHandle: read.passkeys?.userHandle ?? '',
   })
 }
 
@@ -83,14 +83,14 @@ export async function addPasskey(password: string | null): Promise<PasskeyOfferO
  * synchronization channel's `passkeys` part brings every change to every
  * page, this one's own answers first.
  */
-export const usePasskeys = defineStore('passkeys', () => {
+const usePasskeyStore = defineStore('passkeys', () => {
   const product = useProduct()
   /** The relying party's id, when the server offers passkeys. */
   const rpId = computed(() => product.snapshot?.passkeyRpId ?? null)
   /** Whether this server and this browser offer passkeys. */
   const offered = computed(() => rpId.value !== null && browserHasPasskeys())
   const passkeys = computed<SettingsPasskey[]>(() =>
-    (product.snapshot?.passkeys.passkeys ?? []).map((passkey) => ({
+    (product.snapshot?.passkeys?.passkeys ?? []).map((passkey) => ({
       id: passkey.id,
       name: passkey.name,
       synced: passkey.synced,
@@ -107,8 +107,8 @@ export const usePasskeys = defineStore('passkeys', () => {
     const shown = product.change('passkeys', (state) => ({
       ...state,
       passkeys: {
-        ...state.passkeys,
-        passkeys: state.passkeys.passkeys.map((passkey) => (passkey.id === id ? { ...passkey, name } : passkey)),
+        userHandle: state.passkeys?.userHandle ?? '',
+        passkeys: (state.passkeys?.passkeys ?? []).map((passkey) => (passkey.id === id ? { ...passkey, name } : passkey)),
       },
     }))
     return writes
@@ -155,10 +155,11 @@ export const usePasskeys = defineStore('passkeys', () => {
  */
 export function usePasskeySignals(): void {
   const product = useProduct()
+  useHeldList('passkeys')
   watch(
     () => {
       const state = product.snapshot
-      return state && state.passkeyRpId
+      return state && state.passkeyRpId && state.passkeys
         ? {
             rpId: state.passkeyRpId,
             userHandle: state.passkeys.userHandle,
@@ -182,4 +183,10 @@ export function usePasskeySignals(): void {
     },
     { immediate: true },
   )
+}
+
+/** The passkeys, which the page holds while a view shows them. */
+export function usePasskeys(): ReturnType<typeof usePasskeyStore> {
+  useHeldList('passkeys')
+  return usePasskeyStore()
 }

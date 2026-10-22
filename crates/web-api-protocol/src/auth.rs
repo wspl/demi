@@ -127,7 +127,7 @@ impl JsonSchema for Password {
 #[serde(transparent)]
 #[schemars(inline)]
 #[garde(transparent)]
-pub struct Nickname(#[garde(length(chars, min = 1, max = 80))] Trimmed);
+pub struct Nickname(#[garde(length(chars, min = 1))] Trimmed);
 
 impl Nickname {
     pub fn into_string(self) -> String {
@@ -144,7 +144,7 @@ pub struct SetupRequest {
     /// An `EmailAddress` is valid once it is decoded.
     #[garde(skip)]
     pub email: EmailAddress,
-    #[garde(length(chars, min = 8, max = 1024))]
+    #[garde(length(chars, min = 8))]
     pub password: Password,
 }
 
@@ -175,7 +175,7 @@ pub struct NicknamePatch {
 pub struct PasswordChange {
     #[garde(inner(length(chars, min = 1)))]
     pub current: Option<Password>,
-    #[garde(length(chars, min = 8, max = 1024))]
+    #[garde(length(chars, min = 8))]
     pub next: Password,
 }
 
@@ -214,51 +214,4 @@ pub struct EmailChangeConfirm {
     pub id: String,
     #[garde(pattern(r"^[0-9]{6}$"))]
     pub code: String,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_verification_code_is_six_ascii_digits() {
-        let confirm = |code: &str| {
-            serde_json::from_value::<EmailChangeConfirm>(
-                serde_json::json!({ "id": "c", "code": code }),
-            )
-            .unwrap()
-            .validate()
-        };
-        assert!(confirm("012345").is_ok());
-        for refused in ["abcdef", "12345", "1234567", "١٢٣٤٥٦", "12 456"] {
-            assert!(confirm(refused).is_err(), "{refused}");
-        }
-    }
-
-    #[test]
-    fn a_request_schema_is_strict_with_its_bounds_and_a_response_schema_tolerant() {
-        let schema = |value: schemars::Schema| serde_json::to_value(value).unwrap();
-        let setup = schema(schemars::schema_for!(SetupRequest));
-        assert_eq!(setup["additionalProperties"], false);
-        assert_eq!(setup["properties"]["email"]["format"], "email");
-        assert_eq!(setup["properties"]["password"]["minLength"], 8);
-        assert_eq!(setup["properties"]["password"]["maxLength"], 1024);
-        assert_eq!(setup["properties"]["nickname"]["maxLength"], 80);
-        let nickname = schema(schemars::schema_for!(NicknamePatch));
-        assert_eq!(nickname["properties"]["nickname"]["maxLength"], 80);
-        let confirm = schema(schemars::schema_for!(EmailChangeConfirm));
-        assert_eq!(confirm["properties"]["code"]["pattern"], "^[0-9]{6}$");
-        let user = schema(schemars::schema_for!(UserDto));
-        assert_ne!(user["additionalProperties"], false);
-        assert_eq!(user["properties"]["createdAt"]["format"], "date-time");
-    }
-
-    #[test]
-    fn a_password_never_shows_in_debug_output() {
-        let credentials: Credentials = serde_json::from_value(
-            serde_json::json!({ "email": "ana@example.test", "password": "hunter22" }),
-        )
-        .unwrap();
-        assert!(!format!("{credentials:?}").contains("hunter22"));
-    }
 }

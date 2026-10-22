@@ -1,9 +1,15 @@
 import { apiRequest, jsonBody, readResponse } from './client'
-import { shareAnswerSchema, type ShareAnswer, type ShareTarget } from './generated/web-api'
+import { conversationSharesSchema, shareAnswerSchema, type ConversationShare, type ShareAnswer, type ShareTarget } from './generated/web-api'
 
 /** A conversation's owner routes for its shares. */
 function sharesPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/shares`
+}
+
+/** The conversation's shares, read when its share dialog opens. */
+export async function listShares(conversationId: string, signal?: AbortSignal): Promise<ConversationShare[]> {
+  const response = await apiRequest(sharesPath(conversationId), { signal })
+  return (await readResponse(response, conversationSharesSchema)).shares
 }
 
 /** The conversation's or an answer's share: the existing one, or a new snapshot. */

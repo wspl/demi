@@ -11,7 +11,7 @@
 //! registers the provider families, and a user turns each on or off while the
 //! backend runs.
 //!
-//! A plugin lives while the user has it on (`docs/decisions/0008-plugin-architecture.md`):
+//! A plugin lives while the user has it on:
 //!
 //! ```text
 //!              on                          off
@@ -46,8 +46,6 @@ mod web;
 pub use oauth::{Callback, CallbackError};
 pub use web::client as web_client;
 pub use registry::{Registry, RegistryError};
-#[cfg(feature = "testing")]
-pub mod testing;
 pub use user::{
     ReadOn,
     ContextAsk, Lost, PageCall, PageCallError, PanelError, PluginToolset, ProductPort,

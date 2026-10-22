@@ -219,11 +219,6 @@ impl ApiError {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn code(&self) -> ErrorCode {
-        self.code
-    }
-
     pub(crate) fn device_offline() -> Self {
         Self::new(
             StatusCode::CONFLICT,
@@ -324,7 +319,7 @@ impl ApiError {
 
     /// A failure a request could not cause: logged with its causes, and
     /// answered 500.
-    fn internal(error: &(dyn std::error::Error + 'static)) -> Self {
+    pub(super) fn internal(error: &(dyn std::error::Error + 'static)) -> Self {
         tracing::error!(error, "a request failed");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,

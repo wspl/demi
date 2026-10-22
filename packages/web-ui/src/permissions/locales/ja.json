@@ -17,7 +17,7 @@
       "30d": "30 日間保持",
       "always": "削除するまで保持"
     },
-    "needsValues": "すべての項目に 64 KiB 以内の値が必要です。",
+    "needsValues": "すべての項目に値が必要です。",
     "allowCredentialTitle": "このチャットに認証情報「{name}」の使用を許可しますか？",
     "removed": "削除済み",
     "youRemoved": "この認証情報は削除されています。",

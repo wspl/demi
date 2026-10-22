@@ -50,7 +50,6 @@ const webApi = Bun.resolveSync('@demicodes/web/src/api/generated/web-api', impor
 const code = [
   import.meta.dir,
   webApi,
-  Bun.resolveSync('@demicodes/web/src/__tests__/product-state', import.meta.dir),
   Bun.resolveSync('@demicodes/protocol', dirname(webApi)),
 ]
 

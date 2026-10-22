@@ -64,11 +64,6 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         return;
     };
     let lookup = async {
-        #[cfg(feature = "testing")]
-        services
-            .hellos
-            .pass(demi_backend_user_shard::holds::HelloStep::TokenLookup)
-            .await;
         services
             .control
             .device_by_token(TokenHash::of(token.expose()))

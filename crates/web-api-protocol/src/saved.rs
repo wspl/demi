@@ -12,6 +12,9 @@ use crate::drafts::{ConversationDraft, DraftFile, Revisions};
 use crate::ids::SavedMessageId;
 
 /// The most messages a conversation keeps saved for later.
+///
+/// Bounded because the list is sent whole with the conversation and grows with
+/// every save.
 pub const SAVED_MAX: usize = 200;
 
 /// `POST /conversations/:id/saved/from-draft`: the composer's message, as a
@@ -72,12 +75,15 @@ pub struct SavedMessage {
 }
 
 /// How many characters of a saved message's text its listing carries.
+///
+/// Bounded because the listing is sent whole; the whole text is read when a
+/// message is opened.
 pub const SAVED_OPENING_CHARS: usize = 300;
 
 /// The messages a conversation keeps saved for later as the composer lists
 /// them, newest first, with the list's revision: each carries its text's
 /// opening, never the whole of it, since a message may hold up to a draft's
-/// size (`docs/decisions/0029-a-conversation-opens-whole.md`).
+/// size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SavedListing {
     #[garde(range(max = MAX_SAFE_INTEGER))]

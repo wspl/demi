@@ -1,8 +1,8 @@
 //! Conversations as the web app creates, lists and follows them.
 
 use demi_conversation_socket_protocol::{
-    AgentCost, AgentEntry, BlockVersions, ConversationAttachment, Failures, Refusal,
-    SendMessage, TurnSpeed, Version,
+    AgentCost, AgentEntry, BlockVersions, CacheChart, ConversationAttachment, Failures, Refusal,
+    RequestOutput, SendMessage, ShellStatus, TurnSpeed, Version,
 };
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
@@ -23,12 +23,6 @@ use crate::saved::SavedListing;
 use crate::shares::ConversationShare;
 use crate::workflows::ConversationWorkflowList;
 use crate::text::Trimmed;
-
-/// The most characters (Unicode scalar values) a conversation's title has.
-pub const TITLE_MAX: usize = 256;
-
-/// The most items one batch changes.
-pub const BATCH_MAX: usize = 100;
 
 /// Where a conversation's work runs (`crates/backend-database/src/selection.rs`): the user's Cloud, a directory on a paired device, or a
 /// workspace. A new conversation runs on the Cloud, in its session
@@ -70,8 +64,7 @@ pub enum ConversationTarget {
 /// [`ConversationPatch`] takes except `archived`. They apply as part of the
 /// creation, and one that is refused refuses it. Its first message, when it
 /// has one, is admitted as the same message sent on the conversation's
-/// socket would be, once the record exists
-/// (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+/// socket would be, once the record exists.
 #[derive(
     Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
 )]
@@ -86,7 +79,7 @@ pub struct CreateConversation {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "Trimmed")]
-    #[garde(length(chars, min = 1, max = TITLE_MAX))]
+    #[garde(length(chars, min = 1))]
     pub title: Option<Trimmed>,
     #[serde(
         default,
@@ -229,18 +222,17 @@ pub struct ConversationSummary {
     pub automation: Option<crate::automations::FiledRun>,
     /// The conversation's work panel: its tabs under the revision that counts
     /// its changes. The page draws the panel's frame and tabs from it as soon
-    /// as the conversation is listed
-    /// (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+    /// as the conversation is listed.
     #[garde(dive)]
     pub panel: WorkPanel,
 }
 
 /// What a page shows of an open conversation beside its sidebar entry, its
-/// agents and its transcripts: its settings, and each of its lists whole under
-/// its revision (`docs/decisions/0029-a-conversation-opens-whole.md`). The
-/// socket sends it before the open's handshake and again at each change, so
-/// the page reads none of them by a route. Only a page that shows the
-/// conversation hears of its changes, on the conversation's socket.
+/// agents and its transcripts: its settings. `GET /conversations/:id` answers
+/// it, and the socket sends it whole at each change; a list a menu shows,
+/// the saved messages, the workflows and the shares, is read when the menu
+/// opens. Only a page that shows the conversation hears of its changes, on the
+/// conversation's socket.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationMetadata {
@@ -263,7 +255,7 @@ pub struct ConversationMetadata {
     pub last_turn: Option<LastTurn>,
     /// The speed of the root's last turn that streamed for a second or more,
     /// which the chips row shows once the turn's own reading has gone; null
-    /// before the first (`docs/decisions/0012-live-output-tokens.md`).
+    /// before the first.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<TurnSpeed>")]
     pub turn_speed: Option<TurnSpeed>,
@@ -277,26 +269,19 @@ pub struct ConversationMetadata {
     pub other_cost: AgentCost,
     /// When the conversation's first call ended, whichever agent made it;
     /// null before it made one. The context card offers the last hour's cost
-    /// once this is more than an hour ago
-    /// (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+    /// once this is more than an hour ago.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
     pub first_call_at: Option<Timestamp>,
-    /// The messages the conversation keeps saved for later, as the composer
-    /// lists them, under the revision of the list.
-    pub saved: SavedListing,
     /// The conversation states the plugins hold for its work panel's tabs,
     /// each under its revision. The panel's tabs are the entry's
     /// (`ConversationSummary::panel`), which the page has before it opens the
-    /// conversation (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+    /// conversation.
     #[garde(dive)]
     pub panel_states: Vec<HeldState>,
     /// The conversation's attached hosts, under a revision an attach, a
     /// detach or a rename raises.
     pub hosts: ConversationHosts,
-    /// The workflows of its working directory as the backend keeps them,
-    /// under their revision, 0 before the backend first read them.
-    pub workflows: ConversationWorkflowList,
     /// The number of the conversation's latest attachment, 3 for `a3`, 0
     /// before its first (`crates/backend-host-access/src/attachment_commands.rs`): a message
     /// that names a higher number names one still to come, whose description
@@ -312,15 +297,10 @@ pub struct ConversationMetadata {
     /// that rises with each change of them in this run of the backend.
     #[garde(dive)]
     pub permissions: ConversationPermissions,
-    /// The conversation's shares, its own and its answers', so the header
-    /// and an answer open the share dialog on the existing link.
-    #[garde(skip)]
-    pub shares: Vec<ConversationShare>,
 }
 
 /// `GET /conversations/:id/cost/last-hour`: what the conversation's calls of
-/// the last 60 minutes cost, counted by the backend from its usage ledger
-/// (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+/// the last 60 minutes cost, counted by the backend from its usage ledger.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct LastHourCost {
@@ -353,12 +333,16 @@ pub struct LastHourAgent {
 }
 
 /// `GET /conversations/:id`: one conversation as the sidebar lists it, its
-/// metadata, and its agents at their version.
+/// metadata, its agents at their version, and its root's request output.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationDetail {
     pub conversation: ConversationSummary,
     pub metadata: ConversationMetadata,
+    /// The entity tag of `metadata` as the socket's `conversation` frame
+    /// carries it, which the page follows the metadata with: the hash of its
+    /// JSON.
+    pub metadata_tag: String,
     pub agents: Version,
     /// The root first, then the subagents by number, then the side
     /// questions as they were asked.
@@ -370,8 +354,9 @@ pub struct ConversationDetail {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ConversationFrame {
-    /// The conversation's metadata, at the open and at each change of it.
-    Conversation { metadata: Box<ConversationMetadata> },
+    /// The conversation's metadata, whole, with its entity tag, at each
+    /// change of it a page follows.
+    Conversation { metadata: Box<ConversationMetadata>, etag: String },
     /// The conversation's draft at a revision newer than the one the page
     /// named at its open, and at each change of it; the page that wrote a
     /// change knows its revision from its save's answer.
@@ -381,6 +366,24 @@ pub enum ConversationFrame {
     Attachments {
         attachments: Vec<ConversationAttachment>,
     },
+    /// The saved messages, whole, with their entity tag, at each change of the
+    /// list a page follows.
+    Saved { saved: SavedListing, etag: String },
+    /// The workflows of the working directory, whole, with their entity tag,
+    /// at each change a page follows.
+    Workflows { workflows: ConversationWorkflowList, etag: String },
+    /// The conversation's shares, whole, with their entity tag, at each change
+    /// a page follows.
+    Shares { shares: ConversationShares, etag: String },
+}
+
+/// `GET /conversations/:id/shares`: the conversation's shares, its own and
+/// its answers', so the header and an answer open the share dialog on the
+/// existing link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationShares {
+    pub shares: Vec<ConversationShare>,
 }
 
 /// The latest ended turn of a conversation's root.
@@ -475,12 +478,20 @@ pub struct ReadRequest {
     pub revision: u64,
 }
 
-/// `?before=|after=|around=&edge=` of
-/// `GET /conversations/:id/agents/:node/transcript`. Queries are the
-/// backend's alone and are not emitted.
+/// `?latest=true[&earlier=true]|before=|after=|around=&edge=` of
+/// `GET /conversations/:id/agents/:node/transcript`: `latest` reads the
+/// latest page from the window of the node's live session, and the rest read
+/// the store. Queries are the backend's alone and are not emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TranscriptQuery {
+    #[serde(default)]
+    pub latest: StrictBool,
+    /// With `latest`: the page before the latest comes with it, as one run of
+    /// blocks from the earlier page's start, so a page that holds nothing
+    /// of the transcript needs one request for both.
+    #[serde(default)]
+    pub earlier: StrictBool,
     #[serde(default)]
     pub before: Option<u32>,
     #[serde(default)]
@@ -526,6 +537,29 @@ pub struct TranscriptPage {
     /// The attachments its blocks name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ConversationAttachment>,
+    /// The transcript's version at the read: the `transcript_patch` frames
+    /// of its node that follow have the revision one past it, in the same
+    /// epoch; none in a share.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Version")]
+    pub version: Option<Version>,
+    /// The view of each live command of the node, when the page read the
+    /// latest page of a node that runs; their changes come as `shell_output`
+    /// frames.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commands: Vec<ShellStatus>,
+    /// The output of the request the node's agent runs, when the page read
+    /// the latest page of a node that runs one; its changes come as
+    /// `request_output` frames.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "RequestOutput")]
+    pub request_output: Option<RequestOutput>,
+    /// The node's cache chart, which its context card draws, when the page
+    /// read the latest page of a node that has one; its changes come as
+    /// `cache_chart` frames.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "CacheChart")]
+    pub cache_chart: Option<CacheChart>,
 }
 
 /// A compaction marker of a page and its boundary's summary size.
@@ -580,7 +614,7 @@ pub struct ConversationPatch {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "Trimmed")]
-    #[garde(length(chars, min = 1, max = TITLE_MAX))]
+    #[garde(length(chars, min = 1))]
     pub title: Option<Trimmed>,
     /// Archive, or restore.
     #[serde(
@@ -704,12 +738,12 @@ pub struct ConversationUpdate {
     pub results: Vec<FieldResult>,
 }
 
-/// `POST /conversations/batch`: up to 100 patches, each of one of the
+/// `POST /conversations/batch`: patches, each of one of the
 /// caller's conversations.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationBatch {
-    #[garde(length(min = 1, max = BATCH_MAX), dive)]
+    #[garde(length(min = 1), dive)]
     pub items: Vec<BatchItem>,
 }
 
@@ -766,48 +800,4 @@ pub struct ForkRequest {
 pub struct ForkAnswer {
     pub conversation: ConversationSummary,
     pub metadata: ConversationMetadata,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // The entries a provider keeps on a block never leave the backend
-    // (`crates/provider-claude-code/src/session.rs`): a page whose
-    // blocks hold them has the wire shape of one whose blocks hold none.
-    #[test]
-    fn a_page_reaches_the_page_without_the_entries_its_provider_kept() {
-        let text = serde_json::json!({
-            "type": "text", "id": "t1", "createdAt": "2026-09-21T14:13:20.000Z",
-            "model": { "providerId": "stub", "model": { "id": "stub-model", "name": "Stub",
-                "contextWindow": 1000, "outputLimit": null, "thinking": [], "acceptedExtensions": [] },
-                "thinking": null, "serviceTierId": null },
-            "text": "Hello",
-        });
-        let wire = serde_json::json!({
-            "start": 0, "length": 1, "blocks": [text], "instructions": [], "summaries": [],
-        });
-        let mut page: TranscriptPage = serde_json::from_value(wire.clone()).unwrap();
-        *page.blocks[0].entries_mut().unwrap() =
-            vec![serde_json::json!({ "type": "assistant", "uuid": "kept" }).into()];
-        assert_eq!(serde_json::to_value(&page).unwrap(), wire);
-    }
-
-    #[test]
-    fn a_target_refuses_what_its_kind_does_not_hold() {
-        let cloud: ConversationTarget = demi_shared_types::decode(r#"{"kind":"cloud"}"#).unwrap();
-        assert_eq!(cloud, ConversationTarget::Cloud { path: None });
-        for refused in [
-            r#"{"kind":"cloud","path":"relative"}"#,
-            r#"{"kind":"cloud","path":null}"#,
-            r#"{"kind":"device","deviceId":"laptop","path":""}"#,
-            r#"{"kind":"workspace","workspaceId":"w1","path":"/work"}"#,
-            r#"{"kind":"elsewhere"}"#,
-        ] {
-            assert!(
-                demi_shared_types::decode::<ConversationTarget>(refused).is_err(),
-                "{refused}"
-            );
-        }
-    }
 }

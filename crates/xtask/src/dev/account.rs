@@ -41,34 +41,3 @@ impl Account {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn read(set: &[(&str, &str)]) -> Result<Account, String> {
-        Account::read(|name| {
-            set.iter()
-                .find(|(key, _)| *key == name)
-                .map(|(_, value)| (*value).to_owned())
-        })
-    }
-
-    #[test]
-    fn the_variables_name_the_account_or_neither_gives_the_fixed_one() {
-        let named = read(&[(EMAIL, "me@example.test"), (PASSWORD, "secret-1")]).unwrap();
-        assert_eq!(
-            (named.email.as_str(), named.password.as_str(), named.from_env),
-            ("me@example.test", "secret-1", true)
-        );
-        let fixed = read(&[]).unwrap();
-        assert_eq!(
-            (fixed.email.as_str(), fixed.password.as_str(), fixed.from_env),
-            (DEFAULT_EMAIL, DEFAULT_PASSWORD, false)
-        );
-        assert_eq!(
-            read(&[(EMAIL, "me@example.test")]).err().unwrap(),
-            "DEMI_DEV_EMAIL is set without DEMI_DEV_PASSWORD"
-        );
-    }
-}

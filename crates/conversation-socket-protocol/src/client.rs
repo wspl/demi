@@ -4,7 +4,7 @@ use demi_shared_types::{BlobRef, BlockId, CommandId, MAX_SAFE_INTEGER, MessageCo
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{HeldEdge, Version};
+use crate::{Follow, Followed, Version};
 
 /// A frame the web app sends. The connection belongs to one conversation, so
 /// no frame names a session or a working directory.
@@ -20,44 +20,28 @@ pub enum ClientFrame {
     /// it is not live with the model selection the conversation's record
     /// holds; no frame names a model.
     ///
-    /// It names what the page holds of the conversation, which the open
-    /// answers with the changes since or whole: `agents`, the version of the
-    /// agents it holds, and `draft`, the revision of the draft it holds, which
-    /// the backend answers (`crates/backend-user-shard/src/conversation/socket.rs`).
+    /// It names `draft`, the revision of the draft the page holds, so the
+    /// backend sends a draft only when it changes past it
+    /// (`crates/backend-user-shard/src/conversation/socket.rs`), and
+    /// `follows`, each value the page holds and follows from the open on,
+    /// with the version it holds. The open sends no data of the conversation:
+    /// the page read it by its routes before it opened the socket.
     Open {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[garde(dive)]
-        agents: Option<Version>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(range(max = MAX_SAFE_INTEGER))]
         draft: Option<u64>,
-    },
-    /// Shows the node `node`'s messages on this connection, the root's or any
-    /// other: its transcript streams to the connection from now on, while the
-    /// node is live, until `unsubscribe`. The answer is its
-    /// `transcript_reset` from the blocks the page `held`, or from its latest
-    /// page; nothing when the page holds its current version. A node that is
-    /// not live sends nothing until it starts, which sends its reset. Sent
-    /// before `open`, the open answers it.
-    Subscribe {
-        #[garde(skip)]
-        node: NodeId,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(dive)]
-        held: Option<HeldEdge>,
+        follows: Vec<Follow>,
     },
-    /// Ends the subscription to the node `node`'s messages.
-    Unsubscribe {
-        #[garde(skip)]
-        node: NodeId,
-    },
-    /// Asks for the agents' changes since `held`, the version the page
-    /// holds, after a change arrived that does not follow it. The answer is
-    /// an `agents` frame: the entries changed since, or all of them when the
-    /// server holds another epoch.
-    AgentsSince {
+    /// Follows a value the page read after it opened the socket, such as the
+    /// transcript of a subagent it chose, with the version it holds.
+    Follow(#[garde(dive)] Follow),
+    /// Stops following `value`, when the view that showed it closes or the
+    /// page reads it again.
+    Unfollow {
         #[garde(dive)]
-        held: Version,
+        value: Followed,
     },
     /// Submit a message; its id becomes its turn's id and its queue entry's.
     Send(#[garde(dive)] SendMessage),
@@ -171,9 +155,8 @@ pub enum ClientFrame {
 #[serde(rename_all = "snake_case")]
 pub enum ClientFrameKind {
     Open,
-    Subscribe,
-    Unsubscribe,
-    AgentsSince,
+    Follow,
+    Unfollow,
     Send,
     EditAndSend,
     Regenerate,
@@ -203,9 +186,8 @@ impl ClientFrame {
     pub fn kind(&self) -> ClientFrameKind {
         match self {
             Self::Open { .. } => ClientFrameKind::Open,
-            Self::Subscribe { .. } => ClientFrameKind::Subscribe,
-            Self::Unsubscribe { .. } => ClientFrameKind::Unsubscribe,
-            Self::AgentsSince { .. } => ClientFrameKind::AgentsSince,
+            Self::Follow(_) => ClientFrameKind::Follow,
+            Self::Unfollow { .. } => ClientFrameKind::Unfollow,
             Self::Send(_) => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Regenerate { .. } => ClientFrameKind::Regenerate,
@@ -313,7 +295,7 @@ pub struct RegenerateRequest {
 }
 
 /// The message a `send` frame submits, and a conversation's creation carries
-/// as its first message (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+/// as its first message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SendMessage {
@@ -356,7 +338,8 @@ pub enum ClientContent {
         r#ref: String,
         /// The name the file is written under: no path separator, no NUL,
         /// and neither `.` nor `..`. The pattern has no lookaround, so that
-        /// a web browser's regex engine and Rust's read it alike.
+        /// a web browser's regex engine and Rust's read it alike. At most 255
+        /// characters because file systems limit a name to that.
         #[garde(
             length(chars, min = 1, max = 255),
             pattern(r"^(?:[^./\\\x00][^/\\\x00]*|\.[^./\\\x00][^/\\\x00]*|\.\.[^/\\\x00]+)$")
@@ -367,7 +350,8 @@ pub enum ClientContent {
     RemoteFile {
         #[garde(length(chars, min = 1))]
         device_id: String,
-        /// Absolute.
+        /// Absolute, at most 4096 characters because operating systems limit a
+        /// path to that.
         #[garde(length(chars, min = 1, max = 4096), pattern(r"^/[^\x00]*$"))]
         path: String,
     },
@@ -379,7 +363,7 @@ pub enum ClientContent {
     /// In an edit: an attachment record of the edited message, by its
     /// number, such as `a7`.
     Attachment {
-        #[garde(length(chars, min = 1, max = 32))]
+        #[garde(length(chars, min = 1))]
         id: String,
     },
 }

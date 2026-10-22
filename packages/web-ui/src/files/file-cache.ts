@@ -60,7 +60,7 @@ import {
   type WatchListener,
 } from './watch-channel'
 
-/** The most text a page keeps of the Hosts' files, counted in characters. */
+/** The most text a page keeps of the Hosts' files, counted in characters, because the cache is the browser's memory and grows with every file read. */
 export const KEPT_TEXT = 64 * 1024 * 1024
 
 /** The most entries a page keeps of one Host's files, as many as the subscriptions it may hold. */

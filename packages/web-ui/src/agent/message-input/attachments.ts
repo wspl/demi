@@ -91,6 +91,7 @@ export type ClaimFile = (
   signal: AbortSignal,
 ) => Promise<UploadedFile | null>
 
+/** The backend's limit on an upload (`ATTACHMENT_MAX_BYTES` of the web API), which the page states before sending a larger file. */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
 /**

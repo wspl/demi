@@ -68,8 +68,9 @@ export interface TerminalRecord {
 }
 
 /**
- * The most of a command's output a page keeps: as many characters as a call's
- * stored view holds.
+ * The most of a command's output a page keeps, because the output has no end and
+ * the page's memory would grow with it: as many characters as a call's stored view
+ * holds.
  */
 export const LIVE_OUTPUT_CHARS = 32_768
 

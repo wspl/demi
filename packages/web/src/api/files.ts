@@ -253,9 +253,6 @@ function linkBreak(leadsTo: LinkTarget): Pick<FileBrowserLink, 'broken'> {
   }
 }
 
-/** The most directories one request of listings names (`MAX_LISTED_DIRECTORIES`). */
-const MOST_LISTED = 64
-
 /** A listing's reader: the entries of a directory with the Host's number. */
 type ListOne = (path: string) => Promise<Answered<FileBrowserEntry[]>>
 
@@ -285,23 +282,20 @@ function listTogether(endpoint: string, listOne: ListOne): ListOne {
     }
     try {
       const answers = new Map<string, { answer: Answered<FileBrowserEntry[]> } | { failure: unknown }>()
-      for (let from = 0; from < paths.length; from += MOST_LISTED) {
-        const chunk = paths.slice(from, from + MOST_LISTED)
-        const body = directoryListsSchema.parse({ paths: chunk })
-        const { lists } = await readResponse(
-          await apiRequest(endpoint, { method: 'POST', ...jsonBody(body) }),
-          listedDirectoriesSchema,
-        )
-        for (const item of lists) {
-          if (item.type === 'refused') {
-            answers.set(item.path, { failure: fileBrowserError(apiError(item.status, JSON.stringify(item.error))) })
-            continue
-          }
-          const readAt = item.readAt === undefined ? null : readAtSchema.safeParse(item.readAt)
-          if (readAt !== null && !readAt.success)
-            throw invalidResponse(readAt.error)
-          answers.set(item.path, { answer: { value: item.entries.map(fileBrowserEntry), readAt: readAt?.data ?? null } })
+      const body = directoryListsSchema.parse({ paths })
+      const { lists } = await readResponse(
+        await apiRequest(endpoint, { method: 'POST', ...jsonBody(body) }),
+        listedDirectoriesSchema,
+      )
+      for (const item of lists) {
+        if (item.type === 'refused') {
+          answers.set(item.path, { failure: fileBrowserError(apiError(item.status, JSON.stringify(item.error))) })
+          continue
         }
+        const readAt = item.readAt === undefined ? null : readAtSchema.safeParse(item.readAt)
+        if (readAt !== null && !readAt.success)
+          throw invalidResponse(readAt.error)
+        answers.set(item.path, { answer: { value: item.entries.map(fileBrowserEntry), readAt: readAt?.data ?? null } })
       }
       for (const [path, askers] of asked) {
         const answer = answers.get(path) ?? { failure: new Error(`The listing of ${path} was not answered`) }

@@ -33,8 +33,7 @@ export interface TranscriptReveal {
 /**
  * How many blocks a transcript shown holds in memory on each side of the block
  * its view shows, a page before and a page after; what lies further leaves
- * memory and is read again, from the disk copy first, when the view reaches it
- * (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`).
+ * memory and is read again, from the disk copy first, when the view reaches it.
  */
 export const SHOWN_HALF = PAGE_BLOCKS
 

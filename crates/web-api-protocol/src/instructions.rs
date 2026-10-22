@@ -14,3 +14,10 @@ pub struct InstructionsBody {
     #[garde(skip)]
     pub text: String,
 }
+
+/// `GET /settings/instructions`: the caller's personal instructions; empty
+/// when they have none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct InstructionsAnswer {
+    pub instructions: String,
+}

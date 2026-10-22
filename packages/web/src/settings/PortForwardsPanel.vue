@@ -3,15 +3,12 @@ import { computed, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsPortForwards from '@demicodes/web-ui/settings/SettingsPortForwards.vue'
 import { useProduct } from '../state/product'
-import { portForwardPatchSchema } from '../api/generated/web-api'
 import { useSettingsAddress } from './address'
 import { usePortForwardSettings } from './port-forwards'
 
 const product = useProduct()
 const address = useSettingsAddress()
 const settings = usePortForwardSettings()
-/** The backend's limit on a forward's name, as its schema states it. */
-const nameMaxLength = portForwardPatchSchema.shape.name.unwrap().maxLength ?? 64
 
 /** Add Forward: the new forward's page opens once it exists. */
 async function add(): Promise<void> {
@@ -26,7 +23,7 @@ const shown = computed(() => (address.section.value === 'portForwards' ? address
 watch(
   [shown, () => product.snapshot],
   ([id, snapshot]) => {
-    if (id && snapshot && !snapshot.portForwards.some((forward) => forward.id === id))
+    if (id && snapshot?.portForwards && !snapshot.portForwards.some((forward) => forward.id === id))
       void address.show('portForwards')
   },
 )
@@ -37,14 +34,13 @@ watch(
     :forwards="settings.forwards"
     :hosts="settings.hosts"
     :shown="shown"
-    :load="product.load"
-    :name-max-length="nameMaxLength"
+    :load="product.listLoad('port_forwards')"
     :overlay-store="appOverlayStore"
     :on-add="add"
     :on-change="settings.change"
     :on-try-again="settings.tryAgain"
     :on-remove="settings.remove"
-    @retry="product.reconnect"
+    @retry="product.retryList('port_forwards')"
     @show="address.show('portForwards', $event)"
   />
 </template>

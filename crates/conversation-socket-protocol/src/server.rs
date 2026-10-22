@@ -4,14 +4,14 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{
-    BlobRef, Block, BlockId, CommandId, DeviceId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId,
+    BlobRef, BlockId, CommandId, DeviceId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId,
     ProviderErrorDiagnostics, ProviderFailureFacts, RequestId, TurnId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{AgentEntry, BlockVersions, CacheChart, ClientFrameKind, TranscriptPatch, Version};
+use crate::{AgentEntry, CacheChart, ClientFrameKind, Followed, TranscriptPatch, Version};
 
 /// What the providers read out of the error blocks a frame carries, by block
 /// id (`crates/backend-user-shard/src/conversation/failure_facts.rs`).
@@ -23,7 +23,7 @@ pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 /// or its picture needs before its bytes. It never changes.
 ///
 /// A frame or a page that carries blocks carries the attachments their texts
-/// name, read when it is sent, never stored with the blocks (`docs/decisions/0029-a-conversation-opens-whole.md`).
+/// name, read when it is sent, never stored with the blocks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationAttachment {
@@ -56,10 +56,9 @@ pub struct ConversationAttachment {
     pub blob: BlobRef,
     /// The file the agent uploaded it from, which a card of a file that is no
     /// image or video opens in the Files panel in the copy's place while the
-    /// conversation's Host is that device, online, and has the file
-    /// (`docs/decisions/0003-attachment-opens-its-file.md`); absent for a file
-    /// the user sent, for an upload stored before uploads kept it, and on a
-    /// share.
+    /// conversation's Host is that device, online, and has the file;
+    /// absent for a file the user sent, for an upload stored before uploads
+    /// kept it, and on a share.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -89,8 +88,28 @@ pub struct AttachmentSourceDto {
     rename_all_fields = "camelCase"
 )]
 pub enum ServerFrame {
-    /// The connection is attached; the snapshot frames follow.
+    /// The connection is attached and follows what its `open` named. It
+    /// carries no data of the conversation.
     Opened,
+    /// What the page holds of `value` cannot be brought current by what the
+    /// server keeps: the value's version is of another epoch, or past the
+    /// recent changes the server holds. The server ended the follow of
+    /// `value`; the page reads it again by its route and follows it again with
+    /// the version that read carries.
+    Stale {
+        #[garde(dive)]
+        value: Followed,
+    },
+    /// The page's copy of `value` is what the server holds, now that the
+    /// conversation's tree restored from the store the page read: the page
+    /// holds it at `version`, the version the live value has, and the follow
+    /// goes on from there.
+    Rebased {
+        #[garde(dive)]
+        value: Followed,
+        #[garde(dive)]
+        version: Version,
+    },
     /// Answers `edit_and_send` at durable acceptance.
     EditResult {
         #[garde(skip)]
@@ -117,48 +136,17 @@ pub enum ServerFrame {
         #[garde(skip)]
         request_id: Option<RequestId>,
     },
-    /// The node `node`'s blocks from `start` to the end, in their light form,
-    /// with its transcript's length and version: the answer to a
-    /// subscription, and a subscribed node's transcript when it starts.
-    TranscriptReset {
-        #[garde(skip)]
-        node: NodeId,
-        #[garde(skip)]
-        start: u32,
-        #[garde(skip)]
-        length: u32,
-        #[serde(with = "demi_shared_types::client_blocks")]
-        #[schemars(with = "Vec<Block>")]
-        #[garde(dive)]
-        blocks: Vec<Block>,
-        #[garde(dive)]
-        version: Version,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "Failures")]
-        #[garde(skip)]
-        failures: Option<Failures>,
-        /// The versions of its blocks that have others.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        #[garde(dive)]
-        versions: Vec<BlockVersions>,
-        /// The attachments its blocks name.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        #[garde(skip)]
-        attachments: Vec<ConversationAttachment>,
-    },
-    /// The patches of one batch of the node `node`'s transcript; `revision`
-    /// is one past the previous one of that node's.
+    /// The patches of one batch of the node `node`'s transcript, at `version`:
+    /// its revision is one past the previous one of that node's, and its
+    /// epoch is that of the transcript the page read, or the page reads
+    /// again.
     TranscriptPatch {
         #[garde(skip)]
         node: NodeId,
         #[garde(dive)]
         patches: Vec<TranscriptPatch>,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        revision: u64,
+        #[garde(dive)]
+        version: Version,
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -174,7 +162,9 @@ pub enum ServerFrame {
     },
     /// The conversation's agents at `version`: every one when `since` is
     /// absent, else those changed after the revision `since`, which the page
-    /// holds of the same epoch (`crates/agent-server/src/server/tree.rs`).
+    /// holds of the same epoch (`crates/agent-server/src/server/tree.rs`). A
+    /// follow of the agents the page holds at an older revision is answered
+    /// with it.
     Agents {
         #[garde(dive)]
         version: Version,
@@ -184,28 +174,31 @@ pub enum ServerFrame {
         #[garde(dive)]
         agents: Vec<AgentEntry>,
     },
-    /// One agent's entry as it changed; `revision` is one past the previous
-    /// change of the agents.
+    /// One agent's entry as it changed, at `version`: its revision is one
+    /// past the previous change of the agents, and its epoch is that of the
+    /// agents the page read, or the page reads again.
     Agent {
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        revision: u64,
+        #[garde(dive)]
+        version: Version,
         #[garde(dive)]
         agent: AgentEntry,
     },
-    /// The node `node`'s cache chart whole: sent with its subscription, and
-    /// as one of its agent's turn calls lands in the usage ledger. A side
-    /// question, whose calls are the root's, has none.
+    /// The node `node`'s cache chart whole, as one of its agent's turn calls
+    /// lands in the usage ledger; the page reads it with the node's latest
+    /// page. A side question, whose calls are the root's, has none.
     CacheChart {
         #[garde(skip)]
         node: NodeId,
         #[garde(dive)]
         chart: CacheChart,
     },
-    /// The output of the request the root agent runs, or null when its turn
-    /// has none: sent at once when a request starts or ends and when the
-    /// turn ends, at most every 500 ms while it streams, and with each
-    /// open's handshake.
+    /// The output of the request the agent of the node `node` runs, or null
+    /// when its turn has none: sent at once when a request starts or ends and
+    /// when the turn ends, at most every 500 ms while it streams; the page
+    /// reads the request's output with the node's latest page.
     RequestOutput {
+        #[garde(skip)]
+        node: NodeId,
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<RequestOutput>")]
         #[garde(dive)]
@@ -375,8 +368,7 @@ pub enum SteerOutcome {
     /// The steer is pending until the next continuation boundary, or was
     /// taken already under its id. `at` is the agents' version of the step
     /// that shows it, which the page holds before it takes the steer as
-    /// delivered; null when no tree runs, and nothing is to wait for
-    /// (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    /// delivered; null when no tree runs, and nothing is to wait for.
     Accepted {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<Version>")]
@@ -641,10 +633,10 @@ pub struct RequestOutput {
     pub ended: bool,
 }
 
-/// The speed of an agent's last turn that streamed for a second or more
-/// (`docs/decisions/0012-live-output-tokens.md`): the output tokens of its
-/// requests over the time they streamed, each from its first token to its
-/// end, so the time between them, such as a tool's, does not count.
+/// The speed of an agent's last turn that streamed for a second or more:
+/// the output tokens of its requests over the time they streamed, each from its
+/// first token to its end, so the time between them, such as a tool's, does not
+/// count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnSpeed {

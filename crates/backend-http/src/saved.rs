@@ -1,6 +1,7 @@
 //! The conversation's messages saved for later: `POST
 //! /conversations/:id/saved`, `POST .../saved/from-draft`, and `GET`, `PUT` and
-//! `DELETE .../saved/:messageId`. The conversation's metadata lists them.
+//! `DELETE .../saved/:messageId`; `GET .../saved` lists them, which the page reads
+//! when the saved menu opens.
 //!
 //! - A save of the composer's message empties the conversation's draft in one
 //!   transaction. A plain save, Undo's, and the write of an edit's Save, which
@@ -21,10 +22,9 @@ use axum::http::StatusCode;
 use demi_backend_database::saved::SavedRefusal;
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
-use demi_web_api_protocol::drafts::DRAFT_BYTES_MAX;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::saved::{
-    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedFromDraft, SavedMessage, SavedRemoved, SavedSave,
+    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedFromDraft, SavedListing, SavedMessage, SavedRemoved, SavedSave,
     SavedWrite,
 };
 
@@ -33,6 +33,17 @@ use super::conversations::owned;
 use super::drafts::staged_files;
 use super::error::ApiError;
 use super::gate::AuthUser;
+
+/// `GET /conversations/:id/saved`: the messages saved for later, each with
+/// its opening, under the list's revision.
+pub(super) async fn list(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<SavedListing>, ApiError> {
+    let record = owned(&services, &user.id, &id).await?;
+    Ok(Json(services.control.saved_listing(record.id).await?))
+}
 
 /// `GET /conversations/:id/saved/:messageId`: the message whole, which the
 /// page reads as it uses it; the metadata lists each with its opening alone.
@@ -136,12 +147,6 @@ fn refused(refusal: SavedRefusal) -> ApiError {
             ErrorCode::UploadNotFound,
             format!("No upload {id}"),
         ),
-        SavedRefusal::TooLarge => ApiError::new(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            ErrorCode::TooLarge,
-            format!("The message is over its {DRAFT_BYTES_MAX}-byte limit"),
-        )
-        .with_param("limitBytes", DRAFT_BYTES_MAX),
         SavedRefusal::Full => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::SavedFull,

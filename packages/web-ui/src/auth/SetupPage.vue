@@ -43,9 +43,6 @@ const props = defineProps<{
   phase: SetupPhase
 }>()
 
-/** The most characters a name has once trimmed. */
-const NAME_MAX_LENGTH = 80
-
 const name = defineModel<string>('name', { default: '' })
 const email = defineModel<string>('email', { default: '' })
 const password = defineModel<string>('password', { default: '' })
@@ -65,7 +62,6 @@ const canSubmit = computed(
   () =>
     !props.phase.busy &&
     nameLength.value >= 1 &&
-    nameLength.value <= NAME_MAX_LENGTH &&
     isEmail(email.value) &&
     password.value.length >= PASSWORD_MIN_LENGTH &&
     confirmation.value === password.value,

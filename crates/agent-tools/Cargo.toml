@@ -6,9 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# Its tests reach the tools' internals, so they are unit tests and the crate
-# has no integration tests (`ARCHITECTURE.md`); no doc
-# examples.
+# No doc examples.
 doctest = false
 bench = false
 
@@ -40,6 +38,3 @@ serde_with.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
-demi-agent-store = { path = "../agent-store", features = ["testing"] }

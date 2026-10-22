@@ -133,29 +133,6 @@ pub struct Services {
     /// operations wait for in the grace after the start
     /// (`crates/backend-remote-host/src/device_jobs.rs`).
     pub returning: Arc<Returning>,
-    /// The step a test holds runners' hellos at (`Backend::hold_hellos`).
-    #[cfg(feature = "testing")]
-    pub hellos: crate::holds::StepHolds<crate::holds::HelloStep>,
-    /// The step a test holds the synchronization channels at
-    /// (`Backend::hold_sync`).
-    #[cfg(feature = "testing")]
-    pub syncs: crate::holds::StepHolds<crate::sync::SyncStep>,
-    /// The step a test holds a failed turn's resume at
-    /// (`Backend::hold_retries`).
-    #[cfg(feature = "testing")]
-    pub retries: crate::holds::StepHolds<crate::holds::RetryStep>,
-    /// The step a test holds a change watch's check at
-    /// (`Backend::hold_watches`).
-    #[cfg(feature = "testing")]
-    pub watches: crate::holds::StepHolds<crate::holds::WatchStep>,
-    /// The step a test holds a call's permission check at
-    /// (`Backend::hold_permissions`).
-    #[cfg(feature = "testing")]
-    pub permissions: crate::holds::StepHolds<crate::holds::PermissionStep>,
-    /// The authorities the plugins' outbound requests trust besides the
-    /// system's, for a test's HTTPS servers.
-    #[cfg(feature = "testing")]
-    pub web_roots: Vec<reqwest::Certificate>,
 }
 
 /// What the provider services start with.
@@ -205,14 +182,6 @@ pub struct ServiceSettings {
     pub plugins: Vec<Box<dyn PluginFactory>>,
     pub cloud: CloudServices,
     pub lifecycle: LifecycleTuning,
-    /// The authorities the plugins' outbound requests trust besides the
-    /// system's, for a test's HTTPS servers.
-    #[cfg(feature = "testing")]
-    pub web_roots: Vec<reqwest::Certificate>,
-    /// Where push messages go instead of the internet's push services, for
-    /// a test's stand-in.
-    #[cfg(feature = "testing")]
-    pub push_transport: Option<Arc<dyn PushTransport>>,
 }
 
 /// Why the services did not start.
@@ -377,12 +346,6 @@ impl Services {
         let public_push = || -> Result<Arc<dyn PushTransport>, ServicesError> {
             Ok(Arc::new(PublicPushTransport::new().map_err(ServicesError::Http)?))
         };
-        #[cfg(feature = "testing")]
-        let push_transport = match settings.push_transport {
-            Some(transport) => transport,
-            None => public_push()?,
-        };
-        #[cfg(not(feature = "testing"))]
         let push_transport = public_push()?;
         let push = Pusher::new(control.clone(), keys.push, push_transport);
         let vault = Vault::new(control.clone(), keys.vault, settings.mode, sync.clone());
@@ -485,18 +448,6 @@ impl Services {
             lifecycle: settings.lifecycle,
             sync,
             returning,
-            #[cfg(feature = "testing")]
-            hellos: crate::holds::StepHolds::default(),
-            #[cfg(feature = "testing")]
-            syncs: crate::holds::StepHolds::default(),
-            #[cfg(feature = "testing")]
-            retries: crate::holds::StepHolds::default(),
-            #[cfg(feature = "testing")]
-            watches: crate::holds::StepHolds::default(),
-            #[cfg(feature = "testing")]
-            permissions: crate::holds::StepHolds::default(),
-            #[cfg(feature = "testing")]
-            web_roots: settings.web_roots,
         })
     }
 
@@ -508,67 +459,5 @@ impl Services {
         self.media.close();
     }
 
-    /// The services over storage in `data`, for tests: no provider family is
-    /// registered, and no machine manager listens.
-    #[cfg(any(test, feature = "testing"))]
-    pub async fn start_for_tests(data: &Path) -> Arc<Self> {
-        Self::start_for_tests_with_lifecycle(data, LifecycleTuning::default()).await
-    }
 
-    /// The services over storage in `data` whose idle watches follow
-    /// `lifecycle`, for tests of the idle release.
-    #[cfg(any(test, feature = "testing"))]
-    pub(crate) async fn start_for_tests_with_lifecycle(
-        data: &Path,
-        lifecycle: LifecycleTuning,
-    ) -> Arc<Self> {
-        let clock: Arc<dyn Clock> = Arc::new(demi_shared_types::SystemClock);
-        let objects = demi_backend_blobs::store::open(data, &demi_backend_blobs::store::Storage::Local)
-            .await
-            .unwrap()
-            .store;
-        let keys = ServiceKeys {
-            vault: VaultKey::new(rand::random()),
-            email_codes: CodeKey::new(rand::random()),
-            push: PushKey::new(rand::random()).expect("a random scalar is a P-256 key"),
-        };
-        let storage = Storage::open(data, clock.clone(), objects, keys.vault.clone()).await.unwrap();
-        let providers = ProviderSetup {
-            families: FamilyRegistry::default(),
-            models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),
-            media_catalog_url: None,
-            media_catalog: demi_provider_common::media_catalog::Catalog::carried(),
-            claude_releases: demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL
-                .parse()
-                .unwrap(),
-            logins: LoginTiming::default(),
-            clock,
-            master_account: None,
-        };
-        // No manager listens there: a Cloud a test uses fails to start.
-        let (machines, _deaths) =
-            demi_backend_cloud::client::MachinesClient::new(data.join("machines.sock"));
-        let settings = ServiceSettings {
-            mode: InstanceMode::Shared,
-            log: ServerLog::detached(data),
-            web_build: None,
-            runner_releases: RunnerReleases::default(),
-            stun: Vec::new(),
-            mail: None,
-            runners: RunnerTuning::default(),
-            conversations: ConversationTuning::default(),
-            pages: PageTuning::default(),
-            media_tuning: MediaTuning::default(),
-            native: NativeCatalog::unpublished(),
-            plugins: Vec::new(),
-            cloud: CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
-            lifecycle,
-            #[cfg(feature = "testing")]
-            web_roots: Vec::new(),
-            #[cfg(feature = "testing")]
-            push_transport: None,
-        };
-        let services = Self::start(storage, keys, providers, settings).await;
-        Arc::new(services.unwrap())
-    }
 }

@@ -12,8 +12,6 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::ids::{DeviceId, PortForwardId};
 use crate::text::Trimmed;
 
-/// The most characters of a forward's name, after trimming.
-pub const NAME_MAX: usize = 64;
 /// A new forward's name, and the stem of the second's, *Forward (2)*.
 pub const DEFAULT_NAME: &str = "Forward";
 /// The port a new forward listens on, unless another of the user's
@@ -140,8 +138,8 @@ pub struct PortForwardAnswer {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PortForwardPatch {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Trimmed", length(min = 1, max = NAME_MAX))]
-    #[garde(inner(length(chars, min = 1, max = NAME_MAX)))]
+    #[schemars(with = "Trimmed", length(min = 1))]
+    #[garde(inner(length(chars, min = 1)))]
     pub name: Option<Trimmed>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "DeviceId")]
@@ -172,7 +170,7 @@ pub fn refusal(report: &garde::Report) -> String {
     let mut sentences: Vec<String> = Vec::new();
     for (path, error) in report.iter() {
         let sentence = match path.to_string().as_str() {
-            "name" => format!("Enter a name of up to {NAME_MAX} characters."),
+            "name" => "Enter a name.".to_owned(),
             "listenPort" | "listen_port" => "Enter a port from 1 to 65535.".to_owned(),
             _ => error.message().to_owned(),
         };

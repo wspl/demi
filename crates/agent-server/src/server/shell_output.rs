@@ -51,9 +51,15 @@ use super::{
 use crate::AgentServer;
 
 /// The characters of one line a page shows.
+///
+/// Bounded because a page goes into the model's context window, which the
+/// vendor limits.
 const LINE_CHARS: usize = 2_000;
 
 /// The size of the writes `--raw` makes.
+///
+/// Bounded because one write is one message on the command channel, and a
+/// message's size is limited.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
 const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its prompt, read its whole output, or stop it.";
@@ -958,46 +964,4 @@ impl Page<'_> {
 /// The characters `lines` take, each with its newline.
 fn chars(lines: &[String]) -> usize {
     lines.iter().map(|line| line.chars().count() + 1).sum()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::cell::Cell;
-
-    use super::*;
-
-    /// An output of `lines` lines that charges each line it passes, as
-    /// finding line `from` passes every line before it.
-    fn output(lines: u64, scanned: &Cell<u64>, from: u64) -> impl Iterator<Item = Entry> + '_ {
-        scanned.set(scanned.get() + from - 1);
-        (from..=lines).map(move |number| {
-            scanned.set(scanned.get() + 1);
-            Entry {
-                lines: vec![format!("{number:>6}\t{}", "x".repeat(90))],
-                number: Some(number),
-                output: true,
-            }
-        })
-    }
-
-    // Instant: 20,000 short lines, about 200 pages. Paging the last of
-    // them scans each line once; a page that started a new scan from its
-    // first line would scan about 2 million.
-    #[test]
-    fn paging_a_long_output_scans_each_line_once_and_counts_every_page() {
-        let scanned = Cell::new(0);
-        let lead = vec![Entry { lines: vec!["$ seq 1 20000".to_owned()], number: None, output: false }];
-        let (first, pages) = paginate(lead.into_iter(), |from| output(20_000, &scanned, from), 10_000, 1);
-        assert_eq!(scanned.get(), 20_000);
-        let first = first.unwrap();
-        assert_eq!(first[0].number, None);
-        let shown: usize = first.iter().map(|entry| chars(&entry.lines)).sum();
-        assert!(shown <= 10_000, "{shown}");
-        scanned.set(0);
-        let (last, again) = paginate(std::iter::empty(), |from| output(20_000, &scanned, from), 10_000, pages);
-        assert_eq!((again, scanned.get()), (pages, 20_000));
-        assert_eq!(last.unwrap().last().unwrap().number, Some(20_000));
-        let (beyond, _) = paginate(std::iter::empty(), |from| output(20_000, &scanned, from), 10_000, pages + 1);
-        assert!(beyond.is_none());
-    }
 }

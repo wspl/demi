@@ -112,9 +112,9 @@ export function useMessageRows(
   liveCalls: LiveCallLookup = () => undefined,
   /**
    * Which edges of the window the page is reading a page for, each of which
-   * shows a loading row while the read lasts and none otherwise
-   * (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`). Its own
-   * parameter, so no other change of the source recomputes the rows for it.
+   * shows a loading row while the read lasts and none otherwise.
+   * Its own parameter, so no other change of the source recomputes the rows for
+   * it.
    */
   reading: () => HistoryReading = () => ({ before: false, after: false }),
 ): MessageRows {

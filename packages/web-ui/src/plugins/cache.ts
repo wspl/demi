@@ -1,5 +1,5 @@
 /**
- * A plugin's disk cache (`docs/decisions/0008-plugin-architecture.md`): bytes by key
+ * A plugin's disk cache: bytes by key
  * in the page's IndexedDB, kept across reloads up to a size per plugin, the
  * least recently used going first. It is a cache: nothing ties it to whether
  * the plugin is on, and a page shows what it read from it only until the
@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import { IndexedDatabase } from '../infra/indexed-db'
 
-/** The most bytes one plugin keeps. */
+/** The most bytes one plugin keeps, because the cache is the browser's memory and grows with each page a plugin shows. */
 export const PLUGIN_CACHE_BYTES = 64 * 1024 * 1024
 
 /** One plugin's cache. */

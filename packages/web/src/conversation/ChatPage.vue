@@ -206,8 +206,7 @@ function readHistory(read: Promise<void>): void {
 }
 
 // Once the first conversation has shown, what its regions need, the highlighter,
-// KaTeX, the editor and the file icons' list, loads in the background
-// (`docs/decisions/0033-a-region-draws-once.md`).
+// KaTeX, the editor and the file icons' list, loads in the background.
 watch(
   () => !!conversation.value && transcriptShown(conversation.value.load),
   (shown) => {
@@ -355,7 +354,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     :fork="fork"
     :share="share"
-    :shares="conversation.shares"
     :select-edit="selectEdit"
     :file-pills="conversation.projectId !== null"
     :commenting="conversation.archived ? undefined : commenting"

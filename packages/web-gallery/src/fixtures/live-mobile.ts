@@ -211,8 +211,7 @@ export interface GalleryMobile {
   /**
    * The Host's runner restarts: every device's stream ends and cannot open
    * again for a few seconds, while the devices and their tabs stay, as the
-   * Host's service keeps them
-   * (`docs/decisions/0031-a-device-tab-lasts-as-long-as-the-device.md`).
+   * Host's service keeps them.
    */
   runnerRestarts(): void
 }
@@ -482,7 +481,7 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
 /**
  * One device's stream of a page, as a `demi-mobile` service serves it: the
  * device its hello names, and whether it is looked at, while which alone it
- * speaks (`docs/decisions/0017-each-device-streams-on-its-own.md`).
+ * speaks.
  */
 class MobileView {
   /** The device the stream carries, once its hello named it. */

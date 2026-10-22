@@ -13,7 +13,7 @@ import ScrollArea from '../ui/ScrollArea.vue'
 import Tag from '../ui/Tag.vue'
 import TextInput from '../ui/TextInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
-import { SEARCH_QUERY_MAX, useConversationSearch, type SearchRow, type SearchSource } from './search'
+import { useConversationSearch, type SearchRow, type SearchSource } from './search'
 
 /**
  * The search window, which ⌘K and Search in the sidebar open, as ⌘K does in
@@ -130,7 +130,6 @@ const emptyLabel = computed(() =>
           :aria-controls="listId"
           :aria-expanded="rows.length > 0"
           :aria-activedescendant="rows.length ? `${listId}-${current}` : undefined"
-          :maxlength="SEARCH_QUERY_MAX"
           focused
           asked
           @keydown="keydown"

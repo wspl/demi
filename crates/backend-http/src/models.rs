@@ -1,6 +1,6 @@
 //! The model routes (`crates/backend-providers/src/llm/catalog.rs`): the
 //! search of models.dev, and the user's Refresh of the catalog, which the
-//! product state carries (`docs/decisions/0029-a-conversation-opens-whole.md`).
+//! product state carries.
 
 use std::sync::Arc;
 

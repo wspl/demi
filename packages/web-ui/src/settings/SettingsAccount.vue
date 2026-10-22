@@ -102,7 +102,6 @@ function checkName(value: string): string | null {
           :validate="checkName"
           @problem="nameProblem = $event"
           @commit="name = $event.trim()"
-          maxlength="50"
           class="w-56 max-w-full"
         />
       </SettingsRow>

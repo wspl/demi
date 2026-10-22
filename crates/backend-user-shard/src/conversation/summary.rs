@@ -5,13 +5,11 @@
 //! checkpoint, and its output revision. Metadata comes with the directory its
 //! work runs in, its root's latest ended turn, from that same checkpoint, the
 //! cost of its rows of no agent, and each list its view shows whole under its
-//! revision (`docs/decisions/0029-a-conversation-opens-whole.md`): its messages
-//! saved for later as the composer lists them, the states plugins hold for its
-//! work panel's tabs, its attached hosts, its directory's workflows and its
-//! permission requests. Each is read with an indexed query that touches no
-//! transcript row. The work panel's tabs are the entry's, so the page draws the
-//! panel as soon as the conversation is listed
-//! (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+//! revision: its messages saved for later as the composer lists them, the
+//! states plugins hold for its work panel's tabs, its attached hosts, its
+//! directory's workflows and its permission requests. Each is read with an
+//! indexed query that touches no transcript row. The work panel's tabs are the
+//! entry's, so the page draws the panel as soon as the conversation is listed.
 //!
 //! The persisted facts come from a read-only connection, so listing hundreds of
 //! conversations takes no writer from a running one.
@@ -22,7 +20,8 @@ use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::tree::{self, EndedTurn, SummaryFacts, Terminal};
 use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
-    ConversationMetadata, ConversationStatus, ConversationSummary, LastTurn, ModelSettings, TurnOutcome,
+    ConversationMetadata, ConversationShares, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
+    TurnOutcome,
 };
 use demi_web_api_protocol::hosts::{AttachedHost, ConversationHosts};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
@@ -94,6 +93,20 @@ impl Shard {
         })
     }
 
+    /// The conversation `id`'s shares, its own and its answers', as the share
+    /// dialog lists them.
+    pub async fn conversation_shares(&self, id: &ConversationId) -> Result<ConversationShares, StorageError> {
+        let shares = self
+            .services()
+            .control
+            .shares_of(id.clone())
+            .await?
+            .into_iter()
+            .map(|share| ConversationShare::new(share.token, share.target))
+            .collect();
+        Ok(ConversationShares { shares })
+    }
+
     /// What a page shows of `record` while it shows the conversation.
     pub async fn conversation_metadata(&self, record: ConversationRecord) -> Result<ConversationMetadata, StorageError> {
         let tree = self.agent().tree(&root_of(&record.id));
@@ -104,14 +117,6 @@ impl Shard {
         let facts = self.summary_facts(&record.id).await;
         let resolved = self.host_shard().resolve_target(&record).await?;
         let services = self.services();
-        let shares = services
-            .control
-            .shares_of(record.id.clone())
-            .await?
-            .into_iter()
-            .map(|share| ConversationShare::new(share.token, share.target))
-            .collect();
-        let workflows = self.conversation_workflows(&record.id).await;
         let hosts = services
             .control
             .attached_host_listing(record.id.clone())
@@ -124,7 +129,6 @@ impl Shard {
                 attached_at,
             })
             .collect();
-        let saved = services.control.saved_listing(record.id.clone()).await?;
         let panel_states = self
             .plugins()
             .panel_states(record.id.clone(), CancellationToken::new())
@@ -148,17 +152,14 @@ impl Shard {
             plugins_changed,
             other_cost,
             first_call_at,
-            saved,
             panel_states,
             hosts: ConversationHosts {
                 revision: record.hosts_revision,
                 hosts,
             },
-            workflows,
             last_attachment: facts.last_attachment,
             plugin_revisions: self.plugins().plugin_revisions(&record.id),
             permissions,
-            shares,
             id: record.id,
         })
     }

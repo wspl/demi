@@ -6,13 +6,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::ids::ConversationId;
 
-/// The most characters (Unicode scalar values) a query has, once trimmed.
-pub const QUERY_MAX: usize = 256;
-
 /// The most conversations one search answers.
+///
+/// Bounded because a search over every conversation answers whole, and the
+/// conversations have no end.
 pub const RESULTS_MAX: usize = 50;
 
 /// The most characters (Unicode scalar values) of a match's line.
+///
+/// Bounded because a line of a result goes to the page whole, and a line has no
+/// length of its own.
 pub const LINE_MAX: usize = 160;
 
 /// `?q=`: what the user typed.
@@ -21,15 +24,15 @@ pub struct SearchQuery {
     pub q: SearchText,
 }
 
-/// A query as the backend reads it: trimmed, with 1 to `QUERY_MAX`
-/// characters. Its words are the pieces between white space.
+/// A query as the backend reads it: trimmed, with at least one
+/// character. Its words are the pieces between white space.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub struct SearchText(String);
 
 /// Why a text is not a query.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("a query has 1 to {QUERY_MAX} characters besides the white space around them")]
+#[error("a query has a character besides the white space around it")]
 pub struct NotQuery;
 
 impl TryFrom<String> for SearchText {
@@ -37,8 +40,7 @@ impl TryFrom<String> for SearchText {
 
     fn try_from(text: String) -> Result<Self, NotQuery> {
         let trimmed = trim(&text);
-        let length = trimmed.chars().count();
-        if length == 0 || length > QUERY_MAX {
+        if trimmed.is_empty() {
             return Err(NotQuery);
         }
         Ok(Self(trimmed.to_owned()))

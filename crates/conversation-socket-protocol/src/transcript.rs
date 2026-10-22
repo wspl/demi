@@ -113,16 +113,29 @@ pub struct Version {
     pub revision: u64,
 }
 
+/// The epoch of a version that names what the store holds of a collection
+/// while no live session does: a transcript read from the store, and the
+/// agents of a conversation no tree is live for. A collection no tree runs
+/// does not change, so a page that holds this epoch holds what the store
+/// holds; once a tree runs it, the collection is of the epoch that tree has.
+pub const STORED_EPOCH: &str = "stored";
+
 /// How many blocks a page of a transcript holds, the root's, a subagent's or a
 /// side question's alike, wherever requests begin and end: every page but the
 /// first and the last of a transcript holds this many, and none has a byte
 /// limit. The page's window and the local copy's reads take their size from
-/// here (`docs/decisions/0044-a-transcript-page-is-a-thousand-blocks.md`).
+/// here.
+///
+/// Bounded because a transcript has no end and a page is read whole into
+/// memory.
 pub const PAGE_BLOCKS: usize = 1000;
 
 /// How long a call's input a light form keeps whole: a short script, such
 /// as one that only looks at a command, says on the folded row what the
 /// call did.
+///
+/// Bounded because the light form exists to keep a page small; the rest of an
+/// input is read when its row opens.
 pub const LIGHT_INPUT_BYTES: usize = 512;
 
 /// Whole requests' `blocks` in their light form: each without what only its open

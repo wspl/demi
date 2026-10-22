@@ -192,7 +192,7 @@ const AWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
  * Every other answer of the backend's own carries its `{ code, message }` body, so an
  * error with another code is the backend's answer, whatever its status.
  */
-function unreachable(error: unknown): boolean {
+export function unreachable(error: unknown): boolean {
   if (error instanceof TypeError) {
     // What fetch rejects with when no connection could be made.
     return true

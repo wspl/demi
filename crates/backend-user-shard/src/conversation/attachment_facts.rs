@@ -1,6 +1,5 @@
 //! The attachments a transcript's replies name, which travel beside the
-//! blocks as failure facts do, never stored with them
-//! (`docs/decisions/0029-a-conversation-opens-whole.md`).
+//! blocks as failure facts do, never stored with them.
 //!
 //! A reply names an attachment by a line that is its tag alone,
 //! `<attachment id="a3" />`, the rule the page's renderer follows, and by the
@@ -13,7 +12,10 @@
 //!
 //! A reply streams as appended text, and a tag may arrive in pieces, so a
 //! frame that completes one is named from the block's text so far, never from
-//! its own delta: [`StreamedText`] keeps what a socket needs of it.
+//! its own delta: [`StreamedText`] keeps what a socket needs of it. It knows
+//! the text from the pieces it sent, so a tag split between the page's read of
+//! the block and the next piece is named by neither; the page shows that
+//! place as missing until it reads the block again.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -27,6 +29,8 @@ use demi_web_api_protocol::ids::ConversationId;
 
 /// How many text blocks of a node a socket keeps the text of: the one being
 /// written and the few before it.
+///
+/// Bounded because the socket holds them in memory for as long as it lives.
 const KEPT_BLOCKS: usize = 8;
 
 /// The attachments of `conversation` named by `replies`, the replies' text
@@ -64,7 +68,7 @@ pub fn reply_blocks(blocks: &[Block]) -> impl Iterator<Item = &TextBlock> {
 }
 
 /// What one socket knows of the replies it streams to its page: the text of
-/// each node's latest text blocks, so a tag that arrives in pieces is named
+/// each node's latest text blocks it saw, so a tag that arrives in pieces is named
 /// by the frame that completes it, and the attachments it described already,
 /// so a later frame brings only what is new; an attachment belongs to the
 /// conversation, so the page holds each once, whichever node names it.
@@ -75,16 +79,6 @@ pub struct StreamedText {
 }
 
 impl StreamedText {
-    /// A reset of `node`'s transcript from `start`: the blocks it holds are
-    /// the text so far, of which only the latest may still be written.
-    pub fn reset(&mut self, node: &NodeId, start: u32, blocks: &[Block]) {
-        let texts = self.texts.entry(node.clone()).or_default();
-        texts.clear();
-        if let (Some(Block::Text(last)), Ok(count)) = (blocks.last(), u32::try_from(blocks.len())) {
-            texts.insert(start + count - 1, last.text.clone());
-        }
-    }
-
     /// Takes `described` as sent to the page, whichever frame carries it.
     pub fn sent(&mut self, described: &[ConversationAttachment]) {
         for attachment in described {

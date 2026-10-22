@@ -12,9 +12,6 @@ use serde::{Deserialize, Serialize};
 use crate::ids::{DeviceId, WorkspaceId};
 use crate::text::Trimmed;
 
-/// The most characters a device's name has.
-pub const DEVICE_NAME_MAX: usize = 64;
-
 /// How a device came to be: `user` for one its user paired, `managed` for
 /// the user's Cloud.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -189,7 +186,7 @@ pub struct Claim {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangeDevice {
     #[serde(default)]
-    #[garde(inner(length(chars, min = 1, max = DEVICE_NAME_MAX)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub name: Option<Trimmed>,
     #[serde(default)]
     #[garde(skip)]
@@ -229,7 +226,7 @@ pub enum DirectRequest {
     Offer {
         #[garde(skip)]
         peer: DirectPeer,
-        #[garde(length(min = 1, max = MAX_OFFER_BYTES))]
+        #[garde(length(min = 1))]
         sdp: String,
     },
     /// A candidate the browser found after the peer's offer, the
@@ -253,8 +250,6 @@ pub enum DirectRequest {
     },
 }
 
-/// The most bytes of an offer: a data channel's offer is a few kilobytes.
-pub const MAX_OFFER_BYTES: usize = 64 * 1024;
 
 /// A message the backend sends on a direct channel signaling socket.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

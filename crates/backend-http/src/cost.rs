@@ -1,6 +1,5 @@
 //! `GET /conversations/:id/cost/last-hour`: what the conversation's calls of
-//! the last 60 minutes cost, summed from the usage ledger when asked
-//! (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+//! the last 60 minutes cost, summed from the usage ledger when asked.
 
 use axum::Json;
 use axum::extract::{Path, State};

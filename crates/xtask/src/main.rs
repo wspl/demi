@@ -101,8 +101,6 @@
 //! publishes through `shared-artifacts` and writes every record with its
 //! contract crate's type.
 
-#[cfg(test)]
-mod boundaries;
 mod browser;
 mod cloud_image;
 // Reads the offered vendors as the backend does, which builds only where

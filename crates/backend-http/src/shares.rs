@@ -22,7 +22,7 @@ use demi_backend_user_shard::services::Services;
 use demi_shared_types::{BlobRef, BlockId};
 use demi_backend_database::tree::{Entry, PageRead};
 use demi_conversation_socket_protocol::{index_u32, light};
-use demi_web_api_protocol::conversations::WholeBlock;
+use demi_web_api_protocol::conversations::{ConversationShares, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
 use demi_web_api_protocol::shares::{
@@ -34,6 +34,7 @@ use demi_backend_database::conversation_attachments::AttachmentNumber;
 use super::AppState;
 use super::blobs::blob_answer;
 use super::body::JsonBody;
+use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use super::history::block_answer;
@@ -41,6 +42,22 @@ use super::query::QueryParams;
 
 /// `POST /conversations/:id/shares { kind, blockId? }`: the conversation's
 /// share of that target, the one it has or a new one.
+/// `GET /conversations/:id/shares`: the conversation's shares, its own and its
+/// answers', which the page reads when the share dialog opens.
+pub(super) async fn list(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ConversationShares>, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let shares = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.conversation_shares(&record.id).await })
+        .await??;
+    Ok(Json(shares))
+}
+
 pub(super) async fn create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,

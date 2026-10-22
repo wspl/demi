@@ -112,6 +112,9 @@ pub(super) async fn open_device(
 
 /// The most bytes of one message to the page: a `changed` naming more keys
 /// goes in as many as it takes.
+///
+/// Bounded by the page's own limit on a message
+/// ([`demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES`]).
 const MESSAGE_BYTES: usize = 1024 * 1024;
 
 /// How a watch ended, which the page's socket closes with.

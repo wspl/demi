@@ -20,7 +20,7 @@ import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import type { MessageFileTarget } from '@demicodes/web-ui/markdown/types'
 import { useConversations } from './store'
-import { useProduct } from '../state/product'
+import { useHeldList, useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { hostKindOf } from '../state/hosts'
 import { usePreferences } from '../state/preferences'
@@ -48,6 +48,8 @@ const store = useConversations()
 const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
+// The Workflow menu's profiles come with the subagent settings, which the composer holds while it shows.
+useHeldList('subagents')
 const settings = useSettingsAddress()
 
 const composer = ref<InstanceType<typeof SessionComposer>>()

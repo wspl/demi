@@ -1,16 +1,18 @@
 //! A conversation's history as its database holds it.
 //!
 //! The routes read, each of one agent, the root, a subagent or a side question,
-//! named by its node (`docs/decisions/0009-agent-sessions-and-sync.md`):
+//! named by its node:
 //!
 //! - one page of its transcript at a time, in light form, with the failure
-//!   facts of its error blocks and the attachments its replies name;
+//!   facts of its error blocks and the attachments its replies name, and its
+//!   latest page, read from the window of its live session when it has one,
+//!   with the transcript's version and the view of its live commands;
 //! - a block whole;
 //!
 //! and where the call that started a command lies.
 //!
-//! Every route reads a database alone: it wakes no Host and needs no live
-//! session.
+//! No route wakes a Host, and none needs a live session: a node that does not
+//! run is read from its database.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -18,7 +20,7 @@ use axum::http::StatusCode;
 use demi_backend_database::StorageError;
 use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
 use demi_backend_user_shard::conversation::{attachment_facts, failure_facts, reply_blocks};
-use demi_conversation_socket_protocol::{index_u32, light};
+use demi_conversation_socket_protocol::{STORED_EPOCH, Version, index_u32, light};
 use demi_shared_types::{Block, BlockId, CommandId, NodeId};
 use demi_web_api_protocol::conversations::{CommandCall, TranscriptPage, TranscriptQuery, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
@@ -30,7 +32,9 @@ use super::gate::AuthUser;
 use super::query::QueryParams;
 
 /// `GET /conversations/:id/agents/:node/transcript`: one page of an agent's
-/// transcript.
+/// transcript. The latest page of a node a live session runs is read from its
+/// window, at the session's version; any other is read from the store, at the
+/// version the store holds, and no read restores a tree.
 pub(super) async fn transcript(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -40,25 +44,152 @@ pub(super) async fn transcript(
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
     let node = NodeId::try_from(node).map_err(|_| no_node())?;
-    // The root is the conversation's from its start: before its first turn
-    // stored it, its transcript is empty.
-    let root = node.as_str() == record.id.as_str();
-    let transcript = Transcript::Agent(node.clone());
-    let read = services
-        .conversations
-        .read(&record.id, move |connection| {
-            tree::read_page(connection, &transcript, PageQuery::from(&query))
-        })
-        .await
-        .map_err(ApiError::conversation_unreadable)?
-        .filter(|read| !(root && matches!(read, PageRead::NoNode)));
-    let mut page = page_answer(read, no_node, no_block, outside, changed)?;
+    let latest = query.latest.0;
+    let earlier = latest && query.earlier.0;
+    let live = if latest {
+        let conversation = record.id.clone();
+        let wanted = node.clone();
+        state
+            .shards
+            .of(&user.id)
+            .call(move |shard, _| async move {
+                shard
+                    .live_transcript(&conversation, &wanted)
+                    .await
+                    .map_err(ApiError::conversation_unreadable)
+            })
+            .await??
+    } else {
+        None
+    };
+    let source = if live.is_some() { "live" } else { "store" };
+    let mut page = match live {
+        Some(page) => page,
+        None => {
+            // The root is the conversation's from its start: before its first
+            // turn stored it, its transcript is empty.
+            let root = node.as_str() == record.id.as_str();
+            let latest = query.latest.0;
+            let transcript = Transcript::Agent(node.clone());
+            let saved_node = node.clone();
+            let (read, saved) = services
+                .conversations
+                .read(&record.id, move |connection| {
+                    let read = tree::read_page(connection, &transcript, PageQuery::from(&query))?;
+                    let saved = tree::saved_versions(connection)?.nodes.get(&saved_node).copied();
+                    Ok((read, saved))
+                })
+                .await
+                .map_err(ApiError::conversation_unreadable)?
+                .map_or((None, None), |(read, saved)| (Some(read), saved));
+            let read = read.filter(|read| !(root && matches!(read, PageRead::NoNode)));
+            let whole_last = read.as_ref().and_then(|read| match read {
+                PageRead::Page { blocks, .. } if latest => blocks.last().and_then(|entry| match entry {
+                    Entry::Block(block) => Some(block.clone()),
+                    Entry::StepsNotShared(_) => None,
+                }),
+                _ => None,
+            });
+            let mut page = page_answer(read, no_node, no_block, outside, changed)?;
+            // The latest page's last block comes whole, as a live window's
+            // does, since the page holds the end of the transcript.
+            if let (Some(last), Some(slot)) = (whole_last, page.blocks.last_mut()) {
+                *slot = last;
+            }
+            // What the store holds changes with every save of the node, and
+            // its version with it, so a page follows what it read only while
+            // the store still holds it.
+            page.version = Some(stored_version(saved.unwrap_or(0)));
+            // A closed child's shells that still stop are in no stored page.
+            if latest {
+                let conversation = record.id.clone();
+                let wanted = node.clone();
+                let (commands, cache_chart) = state
+                    .shards
+                    .of(&user.id)
+                    .call(move |shard, _| async move {
+                        let commands = shard.stopping_commands(&conversation, &wanted);
+                        let chart = shard.cache_chart(&conversation, &wanted).await;
+                        (commands, chart)
+                    })
+                    .await?;
+                page.commands = commands;
+                page.cache_chart = cache_chart.map_err(|error| {
+                    ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::ConversationUnreadable, error.to_string())
+                })?;
+            }
+            page
+        }
+    };
+    if earlier {
+        page = with_earlier(&state, &record.id, &node, page).await?;
+    }
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
     page.attachments = attachment_facts(&services.conversations, &record.id, reply_blocks(&page.blocks))
         .await
         .map_err(ApiError::conversation_unreadable)?;
+    tracing::info!(
+        event = "transcript.read",
+        conversation = %record.id,
+        node = %node,
+        latest,
+        source,
+        blocks = page.blocks.len(),
+        revision = page.version.as_ref().map(|version| version.revision),
+        "a page of a transcript was read"
+    );
     Ok(Json(page))
+}
+
+/// `page`, the latest page of `node`, with the page before it in front: one
+/// run of blocks from the earlier page's start, as the two pages would join.
+/// A transcript that holds nothing before the latest page, or that changed
+/// under the block the latest page starts at, answers the latest page alone.
+async fn with_earlier(
+    state: &AppState,
+    conversation: &demi_web_api_protocol::ids::ConversationId,
+    node: &NodeId,
+    mut page: TranscriptPage,
+) -> Result<TranscriptPage, ApiError> {
+    let Some(edge) = page.blocks.first().map(|block| block.id().clone()) else {
+        return Ok(page);
+    };
+    if page.start == 0 {
+        return Ok(page);
+    }
+    let before = page.start;
+    let transcript = Transcript::Agent(node.clone());
+    let read = state
+        .services
+        .conversations
+        .read(conversation, move |connection| {
+            tree::read_page(
+                connection,
+                &transcript,
+                PageQuery { before: Some(before), after: None, around: None, edge: Some(&edge) },
+            )
+        })
+        .await
+        .map_err(ApiError::conversation_unreadable)?;
+    let Ok(earlier) = page_answer(read, no_node, no_block, outside, changed) else {
+        return Ok(page);
+    };
+    page.start = earlier.start;
+    page.blocks.splice(0..0, earlier.blocks);
+    page.versions.splice(0..0, earlier.versions);
+    page.summaries.splice(0..0, earlier.summaries);
+    Ok(page)
+}
+
+/// The version of a transcript read from the store: an epoch no live
+/// session has, so a patch of a node that runs is never taken as its next,
+/// at the revision the store holds it at.
+fn stored_version(revision: u64) -> Version {
+    Version {
+        epoch: STORED_EPOCH.to_owned(),
+        revision,
+    }
 }
 
 /// A conversation's answer to an index outside its transcript.
@@ -99,6 +230,10 @@ pub(super) fn page_answer(
             summaries: Vec::new(),
             versions: Vec::new(),
             attachments: Vec::new(),
+            version: None,
+            commands: Vec::new(),
+            request_output: None,
+            cache_chart: None,
         }),
         Some(PageRead::Page {
             start,
@@ -128,6 +263,10 @@ pub(super) fn page_answer(
                 summaries,
                 versions,
                 attachments: Vec::new(),
+                version: None,
+                commands: Vec::new(),
+                request_output: None,
+                cache_chart: None,
             })
         }
         Some(PageRead::NoNode) => Err(no_node()),

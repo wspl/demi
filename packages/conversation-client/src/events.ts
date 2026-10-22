@@ -1,7 +1,9 @@
 import type {
+  AgentEntry,
   Block,
   BlockVersions,
   ConversationAttachment,
+  InstructionEntry,
   PendingSteer,
   ProviderFailureFacts,
   QueuedMessage,
@@ -13,10 +15,10 @@ import type {
 export type ServerFrameOf<Type extends ServerFrame['type']> = Extract<ServerFrame, { type: Type }>
 
 /**
- * The output of the request the root agent runs, as the page holds it
- * (`docs/decisions/0012-live-output-tokens.md`). Its times are the page's
- * clock, `Date.now()`: the frame's arrival less how long the request had
- * streamed, so no time of the server's is compared with the page's.
+ * The output of the request a node's agent runs, as the page holds it.
+ * Its times are the page's clock, `Date.now()`: the frame's arrival less how
+ * long the request had streamed, so no time of the server's is compared with
+ * the page's.
  */
 export interface RequestOutputReading {
   /** Another id is another request, whose count starts from zero. */
@@ -34,10 +36,13 @@ export type Failures = Record<string, ProviderFailureFacts>
 
 /**
  * What a `ConversationClient` tells its listeners. Most events are the
- * server frame as it arrived. The queue and the pending steers are the root's
- * agent entry's, told as they change and with each `agents` frame. The transcript events carry what the frame
- * brought of a node, which the page applies to the parts of that node's
- * transcript it holds; a patch carries no revision, which the client keeps.
+ * server frame as it arrived. The agents and a node's `transcript_reset` are
+ * what the client read, which it tells as soon as the read answers, before
+ * the socket opens.
+ * The queue and the pending steers are the root's agent entry's, told as they
+ * change and with each `agents` event. The transcript events carry what the
+ * client read or a frame brought of a node, which the page applies to the
+ * parts of that node's transcript it holds.
  */
 export type ClientSessionEvent =
   | ServerFrameOf<'opened'>
@@ -54,17 +59,21 @@ export type ClientSessionEvent =
   | ServerFrameOf<'retry_scheduled'>
   | ServerFrameOf<'error'>
   | ServerFrameOf<'pong'>
-  | (ServerFrameOf<'agents'> & {
+  | {
+      /** Every agent of the conversation, as a read of it lists them, at `version`. */
+      type: 'agents'
+      agents: AgentEntry[]
+      version: Version
       /**
        * When it arrived, as `Date.now()`: an agent waits for its model since
        * then less its `waitedMs`, so no time of the server's is compared with
        * the page's clock.
        */
       receivedAt: number
-    })
+    }
   | (ServerFrameOf<'agent'> & { receivedAt: number })
   | {
-      /** The node's blocks from `start` on. */
+      /** The node's latest page, from `start` on. */
       type: 'transcript_reset'
       node: string
       start: number
@@ -77,7 +86,11 @@ export type ClientSessionEvent =
       failures: Failures
       /** The descriptions of the attachments `blocks` name. */
       attachments: ConversationAttachment[]
-      /** The index the client named when it subscribed; a reset elsewhere means a rewrite. */
+      /** The entries of the agent's newest instructions block. */
+      instructions: InstructionEntry[]
+      /** The summary size of each compaction marker's boundary. */
+      summaries: { marker: string; summaryTokens: number }[]
+      /** The index from which the page held blocks stand as they were: the read starts there; undefined when none can be vouched for. */
       asked: number | undefined
     }
   | {
@@ -108,7 +121,8 @@ export type ClientSessionEvent =
     }
   | {
       type: 'request_output'
-      /** The output of the request the root agent runs; null when its turn has none. */
+      node: string
+      /** The output of the request the node's agent runs; null when its turn has none. */
       output: RequestOutputReading | null
     }
   | {

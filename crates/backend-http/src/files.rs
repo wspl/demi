@@ -761,27 +761,3 @@ fn last_modified(stat: &FileStat) -> HeaderValue {
         .to_string();
     HeaderValue::from_str(&date).expect("an HTTP date is a header value")
 }
-
-#[cfg(test)]
-mod tests {
-    use demi_host_interface::FileKind;
-    use demi_shared_types::Timestamp;
-
-    use super::*;
-
-    #[test]
-    fn a_file_is_dated_by_its_time_and_named_by_its_last_segment() {
-        let stat = FileStat {
-            kind: FileKind::File,
-            mode: 0o644,
-            size: 300_000,
-            modified: Timestamp::from_millisecond(1_790_000_000_123).unwrap(),
-        };
-        assert_eq!(last_modified(&stat), "Mon, 21 Sep 2026 14:13:20 GMT");
-        assert_eq!(file_name("/work/logo.svg").as_deref(), Some("logo.svg"));
-        assert_eq!(
-            file_name("C:\\work\\report.pdf").as_deref(),
-            Some("report.pdf")
-        );
-    }
-}

@@ -4,11 +4,13 @@ import { useRouter } from 'vue-router'
 import AutomationsPane from '@demicodes/web-ui/automations/AutomationsPane.vue'
 import AutomationList from '@demicodes/web-ui/automations/AutomationList.vue'
 import AutomationEditor from '@demicodes/web-ui/automations/AutomationEditor.vue'
+import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import { t } from '@demicodes/web-ui/automations/locales/text'
 import type { AutomationRun } from '@demicodes/web-ui/automations/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useConversationNavigation } from '../conversation/navigation'
 import { openSettings } from '../settings/address'
+import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { useAutomations } from './store'
 
@@ -23,6 +25,7 @@ const props = defineProps<{
 
 const router = useRouter()
 const store = useAutomations()
+const product = useProduct()
 const resources = useResources()
 const navigation = useConversationNavigation()
 
@@ -75,37 +78,39 @@ function openRun(run: AutomationRun): void {
     @back="openList"
     @add="create"
   >
-    <AutomationEditor
-      v-if="current"
-      :key="current.id"
-      :automation="current"
-      :hosts="store.hosts"
-      :conversations="store.conversations"
-      :time-zones="timeZones"
-      :holiday-countries="store.holidayCountries"
-      :providers="resources.providerInfos"
-      :models="resources.models"
-      :overlay-store="appOverlayStore"
-      :secret="store.secrets[current.id] ?? null"
-      :notifications-off="store.notificationsOff"
-      @change="store.change(current.id, $event)"
-      @back="openList"
-      @run-now="store.runNow(current.id, $event)"
-      @delete="remove(current.id)"
-      @show-secret="store.showSecret(current.id)"
-      @hide-secret="store.hideSecret(current.id)"
-      @regenerate-secret="store.showSecret(current.id, true)"
-      @open-run="openRun"
-      @turn-on-notifications="openSettings(router, 'notifications')"
-    />
-    <AutomationList
-      v-else
-      :automations="store.automations"
-      :hosts="store.hosts"
-      :conversations="store.conversations"
-      :now="now"
-      @open="openAutomation"
-      @create="create"
-    />
+    <AsyncRegion :state="product.listLoad('automations')" :on-retry="() => product.retryList('automations')">
+      <AutomationEditor
+        v-if="current"
+        :key="current.id"
+        :automation="current"
+        :hosts="store.hosts"
+        :conversations="store.conversations"
+        :time-zones="timeZones"
+        :holiday-countries="store.holidayCountries"
+        :providers="resources.providerInfos"
+        :models="resources.models"
+        :overlay-store="appOverlayStore"
+        :secret="store.secrets[current.id] ?? null"
+        :notifications-off="store.notificationsOff"
+        @change="store.change(current.id, $event)"
+        @back="openList"
+        @run-now="store.runNow(current.id, $event)"
+        @delete="remove(current.id)"
+        @show-secret="store.showSecret(current.id)"
+        @hide-secret="store.hideSecret(current.id)"
+        @regenerate-secret="store.showSecret(current.id, true)"
+        @open-run="openRun"
+        @turn-on-notifications="openSettings(router, 'notifications')"
+      />
+      <AutomationList
+        v-else
+        :automations="store.automations"
+        :hosts="store.hosts"
+        :conversations="store.conversations"
+        :now="now"
+        @open="openAutomation"
+        @create="create"
+      />
+    </AsyncRegion>
   </AutomationsPane>
 </template>

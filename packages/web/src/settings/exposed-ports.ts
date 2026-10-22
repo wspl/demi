@@ -10,7 +10,7 @@ import {
   type ExposedPortPatch,
   type NewExposedPort,
 } from '../api/generated/web-api'
-import { useProduct, type Answer } from '../state/product'
+import { useHeldList, useProduct, type Answer } from '../state/product'
 
 /** The rows oldest first, as the backend lists them: `exposed` in its place by id. */
 function withPort(ports: ExposedPortDto[], exposed: ExposedPortDto): ExposedPortDto[] {
@@ -20,7 +20,7 @@ function withPort(ports: ExposedPortDto[], exposed: ExposedPortDto): ExposedPort
 }
 
 function portsAnswer(next: (current: ExposedPortDto[]) => ExposedPortDto[]): Answer {
-  return (read) => ({ type: 'exposed_ports', exposedPorts: next(read.exposedPorts) })
+  return (read) => ({ type: 'exposed_ports', exposedPorts: next(read.exposedPorts ?? []) })
 }
 
 /** A refusal the user fixes in the field, such as a port another row exposes. */
@@ -33,7 +33,7 @@ function refusedField(error: unknown): boolean {
  * Expose Port change them (`crates/backend-user-shard/src/shard/exposed_ports.rs`): each change
  * shows its answer, and the `exposed_ports` part brings it to every page.
  */
-export const useExposedPortSettings = defineStore('exposed-port-settings', () => {
+const useExposedPortStore = defineStore('exposed-port-settings', () => {
   const product = useProduct()
 
   const ports = computed<SettingsExposedPort[]>(() => product.snapshot?.exposedPorts ?? [])
@@ -107,3 +107,9 @@ export const useExposedPortSettings = defineStore('exposed-port-settings', () =>
 
   return { ports, isExposed, sharedDevice, expose, change, remove }
 })
+
+/** The exposed ports settings, which hold the user's exposed ports while a view shows them. */
+export function useExposedPortSettings(): ReturnType<typeof useExposedPortStore> {
+  useHeldList('exposed_ports')
+  return useExposedPortStore()
+}

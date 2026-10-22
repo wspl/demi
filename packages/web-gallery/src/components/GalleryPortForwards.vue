@@ -84,7 +84,6 @@ async function remove(id: string): Promise<void> {
     :hosts="hosts"
     :shown="shown"
     load="ready"
-    :name-max-length="64"
     :overlay-store="appOverlayStore"
     :on-add="add"
     :on-change="change"

@@ -29,9 +29,11 @@ const TABLE: &str = "subagent_profiles";
 /// (`crates/agent-server/src/server/tree/profiles.rs`); the control schema's
 /// migration gives it to a limit stored as Unlimited before the number was
 /// kept.
+///
+/// The default of a setting the user changes, not a fixed limit.
 pub(crate) const DEFAULT_MAX_LIVE: NonZeroU32 = NonZeroU32::new(10).expect("10 is not zero");
 /// Maximum depth of a user who never set it; the migration gives it as
-/// Maximum subagents' default.
+/// Maximum subagents' default. A setting's default, not a fixed limit.
 pub(crate) const DEFAULT_MAX_DEPTH: NonZeroU32 = NonZeroU32::MIN;
 
 /// A user's switch and limits, as `user_subagents` holds them.

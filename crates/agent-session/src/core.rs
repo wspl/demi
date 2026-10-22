@@ -169,8 +169,7 @@ pub(super) struct ActionRun {
     started_at: u64,
     /// The message a send started with, until its `user` block is written:
     /// clients show it as the turn's starting message, so the state holds
-    /// every message the session accepted, and its held bytes stay
-    /// (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    /// every message the session accepted, and its held bytes stay.
     unwritten: Option<QueuedMessage>,
     /// What the user sent now, which the turn takes at its next boundary.
     send_now: Option<SendNow>,
@@ -657,7 +656,7 @@ impl SessionCore {
         self.persist.rows = Default::default();
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,
-            revision: batch.revision,
+            version: self.transcript.version(),
         });
         let mut discarded = Vec::new();
         if let Some(fresh) = self.provider.held().map(|runtime| runtime.fresh()) {
@@ -2318,7 +2317,7 @@ impl SessionCore {
         self.requests.save = true;
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,
-            revision: batch.revision,
+            version: self.transcript.version(),
         });
     }
 
@@ -2365,7 +2364,7 @@ impl SessionCore {
         self.persist.rows = Default::default();
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,
-            revision: batch.revision,
+            version: self.transcript.version(),
         });
     }
 

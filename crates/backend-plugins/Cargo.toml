@@ -6,15 +6,10 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
-
-[features]
-# A certificate authority and a fake OAuth authorization server over HTTPS
-# (`testing`), for the tests of outbound requests and sign-ins.
-testing = ["dep:axum", "dep:rcgen", "demi-provider-common/testing"]
 
 [dependencies]
 demi-backend-database = { path = "../backend-database" }
@@ -39,38 +34,3 @@ tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
 url = "2"
-axum = { version = "0.8", optional = true }
-rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"], optional = true }
-
-[dev-dependencies]
-demi-backend-plugins = { path = ".", features = ["testing"] }
-demi-backend-providers = { path = "../backend-providers" }
-demi-backend-database = { path = "../backend-database", features = ["testing"] }
-# The scenarios run the composed command set in an agent server whose
-# shells are real runner jobs, with the `demi.file` package the workspace
-# built.
-demi-agent-server = { path = "../agent-server", features = ["testing"] }
-demi-agent-store = { path = "../agent-store", features = ["testing"] }
-demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
-demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
-demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-command-package-file-protocol = { path = "../plugin-file/protocol" }
-demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
-demi-host-interface = { path = "../host-interface", features = ["testing"] }
-demi-plugin-file = { path = "../plugin-file/plugin" }
-demi-plugin-interface = { path = "../plugin-interface", features = ["testing"] }
-demi-web-api-protocol = { path = "../web-api-protocol" }
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
-demi-shared-types = { path = "../shared-types" }
-futures-util.workspace = true
-serde_json.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
-tokio-util.workspace = true
-demi-log-capture = { path = "../log-capture" }
-tracing-subscriber.workspace = true
-tempfile = "3"
-
-# Whether a command's process still runs, which a scenario waits on.
-[target.'cfg(unix)'.dev-dependencies]
-rustix = { version = "1", features = ["process"] }

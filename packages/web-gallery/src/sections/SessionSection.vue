@@ -4,6 +4,7 @@ import { SHAPES, useCardCost } from '../fixtures/cost'
 import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
+import type { RequestOutputReading } from '@demicodes/conversation-client'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Layers, Play } from '@lucide/vue'
 import { countOf } from '@demicodes/utils'
@@ -404,6 +405,8 @@ const runLines = [workSubagent(), ...gallerySubagents()]
 const agentContext = useAgentContext()
 /** A child's own cost, which its context card shows without Profiles. */
 const agentCost = useCardCost('none', { shape: SHAPES.sixty })
+/** The output of the request the child that waits for its model streams, which a line over its bar tells. */
+const agentOutput: RequestOutputReading = { requestId: 'request-gallery-child', tokens: 1_240, firstTokenAt: Date.now() - 9_000, endedAt: null }
 const runLineVariants: Record<string, string> = {
   'ag-suite': 'running · profile',
   'ag-cookie': 'running · no profile',
@@ -999,7 +1002,7 @@ const sessionFlow = useTurnFlow({
 })
 const session = sessionFlow.state
 /** The conversation's shares and the service that makes them, as the product's header menu and answer footers use them. */
-const { shares: sessionShares, service: shareService } = useGalleryShares()
+const { service: shareService } = useGalleryShares()
 session.pendingSteers = [{ id: 'pending-1', content: steerPrompt }]
 session.queue = [
   { id: 'q1', content: [{ type: 'text', text: 'Also add a case for the expired cookie.' }] },
@@ -3253,7 +3256,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Copy Agent ID for any (it copies the number the `demi agent` commands take, and a toast says Copied), Close Tab for a finished one, the other of the two disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its segments running close to the window's ends, the first and last text as far from the window's side as its corner is round. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again. Its top edge resizes it: drag it, or focus it and press the arrow keys (Shift for bigger steps, Home and End for the smallest and the largest), and a double-click returns to the usual height, half the area. The height is kept as a share of the area, one for every window here, as the product keeps one for its Agents and Running windows; it never goes under the strip, the bar and three lines of the transcript, nor over the room above the dock. On a phone the tabs of this window and of Running narrow to their icons and status dots, the selected one adding its name (Phone page)."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Copy Agent ID for any (it copies the number the `demi agent` commands take, and a toast says Copied), Close Tab for a finished one, the other of the two disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its segments running close to the window's ends, the first and last text as far from the window's side as its corner is round. While a child's model streams its answer, a line over the bar tells the tokens it has written and their speed, as the line over the composer does for the conversation's. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again. Its top edge resizes it: drag it, or focus it and press the arrow keys (Shift for bigger steps, Home and End for the smallest and the largest), and a double-click returns to the usual height, half the area. The height is kept as a share of the area, one for every window here, as the product keeps one for its Agents and Running windows; it never goes under the strip, the bar and three lines of the transcript, nor over the room above the dock. On a phone the tabs of this window and of Running narrow to their icons and status dots, the selected one adding its name (Phone page)."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
@@ -3261,6 +3264,7 @@ onBeforeUnmount(() => {
         <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
           <SubagentPanel
             :agent-cost="() => agentCost.cost.value"
+            :output="(id) => (agents.find((agent) => agent.id === id)?.waitingSince != null ? agentOutput : null)"
             v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
             :agents="agents"
@@ -3787,7 +3791,6 @@ onBeforeUnmount(() => {
                 :aside-open="panelAsideOpen"
                 :panel-tabs="panelWork.panel.value.tabs.length"
                 :share="shareService"
-                :shares="sessionShares"
                 :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
@@ -4168,7 +4171,6 @@ onBeforeUnmount(() => {
         :conversation="session"
         has-provider
         :share="shareService"
-        :shares="sessionShares"
         :select-edit="(selection) => { panelWork.selectEdit(selection); view = 'panel' }"
         :files="sessionFiles"
         :edit-version="editVersion"

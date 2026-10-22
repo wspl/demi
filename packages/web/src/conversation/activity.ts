@@ -32,10 +32,10 @@ export function updateLiveStatus(conversation: Conversation): void {
 
 /**
  * Takes the conversation's agents as `entries` say them at `version`, as
- * they arrived at `receivedAt`: `whole` when they are every agent, as an
- * open's answer without the changes since a version lists them, so an agent
- * they leave out is gone. Each record keeps what the page holds of its
- * transcript; the root's entry is the runtime's, but for its cost.
+ * they arrived at `receivedAt`: `whole` when they are every agent, as a read
+ * of the conversation lists them, so an agent they leave out is gone. Each
+ * record keeps what the page holds of its transcript; the root's entry is the
+ * runtime's, but for its cost.
  */
 export function takeAgents(
   conversation: Conversation,
@@ -114,16 +114,23 @@ export function applyConversationEvent(
   event: ClientSessionEvent,
 ): void {
   if (event.type === 'agents') {
-    takeAgents(conversation, event.agents, event.version, event.receivedAt, event.since === undefined)
+    // The client read every agent: one they leave out is gone.
+    takeAgents(conversation, event.agents, event.version, event.receivedAt, true)
   } else if (event.type === 'agent') {
-    // The client checked the revision follows the one it holds, which
-    // came with the open's agents.
-    const held = conversation.agentsHeld
-    if (held) {
-      takeAgents(conversation, [event.agent], { epoch: held.epoch, revision: event.revision }, event.receivedAt, false)
-    }
+    // The client checked the version follows the one it holds, which came
+    // with the agents it read.
+    takeAgents(conversation, [event.agent], event.version, event.receivedAt, false)
   } else if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
     describeAttachments(conversation, event.attachments)
+    if (event.type === 'transcript_reset' && event.node === conversation.id) {
+      // The root's page brings what its context card and its compaction
+      // dividers tell; its messages are the runtime's.
+      conversation.instructions = event.instructions
+      conversation.summaries = {
+        ...conversation.summaries,
+        ...Object.fromEntries(event.summaries.map((summary) => [summary.marker, summary.summaryTokens])),
+      }
+    }
     // The root's messages are the runtime's.
     const record = event.node === conversation.id ? undefined : nodeRecord(conversation, event.node)
     if (record) {

@@ -15,7 +15,7 @@ import {
   type SubagentSettings,
   type SubagentsPatch,
 } from '../api/generated/web-api'
-import { useProduct, type Answer } from '../state/product'
+import { useHeldList, useProduct, type Answer } from '../state/product'
 
 /** `settings` with `profile` in its place by id, the profiles in name order. */
 function withProfile(settings: SubagentSettings, profile: SubagentProfile): SubagentSettings {
@@ -24,9 +24,17 @@ function withProfile(settings: SubagentSettings, profile: SubagentProfile): Suba
   return { ...settings, profiles }
 }
 
+/** The settings the page holds, which a change of them presupposes. */
+function heldSettings(state: { subagents?: SubagentSettings }): SubagentSettings {
+  if (state.subagents === undefined) {
+    throw new Error('The page changes the subagent settings before it read them')
+  }
+  return state.subagents
+}
+
 /** The answer that leaves the subagent settings as `next` makes them of those the page last read. */
 function settingsAnswer(next: (current: SubagentSettings) => SubagentSettings): Answer {
-  return (read) => ({ type: 'subagents', subagents: next(read.subagents) })
+  return (read) => ({ type: 'subagents', subagents: next(heldSettings(read)) })
 }
 
 /**
@@ -36,7 +44,7 @@ function settingsAnswer(next: (current: SubagentSettings) => SubagentSettings): 
  * deleted profile shows its answer. The channel brings the same part to every
  * other page.
  */
-export const useSubagentSettings = defineStore('subagent-settings', () => {
+const useSubagentStore = defineStore('subagent-settings', () => {
   const product = useProduct()
   /** The writes on their way, by what they set: `subagents`, a limit's name, or `profile:<id>`. */
   const writes = new SerialQueue()
@@ -53,7 +61,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
     write: () => Promise<Answer | undefined>,
     failed: HeadlineText,
   ): Promise<void> {
-    const change = product.change('subagents', (state) => ({ ...state, subagents: next(state.subagents) }))
+    const change = product.change('subagents', (state) => ({ ...state, subagents: next(heldSettings(state)) }))
     return writes
       .run(key, async () => {
         change.send()
@@ -159,3 +167,9 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
     deleteProfile,
   }
 })
+
+/** The subagent settings, which hold the user's settings while a view shows them. */
+export function useSubagentSettings(): ReturnType<typeof useSubagentStore> {
+  useHeldList('subagents')
+  return useSubagentStore()
+}

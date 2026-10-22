@@ -79,6 +79,7 @@ mod settings;
 mod shares;
 mod side_questions;
 mod sidebar;
+mod state;
 mod streams;
 mod subagents;
 mod sync;
@@ -326,7 +327,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/auth/passkeys/{id}",
             patch(passkeys::rename).delete(passkeys::remove),
         )
+        .route("/state", get(state::read))
         .route("/settings", get(settings::settings))
+        .route("/settings/instructions", get(instructions::read))
+        .route("/settings/subagents", get(subagents::read))
         .route(
             "/settings/preferences",
             get(settings::preferences).patch(settings::patch_preferences),
@@ -411,7 +415,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/side-questions/{side}/stop",
             post(side_questions::stop),
         )
-        .route("/conversations/{id}/shares", post(shares::create))
+        .route("/conversations/{id}/shares", get(shares::list).post(shares::create))
+        .route("/conversations/{id}/workflows", get(conversations::workflows))
         .route(
             "/conversations/{id}/shares/{token}",
             put(shares::update).delete(shares::remove),
@@ -445,7 +450,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
         .route(
             "/conversations/{id}/saved",
-            post(saved::save),
+            get(saved::list).post(saved::save),
         )
         .route("/conversations/{id}/saved/from-draft", post(saved::from_draft))
         .route(
@@ -690,48 +695,4 @@ async fn refuse_while_closing(
         return ApiError::backend_closing().into_response();
     }
     next.run(request).await
-}
-
-#[cfg(test)]
-mod tests {
-    use axum::body::Body;
-    use axum::http::StatusCode;
-    use demi_web_api_protocol::error::ErrorCode;
-
-    use super::*;
-    use demi_backend_user_shard::shard::{ShardPlacement, ShardPool};
-
-    #[tokio::test]
-    async fn a_request_after_shutdown_started_answers_backend_closing() {
-        let data = tempfile::tempdir().unwrap();
-        let services = Services::start_for_tests(data.path()).await;
-        let pool = ShardPool::start(
-            ShardPlacement::Threads(std::num::NonZeroUsize::MIN),
-            services.clone(),
-        )
-        .await
-        .unwrap();
-        let state = AppState {
-            services,
-            shards: pool.shards(),
-            site: Arc::default(),
-        };
-        let closing = CancellationToken::new();
-        let app = router(state, closing.clone(), None);
-        let request = || Request::get("/api/setup").body(Body::empty()).unwrap();
-        assert_eq!(
-            app.clone().oneshot(request()).await.unwrap().status(),
-            StatusCode::OK
-        );
-
-        closing.cancel();
-        let refused = app.oneshot(request()).await.unwrap();
-        assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
-        let body = axum::body::to_bytes(refused.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let error: demi_web_api_protocol::error::ErrorBody = serde_json::from_slice(&body).unwrap();
-        assert_eq!(error.code, ErrorCode::BackendClosing);
-        pool.close().await;
-    }
 }

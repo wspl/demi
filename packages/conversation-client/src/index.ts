@@ -7,7 +7,22 @@
 // produce, and this package's tests apply them, so no second applier exists in
 // Rust.
 
-export { ActionOutlivedError, ConversationClient, EditRejectedError, RefusedError, SavedGoneError, SessionError, SteerRejectedError, type ConversationClientOptions } from './client'
+export {
+  ActionOutlivedError,
+  ConversationClient,
+  EditRejectedError,
+  RefusedError,
+  SavedGoneError,
+  SessionError,
+  SteerRejectedError,
+  type ConversationClientOptions,
+  type ConversationConnect,
+  type ConversationHeld,
+  type ConversationTags,
+  type ConversationFrameTake,
+  type ConversationRead,
+  type ConversationReader,
+} from './client'
 export type { ConversationClientListener, ClientSessionEvent, Failures, RequestOutputReading, ServerFrameOf } from './events'
 export {
   EMPTY_TRANSCRIPT,
@@ -25,8 +40,10 @@ export {
   withWholeBlock,
   type Held,
   type HeldBlock,
+  type HeldEdge,
   type HeldTranscript,
   type TextArrival,
+  type TranscriptRead,
   type TranscriptWindow,
 } from './transcript'
 export {

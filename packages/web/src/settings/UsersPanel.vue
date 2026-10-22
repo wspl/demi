@@ -11,8 +11,8 @@ const product = useProduct()
 </script>
 
 <template>
-  <!-- The list is the channel's `users` part, loading until the first state arrives. -->
-  <AsyncRegion :state="product.load" :label="t('users.loading')" :error="t('users.loadFailed')" :on-retry="product.reconnect">
+  <!-- The list is read when the pane opens, and followed on the channel's `users` part. -->
+  <AsyncRegion :state="product.listLoad('users')" :label="t('users.loading')" :error="t('users.loadFailed')" :on-retry="() => product.retryList('users')">
     <SettingsUsers v-if="users.host" :host="users.host" :overlay-store="appOverlayStore" />
   </AsyncRegion>
 </template>

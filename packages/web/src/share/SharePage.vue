@@ -76,7 +76,7 @@ const listLoad = computed<ListLoad>(() => {
   return history.value.windows.length > 0 ? 'ready' : 'loading'
 })
 // Once the shared conversation has shown, what its regions need loads in the
-// background (`docs/decisions/0033-a-region-draws-once.md`), as in the app.
+// background, as in the app.
 watch(listLoad, (load) => {
   if (load === 'ready')
     loadRegionRenderers()

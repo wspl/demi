@@ -1,4 +1,49 @@
-import type { Block, BlockVersions, HeldEdge, TranscriptPatch, Version, Versions } from '@demicodes/protocol'
+import type {
+  Block,
+  BlockVersions,
+  CacheChart,
+  ConversationAttachment,
+  InstructionEntry,
+  ProviderFailureFacts,
+  RequestOutput,
+  ShellStatus,
+  TranscriptPatch,
+  Version,
+  Versions,
+} from '@demicodes/protocol'
+
+/**
+ * A node's latest page as the client reads it: its blocks from `start`, the
+ * transcript's version at the read, the live commands the node runs, and the
+ * facts the page's blocks need.
+ */
+export interface TranscriptRead {
+  start: number
+  length: number
+  blocks: Block[]
+  versions?: BlockVersions[]
+  failures?: Record<string, ProviderFailureFacts>
+  attachments?: ConversationAttachment[]
+  instructions?: InstructionEntry[]
+  summaries?: { marker: string; summaryTokens: number }[]
+  version: Version
+  commands?: ShellStatus[]
+  requestOutput?: RequestOutput | null
+  cacheChart?: CacheChart
+}
+
+/**
+ * What the page holds of a node's transcript that a read of it may vouch for:
+ * the version its latest window is current at, and the first block of that
+ * window that may have changed since, with its id: a read that finds another
+ * block at that index knows the transcript was rewritten while the page was
+ * away.
+ */
+export interface HeldEdge {
+  version: Version
+  from: number
+  edge: string
+}
 
 /** A text or thinking block's text up to `end` reached the page at `at`, its `performance.now()`. */
 export interface TextArrival {
@@ -116,10 +161,10 @@ export function heldBlocks<B extends Held>(held: HeldTranscript<B>): B[] {
 }
 
 /**
- * The blocks the page names when it subscribes to a node: the version its
- * latest window is current at, and the first block of that window that may
- * have changed since, its first call that was executing, or else its last
- * block; none without a latest window a stream vouched for.
+ * The blocks the page names when it reads a node: the version its latest
+ * window is current at, and the first block of that window that may have
+ * changed since, its first call that was executing, or else its last block;
+ * none without a latest window a stream vouched for.
  */
 export function heldEdge(held: HeldTranscript): HeldEdge | undefined {
   const latest = latestWindow(held)
@@ -191,15 +236,15 @@ function joined<B extends Held>(
 }
 
 /**
- * The transcript with the stream's reset in it: its blocks replace every
- * held block from `start` on, light as a page's are but the last, which the
- * stream may still be writing and sends whole.
+ * The transcript with the latest page the client read in it: its blocks
+ * replace every held block from `start` on, light as a page's are but the
+ * last, which the stream may still be writing and the read sends whole.
  *
- * What the page holds before `start` stays on screen. The reset vouches for
- * it when it starts at `asked`, the index the page named, whose block the
- * server found there unchanged; otherwise, as after a long time away, a
- * rewrite under the page, or a page that named no index, it is stale: a hole
- * the page reads again where it shows it.
+ * What the page holds before `start` stays on screen. The read vouches for
+ * it when it starts at `asked`, where the transcript of the page's epoch had
+ * not changed; otherwise, as after a long time away, a rewrite under the
+ * page, or a page that held no version, it is stale: a hole the page reads
+ * again where it shows it.
  */
 export function resetTranscript(
   held: HeldTranscript,
@@ -253,8 +298,7 @@ export function addWindow<B extends Held>(
  * conversation's status reads; for an `anchor` null or not held, the latest
  * window's alone, else the last window's. Every other window and block
  * leaves memory, as Telegram's history views drop what falls outside them and
- * its chat list keeps each chat's top message
- * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+ * its chat list keeps each chat's top message.
  * One already within the bound is returned as it is.
  *
  * `also` names indices that stay too, the page a read just brought: the

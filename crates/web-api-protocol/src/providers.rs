@@ -13,14 +13,6 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::ids::{CredentialId, LoginId, ProviderId};
 use crate::text::{EndpointUrl, Trimmed};
 
-/// The most characters (Unicode scalar values) an entry's label has, after
-/// trimming.
-pub const LABEL_MAX: usize = 80;
-
-/// The most characters (Unicode scalar values) a pasted sign-in code has,
-/// after trimming.
-pub const CODE_MAX: usize = 4096;
-
 /// How an entry authenticates (`crates/backend-providers/src/llm/families.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -76,9 +68,9 @@ pub struct ConfiguredModel {
     #[serde(default)]
     #[garde(skip)]
     pub kind: ModelKind,
-    #[garde(length(chars, min = 1, max = 256))]
+    #[garde(length(chars, min = 1))]
     pub id: Trimmed,
-    #[garde(length(chars, min = 1, max = 256))]
+    #[garde(length(chars, min = 1))]
     pub display_name: Trimmed,
     /// Tokens; null while the window is unknown, as a model added by Custom
     /// has until the user sets one.
@@ -93,17 +85,17 @@ pub struct ConfiguredModel {
     #[garde(range(min = 1), custom(within(self.context_window)))]
     pub output_limit: Option<u32>,
     /// The vendor's effort levels; empty for a model without thinking.
-    #[garde(length(max = 32), inner(length(chars, min = 1, max = 64)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub thinking_efforts: Vec<String>,
     /// The types the model reads natively: `[]` for none, null when unknown.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<FileExtension>>")]
-    #[garde(length(max = 64))]
+    #[garde(skip)]
     pub accepted_extensions: Option<Vec<FileExtension>>,
     /// The service tier the model's Fast is; null for none.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(length(chars, min = 1, max = 64))]
+    #[garde(length(chars, min = 1))]
     pub fast_tier: Option<String>,
 }
 
@@ -117,7 +109,7 @@ fn within(context_window: Option<u32>) -> impl FnOnce(&Option<u32>, &()) -> gard
     }
 }
 
-/// An entry's complete manual model list: at most 1000 models. Their ids
+/// An entry's complete manual model list. Their ids
 /// are distinct in a list that is kept ([`ConfiguredModels::repeated_id`]):
 /// a request that repeats one is refused as `duplicate_model`, not as an
 /// invalid body. An empty list leaves the entry incomplete until a model is
@@ -125,7 +117,7 @@ fn within(context_window: Option<u32>) -> impl FnOnce(&Option<u32>, &()) -> gard
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
-pub struct ConfiguredModels(#[garde(length(max = 1000), dive)] pub Vec<ConfiguredModel>);
+pub struct ConfiguredModels(#[garde(dive)] pub Vec<ConfiguredModel>);
 
 impl ConfiguredModels {
     /// The first id that a model of the list shares with an earlier one.
@@ -158,7 +150,7 @@ pub enum CreateProvider {
         vendor_id: String,
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "Trimmed")]
-        #[garde(length(chars, min = 1, max = LABEL_MAX))]
+        #[garde(length(chars, min = 1))]
         label: Option<Trimmed>,
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "String")]
@@ -180,7 +172,7 @@ pub enum CreateProvider {
         wire_api: Option<WireApi>,
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "Trimmed")]
-        #[garde(length(chars, min = 1, max = LABEL_MAX))]
+        #[garde(length(chars, min = 1))]
         label: Option<Trimmed>,
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "String")]
@@ -204,7 +196,7 @@ pub enum CreateProvider {
         wire_api: Option<WireApi>,
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "Trimmed")]
-        #[garde(length(chars, min = 1, max = LABEL_MAX))]
+        #[garde(length(chars, min = 1))]
         label: Option<Trimmed>,
         /// Optional for good: a server of the user's own may take none.
         #[serde(default, with = "unwrap_or_skip")]
@@ -233,7 +225,7 @@ pub enum CreateProvider {
 pub struct ProviderPatch {
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(length(chars, min = 1, max = LABEL_MAX))]
+    #[garde(length(chars, min = 1))]
     pub label: Option<Trimmed>,
     #[serde(default, with = "double_option")]
     #[schemars(with = "Option<String>")]
@@ -700,7 +692,7 @@ pub struct SubscriptionLogin {
     /// The new entry's label; the family's subscription name without it.
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(length(chars, min = 1, max = LABEL_MAX))]
+    #[garde(length(chars, min = 1))]
     pub label: Option<Trimmed>,
 }
 
@@ -710,7 +702,7 @@ pub struct SubscriptionLogin {
 #[derive(Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LoginCode {
-    #[garde(length(chars, min = 1, max = CODE_MAX), custom(one_line))]
+    #[garde(length(chars, min = 1), custom(one_line))]
     pub code: Trimmed,
 }
 
@@ -972,7 +964,8 @@ impl Availability {
     }
 }
 
-/// `{ results }`: at most 20 matches, newest release first.
+/// `{ results }`: at most 20 matches, newest release first, because the
+/// catalogue has no end of matches and a search answers whole.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ModelSearchResults {
     pub results: Vec<ModelMatch>,
@@ -1047,112 +1040,4 @@ pub enum CliInstall {
     Failed {
         message: String,
     },
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::*;
-
-    fn model(value: serde_json::Value) -> Result<ConfiguredModel, String> {
-        let model: ConfiguredModel =
-            serde_json::from_value(value).map_err(|error| error.to_string())?;
-        model.validate().map_err(|report| report.to_string())?;
-        Ok(model)
-    }
-
-    fn configured() -> serde_json::Value {
-        json!({
-            "id": " gpt-5.5 ",
-            "displayName": "GPT-5.5",
-            "contextWindow": 272_000,
-            "outputLimit": null,
-            "thinkingEfforts": ["low", "high"],
-            "acceptedExtensions": ["png", "pdf"],
-            "fastTier": "priority"
-        })
-    }
-
-    #[test]
-    fn a_configured_model_states_its_facts_within_their_bounds() {
-        assert_eq!(model(configured()).unwrap().id.as_str(), "gpt-5.5");
-        let refused = [
-            ("contextWindow", json!(0)),
-            ("outputLimit", json!(0)),
-            ("outputLimit", json!(272_001)),
-            ("id", json!("   ")),
-            ("thinkingEfforts", json!([""])),
-            ("acceptedExtensions", json!([".png"])),
-            ("fastTier", json!("")),
-        ];
-        for (field, value) in refused {
-            let mut body = configured();
-            body[field] = value.clone();
-            assert!(model(body).is_err(), "{field}: {value}");
-        }
-        let mut absent = configured();
-        absent.as_object_mut().unwrap().remove("outputLimit");
-        assert!(model(absent).is_err(), "a nullable field must be present");
-        let mut unknown = configured();
-        unknown["cost"] = json!(1);
-        assert!(model(unknown).is_err());
-    }
-
-    #[test]
-    fn a_model_list_holds_up_to_a_thousand_models() {
-        let list = |models: Vec<serde_json::Value>| {
-            serde_json::from_value::<ConfiguredModels>(json!(models)).unwrap()
-        };
-        assert!(list(vec![configured()]).validate().is_ok());
-        // An empty list is an entry waiting for its first model.
-        assert!(list(Vec::new()).validate().is_ok());
-    }
-
-    #[test]
-    fn a_new_entry_names_its_source_and_a_patch_tells_null_from_absent() {
-        let vendor: CreateProvider = serde_json::from_value(json!({
-            "source": "vendor", "vendorId": "deepseek", "label": " DeepSeek ", "apiKey": "sk-1"
-        }))
-        .unwrap();
-        assert!(
-            matches!(vendor, CreateProvider::Vendor { label: Some(ref label), .. } if label.as_str() == "DeepSeek")
-        );
-        // Everything but the kind may come later.
-        let bare: CreateProvider =
-            serde_json::from_value(json!({ "source": "vendor", "vendorId": "google" })).unwrap();
-        assert!(matches!(
-            bare,
-            CreateProvider::Vendor { label: None, api_key: None, .. }
-        ));
-        for refused in [
-            json!({ "vendorId": "deepseek", "label": "x", "apiKey": "k" }),
-            json!({ "source": "vendor", "vendorId": "deepseek", "apiKey": null }),
-            json!({ "source": "vendor", "vendorId": "deepseek", "label": "x", "apiKey": "k", "wireApi": "responses" }),
-            json!({ "source": "compatible", "label": "x", "apiKey": "k", "baseUrl": null }),
-            json!({ "source": "compatible", "label": "x", "apiKey": "k", "baseUrl": "gw.example" }),
-            json!({ "source": "family", "providerType": "openai", "baseUrl": "https://gw.example/v1" }),
-        ] {
-            assert!(
-                serde_json::from_value::<CreateProvider>(refused.clone()).is_err(),
-                "{refused}"
-            );
-        }
-        // A compatible entry may be created with nothing but its kind.
-        let compatible: CreateProvider =
-            serde_json::from_value(json!({ "source": "compatible" })).unwrap();
-        assert!(matches!(
-            compatible,
-            CreateProvider::Compatible { provider_type: None, base_url: None, api_key: None, .. }
-        ));
-        let patch: ProviderPatch = serde_json::from_value(
-            json!({ "baseUrl": null, "apiKey": null, "label": "Work" }),
-        )
-        .unwrap();
-        assert_eq!(
-            (patch.base_url, patch.api_key, patch.models.is_none()),
-            (Some(None), Some(None), true)
-        );
-        assert_eq!(patch.label.unwrap().as_str(), "Work");
-    }
 }

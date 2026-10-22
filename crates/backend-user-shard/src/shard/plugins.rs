@@ -39,6 +39,8 @@ use super::Shard;
 use crate::services::Services;
 
 /// The most bytes of a package call's JSON answer.
+///
+/// Bounded because the answer is read into memory from a package's process.
 const CALL_ANSWER_MAX_BYTES: usize = 1024 * 1024;
 
 /// The shard as its plugins' port reaches it. Weak: the shard owns the
@@ -240,9 +242,6 @@ impl ProductPort for ShardPort {
 /// (`crates/backend-plugins/src/web.rs`). A test's backend trusts the
 /// authorities its HTTPS servers present.
 pub(crate) fn web_client(services: &Services) -> reqwest::Client {
-    #[cfg(feature = "testing")]
-    let roots = services.web_roots.as_slice();
-    #[cfg(not(feature = "testing"))]
     let roots = {
         let _ = services;
         &[]

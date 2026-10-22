@@ -96,7 +96,7 @@
     },
     "page": {
       "name": "Name",
-      "nameProblem": "Enter a name of up to {max} characters.",
+      "nameProblem": "Enter a name.",
       "on": "On",
       "onDescription": "While it’s on, it runs whenever its Listen On Host is online.",
       "listenOn": "Listen On",
@@ -359,7 +359,7 @@
     "home": "Home",
     "homeDescription": "Files and Cloud projects.",
     "note": "The sizes apply the next time the Cloud starts. A disk that’s already larger keeps its size.",
-    "problem": "Enter a whole number of GB from 1 to {max}."
+    "problem": "Enter a whole number of GB, at least 1."
   },
   "addPasskey": {
     "title": "Add Passkey",
@@ -455,7 +455,6 @@
     "notePlaceholder": "Why an agent needs it",
     "fields": "Fields",
     "addField": "Add Field",
-    "fieldsMax": "A credential has at most {max} fields.",
     "labelPlaceholder": "API key",
     "labelOf": "Label of field {n}",
     "needsField": "A credential needs a field.",
@@ -466,9 +465,7 @@
     "create": "Create Credential"
   },
   "credentialFields": {
-    "required": "Required",
-    "maxChars": "Use at most {max} characters.",
-    "maxBytes": "Use at most 64 KiB."
+    "required": "Required"
   },
   "subagents": {
     "title": "Subagents",

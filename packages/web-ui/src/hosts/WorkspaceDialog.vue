@@ -283,7 +283,6 @@ function selectDevice(id: string, close: () => void): void {
               v-model="name"
               :disabled="creating"
               focused
-              maxlength="64"
             />
           </label>
           <template v-else>

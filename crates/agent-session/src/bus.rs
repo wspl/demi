@@ -3,9 +3,8 @@
 //! The events of one change of the session, one
 //! [`SessionShared::update`](super::SessionShared), are a step: they reach
 //! every listener together, once the change is complete, in the order the
-//! changes happened, so a client applies a change whole or not at all
-//! (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`). A
-//! listener may call back into the session; what that causes is delivered as
+//! changes happened, so a client applies a change whole or not at all.
+//! A listener may call back into the session; what that causes is delivered as
 //! a step of its own once the current one has reached every listener.
 //!
 //! The end of a turn is one step: the answer's completed text with the phase

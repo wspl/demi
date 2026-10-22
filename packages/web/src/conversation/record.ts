@@ -28,8 +28,7 @@ import { t } from './locales/text'
 //   the composer or stands in the list as Not Saved.
 // - The list holds each saved message as the composer lists it, its text's
 //   opening and length; the page's own change lists the text it wrote whole.
-//   The conversation's metadata brings the list under its revision
-//   (`docs/decisions/0029-a-conversation-opens-whole.md`).
+//   The conversation's metadata brings the list under its revision.
 
 /** How long typing pauses before the page saves the draft. */
 export const DRAFT_SAVE_DELAY_MS = 500

@@ -6,12 +6,11 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import InlineError from '../ui/InlineError.vue'
-import { formatCount } from '../ui/numbers'
 import type { Action, Operation } from '../ui/operations'
 import TextInput from '../ui/TextInput.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsCloudStorage } from './types'
-import { CLOUD_GB_MAX, parseCloudGb } from './users'
+import { parseCloudGb } from './users'
 
 /**
  * Cloud Storage…: the size of an account's Cloud disks, System and Home, in whole GB
@@ -109,7 +108,7 @@ function submit(): unknown {
       </div>
       <InlineError
         v-if="systemGb === null || homeGb === null"
-        :message="t('cloudStorage.problem', { max: formatCount(CLOUD_GB_MAX) })"
+        :message="t('cloudStorage.problem')"
       />
       <p v-else class="select-none text-explanation leading-5 text-fg-muted">
         {{ t('cloudStorage.note') }}

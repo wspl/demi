@@ -5,7 +5,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { ForwardHost, PortForwardChange, SettingsPortForward } from '@demicodes/web-ui/settings/port-forwards'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import { portForwardAnswerSchema, type PortForwardDto, type PortForwardPatch } from '../api/generated/web-api'
-import { useProduct, type Answer } from '../state/product'
+import { useHeldList, useProduct, type Answer } from '../state/product'
 import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 
 /** The forwards oldest first, as the backend lists them: `forward` in its place by id. */
@@ -16,7 +16,7 @@ function withForward(forwards: PortForwardDto[], forward: PortForwardDto): PortF
 }
 
 function forwardsAnswer(next: (current: PortForwardDto[]) => PortForwardDto[]): Answer {
-  return (read) => ({ type: 'port_forwards', portForwards: next(read.portForwards) })
+  return (read) => ({ type: 'port_forwards', portForwards: next(read.portForwards ?? []) })
 }
 
 /** A refusal the user fixes in the field, such as a taken name or a port out of range. */
@@ -30,7 +30,7 @@ function refusedField(error: unknown): boolean {
  * and the `port_forwards` part brings it, and every state the runners
  * announce, to every page.
  */
-export const usePortForwardSettings = defineStore('port-forward-settings', () => {
+const usePortForwardStore = defineStore('port-forward-settings', () => {
   const product = useProduct()
 
   const forwards = computed<SettingsPortForward[]>(() => product.snapshot?.portForwards ?? [])
@@ -98,3 +98,9 @@ export const usePortForwardSettings = defineStore('port-forward-settings', () =>
 
   return { forwards, hosts, add, change, tryAgain, remove }
 })
+
+/** The port forward settings, which hold the user's forwards while a view shows them. */
+export function usePortForwardSettings(): ReturnType<typeof usePortForwardStore> {
+  useHeldList('port_forwards')
+  return usePortForwardStore()
+}

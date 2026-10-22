@@ -170,7 +170,6 @@
     "permission_request_not_found": "此請求已獲得回覆。",
     "invalid_answer": "回覆與請求不符。",
     "invalid_answer_missing": "請為「{field}」輸入值。",
-    "invalid_answer_too_large": "「{field}」的值最多為 {limitBytes}。",
     "credential_not_found": "找不到憑證。",
     "credential_name_taken": "另一個憑證已使用此名稱。",
     "port_forward_name_taken": "名為「{name}」的轉送已存在。",

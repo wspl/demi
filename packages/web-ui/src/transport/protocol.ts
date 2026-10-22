@@ -62,8 +62,13 @@ export {
   withWholeBlock,
   type ClientSessionEvent,
   type ConversationClient,
+  type ConversationClientOptions,
+  type ConversationHeld,
+  type ConversationRead,
+  type ConversationReader,
   type Held,
   type HeldBlock,
   type HeldTranscript,
+  type TranscriptRead,
   type TranscriptWindow,
 } from '@demicodes/conversation-client'

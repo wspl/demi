@@ -24,16 +24,15 @@ use demi_agent_session::{SessionEvent, Settle, Subscription};
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord, SideOf};
 use demi_agent_tools::HostResolver;
 use demi_agent_transcript::ForkEnd;
-use demi_conversation_socket_protocol::ServerFrame;
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
-use demi_shared_types::{NodeId, QueuedMessage, TurnId, UserContentBlock, markdown_quote};
+use demi_shared_types::{NodeId, QueuedMessage, SessionPhase, TurnId, UserContentBlock, markdown_quote};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{
-    Tree, agents, cut_path, note_agent,
+    Tree, agents, cut_path, note_agent, note_running,
     supervisor::{OWNER_CLOSING, stop_all},
     told::{self, Asked},
 };
@@ -463,21 +462,18 @@ impl<H: HostResolver> Tree<H> {
                 let side = side.clone();
                 let sink = self.sink.clone();
                 let agents = self.agents.clone();
+                let readings = self.readings.clone();
                 let id = node.id().clone();
                 let paths = self.paths.clone();
+                let running = Cell::new(node.session().phase() != SessionPhase::Idle);
                 // A step's frames go to each page as one change.
                 move |step: &[SessionEvent]| agents.step(|| for event in step {
                     cut_path(&paths, event);
                     note_agent(&agents, &id, event);
+                    note_running(&sink, &id, &running, event);
                     match event {
-                        SessionEvent::TranscriptChanged { patches, revision } => {
-                            sink.emit_to(&id, ServerFrame::TranscriptPatch {
-                                node: id.clone(),
-                                patches: patches.clone(),
-                                revision: *revision,
-                                failures: None,
-                                attachments: Vec::new(),
-                            });
+                        SessionEvent::TranscriptChanged { patches, version } => {
+                            sink.patched(&id, patches, version, running.get());
                         }
                         SessionEvent::ActionFailed { report } => {
                             if let Some(side) = side.upgrade() {
@@ -485,6 +481,7 @@ impl<H: HostResolver> Tree<H> {
                                 side.wake.notify_one();
                             }
                         }
+                        SessionEvent::OutputChanged { output } => readings.changed(&id, output),
                         _ => {}
                     }
                 })
@@ -509,11 +506,6 @@ impl<H: HostResolver> Tree<H> {
             entry.waited_ms = session.waited_ms();
             entry.pending_calls = session.pending_calls();
             self.agents.put(entry);
-        }
-        if self.sink.subscribes(node.id()) {
-            for frame in self.node_frames(node.id(), None) {
-                self.sink.emit_to(node.id(), frame);
-            }
         }
         side
     }

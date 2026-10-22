@@ -327,7 +327,6 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               :overlay-store="appOverlayStore"
               :install-commands="demoInstallCommands"
               :claim-device="directDevices.claim"
-              :name-max-length="64"
               :exposed-ports="directExposedPorts.ports.value"
               :on-expose-port="directExposedPorts.expose"
               :on-change-exposed-port="directExposedPorts.change"

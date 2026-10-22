@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -42,19 +42,16 @@ regex = "1"
 tracing.workspace = true
 
 [dev-dependencies]
-# The crate's own tests use its test support and the scripted provider
-# runtimes.
+# The compaction fixture's harness (`fixtures/compaction/README.md`) talks
+# to a real model with the crate's test support and the scripted provider
+# runtimes. It is an example, so every build of the one selection compiles it
+# and no test runs it; its provider is a dev-dependency, so the library never
+# links one.
 demi-agent-server = { path = ".", features = ["testing"] }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-agent-transcript = { path = "../agent-transcript", features = ["testing"] }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
-jiff.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
-# The compaction fixture's harness (`fixtures/compaction/README.md`) talks
-# to a real model. It is an example, so every build of the one selection
-# compiles it and no test runs it; its provider is a dev-dependency, so the
-# library never links one.
 demi-provider-openai-api = { path = "../provider-openai-api" }
 flate2 = "1"
 reqwest.workspace = true

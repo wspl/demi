@@ -37,7 +37,7 @@ export interface MoveQuestion {
 
 /**
  * The question before a conversation that has messages moves, whether or not its
- * agent works: the move stops nothing (`docs/decisions/0027-a-move-applies-at-once.md`).
+ * agent works: the move stops nothing.
  *
  * `ask` opens `MoveConversationDialog` and answers whether the conversation moved,
  * once the user cancelled or `carryOut` finished the move. The question stays once

@@ -26,6 +26,9 @@ use tokio_util::task::TaskTracker;
 use super::AppState;
 
 /// The longest request line read.
+///
+/// Bounded because a line is read into memory from a connection that sends
+/// without end.
 const REQUEST_BYTES: u64 = 64 * 1024;
 
 /// Opens the management socket at `path`, replacing the file a previous

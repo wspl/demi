@@ -26,18 +26,16 @@ import { t } from './locales/text'
  * - the chart of the agent's recent cache hits
  *
  * The rate and the chart are the backend's, which come with the agent's
- * node (`docs/decisions/0019-the-server-counts-the-cache-chart.md`), so the
- * section opens with them. A figure the section does not have is left out
- * with its label: the rate of an agent that sent no prompt yet, and the
- * chart before its fourth call.
+ * node, so the section opens with them. A figure the section does not have is
+ * left out with its label: the rate of an agent that sent no prompt yet, and
+ * the chart before its fourth call.
  *
  * Once the conversation's first call is more than an hour old, a mini switch in
  * the caption, before its chevron, counts the last hour instead of the whole
  * conversation: the prices, the profiles' shares, the rate and the closed
  * section's two figures; the chart stays, with the rate's label alone when
- * the hour has no rate
- * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`). The last hour's
- * figures are left out until the backend's first count of them arrives.
+ * the hour has no rate. The last hour's figures are left out until the
+ * backend's first count of them arrives.
  */
 const props = defineProps<{
   state: CostShown

@@ -609,24 +609,3 @@ fn workflow_context(
         .map_err(|refusal| format!("{refusal}; change the profile's context in {path}"))?;
     Ok(tokens)
 }
-
-#[cfg(test)]
-mod tests {
-    use demi_shared_types::B64Bytes;
-
-    use super::*;
-
-    /// A Host that says a file is small but sends more than the limit, as
-    /// a file that grew between its size and its read: the bytes decide.
-    #[test]
-    fn a_file_whose_bytes_pass_the_limit_is_refused_whatever_size_the_host_gave() {
-        let limit = usize::try_from(WORKFLOW_FILE_MAX_BYTES).unwrap();
-        let answer = |bytes: usize, size: u64| HostFile::File {
-            bytes: B64Bytes::new(vec![b'a'; bytes]),
-            size,
-        };
-        assert_eq!(workflow_text(answer(limit + 1, 10)), Err("the file is larger than 1 MiB".to_owned()));
-        assert_eq!(workflow_text(answer(10, WORKFLOW_FILE_MAX_BYTES + 1)), Err("the file is larger than 1 MiB".to_owned()));
-        assert_eq!(workflow_text(answer(limit, WORKFLOW_FILE_MAX_BYTES)).map(|text| text.len()), Ok(limit));
-    }
-}

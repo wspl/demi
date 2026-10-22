@@ -7,7 +7,7 @@
 use demi_agent_store::media::comment_references;
 use demi_shared_types::{BlobRef, MessageComment};
 use demi_web_api_protocol::drafts::{
-    ConversationDraft, DRAFT_BYTES_MAX, DraftFile, DraftWritten, ReplacedAction, ReplacedDraft,
+    ConversationDraft, DraftFile, DraftWritten, ReplacedAction, ReplacedDraft,
     Revisions,
 };
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId, UserId};
@@ -36,8 +36,6 @@ pub enum DraftRefusal {
     Archived,
     /// The caller has no upload of this id.
     UploadNotFound(AttachmentId),
-    /// The draft as stored would be over its limit.
-    TooLarge,
     /// The replaced version is not the one the request names.
     Changed,
 }
@@ -71,11 +69,6 @@ impl Version {
     /// and no comment.
     pub(super) fn is_empty(&self) -> bool {
         self.text.trim().is_empty() && self.files.is_empty() && self.comments.is_empty()
-    }
-
-    /// Whether the version as stored is over a draft's limit.
-    pub(super) fn too_large(&self) -> bool {
-        to_json(self).len() > DRAFT_BYTES_MAX
     }
 }
 
@@ -207,9 +200,6 @@ impl ControlService {
                 Ok(version) => Version { comments, ..version },
                 Err(missing) => return Ok(Err(DraftRefusal::UploadNotFound(missing))),
             };
-            if version.too_large() {
-                return Ok(Err(DraftRefusal::TooLarge));
-            }
             let next = Stored::saved_on(stored(&transaction, &conversation)?, base, version);
             write(&transaction, &conversation, &next, now.as_millisecond())?;
             transaction.commit()?;

@@ -111,7 +111,7 @@ pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, ForkSeed, accepted, edit_digest, fork_seed, regenerate_digest,
 };
 pub use retry::RetryPolicy;
-pub use window::{Reset, checkpoint_reset, latest_page};
+pub use window::{LatestPage, latest_page};
 pub use runtime::{
     CallCommand, CommandLook, InputArrival, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
@@ -382,9 +382,10 @@ impl ErrorReport {
 /// A change of a session, reported once it is complete.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SessionEvent {
+    /// One batch of patches, with the version of the transcript after it.
     TranscriptChanged {
         patches: Vec<TranscriptPatch>,
-        revision: u64,
+        version: Version,
     },
     PhaseChanged {
         phase: SessionPhase,
@@ -963,11 +964,10 @@ impl AgentSession {
         self.shared.read(|core| look(&core.transcript))
     }
 
-    /// The transcript a reset sends to a page that holds its blocks up to
-    /// `from`, whose block there is `edge`: at most its latest page, in its
-    /// light form, read from the window as it is now.
-    pub fn reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> Reset {
-        window::reset(&self.shared, from, edge)
+    /// The session's latest page, in its light form, read from the window as
+    /// it is now, with the version the window is at.
+    pub fn latest_page(&self) -> LatestPage {
+        window::latest(&self.shared)
     }
 
     /// The automation's run whose message is the latest the user or an
@@ -1538,9 +1538,8 @@ impl AgentSession {
     /// Stops the session for good, at once and without waiting: it refuses
     /// new actions, its running one is cancelled as by a shutdown, and a fork
     /// waiting for its runtime learns it is closing. A close stops what it
-    /// owns this way before it waits for anything
-    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`); `dispose`
-    /// then saves the final checkpoint.
+    /// owns this way before it waits for anything;
+    /// `dispose` then saves the final checkpoint.
     pub fn stop(&self) {
         self.shared.update(SessionCore::begin_dispose);
         self.shared.runtime_returned.notify_waiters();

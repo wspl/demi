@@ -241,7 +241,7 @@ impl Shard {
     /// unknown before its first read; the refusal when the last search was
     /// refused or failed and nothing was ever stored. A loaded conversation
     /// keeps it current, which announces each change in its metadata.
-    pub(crate) async fn conversation_workflows(&self, id: &ConversationId) -> ConversationWorkflowList {
+    pub async fn conversation_workflows(&self, id: &ConversationId) -> ConversationWorkflowList {
         let refused = |error: &HostAccessError| {
             let (code, status) = error.code();
             ConversationWorkflowList {

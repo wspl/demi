@@ -22,7 +22,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationMetadata, ConversationShare, ConversationTarget, DeviceKind, FiledRun, LastHourCost, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationMetadata, ConversationTarget, DeviceKind, FiledRun, KeptWorkflowList, LastHourCost, WorkflowChoice } from '../api/generated/web-api'
 import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
@@ -60,8 +60,11 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pluginsChanged: boolean
   /** The speed of the root's last turn, which the chips row shows once no reading does. */
   turnSpeed: TurnSpeed | null
-  /** The conversation's shares, its own and its answers'. */
-  shares: ConversationShare[]
+  /**
+   * The workflows the backend keeps for the conversation's directory, which the
+   * Workflow menu lists; none until the opening read them.
+   */
+  workflows: KeptWorkflowList | null
   createdAt: string
   cwd: string
   /** The parts of the root's transcript the page holds. */
@@ -83,8 +86,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   pendingCalls: PendingCall[]
   /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none. */
   waitingSince: number | null
-  /** The output of the request the root agent runs; null when its turn has none. */
-  requestOutput: ConversationState['requestOutput']
+  /** The output of the request each node's agent runs, by node. */
+  requestOutputs: ConversationState['requestOutputs']
   model: ModelSettings
   /**
    * The Workflow menu choice of a conversation without a record, which its
@@ -137,9 +140,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /**
    * The descriptions of the attachments its replies name, by their ids, such
    * as `a3`, whichever agent uploaded them: what the transcript's frames and
-   * pages and the socket's later uploads bring
-   * (`docs/decisions/0029-a-conversation-opens-whole.md`). An attachment
-   * never changes, so a description, once held, stands.
+   * pages and the socket's later uploads bring.
+   * An attachment never changes, so a description, once held, stands.
    */
   attachmentDescriptions: Record<string, ConversationAttachment>
   subagents: SubagentRecord[]
@@ -168,15 +170,13 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   cost: AgentCost
   /**
    * The cache chart of each agent's node the page subscribes to, by the
-   * node, as its subscription and its turn calls bring it
-   * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
+   * node, as its subscription and its turn calls bring it.
    */
   charts: Record<string, CacheChart>
   /**
    * What the conversation cost in the last hour, as the backend counts it
-   * while a card shows it
-   * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`); null while none
-   * does, and until the first read answers.
+   * while a card shows it; null while none does, and until the first read
+   * answers.
    */
   lastHour: LastHourCost | null
 }

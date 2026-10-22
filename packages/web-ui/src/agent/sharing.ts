@@ -10,7 +10,7 @@ import { t } from './locales/text'
  */
 export type ShareTarget = { kind: 'conversation' } | { kind: 'answer'; blockId: string }
 
-/** A share the conversation has, as its state lists it. */
+/** A share the conversation has, as the host lists it when the dialog opens. */
 export type ExistingShare = { kind: 'conversation'; token: string } | { kind: 'answer'; token: string; blockId: string }
 
 export interface ShareLink {
@@ -24,6 +24,11 @@ export interface ShareService {
    * The link of the share `token`, for a share the conversation holds already.
    */
   link(token: string): string
+  /**
+   * The shares the conversation has, which the host reads when the dialog
+   * opens: the dialog opens on one instead of making another.
+   */
+  list(): Promise<readonly ExistingShare[]>
   /**
    * The conversation's or the answer's share: the existing one, or a new one.
    */
@@ -64,8 +69,8 @@ export type ShownShare = { target: ShareTarget } & SharePhase
  * The flow of the share dialog, one for a session.
  *
  * - `start(target)` opens the dialog at once: on the share the conversation has
- *   already, or on a new one it makes there, Creating link… until its link
- *   stands, already copied.
+ *   already, which the host lists first, or on a new one it makes there,
+ *   Creating link… until its link stands, already copied.
  * - A failure to make it stays in the dialog with Try Again (`retry`).
  * - The dialog's Copy Link, Update Link and Stop Sharing act on the share
  *   shown, and their failures are toasts.
@@ -76,21 +81,25 @@ export type ShownShare = { target: ShareTarget } & SharePhase
  * Safari lets a page write the clipboard only from a click and not after the
  * request it waits for.
  */
-export function useShare(service: () => ShareService | undefined, existing: () => readonly ExistingShare[]) {
+export function useShare(service: () => ShareService | undefined) {
   /** The share the dialog shows; kept while it fades out. */
   const shown = shallowRef<ShownShare | null>(null)
   const isOpen = ref(false)
   const { copy, copyWhenMade, copied } = useCopy(() => (shown.value?.status === 'ready' ? shown.value.url : undefined))
 
   /**
-   * Makes the share of `target` in the dialog and copies its link once it
-   * stands.
+   * Shows the share of `target` in the dialog as `made` settles it, and copies
+   * its link once it stands, unless it was there already.
    */
-  function make(host: ShareService, target: ShareTarget): void {
+  function show(target: ShareTarget, made: Promise<ShareLink & { existing: boolean }>): void {
     const attempt: ShownShare = { target, status: 'creating' }
     shown.value = attempt
-    const made = host.create(target)
-    void copyWhenMade(made.then((link) => link.url))
+    void copyWhenMade(made.then((link) => {
+      if (link.existing) {
+        throw new Error('The share was there already: its link is not copied')
+      }
+      return link.url
+    }))
     made.then(
       (link) => {
         // A later Share replaced what the dialog shows: this answer is no
@@ -108,6 +117,16 @@ export function useShare(service: () => ShareService | undefined, existing: () =
     )
   }
 
+  /** The share of `target` the host lists, else a new one the host makes. */
+  function listedOrMade(host: ShareService, target: ShareTarget): Promise<ShareLink & { existing: boolean }> {
+    return host.list().then((shares) => {
+      const held = shares.find((share) => holdsTarget(share, target))
+      return held
+        ? { token: held.token, url: host.link(held.token), existing: true }
+        : host.create(target).then((link) => ({ ...link, existing: false }))
+    })
+  }
+
   function start(target: ShareTarget): void {
     const host = service()
     if (!host) {
@@ -119,12 +138,7 @@ export function useShare(service: () => ShareService | undefined, existing: () =
       // Its link is still being made: the dialog shows that one.
       return
     }
-    const held = existing().find((share) => holdsTarget(share, target))
-    if (held) {
-      shown.value = { target, status: 'ready', token: held.token, url: host.link(held.token) }
-      return
-    }
-    make(host, target)
+    show(target, listedOrMade(host, target))
   }
 
   /** Try Again, after making the link failed. */
@@ -132,7 +146,7 @@ export function useShare(service: () => ShareService | undefined, existing: () =
     const host = service()
     const current = shown.value
     if (host && current?.status === 'failed') {
-      make(host, current.target)
+      show(current.target, host.create(current.target).then((link) => ({ ...link, existing: false })))
     }
   }
 

@@ -315,11 +315,10 @@ impl ReplyFiles for TestHostFiles {
     }
 }
 
-/// The agents' entries a frame carries: every one an `agents` frame lists,
-/// the one an `agent` frame changes, none for another frame.
+/// The agents' entry a frame carries: the one an `agent` frame changes, none
+/// for another frame.
 pub fn agent_entries(frame: &ServerFrame) -> &[AgentEntry] {
     match frame {
-        ServerFrame::Agents { agents, .. } => agents,
         ServerFrame::Agent { agent, .. } => std::slice::from_ref(agent),
         _ => &[],
     }
@@ -359,7 +358,8 @@ pub const HANG_GUARD: Duration = Duration::from_secs(10);
 pub struct TestClient<H: HostResolver> {
     root: NodeId,
     /// The root's phase as the frames read so far tell it.
-    root_phase: SessionPhase,
+    root_phase: std::cell::Cell<SessionPhase>,
+    server: Rc<AgentServer<H>>,
     connection: Connection<H>,
     frames: FrameRx,
     /// The frames of a step read but not yet answered by `next`.
@@ -383,7 +383,8 @@ impl<H: HostResolver> TestClient<H> {
         let (connection, frames) = server.connect(root.clone(), files);
         Self {
             root: root.clone(),
-            root_phase: SessionPhase::Idle,
+            root_phase: std::cell::Cell::new(SessionPhase::Idle),
+            server: server.clone(),
             connection,
             frames,
             read: std::collections::VecDeque::new(),
@@ -399,16 +400,56 @@ impl<H: HostResolver> TestClient<H> {
         self
     }
 
-    /// Subscribes to the root, as a page that shows the conversation does,
-    /// and opens the conversation, holding nothing of it.
+    /// Opens the conversation and follows its agents and its root, as a page
+    /// that shows the conversation does having read them: `opened` carries no
+    /// data.
+    ///
+    /// The client takes the root's phase from the agents a page reads next.
     pub async fn open(&self) {
+        self.send(ClientFrame::Open { draft: None, follows: Vec::new() }).await;
+        self.connection.follows().follow_agents();
         self.subscribe(&self.root).await;
-        self.send(ClientFrame::Open { agents: None, draft: None }).await;
+        if let Some(entry) = self.read_agents().iter().find_map(|frame| entry_in(frame, &self.root)) {
+            self.root_phase.set(entry.phase);
+        }
     }
 
-    /// Subscribes to the node `node`, holding nothing of it.
+    /// What a page reads of the agents now: one `agent` frame of each entry,
+    /// at the collection's version, as the changes that follow would carry them.
+    /// None while the tree is not live.
+    pub fn read_agents(&self) -> Vec<ServerFrame> {
+        let Some(tree) = self.server.tree(&self.root) else {
+            return Vec::new();
+        };
+        let (version, agents) = tree.agents();
+        agents
+            .into_iter()
+            .map(|agent| ServerFrame::Agent { version: version.clone(), agent })
+            .collect()
+    }
+
+    /// What a page reads of the live commands of `node` with its latest page,
+    /// or of a closed child's stopping ones:
+    /// one `shell_output` frame of each, as the changes that follow would carry them.
+    pub fn read_commands(&self, node: &NodeId) -> Vec<ServerFrame> {
+        let Some(tree) = self.server.tree(&self.root) else {
+            return Vec::new();
+        };
+        let commands = match tree.latest_page(node) {
+            Some((_, commands, _)) => commands,
+            None => tree.stopping_commands(node),
+        };
+        commands
+            .into_iter()
+            .map(|status| ServerFrame::ShellOutput { node: node.clone(), status: Box::new(status) })
+            .collect()
+    }
+
+    /// Follows the node `node`, as a page that read its page does, at the
+    /// version it read: the follow is registered without a frame, so the page
+    /// hears of the changes after it alone.
     pub async fn subscribe(&self, node: &NodeId) {
-        self.send(ClientFrame::Subscribe { node: node.clone(), held: None }).await;
+        self.connection.follows().follow_node(node.clone());
     }
 
     /// Hands `frame` to the connection and waits until it is handled.
@@ -426,7 +467,7 @@ impl<H: HostResolver> TestClient<H> {
         }
         let frame = self.read.pop_front()?;
         if let Some(entry) = entry_in(&frame, &self.root) {
-            self.root_phase = entry.phase;
+            self.root_phase.set(entry.phase);
         }
         Some(frame)
     }
@@ -435,7 +476,7 @@ impl<H: HostResolver> TestClient<H> {
     /// frames read so far or these told it working: the end of its turn or
     /// its action, as a page sees it.
     pub async fn until_idle(&mut self) -> Vec<ServerFrame> {
-        let worked = std::cell::Cell::new(self.root_phase != SessionPhase::Idle);
+        let worked = std::cell::Cell::new(self.root_phase.get() != SessionPhase::Idle);
         let root = self.root.clone();
         self.next_until(move |frame| match entry_in(frame, &root).map(|entry| entry.phase) {
             Some(SessionPhase::Idle) => worked.get(),
@@ -453,7 +494,7 @@ impl<H: HostResolver> TestClient<H> {
         let mut frames: Vec<ServerFrame> = self.read.drain(..).collect();
         frames.extend(waiting_frames(&mut self.frames));
         if let Some(entry) = frames.iter().rev().find_map(|frame| entry_in(frame, &self.root)) {
-            self.root_phase = entry.phase;
+            self.root_phase.set(entry.phase);
         }
         frames
     }

@@ -55,7 +55,7 @@ use demi_shared_types::{
     output::{Cell, Fields, Table},
 };
 use demi_web_api_protocol::credentials::{
-    CredentialField, FIELDS_MAX, FieldKind, Keep, NAME_MAX, distinct,
+    CredentialField, FieldKind, Keep, distinct,
 };
 use demi_web_api_protocol::ids::UserCredentialId;
 use demi_web_api_protocol::text::Trimmed;
@@ -108,7 +108,7 @@ struct NameArgs {
 #[serde(deny_unknown_fields)]
 struct RequestArgs {
     name: String,
-    #[schemars(length(min = 1, max = FIELDS_MAX))]
+    #[schemars(length(min = 1))]
     field: Vec<String>,
     reason: Option<String>,
     keep: Option<Keep>,
@@ -187,11 +187,11 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<RequestArgs>()
                 .describe(
                     "name",
-                    format!("The credential's name, 1 to {NAME_MAX} characters, such as \"GitHub token for deploys\"."),
+                    "The credential's name, such as \"GitHub token for deploys\".",
                 )
                 .describe(
                     "field",
-                    "One field as <name>:<secret|visible>:<label>, such as token:secret:\"Personal access token\" or user:visible:\"User name\"; one to ten. A name is lowercase letters, digits, _ and -. A secret field is typed hidden and never listed; a visible one, such as a user name or a host, is shown as it is.",
+                    "One field as <name>:<secret|visible>:<label>, such as token:secret:\"Personal access token\" or user:visible:\"User name\". A name is lowercase letters, digits, _ and -. A secret field is typed hidden and never listed; a visible one, such as a user name or a host, is shown as it is.",
                 )
                 .describe("reason", "Why you ask, which the card shows the user and the credential keeps as its note.")
                 .describe("keep", "How long the credential is kept, which you decide by what it is for and the card tells the user: 1h (the default) for a secret used once, such as a key to add a provider; 1d or 30d for work that goes on that long; always for one the user wants you to keep using, which stays in Settings › Credentials.")
@@ -409,11 +409,8 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
         keep,
     } = call.args;
     let name = Trimmed::from(name).into_string();
-    let length = name.chars().count();
-    if length == 0 || length > NAME_MAX {
-        return Err(failed(format!(
-            "a credential's name has 1 to {NAME_MAX} characters"
-        )));
+    if name.is_empty() {
+        return Err(failed("a credential's name has at least one character".to_owned()));
     }
     let fields = field
         .iter()

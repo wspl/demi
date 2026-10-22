@@ -12,8 +12,7 @@ import { useWorkPanel } from './work'
  * The work panel beside one conversation: its saved tabs and pinned tabs from
  * the work store, and the kinds of the plugin pages the user has on, bound
  * to the conversation. It draws its frame and its tabs as soon as the
- * conversation is in the list, which carries them, and not after its opening
- * (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+ * conversation is in the list, which carries them, and not after its opening.
  */
 const props = defineProps<{ conversationId: string }>()
 const emit = defineEmits<{ close: [] }>()

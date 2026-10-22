@@ -20,7 +20,7 @@ import GalleryDialogFrame from './GalleryDialogFrame.vue'
  */
 const props = defineProps<{ target: ShareTarget; state: 'existing' | 'new' | 'failing' }>()
 
-const { shares, service } = useGalleryShares(
+const { service } = useGalleryShares(
   props.state !== 'existing'
     ? []
     : props.target.kind === 'conversation'
@@ -28,7 +28,7 @@ const { shares, service } = useGalleryShares(
       : [{ kind: 'answer', token: 'QWxpY2UncyBhbnN3ZXI', blockId: props.target.blockId }],
   { failFirst: props.state === 'failing' },
 )
-const sharing = useShare(() => service, () => shares.value)
+const sharing = useShare(() => service)
 if (props.state === 'existing') {
   sharing.start(props.target)
 }

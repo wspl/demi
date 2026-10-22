@@ -37,9 +37,9 @@ export interface CallReport {
   problems: { console: string[], network: string[] }
 }
 
-/** How many lines of each kind of problem the footer shows; the rest are counted. */
+/** How many lines of each kind of problem the footer shows, because the footer goes into the agent's context window; the rest are counted. */
 const PROBLEMS = 10
-/** How much of a console line the footer shows. */
+/** How much of a console line the footer shows, for the same reason. */
 const LINE = 300
 /** How long reading an element's accessible name may take. */
 const READ_MS = 2_000

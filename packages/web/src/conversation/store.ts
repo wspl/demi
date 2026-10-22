@@ -26,6 +26,7 @@ import { ConversationSocketError } from '@demicodes/web-ui/transport/conversatio
 import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { plainCopy } from '@demicodes/web-ui/infra/plain-copy'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
@@ -62,19 +63,28 @@ import {
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
-import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
-import type { ConversationClient } from '@demicodes/web-ui/transport/protocol'
+import { createConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
+import { SessionError } from '@demicodes/conversation-client'
+import type { ConversationClient, ConversationClientOptions, ConversationHeld, ConversationReader, TranscriptRead } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
 import { readSaved } from '../api/saved'
+import type { z } from 'zod'
+import { loadDraft } from '../api/drafts'
 import {
   batchAnswerSchema,
   createdConversationSchema,
   conversationDetailSchema,
   conversationFrameSchema,
+  conversationWorkflowListSchema,
+  savedListingSchema,
   conversationUpdateSchema,
   transcriptPageSchema,
   type AttachedHost,
   type ConversationBatch,
+  type ConversationDetail,
+  type ConversationDraft,
+  type ConversationWorkflowList,
+  type SavedListing,
   type ConversationMetadata,
   type ConversationPatch,
   type ConversationStatus,
@@ -129,6 +139,24 @@ function isEmptyDraft(conversation: Conversation): boolean {
  * answers its removal: the composer it refilled, with what it put there, or
  * the toast whose Undo sends the message again.
  */
+/** What a read of the conversation brought: its detail, and with it whole its lists and draft with the tags they are followed by. */
+interface ConversationFetch {
+  detail: ConversationDetail
+  whole: {
+    saved: SavedListing
+    savedTag: string
+    workflows: ConversationWorkflowList
+    workflowsTag: string
+    draft: ConversationDraft
+  } | null
+}
+
+/** The reads a first load by address started before the page knew the conversation; each is taken once. */
+interface EarlyReads {
+  conversation: Promise<ConversationFetch> | null
+  root: Promise<TranscriptRead> | null
+}
+
 type TakenBack =
   | { kind: 'refilled'; text: string; fileIds: string[]; comments: MessageComment[] }
   | { kind: 'recalled'; toast: string }
@@ -347,11 +375,10 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * The conversation shows its metadata as the page holds it now, with the
    * page's changes over it: the model settings its record holds, whichever
-   * page or device changed them last, its directory, workflow, shares and
-   * plugins. A record without a model leaves the page's own settings, which
-   * a send writes to it. Its messages saved for later and its hosts come
-   * whole with it, under their revisions, and one no newer than the page's
-   * changes nothing.
+   * page or device changed them last, its directory, workflow and plugins.
+   * A record without a model leaves the page's own settings, which a send
+   * writes to it. Its hosts come whole with it, under their revision, and
+   * one no newer than the page's changes nothing.
    */
   function followMetadata(conversation: Conversation): void {
     const shown = conversation.metadata.shown.value
@@ -362,11 +389,9 @@ export const useConversations = defineStore('conversations', () => {
     conversation.workflow = shown.workflow
     conversation.pluginsChanged = shown.pluginsChanged
     conversation.turnSpeed = shown.turnSpeed
-    conversation.shares = shown.shares
     if (shown.model) {
       conversation.model = { ...shown.model }
     }
-    recordSync.receiveSaved(conversation, shown.saved)
     conversation.attachedHosts.replace(shown.hosts.hosts, { revisions: { '': shown.hosts.revision } })
   }
 
@@ -425,7 +450,7 @@ export const useConversations = defineStore('conversations', () => {
       cwd: local.cwd ?? '',
       pluginsChanged: false,
       turnSpeed: null,
-      shares: [],
+      workflows: null,
       history: EMPTY_TRANSCRIPT,
       shownAt: null,
       instructions: [],
@@ -436,7 +461,7 @@ export const useConversations = defineStore('conversations', () => {
       starting: null,
       pendingCalls: [],
       waitingSince: null,
-      requestOutput: null,
+      requestOutputs: {},
       model: local.model ?? initialModelSettings(),
       workflow: local.workflow ?? { type: 'default' },
       lastError: null,
@@ -503,7 +528,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     void entry.opening.then(async () => {
       if (cache.get(conversation.id) === entry && !entry.runtime && !conversation.archived) {
-        await startSession(conversation, entry, null)
+        await startSession(conversation, entry)
       }
     }).catch((error: unknown) => {
       // A failed opening already says so; a session that did not start says
@@ -560,11 +585,10 @@ export const useConversations = defineStore('conversations', () => {
       const next = [...local, ...synced]
       items.value = next
       cache.retain(new Set(next.map((item) => item.id)))
-      // Connections made for an address the state does not name are nobody's.
-      for (const [id, early] of earlyConnections) {
+      // Reads made for an address the state does not name are nobody's.
+      for (const id of earlyReads.keys()) {
         if (!next.some((item) => item.id === id)) {
-          earlyConnections.delete(id)
-          void early.then((client) => client.disconnect(), () => {})
+          earlyReads.delete(id)
         }
       }
       openListed()
@@ -1108,14 +1132,11 @@ export const useConversations = defineStore('conversations', () => {
       letGoBeyondKept()
     }
     if (!conversation) {
-      // The first load opens the conversation its address names by its id,
+      // The first load reads the conversation its address names by its id,
       // before the channel's first state names it, but not a new
       // conversation's, which has no record before its first send.
-      if (id && !options.newConversation && !product.snapshot && !earlyConnections.has(id)) {
-        const early = connectConversationClient(streamUrl(id), lifetime.signal, clientOptions(id))
-        // The opening that takes it reports its failure; one never taken has nobody to tell.
-        early.catch(() => {})
-        earlyConnections.set(id, early)
+      if (id && !options.newConversation && !product.snapshot && !earlyReads.has(id)) {
+        earlyReads.set(id, startEarlyReads(id))
       }
       return
     }
@@ -1152,11 +1173,14 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The connection the first load started for the conversation its address
-   * names, before the channel's first state named it, which its opening
-   * takes.
+   * The reads the first load started for the conversation its address names,
+   * before the channel's first state named it, which its opening takes: the
+   * conversation with its lists and draft, and the root's latest page with
+   * the one before it.
    */
-  const earlyConnections = new Map<string, Promise<ConversationClient>>()
+  const earlyReads = new Map<string, EarlyReads>()
+  /** What the page shows of a conversation from its copy on disk, which its first connection follows from. */
+  const shownCopies = new Map<string, ConversationHeld>()
   /** Conversations whose record this page just created, which their opening does not read back. */
   const madeHere = new Set<string>()
 
@@ -1168,42 +1192,202 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The client's options for the conversation `id`: the frames of the
-   * conversation itself its socket sends beside its agents', its metadata
-   * and its draft, which the page decodes against the backend's schema.
+   * The client's options for the conversation `id`: the reads of what it
+   * follows, and the frames of the conversation itself its socket sends beside
+   * its agents', its metadata, its lists and its draft, which the page decodes
+   * against the backend's schema.
    */
-  function clientOptions(id: string) {
+  function clientOptions(id: string): ConversationClientOptions {
     return {
-      conversationFrame: (frame: unknown): boolean => {
+      reader: conversationReader(id),
+      logged: (event, fields) => pageLog.info(event, fields, id),
+      unapplied: (node, reason) => {
+        // A change the page could not apply goes to the server's log, as the
+        // page reads what it follows again.
+        reportError(
+          node === null ? t('failures.readAgents') : t('failures.readMessages'),
+          new Error(`A change of ${node ?? 'the agents'} did not follow what the page holds (${reason})`),
+        )
+      },
+      conversationFrame: (frame: unknown) => {
         const parsed = conversationFrameSchema.safeParse(frame)
         if (!parsed.success) {
-          return false
+          return null
         }
         const conversation = items.value.find((item) => item.id === id)
+        const data = parsed.data
         if (!conversation) {
-          return true
+          return { apply: () => {} }
         }
-        if (parsed.data.type === 'conversation') {
-          takeMetadata(conversation, parsed.data.metadata)
-        } else if (parsed.data.type === 'attachments') {
-          describeAttachments(conversation, parsed.data.attachments)
-        } else {
+        switch (data.type) {
+          case 'conversation':
+            return { apply: () => takeMetadata(conversation, data.metadata), tagged: { value: 'metadata', tag: data.etag } }
+          case 'saved':
+            return { apply: () => recordSync.receiveSaved(conversation, data.saved), tagged: { value: 'saved', tag: data.etag } }
+          case 'workflows':
+            return { apply: () => { conversation.workflows = data.workflows.list }, tagged: { value: 'workflows', tag: data.etag } }
+          // The share dialog reads the shares when it opens.
+          case 'shares':
+            return { apply: () => {} }
+          case 'attachments':
+            return { apply: () => describeAttachments(conversation, data.attachments) }
           // A draft no newer than the one held, as this page's own save's,
           // which its answer's revision already holds, changes nothing.
-          recordSync.receiveDraft(conversation, parsed.data.draft)
+          case 'draft':
+            return { apply: () => recordSync.receiveDraft(conversation, data.draft) }
         }
-        return true
       },
     }
   }
 
   /**
+   * What the conversation's client reads, by routes that depend on no socket:
+   * the conversation with its agents and the request output, its saved
+   * messages, workflows and draft, and a node's latest page. A read that could
+   * not reach the backend is a lost connection, which the client tries again.
+   */
+  function conversationReader(id: string): ConversationReader {
+    return {
+      conversation: (signal, { whole }) => connectionLost(async () => {
+        const early = earlyReads.get(id)
+        const started = whole ? early?.conversation : undefined
+        if (early && started) {
+          early.conversation = null
+        }
+        const fetched = await (started ?? fetchConversation(id, signal, whole))
+        signal.throwIfAborted()
+        const { detail } = fetched
+        if (whole) {
+          takeFetched(id, fetched)
+          // A record that holds no model opens no session until one is
+          // chosen: what the page reads of it is read once, by the opening
+          // that shows it without one (`openWithoutSession`).
+          if (!detail.metadata.model) {
+            throw new SessionError({ type: 'error', message: 'Choose a model for the conversation before opening it', code: 'model_not_selected' })
+          }
+        }
+        return {
+          agents: detail.agents,
+          entries: detail.entries,
+          tags: fetched.whole
+            ? { metadata: detail.metadataTag, saved: fetched.whole.savedTag, workflows: fetched.whole.workflowsTag }
+            : {},
+        }
+      }),
+      transcript: (node, signal, options) => connectionLost(async () => {
+        const early = earlyReads.get(id)
+        const started = node === id && options?.earlier ? early?.root : undefined
+        if (early && started) {
+          early.root = null
+        }
+        const page = await (started ?? fetchTranscript(id, node, signal, options?.earlier === true))
+        signal.throwIfAborted()
+        return page
+      }),
+    }
+  }
+
+  /** Takes the conversation's metadata, saved messages, workflows and draft that a read brought whole. */
+  function takeFetched(id: string, fetched: ConversationFetch): void {
+    const conversation = items.value.find((item) => item.id === id)
+    if (conversation && fetched.whole) {
+      takeMetadata(conversation, fetched.detail.metadata)
+      recordSync.receiveSaved(conversation, fetched.whole.saved)
+      conversation.workflows = fetched.whole.workflows.list
+      recordSync.receiveDraft(conversation, fetched.whole.draft)
+    }
+  }
+
+  /** Reads through the page's requests, which a failure to reach the backend is a connection lost. */
+  async function connectionLost<T>(request: () => Promise<T>): Promise<T> {
+    try {
+      return await request()
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new ConversationSocketError(error.message)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * The conversation's detail, and with `whole` its saved messages,
+   * workflows and draft, each with the entity tag the page follows it by.
+   */
+  async function fetchConversation(id: string, signal: AbortSignal, whole: boolean): Promise<ConversationFetch> {
+    const path = `/conversations/${encodeURIComponent(id)}`
+    const began = performance.now()
+    const detail = apiRequest(path, { signal })
+      .then((response) => readResponse(response, conversationDetailSchema))
+      .then((read) => {
+        pageLog.info('read.answered', {
+          read: 'conversation',
+          agents: read.entries.length,
+          revision: read.agents.revision,
+          epoch: read.agents.epoch,
+          ms: Math.round(performance.now() - began),
+        }, id)
+        return read
+      })
+    if (!whole) {
+      return { detail: await detail, whole: null }
+    }
+    const tagged = async <T>(route: string, schema: z.ZodType<T>): Promise<{ value: T; tag: string }> => {
+      const response = await apiRequest(route, { signal })
+      const tag = response.headers.get('ETag') ?? ''
+      return { value: await readResponse(response, schema), tag }
+    }
+    const [read, saved, workflows, draft] = await Promise.all([
+      detail,
+      tagged(`${path}/saved`, savedListingSchema),
+      tagged(`${path}/workflows`, conversationWorkflowListSchema),
+      loadDraft(id, signal),
+    ])
+    return {
+      detail: read,
+      whole: { saved: saved.value, savedTag: saved.tag, workflows: workflows.value, workflowsTag: workflows.tag, draft },
+    }
+  }
+
+  /** The node's latest page with its version; with `earlier`, the page before it as one run of blocks with it. */
+  async function fetchTranscript(id: string, node: string, signal: AbortSignal, earlier: boolean): Promise<TranscriptRead> {
+    const query = earlier ? 'latest=true&earlier=true' : 'latest=true'
+    const began = performance.now()
+    const response = await apiRequest(`/conversations/${encodeURIComponent(id)}/agents/${encodeURIComponent(node)}/transcript?${query}`, { signal })
+    const page = await readResponse(response, transcriptPageSchema)
+    if (!page.version) {
+      throw new Error('The latest page names no version of its transcript')
+    }
+    pageLog.info('read.answered', {
+      read: 'transcript',
+      node,
+      blocks: page.blocks.length,
+      revision: page.version.revision,
+      epoch: page.version.epoch,
+      ms: Math.round(performance.now() - began),
+    }, id)
+    return { ...page, version: page.version }
+  }
+
+  /** Starts the reads of a first load by address, which the opening takes. */
+  function startEarlyReads(id: string): EarlyReads {
+    const { signal } = lifetime
+    const reads: EarlyReads = {
+      conversation: fetchConversation(id, signal, true),
+      root: fetchTranscript(id, id, signal, true),
+    }
+    // The opening that takes a read reports its failure; one never taken has nobody to tell.
+    reads.conversation?.catch(() => {})
+    reads.root?.catch(() => {})
+    return reads
+  }
+
+  /**
    * Opens the conversation: it shows at once what the disk keeps of it,
-   * its messages, metadata with every list the view shows, agents and
-   * attachment descriptions, then its socket's open, which names the
-   * versions it holds, brings what changed since, its draft among them, and
-   * keeps it live; no list is read by a route
-   * (`docs/decisions/0029-a-conversation-opens-whole.md`). A conversation
+   * its messages, metadata, agents and attachment descriptions, then its
+   * socket's open, after which the page reads the conversation, its saved
+   * messages, workflows and draft, and each shown node's latest page
+   * (`conversationReader`), and the socket keeps it live. A conversation
    * the socket opens no session for, archived or without a model, reads its
    * metadata and its latest page instead.
    */
@@ -1220,8 +1404,6 @@ export const useConversations = defineStore('conversations', () => {
       await landing
       signal.throwIfAborted()
     }
-    const early = earlyConnections.get(conversation.id) ?? null
-    earlyConnections.delete(conversation.id)
     try {
       const draftRestored = restoreDraft(conversation, signal)
       if (conversation.persistence !== 'synced') {
@@ -1241,13 +1423,11 @@ export const useConversations = defineStore('conversations', () => {
       // and the socket's as it arrives.
       followMetadata(conversation)
       if (conversation.archived) {
-        void early?.then((client) => client.disconnect(), () => {})
         await openWithoutSession(conversation, signal)
         return
       }
-      await startSession(conversation, entry, early)
+      await startSession(conversation, entry)
     } catch (error) {
-      void early?.then((client) => client.disconnect(), () => {})
       if (!signal.aborted) {
         failOpening(conversation, error)
       }
@@ -1300,6 +1480,19 @@ export const useConversations = defineStore('conversations', () => {
         conversation.pendingCalls = rootEntry.pendingCalls
         conversation.contextUsage = rootEntry.context
       }
+      // What the copy shows is followed from the versions it holds, with no
+      // read, when its transcript was vouched for by a stream.
+      if (root.transcript.version) {
+        shownCopies.set(conversation.id, {
+          agents: { version: copy.agents.version, entries: copy.agents.entries },
+          nodes: { [conversation.id]: root.transcript.version },
+        })
+        pageLog.info('copy.followed', {
+          blocks: latestBlocks(root.transcript).length,
+          revision: root.transcript.version.revision,
+          epoch: root.transcript.version.epoch,
+        }, conversation.id)
+      }
     }
     if (copy) {
       describeAttachments(conversation, Object.values(copy.attachments))
@@ -1320,15 +1513,18 @@ export const useConversations = defineStore('conversations', () => {
    */
   async function openWithoutSession(conversation: Conversation, signal: AbortSignal): Promise<void> {
     const path = `/conversations/${encodeURIComponent(conversation.id)}`
-    const [detail, page] = await Promise.all([
-      apiRequest(path, { signal }).then((response) => readResponse(response, conversationDetailSchema)),
-      apiRequest(`${path}/agents/${encodeURIComponent(conversation.id)}/transcript`, { signal })
+    const [read, page] = await Promise.all([
+      fetchConversation(conversation.id, signal, true),
+      apiRequest(`${path}/agents/${encodeURIComponent(conversation.id)}/transcript?latest=true`, { signal })
         .then((response) => readResponse(response, transcriptPageSchema)),
     ])
     signal.throwIfAborted()
-    takeMetadata(conversation, detail.metadata)
-    takeAgents(conversation, detail.entries, detail.agents, Date.now(), true)
+    takeFetched(conversation.id, read)
+    takeAgents(conversation, read.detail.entries, read.detail.agents, Date.now(), true)
     conversation.history = addPage(EMPTY_TRANSCRIPT, page, false)
+    if (page.cacheChart) {
+      conversation.charts[conversation.id] = page.cacheChart
+    }
     conversation.shownAt = null
     conversation.shownWithin = 0
     conversation.failures = page.failures ?? {}
@@ -1336,6 +1532,12 @@ export const useConversations = defineStore('conversations', () => {
     conversation.instructions = page.instructions
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
+    // No session runs: the status stays the sidebar's, which the transcript
+    // alone would not tell, such as a turn the process died under.
+    const summary = product.snapshot?.conversations.find((item) => item.id === conversation.id)
+    if (summary) {
+      conversation.status = summaryStatus(summary.status)
+    }
     conversation.load = 'ready'
   }
 
@@ -1360,38 +1562,26 @@ export const useConversations = defineStore('conversations', () => {
   async function startSession(
     conversation: Conversation,
     entry: CachedConversation,
-    made: Promise<ConversationClient> | null,
   ): Promise<void> {
     const { signal } = entry.controller
     if (conversation.archived) {
-      void made?.then((client) => client.disconnect(), () => {})
       return
     }
-    let first = made
     // A conversation that shows its transcript before its session, one this
     // page made or one restored from the archive, stays shown while its
     // socket connects, even with no block yet.
     const shownBefore = conversation.load === 'ready'
+    const holding = shownCopies.get(conversation.id)
+    shownCopies.delete(conversation.id)
     const runtime = new ConversationRuntime({
       state: conversation,
-      connect: async (attempt) => {
-        const taken = first
-        first = null
-        if (taken) {
-          return takeConnection(taken, attempt)
-        }
-        // A restore on its way lands first: the backend refuses an archived
-        // conversation's socket.
-        await archiving.get(conversation.id)
-        attempt.throwIfAborted()
-        return connectConversationClient(streamUrl(conversation.id), attempt, clientOptions(conversation.id))
-      },
+      client: createConversationClient(streamUrl(conversation.id), clientOptions(conversation.id), () => archiving.get(conversation.id)),
+      holding: () => holding,
       nodes: () => subscribedNodes(conversation),
       held: (node) => {
         const record = conversation.subagents.find((agent) => agent.id === node) ?? conversation.sides.find((side) => side.id === node)
         return record ? heldEdge(record.history) : undefined
       },
-      agents: () => conversation.agentsHeld ?? undefined,
       draft: () => {
         const revision = conversation.record.revision('draft')
         return revision < 0 ? undefined : revision
@@ -1432,8 +1622,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Begins a cold opening: nothing of an earlier attempt shows, neither its
    * transcript and agents nor its session or its failure, and nothing at all
-   * while the copy on disk is read, which shows next, or Loading without one
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * while the copy on disk is read, which shows next, or Loading without one.
    */
   function startLoading(conversation: Conversation): void {
     conversation.load = 'reading'
@@ -1465,7 +1654,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.starting = null
     conversation.pendingCalls = []
     conversation.waitingSince = null
-    conversation.requestOutput = null
+    conversation.requestOutputs = {}
     conversation.contextUsage = null
     conversation.terminals = []
   }
@@ -1499,7 +1688,7 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** How many conversations shown most recently stay open, the one shown among them. */
+  /** How many conversations shown most recently stay open, the one shown among them, because each holds its state and socket in memory. */
   const KEPT_CONVERSATIONS = 3
   /** The conversations shown, most recent first. */
   const shownRecently: string[] = []
@@ -1509,8 +1698,7 @@ export const useConversations = defineStore('conversations', () => {
    * recently: their connection closes and their transcripts leave memory,
    * which their copies on disk keep, so showing one again opens it from its
    * copy. One with a message still on its way stays open, as its delivery
-   * needs its session
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * needs its session.
    */
   function letGoBeyondKept(): void {
     for (const id of shownRecently.slice(KEPT_CONVERSATIONS)) {
@@ -1535,7 +1723,7 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  /** The children whose transcripts the page holds in memory once their windows close, the most recent. */
+  /** The children whose transcripts the page holds in memory once their windows close, the most recent, because the page's memory would otherwise grow with every child. */
   const KEPT_CHILDREN = 8
   /** The children whose windows closed, most recent last, whose transcripts the page still holds. */
   const closedChildren = new Map<string, string[]>()
@@ -1604,10 +1792,10 @@ export const useConversations = defineStore('conversations', () => {
       conversation.lastHour ? lastHourOf(conversation.lastHour.agents, conversation.subagents, number) : null
     if (node === null) {
       const other = conversation.metadata.shown.value?.otherCost ?? NO_COST
-      return { cost: conversationCost(conversation.cost, conversation.subagents, other), chart, lastHour: lastHour(null), firstCallAt }
+      return { cost: conversationCost(conversation.cost, conversation.subagents, other), node: null, chart, lastHour: lastHour(null), firstCallAt }
     }
     const agent = conversation.subagents.find((each) => each.id === node)
-    return agent ? { cost: agentCost(agent.cost), chart, lastHour: lastHour(agent.number), firstCallAt } : null
+    return agent ? { cost: agentCost(agent.cost), node, chart, lastHour: lastHour(agent.number), firstCallAt } : null
   }
 
   /**
@@ -2037,8 +2225,7 @@ export const useConversations = defineStore('conversations', () => {
    *
    * With `first`, the request carries the conversation's first message too, and
    * resolves once the session took it; a refusal of the message rejects, with
-   * the conversation made all the same
-   * (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+   * the conversation made all the same.
    */
   async function persistConversation(
     conversation: Conversation,
@@ -3450,10 +3637,9 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Moves the conversation to run on `target`, at once whatever its agent does
-   * (`docs/decisions/0027-a-move-applies-at-once.md`), and answers whether it
-   * moved once the backend made the move: the sidebar shows it in its new
-   * place with the answer.
+   * Moves the conversation to run on `target`, at once whatever its agent does,
+   * and answers whether it moved once the backend made the move: the sidebar
+   * shows it in its new place with the answer.
    */
   function switchTarget(id: string, target: ConversationSummary['target']): Promise<boolean> {
     return changeConversations(
@@ -3469,10 +3655,8 @@ export const useConversations = defineStore('conversations', () => {
     closedChildren.clear()
     pendingChanges.value = []
     cache.clear()
-    for (const early of earlyConnections.values()) {
-      void early.then((client) => client.disconnect(), () => {})
-    }
-    earlyConnections.clear()
+    earlyReads.clear()
+    shownCopies.clear()
     restoringLocalDrafts.value = false
     madeHere.clear()
     deliveries = new SerialQueue()

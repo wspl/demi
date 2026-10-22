@@ -28,9 +28,9 @@ import { LiveFrameAssembler, encodeAcks, type LiveChunkAck, type LiveVideoChunk 
 import type { LivePictureStream, PictureSink } from './pictures'
 import { LIVE_STALL_MS } from './protocol'
 
-/** The most acknowledgements one message carries. */
+/** The most acknowledgements one message carries, because a message on the link is limited in size. */
 const ACKS_PER_MESSAGE = 8
-/** The most bytes the page holds of frames not yet whole and of generations not yet announced. */
+/** The most bytes the page holds of frames not yet whole and of generations not yet announced, because a link that never completes them would grow the memory without end. */
 export const LIVE_HELD_BYTES = 8 * 1024 * 1024
 /** The longest a whole frame waits for an earlier one. */
 export const LIVE_WAIT_MS = 2000

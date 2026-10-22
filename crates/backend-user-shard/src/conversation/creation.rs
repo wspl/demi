@@ -8,8 +8,7 @@
 //! (`create_conversation_sending`), as the conversation socket admits a
 //! `send` (`socket.rs`, `admit_first_message`): the creation does not wait
 //! for the page's socket, and the conversation exists whether or not the
-//! session takes the message
-//! (`docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
+//! session takes the message.
 //!
 //! Its directory is selected as a move's is, in the transaction that creates
 //! it, which makes the directory's project when there is none, by the

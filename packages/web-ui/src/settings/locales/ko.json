@@ -96,7 +96,7 @@
     },
     "page": {
       "name": "이름",
-      "nameProblem": "{max}자 이하의 이름을 입력하세요.",
+      "nameProblem": "이름을 입력하십시오.",
       "on": "켬",
       "onDescription": "켜져 있는 동안 수신 호스트가 온라인이면 실행됩니다.",
       "listenOn": "수신",
@@ -359,7 +359,7 @@
     "home": "홈",
     "homeDescription": "파일과 클라우드 프로젝트.",
     "note": "크기는 다음에 클라우드가 시작될 때 적용됩니다. 이미 더 큰 디스크는 크기가 그대로 유지됩니다.",
-    "problem": "1에서 {max} 사이의 정수를 GB 단위로 입력하십시오."
+    "problem": "1 이상의 정수로 GB를 입력하십시오."
   },
   "addPasskey": {
     "title": "패스키 추가",
@@ -455,7 +455,6 @@
     "notePlaceholder": "에이전트가 이 자격 증명이 필요한 이유",
     "fields": "필드",
     "addField": "필드 추가",
-    "fieldsMax": "자격 증명에는 필드를 최대 {max}개까지 둘 수 있습니다.",
     "labelPlaceholder": "API 키",
     "labelOf": "필드 {n}의 레이블",
     "needsField": "자격 증명에는 필드가 하나 이상 필요합니다.",
@@ -466,9 +465,7 @@
     "create": "자격 증명 만들기"
   },
   "credentialFields": {
-    "required": "필수",
-    "maxChars": "{max}자 이하로 입력하십시오.",
-    "maxBytes": "64 KiB 이하로 입력하십시오."
+    "required": "필수"
   },
   "subagents": {
     "title": "서브에이전트",

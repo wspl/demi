@@ -6,17 +6,9 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the router without a socket, the transfers' byte copies
-# and the answers the edge decides by itself, so they are unit tests and the
-# crate has no integration tests (`ARCHITECTURE.md`);
-# no doc examples.
+# No doc examples.
 doctest = false
 bench = false
-
-[features]
-# The hold of the runners' hellos at the edge's token lookup
-# (`Backend::hold_hellos`).
-testing = ["demi-backend-user-shard/testing"]
 
 [dependencies]
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
@@ -75,8 +67,3 @@ typed-path = "0.12"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
 rust-i18n = "4.2.4"
-
-[dev-dependencies]
-demi-backend-user-shard = { path = "../backend-user-shard", features = ["testing"] }
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

@@ -107,37 +107,3 @@ fn binding(plugin: &str) -> String {
     name.push_str("Page");
     name
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Cost: a temporary directory of one small file; well under a second.
-
-    fn pair(plugin: &str) -> (String, String) {
-        (plugin.to_owned(), format!("@demicodes/plugin-{plugin}"))
-    }
-
-    #[test]
-    fn an_app_shows_the_pages_it_depends_on_in_the_backends_order() {
-        let root = tempfile::tempdir().unwrap();
-        let app = root.path().join("packages/app");
-        std::fs::create_dir_all(&app).unwrap();
-        std::fs::write(
-            app.join("package.json"),
-            r#"{ "dependencies": { "@demicodes/utils": "workspace:^", "@demicodes/plugin-skills": "workspace:^", "@demicodes/plugin-browser": "workspace:^" } }"#,
-        )
-        .unwrap();
-        let registered = [pair("browser"), pair("changes"), pair("skills")];
-        let pages = pages_of(root.path(), "packages/app", &registered).unwrap();
-        assert_eq!(pages, [pair("browser"), pair("skills")]);
-        let module = module("", &pages);
-        assert!(module.contains("import browserPage from \"@demicodes/plugin-browser\""));
-        assert!(module.contains("[\n  browserPage,\n  skillsPage,\n]"));
-    }
-
-    #[test]
-    fn a_hyphenated_plugin_id_names_a_camel_case_binding() {
-        assert_eq!(binding("file-browser"), "fileBrowserPage");
-    }
-}

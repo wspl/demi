@@ -11,8 +11,6 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::ids::{DeviceId, ExposedPortId};
 use crate::text::Trimmed;
 
-/// The most characters of an exposed port's label, after trimming.
-pub const LABEL_MAX: usize = 64;
 
 /// The address the backend's requests for the user reach `port` of
 /// `device` at: the device's id is its host (`crates/backend-user-shard/src/shard/exposed_ports.rs`).
@@ -65,8 +63,8 @@ pub struct NewExposedPort {
     #[garde(inner(range(min = 1)))]
     pub port: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Trimmed", length(max = LABEL_MAX))]
-    #[garde(inner(length(chars, max = LABEL_MAX)))]
+    #[schemars(with = "Trimmed")]
+    #[garde(skip)]
     pub label: Option<Trimmed>,
 }
 
@@ -80,8 +78,8 @@ pub struct ExposedPortPatch {
     #[garde(inner(inner(range(min = 1))))]
     pub port: Option<Option<u16>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "Trimmed", length(max = LABEL_MAX))]
-    #[garde(inner(length(chars, max = LABEL_MAX)))]
+    #[schemars(with = "Trimmed")]
+    #[garde(skip)]
     pub label: Option<Trimmed>,
 }
 
@@ -91,7 +89,6 @@ pub fn refusal(report: &garde::Report) -> String {
     for (path, error) in report.iter() {
         let sentence = match path.to_string().as_str() {
             "port" => "Enter a port from 1 to 65535.".to_owned(),
-            "label" => format!("Enter a label of up to {LABEL_MAX} characters."),
             _ => error.message().to_owned(),
         };
         if !sentences.contains(&sentence) {

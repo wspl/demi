@@ -197,7 +197,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     pendingSteers: [],
     starting: null,
     pendingCalls: [],
-    waitingSince: null, requestOutput: null, turnSpeed: null,
+    waitingSince: null, requestOutputs: {}, turnSpeed: null,
     model: {
       providerId: demoModel.providerId,
       modelId: demoModel.model.id,

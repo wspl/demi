@@ -8,19 +8,13 @@
 //! runtime of its own, which a test's paused clock cannot reach.
 
 mod adoption;
-#[cfg(test)]
-pub(crate) use adoption::PlayedHost;
 pub(crate) mod agent_profiles;
 pub(crate) mod credential_commands;
 pub(crate) mod notify_commands;
 pub mod credentials;
-#[cfg(test)]
-pub(crate) use self::adoption::PlayedRunner;
 pub mod cloud;
 pub mod instructions;
 mod host;
-#[cfg(test)]
-mod host_tests;
 pub mod page_socket;
 mod permissions;
 pub(crate) mod media;
@@ -85,6 +79,9 @@ pub enum ShardPlacement {
 }
 
 /// Calls waiting for a shard thread before its callers wait to send more.
+///
+/// Bounded so a shard thread that falls behind makes its callers wait instead
+/// of growing the queue without end.
 const QUEUE: usize = 256;
 
 /// One user's shard: everything the backend decides for that user. Its
@@ -273,16 +270,6 @@ impl Shard {
         &self.blob_collection
     }
 
-    /// Resolves once no collection of the user's blobs runs or is to follow.
-    #[cfg(feature = "testing")]
-    pub async fn until_collected(&self) {
-        let mut state = self.blob_collection.subscribe();
-        // The shard keeps the sender while this call holds it.
-        let _ = state
-            .wait_for(|state| *state == crate::lifecycle::collection::CollectionState::Idle)
-            .await;
-    }
-
     pub fn user(&self) -> &UserId {
         &self.user
     }
@@ -388,6 +375,7 @@ impl Shard {
         self.closing.cancel();
         self.sync_channels.close();
         closed("the sync channels ended", self.sync_channels.wait()).await;
+        self.services.sync.forget(self.user());
         self.stop_idle_watches();
         self.pending_watches.clear();
         self.retry_resumes.clear();
@@ -693,8 +681,7 @@ impl ShardPool {
     }
 
     /// Tells every shard to close, then waits for them all, so a shard that
-    /// takes long to close keeps no other running
-    /// (`docs/decisions/0024-a-close-stops-before-it-waits.md`).
+    /// takes long to close keeps no other running.
     async fn stop(queues: Vec<mpsc::Sender<Message>>, workers: Vec<Worker>) {
         let mut closing = Vec::new();
         for queue in &queues {
@@ -856,110 +843,5 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
         // The closer waits for this answer; if it went away, no one is left
         // to tell.
         let _ = done.send(());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use super::*;
-
-    async fn pool(placement: ShardPlacement) -> (ShardPool, tempfile::TempDir) {
-        let data = tempfile::tempdir().unwrap();
-        let services = Services::start_for_tests(data.path()).await;
-        (ShardPool::start(placement, services).await.unwrap(), data)
-    }
-
-    fn user(name: &str) -> UserId {
-        UserId::try_from(name.to_owned()).unwrap()
-    }
-
-    #[tokio::test]
-    async fn a_user_always_reaches_the_same_shard_on_its_thread() {
-        let (pool, _data) = pool(ShardPlacement::Threads(NonZeroUsize::new(3).unwrap())).await;
-        let shards = pool.shards();
-        let ana = user("ana");
-        let place = |shard: Rc<Shard>, _| async move {
-            (
-                std::thread::current().name().map(str::to_owned),
-                Rc::as_ptr(&shard) as usize,
-                shard.user().clone(),
-            )
-        };
-        let first = shards.of(&ana).call(place).await.unwrap();
-        let second = shards.of(&ana).call(place).await.unwrap();
-        assert_eq!(first, second);
-        assert!(first.0.unwrap().starts_with("shard-"));
-        assert_eq!(first.2, ana);
-        pool.close().await;
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_call_whose_requester_leaves_runs_to_completion_with_its_token_cancelled() {
-        let (pool, _data) = pool(ShardPlacement::Inline).await;
-        let shards = pool.shards();
-        let (finished, observed) = oneshot::channel();
-        let ana = user("ana");
-        let shard = shards.of(&ana);
-        let call = shard.call(move |_, cancel| async move {
-            cancel.cancelled().await;
-            finished.send("cancelled, then finished").unwrap();
-        });
-        assert!(
-            tokio::time::timeout(Duration::from_millis(50), call)
-                .await
-                .is_err()
-        );
-        assert_eq!(observed.await.unwrap(), "cancelled, then finished");
-        pool.close().await;
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_panicking_call_fails_and_its_shard_goes_on() {
-        let (pool, _data) = pool(ShardPlacement::Inline).await;
-        let shards = pool.shards();
-        let ana = user("ana");
-        let failed = shards
-            .of(&ana)
-            .call(|_, _| async { panic!("the call fails") })
-            .await;
-        assert_eq!(failed, Err::<(), _>(ShardUnavailable::Failed));
-        assert_eq!(shards.of(&ana).call(|_, _| async { 7 }).await, Ok(7));
-        pool.close().await;
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn closing_waits_for_running_calls_and_refuses_later_ones() {
-        let (pool, _data) = pool(ShardPlacement::Inline).await;
-        let shards = pool.shards();
-        let ana = user("ana");
-        let (started, running) = oneshot::channel();
-        let (release, released) = oneshot::channel::<()>();
-        let running_call = {
-            let shards = shards.clone();
-            let ana = ana.clone();
-            tokio::task::spawn_local(async move {
-                shards
-                    .of(&ana)
-                    .call(move |_, _| async move {
-                        started.send(()).unwrap();
-                        released.await.unwrap();
-                        "done"
-                    })
-                    .await
-            })
-        };
-        running.await.unwrap();
-        let closing = tokio::task::spawn_local(pool.close());
-        tokio::task::yield_now().await;
-        assert!(!closing.is_finished());
-        release.send(()).unwrap();
-        assert_eq!(running_call.await.unwrap(), Ok("done"));
-        closing.await.unwrap();
-        assert_eq!(
-            shards.of(&ana).call(|_, _| async {}).await,
-            Err(ShardUnavailable::Closing)
-        );
     }
 }

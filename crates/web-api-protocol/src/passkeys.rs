@@ -121,7 +121,7 @@ pub struct PasskeyPatch {
 #[serde(transparent)]
 #[schemars(inline)]
 #[garde(transparent)]
-pub struct PasskeyName(#[garde(length(chars, min = 1, max = 80))] Trimmed);
+pub struct PasskeyName(#[garde(length(chars, min = 1))] Trimmed);
 
 impl PasskeyName {
     pub fn into_string(self) -> String {

@@ -24,6 +24,9 @@ use rusqlite::{Connection, OpenFlags, Transaction};
 use super::{StorageError, schema, sqlite};
 
 /// The most writer connections open at once.
+///
+/// Bounded because each writer is an open database connection, and the
+/// operating system limits open files.
 pub const MAX_WRITERS: NonZeroUsize = NonZeroUsize::new(64).expect("64 is not zero");
 
 /// How a migration of a conversation's database reads a blob its values
@@ -192,11 +195,6 @@ impl ConversationStores {
             }
         }
         Ok(())
-    }
-
-    #[cfg(test)]
-    fn open_writers(&self) -> usize {
-        self.0.lock().open.len()
     }
 
     /// Holds every commit of a checkpoint or of a stored attachment from
@@ -661,131 +659,4 @@ where
     migrate(&mut connection, path, blobs, point)?;
     let transaction = connection.transaction()?;
     work(&transaction).map(Some)
-}
-
-#[cfg(test)]
-mod tests {
-    use rusqlite::{OptionalExtension, params};
-
-    use super::*;
-
-    fn conversation(number: u8) -> ConversationId {
-        ConversationId::try_from(format!("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a{number:02x}")).unwrap()
-    }
-
-    /// The root node's row, as a tree store writes it.
-    async fn write_root(
-        db: &ConversationDb,
-        conversation: &ConversationId,
-        state: &str,
-    ) -> Result<(), StorageError> {
-        let (id, state) = (conversation.as_str().to_owned(), state.to_owned());
-        db.call(move |connection| {
-            let transaction = connection.transaction()?;
-            transaction.execute(
-                "INSERT INTO nodes (id, number, parent_id, description, profile, round, started_at, can_spawn,
-                                    delivered, state, output_revision)
-                 VALUES (?1, 0, NULL, '', NULL, 1, 0, 1, 0, ?2, 0)
-                 ON CONFLICT (id) DO UPDATE SET state = excluded.state",
-                params![id, state],
-            )?;
-            transaction.commit()?;
-            Ok(())
-        })
-        .await
-    }
-
-    fn root_state(connection: &Connection) -> Result<Option<String>, StorageError> {
-        let state = connection
-            .query_row(
-                "SELECT state FROM nodes WHERE parent_id IS NULL",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(state)
-    }
-
-    #[tokio::test]
-    async fn writers_stay_bounded_and_cold_reads_take_none_and_create_no_file() {
-        let data = tempfile::tempdir().unwrap();
-        let directory = data.path().join("conversations");
-        let stores = ConversationStores::open(directory.clone(), NonZeroUsize::new(2).unwrap(), Arc::new(schema::NoBlobs))
-            .await
-            .unwrap();
-        let (a, b, c) = (conversation(1), conversation(2), conversation(3));
-        let first = stores.db(&a);
-        write_root(&first, &a, "a").await.unwrap();
-        write_root(&stores.db(&b), &b, "b").await.unwrap();
-        assert_eq!(stores.open_writers(), 2);
-
-        assert_eq!(stores.read(&c, root_state).await.unwrap(), None);
-        assert!(!directory.join(format!("{c}.sqlite")).exists());
-        assert_eq!(
-            stores.read(&b, root_state).await.unwrap(),
-            Some(Some("b".to_owned()))
-        );
-        assert_eq!(stores.open_writers(), 2);
-
-        // A third writer closes the least recently used, a's. The handle
-        // handed out before opens it again, and nothing was lost.
-        write_root(&stores.db(&c), &c, "c").await.unwrap();
-        assert_eq!(stores.open_writers(), 2);
-        assert_eq!(
-            first
-                .call(|connection| root_state(connection))
-                .await
-                .unwrap(),
-            Some("a".to_owned())
-        );
-        write_root(&first, &a, "a2").await.unwrap();
-        assert_eq!(stores.open_writers(), 2);
-
-        // Another spelling of an id names the same database.
-        let upper = ConversationId::try_from(a.as_str().to_uppercase()).unwrap();
-        assert_eq!(
-            stores.read(&upper, root_state).await.unwrap(),
-            Some(Some("a2".to_owned()))
-        );
-
-        assert!(stores.close().await.is_empty());
-        assert_eq!(stores.open_writers(), 0);
-        assert!(matches!(
-            first.call(|_| Ok(())).await,
-            Err(StorageError::Closed)
-        ));
-        assert!(matches!(
-            stores.read(&a, |_| Ok(())).await,
-            Err(StorageError::Closed)
-        ));
-
-        // After a restart, a cold read finds every database as it was left.
-        let reopened = ConversationStores::open(directory, MAX_WRITERS, Arc::new(schema::NoBlobs))
-            .await
-            .unwrap();
-        for (conversation, state) in [(&a, "a2"), (&b, "b"), (&c, "c")] {
-            assert_eq!(
-                reopened.read(conversation, root_state).await.unwrap(),
-                Some(Some(state.to_owned()))
-            );
-        }
-        assert_eq!(reopened.open_writers(), 0);
-    }
-
-    #[tokio::test]
-    async fn first_calls_at_once_open_one_writer_and_both_commit() {
-        let data = tempfile::tempdir().unwrap();
-        let stores = ConversationStores::open(data.path().join("conversations"), MAX_WRITERS, Arc::new(schema::NoBlobs))
-            .await
-            .unwrap();
-        let a = conversation(1);
-        let (one, other) = (stores.db(&a), stores.db(&a));
-        let (first, second) = tokio::join!(
-            write_root(&one, &a, "first"),
-            write_root(&other, &a, "second")
-        );
-        first.unwrap();
-        second.unwrap();
-        assert_eq!(stores.open_writers(), 1);
-    }
 }

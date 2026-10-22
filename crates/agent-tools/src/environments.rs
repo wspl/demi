@@ -7,28 +7,18 @@
 //!
 //! Beside them, this module holds what the node's command reports need to know
 //! of its commands' ends: whose end a look showed the node and who stopped
-//! one. The repeat guard keeps a model that loops on one call from running it
-//! again and again.
+//! one.
 
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     rc::Rc,
-    time::Duration,
 };
 
-use demi_agent_session::ToolOutcome;
 use demi_host_interface::{CommandSet, HostError, HostKey, PageState, PageView, Seen, ShellEnvironment};
-use demi_provider_common::ResultPart;
-use demi_shared_types::{CommandId, ToolView};
+use demi_shared_types::CommandId;
 use futures_util::future::join_all;
-use tokio::{sync::OnceCell, time::Instant};
-
-/// How many identical `shell` calls in a row run.
-const MAX_IDENTICAL_CALLS: u32 = 6;
-/// How long after the previous call an identical one still counts as a
-/// repeat.
-const REPEAT_WINDOW: Duration = Duration::from_secs(60);
+use tokio::sync::OnceCell;
 
 /// The environments of one node.
 #[derive(Default)]
@@ -58,18 +48,10 @@ pub enum Stopper {
     Agent(u64),
 }
 
-/// One Host's environment, once made, and its repeat guard.
+/// One Host's environment, once made.
 pub(super) struct Slot {
     key: HostKey,
     environment: OnceCell<Rc<dyn ShellEnvironment>>,
-    repeat: RefCell<Option<Repeat>>,
-}
-
-/// The last `shell` script and how many times in a row it ran.
-struct Repeat {
-    script: String,
-    count: u32,
-    at: Instant,
 }
 
 /// A handle a call carries, which must belong to the call's environment.
@@ -124,7 +106,6 @@ impl Environments {
         let slot = Rc::new(Slot {
             key,
             environment: OnceCell::new(),
-            repeat: RefCell::new(None),
         });
         slots.push(slot.clone());
         slot
@@ -301,319 +282,3 @@ impl Environments {
 
 /// What a call answers once the node is being disposed.
 const DISPOSED: &str = "The node's shells are closed";
-
-impl Slot {
-    /// Counts `script` against the repeat guard.
-    ///
-    /// Within the window of the previous call, the same script runs six times
-    /// in a row, and the seventh and later are suppressed. Another script
-    /// starts the count again.
-    pub(super) fn repeated(&self, script: &str) -> Option<ToolOutcome> {
-        let now = Instant::now();
-        let mut repeat = self.repeat.borrow_mut();
-        let count = match repeat.as_ref() {
-            Some(previous) if previous.script == script && now - previous.at <= REPEAT_WINDOW => {
-                previous.count + 1
-            }
-            _ => 1,
-        };
-        *repeat = Some(Repeat {
-            script: script.to_owned(),
-            count,
-            at: now,
-        });
-        if count <= MAX_IDENTICAL_CALLS {
-            return None;
-        }
-        let text = [
-            "Repeated identical shell call suppressed.".to_owned(),
-            format!("The same script has been run {count} consecutive times in this agent session."),
-            "Inspect the previous output, use a different command, or provide the final answer instead of repeating it.".to_owned(),
-        ]
-        .join("\n");
-        Some(ToolOutcome {
-            output: vec![ResultPart::Text(text)],
-            is_error: true,
-            view: Some(ToolView::RepeatedShell {
-                script: script.to_owned(),
-                count,
-            }),
-            effect: None,
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::cell::Cell;
-
-    use bytes::Bytes;
-    use demi_host_interface::{CommandStatus, Ending, ExecRequest, ShellError, WholeOutput};
-    use futures_util::future::{LocalBoxFuture, join};
-    use tokio_util::sync::CancellationToken;
-
-    use super::*;
-
-    /// An environment that owns the commands it is given and counts its
-    /// disposals, the ones that let go of its commands among them; the
-    /// tools' other operations are not what these tests call.
-    #[derive(Default)]
-    struct Owner {
-        commands: Vec<CommandId>,
-        disposed: Cell<u32>,
-    }
-
-    impl ShellEnvironment for Owner {
-        fn start(
-            &self,
-            _: ExecRequest,
-            _: CancellationToken,
-        ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
-            unreachable!("the environments never run a command")
-        }
-
-        fn ended<'a>(
-            &'a self,
-            command: &'a CommandId,
-        ) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
-            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-        }
-
-        fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
-            Err(ShellError::UnknownCommand(command.clone()))
-        }
-
-        fn title(&self, _: &CommandId) -> Option<String> {
-            None
-        }
-
-        fn quiet(&self, command: &CommandId) -> Result<Duration, ShellError> {
-            Err(ShellError::UnknownCommand(command.clone()))
-        }
-
-        fn outliving(&self, _: &CommandId) -> Vec<String> {
-            Vec::new()
-        }
-
-        fn awaits_user(&self, _: &CommandId) -> Option<tokio::sync::watch::Receiver<bool>> {
-            None
-        }
-
-        fn unreachable(&self, _: &CommandId) -> Option<demi_host_interface::Unreachable> {
-            None
-        }
-
-        fn media(
-            &self,
-            command: &CommandId,
-        ) -> Result<Vec<demi_host_interface::CommandMedium>, ShellError> {
-            Err(ShellError::UnknownCommand(command.clone()))
-        }
-
-        fn read_output<'a>(
-            &'a self,
-            command: &'a CommandId,
-        ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
-            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-        }
-
-        fn write<'a>(
-            &'a self,
-            command: &'a CommandId,
-            _: Bytes,
-        ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-        }
-
-        fn abort<'a>(
-            &'a self,
-            command: &'a CommandId,
-        ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-            Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
-        }
-
-        fn page_views(&self) -> Vec<PageView> {
-            Vec::new()
-        }
-
-        fn release_command<'a>(&'a self, _: &'a CommandId) -> LocalBoxFuture<'a, bool> {
-            Box::pin(async { false })
-        }
-
-        fn stop_waiting(&self) -> LocalBoxFuture<'_, ()> {
-            Box::pin(async {})
-        }
-
-        fn adopt(&self, _: demi_host_interface::TakenUp) {
-            unreachable!("the environments take up no command")
-        }
-
-        fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
-            self.disposed.set(self.disposed.get() + 1);
-            Box::pin(async {})
-        }
-
-        fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
-            self.disposed.set(self.disposed.get() + 1);
-            Box::pin(async {})
-        }
-
-        fn owns_command(&self, command: &CommandId) -> bool {
-            self.commands.contains(command)
-        }
-
-        fn replace_commands(&self, _: &Rc<CommandSet>) -> Result<(), HostError> {
-            unreachable!("the environments never change their commands")
-        }
-    }
-
-    fn key(name: &str) -> HostKey {
-        HostKey::new(name.to_owned())
-    }
-
-    fn owning(commands: &[&str]) -> Rc<Owner> {
-        Rc::new(Owner {
-            commands: commands
-                .iter()
-                .map(|id| CommandId::try_from(*id).unwrap())
-                .collect(),
-            disposed: Cell::new(0),
-        })
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn concurrent_calls_for_one_host_make_one_environment() {
-        let environments = Environments::default();
-        let made = Cell::new(0);
-        let create = || async {
-            made.set(made.get() + 1);
-            tokio::task::yield_now().await;
-            Ok(owning(&[]) as Rc<dyn ShellEnvironment>)
-        };
-        let (first, second) = join(
-            environments.resolve(key("a"), Handle::None, create()),
-            environments.resolve(key("a"), Handle::None, create()),
-        )
-        .await;
-        assert_eq!(made.get(), 1);
-        assert!(Rc::ptr_eq(&first.unwrap().0, &second.unwrap().0));
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_handle_belongs_to_the_environment_of_its_host() {
-        let environments = Environments::default();
-        let command = CommandId::try_from("cmd-a").unwrap();
-        let on_a = owning(&["cmd-a"]);
-        environments
-            .resolve(key("a"), Handle::None, async {
-                Ok(on_a.clone() as Rc<dyn ShellEnvironment>)
-            })
-            .await
-            .unwrap();
-        let elsewhere = environments
-            .resolve(key("b"), Handle::Command(&command), async {
-                Ok(owning(&[]) as Rc<dyn ShellEnvironment>)
-            })
-            .await;
-        assert_eq!(
-            elsewhere.err().as_deref(),
-            Some("Command \"cmd-a\" belongs to a different Host")
-        );
-        assert!(
-            environments
-                .resolve(key("a"), Handle::Command(&command), async {
-                    unreachable!("made already")
-                })
-                .await
-                .is_ok()
-        );
-        // A handle two environments claim is refused.
-        let twice = Environments::default();
-        for name in ["a", "b"] {
-            twice
-                .resolve(key(name), Handle::None, async {
-                    Ok(owning(&["cmd-a"]) as Rc<dyn ShellEnvironment>)
-                })
-                .await
-                .unwrap();
-        }
-        let refused = twice
-            .resolve(key("a"), Handle::Command(&command), async {
-                unreachable!()
-            })
-            .await;
-        assert_eq!(
-            refused.err().as_deref(),
-            Some("Command id \"cmd-a\" is not unique in this session")
-        );
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_dispose_ends_every_environment_and_one_made_during_it() {
-        let environments = Environments::default();
-        let first = owning(&[]);
-        environments
-            .resolve(key("a"), Handle::None, async {
-                Ok(first.clone() as Rc<dyn ShellEnvironment>)
-            })
-            .await
-            .unwrap();
-        let late = owning(&[]);
-        let (gate, open) = tokio::sync::oneshot::channel::<()>();
-        let making = environments.resolve(key("b"), Handle::None, async {
-            let _ = open.await;
-            Ok(late.clone() as Rc<dyn ShellEnvironment>)
-        });
-        let disposing = async {
-            tokio::task::yield_now().await;
-            environments.dispose().await;
-            let _ = gate.send(());
-        };
-        let (made, ()) = join(making, disposing).await;
-        assert!(made.is_err());
-        assert_eq!((first.disposed.get(), late.disposed.get()), (1, 1));
-        assert!(
-            environments
-                .resolve(key("a"), Handle::None, async { unreachable!() })
-                .await
-                .is_err()
-        );
-    }
-
-    #[tokio::test(flavor = "local", start_paused = true)]
-    async fn the_seventh_identical_call_in_a_row_is_suppressed_until_the_script_or_the_minute_changes()
-     {
-        let environments = Environments::default();
-        let (slot, _) = environments
-            .resolve(key("a"), Handle::None, async {
-                Ok(owning(&[]) as Rc<dyn ShellEnvironment>)
-            })
-            .await
-            .unwrap();
-        for _ in 0..6 {
-            assert!(slot.repeated("make").is_none());
-        }
-        let suppressed = slot.repeated("make").expect("the seventh is suppressed");
-        assert!(suppressed.is_error);
-        assert_eq!(
-            suppressed.view,
-            Some(ToolView::RepeatedShell {
-                script: "make".into(),
-                count: 7
-            })
-        );
-        assert!(matches!(
-            slot.repeated("make").and_then(|outcome| outcome.view),
-            Some(ToolView::RepeatedShell { count: 8, .. })
-        ));
-        assert!(slot.repeated("make test").is_none());
-        for _ in 0..5 {
-            assert!(slot.repeated("make").is_none());
-        }
-        tokio::time::advance(REPEAT_WINDOW + Duration::from_millis(1)).await;
-        assert!(
-            slot.repeated("make").is_none(),
-            "a minute later the count starts again"
-        );
-    }
-}

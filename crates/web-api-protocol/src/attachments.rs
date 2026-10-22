@@ -10,6 +10,9 @@ use serde_with::rust::unwrap_or_skip;
 use crate::ids::AttachmentId;
 
 /// The most bytes an upload holds.
+///
+/// Bounded because an upload is held in memory until the Host has written it,
+/// and the vendors limit the size of a file they take.
 pub const ATTACHMENT_MAX_BYTES: usize = 25 * 1024 * 1024;
 
 /// `POST /attachments?name=&sha256=`: the file's name, which decides

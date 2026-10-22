@@ -17,7 +17,7 @@ export interface Where {
   file: string | null
 }
 
-/** How many of the call log's steps a failure keeps, the last ones. */
+/** How many of the call log's steps a failure keeps, the last ones, because the failure goes into the agent's context window. */
 const STEPS = 6
 
 /** Steps of Playwright's call log that only say it retried or scrolled. */

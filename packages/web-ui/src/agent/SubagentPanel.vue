@@ -3,11 +3,13 @@ import { t } from './locales/text'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Bot, CircleStop, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
+import type { RequestOutputReading } from '@demicodes/conversation-client'
 import { isAbortError } from '@demicodes/utils'
 import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
 import RegionStatus from '../ui/RegionStatus.vue'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentStatusBar from './AgentStatusBar.vue'
+import RequestOutputMeter from './RequestOutputMeter.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
 import TabItem from './TabItem.vue'
@@ -44,6 +46,11 @@ const props = withDefaults(
      * Absent, the card shows none.
      */
     agentCost?: (id: string) => CostShown | null
+    /**
+     * The output of the request a child's agent runs, as the server tells it;
+     * a getter, as the dock's. Absent, the panel shows none.
+     */
+    output?: (id: string) => RequestOutputReading | null
     /**
      * Reads the latest page of a child's transcript, for a child the panel
      * shows and holds none of, unless the session sends it (`streamed`). It
@@ -302,6 +309,14 @@ function closeTab(id: string): void {
         @read-after="emit('readAfter', active.id)"
         @shown="(block, within) => emit('shown', active!.id, block, within)"
       />
+      <!--
+        The reading of the child's request, over its status bar as the dock
+        shows the root's over the composer; the row takes no room while there
+        is none.
+      -->
+      <div class="hidden shrink-0 justify-end px-4 pb-1 has-[>*]:flex">
+        <RequestOutputMeter :output="() => output?.(active!.id) ?? null" :scope="active.id" :turn-speed="null" />
+      </div>
       <AgentStatusBar
         :run="active"
         :usage="active.contextUsage"

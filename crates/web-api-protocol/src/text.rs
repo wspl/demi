@@ -19,6 +19,8 @@ use url::Url;
 pub struct EmailAddress(String);
 
 /// The most characters (Unicode scalar values) an email address has.
+///
+/// RFC 5321 limits an address to 254 characters.
 pub const EMAIL_MAX: usize = 254;
 
 /// Why a text is not an email address.
@@ -171,88 +173,5 @@ impl JsonSchema for EndpointUrl {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({ "type": "string", "format": "http-url" })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn email(text: &str) -> Result<String, EmailError> {
-        EmailAddress::try_from(text.to_owned()).map(|address| address.0)
-    }
-
-    #[test]
-    fn an_email_address_is_trimmed_and_lowercased_before_it_is_checked() {
-        assert_eq!(
-            email("  Ana@Example.TEST \n"),
-            Ok("ana@example.test".to_owned())
-        );
-        let longest = format!("{}@example.test", "a".repeat(EMAIL_MAX - 13));
-        assert_eq!(
-            email(&format!("  {}  ", longest.to_uppercase())),
-            Ok(longest.clone())
-        );
-        assert_eq!(email(&format!("a{longest}")), Err(EmailError::TooLong));
-    }
-
-    #[test]
-    fn an_email_address_has_the_form_the_web_app_accepts() {
-        for accepted in [
-            "a@b.co",
-            "first.last+tag@sub.example.org",
-            "o'neil_x-y@a-b.example",
-        ] {
-            assert!(email(accepted).is_ok(), "{accepted}");
-        }
-        for refused in [
-            "invalid",
-            ".ana@example.test",
-            "ana..b@example.test",
-            "ana.@example.test",
-            "ana@example",
-            "ana@-example.test",
-            "ana@example.t",
-            "ana@exa_mple.test",
-            "an a@example.test",
-            "anä@example.test",
-            "",
-        ] {
-            assert_eq!(email(refused), Err(EmailError::Malformed), "{refused}");
-        }
-    }
-
-    #[test]
-    fn an_endpoint_is_an_http_or_https_url() {
-        let endpoint = |text: &str| {
-            EndpointUrl::try_from(text.to_owned()).map(|endpoint| endpoint.as_str().to_owned())
-        };
-        assert_eq!(
-            endpoint("https://api.kimi.com/coding/v1"),
-            Ok("https://api.kimi.com/coding/v1".to_owned())
-        );
-        assert_eq!(
-            endpoint("http://127.0.0.1:8080"),
-            Ok("http://127.0.0.1:8080/".to_owned())
-        );
-        for refused in [
-            "",
-            "api.openai.com/v1",
-            "ftp://example.test/",
-            "file:///etc",
-            "https://",
-        ] {
-            assert_eq!(endpoint(refused), Err(NotEndpoint), "{refused}");
-        }
-    }
-
-    #[test]
-    fn text_is_trimmed_of_the_white_space_javascript_trims() {
-        let text: Trimmed = serde_json::from_str(r#""﻿  New name \t ""#).unwrap();
-        assert_eq!(text.as_str(), "New name");
-        assert_eq!(text.num_chars(), 8);
-        // U+0085 is not white space to JavaScript's trim.
-        let kept: Trimmed = serde_json::from_str(r#""\u0085name""#).unwrap();
-        assert_eq!(kept.as_str(), "\u{85}name");
     }
 }

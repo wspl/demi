@@ -25,29 +25,28 @@
 //! # The conversation's own frames
 //!
 //! Beside the agents' frames, the socket sends what the backend keeps of the
-//! conversation itself (`ConversationFrame`): its metadata, which carries
-//! each list its view shows, and its draft when the draft is newer than the
-//! revision the page named at its open, in one message. An `open` the backend
-//! delivers sends them before the agent sees the open, so they reach the page
-//! ahead of the handshake and the page shows the conversation whole in one
-//! step (`docs/decisions/0029-a-conversation-opens-whole.md`); a refused one,
-//! as of a conversation with no model yet, sends them with its refusal. Each
-//! change of either sends it again, and an attachment an agent uploaded since
-//! the last metadata goes with its description, as a reply may name it before
-//! it exists. Only a socket of the conversation hears of them; the sidebar's
-//! channel sends the conversation's entry alone.
+//! conversation itself (`ConversationFrame`) as it changes, never as the
+//! answer to an `open`: its metadata, whole; its saved messages, its workflows
+//! and its shares, each whole, with the entity tag of its route's answer; its
+//! draft when newer than the revision the page last held; and the description
+//! of an attachment an agent uploaded since the page's `open`, as a reply may
+//! name it before it exists. The page reads each by its route, then follows it
+//! by the `open` and `follow` frames, naming the tag it holds; the socket
+//! reads the value and sends it when its tag differs, and at each change.
+//! A value the page does not follow is not sent. Only a socket of the
+//! conversation hears of them; the sidebar's channel sends the conversation's
+//! entry alone.
 //!
 //! # A conversation's first message
 //!
 //! The request that creates a conversation may carry its first message
-//! (`admit_first_message`, `docs/decisions/0045-a-new-conversation-sends-with-its-creation.md`).
-//! A connection of its own then takes the frames a page's socket would send,
-//! an `open` and the `send`, through the same handling, so the message is
-//! admitted as any `send` is: its title, its files resolved in the
-//! conversation, its id checked against the messages already taken. The
-//! request answers from what the connection's outbox holds, and the
-//! connection goes; the page's socket opens afterwards and its handshake
-//! carries the reply so far.
+//! (`admit_first_message`). A connection of its own then takes the frames a
+//! page's socket would send, an `open` and the `send`, through the same
+//! handling, so the message is admitted as any `send` is: its title, its files
+//! resolved in the conversation, its id checked against the messages already
+//! taken. The request answers from what the connection's outbox holds, and the
+//! connection goes; the page's socket opens afterwards, and the page reads the
+//! reply so far with the root's latest page.
 //!
 //! # Attachments
 //!
@@ -77,13 +76,13 @@ use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_backend_database::conversation_attachments::uploaded_after;
 use demi_conversation_socket_protocol::{
-    SteerOutcome,
-    ClientContent, ClientFrame, ClientFrameKind, ConversationAttachment, EditOutcome, FrameError, Refusal,
+    SteerOutcome, Follow, Followed,
+    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal,
     RemoveOutcome, SavedDelivery, SendMessage, ServerFrame, TranscriptPatch, Version, decode_client_frame,
 };
 use demi_shared_gates::Purpose;
 use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
-use demi_web_api_protocol::conversations::{ConversationFrame, ConversationMetadata, FirstMessageAnswer};
+use demi_web_api_protocol::conversations::{ConversationFrame, FirstMessageAnswer};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
 use demi_web_api_protocol::error::ErrorCode;
@@ -91,9 +90,10 @@ use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use futures_util::future::LocalBoxFuture;
 
 use super::attachment_facts::StreamedText;
-use super::{attachment_facts, failure_facts, reply_blocks};
+use super::failure_facts;
 use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
 use crate::sync::ChannelSession;
+use crate::sync::etag_of;
 use crate::shard::{PageEnd, PageSocket, Shard};
 use demi_backend_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
 use demi_backend_host_access::root_of;
@@ -151,33 +151,98 @@ enum Handled {
     /// The frame reached its session, or the backend refused it with these
     /// frames.
     Replies(Vec<ServerFrame>),
-    /// An `open`: the page holds the draft at `draft`, and is shown the
-    /// conversation before `frame` is handled. It is shown before the open
-    /// takes its gates, since what it shows may wait on what they hold out,
-    /// such as the Cloud's takeover at a start.
-    Opening { draft: u64, frame: ClientFrame },
-    /// An `open` reached the tree, or the backend refused it with these
-    /// frames: the page follows the conversation from now on.
+    /// A frame that follows or ends following values: the socket applies
+    /// `own`, what it follows itself, then `frame`, the rest, is handled.
+    Following { own: OwnFollows, frame: Option<ClientFrame> },
+    /// An `open` reached the tree, which answers it with `opened`.
     Opened { replies: Vec<ServerFrame> },
+    /// The backend refused an `open` with these frames, as a conversation
+    /// with no model yet is: the socket answers `opened` after them, since
+    /// the page still reads the conversation and follows its changes.
+    OpenRefused { replies: Vec<ServerFrame> },
     /// The message is not JSON: the socket closes.
     NotJson,
 }
 
-/// What a socket last sent of the conversation itself, once its page opened
-/// it.
+/// What a frame changes of what the socket follows itself: the conversation's
+/// metadata and its lists, which the agents' connection knows nothing of.
+#[derive(Default)]
+struct OwnFollows {
+    /// The revision of the draft the page holds, when the frame is its `open`.
+    opening: Option<u64>,
+    follow: Vec<Follow>,
+    unfollow: Vec<Followed>,
+}
+
+impl OwnFollows {
+    /// Splits `follows` into what the socket follows itself, and the rest,
+    /// which the agents' connection follows.
+    fn split(follows: Vec<Follow>) -> (Vec<Follow>, Vec<Follow>) {
+        follows.into_iter().partition(|follow| is_own(&follow.value))
+    }
+}
+
+/// Whether the socket follows `value` itself: the agents' connection follows
+/// the agents and the transcripts.
+fn is_own(value: &Followed) -> bool {
+    matches!(value, Followed::Metadata | Followed::Saved | Followed::Workflows | Followed::Shares)
+}
+
+/// What a socket follows of the conversation itself, each value with the
+/// entity tag the page holds of it, which is what a value is told against: a
+/// value whose tag differs is sent whole, with its tag. A value none is not
+/// followed.
 #[derive(Default)]
 struct Shown {
-    metadata: Option<ConversationMetadata>,
+    metadata: Option<String>,
+    saved: Option<String>,
+    workflows: Option<String>,
+    shares: Option<String>,
+    /// The number of the latest attachment the page holds, whose uploads since
+    /// go to it with their descriptions; none before its open.
+    attached_through: Option<u64>,
     /// The revision of the draft the page holds; none before its open.
     draft: Option<u64>,
 }
 
 impl Shown {
-    /// The number of the latest attachment the page was shown, whose
-    /// uploads since go to it with their descriptions; none before its first
-    /// metadata.
-    fn last_attachment(&self) -> Option<u64> {
-        self.metadata.as_ref().map(|metadata| metadata.last_attachment)
+    /// Whether the page follows anything of the conversation itself.
+    fn follows_any(&self) -> bool {
+        self.draft.is_some()
+            || [&self.metadata, &self.saved, &self.workflows, &self.shares]
+                .into_iter()
+                .any(Option::is_some)
+    }
+
+    fn slot(&mut self, value: &Followed) -> Option<&mut Option<String>> {
+        match value {
+            Followed::Metadata => Some(&mut self.metadata),
+            Followed::Saved => Some(&mut self.saved),
+            Followed::Workflows => Some(&mut self.workflows),
+            Followed::Shares => Some(&mut self.shares),
+            Followed::Agents | Followed::Transcript { .. } => None,
+        }
+    }
+
+    fn apply(&mut self, own: OwnFollows) {
+        if let Some(draft) = own.opening {
+            self.draft = Some(draft);
+        }
+        for Follow { value, holds } in own.follow {
+            let tag = match holds {
+                demi_conversation_socket_protocol::Held::Tag { tag } => tag,
+                // A version names no whole value: the page holds none of it.
+                demi_conversation_socket_protocol::Held::Version { .. } => String::new(),
+            };
+            if let Some(slot) = self.slot(&value) {
+                *slot = Some(tag);
+            }
+        }
+        for value in own.unfollow {
+            if let Some(slot) = self.slot(&value) {
+                *slot = None;
+            }
+        }
     }
 }
 
@@ -240,11 +305,18 @@ impl Shard {
                         handling = None;
                         let replies = match handled {
                             Handled::Replies(replies) => replies,
-                            Handled::Opening { draft, frame } => {
-                                shown.draft = Some(draft);
-                                if !self.show_conversation(&id, &mut page, &mut shown).await {
+                            Handled::Following { own, frame } => {
+                                let opening = own.opening.is_some();
+                                shown.apply(own);
+                                // The values the page follows are compared with
+                                // what it holds before the frame is handled, and
+                                // the attachments its open holds are noted.
+                                if !self.show_conversation(&id, &mut page, &mut shown, opening).await {
                                     break 'relay Ending::Gone;
                                 }
+                                let Some(frame) = frame else {
+                                    continue 'relay;
+                                };
                                 let shard = self.clone();
                                 let connection = &connection;
                                 let id = id.clone();
@@ -253,11 +325,9 @@ impl Shard {
                                 }));
                                 continue 'relay;
                             }
-                            Handled::Opened { replies } => {
-                                // What changed while the open was handled.
-                                if !self.show_conversation(&id, &mut page, &mut shown).await {
-                                    break 'relay Ending::Gone;
-                                }
+                            Handled::Opened { replies } => replies,
+                            Handled::OpenRefused { mut replies } => {
+                                replies.push(ServerFrame::Opened);
                                 replies
                             }
                             Handled::NotJson => break Ending::NotJson,
@@ -319,7 +389,7 @@ impl Shard {
                         if marked.session_ended {
                             break Ending::SessionEnded;
                         }
-                        if shown.draft.is_some() && !self.show_conversation(&id, &mut page, &mut shown).await {
+                        if shown.follows_any() && !self.show_conversation(&id, &mut page, &mut shown, false).await {
                             break Ending::Gone;
                         }
                     }
@@ -399,10 +469,7 @@ impl Shard {
         match self
             .prepare_frame(
                 conversation,
-                &ClientFrame::Open {
-                    agents: None,
-                    draft: None,
-                },
+                &ClientFrame::Open { draft: None, follows: Vec::new() },
             )
             .await
         {
@@ -414,6 +481,19 @@ impl Shard {
             .restore(&root_of(conversation))
             .await
             .map_err(|error| error.to_string())
+    }
+
+    /// Restores the conversation's tree for a read that names its version,
+    /// which a tree that is not live has only as the stored one: the version
+    /// a page follows must be the live tree's own, or its first follow is
+    /// stale. A conversation whose tree cannot open is read as it is stored.
+    pub async fn restore_for_read(&self, conversation: &ConversationId) {
+        if self.agent().tree(&root_of(conversation)).is_some() {
+            return;
+        }
+        if let Err(reason) = self.restore_tree(conversation).await {
+            tracing::debug!(%conversation, reason, "a conversation is read without its tree");
+        }
     }
 
     /// Admits the first message of a conversation just created, as the
@@ -436,12 +516,12 @@ impl Shard {
         });
         let (connection, mut frames) = self.agent().connect(root_of(conversation), resolver);
         let message_id = message.message_id.clone();
-        let steps = [ClientFrame::Open { agents: None, draft: None }, ClientFrame::Send(message)];
+        let steps = [ClientFrame::Open { draft: None, follows: Vec::new() }, ClientFrame::Send(message)];
         for frame in steps {
             let sending = matches!(frame, ClientFrame::Send(_));
             let replies = match self.handle_frame(conversation, &connection, frame).await {
-                Handled::Replies(replies) | Handled::Opened { replies } => replies,
-                Handled::Opening { .. } | Handled::NotJson => Vec::new(),
+                Handled::Replies(replies) | Handled::Opened { replies } | Handled::OpenRefused { replies } => replies,
+                Handled::Following { .. } | Handled::NotJson => Vec::new(),
             };
             // What the backend refused before the session saw the frame, then
             // what the session answered, which waits in the outbox.
@@ -496,9 +576,32 @@ impl Shard {
         text: &str,
     ) -> Handled {
         match decode_client_frame(text) {
-            Ok(ClientFrame::Open { agents, draft }) => Handled::Opening {
-                draft: draft.unwrap_or(0),
-                frame: ClientFrame::Open { agents, draft },
+            Ok(ClientFrame::Open { draft, follows }) => {
+                let (own, rest) = OwnFollows::split(follows);
+                Handled::Following {
+                    own: OwnFollows {
+                        opening: Some(draft.unwrap_or(0)),
+                        follow: own,
+                        unfollow: Vec::new(),
+                    },
+                    frame: Some(ClientFrame::Open { draft, follows: rest }),
+                }
+            }
+            Ok(ClientFrame::Follow(follow)) if is_own(&follow.value) => Handled::Following {
+                own: OwnFollows {
+                    opening: None,
+                    follow: vec![follow],
+                    unfollow: Vec::new(),
+                },
+                frame: None,
+            },
+            Ok(ClientFrame::Unfollow { value }) if is_own(&value) => Handled::Following {
+                own: OwnFollows {
+                    opening: None,
+                    follow: Vec::new(),
+                    unfollow: vec![value],
+                },
+                frame: None,
             },
             Ok(frame) => self.handle_frame(conversation, connection, frame).await,
             Err(FrameError::NotJson(_)) => Handled::NotJson,
@@ -585,6 +688,10 @@ impl Shard {
         // its `send_saved`'s, whatever frame it became.
         let command = if from_list { ClientFrameKind::SendSaved } else { frame.kind() };
         let opening = matches!(frame, ClientFrame::Open { .. });
+        let followed = match &frame {
+            ClientFrame::Open { follows, .. } => follows.clone(),
+            _ => Vec::new(),
+        };
         let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
                 if opening {
@@ -603,7 +710,14 @@ impl Shard {
                 // A conversation whose tree cannot open, as one with no model
                 // yet, is still shown, and follows its changes.
                 if opening {
-                    Handled::Opened { replies }
+                    // The tree does not take the open, so the connection
+                    // follows what the page follows of it by frames of their
+                    // own: what it holds of a tree that is not live is
+                    // stale.
+                    for follow in followed {
+                        connection.handle(ClientFrame::Follow(follow)).await;
+                    }
+                    Handled::OpenRefused { replies }
                 } else {
                     Handled::Replies(replies)
                 }
@@ -642,7 +756,10 @@ impl Shard {
                 "No such conversation".into(),
             ));
         };
-        if record.archived && !matches!(frame, ClientFrame::Close {}) {
+        // Following and unfollowing change nothing of the conversation, and an
+        // archived one is followed to hear of its restoring.
+        let following = matches!(frame, ClientFrame::Follow(_) | ClientFrame::Unfollow { .. });
+        if record.archived && !following && !matches!(frame, ClientFrame::Close {}) {
             return Ok(Prepared::Refused(
                 ErrorCode::ConversationArchived,
                 "Restore the conversation before writing to it".into(),
@@ -721,11 +838,6 @@ impl Shard {
         streamed: &mut StreamedText,
         frames: Vec<ServerFrame>,
     ) -> bool {
-        // An open's handshake starts with `opened`; its size and how long it
-        // takes to write are logged, as what a page waits for to open.
-        let handshake = matches!(frames.first(), Some(ServerFrame::Opened));
-        let count = frames.len();
-        let building = std::time::Instant::now();
         let mut texts = Vec::with_capacity(frames.len());
         for frame in frames {
             let mut frame = self.present(conversation, streamed, frame).await;
@@ -758,22 +870,7 @@ impl Shard {
         } else {
             format!("[{}]", texts.join(","))
         };
-        if !handshake {
-            return page.send(text).await.is_ok();
-        }
-        let bytes = text.len();
-        let build_ms = building.elapsed().as_millis();
-        let writing = std::time::Instant::now();
-        let sent = page.send(text).await.is_ok();
-        tracing::info!(
-            frames = count,
-            bytes,
-            build_ms,
-            write_ms = writing.elapsed().as_millis(),
-            sent,
-            "a conversation's open handshake was written"
-        );
-        sent
+        page.send(text).await.is_ok()
     }
 
     /// A server frame as the page receives it: a transcript frame carries
@@ -785,32 +882,8 @@ impl Shard {
         let services = self.services();
         let assembly = &services.assembly;
         match frame {
-            ServerFrame::TranscriptReset {
-                node,
-                start,
-                length,
-                blocks,
-                version,
-                versions,
-                ..
-            } => {
-                let failures = failure_facts(assembly, self.user(), &blocks).await;
-                let attachments = self.named_attachments(conversation, reply_blocks(&blocks)).await;
-                streamed.reset(&node, start, &blocks);
-                streamed.sent(&attachments);
-                ServerFrame::TranscriptReset {
-                    node,
-                    start,
-                    length,
-                    blocks,
-                    version,
-                    failures,
-                    versions,
-                    attachments,
-                }
-            }
             ServerFrame::TranscriptPatch {
-                node, patches, revision, ..
+                node, patches, version, ..
             } => {
                 let added = blocks_added(&patches);
                 let failures = failure_facts(assembly, self.user(), &added).await;
@@ -828,7 +901,7 @@ impl Shard {
                 ServerFrame::TranscriptPatch {
                     node,
                     patches,
-                    revision,
+                    version,
                     failures,
                     attachments,
                 }
@@ -837,32 +910,25 @@ impl Shard {
         }
     }
 
-    /// The attachments `replies` name that the conversation has. A
-    /// failed read is logged and carries none: the reply shows the tag's
-    /// place as missing, as for a number the conversation does not have.
-    async fn named_attachments<'a>(
+    /// Sends the page what it follows of the conversation itself that differs
+    /// from what it holds, in one message: its metadata and each list, whole,
+    /// with their entity tags, when the tag differs from the page's; its
+    /// draft when newer than the page's; and the attachments agents uploaded
+    /// since its open.
+    ///
+    /// With `opening`, the attachment the open's moment holds is taken as the
+    /// baseline. A failed read is logged and sends nothing, as the next change
+    /// sends what it read; false when the socket is gone.
+    async fn show_conversation(
         &self,
         conversation: &ConversationId,
-        replies: impl IntoIterator<Item = &'a demi_shared_types::TextBlock>,
-    ) -> Vec<ConversationAttachment> {
-        attachment_facts(&self.services().conversations, conversation, replies)
-            .await
-            .unwrap_or_else(|error| {
-                tracing::warn!(
-                    %conversation,
-                    error = &error as &dyn std::error::Error,
-                    "the attachments a transcript frame names were not read"
-                );
-                Vec::new()
-            })
-    }
-
-    /// Sends the page what changed of the conversation itself since `shown`,
-    /// in one message: its metadata, its draft when newer than the page's,
-    /// and the attachments agents uploaded since the metadata it was shown.
-    /// A failed read is logged and sends nothing, as the next change sends
-    /// what it read; false when the socket is gone.
-    async fn show_conversation(&self, conversation: &ConversationId, page: &mut PageSocket, shown: &mut Shown) -> bool {
+        page: &mut PageSocket,
+        shown: &mut Shown,
+        opening: bool,
+    ) -> bool {
+        if !shown.follows_any() {
+            return true;
+        }
         let services = self.services();
         let read = async {
             let Some(record) = services
@@ -875,22 +941,34 @@ impl Shard {
             };
             let draft_revision = record.draft_revision;
             let metadata = self.conversation_metadata(record).await?;
+            let saved = match shown.saved {
+                Some(_) => Some(services.control.saved_listing(conversation.clone()).await?),
+                None => None,
+            };
+            let workflows = match shown.workflows {
+                Some(_) => Some(self.conversation_workflows(conversation).await),
+                None => None,
+            };
+            let shares = match shown.shares {
+                Some(_) => Some(self.conversation_shares(conversation).await?),
+                None => None,
+            };
             let draft = if shown.draft.is_some_and(|held| draft_revision > held) {
                 Some(services.control.draft(conversation.clone()).await?)
             } else {
                 None
             };
-            let uploaded = match shown.last_attachment() {
-                Some(held) if metadata.last_attachment > held => services
+            let uploaded = match shown.attached_through {
+                Some(held) if !opening && metadata.last_attachment > held => services
                     .conversations
                     .read(conversation, move |connection| uploaded_after(connection, held))
                     .await?
                     .unwrap_or_default(),
                 _ => Vec::new(),
             };
-            Ok::<_, StorageError>(Some((metadata, draft, uploaded)))
+            Ok::<_, StorageError>(Some((metadata, saved, workflows, shares, draft, uploaded)))
         };
-        let (metadata, draft, uploaded) = match read.await {
+        let (metadata, saved, workflows, shares, draft, uploaded) = match read.await {
             Ok(Some(read)) => read,
             Ok(None) => return true,
             Err(error) => {
@@ -903,11 +981,37 @@ impl Shard {
             }
         };
         let mut frames = Vec::new();
-        if shown.metadata.as_ref() != Some(&metadata) {
-            shown.metadata = Some(metadata.clone());
-            frames.push(ConversationFrame::Conversation {
-                metadata: Box::new(metadata),
-            });
+        shown.attached_through = Some(metadata.last_attachment);
+        if let Some(held) = &mut shown.metadata {
+            let etag = etag_of(&metadata);
+            if *held != etag {
+                held.clone_from(&etag);
+                frames.push(ConversationFrame::Conversation {
+                    metadata: Box::new(metadata),
+                    etag,
+                });
+            }
+        }
+        if let (Some(held), Some(saved)) = (&mut shown.saved, saved) {
+            let etag = etag_of(&saved);
+            if *held != etag {
+                held.clone_from(&etag);
+                frames.push(ConversationFrame::Saved { saved, etag });
+            }
+        }
+        if let (Some(held), Some(workflows)) = (&mut shown.workflows, workflows) {
+            let etag = etag_of(&workflows);
+            if *held != etag {
+                held.clone_from(&etag);
+                frames.push(ConversationFrame::Workflows { workflows, etag });
+            }
+        }
+        if let (Some(held), Some(shares)) = (&mut shown.shares, shares) {
+            let etag = etag_of(&shares);
+            if *held != etag {
+                held.clone_from(&etag);
+                frames.push(ConversationFrame::Shares { shares, etag });
+            }
         }
         if let Some(draft) = draft {
             shown.draft = Some(draft.revision);
@@ -1092,13 +1196,12 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
         .collect()
 }
 
-/// A frame's JSON text. A frame that may carry many blocks, a reset or a
-/// rewrite's patches, is serialized on the blocking pool, since a long one
+/// A frame's JSON text. A frame that may carry many blocks, a rewrite's
+/// patches, is serialized on the blocking pool, since a long one
 /// would hold the shard's thread; none when that pool is gone with its
 /// runtime, which is shutting down.
 async fn serialize(frame: ServerFrame) -> Option<String> {
     let whole = match &frame {
-        ServerFrame::TranscriptReset { .. } => true,
         ServerFrame::TranscriptPatch { patches, .. } => patches
             .iter()
             .any(|patch| matches!(patch, TranscriptPatch::Truncate { .. })),

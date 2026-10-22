@@ -45,11 +45,10 @@ export interface RequestOutputDisplay {
 }
 
 /**
- * What the chips row shows of the request the root agent runs
- * (`docs/decisions/0012-live-output-tokens.md`): the server's reading,
- * with the count rolling within a request, at once for a new request or
- * another conversation, and the last reading kept a moment after the turn;
- * once no reading shows, the speed of the last turn, until the next
+ * What the chips row shows of the request the root agent runs:
+ * the server's reading, with the count rolling within a request, at once for a
+ * new request or another conversation, and the last reading kept a moment after
+ * the turn; once no reading shows, the speed of the last turn, until the next
  * request's reading takes its place.
  *
  * While a request streams its speed follows a clock that ticks once a second

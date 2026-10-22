@@ -158,9 +158,8 @@ export interface MessageFiles extends ConversationFiles {
 }
 
 /**
- * What a reply keeps of the pictures of the Host it shows
- * (`docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`): the copy
- * the backend made of each, by the target as the reply wrote it.
+ * What a reply keeps of the pictures of the Host it shows:
+ * the copy the backend made of each, by the target as the reply wrote it.
  */
 export interface MessagePictures {
   copies: ReadonlyMap<string, PictureCopy>

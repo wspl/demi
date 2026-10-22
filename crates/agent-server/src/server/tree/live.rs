@@ -3,7 +3,7 @@
 //! It holds:
 //!
 //! - the commands whose pages' view changed and was not sent yet;
-//! - the task that sends them to the attached connections that subscribe to
+//! - the task that sends them to the attached connections that follow
 //!   their node at most every [`INTERVAL`], and an end at once;
 //! - the commands that run, which keep the tree from being idle;
 //! - the feed through which each node's shell environments report their
@@ -151,7 +151,7 @@ impl LiveOutput {
     }
 
     /// Sends `view`, of a command of the node `subagent`, the root when
-    /// none, to the connections that subscribe to the node.
+    /// none, to the connections that follow the node.
     fn emit(&self, subagent: Option<NodeId>, view: demi_host_interface::PageView) {
         let node = subagent.unwrap_or_else(|| self.root.clone());
         self.sink.emit_to(&node, shell_output(node.clone(), view));

@@ -54,7 +54,7 @@ export interface FocusRingsReport {
   offenders: RingOffender[]
 }
 
-/** The most pictures a call takes; the report still lists every offender. */
+/** The most pictures a call takes, because they are files on the disk and in the agent's context; the report still lists every offender. */
 const MOST_SHOTS = 40
 /** The most Tab presses of one walk, for a page whose focus never comes round. */
 const MOST_TABS = 600

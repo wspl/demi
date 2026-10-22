@@ -12,8 +12,6 @@ defineProps<{
   overlayStore: OverlayStore
   /** The device's current name. */
   name: string
-  /** The most characters a device's name has; null for no limit. */
-  maxLength: number | null
 }>()
 const emit = defineEmits<{
   close: []
@@ -28,7 +26,6 @@ const emit = defineEmits<{
     :title="t('rename.title')"
     :label="t('rename.label')"
     :name="name"
-    :max-length="maxLength"
     @close="emit('close')"
     @rename="emit('rename', $event)"
   />

@@ -2,12 +2,14 @@ import { apiRequest, jsonBody, readResponse } from './client'
 import {
   fromDraftAnswerSchema,
   savedAnswerSchema,
+  savedListingSchema,
   savedMessageSchema,
   savedRemovedSchema,
   type FromDraftAnswer,
   type SavedRemoved,
   type SavedAnswer,
   type SavedFromDraft,
+  type SavedListing,
   type SavedMessage,
   type SavedSave,
   type SavedWrite,
@@ -17,6 +19,12 @@ import {
 function savedPath(conversationId: string, messageId?: string): string {
   const list = `/conversations/${encodeURIComponent(conversationId)}/saved`
   return messageId === undefined ? list : `${list}/${encodeURIComponent(messageId)}`
+}
+
+/** The conversation's saved messages, read when it opens and followed from its socket. */
+export async function listSaved(conversationId: string, signal: AbortSignal): Promise<SavedListing> {
+  const response = await apiRequest(savedPath(conversationId), { signal })
+  return readResponse(response, savedListingSchema)
 }
 
 /**

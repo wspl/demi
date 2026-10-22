@@ -5,9 +5,16 @@
 //! for the connection, a reply or an event, goes through its one bounded outbox
 //! in causal order; [`FrameRx`] is the outbox's receiving end.
 //!
-//! An event of the tree goes to every attached connection, a node's messages
-//! only to those that subscribe to the node, and a reply only to the
-//! connection whose frame it answers.
+//! An event of the tree goes to every attached connection; the agents' changes
+//! only to those that follow the agents, a node's messages only to those that
+//! follow the node, and a reply only to the connection whose frame it answers.
+//! `open` sends no state, only `opened`: the page read the agents and each
+//! node's latest page by routes before it opened the socket, and its `open` and
+//! its `follow` frames name each value it holds with the version it holds. The
+//! connection registers the follow ([`Follows`]) and compares the version with
+//! the value's current one in one step of the tree
+//! (`crates/agent-server/src/server/tree/following.rs`), and the frames that
+//! follow carry the `Version` the page applies them against.
 //!
 //! Connections that act at once need no rule of their own. Each hands the
 //! session its frames one at a time, and the session takes the frames of all of
@@ -20,7 +27,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::HashSet,
     rc::Rc,
     time::Instant,
 };
@@ -30,18 +37,62 @@ use demi_agent_session::{
 };
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, HeldEdge, RegenerateRequest, Refusal,
-    RemoveOutcome, SendMessage, ServerFrame, SteerOutcome, Version,
+    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, Follow, Followed, Held, RegenerateRequest,
+    Refusal, RemoveOutcome, STORED_EPOCH, SendMessage, ServerFrame, SteerOutcome, Version,
 };
 use demi_provider_common::Ahead;
 use demi_shared_types::{BlockId, NodeId, QueuedMessage, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
+use demi_agent_store::SavedVersions;
 use super::{
     AgentServer,
     content::{ContentResolver, resolve_edit, resolve_message},
-    tree::{Subscribed, Tree},
+    tree::{Following, Tree, compare_stored},
 };
+
+/// What a connection follows of the tree: the agents, and the nodes whose
+/// messages it shows. A follow is registered before its version is compared
+/// ([`Connection::follow`]), so a change committed after the registration is
+/// sent and none is lost between the two. It is shared with the connection's
+/// attachment to the tree.
+#[derive(Default)]
+pub struct Follows {
+    agents: Cell<bool>,
+    nodes: RefCell<HashSet<NodeId>>,
+}
+
+impl Follows {
+    /// Follows the agents' entries and the root's request output.
+    pub fn follow_agents(&self) {
+        self.agents.set(true);
+    }
+
+    pub fn unfollow_agents(&self) {
+        self.agents.set(false);
+    }
+
+    /// Follows the node `node`'s patches until [`unfollow_node`](Self::unfollow_node).
+    pub fn follow_node(&self, node: NodeId) {
+        self.nodes.borrow_mut().insert(node);
+    }
+
+    pub fn unfollow_node(&self, node: &NodeId) {
+        self.nodes.borrow_mut().remove(node);
+    }
+
+    pub fn follows_agents(&self) -> bool {
+        self.agents.get()
+    }
+
+    pub fn follows_node(&self, node: &NodeId) -> bool {
+        self.nodes.borrow().contains(node)
+    }
+
+    fn followed_nodes(&self) -> usize {
+        self.nodes.borrow().len()
+    }
+}
 
 /// The refusal of a frame that needs a session when the connection has
 /// none.
@@ -60,7 +111,7 @@ fn agent_ended() -> Refusal {
 ///
 /// Each entry is the frames of one step, which go to the page in one
 /// message and are applied together; a reply or a lone event is a step of one
-/// frame (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+/// frame.
 pub(crate) struct Outbox {
     sender: RefCell<Option<mpsc::Sender<Vec<ServerFrame>>>>,
     /// Shared with the receiving end, which holds no sender: the channel
@@ -164,12 +215,9 @@ pub struct Connection<H: HostResolver> {
     server: Rc<AgentServer<H>>,
     resolver: Rc<dyn ContentResolver>,
     outbox: Rc<Outbox>,
-    /// The nodes whose messages the page shows, as its `subscribe` and
-    /// `unsubscribe` named them, attached or not.
-    subscribed: Subscribed,
-    /// What the page held of each node it subscribed to before the open,
-    /// which the open's handshake answers.
-    held: RefCell<HashMap<NodeId, Option<HeldEdge>>>,
+    /// What the page follows, as its `open` and its `follow` and `unfollow`
+    /// frames registered it, attached or not.
+    follows: Rc<Follows>,
 }
 
 impl<H: HostResolver> Connection<H> {
@@ -186,8 +234,7 @@ impl<H: HostResolver> Connection<H> {
             server,
             resolver,
             outbox,
-            subscribed: Subscribed::default(),
-            held: RefCell::default(),
+            follows: Rc::default(),
         };
         (connection, frames)
     }
@@ -214,21 +261,20 @@ impl<H: HostResolver> Connection<H> {
     /// becomes, and the page waits for the answer of the `send_saved` it sent.
     pub async fn handle_as(&self, frame: ClientFrame, command: ClientFrameKind) -> bool {
         match frame {
-            ClientFrame::Open { agents, .. } => {
-                self.open(agents.as_ref()).await;
+            ClientFrame::Open { follows, .. } => {
+                self.open(follows).await;
                 false
             }
             ClientFrame::Close {} => {
                 self.close().await;
                 false
             }
-            ClientFrame::Subscribe { node, held } => {
-                self.subscribe(node, held).await;
+            ClientFrame::Follow(Follow { value, holds }) => {
+                self.follow(value, &holds).await;
                 false
             }
-            ClientFrame::Unsubscribe { node } => {
-                self.subscribed.borrow_mut().remove(&node);
-                self.held.borrow_mut().remove(&node);
+            ClientFrame::Unfollow { value } => {
+                self.follows.unregister(&value);
                 false
             }
             frame => match self.attached() {
@@ -301,48 +347,121 @@ impl<H: HostResolver> Connection<H> {
 
     /// The agents' version once the step of the command just taken reached
     /// every page: an answer names it, so the page takes the command as done
-    /// only once it holds the step
-    /// (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    /// only once it holds the step.
     async fn shown_at(tree: &Tree<H>, session: &AgentSession) -> Option<Version> {
         session.delivered().await;
         Some(tree.agents_version())
     }
 
-    /// Shows the node `node`'s messages on this connection from now on: an
-    /// attached connection receives its transcript now, from the blocks the
-    /// page `held`, a closed node's from its last checkpoint, and the open's
-    /// handshake sends it otherwise.
-    async fn subscribe(&self, node: NodeId, held: Option<HeldEdge>) {
-        self.subscribed.borrow_mut().insert(node.clone());
-        match self.attached() {
-            Some(tree) => {
-                for frame in tree.node_frames(&node, held.as_ref()) {
-                    self.send(frame);
-                }
-                self.send_closed(&tree, &node, held.as_ref()).await;
-            }
-            None => {
-                self.held.borrow_mut().insert(node, held);
+    /// What this connection follows, for a test that registers a follow
+    /// without its frame.
+    #[cfg(feature = "testing")]
+    pub(crate) fn follows(&self) -> Rc<Follows> {
+        self.follows.clone()
+    }
+
+    /// Follows `value` at the version `held`: registers the follow, then
+    /// compares the version with the value's current one, in one step of the
+    /// tree, and answers the frames that bring the page current, or `stale`,
+    /// which ends the follow.
+    ///
+    /// A page that holds what it read while no session lived holds the
+    /// stored version, which is compared with what the store holds, read
+    /// before the step.
+    async fn follow(&self, value: Followed, held: &Held) {
+        self.follows.register(&value);
+        let saved = self.saved_for(std::slice::from_ref(held)).await;
+        self.compare(value, held, saved.as_ref());
+    }
+
+    /// What the store holds, when a follow holds a stored version.
+    async fn saved_for(&self, held: &[Held]) -> Option<SavedVersions> {
+        let stored = held
+            .iter()
+            .any(|held| matches!(held, Held::Version { version, .. } if version.epoch == STORED_EPOCH));
+        if !stored {
+            return None;
+        }
+        match (self.server.deps.stores)(&self.root).saved_versions().await {
+            Ok(saved) => Some(saved),
+            Err(error) => {
+                tracing::warn!(root = %self.root, %error, "the stored versions could not be read");
+                None
             }
         }
     }
 
-    /// Sends the closed node `node`'s transcript, when the page does not hold
-    /// its closed version, while the connection still subscribes to it.
-    async fn send_closed(&self, tree: &Rc<Tree<H>>, node: &NodeId, held: Option<&HeldEdge>) {
-        match tree.closed_frames(node, held).await {
-            Ok(Some(frame)) if self.subscribed.borrow().contains(node) => self.send(frame),
-            Ok(_) => {}
-            Err(error) => self.error(AgentCode::FrameFailed, error),
+    /// Compares a follow registered already with the version it holds and
+    /// sends what brings the page current.
+    ///
+    /// A connection with no tree attached, as of an archived conversation or
+    /// one with no model yet, is compared with the store alone.
+    fn compare(&self, value: Followed, held: &Held, saved: Option<&SavedVersions>) {
+        let following = match self.attached() {
+            Some(tree) => tree.compare(&value, held, saved),
+            None => compare_stored(&value, held, saved),
+        };
+        let (value_name, node) = match &value {
+            Followed::Agents => ("agents", None),
+            Followed::Transcript { node } => ("transcript", Some(node.to_string())),
+            _ => ("other", None),
+        };
+        let (held_revision, held_epoch) = match held {
+            Held::Version { version, .. } => (Some(version.revision), Some(version.epoch.as_str())),
+            Held::Tag { .. } => (None, None),
+        };
+        match following {
+            Following::Current(frames) if !frames.is_empty() => {
+                let rebased = frames.iter().any(|frame| matches!(frame, ServerFrame::Rebased { .. }));
+                tracing::info!(
+                    event = "follow.answered",
+                    conversation = %self.root,
+                    value = value_name,
+                    node,
+                    held_revision,
+                    held_epoch,
+                    sent = if rebased { "rebased" } else { "frames" },
+                    frames = frames.len(),
+                    "a follow was answered"
+                );
+                let _ = self.outbox.push_step(frames);
+            }
+            Following::Current(_) => {
+                tracing::info!(
+                    event = "follow.answered",
+                    conversation = %self.root,
+                    value = value_name,
+                    node,
+                    held_revision,
+                    held_epoch,
+                    sent = "nothing",
+                    "a follow was answered"
+                );
+            }
+            Following::Stale => {
+                tracing::info!(
+                    event = "follow.answered",
+                    conversation = %self.root,
+                    value = value_name,
+                    node,
+                    held_revision,
+                    held_epoch,
+                    sent = "stale",
+                    "a follow was answered"
+                );
+                self.follows.unregister(&value);
+                self.send(ServerFrame::Stale { value });
+            }
         }
     }
 
     /// Attaches the connection to the conversation's tree beside any other,
-    /// restoring the tree when it is not live.
+    /// restoring the tree when it is not live, and follows what the page named
+    /// in its `open`.
     ///
     /// A live tree already follows the conversation's model selection. A second
     /// `open` on one connection is refused.
-    async fn open(&self, agents: Option<&Version>) {
+    async fn open(&self, follows: Vec<Follow>) {
         if self.attached().is_some() {
             self.reject(
                 ClientFrameKind::Open,
@@ -369,23 +488,28 @@ impl<H: HostResolver> Connection<H> {
         // Each live node's context usage is read before the attach, which
         // takes its frames in one step with nothing awaited.
         tree.refresh_context().await;
+        // What the store holds is read before the attach too, for the pages
+        // that hold what they read while no session lived.
+        let held: Vec<Held> = follows.iter().map(|follow| follow.holds.clone()).collect();
+        let saved = self.saved_for(&held).await;
         let building = Instant::now();
-        let held = std::mem::take(&mut *self.held.borrow_mut());
-        let frames = tree.attach(self.id, self.outbox.clone(), self.subscribed.clone(), agents, &held);
-        // The closed nodes it subscribes to follow the handshake: their
-        // transcripts are read from the store, and nothing changes them.
-        let nodes: Vec<NodeId> = self.subscribed.borrow().iter().cloned().collect();
-        for node in nodes {
-            self.send_closed(&tree, &node, held.get(&node).and_then(Option::as_ref)).await;
+        tree.attach(self.id, self.outbox.clone(), self.follows.clone());
+        // In the step that attached it, with nothing awaited between: no
+        // change falls between the attachment and the follows.
+        let followed = follows.len();
+        for Follow { value, holds } in follows {
+            self.follows.register(&value);
+            self.compare(value, &holds, saved.as_ref());
         }
         tracing::info!(
-            root = %self.root,
+            event = "conversation.opened",
+            conversation = %self.root,
             was_live,
+            follows = followed,
             lock_wait_ms,
             open_ms,
-            handshake_ms = building.elapsed().as_millis(),
-            handshake_frames = frames,
-            subscribed = self.subscribed.borrow().len(),
+            attach_ms = building.elapsed().as_millis(),
+            followed_nodes = self.follows.followed_nodes(),
             "a page opened the conversation"
         );
         // The open is answered. The user will likely send next: its request
@@ -444,7 +568,6 @@ impl<H: HostResolver> Connection<H> {
     async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame, kind: ClientFrameKind) -> bool {
         let session = tree.root().session();
         match frame {
-            ClientFrame::AgentsSince { held } => self.send(tree.agents_since(Some(&held))),
             ClientFrame::Send(SendMessage {
                 message_id,
                 content,
@@ -599,9 +722,9 @@ impl<H: HostResolver> Connection<H> {
             }
             ClientFrame::Open { .. }
             | ClientFrame::Close {}
-            | ClientFrame::Subscribe { .. }
-            | ClientFrame::Unsubscribe { .. } => {
-                unreachable!("open, close and subscriptions are handled before dispatch")
+            | ClientFrame::Follow(_)
+            | ClientFrame::Unfollow { .. } => {
+                unreachable!("open, close, follow and unfollow are handled before dispatch")
             }
         }
         false

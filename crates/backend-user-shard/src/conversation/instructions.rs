@@ -165,6 +165,9 @@ impl ContextSource for Instructions {
 }
 
 /// How many times a file that grew while it was read is read again.
+///
+/// Bounded so a file that keeps growing ends the read instead of repeating it
+/// without end.
 const REREADS: usize = 3;
 
 /// The project files for a node in `cwd`, root first, whole.

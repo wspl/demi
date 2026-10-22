@@ -124,11 +124,6 @@ impl PermissionShard for Shard {
 
     fn raised(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            #[cfg(feature = "testing")]
-            self.services()
-                .permissions
-                .pass(crate::holds::PermissionStep::Raised)
-                .await;
         })
     }
 }

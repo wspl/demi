@@ -74,15 +74,12 @@ export function userActions(viewer: SettingsUser, target: SettingsUser): UserAct
   ]
 }
 
-/** The most a Cloud disk may be, in GB. */
-export const CLOUD_GB_MAX = 1024
-
-/** The size `text` names in GB, a whole number from 1 to 1024, or null when it names none. */
+/** The size `text` names in GB, a whole number of at least 1, or null when it names none. */
 export function parseCloudGb(text: string): number | null {
   const trimmed = text.trim()
   if (!/^\d+$/.test(trimmed)) {
     return null
   }
   const size = Number(trimmed)
-  return size >= 1 && size <= CLOUD_GB_MAX ? size : null
+  return size >= 1 && Number.isSafeInteger(size) ? size : null
 }

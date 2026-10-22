@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AskRequest {
-    #[garde(length(chars, min = 1, max = 64))]
+    #[garde(length(chars, min = 1))]
     pub id: String,
     #[garde(skip)]
     pub block_id: BlockId,

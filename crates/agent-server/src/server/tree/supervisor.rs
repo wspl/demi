@@ -95,13 +95,13 @@ use demi_agent_store::{ChildDirectory, ClosePhase, Kind, NodeClose, NodeRecord, 
 use demi_agent_transcript::last_failure;
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
-    JobModel, JobPhase, ServerFrame, TranscriptPatch,
+    JobModel, JobPhase, TranscriptPatch,
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome,
-    ModelSelection, NodeId, QueuedMessage, Sender, Sequence, Timestamp, ToolCallBlock,
+    ModelSelection, NodeId, QueuedMessage, Sender, Sequence, SessionPhase, Timestamp, ToolCallBlock,
     ToolCallStatus, TurnId, UserContentBlock,
     output::{self, Fields, Table, seconds},
 };
@@ -112,7 +112,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{StoppingShells, Tree, agents, cut_path, note_agent, unended_views};
+use super::{StoppingShells, Tree, agents, cut_path, note_agent, note_running, unended_views};
 use super::profiles::{Limits, SetupFor};
 use crate::{
     Node,
@@ -122,8 +122,14 @@ use crate::{
 
 /// The bound of `show`'s last assistant text and of an archived child's
 /// failure, in UTF-8 bytes.
+///
+/// Bounded because the text goes into the parent model's context window, which
+/// the vendor limits.
 const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// The most recent tool calls `show` lists.
+///
+/// Bounded for the same reason: `show`'s answer goes into the parent model's
+/// context window.
 const SHOW_RECENT_TOOLS: usize = 8;
 /// Why the root's directory does not change (`crates/agent-server/src/node/mod.rs`).
 const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.";
@@ -939,7 +945,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Registers a new live child, shows it in its agent entry, sends its
-    /// transcript to the connections that subscribe to it, and forwards its
+    /// transcript to the connections that follow it, and forwards its
     /// session's changes from then on.
     fn attach_child(&self, node: Node<H>, runs_on: JobModel) -> Rc<Child<H>> {
         let node = Rc::new(node);
@@ -949,15 +955,18 @@ impl<H: HostResolver> Tree<H> {
                 let child = child.clone();
                 let sink = self.sink.clone();
                 let agents = self.agents.clone();
+                let readings = self.readings.clone();
                 let clock = self.clock.clone();
                 let id = node.id().clone();
                 let paths = self.paths.clone();
+                let running = Cell::new(node.session().phase() != SessionPhase::Idle);
                 // A step's frames go to each page as one change.
                 move |step: &[SessionEvent]| agents.step(|| for event in step {
                     cut_path(&paths, event);
                     note_agent(&agents, &id, event);
+                    note_running(&sink, &id, &running, event);
                     match event {
-                        SessionEvent::TranscriptChanged { patches, revision } => {
+                        SessionEvent::TranscriptChanged { patches, version } => {
                             if let Some(child) = child.upgrade() {
                                 let now = clock.now().as_millisecond();
                                 let session = child.node.session();
@@ -967,13 +976,7 @@ impl<H: HostResolver> Tree<H> {
                                     now,
                                 );
                             }
-                            sink.emit_to(&id, ServerFrame::TranscriptPatch {
-                                node: id.clone(),
-                                patches: patches.clone(),
-                                revision: *revision,
-                                failures: None,
-                                attachments: Vec::new(),
-                            });
+                            sink.patched(&id, patches, version, running.get());
                         }
                         SessionEvent::ActionFailed { report } => {
                             if let Some(child) = child.upgrade() {
@@ -981,6 +984,7 @@ impl<H: HostResolver> Tree<H> {
                                 child.wake.notify_one();
                             }
                         }
+                        SessionEvent::OutputChanged { output } => readings.changed(&id, output),
                         _ => {}
                     }
                 })
@@ -1008,11 +1012,6 @@ impl<H: HostResolver> Tree<H> {
             entry.pending_calls = session.pending_calls();
         });
         self.bump();
-        if self.sink.subscribes(child.id()) {
-            for frame in self.node_frames(child.id(), None) {
-                self.sink.emit_to(child.id(), frame);
-            }
-        }
         child
     }
 

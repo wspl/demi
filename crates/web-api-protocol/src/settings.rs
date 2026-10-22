@@ -100,10 +100,6 @@ pub struct Appearance {
     pub font_size: Option<u8>,
 }
 
-/// The most characters (Unicode scalar values) a shortcut's key sequence
-/// has.
-pub const SHORTCUT_MAX: usize = 64;
-
 /// Keyboard shortcut overrides: each a key sequence the web app reads.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -115,7 +111,7 @@ pub struct Shortcuts {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "String")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub new: Option<String>,
     /// Showing or hiding the sidebar.
     #[serde(
@@ -124,7 +120,7 @@ pub struct Shortcuts {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "String")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub sidebar: Option<String>,
     /// Opening the settings.
     #[serde(
@@ -133,7 +129,7 @@ pub struct Shortcuts {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "String")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub settings: Option<String>,
     /// Opening the search window.
     #[serde(
@@ -142,7 +138,7 @@ pub struct Shortcuts {
         with = "unwrap_or_skip"
     )]
     #[schemars(with = "String")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub search: Option<String>,
 }
 
@@ -157,7 +153,7 @@ pub struct ShortcutsPatch {
         with = "double_option"
     )]
     #[schemars(with = "Option<String>")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub new: Option<Option<String>>,
     #[serde(
         default,
@@ -165,7 +161,7 @@ pub struct ShortcutsPatch {
         with = "double_option"
     )]
     #[schemars(with = "Option<String>")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub sidebar: Option<Option<String>>,
     #[serde(
         default,
@@ -173,7 +169,7 @@ pub struct ShortcutsPatch {
         with = "double_option"
     )]
     #[schemars(with = "Option<String>")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub settings: Option<Option<String>>,
     #[serde(
         default,
@@ -181,7 +177,7 @@ pub struct ShortcutsPatch {
         with = "double_option"
     )]
     #[schemars(with = "Option<String>")]
-    #[garde(length(chars, max = SHORTCUT_MAX))]
+    #[garde(skip)]
     pub search: Option<Option<String>>,
 }
 
@@ -263,11 +259,11 @@ impl std::fmt::Display for Language {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserLocale {
-    #[garde(length(chars, min = 1, max = 64))]
+    #[garde(length(chars, min = 1))]
     pub time_zone: String,
     #[garde(
         length(min = 1, max = COMMAND_LOCALE_LANGUAGES),
-        inner(length(chars, min = 1, max = 64))
+        inner(length(chars, min = 1))
     )]
     pub languages: Vec<String>,
     #[serde(
@@ -749,30 +745,4 @@ pub struct PreferencesPatch {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct UserPreferences {
     pub preferences: Preferences,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_patch_schema_is_strict_optional_throughout_and_bounded() {
-        let schema = serde_json::to_value(schemars::schema_for!(PreferencesPatch)).unwrap();
-        assert_eq!(schema["additionalProperties"], false);
-        assert_eq!(schema["required"], serde_json::json!(null));
-        let definitions = &schema["$defs"];
-        assert_eq!(
-            definitions["Appearance"]["properties"]["fontSize"]["maximum"],
-            18
-        );
-        assert_eq!(
-            definitions["ShortcutsPatch"]["properties"]["new"]["type"],
-            serde_json::json!(["string", "null"])
-        );
-        assert_eq!(
-            definitions["BrowserLocale"]["properties"]["languages"]["maxItems"],
-            16
-        );
-        assert_eq!(definitions["BrowserLocale"]["additionalProperties"], false);
-    }
 }

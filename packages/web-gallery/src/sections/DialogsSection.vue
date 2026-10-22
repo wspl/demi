@@ -628,7 +628,6 @@ const resetPhases: {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :name="renamedDevice"
-                :max-length="64"
                 @close="close"
                 @rename="renamedDevice = $event"
               />

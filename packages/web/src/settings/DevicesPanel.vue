@@ -11,7 +11,6 @@ import { useDeviceSettings } from './devices'
 import { useExposedPortSettings } from './exposed-ports'
 import { useSettingsAddress } from './address'
 import { directStatus, measureDirect, tryDirect, watchDirect } from '../direct'
-import { changeDeviceSchema } from '../api/generated/web-api'
 
 const resources = useResources()
 const product = useProduct()
@@ -21,8 +20,6 @@ const installCommands = useInstallCommands()
 const address = useSettingsAddress()
 const { cloud, resetError } = storeToRefs(settings)
 const { revoke, rename, setRoute, resetCloud } = settings
-/** The backend's limit on a device's name, as its schema states it. */
-const nameMaxLength = changeDeviceSchema.shape.name.unwrap().unwrap().maxLength
 
 /** Each paired device, with when it was paired and how this page reaches it. */
 const devices = computed<SettingsDevice[]>(() =>
@@ -60,7 +57,6 @@ watch(
     :runner-release="product.snapshot?.runnerRelease ?? null"
     :projects="resources.projects"
     :load="product.load"
-    :name-max-length="nameMaxLength"
     :cloud="cloud"
     :reset-error="resetError"
     :overlay-store="appOverlayStore"

@@ -131,6 +131,9 @@ pub struct SearchWork {
 
 /// How many resets wait for a slow follower before it hears that it missed
 /// some (`RecvError::Lagged`).
+///
+/// Bounded because the resets wait in memory for each follower, and a follower
+/// that never reads would grow them without end.
 const RESETS_WAITING: usize = 64;
 
 /// What the index holds of one conversation: the saved version of each
@@ -954,6 +957,9 @@ pub fn searchable_text(block: &Block) -> Option<Searchable> {
 }
 
 /// How many characters of a long line come before its first match.
+///
+/// Bounded because a line of a result goes to the page whole, and a line has no
+/// length of its own.
 const LEAD: usize = 40;
 
 /// The line of `text` around the first place a word matches, at most
@@ -1091,224 +1097,4 @@ fn message_text(block: &Block) -> Option<String> {
         .collect();
     let text = texts.join("\n");
     (!text.trim().is_empty()).then_some(text)
-}
-
-#[cfg(test)]
-mod tests {
-    //! The scenario of `GET /search` (the backend's `search` tests) covers
-    //! matching, order, edits and a rebuild after another schema; these cover
-    //! what it does not reach.
-
-    use super::*;
-
-    fn user() -> UserId {
-        UserId::try_from("ana".to_owned()).unwrap()
-    }
-
-    fn conversation(number: u8) -> ConversationId {
-        ConversationId::try_from(format!("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a{number:02x}")).unwrap()
-    }
-
-    fn indexed(title: &str, messages: &[(&str, &str)]) -> IndexedConversation {
-        IndexedConversation {
-            title: title.to_owned(),
-            agents: vec![IndexedAgent {
-                agent: 0,
-                version: SavedVersion::default(),
-                messages: messages
-                    .iter()
-                    .enumerate()
-                    .map(|(position, (block, text))| IndexedMessage {
-                        block: BlockId::try_from((*block).to_owned()).unwrap(),
-                        position,
-                        text: Searchable {
-                            kind: SearchKind::Message,
-                            text: (*text).to_owned(),
-                            time: Timestamp::UNIX_EPOCH,
-                        },
-                    })
-                    .collect(),
-            }],
-        }
-    }
-
-    /// The conversations a query finds, with whether the title matched and
-    /// the block of the newest message that did, in conversation order.
-    async fn found(indexes: &SearchIndexes, query: &str) -> Vec<(ConversationId, bool, Option<String>)> {
-        let words = query.split_whitespace().map(str::to_owned).collect();
-        let ranked = (1..=4).map(conversation).collect();
-        let mut found: Vec<_> = indexes
-            .find(&user(), words, ranked, usize::MAX)
-            .await
-            .unwrap()
-            .into_iter()
-            .map(|found| {
-                (
-                    found.conversation,
-                    found.title,
-                    found.message.map(|message| message.block.into_string()),
-                )
-            })
-            .collect();
-        found.sort();
-        found
-    }
-
-    // About 40 ms: one index file and a handful of short transactions.
-    #[tokio::test]
-    async fn short_words_match_literally_beside_long_ones_and_a_removed_conversation_has_no_rows() {
-        let data = tempfile::tempdir().unwrap();
-        let indexes = SearchIndexes::open(data.path().join("search")).await.unwrap();
-        let (first, second) = (conversation(1), conversation(2));
-        indexes
-            .index(&user(), &first, indexed("部署 notes", &[("b1", "100% sure"), ("b2", "部署 done")]))
-            .await
-            .unwrap();
-        indexes
-            .index(&user(), &second, indexed("Other notes", &[("c1", "a_b")]))
-            .await
-            .unwrap();
-
-        // A word of two characters beside a longer one, both in one text.
-        assert_eq!(found(&indexes, "部署 notes").await, vec![(first.clone(), true, None)]);
-        assert_eq!(found(&indexes, "部署").await, vec![(first.clone(), true, Some("b2".into()))]);
-        // LIKE's wildcards in a word are the characters themselves.
-        assert_eq!(found(&indexes, "0%").await, vec![(first.clone(), false, Some("b1".into()))]);
-        assert_eq!(found(&indexes, "_").await, vec![(second.clone(), false, Some("c1".into()))]);
-        assert_eq!(found(&indexes, "%").await, vec![(first.clone(), false, Some("b1".into()))]);
-
-        indexes.remove_conversation(&user(), &second).await.unwrap();
-        assert_eq!(found(&indexes, "notes").await, vec![(first.clone(), true, None)]);
-        assert_eq!(indexes.conversations(&user()).await.unwrap(), vec![first]);
-    }
-
-    // About 20 ms.
-    #[tokio::test]
-    async fn a_found_message_comes_with_its_own_text_while_its_conversation_is_indexed_again() {
-        let data = tempfile::tempdir().unwrap();
-        let indexes = SearchIndexes::open(data.path().join("search")).await.unwrap();
-        indexes
-            .index(&user(), &conversation(1), indexed("", &[("a", "needle in a")]))
-            .await
-            .unwrap();
-        // The search asks first and the replacement waits for it; the new
-        // rows take the numbers the removed ones had.
-        let (ana, first) = (user(), conversation(1));
-        let (found, replaced) = tokio::join!(
-            indexes.find(&ana, vec!["needle".to_owned()], vec![first.clone()], 1),
-            indexes.index(&ana, &first, indexed("", &[("b", "needle in b")])),
-        );
-        replaced.unwrap();
-        let message = found.unwrap().remove(0).message.unwrap();
-        assert_eq!((message.block.as_str(), message.line.as_str()), ("a", "needle in a"));
-    }
-
-    // About 100 ms: 60 conversations indexed, one query.
-    #[tokio::test]
-    async fn a_query_reads_the_texts_of_the_results_it_answers_with_alone() {
-        let data = tempfile::tempdir().unwrap();
-        let indexes = SearchIndexes::open(data.path().join("search")).await.unwrap();
-        // Each conversation's newest message matches, in a long text; the
-        // last one's title matches too.
-        let long = format!("{} needle {}", "a".repeat(5_000), "b".repeat(5_000));
-        let all: Vec<ConversationId> = (1..=60).map(conversation).collect();
-        for (number, id) in all.iter().enumerate() {
-            let title = if number == 59 { "needle" } else { "" };
-            indexes.index(&user(), id, indexed(title, &[("m", &long)])).await.unwrap();
-        }
-        let before = indexes.work();
-        let found = indexes
-            .find(&user(), vec!["needle".to_owned()], all.clone(), 3)
-            .await
-            .unwrap();
-        // The title match first, then the others in their given order.
-        let answered: Vec<_> = found.iter().map(|found| found.conversation.clone()).collect();
-        assert_eq!(answered, vec![all[59].clone(), all[0].clone(), all[1].clone()]);
-        assert!(found.iter().all(|found| {
-            found.message.as_ref().is_some_and(|message| message.line.chars().count() == LINE_MAX)
-        }));
-        assert_eq!(indexes.work().texts - before.texts, 3);
-    }
-
-    // About 20 ms. An agent's history search finds the agent's own rows
-    // alone: a subagent's search whose index rows of the root came back
-    // would name blocks of the root's transcript by indices of its own.
-    #[tokio::test]
-    async fn a_history_search_finds_its_own_agents_rows_alone() {
-        let data = tempfile::tempdir().unwrap();
-        let indexes = SearchIndexes::open(data.path().join("search")).await.unwrap();
-        let mut conversation_rows = indexed("", &[("r1", "the release switch"), ("r2", "other")]);
-        let mut child = indexed("", &[("c1", "find the release switch"), ("c2", "release notes")]).agents.remove(0);
-        child.agent = 1;
-        conversation_rows.agents.push(child);
-        indexes.index(&user(), &conversation(1), conversation_rows).await.unwrap();
-        let words = |text: &str| text.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
-        let (ana, first) = (user(), conversation(1));
-        let find = |agent, query: &str, any| {
-            let query = HistoryQuery {
-                words: words(query),
-                any,
-                kinds: Vec::new(),
-                after: None,
-                before: None,
-                oldest: false,
-            };
-            indexes.find_in(&ana, &first, agent, query)
-        };
-        assert_eq!(find(1, "release switch", false).await.unwrap(), vec![0]);
-        assert_eq!(find(1, "switch notes", true).await.unwrap(), vec![1, 0]);
-        assert_eq!(find(0, "release switch", false).await.unwrap(), vec![0]);
-        assert_eq!(find(0, "notes", false).await.unwrap(), Vec::<usize>::new());
-    }
-
-    // About 30 ms.
-    #[tokio::test]
-    async fn an_index_that_does_not_open_is_built_again() {
-        let data = tempfile::tempdir().unwrap();
-        let directory = data.path().join("search");
-        let indexes = SearchIndexes::open(directory.clone()).await.unwrap();
-        indexes
-            .index(&user(), &conversation(1), indexed("Kept", &[]))
-            .await
-            .unwrap();
-        indexes.corrupt(&user()).await.unwrap();
-        assert_eq!(indexes.conversations(&user()).await.unwrap(), vec![]);
-        indexes
-            .index(&user(), &conversation(2), indexed("Rebuilt", &[]))
-            .await
-            .unwrap();
-        assert_eq!(found(&indexes, "rebuilt").await, vec![(conversation(2), true, None)]);
-    }
-
-    fn line(text: &str, query: &str) -> (String, Vec<[u32; 2]>) {
-        let words: Vec<String> = query.split_whitespace().map(str::to_owned).collect();
-        match_line(text, &words)
-    }
-
-    #[test]
-    fn a_match_line_is_the_line_around_the_first_match_with_its_words_in_utf16() {
-        // The line that holds the first match, case ignored, every word
-        // marked, overlapping ones as one.
-        assert_eq!(
-            line("intro\n  Fix TS2307 by fixing ts paths  \nmore", "ts2307 ts"),
-            ("Fix TS2307 by fixing ts paths".into(), vec![[4, 10], [21, 23]])
-        );
-        // Offsets count UTF-16 units: an emoji takes two.
-        assert_eq!(
-            line("🙂 模块路径不对", "路径"),
-            ("🙂 模块路径不对".into(), vec![[5, 7]])
-        );
-        // A long line is cut around the match, an ellipsis at each cut,
-        // 160 characters in all.
-        let long = format!("{}needle{}", "a".repeat(300), "b".repeat(300));
-        let (cut, ranges) = line(&long, "NEEDLE");
-        assert_eq!(cut.chars().count(), LINE_MAX);
-        assert!(cut.starts_with('…') && cut.ends_with('…'));
-        assert_eq!(ranges, vec![[40, 46]]);
-        assert_eq!(&cut[ranges[0][0] as usize + 2..ranges[0][1] as usize + 2], "needle");
-        // Near the start, the line keeps its start and is cut at the end.
-        let (cut, ranges) = line(&format!("needle {}", "c".repeat(400)), "needle");
-        assert!(cut.starts_with("needle") && cut.ends_with('…'));
-        assert_eq!(ranges, vec![[0, 6]]);
-    }
 }

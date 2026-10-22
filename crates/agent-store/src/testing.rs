@@ -802,6 +802,10 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
+    fn saved_versions(&self) -> LocalBoxFuture<'_, Result<crate::SavedVersions, StoreError>> {
+        Box::pin(async move { Ok(crate::SavedVersions::default()) })
+    }
+
     fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>> {
         Box::pin(async move {
             let stored = self.stored.borrow();

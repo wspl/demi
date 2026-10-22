@@ -3,11 +3,10 @@ import { ensureFileIconTheme } from '../files/file-icon-theme'
 import { loadHighlighterWithCommonLanguages } from '../markdown/highlight'
 import { loadKatex } from '../markdown/math'
 
-// The one owner of loading what regions need
-// (`docs/decisions/0033-a-region-draws-once.md`). Each renderer has one loader,
-// idempotent, which a region that needs its renderer also calls on its own
-// when it is shown before this runs; this runs them all once the first
-// conversation has shown:
+// The one owner of loading what regions need.
+// Each renderer has one loader, idempotent, which a region that needs its
+// renderer also calls on its own when it is shown before this runs; this runs
+// them all once the first conversation has shown:
 //
 // - the highlighter with its common languages (`markdown/highlight.ts`)
 // - KaTeX and its fonts (`markdown/math.ts`)

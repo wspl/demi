@@ -82,6 +82,10 @@ pub fn protocol() -> Vec<Root> {
         // (`packages/web-ui/src/agent/request-output.ts`).
         receives::<frames::TurnSpeed>(),
         receives::<core::Block>(),
+        // The versions of a page's blocks, which the client's reads of a
+        // transcript carry into what the page holds
+        // (`packages/conversation-client/src/transcript.ts`).
+        receives::<frames::BlockVersions>(),
         receives::<core::ProviderModelList>(),
         receives::<core::AuthState>(),
         receives::<core::RuntimeState>(),
@@ -140,12 +144,13 @@ pub fn web() -> Vec<Root> {
         sends::<sessions::HandoffSpend>(),
         receives::<state::ProductState>(),
         receives::<state::SyncEvent>(),
-        sends::<state::PageShowing>(),
+        sends::<state::PageMessage>(),
         receives::<settings::Settings>(),
         receives::<settings::UserPreferences>(),
         sends::<settings::PreferencesPatch>(),
         sends::<plugins::PluginSwitch>(),
         sends::<instructions::InstructionsBody>(),
+        receives::<instructions::InstructionsAnswer>(),
         receives::<push::PushKey>(),
         sends::<push::PushSubscriptionBody>(),
         receives::<push::PushMessage>(),
@@ -165,6 +170,7 @@ pub fn web() -> Vec<Root> {
         receives::<automations::HolidayCountries>(),
         sends::<automations::AutomationPatch>(),
         sends::<automations::RunNow>(),
+        receives::<subagents::SubagentSettings>(),
         sends::<subagents::SubagentsPatch>(),
         sends::<subagents::NewProfile>(),
         sends::<subagents::ProfilePatch>(),

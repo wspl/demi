@@ -2,14 +2,14 @@ import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { apiRequest, jsonBody } from '../api/client'
 import type { InstructionsBody } from '../api/generated/web-api'
-import { useProduct } from '../state/product'
+import { useHeldList, useProduct } from '../state/product'
 
 /**
  * The user's personal instructions as the Instructions section saves them. A save's
  * answer goes into the product state at once; the channel brings the same part to
  * every other page.
  */
-export const useInstructionSettings = defineStore('instruction-settings', () => {
+const useInstructionStore = defineStore('instruction-settings', () => {
   const product = useProduct()
   const text = computed(() => product.snapshot?.instructions ?? null)
 
@@ -25,3 +25,9 @@ export const useInstructionSettings = defineStore('instruction-settings', () => 
 
   return { text, save }
 })
+
+/** The instruction settings, which hold the user's instructions while a view shows them. */
+export function useInstructionSettings(): ReturnType<typeof useInstructionStore> {
+  useHeldList('instructions')
+  return useInstructionStore()
+}

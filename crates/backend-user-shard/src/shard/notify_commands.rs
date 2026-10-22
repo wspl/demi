@@ -1,7 +1,6 @@
 //! The product's `demi notify` group.
 //!
-//! - `send` sends the user a notification from the conversation, at most 3 a
-//!   minute and 30 an hour.
+//! - `send` sends the user a notification from the conversation.
 //! - `status` says whether one would reach the user.
 //!
 //! Neither needs a permission, and no command changes which events notify, which
@@ -20,6 +19,8 @@ use super::Shard;
 use crate::conversation::organize::{failed, refused, verb};
 
 /// The longest title, and the longest body, in characters.
+///
+/// Bounded because the push services take a message of about 4 KB at most.
 const TITLE_MAX: usize = 80;
 const BODY_MAX: usize = 200;
 
@@ -87,11 +88,6 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     if title.is_empty() {
         return Err(refused("the title is blank"));
     }
-    let now = shard.services().clock.now();
-    shard
-        .notifications()
-        .take(&conversation, now)
-        .map_err(failed)?;
     let message = PushMessage::Agent {
         conversation_id: conversation.clone(),
         id: uuid::Uuid::new_v4().to_string(),

@@ -8,45 +8,61 @@
 //! Client frames are strict: an unknown field is refused. Server frames are
 //! tolerant, so a page accepts fields it does not know.
 //!
-//! # Nodes and subscriptions
+//! # Nodes and what a socket follows
 //!
 //! Every agent of a conversation, the root, a subagent or a side question, is
-//! a node of its tree, named by its id; the root's is the conversation's. A
-//! page subscribes to each node it shows and ends the subscription when it
-//! stops showing it, and only subscribed nodes' messages reach it
-//! (`docs/decisions/0009-agent-sessions-and-sync.md`).
+//! a node of its tree, named by its id; the root's is the conversation's.
+//!
+//! The socket carries changes and answers no read.
+//! A read never needs the socket: the page reads what it shows by the web API's
+//! routes, draws it, and opens the socket after the reads it follows have
+//! answered. Its `open` names each value it holds and follows with the version
+//! it holds ([`Follow`]); a value it reads later, such as a subagent chosen
+//! afterwards, it follows by a `follow` frame of its own, and `unfollow` ends a
+//! follow:
+//!
+//! - the conversation's metadata, its saved messages, its workflows and its
+//!   shares are whole values, which carry an entity tag;
+//! - the conversation's agents and each node's transcript carry a [`Version`].
+//!
+//! The server registers the follow, then compares the value's current version
+//! with the one held, where the value changes, so no change falls between the
+//! two: the same version sends nothing, another whole value is sent as it is,
+//! and a transcript past the version held is sent the patches after it from
+//! the recent patches of its running node. A version no recent change reaches
+//! is answered `stale`: the follow ends, and the page reads the value again
+//! and follows it again. A page that holds a version of the store, read
+//! before a tree was restored from it, is answered `rebased` when the tree
+//! holds what it read: it moves its copy to the live version without a read.
 //!
 //! ```text
 //! client                               server
-//! subscribe { node, held } ----------> (kept until open)
-//! open { agents, draft } ------------> attach to the live tree
+//! GET .. (reads, no socket) --------->
+//!                         <----------- the reads' answers
+//! open { follows } ------------------> attach, follow, compare
 //!                         <----------- opened
-//!                         <----------- agents { version, since? }
-//!                         <----------- request_output
-//!                         <----------- transcript_reset { node }, each
-//!                                      subscribed live node held stale
-//!                         <----------- cache_chart { node }, each
-//!                                      subscribed agent
-//!                         <----------- shell_output, each live command
-//!                         <----------- transcript_patch { node, revision }
-//!                         <----------- agent { revision }
+//!                         <----------- what changed since the versions held,
+//!                                      or stale { value }
+//!                         <----------- transcript_patch { node, version }
+//!                         <----------- agent { version }
+//!                         <----------- request_output, cache_chart,
+//!                                      shell_output, as they change
 //! ```
-//!
-//! The handshake is one step: nothing happens to the tree between `opened`
-//! and its last frame, so the snapshot frames agree with each other.
 //!
 //! # Versions
 //!
-//! Every collection carries a [`Version`]: a node's transcript, the agents of
-//! a conversation. A node's cache chart needs none: it travels whole each
-//! time, and the latest frame is the current chart.
+//! A node's transcript and the agents of a conversation carry a [`Version`],
+//! which their logs own; no other value does. A page reads each by a route,
+//! which answers the version it read at, and follows it at that version.
 //!
-//! - A change carries the revision one past the previous one of its
-//!   collection. A client applies a change whose revision is one past its own,
-//!   ignores one whose revision is not greater, and subscribes again, naming
-//!   what it holds, when it sees a gap.
-//! - What the page holds stays on screen as the reset arrives; a reset from
-//!   the blocks the page names replaces only what follows them.
+//! - A change carries the version after it, whose revision is one past the
+//!   previous one of its collection. A page applies a change whose revision
+//!   is one past what it holds, ignores one whose revision is not greater,
+//!   and, on a gap or another epoch, unfollows the value, reads it again and
+//!   follows it again.
+//! - A collection no live session runs is at the epoch [`STORED_EPOCH`], at a
+//!   revision derived from what the store holds of it, so it changes with
+//!   every save that changes what a page shows.
 //! - A response that asks for no tool holds the frames of its turn's end until
 //!   the turn goes on or the conversation goes idle after its closing save, so
 //!   the last patch and the root going idle go together. The hold waits for
@@ -65,6 +81,7 @@
 mod agents;
 mod client;
 mod cost;
+mod follow;
 mod ping;
 mod server;
 mod transcript;
@@ -72,8 +89,9 @@ mod transcript;
 pub use client::{
     ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery, SendMessage,
 };
-pub use agents::{AgentEntry, AgentRole, HeldEdge, SideQuestion, Subagent};
+pub use agents::{AgentEntry, AgentRole, SideQuestion, Subagent};
 pub use cost::{AgentCost, CacheChart, CacheMiss, ChartPoint, CostPrice, CostTotals};
+pub use follow::{Follow, Followed, Held};
 pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, AttachmentSourceDto, CommandView, ConversationAttachment, EditOutcome,
@@ -81,7 +99,7 @@ pub use server::{
     RequestOutput, ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, TurnSpeed,
 };
 pub use transcript::{
-    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BLOCKS, PageAt, TranscriptPatch, Version, Versions,
+    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BLOCKS, PageAt, STORED_EPOCH, TranscriptPatch, Version, Versions,
     index_u32, latest_page_start, light, page,
 };
 

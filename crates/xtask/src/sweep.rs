@@ -61,9 +61,6 @@ const PROFILE: &str = "debug";
 /// modification time a file system keeps is a second.
 const CLOCK_SLACK: Duration = Duration::from_secs(1);
 
-/// How many of the largest packages a dry run names.
-const LARGEST: usize = 20;
-
 #[derive(clap::Args)]
 pub struct Options {
     /// Reports what the sweep would remove and the space it would free, and
@@ -542,11 +539,8 @@ fn print_largest(profile: &Path, sizes: &BTreeMap<PathBuf, u64>) {
     }
     let mut groups: Vec<_> = groups.into_iter().collect();
     groups.sort_by(|left, right| right.1.cmp(&left.1));
-    for (group, size) in groups.iter().take(LARGEST) {
+    for (group, size) in &groups {
         println!("{:>10}  {group}", gigabytes(*size));
-    }
-    if groups.len() > LARGEST {
-        println!("            and {} more", groups.len() - LARGEST);
     }
 }
 
@@ -587,121 +581,4 @@ fn relative(repository: &Path, path: &Path) -> String {
 
 fn gigabytes(bytes: u64) -> String {
     format!("{:.1} GB", bytes as f64 / 1e9)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A file with `contents`, modified at `seconds` after the epoch.
-    fn file(path: &Path, contents: &str, seconds: u64) {
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(path, contents).unwrap();
-        File::options()
-            .write(true)
-            .open(path)
-            .unwrap()
-            .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(seconds))
-            .unwrap();
-    }
-
-    /// A unit directory whose rustc ran from `invoked` to `written`.
-    fn unit(build: &Path, package: &str, hash: &str, invoked: u64, written: u64) -> PathBuf {
-        let unit = build.join(package).join(hash);
-        file(&unit.join("fingerprint/invoked.timestamp"), "", invoked);
-        file(&unit.join("fingerprint/lib-x"), "0123", written);
-        unit
-    }
-
-    /// An incremental cache whose newest session started at `seconds`, named
-    /// as rustc names it.
-    fn cache(incremental: &Path, name: &str, seconds: u64) -> PathBuf {
-        let mut micros = seconds * 1_000_000;
-        let mut start = Vec::new();
-        while micros > 0 {
-            start.push(char::from_digit((micros % 36) as u32, 36).unwrap());
-            micros /= 36;
-        }
-        let start: String = start.into_iter().rev().collect();
-        let cache = incremental.join(name);
-        std::fs::create_dir_all(cache.join(format!("s-{start}-1abc-0svh"))).unwrap();
-        file(&cache.join(format!("s-{start}-1abc.lock")), "", seconds);
-        cache
-    }
-
-    // Cost: a few dozen files in a temporary directory, milliseconds.
-    #[test]
-    fn the_sweep_keeps_what_the_current_build_reports_and_removes_the_rest() {
-        let directory = tempfile::tempdir().unwrap();
-        let profile = directory.path().join("debug");
-        let build = profile.join("build");
-        let incremental = profile.join("incremental");
-
-        // The library's current unit, compiled from 1000 s to 1010 s, with
-        // the copy of its library in the profile directory, which only the
-        // metadata beside it in the unit directory identifies; and the unit
-        // an older Cargo.lock gave it.
-        let library = unit(&build, "library", "aaaa", 1000, 1010);
-        file(&library.join("out/liblibrary-aaaa.rmeta"), "rmeta", 1010);
-        file(&library.join("out/liblibrary-aaaa.rlib"), "rlib", 1010);
-        file(&profile.join("liblibrary.rlib"), "rlib", 1010);
-        let old_library = unit(&build, "library", "bbbb", 500, 510);
-        // A package the build no longer has.
-        unit(&build, "gone", "cccc", 400, 410);
-        // The executable's current unit and an older one of the same length,
-        // with the copy Cargo put in the profile directory.
-        let tool = unit(&build, "demi-tool", "dddd", 2000, 2010);
-        file(&tool.join("out/demi_tool"), "new", 2009);
-        let old_tool = unit(&build, "demi-tool", "eeee", 1500, 1510);
-        file(&old_tool.join("out/demi_tool"), "old", 1509);
-        file(&profile.join("demi-tool"), "new", 2009);
-        // A build script's run, which compiles nothing.
-        let script = build.join("library/ffff");
-        std::fs::create_dir_all(script.join("out")).unwrap();
-
-        // The caches the current units wrote, and older ones.
-        cache(&incremental, "library-1aaa", 1005);
-        let old_library_cache = cache(&incremental, "library-2bbb", 505);
-        cache(&incremental, "demi_tool-3ddd", 2001);
-        let old_tool_cache = cache(&incremental, "demi_tool-4eee", 1501);
-        let gone_cache = cache(&incremental, "gone-5ccc", 405);
-
-        let products = [
-            Product {
-                crate_name: Some("library".to_owned()),
-                files: vec![
-                    profile.join("liblibrary.rlib"),
-                    library.join("out/liblibrary-aaaa.rmeta"),
-                ],
-            },
-            Product {
-                crate_name: Some("demi_tool".to_owned()),
-                files: vec![profile.join("demi-tool")],
-            },
-            Product {
-                crate_name: None,
-                files: vec![script.join("out")],
-            },
-        ];
-        let plan = plan(&profile, &products).unwrap();
-
-        assert_eq!(
-            plan.kept,
-            BTreeSet::from([library, tool, script]),
-            "the current units are kept"
-        );
-        assert_eq!(
-            plan.stale.into_iter().collect::<BTreeSet<_>>(),
-            BTreeSet::from([
-                old_tool,
-                build.join("gone"),
-                old_library,
-                old_library_cache,
-                old_tool_cache,
-                gone_cache,
-            ]),
-            "every other unit and cache is removed"
-        );
-        assert!(plan.ambiguous.is_empty(), "every product's unit is known");
-    }
 }

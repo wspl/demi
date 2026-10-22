@@ -6,13 +6,15 @@ import {
   type ClientContent,
   type ClientFrame,
   type EditRequest,
-  type HeldEdge,
+  type Follow,
+  type Followed,
   type MessageComment,
   type PendingCall,
   type PendingSteer,
   type ProviderErrorDiagnostics,
   type QueuedMessage,
   type RegenerateRequest,
+  type RequestOutput,
   type RemoveOutcome,
   type SavedDelivery,
   type ServerFrame,
@@ -23,6 +25,7 @@ import {
 import { MAX_PAGE_MESSAGE_BYTES } from '@demicodes/protocol'
 import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
+import type { HeldEdge, TranscriptRead } from './transcript'
 import { FrameTooLargeError, type ConversationClientTransport } from './transport'
 
 /**
@@ -130,31 +133,118 @@ interface Waiter<T> {
 }
 
 /**
- * Where the client's copy of a node's transcript is: none yet, current at a
- * version, or stale after a gap in the patch revisions, until the reset its
- * subscription asked for again arrives.
+ * Where the client's copy of a node's transcript is: none, as before the
+ * node is read; being read, while the socket's patches of it are dropped, and
+ * the views of its commands, its request's output and its chart that it pushes
+ * are kept, to follow the page's own; or current at a version.
  */
 type TranscriptState =
   | { status: 'none' }
-  | { status: 'current'; version: Version }
-  | { status: 'stale' }
+  | { status: 'reading'; frames: ReadingFrame[] }
+  | {
+      status: 'current'
+      version: Version
+      /** Whether the client holds the node's request output and chart, as its read or a push brought them; not for a node shown from a copy on disk. */
+      readings: boolean
+    }
 
-/** A node the page subscribes to, and where its transcript is. */
+/** A frame about a node that arrives while the node's page is read. */
+type ReadingFrame = ServerFrameOf<'shell_output'> | ServerFrameOf<'request_output'> | ServerFrameOf<'cache_chart'>
+
+/** A node the page follows, and where its transcript is. */
 interface Subscription {
   state: TranscriptState
-  /** The index its last subscription named; a reset elsewhere means a rewrite. */
-  asked: number | undefined
+  /** Resolves once the node's transcript is read. */
+  ready: Promise<void>
 }
 
-/** What the client is constructed with beside its transport. */
+/** The entity tags the page holds of the conversation's own values, which it follows them by. */
+export interface ConversationTags {
+  metadata: string
+  saved: string
+  workflows: string
+}
+
+/** What the page reads of a conversation beside its transcripts. */
+export interface ConversationRead {
+  /** The version of the agents the entries are at. */
+  agents: Version
+  entries: AgentEntry[]
+  /** The tags of what the read brought of the conversation itself. */
+  tags: Partial<ConversationTags>
+}
+
+/**
+ * How the client reads what it follows:
+ * a read depends on no socket, and the socket, opened after the reads, brings
+ * changes alone. A read that fails is tried again after a wait, except at the
+ * open, which fails with it.
+ */
+export interface ConversationReader {
+  /**
+   * The conversation's agents and its root's request output, with the tags of
+   * the metadata and the lists it brings. With `whole` false only the agents
+   * are wanted: the metadata and the lists are followed by the socket and
+   * are not applied again.
+   */
+  conversation(signal: AbortSignal, options: { whole: boolean }): Promise<ConversationRead>
+  /**
+   * The latest page of the node's transcript, with its version and live
+   * commands; with `earlier`, the page before it comes as one run of blocks
+   * with it.
+   */
+  transcript(node: string, signal: AbortSignal, options?: { earlier: boolean }): Promise<TranscriptRead>
+}
+
+/**
+ * What a frame of the conversation itself comes to, as `conversationFrame`
+ * decodes it: the change `apply` makes, and, for a value the page follows by
+ * its tag, which value it is and the tag the frame carries, which the next
+ * connection follows it from.
+ */
+export interface ConversationFrameTake {
+  apply: () => void
+  tagged?: { value: keyof ConversationTags; tag: string }
+}
+
+/** Opens the connection the client's frames go on; called after the reads, once per connection. */
+export type ConversationConnect = (signal: AbortSignal) => Promise<ConversationClientTransport>
+
+/** What the client is constructed with beside how it connects. */
 export interface ConversationClientOptions {
   /**
    * The frames of the conversation itself that the backend sends on the
    * socket beside its agents', such as its metadata, which the web app
-   * decodes: answers whether it took `frame`. A frame neither the protocol nor
-   * it takes drops the connection.
+   * decodes: answers what the frame is, or null when the page does not take
+   * it. A frame neither the protocol nor it takes drops the connection.
    */
-  conversationFrame?: (frame: unknown) => boolean
+  conversationFrame?: (frame: unknown) => ConversationFrameTake | null
+  /** Reads what the client follows; required to `open`. */
+  reader?: ConversationReader
+  /**
+   * Tells that a change of `node`'s transcript, or of the agents when `node`
+   * is null, could not be applied and was read again, for the page to report.
+   */
+  unapplied?: (node: string | null, reason: 'gap' | 'epoch') => void
+  /**
+   * Writes a line of the page's log about a follow: what the backend answered
+   * it with, and why a value is read again. Scalars only.
+   */
+  logged?: (event: string, fields: Record<string, string | number | boolean | null>) => void
+  /**
+   * How long a read again waits after the backend told it a version is
+   * stale, in milliseconds: a random time of up to two seconds by default, so
+   * that pages told at once do not read at once.
+   */
+  staleDelayMs?: () => number
+}
+
+/** What a client that opens again holds already, as a page shows it from a copy on disk. */
+export interface ConversationHeld {
+  /** The agents' version, and the entries the page shows. */
+  agents: { version: Version; entries: AgentEntry[] } | null
+  /** The version each node's latest window is current at. */
+  nodes: Readonly<Record<string, Version>>
 }
 
 /** What a wait decides about one event: to settle, or to keep waiting. */
@@ -163,11 +253,20 @@ type Decision<T> = { resolve: T } | { reject: Error } | undefined
 /**
  * The web app's client of the conversation socket's frame protocol.
  *
- * It does four things:
+ * It does five things:
  *
  * - Validates every frame it receives with the generated schemas, and drops the
  *   connection when one does not match.
- * - Keeps each subscribed node's patch revisions, the agents, the queue and the
+ * - Reads what it follows, the agents and each followed node's latest page,
+ *   with no socket, then connects and opens the socket naming each value with
+ *   the version it holds, so the backend sends only what changed; a version it
+ *   no longer holds comes back `stale`, or `rebased` when the backend moved
+ *   what it holds to a live version, and on a gap or another epoch the
+ *   client reads again and follows again; the patches that arrive while it
+ *   reads a followed node are kept and applied past the read.
+ * - Survives its connection: a client that opens again after the connection
+ *   was lost holds what it read, and follows it from there, with no read.
+ * - Keeps each followed node's patch revisions, the agents, the queue and the
  *   pending steers.
  * - Tells its listeners what each node's transcript frames bring, which the
  *   page applies to the parts of that transcript it holds with the one patch
@@ -176,13 +275,16 @@ type Decision<T> = { resolve: T } | { reject: Error } | undefined
  *   which its waits settle on.
  */
 export class ConversationClient {
-  private readonly transport: ConversationClientTransport
+  private readonly connect: ConversationConnect
+  /** The connection the frames go on; null while there is none, before the open and after a loss. */
+  private transport: ConversationClientTransport | null = null
+  private detachTransport: () => void = () => {}
   private readonly listeners = new Set<ConversationClientListener>()
   private readonly actionWaiters: ActionWaiter[] = []
   private readonly abortWaiters: Waiter<AbortResult>[] = []
-  private readonly detachTransport: () => void
-  private disconnected = false
-  /** The nodes the page subscribes to, the root's included. */
+  /** Whether the client was disposed: it opens no more. */
+  private disposed = false
+  /** The nodes the page follows, the root's included. */
   private readonly subscriptions = new Map<string, Subscription>()
   /** The root's turns of the `user` blocks the stream has brought since its last reset. */
   private readonly writtenTurns = new Set<string>()
@@ -192,58 +294,160 @@ export class ConversationClient {
   private held: (node: string) => HeldEdge | undefined = () => undefined
   /** The conversation's agents by id, as the last frames left them. */
   private readonly agents = new Map<string, AgentEntry>()
-  /** The version of the agents the client holds; null before the open's. */
+  /** The version of the agents the client holds; null before the first read. */
   private agentsVersion: Version | null = null
-  /** The client asked for the agents' changes it missed, and ignores changes until the answer. */
-  private agentsStale = false
+  /** The tags of the conversation's own values the client follows, as the last read or frame carried them. */
+  private readonly tags: Partial<ConversationTags> = {}
+  /** Whether the agents are being read, which drops what the socket brings of them. */
+  private agentsReading = false
+  /** The revision of the draft the page holds, which the open names. */
+  private draft: number | undefined
+  /** Ends the reads when the client is disposed. */
+  private readonly detached = new AbortController()
+  private readonly reader: ConversationReader | null
+  private readonly unapplied: (node: string | null, reason: 'gap' | 'epoch') => void
+  private readonly logged: (event: string, fields: Record<string, string | number | boolean | null>) => void
+  private readonly staleDelayMs: () => number
   /** The root's node, the conversation's id; null before `open`. */
   private root: string | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
   /** The message the root's running turn started with, until its turn writes it. */
   private starting: QueuedMessage | null = null
-  private readonly conversationFrame: (frame: unknown) => boolean
+  private readonly conversationFrame: (frame: unknown) => ConversationFrameTake | null
 
-  constructor(transport: ConversationClientTransport, options: ConversationClientOptions = {}) {
-    this.transport = transport
-    this.conversationFrame = options.conversationFrame ?? (() => false)
-    const stopFrames = transport.onFrame((frame) => this.receive(frame))
-    const stopClose = transport.onClose((error) => this.disconnect(error))
-    this.detachTransport = () => {
-      stopFrames()
-      stopClose()
-    }
+  constructor(connect: ConversationConnect, options: ConversationClientOptions = {}) {
+    this.connect = connect
+    this.conversationFrame = options.conversationFrame ?? (() => null)
+    this.reader = options.reader ?? null
+    this.unapplied = options.unapplied ?? (() => {})
+    this.logged = options.logged ?? (() => {})
+    this.staleDelayMs = options.staleDelayMs ?? (() => Math.random() * 2_000)
   }
 
   /**
-   * Attaches to the conversation's tree, which runs with the model settings
-   * the conversation's record holds; resolves on `opened`. `root` is the
-   * root's node, the conversation's id. The open names the agents the page
-   * holds, `agents`, and the revision of the draft it holds, `draft`, which
-   * it answers with what changed since. It subscribes to the root and to
-   * `nodes` first, so its handshake brings their messages. `held` names the
-   * blocks the page holds of each node it subscribes to, now and at each
-   * later subscription again, so a reset sends none before them.
+   * Opens the conversation: reads what the page does not hold yet, the agents
+   * and the latest page of the root and of each of `nodes`, with no socket,
+   * and takes each as it answers; then connects and opens the socket, which
+   * attaches to the conversation's tree, which runs with the model settings
+   * the conversation's record holds, naming each value held with its
+   * version, so the backend sends what changed since. Resolves once `opened`
+   * came. A client that opens again after its connection was lost holds what
+   * it read, and reads nothing. `root` is the root's node, the conversation's
+   * id. The open names `draft`, the revision of the draft the page holds, so
+   * the socket sends the draft only once it is newer. `held` names the
+   * blocks the page holds of each node it follows, now and at each later
+   * read, which a page read vouches for when the transcript did not change
+   * under them. `holding` is what the page shows already, as from a copy on
+   * disk, which a client that holds nothing follows from, with no read.
+   * `signal` ends the attempt.
    */
-  open(options: {
+  async open(options: {
     root: string
     nodes?: readonly string[]
     held?: (node: string) => HeldEdge | undefined
-    agents?: Version
     draft?: number
+    holding?: ConversationHeld
+    signal?: AbortSignal
   }): Promise<void> {
-    const { root, agents, draft } = options
+    const { root } = options
+    if (!this.reader) {
+      throw new Error('A client that opens needs a reader')
+    }
+    if (this.disposed) {
+      throw new Error('Agent connection closed')
+    }
     this.root = root
     this.held = options.held ?? (() => undefined)
-    for (const node of [root, ...(options.nodes ?? [])]) {
-      this.subscribeTo(node)
+    this.draft = options.draft
+    if (options.holding && this.agentsVersion === null) {
+      this.hold(options.holding)
     }
-    return this.request({ type: 'open', ...(agents ? { agents: { ...agents } } : {}), ...(draft === undefined ? {} : { draft }) }, (event) => {
-      if (event.type === 'opened') {
-        return { resolve: undefined }
+    const nodes = [root, ...(options.nodes ?? [])].filter((node, at, all) => all.indexOf(node) === at)
+    const reads: Promise<void>[] = []
+    if (this.agentsVersion === null) {
+      reads.push(this.readConversation(false))
+    }
+    for (const node of nodes) {
+      if (this.subscriptions.get(node)?.state.status !== 'current') {
+        this.subscriptions.delete(node)
+        reads.push(this.follow(node, false))
       }
-      return this.failure(event, 'open')
-    })
+    }
+    await Promise.all(reads)
+    await this.attach(options.signal)
+  }
+
+  /** Holds what the page shows already, which the first open follows from. */
+  private hold(holding: ConversationHeld): void {
+    if (holding.agents) {
+      for (const agent of holding.agents.entries) {
+        this.takeAgent(agent)
+      }
+      this.agentsVersion = { ...holding.agents.version }
+      this.emitWaiting({ queue: true, pending: true, starting: true })
+    }
+    for (const [node, version] of Object.entries(holding.nodes)) {
+      this.subscriptions.set(node, { state: { status: 'current', version: { ...version }, readings: false }, ready: Promise.resolve() })
+    }
+  }
+
+  /** Connects, and opens the socket with the versions held; the reads came before it. */
+  private async attach(signal?: AbortSignal): Promise<void> {
+    const ended = new AbortController()
+    const end = () => ended.abort(signal?.reason ?? this.detached.signal.reason)
+    signal?.addEventListener('abort', end, { once: true })
+    this.detached.signal.addEventListener('abort', end, { once: true })
+    try {
+      const transport = await this.connect(ended.signal)
+      if (this.disposed || ended.signal.aborted) {
+        transport.close()
+        throw ended.signal.reason ?? new Error('Agent connection closed')
+      }
+      const stopFrames = transport.onFrame((frame) => this.receive(frame))
+      const stopClose = transport.onClose((error) => this.disconnect(error))
+      this.transport = transport
+      this.detachTransport = () => {
+        stopFrames()
+        stopClose()
+      }
+      const draft = this.draft
+      const opening = { type: 'open' as const, ...(draft === undefined ? {} : { draft }), ...this.followsOf() }
+      this.logged('socket.followed', { values: opening.follows?.length ?? 0, nodes: this.subscriptions.size })
+      await this.request(
+        opening,
+        (event) => (event.type === 'opened' ? { resolve: undefined } : this.failure(event, 'open')),
+      )
+    } finally {
+      signal?.removeEventListener('abort', end)
+      this.detached.signal.removeEventListener('abort', end)
+    }
+  }
+
+  /** The values the client holds, each with its version, for the open to follow. */
+  private followsOf(): { follows?: Follow[] } {
+    const follows: Follow[] = (['metadata', 'saved', 'workflows'] as const).map((value) => ({
+      value: { kind: value },
+      holds: { kind: 'tag', tag: this.tags[value] ?? '' },
+    }))
+    if (this.agentsVersion) {
+      follows.push({ value: { kind: 'agents' }, holds: { kind: 'version', version: { ...this.agentsVersion } } })
+    }
+    for (const [node, subscription] of this.subscriptions) {
+      if (subscription.state.status === 'current') {
+        follows.push(this.transcriptFollow(node, subscription.state.version, subscription.state.readings))
+      }
+    }
+    return { follows }
+  }
+
+  private transcriptFollow(node: string, version: Version, readings: boolean): Follow {
+    return { value: { kind: 'transcript', node }, holds: { kind: 'version', version: { ...version }, ...(readings ? { readings } : {}) } }
+  }
+
+  /** Follows `value` from `version` on the open connection; a client with none follows it at its next open. */
+  private sendFollow(value: Followed, version: Version, readings = false): void {
+    this.sendFrame({ type: 'follow', value, holds: { kind: 'version', version: { ...version }, ...(readings ? { readings } : {}) } })
   }
 
   /** Sends a message; resolves when the action it starts ends, or once it leaves the queue without running. */
@@ -259,8 +463,7 @@ export class ConversationClient {
    */
   submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     // The answer names the agents' version that shows the message, queued or
-    // starting the turn; the send settles once the client holds it
-    // (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+    // starting the turn; the send settles once the client holds it.
     let at: Version | null | undefined
     return this.request(
       { type: 'send', messageId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) },
@@ -404,8 +607,7 @@ export class ConversationClient {
   /**
    * Adds input to the running turn; resolves once the client holds the agents'
    * version the answer names, which shows the steer, and rejects with
-   * `SteerRejectedError` when the session refuses it
-   * (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+   * `SteerRejectedError` when the session refuses it.
    */
   steer(content: ClientContent[], steerId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     let at: Version | null | undefined
@@ -491,7 +693,7 @@ export class ConversationClient {
 
   /** Stops one thing; answers what it stopped, in request order. */
   abort(): Promise<AbortResult> {
-    if (this.disconnected) {
+    if (!this.transport) {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
@@ -501,28 +703,41 @@ export class ConversationClient {
   }
 
   /**
-   * Shows the node `node`'s messages from now on: its transcript arrives as
-   * a reset from the blocks the page holds of it, unless it holds the current
-   * version, while the node is live, then as patches.
+   * Shows the node `node`'s messages from now on: reads its latest page, which
+   * the page holds as a reset, then follows the node from the version the read
+   * names. Resolves once it holds the read; a read that fails is tried again
+   * after a wait.
    */
-  subscribeTo(node: string): void {
-    if (this.subscriptions.has(node)) {
-      return
-    }
-    const held = this.held(node)
-    this.subscriptions.set(node, {
-      state: held ? { status: 'current', version: held.version } : { status: 'none' },
-      asked: held?.from,
-    })
-    this.sendFrame({ type: 'subscribe', node, ...(held ? { held } : {}) })
+  followNode(node: string): Promise<void> {
+    return this.follow(node, true)
   }
 
-  /** Stops showing the node `node`'s messages; a frame of it still on its way is dropped. */
-  unsubscribeFrom(node: string): void {
+  /** Reads `node` and follows it; `retrying` says whether a failed read is tried again. */
+  private follow(node: string, retrying: boolean): Promise<void> {
+    const held = this.subscriptions.get(node)
+    if (held) {
+      return held.ready
+    }
+    const subscription: Subscription = {
+      state: { status: 'reading', frames: [] },
+      ready: Promise.resolve(),
+    }
+    this.subscriptions.set(node, subscription)
+    subscription.ready = this.readNode(node, subscription, retrying)
+    if (retrying) {
+      // The caller that wants the outcome holds the promise; one that does
+      // not hears nothing of a connection that ended.
+      subscription.ready.catch(() => {})
+    }
+    return subscription.ready
+  }
+
+  /** Stops following the node `node`'s messages; a frame of it still on its way is dropped. */
+  unfollowNode(node: string): void {
     if (!this.subscriptions.delete(node)) {
       return
     }
-    this.sendFrame({ type: 'unsubscribe', node })
+    this.sendFrame({ type: 'unfollow', value: { kind: 'transcript', node } })
   }
 
   /** Stops every live subagent; each settles through its own agent entry. */
@@ -564,16 +779,28 @@ export class ConversationClient {
     }
   }
 
-  /** Detaches without the frame that disposes the tree, which keeps running. */
+  /**
+   * Lets the connection go without the frame that disposes the tree, which
+   * keeps running: the waits for answers end, and the client holds what it
+   * read, to follow it again from `open`.
+   */
   disconnect(error: Error = new Error('Agent connection closed')): void {
-    if (this.disconnected) {
+    const transport = this.transport
+    if (!transport) {
       return
     }
-    this.disconnected = true
+    this.transport = null
     this.detachTransport()
-    this.transport.close()
+    transport.close()
     this.rejectWaiters(error)
     this.emit({ type: 'disconnected', error })
+  }
+
+  /** Lets the connection go and opens no more: what the client read is dropped with it. */
+  dispose(error: Error = new Error('Agent connection closed')): void {
+    this.disposed = true
+    this.detached.abort()
+    this.disconnect(error)
     this.listeners.clear()
   }
 
@@ -587,7 +814,7 @@ export class ConversationClient {
   /** The version of the node `node`'s transcript the client holds, the root's by default, or null while it holds none it can vouch for. */
   transcriptVersion(node: string | null = this.root): Version | null {
     const state = node === null ? undefined : this.subscriptions.get(node)?.state
-    if (this.disconnected || state?.status !== 'current') {
+    if (!this.transport || state?.status !== 'current') {
       return null
     }
     return { ...state.version }
@@ -616,11 +843,12 @@ export class ConversationClient {
 
   /** Sends `frame` unless the client is detached; answers whether it did. */
   private sendFrame(frame: ClientFrame): boolean {
-    if (this.disconnected) {
+    const transport = this.transport
+    if (!transport) {
       return false
     }
     try {
-      this.transport.send(frame)
+      transport.send(frame)
     } catch (error) {
       if (error instanceof FrameTooLargeError) {
         this.refuse(frame, { code: 'too_large', params: { limitBytes: MAX_PAGE_MESSAGE_BYTES }, reason: error.message })
@@ -650,7 +878,7 @@ export class ConversationClient {
     decide: (event: ClientSessionEvent) => Decision<T>,
     timeoutMessage?: string,
   ): Promise<T> {
-    if (this.disconnected) {
+    if (!this.transport) {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
@@ -693,7 +921,7 @@ export class ConversationClient {
   }
 
   private action(command: ActionCommand, messageId: string | null, frame: ClientFrame, node: string | null = null): Promise<void> {
-    if (this.disconnected) {
+    if (!this.transport) {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
@@ -710,7 +938,7 @@ export class ConversationClient {
     if (holds()) {
       return Promise.resolve()
     }
-    if (this.disconnected) {
+    if (!this.transport) {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
@@ -784,7 +1012,12 @@ export class ConversationClient {
   private receive(frame: unknown): void {
     const parsed = serverFrameSchema.safeParse(frame)
     if (!parsed.success) {
-      if (this.conversationFrame(frame)) {
+      const take = this.conversationFrame(frame)
+      if (take) {
+        if (take.tagged) {
+          this.tags[take.tagged.value] = take.tagged.tag
+        }
+        take.apply()
         return
       }
       this.disconnect(new Error(`Invalid server frame:\n${schemaRefusal(parsed.error)}`))
@@ -795,102 +1028,37 @@ export class ConversationClient {
 
   private handle(frame: ServerFrame): void {
     switch (frame.type) {
-      // The agents that follow tell the root's waiting inputs: its entry, or
-      // nothing when it did not change since what the client holds.
       case 'opened':
-        this.agentsStale = false
         this.emit(frame)
         return
-      case 'transcript_reset': {
-        const subscription = this.subscriptions.get(frame.node)
-        if (!subscription) {
-          return
-        }
-        subscription.state = { status: 'current', version: frame.version }
-        const root = frame.node === this.root
-        if (root) {
-          this.writtenTurns.clear()
-          this.writtenSteers.clear()
-          this.noteWritten(frame.blocks)
-          this.removeWrittenSteers(true)
-        }
-        this.emit({
-          type: 'transcript_reset',
-          node: frame.node,
-          start: frame.start,
-          length: frame.length,
-          blocks: frame.blocks,
-          version: frame.version,
-          versions: frame.versions ?? [],
-          failures: frame.failures ?? {},
-          attachments: frame.attachments ?? [],
-          asked: subscription.asked,
-        })
-        if (root) {
-          this.followSends()
-        }
-        return
-      }
       case 'transcript_patch':
         this.patchTranscript(frame)
         return
-      case 'agents': {
-        const held = this.agentsVersion
-        if (frame.since === undefined || held === null || held.epoch !== frame.version.epoch) {
-          this.agents.clear()
-          this.queue = []
-          this.pending = []
-          this.starting = null
-        }
-        this.agentsStale = false
-        for (const agent of frame.agents) {
-          this.takeAgent(agent)
-        }
-        this.agentsVersion = frame.version
-        this.emit({ ...frame, receivedAt: Date.now() })
-        // The waiting inputs as they stand now, which the caller takes as
-        // listed even when the root's entry did not change.
-        this.emitWaiting({ queue: true, pending: true, starting: true })
+      case 'agents':
+        this.changeAgents(frame)
         return
-      }
-      case 'agent': {
-        // Changes that arrive while the client asks for those it missed are
-        // in the answer.
-        if (this.agentsStale) {
-          return
-        }
-        const held = this.agentsVersion
-        if (held === null) {
-          this.disconnect(new Error(`An agent change arrived at revision ${frame.revision} before the agents`))
-          return
-        }
-        if (frame.revision !== held.revision + 1) {
-          if (frame.revision > held.revision) {
-            this.agentsStale = true
-            this.sendFrame({ type: 'agents_since', held: { ...held } })
+      case 'agent':
+        this.changeAgent(frame)
+        return
+      case 'stale':
+        this.stale(frame.value)
+        return
+      case 'rebased':
+        this.rebase(frame.value, frame.version)
+        return
+      case 'request_output':
+      case 'cache_chart': {
+        // A frame pushed while its node's page is read goes after the page's
+        // own, whichever of the two is older.
+        const state = this.subscriptions.get(frame.node)?.state
+        if (state?.status === 'reading') {
+          state.frames.push(frame)
+        } else {
+          if (state?.status === 'current') {
+            state.readings = true
           }
-          return
+          this.emitFrame(frame)
         }
-        this.agentsVersion = { epoch: held.epoch, revision: frame.revision }
-        const changed = this.takeAgent(frame.agent)
-        this.emit({ ...frame, receivedAt: Date.now() })
-        this.emitWaiting(changed)
-        return
-      }
-      case 'request_output': {
-        const arrived = Date.now()
-        const output = frame.output
-        this.emit({
-          type: 'request_output',
-          output: output === null
-            ? null
-            : {
-                requestId: output.requestId,
-                tokens: output.tokens,
-                firstTokenAt: output.streamedMs === null ? null : arrived - output.streamedMs,
-                endedAt: output.ended ? arrived : null,
-              },
-        })
         return
       }
       case 'steer_result':
@@ -930,6 +1098,7 @@ export class ConversationClient {
         for (const subscription of this.subscriptions.values()) {
           subscription.state = { status: 'none' }
         }
+        this.agentsReading = false
         this.writtenTurns.clear()
         this.writtenSteers.clear()
         this.agents.clear()
@@ -943,10 +1112,19 @@ export class ConversationClient {
         }
         this.rejectAborts(new Error('Session closed'))
         return
+      case 'shell_output': {
+        // A command's view pushed while its node's page is read goes after
+        // the page's own commands, whichever of the two is older.
+        const state = this.subscriptions.get(frame.node)?.state
+        if (state?.status === 'reading') {
+          state.frames.push(frame)
+        } else {
+          this.emit(frame)
+        }
+        return
+      }
       case 'edit_result':
       case 'remove_result':
-      case 'shell_output':
-      case 'cache_chart':
       case 'shell_write_result':
       case 'retry_scheduled':
         this.emit(frame)
@@ -961,6 +1139,226 @@ export class ConversationClient {
         this.emit(frame)
         return
     }
+  }
+
+  /**
+   * The backend cannot bring a followed value current from the version the
+   * client holds, and has ended the follow: the client reads the value again,
+   * after a random wait so that pages told at once do not read at once, and
+   * follows it from the version the read names.
+   */
+  private stale(value: Followed): void {
+    this.logged('follow.stale', { value: value.kind, ...(value.kind === 'transcript' ? { node: value.node } : {}) })
+    switch (value.kind) {
+      case 'agents':
+        this.readConversationAgain(null)
+        return
+      case 'transcript': {
+        const subscription = this.subscriptions.get(value.node)
+        if (subscription) {
+          this.readAgain(value.node, subscription, null)
+        }
+        return
+      }
+      // The backend sends a whole value that differs, so nothing is stale.
+      case 'metadata':
+      case 'saved':
+      case 'workflows':
+      case 'shares':
+        return
+    }
+  }
+
+  /**
+   * Moves the copy the page holds of `value`, read while no session lived, to
+   * `version`, the live one: the backend found it what the store held when
+   * its tree restored.
+   */
+  private rebase(value: Followed, version: Version): void {
+    switch (value.kind) {
+      case 'agents':
+        if (this.agentsVersion !== null && !this.agentsReading) {
+          this.agentsVersion = { ...version }
+        }
+        return
+      case 'transcript': {
+        const state = this.subscriptions.get(value.node)?.state
+        if (state?.status === 'current') {
+          state.version = { ...version }
+        }
+        return
+      }
+      case 'metadata':
+      case 'saved':
+      case 'workflows':
+      case 'shares':
+        return
+    }
+  }
+
+  /**
+   * Takes the agents' change `frame` when its revision is one past the
+   * client's, ignores one that is not past what the client holds or that the
+   * agents' read overtook, and reads the conversation again at a gap or
+   * another epoch.
+   */
+  private changeAgent(frame: ServerFrameOf<'agent'>): void {
+    const held = this.agentsVersion
+    if (held === null || this.agentsReading) {
+      return
+    }
+    if (frame.version.epoch !== held.epoch) {
+      this.readConversationAgain('epoch')
+      return
+    }
+    if (frame.version.revision <= held.revision) {
+      return
+    }
+    if (frame.version.revision !== held.revision + 1) {
+      this.readConversationAgain('gap')
+      return
+    }
+    this.applyAgent(frame)
+  }
+
+  private applyAgent(frame: ServerFrameOf<'agent'>): void {
+    this.agentsVersion = { ...frame.version }
+    const changed = this.takeAgent(frame.agent)
+    this.emit({ ...frame, receivedAt: Date.now() })
+    this.emitWaiting(changed)
+  }
+
+  /**
+   * Takes the entries the backend sends of a follow from the revision the
+   * client held: those changed since, at the version they bring the agents
+   * to; a revision that is not the one the client holds reads again.
+   */
+  private changeAgents(frame: ServerFrameOf<'agents'>): void {
+    const held = this.agentsVersion
+    if (held === null || this.agentsReading) {
+      return
+    }
+    if (frame.version.epoch !== held.epoch) {
+      this.readConversationAgain('epoch')
+      return
+    }
+    if (frame.since === undefined || frame.since !== held.revision) {
+      if (frame.version.revision > held.revision) {
+        this.readConversationAgain('gap')
+      }
+      return
+    }
+    this.agentsVersion = { ...frame.version }
+    const changed = { queue: false, pending: false, starting: false }
+    const receivedAt = Date.now()
+    for (const agent of frame.agents) {
+      const moved = this.takeAgent(agent)
+      changed.queue ||= moved.queue
+      changed.pending ||= moved.pending
+      changed.starting ||= moved.starting
+      this.emit({ type: 'agent', version: { ...frame.version }, agent, receivedAt })
+    }
+    this.emitWaiting(changed)
+  }
+
+  /** Reads the conversation again: `reason` says what the page could not apply, or null when the backend said the version was stale. */
+  private readConversationAgain(reason: 'gap' | 'epoch' | null): void {
+    if (reason) {
+      this.logged('read.again', { value: 'agents', reason })
+      this.unapplied(null, reason)
+    }
+    if (this.agentsReading) {
+      return
+    }
+    // The follow of the agents has ended, as the backend ended it or as the
+    // page ends it now.
+    if (reason) {
+      this.sendFrame({ type: 'unfollow', value: { kind: 'agents' } })
+    }
+    this.agentsReading = true
+    this.readConversation(true, reason === null).catch(() => {})
+  }
+
+  /**
+   * Reads the conversation and takes it, then follows the agents from the
+   * version it names when the connection is open. A failed read is tried
+   * again after a wait, unless the open asks it once, which fails with it.
+   */
+  private async readConversation(retrying: boolean, staled = false): Promise<void> {
+    const reader = this.reader!
+    this.agentsReading = true
+    if (staled) {
+      await this.sleep(this.staleDelayMs())
+    }
+    for (let failures = 0; ; ) {
+      if (this.disposed) {
+        return
+      }
+      let read: ConversationRead
+      try {
+        read = await reader.conversation(this.detached.signal, { whole: this.agentsVersion === null })
+      } catch (error) {
+        if (this.disposed) {
+          return
+        }
+        if (!retrying) {
+          this.agentsReading = false
+          throw error
+        }
+        failures += 1
+        await this.wait(failures)
+        continue
+      }
+      if (this.disposed) {
+        return
+      }
+      this.adoptAgents(read)
+      return
+    }
+  }
+
+  /** Holds `read` as the agents and follows them from its version. */
+  private adoptAgents(read: ConversationRead): void {
+    this.agentsReading = false
+    this.agents.clear()
+    this.queue = []
+    this.pending = []
+    this.starting = null
+    for (const agent of read.entries) {
+      this.takeAgent(agent)
+    }
+    this.agentsVersion = { ...read.agents }
+    Object.assign(this.tags, read.tags)
+    this.emit({ type: 'agents', agents: read.entries, version: { ...read.agents }, receivedAt: Date.now() })
+    // The waiting inputs as they stand now, which the caller takes as listed
+    // even when the root's entry did not change.
+    this.emitWaiting({ queue: true, pending: true, starting: true })
+    this.sendFollow({ kind: 'agents' }, read.agents)
+  }
+
+  /** Tells the listeners a frame the client holds while a node's page is read, or as it arrives. */
+  private emitFrame(frame: ReadingFrame): void {
+    if (frame.type === 'request_output') {
+      this.emitRequestOutput(frame.node, frame.output)
+    } else {
+      this.emit(frame)
+    }
+  }
+
+  private emitRequestOutput(node: string, output: RequestOutput | null): void {
+    const arrived = Date.now()
+    this.emit({
+      type: 'request_output',
+      node,
+      output: output === null
+        ? null
+        : {
+            requestId: output.requestId,
+            tokens: output.tokens,
+            firstTokenAt: output.streamedMs === null ? null : arrived - output.streamedMs,
+            endedAt: output.ended ? arrived : null,
+          },
+    })
   }
 
   /**
@@ -1018,8 +1416,9 @@ export class ConversationClient {
 
   /**
    * Applies a patch whose revision is one past the client's, ignores one that
-   * is not past it or of a node the page does not subscribe to, and
-   * subscribes again at a gap.
+   * is not past it, one of a node the page does not follow and one that comes
+   * while the node is read, and reads the node again at a gap or another
+   * epoch.
    */
   private patchTranscript(frame: ServerFrameOf<'transcript_patch'>): void {
     const subscription = this.subscriptions.get(frame.node)
@@ -1027,27 +1426,37 @@ export class ConversationClient {
       return
     }
     const state = subscription.state
-    if (state.status === 'stale') {
+    if (state.status !== 'current') {
       return
     }
-    if (state.status === 'current' && frame.revision <= state.version.revision) {
+    if (frame.version.epoch !== state.version.epoch) {
+      this.readAgain(frame.node, subscription, 'epoch')
       return
     }
-    if (state.status === 'none' || frame.revision !== state.version.revision + 1) {
-      this.resubscribe(frame.node, subscription)
+    if (frame.version.revision <= state.version.revision) {
       return
     }
-    subscription.state = { status: 'current', version: { epoch: state.version.epoch, revision: frame.revision } }
-    const root = frame.node === this.root
+    if (frame.version.revision !== state.version.revision + 1) {
+      this.readAgain(frame.node, subscription, 'gap')
+      return
+    }
+    this.applyPatch(frame.node, subscription, frame)
+  }
+
+  /** Takes `frame`, the next patch of the node's transcript, as the page's. */
+  private applyPatch(node: string, subscription: Subscription, frame: ServerFrameOf<'transcript_patch'>): void {
+    const readings = subscription.state.status === 'current' && subscription.state.readings
+    subscription.state = { status: 'current', version: { ...frame.version }, readings }
+    const root = node === this.root
     if (root) {
       this.noteWritten(frame.patches.flatMap((patch) => (patch.op === 'add' || patch.op === 'replace_block' ? [patch.value] : [])))
       this.removeWrittenSteers(true)
     }
     this.emit({
       type: 'transcript_patch',
-      node: frame.node,
+      node,
       patches: frame.patches,
-      version: { ...subscription.state.version },
+      version: { ...frame.version },
       failures: frame.failures ?? {},
       attachments: frame.attachments ?? [],
     })
@@ -1056,12 +1465,135 @@ export class ConversationClient {
     }
   }
 
-  /** A patch was missed: the client subscribes again, naming what it holds, and ignores patches until the reset arrives. */
-  private resubscribe(node: string, subscription: Subscription): void {
-    subscription.state = { status: 'stale' }
+  /**
+   * Reads the node again: a patch the client cannot apply (`reason`), or the
+   * backend's word that the version held is stale (null), which has ended the
+   * follow already.
+   */
+  private readAgain(node: string, subscription: Subscription, reason: 'gap' | 'epoch' | null): void {
+    if (subscription.state.status === 'reading') {
+      return
+    }
+    if (reason) {
+      this.logged('read.again', { value: 'transcript', node, reason })
+      this.unapplied(node, reason)
+      this.sendFrame({ type: 'unfollow', value: { kind: 'transcript', node } })
+    }
+    subscription.state = { status: 'reading', frames: [] }
+    subscription.ready = this.readNode(node, subscription, true, reason === null)
+    subscription.ready.catch(() => {})
+  }
+
+  /**
+   * Reads the node's latest page and takes it, then follows the node from
+   * the version it names when the connection is open. A failed read is tried
+   * again after a wait, unless the open asks it once, which fails with it.
+   */
+  private async readNode(node: string, subscription: Subscription, retrying: boolean, staled = false): Promise<void> {
+    const reader = this.reader!
+    const live = () => !this.disposed && this.subscriptions.get(node) === subscription
+    if (staled) {
+      await this.sleep(this.staleDelayMs())
+    }
+    for (let failures = 0; ; ) {
+      if (!live()) {
+        return
+      }
+      let read: TranscriptRead
+      try {
+        // The root's first read of a page that holds none of it brings the
+        // page before the latest too, which the view would ask for next.
+        read = await reader.transcript(node, this.detached.signal, {
+          earlier: node === this.root && this.held(node) === undefined,
+        })
+      } catch (error) {
+        if (!live()) {
+          return
+        }
+        if (!retrying) {
+          throw error
+        }
+        failures += 1
+        await this.wait(failures)
+        continue
+      }
+      if (!live()) {
+        return
+      }
+      this.adoptTranscript(node, subscription, read)
+      return
+    }
+  }
+
+  /** Waits `ms`, or until the client is disposed. */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms)
+      this.detached.signal.addEventListener('abort', () => {
+        clearTimeout(timer)
+        resolve()
+      }, { once: true })
+    })
+  }
+
+  /** Waits the backoff of the `failures`th failure in a row: one second doubling to thirty, each up to half shorter. */
+  private wait(failures: number): Promise<void> {
+    const longest = Math.min(30_000, 1_000 * 2 ** (failures - 1))
+    return this.sleep(longest * (1 - Math.random() / 2))
+  }
+
+  /** Holds `read` as the node's transcript and follows the node from its version. */
+  private adoptTranscript(node: string, subscription: Subscription, read: TranscriptRead): void {
+    const buffered = subscription.state.status === 'reading' ? subscription.state.frames : []
+    subscription.state = { status: 'current', version: { ...read.version }, readings: true }
+    const root = node === this.root
+    if (root) {
+      this.writtenTurns.clear()
+      this.writtenSteers.clear()
+      this.noteWritten(read.blocks)
+      this.removeWrittenSteers(true)
+    }
     const held = this.held(node)
-    subscription.asked = held?.from
-    this.sendFrame({ type: 'subscribe', node, ...(held ? { held } : {}) })
+    // What the page holds before the page read stands when the transcript is
+    // of the epoch it was held in and the read finds the edge block where the
+    // page held it, so that nothing before it was rewritten meanwhile.
+    const vouched =
+      held !== undefined &&
+      held.version.epoch === read.version.epoch &&
+      held.from >= read.start &&
+      read.blocks[held.from - read.start]?.id === held.edge
+    this.emit({
+      type: 'transcript_reset',
+      node,
+      start: read.start,
+      length: read.length,
+      blocks: read.blocks,
+      version: { ...read.version },
+      versions: read.versions ?? [],
+      failures: read.failures ?? {},
+      attachments: read.attachments ?? [],
+      instructions: read.instructions ?? [],
+      summaries: read.summaries ?? [],
+      asked: vouched ? read.start : undefined,
+    })
+    for (const status of read.commands ?? []) {
+      this.emit({ type: 'shell_output', node, status })
+    }
+    this.emitRequestOutput(node, read.requestOutput ?? null)
+    if (read.cacheChart) {
+      this.emit({ type: 'cache_chart', node, chart: read.cacheChart })
+    }
+    for (const frame of buffered) {
+      if (frame.type === 'shell_output') {
+        this.emit(frame)
+      } else {
+        this.emitFrame(frame)
+      }
+    }
+    if (root) {
+      this.followSends()
+    }
+    this.sendFollow({ kind: 'transcript', node }, read.version, true)
   }
 
   private noteWritten(blocks: readonly Block[]): void {

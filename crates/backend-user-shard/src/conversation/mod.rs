@@ -23,6 +23,7 @@ mod failure_facts;
 mod history;
 mod fork;
 mod instructions;
+mod live_reads;
 pub(crate) mod notifications;
 pub(crate) mod project_files;
 pub(crate) mod organize;

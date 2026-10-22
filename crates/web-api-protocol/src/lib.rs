@@ -60,4 +60,7 @@ pub mod workspaces;
 /// conversation socket, the synchronization channel and a user stream. A frame
 /// refers to an upload and never carries its bytes, and a user stream frames
 /// its own messages, so no page needs a larger one.
+///
+/// Bounded because a message is read whole into memory and a client sends
+/// without end.
 pub const MAX_PAGE_MESSAGE_BYTES: usize = 1024 * 1024;

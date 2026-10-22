@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import type { SettingsCredential, SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { credentialAnswerSchema, type CredentialDto, type NewCredential } from '../api/generated/web-api'
-import { useProduct, type Answer } from '../state/product'
+import { useHeldList, useProduct, type Answer } from '../state/product'
 
 /** The credentials in name order, as the backend lists them: `credential` in its place by id. */
 function withCredential(credentials: CredentialDto[], credential: CredentialDto): CredentialDto[] {
@@ -13,7 +13,7 @@ function withCredential(credentials: CredentialDto[], credential: CredentialDto)
 
 /** The answer that leaves the credentials as `next` makes them of those the page last read. */
 function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]): Answer {
-  return (read) => ({ type: 'credentials', credentials: next(read.credentials) })
+  return (read) => ({ type: 'credentials', credentials: next(read.credentials ?? []) })
 }
 
 /**
@@ -22,7 +22,7 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
  * `credentials` part brings the same to every other page, each visible field
  * with its value and never a secret one's, which no route answers a page.
  */
-export const useCredentialSettings = defineStore('credential-settings', () => {
+const useCredentialStore = defineStore('credential-settings', () => {
   const product = useProduct()
   const credentials = computed<SettingsCredential[]>(() =>
     (product.snapshot?.credentials ?? []).map((credential) => ({
@@ -52,3 +52,9 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
 
   return { credentials, createCredential, deleteCredential }
 })
+
+/** The credential settings, which hold the user's credentials while a view shows them. */
+export function useCredentialSettings(): ReturnType<typeof useCredentialStore> {
+  useHeldList('credentials')
+  return useCredentialStore()
+}

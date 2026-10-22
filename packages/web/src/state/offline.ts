@@ -18,25 +18,23 @@ import { heldTranscript, type HeldBlock, type HeldTranscript, type TranscriptWin
 import { onSessionExpired } from '../api/client'
 import {
   conversationMetadataSchema,
-  productStateSchema,
   userDtoSchema,
-  type ProductState,
   type UserDto,
 } from '../api/generated/web-api'
+import { pageStateSchema, type PageState } from './lists'
 import { IndexedDatabase } from '@demicodes/web-ui/infra/indexed-db'
 import { t } from './locales/text'
 
 /**
- * The account's disk copy (`docs/decisions/0009-agent-sessions-and-sync.md`): what
- * the page has read, so a reload, a return and a tab opened again show it at
- * once and catch up by changes alone, and so the page opens offline.
+ * The account's disk copy: what the page has read, so a reload, a return and a
+ * tab opened again show it at once and catch up by changes alone, and so the
+ * page opens offline.
  *
  * - The account's record: the product state, with the conversation list,
  *   and the account the session names.
  * - Each conversation's record: its metadata and its agents at their
  *   version, and the descriptions of the attachments its replies name, so
- *   an opening from the copy shows the whole conversation at once
- *   (`docs/decisions/0029-a-conversation-opens-whole.md`).
+ *   an opening from the copy shows the whole conversation at once.
  * - Each node's record and blocks: the runs of its transcript the page knows
  *   to be whole, its length, and the version its latest run is current at;
  *   each block by node and index, read one window at a time.
@@ -71,7 +69,7 @@ const BLOCKS = 'blocks'
 /** The one key of the account's record. */
 const ACCOUNT_KEY = 'account'
 
-/** The most the disk holds, in bytes, when the browser grants as much. */
+/** The most the disk holds, in bytes, when the browser grants as much: the copy grows with every conversation read, and the disk is the user's. */
 export const DISK_BYTES = 500 * 1024 * 1024
 /** The blocks one idle step deletes at most, so no deletion holds reads back for long: a number of its own, which the page's size does not set. */
 export const EVICTION_BATCH = 200
@@ -100,7 +98,7 @@ const database = new IndexedDatabase('demi-offline', 3, (request) => {
 const accountRecordSchema = z.object({
   build: z.string(),
   user: userDtoSchema,
-  state: productStateSchema,
+  state: pageStateSchema,
 })
 
 const conversationRecordSchema = z.object({
@@ -172,7 +170,7 @@ export interface NodeWrite {
 
 export interface AccountCopy {
   user: UserDto
-  state: ProductState
+  state: PageState
 }
 
 
@@ -681,8 +679,8 @@ export interface CacheSession {
 
 /** What the account's cache reads of the page's product state, and how it shows the copy. */
 export interface CacheProduct {
-  readonly read: ProductState | null
-  showCopy(state: ProductState): void
+  readonly read: PageState | null
+  showCopy(state: PageState): void
 }
 
 /**

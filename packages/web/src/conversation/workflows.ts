@@ -47,10 +47,10 @@ function failed(error: unknown): WorkflowList {
 
 /**
  * The workflows of `place`, as the Workflow menu lists them: what the backend
- * keeps of the conversation's working directory, which its metadata carries
- * and brings again when the Host reports a change
- * (`docs/decisions/0029-a-conversation-opens-whole.md`); or a new
- * conversation's, `GET /devices/:id/workflows`, read once for its directory.
+ * keeps of the conversation's working directory, which the opening reads and
+ * the socket brings again when the Host reports a change;
+ * or a new conversation's, `GET /devices/:id/workflows`, read once for its
+ * directory.
  *
  * - The page never follows the Host for them: the backend holds what it
  *   read, or that it has read nothing yet.
@@ -115,7 +115,7 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
     if (at.conversationId === null) {
       return read.value
     }
-    const kept = conversation().metadata.shown.value?.workflows.list
+    const kept = conversation().workflows
     return kept ? listOf(kept) : { state: 'reading' }
   })
   // A new conversation that started with a workflow its directory does not

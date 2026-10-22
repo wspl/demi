@@ -30,8 +30,7 @@
 //! # Watching a command
 //!
 //! A call waits for its command, as Claude Code's Bash tool does, and the
-//! command wakes the node only when it ends
-//! (`docs/decisions/0052-a-call-waits-for-its-command.md`).
+//! command wakes the node only when it ends.
 //!
 //! - A call returns when its command ends, or after [`CALL_WINDOW_MS`] with
 //!   the command still running, which then goes on in the background. The
@@ -98,7 +97,7 @@ use tokio_util::sync::CancellationToken;
 
 pub use environments::{Environments, Stopper};
 use environments::Handle;
-pub use frames::{shell_output, stored_running_commands};
+pub use frames::{shell_output, shell_status, stored_running_commands};
 use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
@@ -119,6 +118,8 @@ pub use workflow::{
 
 /// The most characters a page of `demi shell output` takes, so that a tool
 /// result printing one is never cut.
+///
+/// A page goes into the model's context window, which the vendor limits.
 pub const PAGE_CHARS: usize = 12_000;
 
 /// The conversation's command numbers, as its tree store gives
@@ -348,10 +349,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             return Ok(ToolOutcome::not_run());
         }
         let cwd = self.cwd().await?;
-        let (slot, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
-        if let Some(suppressed) = slot.repeated(&input.script) {
-            return Ok(suppressed);
-        }
+        let (_, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         let request = ExecRequest {
             script: input.script,
             cwd,

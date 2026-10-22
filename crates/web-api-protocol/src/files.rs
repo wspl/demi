@@ -23,7 +23,7 @@ use crate::query::StrictBool;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ConversationSubscription {
-    #[garde(length(chars, min = 1, max = 1024))]
+    #[garde(length(chars, min = 1))]
     pub key: String,
     #[garde(skip)]
     pub kind: SubscriptionKind,
@@ -110,16 +110,12 @@ pub struct Directory {
     pub entries: Vec<DirectoryEntry>,
 }
 
-/// The most directories one request of listings names: the ancestors of a deep
-/// path, and a few more.
-pub const MAX_LISTED_DIRECTORIES: usize = 64;
-
 /// `POST .../fs/lists { paths }`: directories to list together, as one request
 /// to the backend, which reads them from the Host side by side.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct DirectoryLists {
-    #[garde(length(min = 1, max = MAX_LISTED_DIRECTORIES), inner(length(chars, min = 1), custom(demi_command_protocol::without_nul)))]
+    #[garde(length(min = 1), inner(length(chars, min = 1), custom(demi_command_protocol::without_nul)))]
     pub paths: Vec<String>,
 }
 

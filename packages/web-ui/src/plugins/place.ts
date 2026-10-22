@@ -2,8 +2,8 @@ import type { z } from 'zod'
 
 /**
  * Where a pinned tab is, as the page's address writes it beside the panel's
- * `panel` field (`docs/decisions/0014-the-work-panel-has-addresses.md`):
- * `/chat/c1?panel=file&path=/work/src/main.ts` is the File view at that file.
+ * `panel` field: `/chat/c1?panel=file&path=/work/src/main.ts` is the File view
+ * at that file.
  *
  * A kind declares its place with `definePlace`: the address's fields it
  * writes for the data its tab shows, the schema those fields are read back

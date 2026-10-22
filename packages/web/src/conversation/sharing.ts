@@ -1,5 +1,5 @@
 import type { ShareService } from '@demicodes/web-ui/agent/sharing'
-import { createShare, removeShare, updateShare } from '../api/shares'
+import { createShare, listShares, removeShare, updateShare } from '../api/shares'
 
 /**
  * The share dialog's service for a conversation, over the owner's share
@@ -10,6 +10,7 @@ import { createShare, removeShare, updateShare } from '../api/shares'
 export function conversationShareService(conversationId: string, publicUrl: string): ShareService {
   return {
     link: (token) => new URL(`s/${encodeURIComponent(token)}`, publicUrl).href,
+    list: () => listShares(conversationId),
     create: async (target) => {
       const { token, url } = await createShare(conversationId, target)
       return { token, url }

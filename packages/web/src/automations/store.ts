@@ -26,7 +26,7 @@ import {
   type RunNow,
 } from '../api/generated/web-api'
 import { cloudDeviceIn, deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
-import { useProduct } from '../state/product'
+import { useHeldList, useProduct } from '../state/product'
 
 /** The Host a target names before the first use made the Cloud a device. */
 const CLOUD = 'cloud'
@@ -43,7 +43,7 @@ function withAutomation(automations: AutomationDto[], automation: AutomationDto)
  * to every page, read in the page's shapes; each edit shows at once and is
  * written after the earlier ones of the same automation.
  */
-export const useAutomations = defineStore('automations', () => {
+const useAutomationStore = defineStore('automations', () => {
   const product = useProduct()
   const writes = new SerialQueue()
   /** The secret Show shows, by automation; the page keeps none it does not show. */
@@ -152,7 +152,7 @@ export const useAutomations = defineStore('automations', () => {
    * nobody.
    */
   const notificationsOff = computed(() =>
-    product.snapshot !== null && !product.snapshot.sessions.some((session) => session.notifications))
+    product.snapshot?.sessions !== undefined && !product.snapshot.sessions.some((session) => session.notifications))
 
   /** The sidebar's count: runs that notified and whose conversation was not opened since. */
   const unread = computed(() => product.snapshot?.automationsUnread ?? 0)
@@ -179,7 +179,7 @@ export const useAutomations = defineStore('automations', () => {
     try {
       const response = await apiRequest('/automations', { method: 'POST', ...jsonBody({} satisfies AutomationPatch) })
       const { automation } = await readResponse(response, automationAnswerSchema)
-      product.answered(at, (state) => ({ type: 'automations', automations: withAutomation(state.automations, automation), automationsUnread: state.automationsUnread }))
+      product.answered(at, (state) => ({ type: 'automations', automations: withAutomation(state.automations ?? [], automation), automationsUnread: state.automationsUnread }))
       return automation.id
     } catch (error) {
       reportError(t('failed.create'), error, { userVisible: true })
@@ -199,7 +199,7 @@ export const useAutomations = defineStore('automations', () => {
     const { stripeSecret, ...shown } = patch
     const pending = product.change('automations', (state) => ({
       ...state,
-      automations: state.automations.map((automation) => automation.id === id
+      automations: (state.automations ?? []).map((automation) => automation.id === id
         ? {
             ...automation,
             ...shown,
@@ -213,7 +213,7 @@ export const useAutomations = defineStore('automations', () => {
         pending.send()
         const response = await apiRequest(`/automations/${encodeURIComponent(id)}`, { method: 'PATCH', ...jsonBody(patch) })
         const { automation } = await readResponse(response, automationAnswerSchema)
-        pending.land((state) => ({ type: 'automations', automations: withAutomation(state.automations, automation), automationsUnread: state.automationsUnread }))
+        pending.land((state) => ({ type: 'automations', automations: withAutomation(state.automations ?? [], automation), automationsUnread: state.automationsUnread }))
       })
       .catch((error) => {
         pending.drop()
@@ -261,7 +261,7 @@ export const useAutomations = defineStore('automations', () => {
     const at = product.sent()
     try {
       await apiRequest(`/automations/${encodeURIComponent(id)}`, { method: 'DELETE' })
-      product.answered(at, (state) => ({ type: 'automations', automations: state.automations.filter((automation) => automation.id !== id), automationsUnread: state.automationsUnread }))
+      product.answered(at, (state) => ({ type: 'automations', automations: (state.automations ?? []).filter((automation) => automation.id !== id), automationsUnread: state.automationsUnread }))
     } catch (error) {
       reportError(t('failed.delete'), error, { userVisible: true })
     }
@@ -312,3 +312,12 @@ export const useAutomations = defineStore('automations', () => {
     moveToConversations,
   }
 })
+
+/**
+ * The automations, which the page holds while a view shows them: the sidebar
+ * marks the conversations they wake, so the app holds them.
+ */
+export function useAutomations(): ReturnType<typeof useAutomationStore> {
+  useHeldList('automations')
+  return useAutomationStore()
+}

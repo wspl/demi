@@ -96,7 +96,7 @@
     },
     "page": {
       "name": "名称",
-      "nameProblem": "请输入不超过 {max} 个字符的名称。",
+      "nameProblem": "输入名称。",
       "on": "开启",
       "onDescription": "开启后，只要监听主机在线就会运行。",
       "listenOn": "监听",
@@ -359,7 +359,7 @@
     "home": "主文件夹",
     "homeDescription": "文件和云端项目。",
     "note": "大小会在云端下次启动时生效。已经更大的磁盘会保持原来的大小。",
-    "problem": "请输入 1 到 {max} 之间的整数（单位 GB）。"
+    "problem": "请输入不小于 1 的整数 GB。"
   },
   "addPasskey": {
     "title": "添加通行密钥",
@@ -455,7 +455,6 @@
     "notePlaceholder": "智能体为何需要它",
     "fields": "字段",
     "addField": "添加字段",
-    "fieldsMax": "一个凭据最多有 {max} 个字段。",
     "labelPlaceholder": "API 密钥",
     "labelOf": "字段 {n} 的标签",
     "needsField": "凭据至少需要一个字段。",
@@ -466,9 +465,7 @@
     "create": "创建凭据"
   },
   "credentialFields": {
-    "required": "必填",
-    "maxChars": "最多使用 {max} 个字符。",
-    "maxBytes": "最大 64 KiB。"
+    "required": "必填"
   },
   "subagents": {
     "title": "子智能体",

@@ -109,9 +109,8 @@ const router = createRouter({
 router.beforeEach(() => historySettled())
 setHistoryTraversal((delta) => router.options.history.go(delta, false))
 const resources = useResources(pinia)
-// The work panel's state is the page's address while it shows a conversation
-// (`docs/decisions/0014-the-work-panel-has-addresses.md`); it follows the
-// router from the first navigation on.
+// The work panel's state is the page's address while it shows a conversation;
+// it follows the router from the first navigation on.
 const stopPanelAddress = useWorkPanel(pinia).attach(router)
 const conversations = useConversations(pinia)
 const session = useSession(pinia)

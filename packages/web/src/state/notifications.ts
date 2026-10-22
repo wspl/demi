@@ -351,7 +351,11 @@ export const useNotifications = defineStore('notifications', () => {
         }
       }
     }, { signal })
-    const session = () => product.snapshot?.sessions.find((candidate) => candidate.current)?.id
+    // Each subscription the backend keeps says whether its browser has
+    // notifications on, in the account's sessions, which the page holds while
+    // it notifies.
+    const releaseSessions = product.hold('sessions')
+    const session = () => product.snapshot?.sessions?.find((candidate) => candidate.current)?.id
     // Each source is compared by its value, so only a change of one follows:
     // every part the channel brings replaces the snapshot, and the sessions
     // come again after each subscription the backend keeps, as each says
@@ -374,6 +378,7 @@ export const useNotifications = defineStore('notifications', () => {
       stopFollowing()
       stopWords()
       stopShowing()
+      releaseSessions()
     }, { once: true })
   }
 

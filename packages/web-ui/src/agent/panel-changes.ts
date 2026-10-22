@@ -15,8 +15,7 @@ export type PanelChange =
 /**
  * The backend's panel: its tabs, and how many changes made them. It comes with
  * the conversation's entry in the list, so the panel draws as soon as the
- * conversation is listed
- * (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+ * conversation is listed.
  */
 export interface PanelRead {
   revision: number

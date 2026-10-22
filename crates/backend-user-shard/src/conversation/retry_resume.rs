@@ -229,18 +229,8 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
     // began.
     let _opening = live.tree_openers().token();
     live.retry_resumes().take(&conversation, &id);
-    #[cfg(feature = "testing")]
-    live.services()
-        .retries
-        .pass(crate::holds::RetryStep::Firing)
-        .await;
     if live.is_closing() {
         return;
     }
-    #[cfg(feature = "testing")]
-    live.services()
-        .retries
-        .pass(crate::holds::RetryStep::Started)
-        .await;
     live.resume_failed_turn(&conversation, &id).await;
 }

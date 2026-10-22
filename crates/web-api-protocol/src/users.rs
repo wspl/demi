@@ -25,15 +25,15 @@ pub struct ListedUser {
     pub cloud_storage: CloudStorage,
 }
 
-/// The size of an account's Cloud disks in whole GB, each from 1 to 1024, which
+/// The size of an account's Cloud disks in whole GB, each at least 1, which
 /// the next start of its Cloud takes; a GB here is 2^30 bytes, as the Cloud's
 /// storage shows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CloudStorage {
-    #[garde(range(min = 1, max = 1024))]
+    #[garde(range(min = 1))]
     pub system_gb: u16,
-    #[garde(range(min = 1, max = 1024))]
+    #[garde(range(min = 1))]
     pub home_gb: u16,
 }
 

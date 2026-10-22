@@ -95,10 +95,6 @@ pub struct Backend {
     /// Stores the package executables ahead for the targets of the Hosts
     /// (`crates/backend-runners/src/publication.rs`); a close ends it.
     ahead: AbortOnDropHandle<()>,
-    /// The hold `BackendConfig::migrations_held` put on the migrations as
-    /// the stores opened, until a test takes it.
-    #[cfg(feature = "testing")]
-    held_migrations: std::sync::Mutex<Option<demi_backend_database::conversations::MigrationHold>>,
 }
 
 /// Why the backend did not start.
@@ -274,24 +270,8 @@ impl Backend {
         };
         // The object store: the data directory or the S3 bucket.
         let objects = objects::open(&data_dir, &config.storage).await?.store;
-        #[cfg(feature = "testing")]
-        let objects = match &config.object_counts {
-            Some(counts) => counts.observe(objects),
-            None => objects,
-        };
         let storage = Storage::open(&data_dir, config.clock.clone(), objects, secret.vault_key()).await?;
-        #[cfg(feature = "testing")]
-        let held_migrations = config
-            .migrations_held
-            .then(|| storage.conversations.hold_migrations());
         let started = Self::serve(config, storage.clone(), &secret).await;
-        #[cfg(feature = "testing")]
-        if let Ok(backend) = &started {
-            *backend
-                .held_migrations
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = held_migrations;
-        }
         if started.is_err() {
             for failure in storage.close().await {
                 tracing::error!(
@@ -344,10 +324,6 @@ impl Backend {
             plugins: config.plugins,
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,
-            #[cfg(feature = "testing")]
-            web_roots: config.web_roots,
-            #[cfg(feature = "testing")]
-            push_transport: config.push_transport,
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);
@@ -567,245 +543,12 @@ impl Backend {
             usage,
             runners,
             ahead,
-            #[cfg(feature = "testing")]
-            held_migrations: std::sync::Mutex::new(None),
         })
     }
 
     /// The address the listener is bound to.
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
-    }
-
-    /// Holds every commit of a conversation's checkpoint or stored
-    /// attachment from now on, until the hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_commits(&self) -> demi_backend_database::conversations::CommitHold {
-        self.services.conversations.hold_commits()
-    }
-
-    /// How much work the users' search indexes have done so far.
-    #[cfg(feature = "testing")]
-    pub fn search_work(&self) -> demi_backend_database::search::SearchWork {
-        self.services.search.work()
-    }
-
-    /// Overwrites the user's search index with bytes that do not open, in
-    /// the index's own turn for the user.
-    #[cfg(feature = "testing")]
-    pub async fn corrupt_search_index(&self, user: &demi_web_api_protocol::ids::UserId) {
-        self.services.search.corrupt(user).await.expect("the search index is overwritten");
-    }
-
-    /// The hold on every migration of a conversation's database that the
-    /// backend started with (`BackendConfig::migrations_held`), until it is
-    /// released.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the backend started without one, or it was taken already.
-    #[cfg(feature = "testing")]
-    pub fn held_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
-        self.held_migrations
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
-            .expect("the backend started with its migrations held")
-    }
-
-    /// Holds every runner's hello at `step` from now on, until the hold is
-    /// released.
-    #[cfg(feature = "testing")]
-    pub fn hold_hellos(
-        &self,
-        step: demi_backend_user_shard::holds::HelloStep,
-    ) -> demi_backend_user_shard::holds::StepHold {
-        self.services.hellos.hold(step)
-    }
-
-    /// Holds every failed turn's resume at its retry time at `step` from now
-    /// on, until the hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_retries(
-        &self,
-        step: demi_backend_user_shard::holds::RetryStep,
-    ) -> demi_backend_user_shard::holds::StepHold {
-        self.services.retries.hold(step)
-    }
-
-    /// Holds every change watch's check at `step` from now on, until the
-    /// hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_watches(
-        &self,
-        step: demi_backend_user_shard::holds::WatchStep,
-    ) -> demi_backend_user_shard::holds::StepHold {
-        self.services.watches.hold(step)
-    }
-
-    /// Holds every call's permission check at `step` from now on, until the
-    /// hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_permissions(
-        &self,
-        step: demi_backend_user_shard::holds::PermissionStep,
-    ) -> demi_backend_user_shard::holds::StepHold {
-        self.services.permissions.hold(step)
-    }
-
-    /// Downloads the media catalog now, as its daily download does.
-    #[cfg(feature = "testing")]
-    pub async fn refresh_media_catalog(&self) {
-        self.services.media.refresh().await;
-    }
-
-    /// Holds every page's synchronization channel at `step` from now on,
-    /// until the hold is released.
-    #[cfg(feature = "testing")]
-    pub fn hold_sync(
-        &self,
-        step: demi_backend_user_shard::sync::SyncStep,
-    ) -> demi_backend_user_shard::holds::StepHold {
-        self.services.syncs.hold(step)
-    }
-
-    /// Waits until `user`'s login `login` has ended, as the vault announces
-    /// it, whatever a page's channel is held at.
-    #[cfg(feature = "testing")]
-    pub async fn until_login_ended(
-        &self,
-        user: &demi_web_api_protocol::ids::UserId,
-        login: &demi_web_api_protocol::ids::LoginId,
-    ) {
-        use demi_web_api_protocol::providers::LoginState;
-        let marks = self.services.sync.watch(user);
-        while matches!(
-            self.services.logins.state(login, user),
-            Some(LoginState::Pending { .. })
-        ) {
-            marks.marked().await;
-            marks.take();
-        }
-    }
-
-    /// The file gate of the user's conversation `conversation`: every
-    /// operation on the conversation's Host holds a lease of it, a
-    /// transition reserves it, and a lease the caller takes is activity
-    /// (`crates/backend-host-access/src/access.rs`).
-    #[cfg(feature = "testing")]
-    pub async fn file_gate(
-        &self,
-        user: &demi_web_api_protocol::ids::UserId,
-        conversation: &demi_web_api_protocol::ids::ConversationId,
-    ) -> demi_shared_gates::ActivityGate {
-        let conversation = conversation.clone();
-        self.shards
-            .shards()
-            .of(user)
-            .call(move |shard, _| async move {
-                shard
-                    .conversations()
-                    .slot(&conversation)
-                    .file_gate()
-                    .clone()
-            })
-            .await
-            .expect("the user's shard serves while the backend runs")
-    }
-
-    /// How many operations of `user` wait for a returning device's runner
-    /// now (`crates/backend-runners/src/devices.rs`).
-    #[cfg(feature = "testing")]
-    pub async fn return_waits(&self, user: &demi_web_api_protocol::ids::UserId) -> tokio::sync::watch::Receiver<usize> {
-        self.shards
-            .shards()
-            .of(user)
-            .call(move |shard, _| async move { demi_backend_host_access::HostShard::devices(&*shard).return_waits() })
-            .await
-            .expect("the user's shard serves while the backend runs")
-    }
-
-    /// What `user`'s device `device` is subscribed to on its runner now, by
-    /// every holder (`crates/runner-host/src/subscriptions.rs`).
-    #[cfg(feature = "testing")]
-    pub async fn subscribed(
-        &self,
-        user: &demi_web_api_protocol::ids::UserId,
-        device: &demi_web_api_protocol::ids::DeviceId,
-    ) -> Vec<demi_runner_protocol::files::Subject> {
-        let device = device.clone();
-        self.shards
-            .shards()
-            .of(user)
-            .call(move |shard, _| async move {
-                let Some(link) = demi_backend_host_access::HostShard::devices(&*shard).link(&device) else {
-                    return Vec::new();
-                };
-                link.subscribed()
-            })
-            .await
-            .expect("the user's shard serves while the backend runs")
-    }
-
-    /// Resolves once no collection of `user`'s blob namespace runs or is to
-    /// follow (`crates/backend-database/src/deletions.rs`).
-    #[cfg(feature = "testing")]
-    pub async fn until_collected(&self, user: &demi_web_api_protocol::ids::UserId) {
-        self.shards
-            .shards()
-            .of(user)
-            .call(|shard, _| async move { shard.until_collected().await })
-            .await
-            .expect("the user's shard serves while the backend runs");
-    }
-
-    /// Resolves once `count` Claude Code processes began to be prepared
-    /// ahead on `user`'s Cloud (`crates/provider-claude-code/src/prepared.rs`).
-    #[cfg(feature = "testing")]
-    pub async fn until_prepared(&self, user: &demi_web_api_protocol::ids::UserId, count: u64) {
-        self.shards
-            .shards()
-            .of(user)
-            .call(move |shard, _| async move { shard.until_prepared(count).await })
-            .await
-            .expect("the user's shard serves while the backend runs");
-    }
-
-    /// Stores `secret`, a secret document of `family`, as the one account of
-    /// a new entry of `owner`'s labelled `label`, as a sign-in would store
-    /// it, for a suite whose vendor sign-in cannot run. The account is known
-    /// by `identity`.
-    #[cfg(feature = "testing")]
-    pub async fn seed_subscription(
-        &self,
-        owner: &demi_web_api_protocol::ids::UserId,
-        family: &str,
-        label: &str,
-        identity: &str,
-        secret: String,
-    ) -> demi_web_api_protocol::ids::ProviderId {
-        use demi_backend_providers::vault::entries::SeededAccount;
-        use demi_provider_common::credentials::{AccountLabel, NewAccount};
-        let seeded = SeededAccount {
-            family: family.to_owned(),
-            label: label.to_owned(),
-            account: NewAccount {
-                secret: Some(secret),
-                label: AccountLabel {
-                    label: label.to_owned(),
-                    detail: None,
-                    identity_key: Some(identity.to_owned()),
-                },
-            },
-            source: "login:code".into(),
-        };
-        self.services
-            .vault
-            .seed(owner.clone(), &seeded, self.services.clock.now())
-            .await
-            .expect("the vault stores the entry")
-            .expect("the owner has no entry of the family")
-            .id
     }
 
     /// Shuts the backend down. The listener closes first, so no new work

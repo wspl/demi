@@ -6,18 +6,9 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach a shard's calls, its conversations' transitions and idle
-# watches, and host access's operations over a shard with runners the tests
-# play, so they are unit tests and the crate has no integration tests
-# (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 doctest = false
 bench = false
-
-[features]
-# Shared services and a shard for tests (`Services::start_for_tests`), and
-# the holds of a flow at one of its steps (`StepHold`): the runners' hellos
-# and the pages' synchronization channels.
-testing = ["demi-backend-remote-host/testing"]
 
 [dependencies]
 demi-agent-server = { path = "../agent-server" }
@@ -76,11 +67,3 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 # The public holidays an automation's working days skip, kept compressed.
 zstd = { version = "0.13", default-features = false }
-
-[dev-dependencies]
-demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
-percent-encoding = "2"
-shlex = "2"
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }
-tracing-subscriber.workspace = true

@@ -13,28 +13,13 @@ use crate::conversations::{ConversationTarget, ModelSettings};
 use crate::ids::ConversationId;
 use crate::text::Trimmed;
 
-/// The most characters of an automation's name, after trimming.
-pub const NAME_MAX: usize = 120;
-/// The most bytes of a prompt.
-pub const PROMPT_MAX_BYTES: usize = 64 * 1024;
-/// The most bytes of a change watch's command.
-pub const COMMAND_MAX_BYTES: usize = 16 * 1024;
-/// The longest interval, a year, in minutes.
-pub const INTERVAL_MAX_MINUTES: u32 = 366 * 24 * 60;
-/// The most runs a day a limit allows.
-pub const RUNS_PER_DAY_MAX: u32 = 10_000;
-/// The most bytes of a Stripe signing secret the user pastes.
-pub const STRIPE_SECRET_MAX_BYTES: usize = 256;
 /// The runs an automation lists, newest first; older ones are kept until
 /// the automation is deleted, and are not shown.
+///
+/// Bounded because the list is sent whole and an automation's runs have no end.
 pub const RUNS_SHOWN: usize = 50;
 /// The name a new automation starts with.
 pub const NEW_NAME: &str = "New Automation";
-
-/// The most tasks a repeat holds.
-pub const TASKS_MAX: usize = 50;
-/// The longest cycle a repeat counts, in its unit.
-pub const EVERY_MAX: u32 = 999;
 
 /// A day of the week, as a weekly task names the days it runs on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
@@ -109,7 +94,7 @@ impl RepeatUnit {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub struct Repeat {
-    #[garde(range(min = 1, max = EVERY_MAX))]
+    #[garde(range(min = 1))]
     pub every: u32,
     pub unit: RepeatUnit,
     /// The first cycle's day, as `2026-01-01`, for a cycle of several
@@ -186,7 +171,7 @@ pub struct HolidayPlace {
     pub country: String,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(inner(length(min = 1, max = 64)))]
+    #[garde(inner(length(min = 1)))]
     pub region: Option<String>,
 }
 
@@ -199,7 +184,7 @@ pub struct HolidayPlace {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Task {
     /// Unique among the repeat's tasks; the page or the command makes it.
-    #[garde(length(min = 1, max = 64))]
+    #[garde(length(min = 1))]
     pub id: String,
     /// A clock time as `09:00`.
     #[garde(pattern(r"^([01][0-9]|2[0-3]):[0-5][0-9]$"))]
@@ -220,7 +205,7 @@ pub struct Task {
     #[garde(dive)]
     pub holidays: Option<HolidayPlace>,
     /// Empty until written; a task without a message does not run.
-    #[garde(length(max = PROMPT_MAX_BYTES))]
+    #[garde(skip)]
     pub prompt: String,
 }
 
@@ -251,18 +236,18 @@ pub enum Schedule {
     Repeat {
         #[garde(dive)]
         repeat: Repeat,
-        #[garde(length(min = 1, max = TASKS_MAX), custom(distinct_tasks), dive)]
+        #[garde(length(min = 1), custom(distinct_tasks), dive)]
         tasks: Vec<Task>,
     },
     /// Every `minutes`, from when the schedule was set.
     Every {
-        #[garde(range(min = 1, max = INTERVAL_MAX_MINUTES))]
+        #[garde(range(min = 1))]
         minutes: u32,
     },
     /// A cron expression of five fields: minute, hour, day of month, month
     /// and day of the week, which the backend reads.
     Cron {
-        #[garde(length(chars, min = 9, max = 200))]
+        #[garde(length(chars, min = 9))]
         expression: String,
     },
 }
@@ -293,9 +278,9 @@ pub enum Trigger {
     /// When the output of `command`, run every `everyMinutes` on the
     /// target's device in the target's directory, changes.
     Change {
-        #[garde(length(min = 1, max = COMMAND_MAX_BYTES), custom(not_blank))]
+        #[garde(length(min = 1), custom(not_blank))]
         command: String,
-        #[garde(range(min = 1, max = INTERVAL_MAX_MINUTES))]
+        #[garde(range(min = 1))]
         every_minutes: u32,
     },
     /// When its URL, `<server>/hooks/<id>`, is called with its secret.
@@ -488,7 +473,7 @@ pub struct AutomationDto {
 pub struct AutomationPatch {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(inner(length(chars, min = 1, max = NAME_MAX)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub name: Option<Trimmed>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Trigger")]
@@ -496,12 +481,12 @@ pub struct AutomationPatch {
     pub trigger: Option<Trigger>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(inner(length(min = 1, max = 64)))]
+    #[garde(inner(length(min = 1)))]
     pub time_zone: Option<String>,
     /// Null removes the limit.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Nullable<u32>")]
-    #[garde(inner(inner(range(min = 1, max = RUNS_PER_DAY_MAX))))]
+    #[garde(inner(inner(range(min = 1))))]
     pub max_runs_per_day: Option<Option<u32>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "AutomationTarget")]
@@ -509,7 +494,7 @@ pub struct AutomationPatch {
     pub target: Option<AutomationTarget>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(inner(length(max = PROMPT_MAX_BYTES)))]
+    #[garde(skip)]
     pub prompt: Option<String>,
     /// Null for the user's own model for new conversations.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
@@ -524,7 +509,7 @@ pub struct AutomationPatch {
     /// stops checking Stripe's signatures.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(inner(inner(length(min = 1, max = STRIPE_SECRET_MAX_BYTES))))]
+    #[garde(inner(inner(length(min = 1))))]
     pub stripe_secret: Option<Option<String>>,
 }
 
@@ -548,7 +533,7 @@ pub struct AutomationList {
 pub struct RunNow {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(inner(length(min = 1, max = 64)))]
+    #[garde(inner(length(min = 1)))]
     pub task_id: Option<String>,
 }
 

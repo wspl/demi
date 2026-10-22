@@ -19,8 +19,9 @@ import {
   wholeBlockSchema,
   type TranscriptPage,
 } from '../api/generated/web-api'
-import type { Block, ConversationAttachment, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
+import type { Block, CacheChart, ConversationAttachment, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
 import { describeAttachments } from './activity'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 
 /** The blocks a disk copy holds whole, with the facts of their failures. */
 export interface KeptBlocks {
@@ -70,6 +71,8 @@ export interface HistoryHolder {
   failures: Record<string, ProviderFailureFacts>
   instructions: InstructionEntry[]
   summaries: Record<string, number>
+  /** A conversation's cache charts by node, which the latest page of a node brings; a share has none. */
+  charts?: Record<string, CacheChart>
   shownAt: string | null
   /** How many blocks lie within the view's reach around it (`ShownView`). */
   shownWithin?: number
@@ -103,8 +106,7 @@ export function createHistoryReads<T extends HistoryHolder>(
    * stops them, and the pages they read. `release` gives an agent a new
    * group, and stops the old one shortly after, unless a view asks again for
    * a page it still reads meanwhile, as Telegram's clients cancel the read of
-   * a hole no view needs
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * a hole no view needs.
    */
   interface ReadGroup {
     controller: AbortController
@@ -172,14 +174,25 @@ export function createHistoryReads<T extends HistoryHolder>(
   /** One page of the agent `node`'s transcript, the root's for null. */
   async function readPage(holder: T, node: string | null, at: PageAt, stop: AbortSignal): Promise<TranscriptPage> {
     const query = new URLSearchParams()
-    if (at.kind === 'before' || at.kind === 'after') {
+    if (at.kind === 'latest') {
+      query.set('latest', 'true')
+    } else if (at.kind === 'before' || at.kind === 'after') {
       query.set(at.kind, String(at.index))
       query.set('edge', at.edge)
     } else if (at.kind === 'around') {
       query.set('around', at.block)
     }
+    const began = performance.now()
     const response = await apiRequest(`${path(holder, node)}/transcript?${query}`, { signal: AbortSignal.any([signal(), stop]) })
-    return readResponse(response, transcriptPageSchema)
+    const page = await readResponse(response, transcriptPageSchema)
+    pageLog.info('read.answered', {
+      read: 'page',
+      at: at.kind,
+      node: node ?? holder.id,
+      blocks: page.blocks.length,
+      ms: Math.round(performance.now() - began),
+    }, holder.id)
+    return page
   }
 
   function agentOf(holder: T, node: string): HistoryAgent | undefined {
@@ -198,8 +211,7 @@ export function createHistoryReads<T extends HistoryHolder>(
   /**
    * Shows the block `block` in the agent `node`'s view, or the latest for
    * null, with `within` blocks in the view's reach around it: what of its
-   * history the page holds follows it
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * history the page holds follows it.
    */
   function showAt(holder: T, node: string | null, block: string | null, within = 0): void {
     const before = shownWindow(historyOf(holder, node), shownAtOf(holder, node))
@@ -230,6 +242,9 @@ export function createHistoryReads<T extends HistoryHolder>(
     const failures = { ...page.failures }
     if (holder.attachmentDescriptions) {
       describeAttachments({ attachmentDescriptions: holder.attachmentDescriptions }, page.attachments ?? [])
+    }
+    if (page.cacheChart && holder.charts) {
+      holder.charts[node ?? holder.id] = page.cacheChart
     }
     if (node === null) {
       holder.history = boundedHistory(addPage(holder.history, page, live(holder, null)), holder, pageRange)

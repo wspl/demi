@@ -14,8 +14,12 @@
 //!   slow page.
 //!
 //! On one shared socket, a conversation that lagged would close the page's
-//! channel and every other conversation with it, and a transcript's handshake or
-//! a burst of command output would hold back the sidebar's changes behind it.
+//! channel and every other conversation with it, and a burst of command output
+//! would hold back the sidebar's changes behind it.
+//!
+//! The channel carries changes alone. The page reads the product state by
+//! `GET /state`, then opens the channel and follows the state from the
+//! version the read carries; it applies what the channel sends from then on.
 
 mod channel;
 mod state;
@@ -23,22 +27,8 @@ mod state;
 use demi_backend_page_sync::Part;
 
 pub use self::channel::ChannelSession;
+pub use self::state::{StateError, etag_of, etag_of_json};
 use crate::shard::Shard;
-
-/// Where a channel waits while a test holds it (`Backend::hold_sync`).
-#[cfg(feature = "testing")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SyncStep {
-    /// Once it has read its product state, before it sends it.
-    Snapshot,
-    /// Once a change woke it, before it takes and reads the parts that
-    /// changed.
-    Changes,
-    /// Once it has read the providers, in the product state or as a part.
-    Providers,
-    /// Once it has noted what its page says it shows.
-    Showing,
-}
 
 impl Shard {
     /// Marks `part` changed on the user's open channels.

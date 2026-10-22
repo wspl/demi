@@ -35,8 +35,6 @@ pub enum SavedRefusal {
     Archived,
     /// The caller has no upload of this id.
     UploadNotFound(AttachmentId),
-    /// The message as stored would be over a draft's limit.
-    TooLarge,
     /// The conversation keeps [`SAVED_MAX`] messages already.
     Full,
     /// The conversation has no saved message of that id.
@@ -186,9 +184,6 @@ impl ControlService {
                 Ok(version) => version,
                 Err(missing) => return Ok(Err(SavedRefusal::UploadNotFound(missing))),
             };
-            if version.too_large() {
-                return Ok(Err(SavedRefusal::TooLarge));
-            }
             let Some(kept) = saved(&transaction, &conversation, &id)? else {
                 return Ok(Err(SavedRefusal::NotFound));
             };
@@ -311,8 +306,7 @@ fn revisions(connection: &Connection, conversation: &ConversationId) -> Result<R
 /// What a save names.
 enum Staged {
     /// A message the conversation may keep: not archived, every upload the
-    /// caller's, within a draft's limit, and fewer than [`SAVED_MAX`] kept
-    /// already.
+    /// caller's, and fewer than [`SAVED_MAX`] kept already.
     New(Version),
     /// The save was made already: the conversation keeps a message of that id
     /// with this content.
@@ -348,9 +342,6 @@ fn staged(
         Ok(version) => version,
         Err(missing) => return Ok(Err(SavedRefusal::UploadNotFound(missing))),
     };
-    if version.too_large() {
-        return Ok(Err(SavedRefusal::TooLarge));
-    }
     if let Some(kept) = saved(connection, conversation, id.as_str())?
         .map_or_else(|| sent(connection, conversation, id.as_str()), |kept| Ok(Some(kept)))?
     {

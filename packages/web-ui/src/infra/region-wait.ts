@@ -1,12 +1,11 @@
 import { shallowRef, type ShallowRef } from 'vue'
 
-// How a region of the page waits for what draws it
-// (`docs/decisions/0033-a-region-draws-once.md`). A region is a code block or a
-// run of code, a formula, a file icon or an editor; what it needs may be a
-// chain of things, such as the highlighter and then a language, or a list and
-// then a picture. A region asks `regionForm` with a key that names it and a
-// `ready` that says whether everything it needs is in, and is told which form
-// to draw:
+// How a region of the page waits for what draws it.
+// A region is a code block or a run of code, a formula, a file icon or an
+// editor; what it needs may be a chain of things, such as the highlighter and
+// then a language, or a list and then a picture. A region asks `regionForm`
+// with a key that names it and a `ready` that says whether everything it needs
+// is in, and is told which form to draw:
 //
 //   held    nothing yet, at the size it will have where that is known
 //   plain   its plain form, which stays until the final one replaces it

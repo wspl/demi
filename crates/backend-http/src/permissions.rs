@@ -63,14 +63,11 @@ fn refused(error: PermissionError) -> ApiError {
             ErrorCode::PermissionRequestNotFound,
             message,
         ),
-        // The field and the limit the page words the refusal with, under the form.
+        // The field the page words the refusal with, under the form.
         PermissionError::InvalidAnswer(problem) => {
             let refusal = ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidAnswer, message);
             match problem {
                 AnswerProblem::ValueMissing { label } => refusal.with_param("field", label),
-                AnswerProblem::ValueTooLarge { label, limit_bytes } => refusal
-                    .with_param("field", label)
-                    .with_param("limitBytes", limit_bytes),
                 _ => refusal,
             }
         }

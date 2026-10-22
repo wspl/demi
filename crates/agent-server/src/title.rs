@@ -18,11 +18,10 @@ use demi_shared_types::char_offset;
 
 use crate::small_request::SmallRequest;
 
-/// The longest title, from the message or the model, in Unicode scalar
-/// values.
-pub const TITLE_MAX_CHARS: usize = 80;
-
 /// How much of the first message a request reads, in Unicode scalar values.
+///
+/// Bounded because the request goes to a small model whose context window is
+/// limited.
 pub const INPUT_MAX_CHARS: usize = 4_000;
 
 /// A title request's cap on its output
@@ -33,6 +32,8 @@ pub const INPUT_MAX_CHARS: usize = 4_000;
 /// the line alone can end before any text. A model whose own output limit is
 /// lower sends that one. At 1,024 the baseline model's lowest effort left about
 /// one title in ten empty, its thinking spending the whole limit.
+///
+/// Sent because the vendors' APIs take an output cap on every request.
 pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(4_096).expect("the cap is not zero");
 
 /// The whole system prompt of a title request.
@@ -66,10 +67,10 @@ Write a brief title that would help the user find this conversation later.
 - Never say you cannot write a title. For a short or conversational message,
   title its tone or intent.";
 
-/// The title the first message gives before any model answers: the start
-/// of its plain text, on one line.
+/// The title the first message gives before any model answers: its plain
+/// text, on one line.
 pub fn title_from_message(text: &str) -> String {
-    prefix(&one_line(&plain_text(text)), TITLE_MAX_CHARS).to_owned()
+    one_line(&plain_text(text))
 }
 
 /// What a request reads: the first message's plain text, as the user reads
@@ -215,16 +216,14 @@ impl<'s> Source<'s> {
 }
 
 /// The title in a model's answer: its first line that is not blank, without
-/// the quotes around it, cut to [`TITLE_MAX_CHARS`]; none when nothing is
-/// left.
+/// the quotes around it; none when nothing is left.
 pub fn title_from_response(text: &str) -> Option<String> {
     let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
     let unquoted = line
         .trim_start_matches(['"', '\'', '“', '‘', '「', '『'])
         .trim_end_matches(['"', '\'', '”', '’', '」', '』'])
         .trim();
-    let title = prefix(unquoted, TITLE_MAX_CHARS).trim();
-    (!title.is_empty()).then(|| title.to_owned())
+    (!unquoted.is_empty()).then(|| unquoted.to_owned())
 }
 
 /// The small request that titles the conversation whose first message is

@@ -8,7 +8,7 @@ import { ApiError, apiRequest, readResponse } from './client'
  * Where a share's page asks about attachments: the routes under `path`, whose
  * `…/attachments/:id` answers one, and where its blobs load from. A
  * conversation's own page asks nothing: its transcript brings the
- * descriptions (`docs/decisions/0029-a-conversation-opens-whole.md`).
+ * descriptions.
  */
 export interface AttachmentSource {
   path: string

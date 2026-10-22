@@ -13,8 +13,6 @@ use crate::files::AbsolutePath;
 use crate::ids::{DeviceId, WorkspaceId};
 use crate::text::Trimmed;
 
-/// The most characters of a workspace's name.
-pub const WORKSPACE_NAME_MAX: usize = 256;
 
 /// A workspace as the page lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -66,11 +64,11 @@ pub enum CreateWorkspace {
         /// An `AbsolutePath` is valid once it is decoded.
         #[garde(skip)]
         path: AbsolutePath,
-        #[garde(length(chars, min = 1, max = WORKSPACE_NAME_MAX))]
+        #[garde(length(chars, min = 1))]
         name: Trimmed,
     },
     Cloud {
-        #[garde(length(chars, min = 1, max = WORKSPACE_NAME_MAX))]
+        #[garde(length(chars, min = 1))]
         name: Trimmed,
     },
 }
@@ -82,7 +80,7 @@ pub enum CreateWorkspace {
 pub struct ChangeWorkspace {
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(inner(length(chars, min = 1, max = WORKSPACE_NAME_MAX)))]
+    #[garde(inner(length(chars, min = 1)))]
     pub name: Option<Trimmed>,
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "ModelSettings")]

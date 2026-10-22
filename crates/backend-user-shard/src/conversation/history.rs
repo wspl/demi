@@ -47,6 +47,9 @@ use crate::shard::Shard;
 
 /// About how many characters a read prints, and a page of what `open`
 /// prints of a text.
+///
+/// Bounded because what a read prints goes into the model's context window,
+/// which the vendor limits.
 const BUDGET: usize = 8_000;
 
 /// How many blocks a read takes from the database at a time.
@@ -331,14 +334,20 @@ impl std::fmt::Display for When {
 }
 
 /// How many hits a page of a search shows.
+///
+/// Bounded because a page goes into the model's context window.
 const HITS_PER_PAGE: usize = 5;
 
 /// How many blocks on each side of a hit a search reads to find the
 /// messages before and after it.
+///
+/// Bounded because the messages go into the model's context window.
 const AROUND: usize = 8;
 
 /// The characters a hit shows of its own text, and of each message beside
 /// it: about 600 in all.
+///
+/// Bounded because they go into the model's context window.
 const HIT_CHARS: usize = 400;
 const BESIDE_CHARS: usize = 100;
 
@@ -953,9 +962,13 @@ async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u
 
 /// The room a page of `open` leaves for its last line, which names the
 /// next page.
+///
+/// Part of [`BUDGET`]: a page goes into the model's context window.
 const NEXT_CHARS: usize = 100;
 
 /// The room a page of `open` leaves for the line that names its block.
+///
+/// Part of [`BUDGET`]: a page goes into the model's context window.
 const HEAD_CHARS: usize = 200;
 
 /// The characters of `body` each page of `open` shows, under the line that names

@@ -26,15 +26,15 @@ export interface AgentPrice {
 
 /**
  * What a card's Cost section shows: the cost, and the cache chart of the
- * agent it shows, which the backend counts and sends with the agent's node
- * (`docs/decisions/0019-the-server-counts-the-cache-chart.md`), and what the
- * same agents cost in the last hour, which the backend counts when a card
- * that shows it asks
- * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`).
+ * agent it shows, which the backend counts and the page reads when the card
+ * opens, and what the same agents cost in the last hour, which the backend
+ * counts when a card that shows it asks.
  */
 export interface CostShown {
   cost: ConversationCostView
-  /** Null until the agent's node first brought it. */
+  /** The agent's node, null for the conversation's root: which chart the card reads. */
+  node?: string | null
+  /** Null until the page read it. */
   chart: CacheChart | null
   /** What the last read of the last hour answered; null until the first read of it answers. */
   lastHour: LastHourShown | null
@@ -206,7 +206,7 @@ export interface ProfileRow {
   price: number
 }
 
-/** The profiles the Profiles part shows at most, those that cost the most. */
+/** The profiles the Profiles part shows at most, those that cost the most: a ranking, not a limit on what is held. */
 export const PROFILE_ROWS = 5
 
 /**

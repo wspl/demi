@@ -170,7 +170,6 @@
     "permission_request_not_found": "이 요청은 이미 응답되었습니다.",
     "invalid_answer": "응답이 요청과 맞지 않습니다.",
     "invalid_answer_missing": "“{field}”의 값을 입력하십시오.",
-    "invalid_answer_too_large": "“{field}”의 값은 최대 {limitBytes}입니다.",
     "credential_not_found": "자격 증명을 찾을 수 없습니다.",
     "credential_name_taken": "다른 자격 증명에서 이 이름을 사용하고 있습니다.",
     "port_forward_name_taken": "이름이 {name}인 전달이 이미 있습니다.",

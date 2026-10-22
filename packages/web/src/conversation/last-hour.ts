@@ -14,12 +14,11 @@ export interface LastHourSource {
 }
 
 /**
- * Keeps the last hour of a conversation's cost current while a card shows it
- * (`docs/decisions/0041-the-cost-shows-the-last-hour.md`): the backend counts
- * it, so the page reads it when the first card starts to show it, after each
- * change of the conversation's cost, and once a minute, and drops it when the
- * last card stops. The cards of a conversation, its composer's and its
- * agents' windows', share one watch.
+ * Keeps the last hour of a conversation's cost current while a card shows it:
+ * the backend counts it, so the page reads it when the first card starts to
+ * show it, after each change of the conversation's cost, and once a minute, and
+ * drops it when the last card stops. The cards of a conversation, its
+ * composer's and its agents' windows', share one watch.
  *
  * ```text
  *  start ──► read ──► conversation.lastHour = answer

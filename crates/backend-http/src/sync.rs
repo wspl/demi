@@ -4,7 +4,7 @@
 //! session, since only requests renew it. Once upgraded, the socket moves into
 //! the user's shard, which serves it until it closes.
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::http::StatusCode;
@@ -21,10 +21,19 @@ use super::page_client::PageClient;
 use demi_backend_user_shard::shard::page_socket::PageSocketKind;
 use demi_backend_user_shard::sync::ChannelSession;
 
+/// The query of `WS /sync`: a page of this build names its web build, which
+/// the backend does not read; a page of the earlier build names none and is
+/// told the backend's build alone.
+#[derive(Debug, serde::Deserialize)]
+pub(super) struct SyncQuery {
+    build: Option<String>,
+}
+
 pub(super) async fn channel(
     State(state): State<AppState>,
     jar: CookieJar,
     client: PageClient,
+    Query(query): Query<SyncQuery>,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
     let token = jar
@@ -52,13 +61,14 @@ pub(super) async fn channel(
         user: session.user,
         expires_at: session.expires_at,
     };
+    let legacy = query.build.is_none();
     Ok(page_socket(upgrade, move |socket| async move {
         let user = session.user.id.clone();
         let origin = client.origin(PageSocketKind::Sync, user.clone());
         let adopted = state
             .shards
             .of(&user)
-            .adopt(move |shard| shard.serve_sync_channel(socket, session, origin))
+            .adopt(move |shard| shard.serve_sync_channel(socket, session, origin, legacy))
             .await;
         // A shard that is closing takes no channel: dropping the socket
         // closes it, and the page connects again to the next backend.

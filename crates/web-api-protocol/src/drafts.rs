@@ -15,9 +15,6 @@ use crate::ids::AttachmentId;
 /// the composer's editor writes.
 pub const ATTACHMENT_MARK: char = '\u{FFFC}';
 
-/// The most bytes a draft's text and files take as stored.
-pub const DRAFT_BYTES_MAX: usize = 256 * 1024;
-
 /// `PUT /conversations/:id/draft`: the message's Markdown and its files in
 /// the order of their marks, each named as a frame names it, an `upload` or
 /// a `remote_file`, and the comments waiting to be sent with it.

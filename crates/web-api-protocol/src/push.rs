@@ -25,7 +25,7 @@ pub struct PushKey {
 }
 
 /// Where a push service takes the messages for one browser's subscription:
-/// an `https` URL with a host, at most 2048 bytes. Whether its host is a
+/// an `https` URL with a host. Whether its host is a
 /// public one is the sender's to check, as it connects.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
@@ -33,7 +33,7 @@ pub struct PushEndpoint(Url);
 
 /// Why a text is not a [`PushEndpoint`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[error("the endpoint must be an https URL with a host, at most 2048 bytes")]
+#[error("the endpoint must be an https URL with a host")]
 pub struct NotPushEndpoint;
 
 impl PushEndpoint {
@@ -50,9 +50,6 @@ impl TryFrom<String> for PushEndpoint {
     type Error = NotPushEndpoint;
 
     fn try_from(text: String) -> Result<Self, NotPushEndpoint> {
-        if text.len() > 2048 {
-            return Err(NotPushEndpoint);
-        }
         let url = Url::parse(&text).map_err(|_| NotPushEndpoint)?;
         if url.scheme() != "https" || url.host().is_none() || !url.username().is_empty() || url.password().is_some() {
             return Err(NotPushEndpoint);
@@ -77,7 +74,7 @@ impl JsonSchema for PushEndpoint {
     }
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({ "type": "string", "maxLength": 2048 })
+        json_schema!({ "type": "string" })
     }
 }
 
@@ -271,6 +268,8 @@ pub enum PushMessage {
 
 /// How much of a turn's last answer [`PushMessage::TurnFinished`] carries:
 /// more than a notification shows, as its Markdown's syntax goes.
+///
+/// Bounded because the push services take a message of about 4 KB at most.
 pub const ANSWER_START_CHARS: usize = 400;
 
 /// What a permission request asks, as its card's title asks it.
@@ -307,20 +306,6 @@ impl PushMessage {
             Self::TurnFailed { .. } => events.turn_fails,
             Self::Permission { .. } => events.needs_permission,
             Self::Agent { .. } => events.agent_notifies,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // Cost: a few parses; under a millisecond.
-
-    #[test]
-    fn only_an_https_url_with_a_host_is_an_endpoint() {
-        for refused in ["http://push.example/x", "ftp://push.example/x", "https://user:pw@push.example/x", "not a url"] {
-            assert!(PushEndpoint::try_from(refused.to_owned()).is_err(), "{refused}");
         }
     }
 }

@@ -17,7 +17,7 @@
       "30d": "保留 30 天",
       "always": "保留至你删除"
     },
-    "needsValues": "每个字段都需要一个不超过 64 KiB 的值。",
+    "needsValues": "每个字段都需要一个值。",
     "allowCredentialTitle": "允许此对话使用凭据“{name}”？",
     "removed": "已删除",
     "youRemoved": "你已删除此凭据。",

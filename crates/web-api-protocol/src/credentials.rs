@@ -14,16 +14,6 @@ use serde_with::rust::unwrap_or_skip;
 use crate::ids::UserCredentialId;
 use crate::text::Trimmed;
 
-/// The most characters of a credential's name, after trimming.
-pub const NAME_MAX: usize = 80;
-/// The most characters of a field's name.
-pub const FIELD_NAME_MAX: usize = 32;
-/// The most characters of a field's label, after trimming.
-pub const LABEL_MAX: usize = 80;
-/// The most bytes of a field's value.
-pub const VALUE_MAX_BYTES: usize = 64 * 1024;
-/// The most fields of a credential.
-pub const FIELDS_MAX: usize = 10;
 
 /// What a field's name is made of.
 pub const FIELD_NAME_PATTERN: &str = r"^[a-z0-9_-]+$";
@@ -97,11 +87,11 @@ impl Keep {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialField {
-    /// 1 to 32 lowercase letters, digits, `_` and `-`, which `read` names.
-    #[garde(length(chars, min = 1, max = FIELD_NAME_MAX), pattern(r"^[a-z0-9_-]+$"))]
+    /// Lowercase letters, digits, `_` and `-`, which `read` names.
+    #[garde(length(chars, min = 1), pattern(r"^[a-z0-9_-]+$"))]
     pub name: String,
-    /// What the card and Settings call it, 1 to 80 characters.
-    #[garde(length(chars, min = 1, max = LABEL_MAX))]
+    /// What the card and Settings call it.
+    #[garde(length(chars, min = 1))]
     #[schemars(with = "Trimmed")]
     pub label: Trimmed,
     #[garde(skip)]
@@ -112,15 +102,14 @@ pub struct CredentialField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewField {
-    #[garde(length(chars, min = 1, max = FIELD_NAME_MAX), pattern(r"^[a-z0-9_-]+$"))]
+    #[garde(length(chars, min = 1), pattern(r"^[a-z0-9_-]+$"))]
     pub name: String,
-    #[garde(length(chars, min = 1, max = LABEL_MAX))]
+    #[garde(length(chars, min = 1))]
     #[schemars(with = "Trimmed")]
     pub label: Trimmed,
     #[garde(skip)]
     pub kind: FieldKind,
-    /// Up to 64 KiB.
-    #[garde(length(bytes, max = VALUE_MAX_BYTES))]
+    #[garde(skip)]
     pub value: String,
 }
 
@@ -138,12 +127,12 @@ pub struct ListedField {
     pub value: Option<String>,
 }
 
-/// A credential's name: trimmed, then 1 to 80 characters.
+/// A credential's name: trimmed, then at least one character.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[schemars(inline)]
 #[garde(transparent)]
-pub struct CredentialName(#[garde(length(chars, min = 1, max = NAME_MAX))] pub Trimmed);
+pub struct CredentialName(#[garde(length(chars, min = 1))] pub Trimmed);
 
 impl CredentialName {
     pub fn as_str(&self) -> &str {
@@ -199,7 +188,7 @@ pub struct NewCredential {
     #[schemars(with = "String")]
     #[garde(skip)]
     pub note: Option<String>,
-    #[garde(length(min = 1, max = FIELDS_MAX), dive, custom(distinct_new))]
+    #[garde(length(min = 1), dive, custom(distinct_new))]
     pub fields: Vec<NewField>,
     #[garde(skip)]
     pub keep: Keep,
@@ -241,17 +230,13 @@ pub fn refusal(report: &garde::Report) -> String {
     for (path, error) in report.iter() {
         let path = path.to_string();
         let sentence = if path == "fields" {
-            format!("A credential has 1 to {FIELDS_MAX} fields, each with its own name.")
+            "A credential has at least one field, each with its own name.".to_owned()
         } else if path == "name" {
-            format!("Enter a name of up to {NAME_MAX} characters.")
+            "Enter a name.".to_owned()
         } else if path.ends_with(".name") {
-            format!(
-                "A field\u{2019}s name has up to {FIELD_NAME_MAX} lowercase letters, digits, \u{201c}_\u{201d} and \u{201c}-\u{201d}."
-            )
+            "A field\u{2019}s name has lowercase letters, digits, \u{201c}_\u{201d} and \u{201c}-\u{201d}.".to_owned()
         } else if path.ends_with(".label") {
-            format!("Enter a label of up to {LABEL_MAX} characters for each field.")
-        } else if path.ends_with(".value") {
-            "A value can be at most 64 KiB.".to_owned()
+            "Enter a label for each field.".to_owned()
         } else {
             error.message().to_owned()
         };
@@ -260,26 +245,4 @@ pub fn refusal(report: &garde::Report) -> String {
         }
     }
     sentences.join(" ")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn field(name: &str, label: &str) -> CredentialField {
-        CredentialField {
-            name: name.to_owned(),
-            label: Trimmed::from(label.to_owned()),
-            kind: FieldKind::Secret,
-        }
-    }
-
-    #[test]
-    fn a_field_name_is_lowercase_letters_digits_underscores_and_hyphens() {
-        assert!(field("api_key-2", "API key").validate().is_ok());
-        assert!(field("Key", "API key").validate().is_err());
-        assert!(field("a key", "API key").validate().is_err());
-        assert!(field(&"k".repeat(33), "API key").validate().is_err());
-        assert!(field("key", "   ").validate().is_err());
-    }
 }

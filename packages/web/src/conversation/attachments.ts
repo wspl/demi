@@ -47,13 +47,12 @@ export interface OpeningHost {
 
 /**
  * The path of the file attachment `id` was uploaded from, when a card that
- * opens it shows that file (`docs/decisions/0003-attachment-opens-its-file.md`):
- * its Host is the conversation's and online, and the backend, asked once for
- * this opening, finds the file there. The backend asks the Host the
- * conversation runs on then, only while it is the attachment's, and never
- * wakes a stopped Cloud (`GET …/attachments/:id/file`). Any other answer, a
- * failed one included, opens the copy. A Host the page knows offline, a
- * stopped Cloud included, or another Host is not asked.
+ * opens it shows that file: its Host is the conversation's and online, and the
+ * backend, asked once for this opening, finds the file there. The backend asks
+ * the Host the conversation runs on then, only while it is the attachment's,
+ * and never wakes a stopped Cloud (`GET …/attachments/:id/file`). Any other
+ * answer, a failed one included, opens the copy. A Host the page knows offline,
+ * a stopped Cloud included, or another Host is not asked.
  */
 export async function attachmentOrigin(id: string, { source }: MessageAttachment, host: OpeningHost): Promise<string | null> {
   if (!source || source.host !== host.device || !host.online) {

@@ -43,7 +43,7 @@ import type { ChatSessionState, PendingSubmissionState } from './types'
 import { rootActivity } from './agent-activity'
 import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
-import { useShare, type ExistingShare, type ShareService } from './sharing'
+import { useShare, type ShareService } from './sharing'
 import ShareDialog from './ShareDialog.vue'
 import type { UsageLimits } from './context-usage'
 import type { CostShown } from './context-cost'
@@ -103,11 +103,6 @@ const props = withDefaults(defineProps<{
    * saved, and neither control is offered.
    */
   share?: ShareService
-  /**
-   * The conversation's shares, which the dialog opens on instead of making
-   * another.
-   */
-  shares?: readonly ExistingShare[]
   /**
    * Whether the app frame's work panel is open; absent when the host has none.
    */
@@ -237,7 +232,7 @@ const props = withDefaults(defineProps<{
  */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
 
-const sharing = useShare(() => props.share, () => props.shares ?? [])
+const sharing = useShare(() => props.share)
 const shareConversation = { kind: 'conversation' } as const
 
 const emit = defineEmits<{
@@ -342,8 +337,7 @@ const emit = defineEmits<{
   readSubagentAfter: [id: string]
   /**
    * The block in view of the agent `node`'s transcript, the root's for null,
-   * or null for its latest: what of it the page holds follows it
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * or null for its latest: what of it the page holds follows it.
    */
   shown: [node: string | null, blockId: string | null, within: number]
   /**
@@ -818,7 +812,6 @@ watch(
         :title="t('session.renameTitle')"
         :label="t('session.titleLabel')"
         :name="shownTitle"
-        :max-length="null"
         @close="renaming = false"
         @rename="renaming = false; emit('rename', $event)"
       />
@@ -980,7 +973,7 @@ watch(
         <template #dock>
           <SessionDock
             :show-scroll-to-bottom="!shownLatest || (!!list && !list.isAtBottom)"
-            :output="() => (transcriptShown(conversation.load) ? conversation.requestOutput : null)"
+            :output="() => (transcriptShown(conversation.load) ? conversation.requestOutputs[conversation.id] ?? null : null)"
             :scope="conversation.id"
             :turn-speed="transcriptShown(conversation.load) ? conversation.turnSpeed : null"
             @scroll-to-bottom="scrollToBottom"
@@ -1065,6 +1058,7 @@ watch(
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
             :agent-cost="subagentCost"
+            :output="(id) => conversation.requestOutputs[id] ?? null"
             @compact-agent="(id) => emit('compactSubagent', id)"
             @refresh-limits="(providerId, account) => emit('refreshLimits', providerId, account)"
             @open-instruction="(entry) => emit('openInstruction', entry)"

@@ -385,7 +385,6 @@ function resetShortcuts() {
     :overlay-store="appOverlayStore"
     :install-commands="demoInstallCommands"
     :claim-device="devices.claim"
-    :name-max-length="64"
     :exposed-ports="exposedPorts.ports.value"
     :on-expose-port="exposedPorts.expose"
     :on-change-exposed-port="exposedPorts.change"

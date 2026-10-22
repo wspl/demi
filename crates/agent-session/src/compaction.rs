@@ -71,21 +71,33 @@ Paths, names, ids, commands, numbers and error text needed to go on.
 Keep each section short, with \"(none)\" for an empty one, and every identifier exact. If the conversation starts with an earlier summary, update it: keep what still holds, change what changed, and drop what no longer holds.";
 
 /// How many passes a model switch runs to fit the new model's window.
+///
+/// Bounded so a switch whose summaries do not shrink the history enough ends
+/// instead of looping without end.
 const MAX_FIT_PASSES: usize = 8;
 
 /// The share of the window in use, in percent, from which the user may
 /// compact: below it there is too little to summarize for a summary to free
 /// much, and each pass loses detail.
+///
+/// A threshold of when a summary frees something, not a bound on what Demi
+/// holds.
 const MANUAL_COMPACTION_PERCENT: u8 = 50;
 
 /// The most room the token threshold leaves for the model's answer, and the
 /// room it leaves beyond that for the summary request's instruction and the
 /// estimate's margin, in tokens.
+///
+/// Budget arithmetic against the model's context window, which the vendor
+/// limits.
 const ANSWER_ROOM: u64 = 20_000;
 const SUMMARY_ROOM: u64 = 13_000;
 
 /// The recent work a pass keeps as it was written: at least this many
 /// estimated tokens, or this share of the window in use when that is less.
+///
+/// Budget arithmetic against the model's context window, which the vendor
+/// limits.
 const KEPT_WORK: u64 = 10_000;
 const KEPT_WORK_PERCENT: u8 = 15;
 

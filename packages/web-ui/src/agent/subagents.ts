@@ -61,8 +61,7 @@ export interface SubagentRecord extends AgentRun {
   history: HeldTranscript
   /**
    * The block its view shows, which bounds what of its history the page
-   * holds; null for the latest
-   * (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+   * holds; null for the latest.
    */
   shownAt: string | null
   /** How many blocks of the window lie within the view's reach on either side of that block, which the window holds beyond (`PREFETCH_SCREENS`); absent for none. */

@@ -76,7 +76,6 @@ const props = defineProps<{
   runnerRelease: string | null
   /** The directories of the projects on the device, which go with it. */
   projects?: readonly string[]
-  nameMaxLength: number | null
   overlayStore: OverlayStore
   /** Revokes the device; the dialog's button works until it settles. */
   onRevoke?: Action
@@ -360,7 +359,6 @@ async function revoke(): Promise<void> {
       :is-open="renameOpen"
       :overlay-store="overlayStore"
       :name="device?.name ?? ''"
-      :max-length="nameMaxLength"
       @close="renameOpen = false"
       @rename="emit('rename', $event)"
     />

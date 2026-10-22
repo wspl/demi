@@ -9,19 +9,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 /// The most tabs one work panel holds.
+///
+/// Bounded because the panel's document is stored for each conversation and
+/// sent whole at each change.
 pub const PANEL_TABS_MAX: usize = 64;
 
 /// The most bytes of one work panel's tabs, as the backend stores them.
+///
+/// Bounded for the same reason as [`PANEL_TABS_MAX`].
 pub const PANEL_BYTES_MAX: usize = 64 * 1024;
-
-/// The most characters of a tab's id.
-pub const PANEL_TAB_ID_MAX: usize = 64;
 
 /// A conversation's panel as the database keeps it: the tabs in order, and
 /// how many changes made them. The conversation's entry in the list carries
 /// it, so the page draws the panel's frame and tabs as soon as the
-/// conversation is listed
-/// (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+/// conversation is listed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct WorkPanel {
@@ -61,7 +62,7 @@ pub struct HeldState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PanelTab {
-    #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
+    #[garde(length(min = 1))]
     pub id: String,
     #[garde(length(min = 1))]
     pub kind: String,
@@ -73,7 +74,7 @@ pub struct PanelTab {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CreatePanelTab {
-    #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
+    #[garde(length(min = 1))]
     pub id: String,
     #[garde(length(min = 1))]
     pub kind: String,
@@ -114,7 +115,7 @@ pub enum PanelChange {
     /// Sets each field of `data` in the tab's `data`, removing those that
     /// are null, and leaves the other fields.
     Update {
-        #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
+        #[garde(length(min = 1))]
         id: String,
         #[garde(skip)]
         data: Map<String, Value>,
@@ -122,12 +123,12 @@ pub enum PanelChange {
     /// Removes the tab.
     #[serde(rename = "delete")]
     Remove {
-        #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
+        #[garde(length(min = 1))]
         id: String,
     },
     /// Moves the tab to `index` among the others.
     Move {
-        #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
+        #[garde(length(min = 1))]
         id: String,
         #[garde(range(max = PANEL_TABS_MAX))]
         index: usize,

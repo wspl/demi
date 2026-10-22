@@ -51,10 +51,10 @@ const DIRECT_MARK = '[browse direct]'
  */
 const FAILED_REQUEST = /^(?:\S+ FAILED \S+ (?!net::ERR_ABORTED$)|\S+ [45]\d\d |direct \S+ (?!ok |answered )\S+)/
 
-/** How many entries each kind keeps; older ones go. */
+/** How many entries each kind keeps, because the browser runs without end and the memory would grow with it; older ones go. */
 const LIMIT = 20_000
 
-/** How much of a socket frame an entry keeps. */
+/** How much of a socket frame an entry keeps, for the same reason. */
 const FRAME_TEXT = 300
 
 export class Logs {

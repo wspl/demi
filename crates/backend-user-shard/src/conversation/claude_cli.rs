@@ -85,6 +85,8 @@ use crate::services::Services;
 use crate::shard::{Shard, Shards};
 
 /// The most an operation of the package answers: one JSON document.
+///
+/// Bounded because the answer is read into memory from a package's process.
 const MAX_ANSWER_BYTES: usize = 1024 * 1024;
 
 /// Why the machine has no usable CLI, with the version that was wanted.
@@ -1474,12 +1476,6 @@ impl Shard {
             }
             shard.claude_cli().upgrading.borrow_mut().remove(&release.version);
         });
-    }
-
-    /// Resolves once `count` processes began to be prepared for the user.
-    #[cfg(feature = "testing")]
-    pub async fn until_prepared(&self, count: u64) {
-        self.claude_cli().prepared.until_begun(count).await;
     }
 
     /// Follows the vault's announcements of active-account changes until the

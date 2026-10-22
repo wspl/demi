@@ -23,6 +23,7 @@ use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::OpenedRead;
 use demi_host_interface::ByteRange;
+use demi_web_api_protocol::workflows::ConversationWorkflowList;
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationBatch, ConversationDetail, ConversationPatch, CreatedConversation,
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
@@ -41,7 +42,7 @@ use super::query::QueryParams;
 use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
 use demi_backend_user_shard::conversation::{AgentsError, ForkRefusal};
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::sync::ChannelSession;
+use demi_backend_user_shard::sync::{ChannelSession, etag_of};
 
 fn not_found() -> ApiError {
     ApiError::new(
@@ -132,8 +133,7 @@ pub(super) async fn create(
 
 /// `GET /conversations/:id/attachments/:attachment/file`: whether the file the
 /// attachment was uploaded from is there to open in the Files panel in its
-/// copy's place (`docs/decisions/0003-attachment-opens-its-file.md`), asked
-/// once each time the page opens a card of the attachment.
+/// copy's place, asked once each time the page opens a card of the attachment.
 ///
 /// It answers 204 while the file is a regular file on the conversation's
 /// primary Host, and that Host is the device the attachment was uploaded
@@ -254,7 +254,7 @@ pub(super) async fn delete(
     }
 }
 
-/// `POST /conversations/batch { items }`: up to 100 patches, each answered
+/// `POST /conversations/batch { items }`: patches, each answered
 /// on its own, 207 always; a conversation the caller does not have is its
 /// item's refusal.
 pub(super) async fn batch(
@@ -293,7 +293,8 @@ pub(super) async fn batch(
 }
 
 /// `GET /conversations/:id`: the conversation as the sidebar lists it, its
-/// metadata, and its agents at their version.
+/// metadata with its entity tag and its agents at their version. It answers from the live tree or, with none, from the
+/// store, and wakes no Host.
 pub(super) async fn detail(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -317,6 +318,7 @@ pub(super) async fn detail(
             })?;
             Ok::<_, ApiError>(ConversationDetail {
                 conversation,
+                metadata_tag: etag_of(&metadata),
                 metadata,
                 agents,
                 entries,
@@ -324,6 +326,23 @@ pub(super) async fn detail(
         })
         .await??;
     Ok(Json(detail))
+}
+
+/// `GET /conversations/:id/workflows`: the workflows of the conversation's
+/// working directory as the backend keeps them, which the page reads when the
+/// Workflow menu opens.
+pub(super) async fn workflows(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ConversationWorkflowList>, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let workflows = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.conversation_workflows(&record.id).await })
+        .await?;
+    Ok(Json(workflows))
 }
 
 /// `POST /conversations/:id/fork { id, blockId }`: the conversation `id`

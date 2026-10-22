@@ -14,8 +14,7 @@ import type { HeadlineText, SentenceText } from './ui-text'
  *
  * - Rename, or Return, hands over the name trimmed and closes.
  * - Cancel or Escape keeps the old one.
- * - An empty name cannot be taken, and the field holds at most `maxLength`
- *   characters.
+ * - An empty name cannot be taken.
  * - An unchanged name closes without a rename.
  * - The host says a refusal in a toast.
  */
@@ -28,8 +27,6 @@ const props = defineProps<{
   label: SentenceText
   /** The current name, which the field opens on. */
   name: string
-  /** The most characters the name has; null for no limit. */
-  maxLength: number | null
 }>()
 const emit = defineEmits<{
   close: []
@@ -92,7 +89,6 @@ function submit() {
         ref="field"
         v-model="draft"
         :aria-label="label"
-        :maxlength="maxLength ?? undefined"
         literal
         autocomplete="off"
       />

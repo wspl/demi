@@ -60,6 +60,7 @@ export function createHighlighter(languageArrived: () => void) {
    * a mode switch or another block parses nothing.
    */
   const parses = new Map<string, Tree>()
+  /** The parses kept, because the cache is the browser's memory and grows with every code block shown. */
   const PARSES_KEPT = 128
 
   function parsed(language: Language, code: string): Tree {

@@ -17,7 +17,7 @@
       "30d": "保留 30 天",
       "always": "保留至你移除"
     },
-    "needsValues": "每個欄位都需要一個不超過 64 KiB 的值。",
+    "needsValues": "每個欄位都需要一個值。",
     "allowCredentialTitle": "允許此對話使用憑證「{name}」？",
     "removed": "已移除",
     "youRemoved": "你已移除此憑證。",

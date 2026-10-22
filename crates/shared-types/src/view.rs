@@ -19,8 +19,9 @@ use crate::{BlobRef, CommandId, MAX_SAFE_INTEGER};
 pub enum ToolView {
     /// A shell tool's command.
     Shell(#[garde(dive)] ShellToolView),
-    /// A `shell` call the repeat guard suppressed: the script and how many
-    /// times in a row it was asked for.
+    /// A `shell` call an earlier version suppressed for repeating one script:
+    /// the script and how many times in a row it was asked for. Histories
+    /// stored then still hold it.
     RepeatedShell {
         #[garde(skip)]
         script: String,

@@ -19,10 +19,7 @@ import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import {
   draftFields,
-  FIELDS_MAX,
   fieldNames,
-  LABEL_MAX,
-  NAME_MAX,
   textProblem,
   valueProblem,
   type EditorField,
@@ -94,8 +91,8 @@ function touch(id: string): void {
 }
 
 const namesRead = computed(() => fieldNames(fields.value))
-const nameProblem = computed(() => textProblem(name.value, NAME_MAX))
-const labelProblems = computed(() => fields.value.map((field) => textProblem(field.label, LABEL_MAX)))
+const nameProblem = computed(() => textProblem(name.value))
+const labelProblems = computed(() => fields.value.map((field) => textProblem(field.label)))
 const valueProblems = computed(() => fields.value.map((field) => valueProblem(field.value)))
 const canSave = computed(
   () =>
@@ -187,8 +184,6 @@ const GRID = 'grid grid-cols-[8.5rem_minmax(0,1fr)_1.75rem] items-start gap-x-3 
           <h4 class="select-none text-[13px] font-medium text-fg-emphasis">{{ t('credentialDialog.fields') }}</h4>
           <Button
             size="sm"
-            :disabled="fields.length >= FIELDS_MAX"
-            :disabled-reason="t('credentialDialog.fieldsMax', { max: FIELDS_MAX })"
             @click="addField"
           >{{ t('credentialDialog.addField') }}</Button>
         </div>

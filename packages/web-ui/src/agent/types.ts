@@ -94,8 +94,11 @@ export interface ConversationState {
    * the server tells it; null when it waits for none.
    */
   waitingSince: number | null
-  /** The output of the request the root agent runs, as the server tells it; null when its turn has none. */
-  requestOutput: RequestOutputReading | null
+  /**
+   * The output of the request each node's agent runs, as the server tells it,
+   * by node; a node with none, or whose turn has none, holds none or null.
+   */
+  requestOutputs: Record<string, RequestOutputReading | null>
   /** The conversation's model settings, which its composer shows. */
   model: ModelSettings
   lastError: ShownError | null
@@ -137,7 +140,7 @@ export interface ChatSessionState
     | 'starting'
     | 'pendingCalls'
     | 'waitingSince'
-    | 'requestOutput'
+    | 'requestOutputs'
     | 'phase'
     | 'load'
     | 'lastError'

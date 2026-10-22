@@ -18,11 +18,29 @@
 //! A channel is registered under the hash of the session it opened with, a
 //! record of `backend-database`, so a sign-out ends that session's channels.
 //!
+//! # The product state's version
+//!
+//! Each user has one version of their product state, `{ epoch, revision }`,
+//! and a log of the parts the last [`RECENT_CHANGES`] changes marked.
+//! A mark adds one to the revision and logs the parts it marked, in one step
+//! with the marks of the user's channels, so a channel that follows the state
+//! from a revision learns which parts changed since, or that the log no longer
+//! reaches it.
+//!
+//! The log is in this registry because a mark comes from any thread. A user's
+//! entry is made by the first read of the version, and freed with the user's
+//! shard ([`SyncRegistry::forget`]); a later entry has another epoch, which
+//! no version of the earlier one matches. The log holds at most
+//! [`RECENT_CHANGES`] sets of part names for each user, a few hundred bytes
+//! each at most, so some hundred kibibytes in the worst case.
+//!
 //! The registry reads and builds no product state: `backend-user-shard` does.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use demi_backend_database::accounts::TokenHash;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -78,9 +96,94 @@ pub enum Part {
     Models,
 }
 
-/// Every user's open channels. Cloning it shares it.
+/// How many changes of the product state a user's log keeps the parts of.
+///
+/// A cache: a page that falls behind it reads again, so the log's memory is
+/// bounded and nothing is lost.
+pub const RECENT_CHANGES: usize = 1000;
+
+/// The version of a user's product state: the log's epoch, and how many
+/// changes it counted since.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateVersion {
+    pub epoch: String,
+    pub revision: u64,
+}
+
+/// Why a channel cannot follow the state from the version a page holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Stale;
+
+/// A user's product state's version and the parts its latest changes marked.
+struct StateLog {
+    epoch: String,
+    revision: u64,
+    /// The parts the change at each revision marked, the latest last; the
+    /// last entry is the change at `revision`.
+    recent: VecDeque<Vec<Part>>,
+}
+
+impl StateLog {
+    fn new() -> Self {
+        static MADE: AtomicU64 = AtomicU64::new(0);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos());
+        Self {
+            epoch: format!("{nanos:x}-{}", MADE.fetch_add(1, Ordering::Relaxed)),
+            revision: 0,
+            recent: VecDeque::new(),
+        }
+    }
+
+    fn version(&self) -> StateVersion {
+        StateVersion {
+            epoch: self.epoch.clone(),
+            revision: self.revision,
+        }
+    }
+
+    /// Counts one change that marked `parts`.
+    fn record(&mut self, parts: Vec<Part>) {
+        self.revision += 1;
+        self.recent.push_back(parts);
+        if self.recent.len() > RECENT_CHANGES {
+            self.recent.pop_front();
+        }
+    }
+
+    /// The parts the changes after `held` marked, or `Stale` when the log
+    /// does not reach `held`.
+    fn since(&self, held: &StateVersion) -> Result<BTreeSet<Part>, Stale> {
+        if held.epoch != self.epoch || held.revision > self.revision {
+            return Err(Stale);
+        }
+        let missed = usize::try_from(self.revision - held.revision).map_err(|_| Stale)?;
+        if missed > self.recent.len() {
+            return Err(Stale);
+        }
+        Ok(self.recent.iter().skip(self.recent.len() - missed).flatten().cloned().collect())
+    }
+}
+
+/// What the registry keeps of one user.
+struct UserEntry {
+    log: StateLog,
+    channels: Vec<Arc<Channel>>,
+}
+
+impl UserEntry {
+    fn new() -> Self {
+        Self {
+            log: StateLog::new(),
+            channels: Vec::new(),
+        }
+    }
+}
+
+/// Every user's open channels and product state log. Cloning it shares it.
 #[derive(Clone, Default)]
-pub struct SyncRegistry(Arc<Mutex<HashMap<UserId, Vec<Arc<Channel>>>>>);
+pub struct SyncRegistry(Arc<Mutex<HashMap<UserId, UserEntry>>>);
 
 /// One open channel as the registry marks it.
 struct Channel {
@@ -107,13 +210,16 @@ enum Follows {
 #[derive(Debug, Default)]
 pub struct Marked {
     pub parts: BTreeSet<Part>,
+    /// The revision of the latest change of the product state marked here:
+    /// the state is current as of it once the parts are sent.
+    pub revision: Option<u64>,
     /// The session the channel opened with was signed out.
     pub session_ended: bool,
 }
 
 impl Marked {
     fn is_empty(&self) -> bool {
-        self.parts.is_empty() && !self.session_ended
+        self.parts.is_empty() && self.revision.is_none() && !self.session_ended
     }
 }
 
@@ -124,30 +230,35 @@ impl Channel {
         self.marked.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn mark(&self, part: Part) {
-        let follows = match &self.follows {
-            Follows::Every => !matches!(part, Part::Metadata(_)),
-            Follows::Conversation(id) => {
-                matches!(&part, Part::Conversation(changed) | Part::Metadata(changed) if changed == id)
-            }
-        };
-        if !follows {
-            return;
-        }
+    /// Marks `parts`, the change at `revision`, on the channel if it follows
+    /// them.
+    fn mark(&self, parts: &[Part], revision: u64) {
         let mut marked = self.lock();
-        // The catalog lists the entries' models, and Automatic reads the
-        // preferences: a change of either is one of the catalog too.
-        if matches!(part, Part::Providers | Part::Preferences) {
-            marked.parts.insert(Part::Models);
+        let mut any = false;
+        for part in parts {
+            let follows = match &self.follows {
+                Follows::Every => !matches!(part, Part::Metadata(_)),
+                Follows::Conversation(id) => {
+                    matches!(part, Part::Conversation(changed) | Part::Metadata(changed) if changed == id)
+                }
+            };
+            if follows {
+                marked.parts.insert(part.clone());
+                any = true;
+            }
         }
-        marked.parts.insert(part);
-        drop(marked);
-        self.wake.notify_one();
+        if any {
+            if self.follows == Follows::Every {
+                marked.revision = Some(revision);
+            }
+            drop(marked);
+            self.wake.notify_one();
+        }
     }
 }
 
 impl SyncRegistry {
-    fn lock(&self) -> MutexGuard<'_, HashMap<UserId, Vec<Arc<Channel>>>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<UserId, UserEntry>> {
         // A section only adds, removes or visits channels, so a poisoned map
         // is whole.
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
@@ -184,7 +295,8 @@ impl SyncRegistry {
         });
         self.lock()
             .entry(user.clone())
-            .or_default()
+            .or_insert_with(UserEntry::new)
+            .channels
             .push(channel.clone());
         Registration {
             registry: self.clone(),
@@ -202,30 +314,63 @@ impl SyncRegistry {
         }
     }
 
+    /// The version of `user`'s product state now, which a read of the state
+    /// takes before it reads, so a change made while it reads is a change
+    /// after the version.
+    pub fn version(&self, user: &UserId) -> StateVersion {
+        self.lock().entry(user.clone()).or_insert_with(UserEntry::new).log.version()
+    }
+
+    /// Frees what the registry keeps of `user` once nothing follows them: the
+    /// shard of `user` closed.
+    pub fn forget(&self, user: &UserId) {
+        let mut users = self.lock();
+        if users.get(user).is_some_and(|entry| entry.channels.is_empty()) {
+            users.remove(user);
+        }
+    }
+
     /// Marks `part` changed on each open channel of `user`.
     pub fn mark(&self, user: &UserId, part: Part) {
-        if let Some(channels) = self.lock().get(user) {
-            for channel in channels {
-                channel.mark(part.clone());
-            }
-        }
+        Self::mark_entry(self.lock().get_mut(user), part);
     }
 
     /// Marks `part` changed on every user's open channels, for a change
     /// every user sees, such as a shared instance's provider entry.
     pub fn mark_everyone(&self, part: &Part) {
-        for channels in self.lock().values() {
-            for channel in channels {
-                channel.mark(part.clone());
-            }
+        for entry in self.lock().values_mut() {
+            Self::mark_entry(Some(entry), part.clone());
+        }
+    }
+
+    /// Counts the change that marked `part` in the log of `entry`, and marks
+    /// its channels, in one step. A user nothing reads or follows has no
+    /// entry, and nothing to mark.
+    fn mark_entry(entry: Option<&mut UserEntry>, part: Part) {
+        let Some(entry) = entry else {
+            return;
+        };
+        let mut parts = vec![part];
+        // The catalog lists the entries' models, and Automatic reads the
+        // preferences: a change of either is one of the catalog too.
+        if matches!(parts[0], Part::Providers | Part::Preferences) {
+            parts.push(Part::Models);
+        }
+        // A conversation's metadata or draft alone is no change of the state.
+        if !matches!(parts[0], Part::Metadata(_)) {
+            entry.log.record(parts.clone());
+        }
+        for channel in &entry.channels {
+            channel.mark(&parts, entry.log.revision);
         }
     }
 
     /// Ends the open channels of `user` that opened with the session
     /// `session`, which was signed out.
     pub fn end_session(&self, user: &UserId, session: &TokenHash) {
-        if let Some(channels) = self.lock().get(user) {
-            for channel in channels
+        if let Some(entry) = self.lock().get(user) {
+            for channel in entry
+                .channels
                 .iter()
                 .filter(|channel| channel.session.as_ref() == Some(session))
             {
@@ -268,6 +413,33 @@ impl Registration {
         }
     }
 
+    /// Marks, in one step with the log, the parts that changed after `held`,
+    /// and the revision they bring the state to, which a page that follows
+    /// the state from `held` has not seen; `Stale` when the log does not
+    /// reach `held`.
+    pub fn follow_since(&self, held: &StateVersion) -> Result<(), Stale> {
+        let users = self.registry.lock();
+        let Some(entry) = users.get(&self.user) else {
+            return Err(Stale);
+        };
+        let parts = entry.log.since(held)?;
+        if entry.log.revision > held.revision {
+            let mut marked = self.channel.lock();
+            marked.parts.extend(parts);
+            marked.revision = Some(entry.log.revision);
+            drop(marked);
+            self.channel.wake.notify_one();
+        }
+        Ok(())
+    }
+
+    /// Marks `part` changed on this channel alone, for a list the page
+    /// follows that is to be read and compared.
+    pub fn mark_part(&self, part: Part) {
+        self.channel.lock().parts.insert(part);
+        self.channel.wake.notify_one();
+    }
+
     /// Takes what was marked since the last take.
     pub fn take(&self) -> Marked {
         std::mem::take(&mut *self.channel.lock())
@@ -276,12 +448,9 @@ impl Registration {
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        let mut channels = self.registry.lock();
-        if let Some(open) = channels.get_mut(&self.user) {
-            open.retain(|channel| !Arc::ptr_eq(channel, &self.channel));
-            if open.is_empty() {
-                channels.remove(&self.user);
-            }
+        let mut users = self.registry.lock();
+        if let Some(entry) = users.get_mut(&self.user) {
+            entry.channels.retain(|channel| !Arc::ptr_eq(channel, &self.channel));
         }
     }
 }

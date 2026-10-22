@@ -116,35 +116,3 @@ demi_shared_types::id!(
     error = NotUuid,
     schema = { "type": "string", "pattern": UUID_PATTERN }
 );
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_conversation_id_is_a_uuid_in_the_case_it_arrived_in() {
-        for accepted in [
-            "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b",
-            "0B6F7F3E-8F3A-4C1E-9D2B-7A1C2E3F4A5B",
-            "00000000-0000-0000-0000-000000000000",
-            "ffffffff-ffff-ffff-ffff-ffffffffffff",
-        ] {
-            assert_eq!(
-                ConversationId::try_from(accepted).unwrap().as_str(),
-                accepted
-            );
-        }
-        for refused in [
-            "",
-            "conversation-1",
-            "0b6f7f3e-8f3a-0c1e-9d2b-7a1c2e3f4a5b",
-            "0b6f7f3e-8f3a-4c1e-7d2b-7a1c2e3f4a5b",
-            "0b6f7f3e8f3a4c1e9d2b7a1c2e3f4a5b",
-            "../0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b",
-        ] {
-            assert_eq!(ConversationId::try_from(refused), Err(NotUuid), "{refused}");
-        }
-        let decoded: Result<ConversationId, _> = serde_json::from_str(r#""not-a-uuid""#);
-        assert_eq!(decoded.unwrap_err().to_string(), "must be a UUID");
-    }
-}

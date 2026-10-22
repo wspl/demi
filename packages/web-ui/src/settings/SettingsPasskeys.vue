@@ -32,9 +32,6 @@ const props = defineProps<{
   email: string
 }>()
 
-/** The most characters a passkey's name has once trimmed. */
-const NAME_MAX_LENGTH = 80
-
 const adding = ref(false)
 const renaming = ref<SettingsPasskey | null>(null)
 const renameOpen = ref(false)
@@ -115,7 +112,6 @@ const empty = computed(() => props.host.passkeys.length === 0)
     :title="t('passkeys.renameTitle')"
     :label="t('passkeys.nameLabel')"
     :name="renaming?.name ?? ''"
-    :max-length="NAME_MAX_LENGTH"
     @close="renameOpen = false"
     @rename="(name) => renaming && void host.rename(renaming.id, name)"
   />

@@ -460,7 +460,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   // Each conversation's panel is the one its entry in the list brings, under
   // its revision, whatever the page shows: the panel draws as soon as the
-  // conversation is listed (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+  // conversation is listed.
   watch(
     () => (product.snapshot?.conversations ?? []).map((entry) => [entry.id, entry.panel] as const),
     (followed) => {

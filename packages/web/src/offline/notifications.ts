@@ -19,7 +19,7 @@ export const WORDS_KEY = '/words'
 /** What a page tells the worker of a click: open the conversation. */
 export const OPEN_CONVERSATION = 'demi-open-conversation'
 
-/** How much of the answer a notification says. */
+/** How much of the answer a notification says, because a system notification shows only so much. */
 const ANSWER_START_CHARS = 120
 
 /**

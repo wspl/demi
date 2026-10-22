@@ -1,23 +1,29 @@
-import { computed, ref, watch } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, openSocket, pingOn, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { backendUnreachable } from '@demicodes/web-ui/transport/connection'
 import { t } from './locales/text'
-import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
+import { ApiError, apiRequest, apiUrl, notifySessionEnded, readResponse, unreachable as backendNotReached, waitForBackendWith } from '../api/client'
 import {
   productStateSchema,
   syncEventSchema,
   vendorCatalogSchema,
   type ConversationSummary,
-  type PageShowing,
-  type ProductState,
+  type PageMessage,
   type SyncEvent,
+  type SyncFollow,
+  type SyncFollowed,
   type VendorCatalog,
 } from '../api/generated/web-api'
+import { LIST_ROUTES, isListPart, pageStateSchema, type ListPart, type PageState, type Untagged } from './lists'
+
+/** The state as the page holds it, which a message or a write's answer replaces by part. */
+type ProductState = PageState
 
 /** The close code of a channel whose session ended. */
 const SESSION_ENDED = 4002
@@ -27,7 +33,7 @@ const BACKEND_CLOSING = 1001
 const ABNORMAL_CLOSURE = 1006
 
 /** A message that carries one part of the product state, as a write's answer can. */
-export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' | 'pong' }>
+export type PartEvent = Untagged<Exclude<SyncEvent, { type: 'heartbeat' | 'pong' | 'synced' | 'stale' | 'automations_unread' }>>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
 export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
@@ -108,6 +114,14 @@ function withoutOff(
   return Object.fromEntries(Object.entries(states).filter(([id]) => !off.has(id)))
 }
 
+/** A list the page holds, which a change of it presupposes: the view that changes it holds it. */
+function heldList<T>(value: T | undefined, part: Part): T {
+  if (value === undefined) {
+    throw new Error(`The page changes the ${part} before it read them`)
+  }
+  return value
+}
+
 /** The value `state` holds of `part`, as a message that carries it says it. */
 function partEvent(state: ProductState, part: Part): PartEvent {
   switch (part) {
@@ -130,23 +144,23 @@ function partEvent(state: ProductState, part: Part): PartEvent {
     case 'logins':
       return { type: 'logins', logins: state.logins }
     case 'subagents':
-      return { type: 'subagents', subagents: state.subagents }
+      return { type: 'subagents', subagents: heldList(state.subagents, part) }
     case 'instructions':
-      return { type: 'instructions', instructions: state.instructions }
+      return { type: 'instructions', instructions: heldList(state.instructions, part) }
     case 'credentials':
-      return { type: 'credentials', credentials: state.credentials }
+      return { type: 'credentials', credentials: heldList(state.credentials, part) }
     case 'passkeys':
-      return { type: 'passkeys', ...state.passkeys }
+      return { type: 'passkeys', ...heldList(state.passkeys, part) }
     case 'sessions':
-      return { type: 'sessions', sessions: state.sessions }
+      return { type: 'sessions', sessions: heldList(state.sessions, part) }
     case 'users':
-      return { type: 'users', users: state.users ?? [] }
+      return { type: 'users', users: heldList(state.users, part) }
     case 'automations':
-      return { type: 'automations', automations: state.automations, automationsUnread: state.automationsUnread }
+      return { type: 'automations', automations: heldList(state.automations, part), automationsUnread: state.automationsUnread }
     case 'port_forwards':
-      return { type: 'port_forwards', portForwards: state.portForwards }
+      return { type: 'port_forwards', portForwards: heldList(state.portForwards, part) }
     case 'exposed_ports':
-      return { type: 'exposed_ports', exposedPorts: state.exposedPorts }
+      return { type: 'exposed_ports', exposedPorts: heldList(state.exposedPorts, part) }
     case 'models':
       return { type: 'models', models: state.models }
   }
@@ -210,14 +224,11 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
 }
 
 /**
- * The build a snapshot names, read before the rest of it: a snapshot of
- * another build, whose other parts this page may not read, still says which
- * build to load.
+ * The build the state names, read before the rest of it: a state of another
+ * build, whose other parts this page may not read, still says which build to
+ * load.
  */
-const snapshotBuildSchema = z.object({
-  type: z.literal('snapshot'),
-  state: productStateSchema.pick({ webBuild: true }),
-})
+const stateBuildSchema = productStateSchema.pick({ webBuild: true })
 
 /** This page's web app build, which `vite build` writes in; none in development, where Vite serves the sources. */
 function pageBuild(): string | null {
@@ -260,6 +271,46 @@ function keepVendors(catalog: VendorCatalog): void {
   }
 }
 
+/**
+ * How long an open channel that brought nothing must stay open before it
+ * counts as connected: a backend that accepts the upgrade and closes it at
+ * once is not retried at the rate of a quiet network.
+ */
+const ESTABLISHED_MS = 1_000
+
+/** How long a read of the state after a break may wait, at a random point, so that pages told at once do not read at once. */
+const RESTART_SPREAD_MS = 2_000
+
+/** A state of another build that this page cannot read, which only says which build to load. */
+class StateOfAnotherBuild extends Error {}
+
+/** Resolves after `ms`, or when `signal` aborts. */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      resolve()
+    }, { once: true })
+  })
+}
+
+/** The field of the state that each list is kept in. */
+const LIST_FIELDS = {
+  subagents: 'subagents',
+  instructions: 'instructions',
+  credentials: 'credentials',
+  passkeys: 'passkeys',
+  sessions: 'sessions',
+  users: 'users',
+  automations: 'automations',
+  port_forwards: 'portForwards',
+  exposed_ports: 'exposedPorts',
+} as const satisfies Record<ListPart, keyof PageState>
+
 function parse(data: unknown): unknown {
   try {
     return JSON.parse(String(data))
@@ -274,13 +325,31 @@ function answerOf(answer: Answer): SlotAnswer<ProductState> & { value: (read: Pr
 }
 
 /**
+ * Holds the list `part` for the view whose scope this runs in, until the
+ * scope ends (`useProduct().hold`): a store of a list, whose views call it as
+ * they are made, reads and follows the list while one shows.
+ */
+export function useHeldList(part: ListPart): void {
+  if (getCurrentScope()) {
+    onScopeDispose(useProduct().hold(part))
+  }
+}
+
+/**
  * The product state this page shows around its conversations: the one module
- * that follows it, through the synchronization channel. The channel's snapshot
- * is the whole copy, and each later message replaces one part of it; each state
- * of the page follows the copy by its own rule. The copy is a slot
- * (`web-ui/infra/slot`) read in parts. Nothing asks for this state on a timer
- * or after a write: a write's answer goes through `answered`, or lands the
- * change the write made (`change`).
+ * that follows it, through the synchronization channel and `GET /state`.
+ * The page reads the state, which names the version it is current as of, then
+ * opens the channel with that version, and the channel carries the parts that
+ * changed since, whole, each followed by `synced` with the version they bring
+ * the state to. After the channel breaks, its next opening follows from the
+ * version the page holds, with no read; only a version the backend no longer
+ * keeps, told as `stale`, is read again, after a random wait of up to two
+ * seconds. Each message replaces one part of the copy; each state of the page
+ * follows the copy by its own rule. The copy is a slot (`web-ui/infra/slot`)
+ * read in parts. A list that only a view of settings shows is read when the
+ * view holds it (`hold`), by its own route, and followed until the view lets it
+ * go. Nothing asks for this state on a timer or after a write: a write's answer
+ * goes through `answered`, or lands the change the write made (`change`).
  */
 export const useProduct = defineStore('product', () => {
   /**
@@ -306,17 +375,16 @@ export const useProduct = defineStore('product', () => {
   )
   /**
    * Whether the page holds the catalog of the entries' models, which comes
-   * with the product state and its owner announces anew
-   * (`docs/decisions/0029-a-conversation-opens-whole.md`).
+   * with the product state and its owner announces anew.
    */
   const catalogLoad = computed(() => snapshot.value === null ? 'loading' : 'ready')
   const activeConversationId = ref<string | null>(null)
   /**
-   * The backend closed the channel because it shuts down, and has not
-   * brought a snapshot since.
+   * The backend closed the channel because it shuts down, and the state has
+   * not been read since.
    */
   const restarting = ref(false)
-  /** Consecutive connections that ended before their snapshot. */
+  /** Consecutive connections that ended, and reads of the state that failed, before the state was read. */
   const failures = ref(0)
   /** Whether the page cannot reach the backend. */
   const unreachable = computed(() => backendUnreachable({
@@ -331,7 +399,7 @@ export const useProduct = defineStore('product', () => {
    * be.
    */
   const connecting = computed(() => snapshot.value === null && (failures.value > 0 || !browserOnline.value))
-  /** The build of the web app the backend serves, as the last snapshot named it. */
+  /** The build of the web app the backend serves, as the last read of the state named it. */
   const servedBuild = ref<string | null>(null)
   /**
    * The build the backend serves when it is another than this page's, which
@@ -356,10 +424,14 @@ export const useProduct = defineStore('product', () => {
   /** Undoes the requests' wait for the backend, which `start` sets. */
   let stopWaiting: (() => void) | null = null
   let socket: WebSocket | null = null
+  /** Whether the open channel's `open` went: a value followed from then on goes in a `follow`, before it in the `open`. */
+  let channelOpen = false
   /** The wait before the channel connects again, while it is closed. */
   let retry: ReconnectWait | null = null
   /** The open channel's silence watch. */
   let silence: SilenceWatch | null = null
+  /** Ends the open channel's grace, which `established` ends first when it comes. */
+  let grace: ReturnType<typeof setTimeout> | null = null
   /**
    * The conversation this page shows, focused and visible, which the channel
    * tells the backend so this session's browser is not notified of it; each
@@ -375,9 +447,32 @@ export const useProduct = defineStore('product', () => {
   function dropChannel(): WebSocket | null {
     const channel = socket
     socket = null
+    channelOpen = false
     silence?.stop()
     silence = null
+    if (grace !== null) {
+      clearTimeout(grace)
+      grace = null
+    }
     return channel
+  }
+
+  /**
+   * The channel stayed open, or brought a message: the backend is reached,
+   * so the banner goes and each other socket of the page that waits to
+   * connect connects at once.
+   */
+  function established(): void {
+    if (grace !== null) {
+      clearTimeout(grace)
+      grace = null
+    }
+    const returned = failures.value > 0 || restarting.value
+    failures.value = 0
+    restarting.value = false
+    if (returned) {
+      reconnectNow()
+    }
   }
 
   /** Closes the channel and connects again after the wait. */
@@ -403,6 +498,40 @@ export const useProduct = defineStore('product', () => {
     retry = restarting.value ? waitWhileRestarting(again) : waitToReconnect(failures.value, again)
   }
 
+  /**
+   * What the page follows and holds the version of: the state from the version
+   * it was read at, unless it is being read again, and each held list from the
+   * tag of its last read, empty when it has none.
+   */
+  function follows(): SyncFollow[] {
+    const result: SyncFollow[] = []
+    const version = read.value?.version
+    if (version && stateRead === null && !choosing) {
+      result.push({ value: 'state', holds: { kind: 'version', version } })
+    }
+    for (const part of holders.keys()) {
+      if (listValue(part) !== undefined && !listReads.has(part)) {
+        result.push({ value: part, holds: { kind: 'tag', tag: listTags.get(part) ?? '' } })
+      }
+    }
+    return result
+  }
+
+  function send(channel: WebSocket, message: PageMessage): void {
+    channel.send(JSON.stringify(message))
+  }
+
+  /** Follows `value` from what the page holds of it, on the open channel; a closed one follows it in its next `open`. */
+  function follow(value: SyncFollowed): void {
+    if (!socket || !channelOpen) {
+      return
+    }
+    const held = follows().find((each) => each.value === value)
+    if (held) {
+      send(socket, { type: 'follow', ...held })
+    }
+  }
+
   function connect(): void {
     if (!controller || socket) {
       return
@@ -410,6 +539,9 @@ export const useProduct = defineStore('product', () => {
     clearRetry()
     const url = new URL(apiUrl('/sync'), window.location.href)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    // A page of this build says so: the backend sends one that names none a
+    // single message with its build and closes.
+    url.searchParams.set('build', pageBuild() ?? '')
     const channel = openSocket(url, 'synchronization channel')
     socket = channel
     let opened = false
@@ -419,37 +551,36 @@ export const useProduct = defineStore('product', () => {
       }
       opened = true
       // A channel that brings nothing, heartbeats included, for too long is broken.
+      silence?.stop()
       silence = watchSilence('synchronization channel', replace, pingOn(channel))
+      // The page read what it shows before it opened the channel: the open
+      // names each value with the version it holds, and the backend sends what
+      // changed since.
+      send(channel, { type: 'open', follows: follows() })
+      channelOpen = true
       if (showing !== null) {
         sendShowing(channel)
       }
+      grace = setTimeout(established, ESTABLISHED_MS)
     }
     channel.onmessage = (message) => {
       if (socket !== channel) {
         return
       }
       silence?.heard()
-      const data = parse(message.data)
-      const build = snapshotBuildSchema.safeParse(data)
-      if (build.success) {
-        servedBuild.value = build.data.state.webBuild ?? null
-      }
-      const parsed = syncEventSchema.safeParse(data)
+      established()
+      const parsed = syncEventSchema.safeParse(parse(message.data))
       if (parsed.success) {
         receive(parsed.data)
         return
       }
+      // Another build's contract may say what this page cannot read; the
+      // page loads that build once the state named it.
       if (newBuild.value !== null) {
-        // Another build's contract may say what this page cannot read; the
-        // page loads that build, and the backend is back once it named it.
-        if (build.success) {
-          failures.value = 0
-          restarting.value = false
-        }
         return
       }
       // A message outside the contract changes nothing; a new connection
-      // starts again from a snapshot. The console says what did not read.
+      // follows from what the page holds. The console says what did not read.
       reportError(t('failures.readSync'), schemaRefusal(parsed.error))
       replace()
     }
@@ -465,10 +596,10 @@ export const useProduct = defineStore('product', () => {
       if (close.code === BACKEND_CLOSING) {
         restarting.value = true
       }
-      // Before the first snapshot, only the backend's own failure, a close
-      // it sent, fails the regions; a channel that could not reach it, or
-      // that the backend closed to restart, keeps them loading while it
-      // connects again.
+      // Before the state is read, only the backend's own failure, a close it
+      // sent, fails the regions; a channel that could not reach it, or that
+      // the backend closed to restart, keeps them loading while it connects
+      // again.
       if (!snapshot.value && close.code !== ABNORMAL_CLOSURE && close.code !== BACKEND_CLOSING) {
         load.value = 'failed'
       }
@@ -485,7 +616,7 @@ export const useProduct = defineStore('product', () => {
   }
 
   function sendShowing(channel: WebSocket): void {
-    channel.send(JSON.stringify({ showing } satisfies PageShowing))
+    send(channel, { type: 'showing', showing })
   }
 
   /** Says the page shows `conversation`, focused and visible, or none. */
@@ -494,7 +625,7 @@ export const useProduct = defineStore('product', () => {
       return
     }
     showing = conversation
-    if (socket?.readyState === WebSocket.OPEN) {
+    if (socket?.readyState === WebSocket.OPEN && channelOpen) {
       sendShowing(socket)
     }
   }
@@ -507,26 +638,154 @@ export const useProduct = defineStore('product', () => {
       silence?.ponged(event.id)
       return
     }
-    if (event.type === 'snapshot') {
-      // The backend is back after it was away: each other socket of the page
-      // that waits to connect connects at once, as at the page's return, so
-      // nothing still says it connects once the backend is reachable.
-      const returned = failures.value > 0 || restarting.value
-      failures.value = 0
-      restarting.value = false
-      if (returned) {
-        reconnectNow()
-      }
-      // The snapshot is the next value of every part.
-      slot.replace(event.state)
-      load.value = 'ready'
+    if (event.type === 'synced') {
+      // The state is current as of the version: the page follows it from there.
+      slot.receive('version', (state) => ({ ...state, version: event.version }))
       return
     }
-    if (!slot.receive(partOf(event), (state) => withPart(state, event)) && event.type === 'user') {
-      // The channel of an account still to choose its password carries the
-      // account alone, until the choice, on this page or another.
-      firstUser.value = event.user
+    if (event.type === 'stale') {
+      pageLog.info('follow.stale', { value: event.value })
+      if (event.value === 'state') {
+        readState(true)
+      } else if (isListPart(event.value)) {
+        readList(event.value, true)
+      }
+      return
     }
+    if (event.type === 'automations_unread') {
+      const unread = event.automationsUnread
+      slot.receive('automations', (state) => ({ ...state, automationsUnread: unread }))
+      return
+    }
+    if (event.type === 'user' && read.value === null) {
+      // The channel of an account still to choose its password carries the
+      // account alone, until the choice, on this page or another; the state
+      // is read once it is chosen.
+      firstUser.value = event.user
+      if (!event.user.choosesPassword && choosing) {
+        choosing = false
+        readState(false)
+      }
+      return
+    }
+    if (isListPart(event.type)) {
+      receiveList(event.type, event)
+      return
+    }
+    slot.receive(partOf(event), (state) => withPart(state, event))
+  }
+
+  /**
+   * Whether the page waits for the account's password to be chosen, after the
+   * state's read was refused for it.
+   */
+  let choosing = false
+  /** The read of the state that is in flight, which a new read replaces. */
+  let stateRead: AbortController | null = null
+  /** The wait before the state is read again after a failure, while it waits. */
+  let stateWait: ReconnectWait | null = null
+
+  /**
+   * Reads the state, which depends on no channel, then follows it from the
+   * version it names. A read after the backend said the version the page holds
+   * is stale waits a random time of up to two seconds first, so that the pages
+   * told at once do not read at once; one that fails is tried again after the
+   * page's waits.
+   */
+  function readState(stale: boolean): void {
+    if (!controller) {
+      return
+    }
+    stateRead?.abort()
+    stateWait?.cancel()
+    const run = new AbortController()
+    stateRead = run
+    void readStateLoop(run, stale)
+  }
+
+  async function readStateLoop(run: AbortController, stale: boolean): Promise<void> {
+    const { signal } = run
+    if (stale) {
+      await sleep(Math.random() * RESTART_SPREAD_MS, signal)
+    }
+    for (;;) {
+      if (signal.aborted) {
+        return
+      }
+      try {
+        const at = slot.now()
+        const began = performance.now()
+        const state = await fetchState(signal)
+        signal.throwIfAborted()
+        pageLog.info('read.answered', { read: 'state', stale, ms: Math.round(performance.now() - began) })
+        failures.value = 0
+        restarting.value = false
+        slot.replace(withHeldLists(state), { since: at })
+        loaded = true
+        load.value = 'ready'
+        servedBuild.value = state.webBuild ?? null
+        firstUser.value = null
+        stateRead = null
+        readHeldLists()
+        if (socket) {
+          follow('state')
+        } else {
+          connect()
+        }
+        return
+      } catch (error) {
+        if (signal.aborted) {
+          return
+        }
+        if (error instanceof StateOfAnotherBuild) {
+          stateRead = null
+          return
+        }
+        if (error instanceof ApiError && error.code === 'password_choice_required') {
+          // The account chooses its password first: the channel says when.
+          choosing = true
+          stateRead = null
+          connect()
+          return
+        }
+        console.error('The state did not read', error)
+        failures.value += 1
+        pageLog.warn('read.failed', { read: 'state', failures: failures.value, code: error instanceof ApiError ? error.code : null })
+        // The backend's own failure, which it answered, fails the regions
+        // until the page has a state; a read that could not reach it keeps
+        // them loading.
+        if (error instanceof ApiError && !backendNotReached(error) && !snapshot.value) {
+          load.value = 'failed'
+        }
+        await new Promise<void>((resolve) => {
+          stateWait = waitToReconnect(failures.value, resolve)
+          signal.addEventListener('abort', () => stateWait?.cancel(), { once: true })
+        })
+      }
+    }
+  }
+
+  /** Reads the state. */
+  async function fetchState(signal: AbortSignal): Promise<PageState> {
+    const response = await apiRequest('/state', { signal, waits: false })
+    const body = await readResponse(response, z.unknown())
+    signal.throwIfAborted()
+    const named = stateBuildSchema.safeParse(body)
+    if (named.success) {
+      servedBuild.value = named.data.webBuild ?? null
+    }
+    const parsed = pageStateSchema.safeParse(body)
+    if (!parsed.success) {
+      // A state of another build, whose contract may say what this page
+      // cannot read, only names the build to load.
+      if (newBuild.value !== null) {
+        failures.value = 0
+        restarting.value = false
+        throw new StateOfAnotherBuild()
+      }
+      throw new Error(`The state did not read:\n${schemaRefusal(parsed.error)}`)
+    }
+    return parsed.data
   }
 
   /** Where the channel stands as a write is sent, which its answer is measured against. */
@@ -687,6 +946,167 @@ export const useProduct = defineStore('product', () => {
     }
   }
 
+  /** Whether the state was read since the page started, which a copy of the offline cache does not count. */
+  let loaded = false
+
+  /** `state` with the lists the page holds, which the state does not carry. */
+  function withHeldLists(state: PageState): PageState {
+    const current = read.value
+    if (!current) {
+      return state
+    }
+    const lists: Partial<PageState> = {}
+    for (const field of Object.values(LIST_FIELDS)) {
+      if (current[field] !== undefined) {
+        Object.assign(lists, { [field]: current[field] })
+      }
+    }
+    return { ...lists, ...state }
+  }
+
+  /** How many views hold each list: it is read and followed while one does. */
+  const holders = new Map<ListPart, number>()
+  /** Where each held list's read stands, for the view that shows it. */
+  const listLoads = reactive<Partial<Record<ListPart, 'loading' | 'ready' | 'failed'>>>({})
+  /** The reads of lists that are in flight. */
+  const listReads = new Map<ListPart, AbortController>()
+  /** The entity tag the page holds of each list, as its last read or message carried it; empty when its route sends none. */
+  const listTags = new Map<ListPart, string>()
+
+  /** What the page holds of `part`, or none before the list was read. */
+  function listValue(part: ListPart): unknown {
+    return read.value?.[LIST_FIELDS[part]]
+  }
+
+  /**
+   * Holds the list `part` for a view that shows it: the page reads it by its
+   * route when the first view holds it, and applies the changes the channel
+   * brings of it until the last view lets it go. A list is not read before
+   * its view needs it, and a change of one no view holds is ignored. Answers
+   * the function that lets it go.
+   */
+  function hold(part: ListPart): () => void {
+    const count = (holders.get(part) ?? 0) + 1
+    holders.set(part, count)
+    if (count === 1) {
+      listLoads[part] = listValue(part) === undefined ? 'loading' : 'ready'
+      readList(part, false)
+    }
+    let released = false
+    return () => {
+      if (released) {
+        return
+      }
+      released = true
+      const left = (holders.get(part) ?? 1) - 1
+      if (left > 0) {
+        holders.set(part, left)
+        return
+      }
+      holders.delete(part)
+      listReads.get(part)?.abort()
+      listReads.delete(part)
+      listTags.delete(part)
+      if (socket && channelOpen) {
+        send(socket, { type: 'unfollow', value: part })
+      }
+    }
+  }
+
+  /** Where the read of the held list `part` stands. */
+  function listLoad(part: ListPart): 'loading' | 'ready' | 'failed' {
+    return listLoads[part] ?? 'loading'
+  }
+
+  /** The user's Retry of a list whose read failed. */
+  function retryList(part: ListPart): void {
+    if (holders.has(part)) {
+      if (listValue(part) === undefined) {
+        listLoads[part] = 'loading'
+      }
+      readList(part, false)
+    }
+  }
+
+  /** Reads each list a view holds that the page holds none of yet, as after the state was read. */
+  function readHeldLists(): void {
+    for (const part of holders.keys()) {
+      if (listValue(part) === undefined && !listReads.has(part)) {
+        readList(part, false)
+      }
+    }
+  }
+
+  /**
+   * Reads the list `part`, which a view holds, once the state is there, by its
+   * route, which depends on no channel, then follows it from the tag the
+   * answer names; a read that fails is tried again after the page's waits. A
+   * read after the backend said its tag is stale waits a random time first.
+   */
+  function readList(part: ListPart, stale: boolean): void {
+    listReads.get(part)?.abort()
+    if (read.value === null || !controller) {
+      // The state's read starts every held list's.
+      return
+    }
+    const run = new AbortController()
+    listReads.set(part, run)
+    void (async () => {
+      const route = LIST_ROUTES[part]
+      if (stale) {
+        await sleep(Math.random() * RESTART_SPREAD_MS, run.signal)
+      }
+      for (let failed = 0; ; ) {
+        try {
+          const at = slot.now()
+          const began = performance.now()
+          const response = await apiRequest(route.route, { signal: run.signal })
+          const tag = response.headers.get('ETag') ?? ''
+          const body = await readResponse(response, route.schema as z.ZodType<never>)
+          run.signal.throwIfAborted()
+          pageLog.info('read.answered', { read: part, stale, ms: Math.round(performance.now() - began) })
+          slot.receive(part, (state) => withPart(state, (route.event as (body: never, state: ProductState) => PartEvent)(body, state)), { since: at })
+          listTags.set(part, tag)
+          listReads.delete(part)
+          listLoads[part] = 'ready'
+          follow(part)
+          return
+        } catch (error) {
+          if (run.signal.aborted) {
+            return
+          }
+          if (listValue(part) === undefined) {
+            listLoads[part] = 'failed'
+          }
+          failed += 1
+          console.error('A list did not read', part, error)
+          await new Promise<void>((resolve) => {
+            const wait = waitToReconnect(failed, resolve)
+            run.signal.addEventListener('abort', () => wait.cancel(), { once: true })
+          })
+          if (run.signal.aborted) {
+            return
+          }
+        }
+      }
+    })()
+  }
+
+  /**
+   * A message of a list: applied while a view holds it, and the tag it
+   * carries is the one the page follows the list from. A list no view holds
+   * is ignored.
+   */
+  function receiveList(part: ListPart, event: PartEvent): void {
+    if (!holders.has(part)) {
+      return
+    }
+    if ('etag' in event && event.etag !== undefined) {
+      listTags.set(part, event.etag)
+    }
+    slot.receive(partOf(event), (state) => withPart(state, event))
+  }
+
   /** Follows the state from now on, until `stop`. */
   function start(): void {
     if (controller) {
@@ -697,15 +1117,19 @@ export const useProduct = defineStore('product', () => {
     // Every request of the page waits for the backend while the channel
     // cannot reach it, until the page stops following the state.
     stopWaiting = waitForBackendWith((attempt, signal) => reachable(attempt, AbortSignal.any([signal, lifetime.signal])))
-    connect()
+    // The state is read first, and the channel opens after it, to follow
+    // what it read. A copy that shows meanwhile and holds a version is
+    // followed from instead (`showCopy`).
+    readState(false)
     // Its failure is the Add Provider dialog's region state, with its own Retry.
     void loadVendors().catch(() => {})
   }
 
   /**
-   * Shows `state`, the account's copy kept for opening offline, until the
-   * channel's first snapshot replaces it, as a later snapshot replaces the
-   * copy. A page that holds a state already keeps it.
+   * Shows `state`, the account's copy kept for opening offline, which the page
+   * follows from the version it holds with no read, as after a break: what
+   * changed since comes on the channel, or is read again when the backend no
+   * longer keeps that version. A page that holds a state already keeps it.
    */
   function showCopy(state: ProductState): void {
     if (read.value !== null) {
@@ -713,6 +1137,13 @@ export const useProduct = defineStore('product', () => {
     }
     slot.replace(state)
     load.value = 'ready'
+    if (controller && !loaded && !choosing) {
+      stateRead?.abort()
+      stateWait?.cancel()
+      stateRead = null
+      loaded = true
+      connect()
+    }
   }
 
   /** The user's Retry: connects at once when the channel is not open. */
@@ -725,10 +1156,14 @@ export const useProduct = defineStore('product', () => {
     if (!snapshot.value) {
       load.value = 'loading'
     }
-    if (socket) {
+    if (!loaded && !choosing) {
+      // The state's read failed, and goes again at once.
+      readState(false)
       return
     }
-    connect()
+    if (!socket) {
+      connect()
+    }
   }
 
   function stop(): void {
@@ -737,7 +1172,20 @@ export const useProduct = defineStore('product', () => {
     stopWaiting?.()
     stopWaiting = null
     clearRetry()
+    stateRead?.abort()
+    stateRead = null
+    stateWait?.cancel()
     dropChannel()?.close()
+    loaded = false
+    choosing = false
+    for (const run of listReads.values()) {
+      run.abort()
+    }
+    listReads.clear()
+    listTags.clear()
+    for (const part of Object.keys(listLoads) as ListPart[]) {
+      delete listLoads[part]
+    }
     failures.value = 0
     restarting.value = false
     servedBuild.value = null
@@ -768,6 +1216,9 @@ export const useProduct = defineStore('product', () => {
     catalogLoad,
     activeConversationId,
     show,
+    hold,
+    listLoad,
+    retryList,
     sent,
     answered,
     change,

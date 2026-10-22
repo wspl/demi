@@ -1,6 +1,5 @@
 //! What a complete reply says of the Host's files it names, kept with the
-//! reply (`docs/decisions/0009-agent-sessions-and-sync.md`,
-//! `docs/decisions/0046-a-reply-keeps-the-pictures-it-shows.md`).
+//! reply.
 //!
 //! When a node's text becomes complete, two questions are asked of the
 //! product, and each answer is kept with the block, so a page asks no Host:
@@ -53,6 +52,9 @@ use tokio::task::JoinSet;
 use super::NodeRuntime;
 
 /// The most paths one reply asks about.
+///
+/// Bounded because each path costs a round trip to a Host and a reply may name
+/// any number of them.
 pub const CODE_PATHS_MAX: usize = 200;
 
 /// What the product says of the paths a reply names.

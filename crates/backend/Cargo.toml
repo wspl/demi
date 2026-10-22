@@ -7,7 +7,7 @@ publish.workspace = true
 
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -16,27 +16,6 @@ bench = false
 name = "demi-backend"
 path = "src/main.rs"
 test = false
-
-[features]
-# Test support, for the scenarios that need:
-#
-# - a hold on the commits of the conversations' checkpoints (`CommitHold`), to
-#   stop a save at its commit;
-# - a conversation's file gate with the view of the entrants waiting at it
-#   (`Backend::file_gate`);
-# - an object store that counts what reaches it (`ObjectCounts`);
-# - the holds of the runners' hellos and the pages' synchronization channels
-#   (`StepHold`);
-# - the authorities the plugins' outbound requests trust (`web_roots`).
-testing = [
-  "dep:reqwest",
-  "demi-backend-http/testing",
-  "demi-backend-blobs/testing",
-  "demi-backend-user-shard/testing",
-  "demi-backend-runners/testing",
-  "demi-backend-database/testing",
-  "demi-shared-gates/testing",
-]
 
 [dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts" }
@@ -90,80 +69,15 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url = { version = "2", features = ["serde"] }
-reqwest = { workspace = true, features = ["rustls"], optional = true }
 
 [dev-dependencies]
-# The notification scenarios' stand-in push service, and the browsers'
-# keys it decrypts each message with.
-axum = "0.8"
-base64.workspace = true
-web-push-native = "0.5"
-hmac = "0.12"
-demi-agent-server = { path = "../agent-server", features = ["testing"] }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
-demi-live-view-protocol = { path = "../live-view-protocol", features = ["testing"] }
-demi-agent-store = { path = "../agent-store", features = ["testing"] }
-demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
-demi-backend = { path = ".", features = ["testing"] }
-demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
-demi-backend-user-shard = { path = "../backend-user-shard", features = ["testing"] }
-# The fake authorization server the sign-in scenario runs against.
-demi-backend-plugins = { path = "../backend-plugins", features = ["testing"] }
-demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
-demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
-demi-command-package-file-protocol = { path = "../plugin-file/protocol" }
+# The scripted machine manager (`examples/scripted_machines`), which `xtask dev`
+# runs the backend against.
 demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
-demi-runner-protocol = { path = "../runner-protocol" }
-# The direct channel scenarios connect a page in process to a real runner.
-demi-runner-direct = { path = "../runner-direct", features = ["testing"] }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
-demi-plugin-skills = { path = "../plugin-skills/plugin", features = ["testing"] }
-bytes.workspace = true
-# The upload scenarios look for images' base64 in what a provider was sent.
-data-encoding = "2"
+demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 futures-util.workspace = true
-reqwest = { workspace = true, features = ["rustls", "stream"] }
-serde.workspace = true
 serde_json.workspace = true
-uuid = { version = "1", features = ["v4"] }
-# The account scenarios store password hashes of their own; `password-hash`'s
-# `getrandom` gives `SaltString::generate` its operating-system RNG.
-argon2 = "0.5"
-password-hash = { version = "0.5", features = ["getrandom"] }
-# The scenarios change and read rows behind the backend's back.
-rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }
-# The scenarios move the injected clock by a duration.
-jiff.workspace = true
-tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect"] }
-# The browser suite reads the process table for Chrome's processes; the
-# browser package's stand-in Chrome archive and the real Chrome the suite
-# installs in a paired device's artifact cache.
-demi-command-package-browser-chrome = { path = "../plugin-browser/command-chrome", features = ["testing"] }
-# The direct channel scenario starts Chrome through the browser's driver,
-# which numbers its tabs and sets the page's session cookie.
-demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
-chromiumoxide = "=0.9.1"
-demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
-# The scenarios that read the backend's log capture it.
-demi-log-capture = { path = "../log-capture" }
-# The Claude Code scenarios install a scripted CLI in a Cloud runner's
-# artifact cache, as the runner installs a download.
-demi-runner-command-packages = { path = "../runner-command-packages" }
-# The way a Cloud's runner reaches the backend, through its runner socket.
-demi-runner-process = { path = "../runner-process" }
-sysinfo = { version = "0.39", default-features = false, features = ["system"] }
-# The installer scenarios interrupt an installer's process group, as a
-# terminal's Ctrl-C does, and scenarios that stop a process check that it
-# is gone with a signal 0.
-rustix = { version = "1", features = ["fs", "process"] }
-# The passkey scenarios' software authenticator and WebAuthn client, a
-# password manager's: discoverable passkeys that verify their user, backed
-# up, without a signature counter.
-passkey = { version = "0.6", features = ["rust-crypto"] }
-async-trait = "0.1"
-public-suffix = "0.1.3"
-url = "2"
+tokio = { workspace = true }
+tokio-util.workspace = true

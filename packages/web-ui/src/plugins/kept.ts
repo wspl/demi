@@ -1,6 +1,6 @@
 /**
- * Sessions by key that outlive the views that watch them
- * (`docs/decisions/0008-plugin-architecture.md`), such as a device's live view or a
+ * Sessions by key that outlive the views that watch them,
+ * such as a device's live view or a
  * conversation's browser.
  *
  * A view watches a session while it shows it and lets go when it stops; what
@@ -26,7 +26,7 @@ export interface KeptSession {
   dispose(): void
 }
 
-/** How many sessions nobody watches a plugin keeps by default. */
+/** How many sessions nobody watches a plugin keeps by default, because each holds memory and a connection. */
 export const KEPT_SESSIONS = 16
 
 interface Entry<S> {

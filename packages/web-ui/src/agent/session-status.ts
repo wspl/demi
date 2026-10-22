@@ -13,8 +13,7 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  *
  * - `reading`: a cold opening that reads the conversation's copy on disk.
  *   Nothing shows for the moment it takes, neither Loading nor the transcript;
- *   it turns `opening` with the copy shown, or `loading` without one
- *   (`docs/decisions/0025-a-transcript-is-shown-from-a-bounded-window.md`).
+ *   it turns `opening` with the copy shown, or `loading` without one.
  * - `loading`: its history or its agents are not read yet. The pane says it
  *   loads.
  * - `opening`: the first step. The transcript and everything that names its

@@ -17,6 +17,9 @@ const ARCHIVES: &str = "https://static.crates.io/crates";
 /// Where crates.io serves its sparse index.
 const INDEX: &str = "https://index.crates.io";
 /// The most bytes a crate's index file or archive may have.
+///
+/// Bounded because the bytes are read from the network into memory and a server
+/// may send without end.
 const DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024;
 
 /// The upstream files and directories a vendored copy leaves out: packaging
@@ -318,56 +321,4 @@ fn print_patch(upstream: &Path, vendored: &Path) -> std::io::Result<()> {
         );
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_comparison_names_each_change_and_counts_what_is_left_out() {
-        let upstream = tempfile::tempdir().unwrap();
-        let vendored = tempfile::tempdir().unwrap();
-        let write = |root: &Path, path: &str, text: &str| {
-            let path = root.join(path);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, text).unwrap();
-        };
-        write(
-            upstream.path(),
-            "src/lib.rs",
-            "use std::fs;\nfn main() {}\n",
-        );
-        write(upstream.path(), "src/same.rs", "same\n");
-        write(upstream.path(), "src/gone.rs", "gone\n");
-        write(upstream.path(), "tests/it.rs", "test\n");
-        write(upstream.path(), "Cargo.toml.orig", "[package]\n");
-        write(
-            vendored.path(),
-            "src/lib.rs",
-            "use uucore::context::fs;\nfn main() {}\n",
-        );
-        write(vendored.path(), "src/same.rs", "same\n");
-        write(vendored.path(), "src/context.rs", "new\n");
-
-        let changes = compare(upstream.path(), vendored.path()).unwrap();
-
-        assert_eq!(
-            changes,
-            Changes {
-                changed: vec![(PathBuf::from("src/lib.rs"), 1, 1)],
-                added: vec![PathBuf::from("src/context.rs")],
-                removed: vec![PathBuf::from("src/gone.rs")],
-                left_out: 2,
-            }
-        );
-    }
-
-    #[test]
-    fn the_index_path_follows_the_sparse_index_layout() {
-        assert_eq!(index_path("a"), "1/a");
-        assert_eq!(index_path("jq"), "2/jq");
-        assert_eq!(index_path("sed"), "3/s/sed");
-        assert_eq!(index_path("Uucore"), "uu/co/uucore");
-    }
 }

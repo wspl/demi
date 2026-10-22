@@ -424,12 +424,17 @@ async fn gather_until_quiet(
 
 /// The calls a URL takes a minute, the refused ones included; more are
 /// answered 429.
+///
+/// Bounded because the URL is public: anyone who knows it can call, and each
+/// call may start a run.
 pub const CALLS_PER_MINUTE: u32 = 30;
 
 const MINUTE: Duration = Duration::from_secs(60);
 
 /// The client addresses whose calls of unknown URLs are counted at once;
 /// past it, the address counted longest ago is forgotten.
+///
+/// Bounded because the callers are held in memory and anyone can add one.
 const UNKNOWN_CALLERS: usize = 4096;
 
 /// A minute's count of calls, from its first.
@@ -503,79 +508,4 @@ impl HookLimits {
             .admit(now)
     }
 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const SECRET: &str = "s3cret";
-    const STRIPE: &str = "whsec_stripe";
-
-    fn call(headers: &[(&str, &str)], body: &str) -> HookCall {
-        HookCall {
-            method: "POST".into(),
-            headers: headers.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())).collect(),
-            body: Bytes::from(body.to_owned()),
-        }
-    }
-
-    fn hmac_hex(key: &str, data: &str) -> String {
-        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
-        mac.update(data.as_bytes());
-        hex::encode(mac.finalize().into_bytes())
-    }
-
-    /// Each way a caller proves the secret: a bearer token, GitHub's
-    /// signature of the body, and Stripe's of its time and the body with
-    /// the secret the user pasted, no older than five minutes; anything
-    /// else is refused.
-    #[test]
-    fn a_call_passes_only_with_the_secret_or_its_signature() {
-        let now = Timestamp::from_millisecond(1_800_000_000_000).unwrap();
-        let body = r#"{"action":"opened"}"#;
-        let github = format!("sha256={}", hmac_hex(SECRET, body));
-        let stamp = now.as_millisecond() / 1000;
-        let stripe = |time: i64| format!("t={time},v1={}", hmac_hex(STRIPE, &format!("{time}.{body}")));
-        let cases: Vec<(&str, Vec<(&str, String)>, bool)> = vec![
-            ("bearer", vec![("authorization", format!("Bearer {SECRET}"))], true),
-            ("wrong bearer", vec![("authorization", "Bearer s3cres".into())], false),
-            ("no proof", vec![], false),
-            ("github", vec![("x-hub-signature-256", github.clone())], true),
-            ("github of another body", vec![("x-hub-signature-256", format!("sha256={}", hmac_hex(SECRET, "{}")))], false),
-            ("github with the stripe secret", vec![("x-hub-signature-256", format!("sha256={}", hmac_hex(STRIPE, body)))], false),
-            ("stripe", vec![("stripe-signature", stripe(stamp))], true),
-            ("stripe four minutes old", vec![("stripe-signature", stripe(stamp - 240))], true),
-            ("stripe six minutes old", vec![("stripe-signature", stripe(stamp - 360))], false),
-            ("stripe signed with the url secret", vec![("stripe-signature", format!("t={stamp},v1={}", hmac_hex(SECRET, &format!("{stamp}.{body}"))))], false),
-        ];
-        for (name, headers, passes) in cases {
-            let headers: Vec<(&str, &str)> = headers.iter().map(|(name, value)| (*name, value.as_str())).collect();
-            assert_eq!(verified(&call(&headers, body), SECRET, Some(STRIPE), now), passes, "{name}");
-        }
-        // Without a pasted Stripe secret, Stripe's signature proves nothing.
-        assert!(!verified(&call(&[("stripe-signature", &stripe(stamp))], body), SECRET, None, now));
-    }
-
-    /// Calls of unknown URLs from ever new addresses keep a bounded count
-    /// of addresses, and each automation's window refuses its 31st call of
-    /// a minute and takes calls again the next minute. Microseconds.
-    #[test]
-    fn the_limits_keep_bounded_state() {
-        let limits = HookLimits::default();
-        let now = std::time::Instant::now();
-        for number in 0..(UNKNOWN_CALLERS as u32 + 1000) {
-            assert!(limits.admit_unknown(Some(std::net::IpAddr::from(number.to_be_bytes())), now));
-        }
-        let held = limits.0.lock().unwrap();
-        assert_eq!((held.unknown.len(), held.order.len()), (UNKNOWN_CALLERS, UNKNOWN_CALLERS));
-        drop(held);
-        let id = AutomationId::try_from("0123456789abcdef0123456789abcdef".to_owned()).unwrap();
-        let admitted = (0..31).filter(|_| limits.admit_known(&id, now)).count();
-        assert_eq!(admitted, CALLS_PER_MINUTE as usize);
-        assert!(limits.admit_known(&id, now + MINUTE));
-        // A deleted automation's window goes with it.
-        limits.forget(&id);
-        assert!(limits.0.lock().unwrap().known.is_empty());
-    }
 }

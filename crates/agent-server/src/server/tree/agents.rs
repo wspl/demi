@@ -1,12 +1,13 @@
 //! The conversation's agents as its metadata lists them, a collection the tree
-//! owns and keeps in sync (`docs/decisions/0009-agent-sessions-and-sync.md`).
+//! owns and keeps in sync.
 //!
 //! Every node, the root, each child live or closed and each side question, has
 //! one entry. Whoever changes a fact an entry shows changes the entry here, in
 //! the step it changes, and the change goes to every attached connection as
-//! that one entry, `agent`, with the collection's next revision. An open is
-//! answered with the entries changed since the revision the page holds, or
-//! all of them when it holds another epoch.
+//! that one entry, `agent`, at the collection's next version. The collection
+//! itself is read by the conversation's route, whole at its version, and a
+//! page that follows it at a version it holds is sent the entries changed
+//! since ([`Agents::since`]).
 //!
 //! ```text
 //!  session events ──┐
@@ -17,17 +18,16 @@
 //! Each agent's cache chart, which the product counts as its turn calls land
 //! (`crates/backend-database/src/usage.rs`), is kept here beside its cost but
 //! is no part of its entry: it goes whole, as `cache_chart`, to the
-//! connections that subscribe to the agent's node, with each subscription and
-//! as it changes (`docs/decisions/0019-the-server-counts-the-cache-chart.md`).
+//! connections that follow the agent's node as it changes, and the page
+//! reads it by a route when its card opens.
 //!
 //! The epoch is new at each open of the tree, so a page that held the agents
-//! before a restart of the backend reads them whole.
+//! before a restart of the backend reads them again.
 //!
 //! A step of a session, one change of it, changes each entry once: what it
 //! changes of one entry, such as its starting message and its phase, goes as
 //! one `agent` frame at one revision when the step ends ([`Agents::step`]),
-//! so no page sees an entry half changed
-//! (`docs/decisions/0023-a-command-settles-on-the-state-it-changed.md`).
+//! so no page sees an entry half changed.
 
 use std::{
     cell::{Cell, RefCell},
@@ -177,7 +177,13 @@ impl Agents {
                 entry: entry.clone(),
             },
         );
-        self.sink.emit(ServerFrame::Agent { revision, agent: entry });
+        self.sink.emit_to_agents(ServerFrame::Agent {
+            version: Version {
+                epoch: self.epoch.clone(),
+                revision,
+            },
+            agent: entry,
+        });
     }
 
     /// The agent `id` was deleted: its entry stays as a tombstone, which the
@@ -269,23 +275,22 @@ impl Agents {
             .collect()
     }
 
-    /// Sends the agent `number`'s chart to the connections that subscribe
-    /// to its node.
+    /// Sends the agent `number`'s chart to the connections that follow its
+    /// node.
     fn announce_chart(&self, number: u64) {
         for id in self.ids_of(number) {
-            if let Some(frame) = self.chart_frame(&id) {
-                self.sink.emit_to(&id, frame);
+            if let Some(chart) = self.chart(&id) {
+                self.sink.emit_to(&id, ServerFrame::CacheChart { node: id.clone(), chart });
             }
         }
     }
 
-    /// The `cache_chart` of the node `id`, an empty chart for an agent that
+    /// The cache chart of the node `id`, an empty chart for an agent that
     /// made no turn call; none for a side question or a node the collection
     /// does not hold.
-    pub(crate) fn chart_frame(&self, id: &NodeId) -> Option<ServerFrame> {
+    pub(crate) fn chart(&self, id: &NodeId) -> Option<CacheChart> {
         let number = number_of(&self.entries.borrow().get(id)?.entry.role)?;
-        let chart = self.charts.borrow().get(&number).cloned().unwrap_or_default();
-        Some(ServerFrame::CacheChart { node: id.clone(), chart })
+        Some(self.charts.borrow().get(&number).cloned().unwrap_or_default())
     }
 
     /// The side question `id`'s card is `card` now.
@@ -315,14 +320,12 @@ impl Agents {
         moved
     }
 
-    /// The `agents` frame for a page that holds the agents at `held`: the
-    /// entries changed since, with those that wait for their model, whose
-    /// wait the page counts from the frame; every entry when it holds another
-    /// epoch or none. `waits` tells how long each live agent has waited now.
-    pub(crate) fn snapshot(&self, held: Option<&Version>, waits: impl Fn(&NodeId) -> Option<u64>) -> ServerFrame {
-        let since = held
-            .filter(|held| held.epoch == self.epoch && held.revision <= self.revision.get())
-            .map(|held| held.revision);
+    /// The entries changed after the revision `since`, with those that wait
+    /// for their model, whose wait the page counts from the frame, as the
+    /// `agents` frame the follow of a page that holds the agents at `since`
+    /// is answered with. `waits` tells how long each live agent has waited
+    /// now.
+    pub(crate) fn since(&self, since: u64, waits: impl Fn(&NodeId) -> Option<u64>) -> ServerFrame {
         let mut agents: Vec<AgentEntry> = self
             .entries
             .borrow()
@@ -330,27 +333,32 @@ impl Agents {
             .filter_map(|kept| {
                 let mut entry = kept.entry.clone();
                 entry.waited_ms = entry.waited_ms.and_then(|_| waits(&entry.id));
-                let changed = since.is_none_or(|since| kept.revision > since);
-                // A tombstone is a change to tell, never an agent to list.
-                ((changed || entry.waited_ms.is_some()) && (since.is_some() || !entry.deleted)).then_some(entry)
+                (kept.revision > since || entry.waited_ms.is_some()).then_some(entry)
             })
             .collect();
         agents.sort_by_key(rank);
         ServerFrame::Agents {
             version: self.version(),
-            since,
+            since: Some(since),
             agents,
         }
     }
 
-    /// Every entry but a tombstone's, in the order the frames list them.
-    pub(crate) fn all(&self) -> Vec<AgentEntry> {
+    /// Every entry but a tombstone's, in the order the page lists them: the
+    /// root, the subagents by number, then the side questions as they were asked. A live
+    /// agent's wait is how long it has waited now, `waits` tells, which the page
+    /// counts from the answer.
+    pub(crate) fn all(&self, waits: impl Fn(&NodeId) -> Option<u64>) -> Vec<AgentEntry> {
         let mut agents: Vec<AgentEntry> = self
             .entries
             .borrow()
             .values()
             .filter(|kept| !kept.entry.deleted)
-            .map(|kept| kept.entry.clone())
+            .map(|kept| {
+                let mut entry = kept.entry.clone();
+                entry.waited_ms = entry.waited_ms.and_then(|_| waits(&entry.id));
+                entry
+            })
             .collect();
         agents.sort_by_key(rank);
         agents

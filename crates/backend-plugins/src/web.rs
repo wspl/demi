@@ -65,6 +65,8 @@ async fn exchange(client: &reqwest::Client, request: WebRequest) -> Result<WebRe
     if request.url.scheme() != "https" {
         return Err(WebFailure::NotHttps);
     }
+    // The deadline and the body limit a plugin names are themselves bounded,
+    // because the body is read into memory from any server on the internet.
     if request.deadline_ms == 0 || request.deadline() > WebRequest::MAX_DEADLINE {
         return Err(invalid(format!(
             "the deadline is {} ms; it is 1 to {} ms",

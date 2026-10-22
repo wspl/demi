@@ -13,12 +13,20 @@ use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_user_shard::shard::subagents::ProfileRefusal;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ProfileId;
-use demi_web_api_protocol::subagents::{NewProfile, ProfileAnswer, ProfilePatch, SubagentsPatch};
+use demi_web_api_protocol::subagents::{NewProfile, ProfileAnswer, ProfilePatch, SubagentSettings, SubagentsPatch};
 
 use super::AppState;
 use super::body::JsonBody;
 use super::error::{ApiError, status_of};
 use super::gate::AuthUser;
+
+/// `GET /settings/subagents`: the switch, the limits and the profiles.
+pub(super) async fn read(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<Json<SubagentSettings>, ApiError> {
+    Ok(Json(state.services.control.subagent_settings(user.id).await?))
+}
 
 /// `PUT /subagents`: any of `{ enabled, maxLive, maxDepth }`; a limit
 /// that is neither a whole number from 1 nor null fails the body's decoding.

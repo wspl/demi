@@ -16,7 +16,6 @@ use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::output::{self, Cell, Table};
 use demi_shared_types::Timestamp;
-use demi_web_api_protocol::conversations::TITLE_MAX;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::search::{RESULTS_MAX, SearchText};
@@ -62,7 +61,7 @@ const LIST_SUMMARY: &str = "List the user's conversations, the archived ones inc
 #[serde(deny_unknown_fields)]
 struct RenameArgs {
     /// The new title
-    #[schemars(length(min = 1, max = TITLE_MAX))]
+    #[schemars(length(min = 1))]
     title: String,
 }
 

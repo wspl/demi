@@ -32,7 +32,7 @@
 use std::collections::BTreeMap;
 
 use demi_shared_types::{NodeId, PermissionOutcome, Timestamp};
-use demi_web_api_protocol::credentials::{CredentialField, Keep, VALUE_MAX_BYTES};
+use demi_web_api_protocol::credentials::{CredentialField, Keep};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserCredentialId, UserId};
 use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
 use garde::Validate;
@@ -889,9 +889,6 @@ pub enum AnswerProblem {
     /// The field labelled `label` has no value.
     #[error("Enter a value for \u{201c}{label}\u{201d}.")]
     ValueMissing { label: String },
-    /// The value of the field labelled `label` is over `limit_bytes`.
-    #[error("The value of \u{201c}{label}\u{201d} can be at most 64 KiB.")]
-    ValueTooLarge { label: String, limit_bytes: usize },
     /// The answer has a value for `name`, which the request does not ask.
     #[error("The request has no field \u{201c}{name}\u{201d}.")]
     UnknownField { name: String },
@@ -903,7 +900,7 @@ pub enum AnswerProblem {
     DeclinedWithValues,
 }
 
-/// Whether `values` holds a value of at most 64 KiB for each of `fields`
+/// Whether `values` holds a value for each of `fields`
 /// and nothing else.
 fn fitting(
     fields: &[CredentialField],
@@ -913,12 +910,6 @@ fn fitting(
         let label = field.label.as_str().to_owned();
         match values.get(&field.name) {
             None => return Err(AnswerProblem::ValueMissing { label }),
-            Some(value) if value.len() > VALUE_MAX_BYTES => {
-                return Err(AnswerProblem::ValueTooLarge {
-                    label,
-                    limit_bytes: VALUE_MAX_BYTES,
-                });
-            }
             Some(_) => {}
         }
     }

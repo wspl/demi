@@ -69,13 +69,8 @@ function view(request: PermissionRequest): RequestView {
  * catalogue's text for the refusal says.
  */
 function answerProblem(error: ApiError): string | null {
-  const { field, limitBytes } = error.params
-  if (typeof field !== 'string') {
-    return null
-  }
-  return typeof limitBytes === 'number'
-    ? codeText('invalid_answer_too_large', { field, limitBytes })
-    : codeText('invalid_answer_missing', { field })
+  const { field } = error.params
+  return typeof field === 'string' ? codeText('invalid_answer_missing', { field }) : null
 }
 
 /**

@@ -76,6 +76,9 @@ use super::{
 };
 
 /// How many compactions one turn runs after responses over the threshold.
+///
+/// Bounded so a turn whose responses stay over the threshold ends instead of
+/// compacting without end.
 const MAX_AUTO_COMPACTIONS: u32 = 3;
 
 
