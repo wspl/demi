@@ -20,7 +20,7 @@ testing = []
 [dependencies]
 demi-agent-store = { path = "../agent-store" }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
-demi-shared-types = { path = "../shared-types" }
+demi-shared-types = { path = "../shared-types", features = ["tracing"] }
 demi-shared-gates = { path = "../shared-gates" }
 demi-backend-remote-host = { path = "../backend-remote-host" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
@@ -47,8 +47,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rusqlite = "0.8"
 tracing.workspace = true
-# The server log is a `tracing` layer over the spans' recorded fields.
-tracing-subscriber = { workspace = true, features = ["registry"] }
 uuid = { version = "1", features = ["v4"] }
 # The passkeys and their challenges the control store keeps
 # (`crates/backend/src/config/secret.rs`), as `webauthn-rs` encodes them.

@@ -24,7 +24,6 @@
 //! - Nothing writes a request's body or query string, a credential, a secret's
 //!   value or a file's contents to the log.
 
-mod layer;
 mod store;
 
 use std::io;
@@ -34,9 +33,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
+use demi_shared_types::log_layer::LineLayer;
 use demi_shared_types::{HostLogLine, LogLine, LogOrigin};
 
-pub use layer::ServerLogLayer;
+/// The `tracing` layer of the backend's own events: each becomes a row queued
+/// without waiting; one the queue has no room for is dropped and counted.
+pub type ServerLogLayer = LineLayer<Box<dyn Fn(LogLine) + Send + Sync>>;
 
 /// The database's file in the data directory.
 pub const DATABASE: &str = "log.sqlite";
@@ -102,7 +104,7 @@ pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, Ser
             },
             thread,
         },
-        ServerLogLayer::new(sink),
+        LineLayer::new(LogOrigin::Backend, Box::new(move |line| sink.push(Row { line, seq: None }))),
     ))
 }
 
