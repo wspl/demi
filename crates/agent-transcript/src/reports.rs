@@ -40,10 +40,9 @@ pub fn reports_text(reports: &[CommandReport]) -> String {
 }
 
 /// The text of one report: what happened, its output, and for a command
-/// that still runs, how to change how often it reports.
+/// that still runs, how often it reports.
 pub fn report_text(report: &CommandReport) -> String {
     let named = named(&report.command_id, &report.title);
-    let command = &report.command_id;
     let headline = match &report.event {
         ReportEvent::Running {
             running_ms,
@@ -72,7 +71,7 @@ pub fn report_text(report: &CommandReport) -> String {
     let mut lines = vec![headline, labelled_output(&report.output)];
     if let ReportEvent::Running { interval_ms, .. } = &report.event {
         lines.push(format!(
-            "It reports every {}; change that with demi shell status {command} --interval <duration>, or with --resident to hear only of its end.",
+            "It reports every {}.",
             duration((*interval_ms).into())
         ));
     }

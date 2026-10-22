@@ -465,7 +465,7 @@ fn reports_that_arrived_together_reach_the_model_as_their_text_one_paragraph_eac
         text,
         "Command 17 (Run the test suite) is still running after 5m; no output for 4m50s.\n\
          output: (empty)\n\
-         It reports every 5m; change that with demi shell status 17 --interval <duration>, or with --resident to hear only of its end.\n\
+         It reports every 5m.\n\
          \n\
          Command 17 (Run the test suite) ended with exit code 1.\n\
          output:\n\

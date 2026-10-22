@@ -62,7 +62,7 @@ const GROUP_SUMMARY: &str = "Shell commands: look at a command, answer its promp
 /// The group's entry in the model's capability index.
 const GROUP_ENTRY: &str = "Works on the commands your shell calls ran, by their commandIds: status shows a command's state and output now and changes how often it reports to you; input answers its prompt; output prints its whole output a page at a time, when a result was cut short in the middle; stop ends a dev server, a watcher or any command you no longer need.";
 
-const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them, at once. --interval <duration> makes them report to you every so long from now on, and --resident only when they end.";
+const STATUS_SUMMARY: &str = "Look at commands of this conversation by their commandIds, in order: each one's status, its exit code once it has ended, how long it has run and printed nothing, and its output since your last look, as a shell result shows them, at once. --interval <duration> makes them report to you every so long from now on.";
 
 const INPUT_SUMMARY: &str = "Write stdin to a running command's input by its commandId, such as an answer to its prompt, with a newline for a line-based prompt (`demi shell input 17 <<'EOF'`). Prints nothing; a command that is not running fails. The command reports what it does with the input as it reports anything else.";
 
@@ -99,8 +99,6 @@ struct StatusArgs {
     id: Vec<String>,
     /// Report every so long from now on, such as 5m
     interval: Option<String>,
-    /// Report only the commands' end from now on
-    resident: Option<bool>,
 }
 
 /// The input of `demi shell input`.
@@ -129,7 +127,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
             LeafBuilder::rpc("status", STATUS_SUMMARY)
                 .input::<StatusArgs>()
                 .positionals(["id"])
-                .success_output("each command's status as a shell result shows it, a blank line between two; with --interval or --resident, a line first that says how it reports from now on")
+                .success_output("each command's status as a shell result shows it, a blank line between two; with --interval, a line first that says how it reports from now on")
                 .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
                 .json_output::<StatusJson>()
                 .bind(TypedRpc::new(verb(server.clone(), status))),
@@ -175,9 +173,8 @@ async fn status<H: HostResolver>(
     let args = &call.args;
     one_for_json(&call, args.id.len())?;
     let mut notes = Vec::new();
-    let change = match (&args.interval, args.resident == Some(true)) {
-        (Some(_), true) => return refuse("--interval and --resident do not go together"),
-        (Some(text), false) => {
+    let change = match &args.interval {
+        Some(text) => {
             let asked = match milliseconds(text) {
                 Ok(asked) => asked,
                 Err(reason) => return refuse(&format!("--interval {text}: {reason}")),
@@ -190,8 +187,7 @@ async fn status<H: HostResolver>(
             }
             Some(Some(taken))
         }
-        (None, true) => Some(None),
-        (None, false) => None,
+        None => None,
     };
     let mut failed = false;
     let mut shown = Vec::new();

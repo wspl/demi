@@ -461,7 +461,7 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
         assert!(progress.contains(".\noutput: (empty)\n"), "{progress}");
         assert!(
             progress.ends_with(&format!(
-                "It reports every 1s; change that with demi shell status {suite} --interval <duration>, or with --resident to hear only of its end."
+                "It reports every 1s."
             )),
             "{progress}"
         );

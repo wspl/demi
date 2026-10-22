@@ -1170,24 +1170,17 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     }
 
     // The model asks to hear from the command every two seconds: it reports
-    // what a look shows of it, and how to change that. Woken by the report,
-    // the model makes it report only its end.
+    // what a look shows of it, and how often it reports.
     let watch = format!("demi shell status {command} --interval 2s");
-    let resident_look = format!("demi shell status {command} --resident");
     let before = work
-        .start(vec![
-            shell("t2", &watch, 30_000),
-            say("watching"),
-            shell("t3", &resident_look, 30_000),
-            say("resident"),
-        ])
+        .start(vec![shell("t2", &watch, 30_000), say("watching"), say("still watching")])
         .await;
     let report = format!("Command {command} (t1) is still running after");
     eventually("the command's report and the turn it opened", || {
         let requests = vendor.requests();
         let answered = requests[before..]
             .iter()
-            .any(|request| request.json().to_string().contains("demi shell status") && request.json().to_string().contains("reports only its end from now on"));
+            .any(|request| request.json().to_string().contains(&report));
         async move { answered }
     })
     .await;
@@ -1196,7 +1189,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     work.socket.until_idle().await;
     work.socket.until_idle().await;
     let watched = work.observe(before);
-    let [interval, resident] = &watched.received[..] else {
+    let [interval] = &watched.received[..] else {
         panic!("{:#?}", watched.received);
     };
     assert!(
@@ -1206,17 +1199,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     );
     let messages = watched.requests.last().unwrap()["messages"].to_string();
     assert!(messages.contains(&report), "{messages}");
-    assert!(messages.contains("It reports every 2s; change that with demi shell status"), "{messages}");
-    let shown = shown_output(resident);
-    assert!(
-        shown.starts_with(&format!("[command {command} reports only its end from now on]\n")),
-        "{shown}"
-    );
-    // The look's own next step, which the shown output stops before.
-    assert!(
-        resident.contains(&format!("\nnext: command {command} keeps running and reports to you when it ends;")),
-        "{resident}"
-    );
+    assert!(messages.contains("It reports every 2s."), "{messages}");
 
     // The model answers the far job's prompt through the command's input.
     let answer = format!("printf 'hello\\n' | demi shell input {command}");

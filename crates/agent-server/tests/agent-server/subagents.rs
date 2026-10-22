@@ -1185,7 +1185,6 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     // Arguments that do not go together or do not read are a usage error,
     // exit 2: the error, then the leaf's usage, as clap tells one.
     let refusals = [
-        ("status", json!({ "id": ["1"], "interval": "2s", "resident": true }), "--interval and --resident do not go together"),
         ("status", json!({ "id": ["1"], "interval": "nonsense" }), "--interval nonsense: "),
         ("output", json!({ "id": "1", "stdout": true, "stderr": true }), "--stdout and --stderr do not go together"),
         ("output", json!({ "id": "1", "lines": "2-1" }), "--lines 2-1: "),

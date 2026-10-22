@@ -42,22 +42,17 @@ use crate::input::DESCRIPTION;
 
 /// The rules of the `shell` tool, which every node's system prompt carries.
 ///
-/// Waiting is ending the turn: a call that watches a `sleep` holds the turn
-/// while the user watches the agent wait, and the work's end wakes the model
-/// anyway. Piping into `head` or `tail` is discouraged because it hides the
-/// command's exit status behind the pipe's, hides a long command's output until
-/// it ends and turns a returned image into a fragment of its bytes.
+/// They say what the tool does and the one duty a command brings, never how
+/// to wait or which flag to use: rules of method taught agents to silence a
+/// command's reports, so a command that hung went unnoticed until its end,
+/// which never came. What each `demi shell` command does is its help's.
 const TOOL_RULES: &[&str] = &[
     "The shell tool:",
-    "- Use shell to run a script. Every call starts in your working directory. A call returns when its command ends, or after 10 seconds with the command still running, whatever its intervalMs; intervalMs says how often a command still running then reports to you: a number from 15000 to 600000 for a command that ends, such as a build or a test suite, which reports every interval until it ends, and when it ends. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its start-up output is quiet, and the command reports only its end.",
-    "- Commands in one response run at the same time. Put commands that depend on each other in one script joined with &&, or in separate responses.",
-    "- A result shows the output since your last look at the command; while it runs, also runningMs and idleMs. A long output shows its first and last lines, and the line between names the demi shell output command that reads the rest. The output is already bounded this way, so do not pipe a command into head or tail to shorten it.",
-    "- demi shell status <commandId> shows a command's state and its output since your last look, as it is now. To answer a prompt the command waits for, run demi shell input <commandId> with the answer on stdin, with a newline for a line-based prompt. Change how often a command reports with demi shell status <commandId> --interval <duration>, or --resident to hear only of its end. Stop a command with demi shell stop <commandId>, never with pkill or killall.",
-    "- To wait for a command or a subagent, do other work meanwhile or end your turn: its report, or a subagent's message or end, wakes you. A reply that ends your turn to wait says what you are waiting for, since the user reads only what you wrote. Do not poll. To come back after a while for something no command stands for, start sleep with intervalMs null, which returns at once, and end your turn: the sleep's end wakes you. In a script, never sleep a fixed time before looking for something; wait for the thing itself, such as a line in a log (tail -f app.log | grep -m1 ready) or the command whose end you need.",
-    "- Run dev servers, watchers and previews with intervalMs null, not with \"&\".",
-    "- Once a long-running process has been checked and stopped, report what you observed instead of running it again to show the same thing.",
-    "- Prefer non-interactive flags. For an underspecified scaffold, choose a reasonable non-interactive default unless the choice is destructive or impossible.",
-    "- For interactive stdin, keep the reader inside one process such as sh -c, node or python; the shell's own read builtin does not keep its input across calls.",
+    "- Use shell to run a script. Every call starts in your working directory. A call returns when its command ends, or after 10 seconds with the command still running. intervalMs says how a command still running reports to you: a number from 15000 to 600000 for a command that ends, such as a build or a test suite, which reports every interval until it ends, and when it ends; null for a command that runs until it is stopped, such as a dev server or a watcher, whose call returns once its start-up output is quiet and which reports only its end.",
+    "- Commands in one response run at the same time.",
+    "- A result shows the output since your last look at the command, and while it runs, runningMs and idleMs. A long output shows its first and last lines, and names the command that reads the rest.",
+    "- A command you start is yours until it ends: each report and each look is where you see whether it still makes progress, and one that has stopped making progress is yours to find out about. demi shell looks at, answers, reads and stops commands by their commandIds.",
+    "- While a command or a subagent runs, do other work or end your turn: its report, its message or its end wakes you. A reply that ends your turn to wait says what you are waiting for, since the user reads only what you wrote.",
 ];
 
 /// What the model identity line names of the model that serves a node,
