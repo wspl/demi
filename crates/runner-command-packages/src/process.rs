@@ -23,7 +23,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use demi_runner_process::{
     lines::LineSplitter,
-    process::{ChildAttributes, start, wrap},
+    process::{ChildAttributes, start, wait_leader, wrap},
     tail::TailBuffer,
 };
 use demi_runner_protocol::wire;
@@ -274,7 +274,7 @@ where
     let (client, connection) = loop {
         tokio::select! {
             _ = stop.cancelled() => return finish(child, stderr, None).await,
-            status = child.wait() => {
+            status = wait_leader(child.as_mut()) => {
                 return finish(child, stderr, Some(exited(status))).await;
             }
             () = stderr.read(), if stderr.is_open() => {}
@@ -297,7 +297,7 @@ where
                 shut_down(&client, &mut child, &mut stderr, &mut connection).await;
                 break None;
             }
-            status = child.wait() => break Some(exited(status)),
+            status = wait_leader(child.as_mut()) => break Some(exited(status)),
             result = &mut connection => {
                 let reason = match result {
                     Ok(Ok(())) => "it closed its connection".to_owned(),
@@ -305,7 +305,7 @@ where
                     Err(error) => error.to_string(),
                 };
                 // Its own exit status tells more than the broken connection.
-                break match tokio::time::timeout(EXIT_GRACE, child.wait()).await {
+                break match tokio::time::timeout(EXIT_GRACE, wait_leader(child.as_mut())).await {
                     Ok(status) => Some(exited(status)),
                     Err(_) => Some(ExitReason::Protocol(reason)),
                 };
@@ -343,7 +343,7 @@ async fn shut_down<Failure>(
                 );
                 return;
             }
-            _ = child.wait() => return,
+            _ = wait_leader(child.as_mut()) => return,
             // A service may close its connection before it answers.
             _ = &mut request, if !requested => requested = true,
             _ = &mut *connection, if connected => connected = false,

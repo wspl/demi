@@ -869,7 +869,8 @@ async fn group_ended(child: &mut dyn process_wrap::tokio::ChildWrapper, group: i
     #[cfg(windows)]
     {
         // The job object ends its wait once its last process has: the handle it
-        // holds, which closing would kill them, stays until then.
+        // holds, which closing would kill them, stays until then
+        // (`vendor/process-wrap`).
         let _ = (group, poll);
         let _ = child.wait().await;
     }

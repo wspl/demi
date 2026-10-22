@@ -166,7 +166,7 @@ impl ChildProcess {
                             failure = Some(error.to_string());
                         }
                     }
-                    status = child.wait() => break status,
+                    status = wait_leader(child.as_mut()) => break status,
                     reader = readers.join_next(), if !readers.is_empty() => {
                         match reader {
                             Some(Ok(Err(error))) => {
@@ -647,7 +647,7 @@ pub async fn wait_timed(child: &mut dyn ChildWrapper) -> io::Result<(ExitStatus,
         .process_handle()
         .and_then(|handle| handle.try_clone_to_owned().ok());
     // Its own end, not that of the group's other processes, which run on.
-    let status = child.inner_mut().wait().await?;
+    let status = wait_leader(child).await?;
     #[cfg(windows)]
     let time = handle
         .and_then(|handle| handle_time(std::os::windows::io::AsHandle::as_handle(&handle)).ok())
@@ -782,6 +782,16 @@ pub fn handle_time(handle: std::os::windows::io::BorrowedHandle<'_>) -> io::Resu
         user: duration(user),
         system: duration(kernel),
     })
+}
+
+/// Waits for the process itself to end. `ChildWrapper::wait` of a Windows job
+/// object waits for every process in it, which a service's helpers or a
+/// program's background children outlive it by design; Unix's waits for the
+/// process alone, as this does.
+pub fn wait_leader(
+    child: &mut dyn ChildWrapper,
+) -> impl Future<Output = io::Result<std::process::ExitStatus>> + Send + '_ {
+    child.inner_mut().wait()
 }
 
 pub fn kill(child: &mut dyn ChildWrapper) -> io::Result<()> {
