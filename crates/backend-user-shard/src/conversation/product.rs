@@ -417,7 +417,9 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                 }
                 // The entries show no cost until the agent's next row.
                 Err(error) => tracing::warn!(
+                    event = "conversation_state.read_failed",
                     %conversation,
+                    what = "kept_costs",
                     error = &error as &dyn std::error::Error,
                     "a conversation's kept costs were not read"
                 ),
@@ -436,7 +438,9 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                 }
                 // The cards show untitled and open until they change.
                 Err(error) => tracing::warn!(
+                    event = "conversation_state.read_failed",
                     %conversation,
+                    what = "side_cards",
                     error = &error as &dyn std::error::Error,
                     "a conversation's side question cards were not read"
                 ),
@@ -460,7 +464,9 @@ impl demi_agent_server::AgentsSource for ShardAgents {
                 // turn call.
                 Err(error) => {
                     tracing::warn!(
+                        event = "conversation_state.read_failed",
                         %conversation,
+                        what = "cache_charts",
                         error = &error as &dyn std::error::Error,
                         "a conversation's cache charts were not read"
                     );
@@ -492,7 +498,7 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
             let host_paths = match shard.host_paths(&conversation).await {
                 Ok(host_paths) => host_paths,
                 Err(error) => {
-                    tracing::warn!(%conversation, error = &error as &dyn std::error::Error, "a reply's code paths were not looked at");
+                    tracing::warn!(event = "conversation_state.read_failed", %conversation, what = "reply_paths", error = &error as &dyn std::error::Error, "a reply's code paths were not looked at");
                     return None;
                 }
             };
@@ -529,7 +535,7 @@ impl demi_agent_server::ReplyFiles for ShardReplyFiles {
                 // A stopped Cloud or an offline device cannot say; the reply's
                 // code stays code.
                 Err(error) => {
-                    tracing::info!(%conversation, %error, "a reply's code paths could not be looked at");
+                    tracing::warn!(event = "conversation_state.read_failed", %conversation, what = "reply_paths", %error, "a reply's code paths could not be looked at");
                     None
                 }
             }

@@ -154,7 +154,7 @@ impl ProviderAssembly {
     /// A second setting is refused and the first kept.
     pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
         if self.machine.set(machine).is_err() {
-            tracing::error!("the Claude Code machine was set twice; the first is kept");
+            tracing::error!(event = "assembly.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
     }
 
@@ -163,7 +163,7 @@ impl ProviderAssembly {
     /// A second setting is refused and the first kept.
     pub fn set_devices(&self, route: Arc<dyn DeviceRoute>) {
         if self.devices.set(route).is_err() {
-            tracing::error!("the way to the devices was set twice; the first is kept");
+            tracing::error!(event = "assembly.set_twice", what = "devices", "the way to the devices was set twice; the first is kept");
         }
     }
 
@@ -188,7 +188,19 @@ impl ProviderAssembly {
     /// Marks `account` of `entry` used up until `until`, so no agent and no
     /// image takes it meanwhile, and tells the entry's pages now and at
     /// `until`, since it routes their requests elsewhere until then.
-    pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: demi_shared_types::Timestamp) {
+    ///
+    /// `source` says where `until` comes from: `vendor_refusal` when the
+    /// failure named it, `snapshot` when the account's quota did, `default`
+    /// when neither did.
+    pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: demi_shared_types::Timestamp, source: &'static str) {
+        tracing::info!(
+            event = "account.used_up",
+            provider = %entry,
+            account = %account,
+            until_ms = until.as_millisecond(),
+            source,
+            "an account was marked used up"
+        );
         self.rotation.mark_used_up(entry, account, until);
         self.quotas.used_up(entry, until);
     }
@@ -357,24 +369,27 @@ impl ProviderAssembly {
                 .as_ref()
                 .is_none_or(|snapshot| now - snapshot.observed_at.as_millisecond() > SNAPSHOT_FRESH_MS);
             if fresh && old {
-                stale.push(self.provider_of(entry, Some(&record.id)).await?);
+                stale.push((record.id.clone(), self.provider_of(entry, Some(&record.id)).await?));
             }
         }
         // The probes run at the edge, whose client the providers send with,
         // together; the choice waits for all of them.
-        let probes = stale.into_iter().map(|provider| {
-            self.quotas.edge().spawn(async move {
+        let probes = stale.into_iter().map(|(account, provider)| {
+            let provider_id = entry.id.clone();
+            let probed = account.clone();
+            let probe = self.quotas.edge().spawn(async move {
                 if let Some(quota) = provider.quota()
                     && let Err(error) = quota.probe().await
                 {
-                    tracing::debug!(%error, "an account's usage was not read before a choice; its snapshot stays");
+                    tracing::warn!(event = "account_usage.read_failed", provider = %provider_id, account = %probed, kept = "snapshot", %error, "an account's usage was not read before a choice; its snapshot stays");
                 }
-            })
+            });
+            async move { (account, probe.await) }
         });
-        for probe in futures_util::future::join_all(probes).await {
+        for (account, probe) in futures_util::future::join_all(probes).await {
             // A probe that panicked read nothing; the snapshot stays.
             if let Err(error) = probe {
-                tracing::warn!(%error, "an account's usage probe ended without an answer");
+                tracing::warn!(event = "account_usage.probe_failed", provider = %entry.id, account = %account, %error, "an account's usage probe ended without an answer");
             }
         }
         Ok(records

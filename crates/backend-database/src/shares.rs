@@ -559,6 +559,30 @@ fn mark_tags(text: &str) -> String {
     marked
 }
 
+/// What a share's list holds, by count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShareCounts {
+    /// The list's blocks.
+    pub blocks: u64,
+    /// The transcripts they come from: the root's and its subagents'.
+    pub nodes: u64,
+    /// The attachments the share keeps.
+    pub attachments: u64,
+}
+
+/// What the share `token`'s list holds now.
+pub fn counts(connection: &Connection, token: &ShareToken) -> Result<ShareCounts, StorageError> {
+    let count = |sql: &str| -> Result<u64, StorageError> {
+        let counted: i64 = connection.query_row(sql, [token.as_str()], |row| row.get(0))?;
+        Ok(u64::try_from(counted).unwrap_or(0))
+    };
+    Ok(ShareCounts {
+        blocks: count("SELECT COUNT(*) FROM share_entries WHERE token = ?1")?,
+        nodes: count("SELECT COUNT(DISTINCT node_id) FROM share_entries WHERE token = ?1")?,
+        attachments: count("SELECT COUNT(*) FROM share_attachments WHERE token = ?1")?,
+    })
+}
+
 /// Removes the share `token`'s list and copies.
 pub fn remove(connection: &Connection, token: &ShareToken) -> Result<(), StorageError> {
     for table in ["share_entries", "share_blocks", "share_blobs", "share_attachments"] {

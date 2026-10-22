@@ -62,6 +62,8 @@ hex = "0.4"
 hkdf = "0.12"
 rand = "0.9"
 sd-notify = "0.5"
+# The resident memory of the backend's own process, which its resource sample logs.
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true

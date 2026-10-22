@@ -28,6 +28,7 @@ use demi_machine_manager_protocol::CheckpointParams;
 use demi_shared_gates::{GateLease, Purpose};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
+use tracing::Instrument as _;
 
 use demi_backend_database::devices::ManagedMachine;
 use demi_web_api_protocol::ids::ConversationId;
@@ -46,7 +47,8 @@ impl dyn CloudShard {
             shard: Rc::downgrade(&self.this()),
             machine: machine.clone(),
         };
-        let watch = demi_backend_idle_watch::watch(idle, window, sweep, self.tasks().clone());
+        let watch = demi_backend_idle_watch::watch(idle, window, sweep, self.tasks().clone())
+            .instrument(tracing::info_span!("idle_watch", host_id = %machine.device.id));
         let maintenance = maintain(Rc::downgrade(&self.this()), machine.clone());
         vec![
             AbortOnDropHandle::new(self.tasks().spawn_local(watch)),
@@ -112,6 +114,7 @@ impl dyn CloudShard {
         if let Some(link) = &link {
             link.pause_liveness();
         }
+        let started = std::time::Instant::now();
         let saved = self
             .cloud_services()
             .machines
@@ -124,12 +127,19 @@ impl dyn CloudShard {
             link.resume_liveness();
         }
         drop(lease);
+        crate::machine::operation_ended(device, "checkpoint", started, saved.is_ok());
         match saved {
             Ok(()) => machine.checkpointed(at),
             // The next round tries again; a sandbox the failure stopped
             // reports its death.
             Err(error) => {
-                tracing::warn!(device = %device, "the Cloud's checkpoint failed: {error}")
+                tracing::warn!(
+                    event = "cloud.checkpoint_failed",
+                    host_id = %device,
+                    %error,
+                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "the Cloud's checkpoint failed"
+                )
             }
         }
     }
@@ -146,7 +156,11 @@ impl dyn CloudShard {
             Ok(uses) => uses,
             Err(error) => {
                 tracing::warn!(
-                    "the Cloud's lifetime cap could not read its conversations: {error}"
+                    event = "cloud.lifetime_cap_failed",
+                    host_id = %machine.device.id,
+                    step = "read_conversations",
+                    %error,
+                    "the Cloud's lifetime cap could not read its conversations"
                 );
                 return;
             }
@@ -171,7 +185,7 @@ impl dyn CloudShard {
                 match tokio::time::timeout(hold, reserving).await {
                     Ok(reserved) => reserved,
                     Err(_) => {
-                        tracing::warn!(device = %device, "the Cloud's jobs did not end at its lifetime cap");
+                        tracing::warn!(event = "cloud.jobs_end_timed_out", host_id = %device, step = "lifetime_cap", waited_ms = u64::try_from(hold.as_millis()).unwrap_or(u64::MAX), "the Cloud's jobs did not end at its lifetime cap");
                         return;
                     }
                 }
@@ -187,7 +201,7 @@ impl dyn CloudShard {
         self.tasks().spawn_local(async move {
             let _held = (reserved, held);
             if let Err(error) = shard.hibernate_reserved(&machine).await {
-                tracing::warn!(device = %machine.device.id, "the Cloud was not saved at its lifetime cap: {error}");
+                tracing::warn!(event = "cloud.save_failed", host_id = %machine.device.id, step = "lifetime_cap", %error, "the Cloud was not saved at its lifetime cap");
             }
         });
     }

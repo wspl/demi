@@ -122,6 +122,7 @@ pub async fn publish_native(
     publish(&verified, &*objects.store, cancel).await?;
     match keep_releases(&*objects.store, version, &verified, runners, cancel).await {
         Ok(pruned) => tracing::info!(
+            event = "native_store.pruned",
             records = pruned.records,
             mappings = pruned.mappings,
             descriptors = pruned.descriptors,
@@ -131,7 +132,7 @@ pub async fn publish_native(
         Err(PublicationError::Cancelled) => return Err(PublicationError::Cancelled),
         // What stays is only stored, never served wrongly; the next start
         // prunes again.
-        Err(error) => tracing::warn!("the native store's older releases stay: {error}"),
+        Err(error) => tracing::warn!(event = "native_store.prune_failed", %error, "the native store's older releases stay"),
     }
     let mut executables = HashMap::new();
     for (release, descriptor) in releases.iter().zip(&verified) {
@@ -147,6 +148,7 @@ pub async fn publish_native(
     let sourcing = Sourcing::new(objects.store.clone(), files)?;
     let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables);
     tracing::info!(
+        event = "command_packages.published",
         packages = verified.len(),
         "the command packages are published"
     );

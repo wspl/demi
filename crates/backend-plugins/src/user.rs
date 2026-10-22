@@ -507,14 +507,16 @@ impl Shared {
                 .request(
                     plugin,
                     request,
-                    Some(conversation),
+                    Some(conversation.clone()),
                     None,
                     CancellationToken::new(),
                 )
                 .await;
             if let Err(error) = asked {
                 tracing::warn!(
+                    event = "plugin_change.failed",
                     plugin = shared.plugin_id(plugin),
+                    %conversation,
                     %error,
                     "a plugin could not do its part of a change"
                 );
@@ -971,7 +973,7 @@ impl UserPlugins {
                 Err(error) => {
                     // The plugin then shows the lost state until its
                     // package next says something about the conversation.
-                    tracing::warn!(%conversation, error = &error as &dyn std::error::Error, "a lost package's panel could not be read");
+                    tracing::warn!(event = "package_panel.read_failed", %conversation, error = &error as &dyn std::error::Error, "a lost package's panel could not be read");
                     continue;
                 }
             };
@@ -999,7 +1001,7 @@ impl UserPlugins {
         let enabled = match self.enabled().await {
             Ok(enabled) => enabled,
             Err(error) => {
-                tracing::warn!(%error, "the plugins a package message is for could not be read");
+                tracing::warn!(event = "package_message.receivers_failed", %error, "the plugins a package message is for could not be read");
                 return Vec::new();
             }
         };

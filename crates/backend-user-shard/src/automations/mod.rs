@@ -502,7 +502,7 @@ impl Shard {
         let automation = self.stored_automation(id).await?;
         let (secret, _) = self.automation_secrets(&automation.id).await?;
         let secret = secret.ok_or(AutomationError::NotUrl)?;
-        tracing::info!(automation = %automation.id, "a page revealed an automation's secret");
+        tracing::info!(event = "automation_secret.revealed", user = %self.user(), automation = %automation.id, "a page revealed an automation's secret");
         Ok(secret)
     }
 
@@ -602,7 +602,7 @@ impl Shard {
                 self.mark(Part::Automations);
             }
             Ok(false) => {}
-            Err(error) => tracing::warn!(%conversation, "a run's conversation stays filed: {error}"),
+            Err(error) => tracing::warn!(event = "automation_run.stays_filed", %conversation, %error, "a run's conversation stays filed"),
         }
     }
 
@@ -621,7 +621,7 @@ impl Shard {
         {
             Ok(true) => self.automations_changed(),
             Ok(false) => {}
-            Err(error) => tracing::warn!(%conversation, "the automations of a gone conversation were not paused: {error}"),
+            Err(error) => tracing::warn!(event = "automations.pause_failed", %conversation, %error, "the automations of a gone conversation were not paused"),
         }
     }
 
@@ -640,7 +640,7 @@ impl Shard {
                 Ok(next) => next,
                 Err(error) => {
                     // The next change or the next start reads them again.
-                    tracing::warn!(user = %self.user(), "the automations were not read: {error}");
+                    tracing::warn!(event = "automations.read_failed", user = %self.user(), %error, "the automations were not read");
                     None
                 }
             };
@@ -807,7 +807,7 @@ pub async fn start_schedulers(
         // The shard's first call starts its scheduler; a shard that cannot
         // be reached starts it on its next call.
         if let Err(error) = shards.of(&user).call(|_, _| async {}).await {
-            tracing::warn!(%user, "the automations' scheduler did not start: {error}");
+            tracing::warn!(event = "automation_scheduler.start_failed", %user, %error, "the automations' scheduler did not start");
         }
     }
     Ok(())

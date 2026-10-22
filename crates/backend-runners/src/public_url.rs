@@ -34,7 +34,7 @@ impl PublicUrl {
             Ok(url) => {
                 let _ = self.0.set(url);
             }
-            Err(error) => tracing::error!("the URL runners connect to is not usable: {error}"),
+            Err(error) => tracing::error!(event = "public_url.unusable", %error, "the URL runners connect to is not usable"),
         }
     }
 

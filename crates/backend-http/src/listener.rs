@@ -108,7 +108,7 @@ where
 /// served anyway.
 pub(super) fn without_delay(stream: &mut tokio::net::TcpStream) {
     if let Err(error) = stream.set_nodelay(true) {
-        tracing::debug!("a connection keeps Nagle's algorithm: {error}");
+        tracing::debug!(event = "socket.option_failed", option = "nodelay", %error, "a connection keeps Nagle's algorithm");
     }
 }
 
@@ -133,7 +133,7 @@ pub(super) fn within_one_sandbox_read(stream: &mut tokio::net::UnixStream) {
             .and_then(|default| sockopt::set_socket_send_buffer_size(stream, default / 4));
         // The connection still serves; only a large answer may stall on it.
         if let Err(error) = shrunk {
-            tracing::warn!("a runner connection keeps its send buffer: {error}");
+            tracing::warn!(event = "socket.option_failed", option = "send_buffer", %error, "a runner connection keeps its send buffer");
         }
     }
     #[cfg(not(target_os = "linux"))]
@@ -192,14 +192,10 @@ where
     let mut stopping = false;
     loop {
         tokio::select! {
-            served = connection.as_mut() => {
-                // A peer that went away or broke the protocol ends its own
-                // connection; nobody waits to hear why.
-                if let Err(error) = served {
-                    tracing::trace!(error = &error as &dyn std::error::Error, "a connection ended");
-                }
-                return;
-            }
+            // A peer that went away or broke the protocol ends its own
+            // connection; nobody waits to hear why, and a line for each
+            // connection would say nothing a request's line does not.
+            _ = connection.as_mut() => return,
             () = stop.cancelled(), if !stopping => {
                 stopping = true;
                 connection.as_mut().graceful_shutdown();

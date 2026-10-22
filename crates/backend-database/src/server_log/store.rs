@@ -86,7 +86,7 @@ fn own_line(level: LogLevel, event: &str, fields: serde_json::Value) -> Row {
 /// [`BATCH_INTERVAL`], first a line saying how many events the queue had no
 /// room for, and trims the log as it starts and every [`TRIM_INTERVAL`], one
 /// batch between two commits.
-pub(super) fn serve(path: &Path, limits: Limits, queue: &Receiver<Message>, dropped: &AtomicU64) {
+pub(super) fn serve(path: &Path, limits: Limits, queue: &Receiver<Message>, dropped: &AtomicU64, waiting: &AtomicU64) {
     let mut database = Database::open(path);
     let mut trim_at = Instant::now();
     let mut trimming: Option<Trim> = None;
@@ -103,6 +103,7 @@ pub(super) fn serve(path: &Path, limits: Limits, queue: &Receiver<Message>, drop
         };
         let mut closing = match queue.recv_timeout(wait) {
             Ok(Message::Row(row)) => {
+                waiting.fetch_sub(1, Ordering::Relaxed);
                 batch.push(row);
                 false
             }
@@ -140,7 +141,10 @@ pub(super) fn serve(path: &Path, limits: Limits, queue: &Receiver<Message>, drop
                 },
             };
             match message {
-                Message::Row(row) => batch.push(row),
+                Message::Row(row) => {
+                    waiting.fetch_sub(1, Ordering::Relaxed);
+                    batch.push(row);
+                }
                 Message::Close => closing = true,
             }
         }

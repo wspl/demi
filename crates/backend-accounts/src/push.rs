@@ -307,7 +307,7 @@ impl Pusher {
         let body = match serde_json::to_vec(message) {
             Ok(body) => body,
             Err(error) => {
-                tracing::error!("a push message did not serialize: {error}");
+                tracing::error!(event = "push.encode_failed", %user, %error, "a push message did not serialize");
                 return false;
             }
         };
@@ -327,7 +327,7 @@ impl Pusher {
             Ok(endpoint) => endpoint,
             Err(error) => {
                 // A URL `PushEndpoint` parsed is a URI too.
-                tracing::error!(%user, "a push endpoint is not a URI: {error}");
+                tracing::error!(event = "push.endpoint_refused", %user, %error, "a push endpoint is not a URI");
                 return false;
             }
         };
@@ -349,14 +349,17 @@ impl Pusher {
                 request
             }
             Err(error) => {
-                tracing::error!(%user, "a push message was not encrypted: {error}");
+                tracing::error!(event = "push.encrypt_failed", %user, %error, "a push message was not encrypted");
                 return false;
             }
         };
-        match self.transport.post(request).await {
+        let started = std::time::Instant::now();
+        let sent = self.transport.post(request).await;
+        let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        match sent {
             Ok(status) if status.is_success() => false,
             Ok(StatusCode::NOT_FOUND | StatusCode::GONE) => {
-                tracing::info!(%user, "a push subscription is gone, and is removed");
+                tracing::info!(event = "push.subscription_removed", %user, reason = "gone", ms, "a push subscription is gone, and is removed");
                 match self
                     .control
                     .delete_gone_push_subscription(subscription.session.clone(), subscription.endpoint.clone())
@@ -364,17 +367,17 @@ impl Pusher {
                 {
                     Ok(()) => true,
                     Err(error) => {
-                        tracing::warn!(%user, "a gone push subscription was not removed: {error}");
+                        tracing::warn!(event = "push.subscription_remove_failed", %user, %error, "a gone push subscription was not removed");
                         false
                     }
                 }
             }
             Ok(status) => {
-                tracing::warn!(%user, %status, "a push service refused a message");
+                tracing::warn!(event = "push.refused", %user, status = status.as_u16(), ms, "a push service refused a message");
                 false
             }
             Err(error) => {
-                tracing::warn!(%user, "a push message was not sent: {error}");
+                tracing::warn!(event = "push.send_failed", %user, %error, ms, "a push message was not sent");
                 false
             }
         }

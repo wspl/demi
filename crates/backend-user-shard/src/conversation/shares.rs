@@ -14,7 +14,7 @@ use bytes::Bytes;
 use demi_backend_blobs::ObjectError;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_attachments::{AttachmentNumber, AttachmentRow};
-use demi_backend_database::shares::{self, Added, ShareRecord};
+use demi_backend_database::shares::{self, Added, ShareCounts, ShareRecord};
 use demi_backend_database::tree::{self, BlockRead, PageQuery, PageRead, Transcript};
 use demi_backend_page_sync::Part;
 use demi_shared_types::{BlobRef, BlockId};
@@ -69,7 +69,9 @@ impl Shard {
             return Ok(existing);
         }
         let token = new_token();
-        self.make_list(&record.id, &token, &target).await?;
+        let started = std::time::Instant::now();
+        let counts = self.make_list(&record.id, &token, &target).await?;
+        let made_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let share = ShareRecord {
             token: token.clone(),
             owner: self.user().clone(),
@@ -80,6 +82,21 @@ impl Shard {
         };
         match control.add_share(share).await? {
             Added::New(share) => {
+                // The token is the link's secret, which no line holds.
+                tracing::info!(
+                    event = "share.created",
+                    conversation = %record.id,
+                    user = %self.user(),
+                    target = match share.target {
+                        ShareTarget::Conversation => "conversation",
+                        ShareTarget::Answer { .. } => "answer",
+                    },
+                    blocks = counts.blocks,
+                    nodes = counts.nodes,
+                    attachments = counts.attachments,
+                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(made_ms),
+                    "a share was created"
+                );
                 self.mark(Part::Metadata(record.id));
                 Ok(share)
             }
@@ -112,7 +129,7 @@ impl Shard {
             .conversation(share.conversation.clone())
             .await?
             .ok_or(ShareRefusal::NoConversation)?;
-        self.make_list(&record.id, &token, &share.target).await?;
+        let _ = self.make_list(&record.id, &token, &share.target).await?;
         let Some(share) = control
             .retake_share(token.clone(), record.title, self.services().clock.now())
             .await?
@@ -166,7 +183,7 @@ impl Shard {
         conversation: &ConversationId,
         token: &ShareToken,
         target: &ShareTarget,
-    ) -> Result<(), ShareRefusal> {
+    ) -> Result<ShareCounts, ShareRefusal> {
         let (token, target) = (token.clone(), target.clone());
         let taken = self
             .services()
@@ -181,11 +198,12 @@ impl Shard {
                     }
                     ShareTarget::Answer { block_id } => shares::take_answer(&transaction, &token, block_id)?,
                 };
+                let counts = shares::counts(&transaction, &token)?;
                 transaction.commit()?;
-                Ok(taken)
+                Ok((taken, counts))
             })
             .await?;
-        if taken { Ok(()) } else { Err(ShareRefusal::TargetInvalid) }
+        if taken.0 { Ok(taken.1) } else { Err(ShareRefusal::TargetInvalid) }
     }
 
     /// Removes a list no record names any more. One that stays costs
@@ -199,6 +217,7 @@ impl Shard {
             .await;
         if let Err(error) = removed {
             tracing::warn!(
+                event = "share_list.left",
                 conversation = %conversation,
                 error = &error as &dyn std::error::Error,
                 "a share's list that no record names stays in the conversation's database"
@@ -216,7 +235,9 @@ impl Shard {
         let transcript = Transcript::Shared {
             token: share.token.clone(),
         };
-        self.services()
+        let started = std::time::Instant::now();
+        let read = self
+            .services()
             .conversations
             .read(&share.conversation, move |connection| {
                 let page = PageQuery {
@@ -227,7 +248,20 @@ impl Shard {
                 };
                 tree::read_page(connection, &transcript, page)
             })
-            .await
+            .await;
+        if let Ok(read) = &read {
+            tracing::debug!(
+                event = "share.read",
+                conversation = %share.conversation,
+                blocks = match read {
+                    Some(PageRead::Page { blocks, .. }) => blocks.len(),
+                    _ => 0,
+                },
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "a page of a share was read"
+            );
+        }
+        read
     }
 
     /// A block the share's list holds, whole.

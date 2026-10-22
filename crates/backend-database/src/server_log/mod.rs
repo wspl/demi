@@ -83,15 +83,17 @@ pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, Ser
     std::fs::create_dir_all(data_dir)?;
     let path = data_dir.join(DATABASE);
     let dropped = Arc::new(AtomicU64::new(0));
+    let waiting = Arc::new(AtomicU64::new(0));
     let (queue, queued) = mpsc::sync_channel(QUEUE);
     let thread = std::thread::Builder::new()
         .name("server-log".into())
         .spawn({
             let dropped = dropped.clone();
+            let waiting = waiting.clone();
             let path = path.clone();
-            move || store::serve(&path, limits, &queued, &dropped)
+            move || store::serve(&path, limits, &queued, &dropped, &waiting)
         })?;
-    let sink = Sink { queue, dropped };
+    let sink = Sink { queue, dropped, waiting };
     Ok((
         ServerLogWriter {
             log: ServerLog {
@@ -109,13 +111,18 @@ pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, Ser
 struct Sink {
     queue: mpsc::SyncSender<Message>,
     dropped: Arc<AtomicU64>,
+    /// The rows in the queue now: counted in before they are sent and out
+    /// as the writer takes them.
+    waiting: Arc<AtomicU64>,
 }
 
 impl Sink {
     /// Queues `row` without waiting; one the queue has no room for is dropped
     /// and counted, and the writer says so with its next commit.
     fn push(&self, row: Row) {
+        self.waiting.fetch_add(1, Ordering::Relaxed);
         if self.queue.try_send(Message::Row(row)).is_err() {
+            self.waiting.fetch_sub(1, Ordering::Relaxed);
             self.dropped.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -161,6 +168,12 @@ pub struct ServerLog {
 }
 
 impl ServerLog {
+    /// How many lines wait for the writer now, which a backend that writes
+    /// faster than its disk keeps shows as a number that grows.
+    pub fn queued(&self) -> u64 {
+        self.sink.as_ref().map_or(0, |sink| sink.waiting.load(Ordering::Relaxed))
+    }
+
     /// A log with no writer, which stores nothing, as a backend started
     /// without [`open`] has.
     pub fn detached(data_dir: &Path) -> Self {

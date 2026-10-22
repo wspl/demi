@@ -95,6 +95,8 @@ pub struct Backend {
     /// Stores the package executables ahead for the targets of the Hosts
     /// (`crates/backend-runners/src/publication.rs`); a close ends it.
     ahead: AbortOnDropHandle<()>,
+    /// Logs the backend's resources every minute (`crate::sampling`).
+    sampling: AbortOnDropHandle<()>,
 }
 
 /// Why the backend did not start.
@@ -160,6 +162,18 @@ impl fmt::Display for ShutdownErrors {
 }
 
 impl std::error::Error for ShutdownErrors {}
+
+/// Runs the start step `step`, whose failure does not stop the start: its end
+/// is logged with the time it took, and a failure with its error.
+async fn start_step<T, E: fmt::Display>(step: &'static str, work: impl std::future::Future<Output = Result<T, E>>) {
+    let started = std::time::Instant::now();
+    let done = work.await;
+    let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    match done {
+        Ok(_) => tracing::info!(event = "startup.step_ended", step, ms, outcome = "ok", "a start step ended"),
+        Err(error) => tracing::error!(event = "startup.step_failed", step, ms, %error, "a start step failed; the start goes on"),
+    }
+}
 
 /// Hands each running Cloud to its owner's shard, which takes it over
 /// (`crates/machine-manager-protocol/src/lib.rs`).
@@ -275,6 +289,8 @@ impl Backend {
         if started.is_err() {
             for failure in storage.close().await {
                 tracing::error!(
+                    event = "storage.close_failed",
+                    after = "start_failed",
                     error = &failure as &dyn std::error::Error,
                     "storage did not close after a failed start"
                 );
@@ -381,80 +397,42 @@ impl Backend {
         // Each deletion an earlier backend left pending is finished before
         // the backend serves. A failure does not stop the start: the next
         // start finishes it, and no request finds its conversation meanwhile.
-        if let Err(error) = finish_deletions(&services.control, &shards.shards()).await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the pending deletions cannot be listed"
-            );
-        }
+        start_step("pending_deletions", finish_deletions(&services.control, &shards.shards())).await;
         // Each detach an agent asked for that a restart cut off is made,
         // before a page opens its tree
         // (`crates/backend-user-shard/src/conversation/pending.rs`). A failure
         // does not stop the start: the next start makes it.
-        if let Err(error) = settle_pending(&services.control, &shards.shards()).await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the pending detaches cannot be listed"
-            );
-        }
+        start_step("pending_detaches", settle_pending(&services.control, &shards.shards())).await;
         // A credential request's command ended with the run before, so no one waits
         // for its answer; and a credential whose time came while the backend was down
         // is removed.
         //
         // A failure does not stop the start: the user's shard removes what is past due
         // when it starts, and the next start withdraws the requests.
-        if let Err(error) = services.control.withdraw_credential_requests().await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the credential requests of the run before cannot be withdrawn"
-            );
-        }
-        if let Err(error) = services.control.expire_all_user_credentials().await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the expired credentials cannot be removed"
-            );
-        }
+        start_step("credential_requests", services.control.withdraw_credential_requests()).await;
+        start_step("expired_credentials", services.control.expire_all_user_credentials()).await;
         // Each permission decision whose message a restart cut off reaches
         // the agent that asked. A failure does not stop the start: the next
         // start delivers it.
-        if let Err(error) = deliver_decisions(&services.control, &shards.shards()).await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the undelivered permission decisions cannot be listed"
-            );
-        }
+        start_step("permission_decisions", deliver_decisions(&services.control, &shards.shards())).await;
         // Each root's turn the last shutdown interrupted goes on, in the
         // background, as the user's Resume would, unless the user turned that
         // off. A failure does not stop the start: the marks stay for the next
         // start, and meanwhile the turns wait for the user's Resume.
-        if let Err(error) = resume_after_restart(&services.control, &shards.shards()).await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the turns the last shutdown interrupted cannot be listed"
-            );
-        }
+        start_step("interrupted_turns", resume_after_restart(&services.control, &shards.shards())).await;
         // Each user's automations fire what a backend that was down missed
         // and wait for their next times. A failure does not stop the start: a
         // user's next call starts them.
-        if let Err(error) =
-            demi_backend_user_shard::automations::start_schedulers(&services.control, &shards.shards()).await
-        {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the users with automations cannot be listed"
-            );
-        }
+        start_step(
+            "automation_users",
+            demi_backend_user_shard::automations::start_schedulers(&services.control, &shards.shards()),
+        )
+        .await;
         // Each user's search index catches up with the conversations, in the
         // background (`crates/backend-database/src/search.rs`). A failure
         // does not stop the start: a conversation not indexed here is
         // indexed by its next change.
-        if let Err(error) = index_at_start(&services.control, &shards.shards()).await {
-            tracing::error!(
-                error = &error as &dyn std::error::Error,
-                "the conversations to index for search cannot be listed"
-            );
-        }
+        start_step("search_index", index_at_start(&services.control, &shards.shards())).await;
         let runners = services.runner_releases.root().map(|releases| {
             let releases = releases.to_owned();
             let services = services.clone();
@@ -529,9 +507,11 @@ impl Backend {
         // A Cloud that does not run although commands ran on it, as after an
         // upgrade, starts again once a runner can reach the backend.
         let taken: Vec<_> = running.iter().map(|device| device.id.clone()).collect();
-        if let Err(error) = take_up_stopped_clouds(&taken, &services.control, &shards.shards()).await {
-            tracing::error!("the stopped Clouds' commands cannot be taken up: {error}");
-        }
+        start_step("cloud_commands", take_up_stopped_clouds(&taken, &services.control, &shards.shards())).await;
+        let sampling = AbortOnDropHandle::new(tokio::spawn(crate::sampling::sample(
+            shards.shards(),
+            services.log.clone(),
+        )));
         Ok(Self {
             local_addr: edge.local_addr(),
             storage,
@@ -543,7 +523,13 @@ impl Backend {
             usage,
             runners,
             ahead,
+            sampling,
         })
+    }
+
+    /// What the shards hold now: the live trees and the work they run.
+    pub async fn census(&self) -> demi_backend_user_shard::shard::Census {
+        self.shards.shards().census().await
     }
 
     /// The address the listener is bound to.
@@ -569,6 +555,7 @@ impl Backend {
         // needed.
         drop(self.runners);
         drop(self.ahead);
+        drop(self.sampling);
         self.services.cloud.machines.close().await;
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));

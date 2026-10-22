@@ -98,6 +98,7 @@ mod backend;
 mod config;
 pub mod families;
 pub mod plugins;
+mod sampling;
 
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError, publish_commands};
 pub use config::secret::{InstanceSecret, SecretError};

@@ -328,7 +328,7 @@ impl Shard {
         if let Err(error) = self.agent().adopt_toolset().await {
             // The trees keep the commands they had, which the next open
             // corrects; a call of one the plugin no longer serves fails.
-            tracing::error!(plugin, %error, "the open conversations could not take the plugins' commands");
+            tracing::error!(event = "plugin_commands.switch_failed", plugin, %error, "the open conversations could not take the plugins' commands");
         }
         if !switched.released.is_empty() {
             self.host_shard().release_packages(&switched.released).await;
@@ -376,7 +376,7 @@ impl Shard {
             Err(error) => {
                 // The plugins then show what was lost until their packages
                 // next say something about the conversations.
-                tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "the conversations a lost package showed in could not be read");
+                tracing::warn!(event = "package_lost.read_failed", what = "conversations", host_id = %device, error = &error as &dyn std::error::Error, "the conversations a lost package showed in could not be read");
                 return;
             }
         };
@@ -388,7 +388,7 @@ impl Shard {
                 }
                 Ok(_) => {}
                 Err(error) => {
-                    tracing::warn!(%conversation, "the Hosts of a conversation a lost package showed in could not be read: {error}");
+                    tracing::warn!(event = "package_lost.read_failed", what = "hosts", %conversation, %error, "the Hosts of a conversation a lost package showed in could not be read");
                 }
             }
         }

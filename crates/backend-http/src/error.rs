@@ -292,7 +292,9 @@ impl ApiError {
         match error {
             StorageError::Closed | StorageError::Interrupted(_) => error.into(),
             error => {
+                // The conversation is on the request's span, where the route looked it up.
                 tracing::error!(
+                    event = "conversation_db.unreadable",
                     error = &error as &dyn std::error::Error,
                     "a conversation's database could not be read"
                 );
@@ -309,7 +311,7 @@ impl ApiError {
     /// 500.
     pub(crate) fn internal_message(message: impl Into<String>) -> Self {
         let message = message.into();
-        tracing::error!(message, "a request failed");
+        tracing::error!(event = "request.failed", code = "internal_error", cause = message, "a request failed");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::InternalError,
@@ -320,7 +322,7 @@ impl ApiError {
     /// A failure a request could not cause: logged with its causes, and
     /// answered 500.
     pub(super) fn internal(error: &(dyn std::error::Error + 'static)) -> Self {
-        tracing::error!(error, "a request failed");
+        tracing::error!(event = "request.failed", code = "internal_error", cause = error, "a request failed");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             ErrorCode::InternalError,

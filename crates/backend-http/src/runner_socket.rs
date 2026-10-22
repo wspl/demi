@@ -28,7 +28,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         Ok(Some(hello)) => hello,
         Ok(None) => return,
         Err(_) => {
-            tracing::info!("closing a runner connection that sent no hello within {deadline:?}");
+            tracing::info!(event = "runner_connection.closed", reason = "no_hello", deadline_ms = u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX), "closing a runner connection that sent no hello");
             return;
         }
     };
@@ -89,6 +89,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         }
         Err(error) => {
             tracing::error!(
+                event = "runner_device.read_failed",
                 error = &error as &dyn std::error::Error,
                 "a runner's device could not be read"
             );
@@ -109,11 +110,13 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     match services.control.account(owner.clone()).await {
         Ok(Some(account)) if !account.user.disabled => {}
         Ok(_) => {
-            tracing::info!(device = %device.id, "closing a runner connection of a disabled account");
+            tracing::info!(event = "runner_connection.closed", host_id = %device.id, reason = "account_disabled", "closing a runner connection of a disabled account");
             return;
         }
         Err(error) => {
             tracing::error!(
+                event = "runner_owner.read_failed",
+                host_id = %device.id,
                 error = &error as &dyn std::error::Error,
                 "a runner's owner could not be read"
             );
@@ -128,7 +131,7 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
     // A shard that is closing takes no runner: dropping the socket closes it
     // without a word, as shutdown does to every runner.
     if adopted.is_err() {
-        tracing::info!("a runner connected while the backend shuts down");
+        tracing::info!(event = "socket.refused", kind = "runner", reason = "shutting_down", "a runner connected while the backend shuts down");
     }
 }
 
@@ -148,7 +151,7 @@ async fn hello(socket: &mut WebSocket) -> Option<Hello> {
             Ok(Message::Binary(frame)) => frame,
             Ok(Message::Ping(_) | Message::Pong(_)) => continue,
             Ok(Message::Text(_)) => {
-                tracing::info!("closing a runner connection that sent a text frame");
+                tracing::info!(event = "runner_connection.closed", reason = "text_frame", "closing a runner connection that sent a text frame");
                 return None;
             }
             Ok(Message::Close(_)) | Err(_) => return None,
@@ -167,11 +170,11 @@ async fn hello(socket: &mut WebSocket) -> Option<Hello> {
                 kept: KeptJobs { instance, jobs },
             }),
             Ok(_) => {
-                tracing::info!("closing a runner connection whose first message is not a hello");
+                tracing::info!(event = "runner_connection.closed", reason = "first_not_hello", "closing a runner connection whose first message is not a hello");
                 None
             }
             Err(error) => {
-                tracing::info!("closing a runner connection over a malformed frame: {error}");
+                tracing::info!(event = "runner_connection.closed", reason = "malformed_frame", %error, "closing a runner connection over a malformed frame");
                 None
             }
         };
@@ -191,9 +194,12 @@ async fn closed(socket: &mut WebSocket) {
 /// Answers the hello with a refusal and closes the socket.
 async fn refuse(mut socket: WebSocket, runner: &RunnerInfo, code: HelloErrorCode, reason: &str) {
     tracing::warn!(
-        "runner hello refused ({code}): {reason} [{}, {}]",
-        runner.name,
-        runner.platform
+        event = "runner_hello.refused",
+        code = %code,
+        reason,
+        runner_name = %runner.name,
+        platform = %runner.platform,
+        "a runner's hello was refused"
     );
     let refusal = Inbound::HelloError {
         code,
@@ -288,6 +294,6 @@ async fn hand_over(
         })
         .await;
     if adopted.is_err() {
-        tracing::info!("a claimed runner arrived while the backend shuts down");
+        tracing::info!(event = "socket.refused", kind = "runner_claimed", reason = "shutting_down", "a claimed runner arrived while the backend shuts down");
     }
 }

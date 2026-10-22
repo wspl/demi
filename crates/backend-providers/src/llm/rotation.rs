@@ -142,7 +142,24 @@ impl AccountRotation {
             });
         };
         let account = (entry.clone(), candidates[index].id.clone());
-        *state.running.entry(account.clone()).or_default() += 1;
+        let running = state.running.entry(account.clone()).or_default();
+        // The conversation the choice is for is in the span of its caller.
+        tracing::info!(
+            event = "account.chosen",
+            provider = %entry,
+            account = %account.1,
+            mode = if rotation == Rotation::InOrder { "order" } else { "balance" },
+            candidates = candidates.len(),
+            usable = rooms.iter().filter(|room| room.usable()).count(),
+            room_pct = match rooms[index] {
+                Room::Left { room, .. } => Some((room * 100.0).round().clamp(0.0, 10_000.0) as u64),
+                Room::UsedUp(_) => None,
+            },
+            running = *running as u64,
+            reason = if rotation == Rotation::InOrder { "first_usable" } else { "most_room" },
+            "an account was chosen for an agent"
+        );
+        *running += 1;
         Some(Choice::Account(Running {
             rotation: self.clone(),
             account,

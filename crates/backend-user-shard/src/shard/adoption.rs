@@ -71,7 +71,7 @@ impl Shard {
                 // Without them a restarted backend stops the device's jobs
                 // as ones it has no command for, and their commands stay
                 // running in their conversations' records.
-                tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the device's running jobs could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "running_jobs", error = &error as &dyn std::error::Error, "the device's running jobs could not be read");
                 Vec::new()
             }
         };
@@ -88,14 +88,14 @@ impl Shard {
         {
             Ok(conversations) => conversations.iter().map(ToString::to_string).collect(),
             Err(error) => {
-                tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the user's conversations could not be read; the runner connects again");
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's conversations could not be read");
                 return;
             }
         };
         let archived = match self.services().control.conversations(self.user().clone(), true).await {
             Ok(archived) => archived.iter().map(|record| record.id.to_string()).collect(),
             Err(error) => {
-                tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the user's archived conversations could not be read; the runner connects again");
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device.id, what = "archived_conversations", outcome = "runner_reconnects", error = &error as &dyn std::error::Error, "the user's archived conversations could not be read");
                 return;
             }
         };
@@ -111,11 +111,12 @@ impl Shard {
             };
             if held.answers(self.services().runners.probe).await {
                 tracing::warn!(
-                    device = %device.id,
-                    "runner hello refused (already_connected): device {} already has a live connection [{}, {}]",
-                    device.id,
-                    runner.name,
-                    runner.platform
+                    event = "runner_hello.refused",
+                    host_id = %device.id,
+                    code = "already_connected",
+                    runner_name = %runner.name,
+                    platform = %runner.platform,
+                    "a runner's hello was refused"
                 );
                 let refusal = Inbound::HelloError {
                     code: HelloErrorCode::AlreadyConnected,
@@ -128,10 +129,12 @@ impl Shard {
                 return;
             }
             tracing::info!(
-                device = %device.id,
-                "the device's connection did not answer its ping and gives way to a new one [{}, {}]",
-                runner.name,
-                runner.platform
+                event = "runner_connection.replaced",
+                host_id = %device.id,
+                runner_name = %runner.name,
+                platform = %runner.platform,
+                reason = "ping_unanswered",
+                "a device's connection gave way to a new one"
             );
             held.disconnect(REPLACED);
         }
@@ -318,7 +321,7 @@ impl Shard {
         match self.services().control.running_jobs(device.clone()).await {
             Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),
             Err(error) => {
-                tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
+                tracing::warn!(event = "runner_adoption.read_failed", host_id = %device, what = "stopped_cloud_jobs", error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
             }
         }
     }
@@ -342,7 +345,7 @@ impl Shard {
                     return;
                 }
                 if let Err(error) = shard.restore_tree(&conversation).await {
-                    tracing::warn!(%conversation, "the tree whose commands ran on the device was not restored: {error}");
+                    tracing::warn!(event = "runner_adoption.tree_restore_failed", %conversation, %error, "the tree whose commands ran on the device was not restored");
                 }
             });
         }
@@ -380,6 +383,7 @@ impl Shard {
                 };
                 if tokio::time::Instant::now() >= until {
                     if let Some(shard) = shard.upgrade() {
+                        shard.devices().update_abandoned(&device);
                         shard.mark(Part::Devices);
                     }
                     return;
@@ -399,6 +403,7 @@ impl Shard {
         // A closing shard waits for its tasks, and the download may outlast it.
         let closing = self.closing.clone();
         self.tasks().spawn_local(async move {
+            let started = std::time::Instant::now();
             loop {
                 let changed = tokio::select! {
                     () = closing.cancelled() => return,
@@ -407,12 +412,30 @@ impl Shard {
                 let Some(shard) = shard.upgrade() else {
                     return;
                 };
+                let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
                 if changed.is_err() {
-                    shard.devices().download_ended(&device, request);
+                    let download = *served.borrow();
+                    tracing::info!(
+                        event = "runner_download.ended",
+                        host_id = %device,
+                        bytes = download.served,
+                        total = download.size,
+                        ms,
+                        "a runner executable's download ended"
+                    );
+                    shard.devices().download_ended(&device, request, ms);
                     shard.mark(Part::Devices);
                     return;
                 }
                 let download = *served.borrow_and_update();
+                tracing::debug!(
+                    event = "runner_update.progress",
+                    host_id = %device,
+                    bytes = download.served,
+                    total = download.size,
+                    ms,
+                    "a runner executable's download moved"
+                );
                 let until = tokio::time::Instant::now() + shard.services().runners.updating;
                 shard
                     .devices()
@@ -436,7 +459,7 @@ impl Shard {
             Ok(devices) => devices,
             Err(error) => {
                 // Their runners download after the switch.
-                tracing::warn!(error = &error as &dyn std::error::Error, "the devices to download the next runner cannot be listed");
+                tracing::warn!(event = "runner_release.devices_list_failed", error = &error as &dyn std::error::Error, "the devices to download the next runner cannot be listed");
                 return;
             }
         };

@@ -166,8 +166,9 @@ pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
     let directory = path.parent().unwrap_or(Path::new("/"));
     if !directory.is_dir() {
         tracing::warn!(
-            "Clouds cannot reach this backend: the runner socket's directory {} does not exist",
-            directory.display()
+            event = "runner_socket.missing",
+            directory = %directory.display(),
+            "Clouds cannot reach this backend: the runner socket's directory does not exist"
         );
         return Ok(None);
     }

@@ -78,8 +78,8 @@ pub(super) async fn upload(
     // comes before a byte of it.
     let bytes = read_within(request, &services, BODY_LIMIT, too_large).await?;
     let blobs = services.blobs.for_user(&user.id);
-    let uploaded = async |opening: Bytes, size_bytes: u64, sha256| {
-        record(&services, &user.id, &query.name, &sent, &opening, size_bytes, sha256).await
+    let uploaded = async |opening: Bytes, size_bytes: u64, sha256, deduplicated: bool| {
+        record(&services, &user.id, &query.name, &sent, &opening, size_bytes, sha256, deduplicated).await
     };
     match (bytes.is_empty(), query.sha256.clone()) {
         (true, None) => Err(ApiError::invalid_body("An upload holds at least one byte")),
@@ -88,7 +88,7 @@ pub(super) async fn upload(
         // A blob it does not hold is an answer too, with no upload.
         (true, Some(sha256)) => Ok(match blobs.opening(&sha256).await? {
             Some(held) => {
-                let attachment = uploaded(held.bytes, held.size, sha256).await?;
+                let attachment = uploaded(held.bytes, held.size, sha256, true).await?;
                 let answer = AttachmentCheckAnswer { attachment: Some(attachment) };
                 (StatusCode::CREATED, Json(answer)).into_response()
             }
@@ -104,13 +104,13 @@ pub(super) async fn upload(
                 ));
             }
             let size = bytes.len() as u64;
-            let attachment = uploaded(bytes, size, sha256).await?;
+            let attachment = uploaded(bytes, size, sha256, false).await?;
             Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })).into_response())
         }
         (false, None) => {
             let sha256 = blobs.put(bytes.clone()).await?;
             let size = bytes.len() as u64;
-            let attachment = uploaded(bytes, size, sha256).await?;
+            let attachment = uploaded(bytes, size, sha256, false).await?;
             Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })).into_response())
         }
     }
@@ -127,6 +127,7 @@ async fn record(
     opening: &[u8],
     size_bytes: u64,
     sha256: BlobRef,
+    deduplicated: bool,
 ) -> Result<AttachmentDto, ApiError> {
     let media_type = upload_media_type(sent, opening);
     // The record keeps the snippet, so a draft that names the upload shows
@@ -136,6 +137,16 @@ async fn record(
         .control
         .create_attachment(user.clone(), media_type, size_bytes, sha256, snippet)
         .await?;
+    // The request's span names the user; no conversation holds the upload
+    // until a message sends it.
+    tracing::info!(
+        event = "attachment.stored",
+        attachment = %record.id,
+        bytes = size_bytes,
+        deduplicated,
+        by = "page",
+        "an upload of the page was stored"
+    );
     Ok(AttachmentDto {
         id: record.id,
         media_type: record.media_type,

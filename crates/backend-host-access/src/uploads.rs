@@ -39,9 +39,21 @@ impl dyn HostShard + '_ {
             return not_available();
         };
         let record = self.control().attachment(attachment).await.map_err(|error| error.to_string())?;
+        let resolved = |outcome: &'static str| {
+            tracing::info!(
+                event = "attachment.resolved",
+                conversation = %id,
+                attachment = reference,
+                outcome,
+                by = "page",
+                "an upload a message names was looked up"
+            );
+        };
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
+            resolved("unknown");
             return not_available();
         };
+        resolved("found");
         let blobs = self.blobs();
         let Some(bytes) = blobs.get(&record.sha256).await.map_err(|error| error.to_string())? else {
             return not_available();
@@ -59,6 +71,14 @@ impl dyn HostShard + '_ {
         };
         let row = commit(self.tasks(), self.conversation_db(id), numbered, || {}).await?;
         let number = row.number.to_string();
+        tracing::info!(
+            event = "attachment.stored",
+            conversation = %id,
+            attachment = number.as_str(),
+            bytes = row.size,
+            by = "page",
+            "an upload was numbered in a conversation"
+        );
         let upload = Upload {
             name: file_name,
             id: &number,

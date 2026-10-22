@@ -25,7 +25,7 @@ pub async fn runs_on(
     };
     let entries = entries.unwrap_or_else(|error| {
         // The names only fall back to the selection's; the job still shows.
-        tracing::warn!(%error, "the provider entries were not read for a subagent's model");
+        tracing::warn!(event = "subagent_model.entries_read_failed", %error, "the provider entries were not read for a subagent's model");
         Vec::new()
     });
     let catalog = services.assembly.model_catalog(&entries, false).await;

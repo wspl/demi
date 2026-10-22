@@ -243,6 +243,17 @@ pub struct Updating {
     until: Cell<Instant>,
     /// Ends the window for the device's pages; dropped, it stops.
     expiry: RefCell<AbortOnDropHandle<()>>,
+    began: Instant,
+    /// The download that moved the update on, once it ended.
+    downloaded: Cell<Option<Downloaded>>,
+}
+
+/// A finished download of an update's runner executable.
+#[derive(Clone, Copy)]
+struct Downloaded {
+    bytes: u64,
+    ms: u64,
+    at: Instant,
 }
 
 impl Updating {
@@ -251,8 +262,30 @@ impl Updating {
         Self {
             until: Cell::new(until),
             expiry: RefCell::new(expiry),
+            began: Instant::now(),
+            downloaded: Cell::new(None),
         }
     }
+
+    /// How the update went until now, for the line that ends it.
+    fn log_ended(&self, device: &DeviceId, outcome: &'static str) {
+        let downloaded = self.downloaded.get();
+        tracing::info!(
+            event = "runner_update.ended",
+            host_id = %device,
+            outcome,
+            update_ms = millis(self.began.elapsed()),
+            bytes = downloaded.map(|downloaded| downloaded.bytes),
+            download_ms = downloaded.map(|downloaded| downloaded.ms),
+            restart_ms = downloaded.map(|downloaded| millis(downloaded.at.elapsed())),
+            "a runner's update ended"
+        );
+    }
+}
+
+/// A duration as the integer `_ms` fields of the log hold it.
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// How much of a runner executable's compressed copy the backend has
@@ -305,13 +338,38 @@ impl DeviceSlot {
     }
 
     /// Waits until no connection of the device is closing: a closing one ends
-    /// first, and its end marks the device offline.
-    async fn settled(&self) {
+    /// first, and its end marks the device offline. Answers how long it
+    /// waited, none when no connection was closing.
+    async fn settled(&self) -> Option<Duration> {
         let mut watching = self.link.subscribe();
+        let closing = |link: &DeviceLink| matches!(link, DeviceLink::Online(link) if link.is_closed());
+        if !closing(&watching.borrow()) {
+            return None;
+        }
+        let started = std::time::Instant::now();
         // The slot holds the sender while anyone watches it.
-        let _ = watching
-            .wait_for(|link| !matches!(link, DeviceLink::Online(link) if link.is_closed()))
-            .await;
+        let _ = watching.wait_for(|link| !closing(link)).await;
+        Some(started.elapsed())
+    }
+
+    /// The state the device is in as its pages are told of it: `online`,
+    /// `tolerating` (its connection dropped and its runner is awaited),
+    /// `updating` or `offline`.
+    fn state_name(&self) -> &'static str {
+        if self.live().is_some() {
+            "online"
+        } else if self.rest().is_some() {
+            "tolerating"
+        } else if self
+            .updating
+            .borrow()
+            .as_ref()
+            .is_some_and(|updating| Instant::now() < updating.until.get())
+        {
+            "updating"
+        } else {
+            "offline"
+        }
     }
 
     /// The rest of the wait for the runner, while no connection serves the
@@ -327,8 +385,9 @@ impl DeviceSlot {
 
     /// Marks the device offline once `link` ended, unless a newer connection
     /// serves it already; unless the backend ended it, the device is
-    /// returning for `wait`, whose end `marks` announces.
-    fn went_offline(&self, link: &Link, identity: HostIdentity, wait: Duration, marks: &UserMarks) {
+    /// returning for `wait`, whose end `marks` announces. Answers the state
+    /// the device is in then: none when a newer connection serves it.
+    fn went_offline(&self, link: &Link, identity: HostIdentity, wait: Duration, marks: &UserMarks) -> Option<&'static str> {
         let ended = self.link.send_if_modified(|current| {
             let ended = matches!(current, DeviceLink::Online(current) if current == link);
             if ended {
@@ -345,6 +404,7 @@ impl DeviceSlot {
                 *self.returning.borrow_mut() = Some(Return::new(Instant::now() + wait, marks.clone()));
             }
         }
+        ended.then(|| self.state_name())
     }
 
     /// Publishes `link` as the device's connection: a wait for the runner
@@ -442,11 +502,25 @@ impl Devices {
     /// began.
     pub fn begin_update(&self, device: &DeviceId, updating: impl FnOnce() -> Updating) -> bool {
         let slot = self.slot(device);
+        let from = slot.state_name();
         let mut current = slot.updating.borrow_mut();
         if current.is_some() {
             return false;
         }
         *current = Some(updating());
+        drop(current);
+        // A runner that is online shows so until its connection ends.
+        let to = slot.state_name();
+        if to != from {
+            tracing::info!(
+                event = "link.state_changed",
+                host_id = %device,
+                from,
+                to,
+                cause = "update_sent",
+                "a device's runner was sent to update"
+            );
+        }
         true
     }
 
@@ -458,7 +532,24 @@ impl Devices {
             .borrow()
             .get(device)
             .and_then(|slot| slot.updating.take());
-        ended.is_some_and(|updating| Instant::now() < updating.until.get())
+        let shown = ended
+            .as_ref()
+            .is_some_and(|updating| Instant::now() < updating.until.get());
+        if let Some(updating) = ended {
+            updating.log_ended(device, if shown { "restarted" } else { "abandoned" });
+        }
+        shown
+    }
+
+    /// Ends `device`'s update line as one nobody came back from: its window
+    /// passed with no hello.
+    pub fn update_abandoned(&self, device: &DeviceId) {
+        let slots = self.slots.borrow();
+        if let Some(slot) = slots.get(device)
+            && let Some(updating) = slot.updating.borrow().as_ref()
+        {
+            updating.log_ended(device, "abandoned");
+        }
     }
 
     /// When the update the device's runner was sent to stops showing,
@@ -511,11 +602,21 @@ impl Devices {
 
     /// Request `request`'s download ended; the device shows no download
     /// unless another request serves it one.
-    pub fn download_ended(&self, device: &DeviceId, request: u64) {
+    ///
+    /// `ms` is how long it lasted.
+    pub fn download_ended(&self, device: &DeviceId, request: u64, ms: u64) {
         if let Some(slot) = self.slots.borrow().get(device)
-            && slot.download.get().is_some_and(|(current, _)| current == request)
+            && let Some((current, download)) = slot.download.get()
+            && current == request
         {
             slot.download.set(None);
+            if let Some(updating) = slot.updating.borrow().as_ref() {
+                updating.downloaded.set(Some(Downloaded {
+                    bytes: download.served,
+                    ms,
+                    at: Instant::now(),
+                }));
+            }
         }
     }
 
@@ -570,7 +671,16 @@ impl Devices {
     /// Waits until no connection of the device is closing: a closing one
     /// ends first, and its end marks the device offline.
     pub async fn settled(&self, device: &DeviceId) {
-        self.slot(device).settled().await;
+        if let Some(waited) = self.slot(device).settled().await {
+            tracing::info!(
+                event = "host_wait.ended",
+                host_id = %device,
+                what = "settle",
+                waited_ms = millis(waited),
+                outcome = "ready",
+                "a closing connection of a device ended"
+            );
+        }
     }
 
     /// The home directory the device's runner reported when it last
@@ -652,8 +762,16 @@ impl Devices {
         slot.installation.replace(reported.installation);
         slot.target.replace(reported.target);
         self.returning.forget(device);
+        let from = slot.state_name();
         slot.publish(&link);
-        tracing::info!(device = %device, "runner connected");
+        tracing::info!(
+            event = "link.state_changed",
+            host_id = %device,
+            from,
+            to = "online",
+            cause = "hello",
+            "a runner connected"
+        );
         Serving {
             slot,
             device: device.clone(),
@@ -663,6 +781,7 @@ impl Devices {
             seen,
             wait: self.wait,
             marks: self.marks.clone(),
+            connected_at: std::time::Instant::now(),
         }
     }
 
@@ -780,7 +899,7 @@ impl Devices {
         if let Err(error) = control.set_devices_ended_by_shutdown(ended).await {
             // The next start then answers for these devices at once, as for
             // any device that is away, instead of waiting for their runners.
-            tracing::warn!(error = &error as &dyn std::error::Error, "the devices the shutdown disconnected were not recorded");
+            tracing::warn!(event = "devices.shutdown_record_failed", error = &error as &dyn std::error::Error, "the devices the shutdown disconnected were not recorded");
         }
     }
 }
@@ -813,6 +932,7 @@ pub struct Serving {
     wait: Duration,
     /// The owner's pages, which hear when the device stops returning.
     marks: UserMarks,
+    connected_at: std::time::Instant,
 }
 
 impl Serving {
@@ -842,6 +962,7 @@ impl Serving {
             seen,
             wait,
             marks,
+            connected_at,
         } = self;
         let (mut outgoing, incoming) = socket.split();
         let incoming = incoming.filter_map(|message| ready(socket_frame(message)));
@@ -870,14 +991,6 @@ impl Serving {
             end = served => end,
             () = held => unreachable!("the installed artifacts are watched until the connection ends"),
         };
-        match &end {
-            LinkEnd::Refused(reason) | LinkEnd::RunnerRefused(reason) => {
-                tracing::warn!(device = %device, "runner connection closed: {reason}")
-            }
-            LinkEnd::Closed(reason) | LinkEnd::Disconnected(reason) => {
-                tracing::info!(device = %device, "runner connection ended: {reason}");
-            }
-        }
         if let Some(projects) = slot.revoked.take() {
             let frame = wire::encode(&Inbound::Revoked { projects })
                 .expect("the backend's own runner messages encode")
@@ -888,7 +1001,22 @@ impl Serving {
         }
         // The connection is over whether or not the close reaches the runner.
         let _ = outgoing.send(Message::Close(close_frame(&end))).await;
-        slot.went_offline(&link, identity, wait, &marks);
+        let to = slot.went_offline(&link, identity, wait, &marks);
+        let session_ms = millis(connected_at.elapsed());
+        let (cause, reason, refused) = match &end {
+            LinkEnd::Refused(reason) => ("refused", reason, true),
+            LinkEnd::RunnerRefused(reason) => ("runner_refused", reason, true),
+            LinkEnd::Closed(reason) => ("closed", reason, false),
+            LinkEnd::Disconnected(reason) => ("disconnected", reason, false),
+        };
+        // A connection a newer one replaced changes nothing: the device stays online.
+        let to = to.unwrap_or("online");
+        let wait_ms = (to == "tolerating").then(|| millis(wait));
+        if refused {
+            tracing::warn!(event = "link.state_changed", host_id = %device, from = "online", to, cause, reason = reason.as_str(), session_ms, wait_ms, "a runner's connection ended");
+        } else {
+            tracing::info!(event = "link.state_changed", host_id = %device, from = "online", to, cause, reason = reason.as_str(), session_ms, wait_ms, "a runner's connection ended");
+        }
         seen.touch(device).await;
     }
 }
@@ -949,7 +1077,7 @@ impl DeviceRecorder {
             // without them, until the next hello records them; a node that
             // read the context before reads no new block until another
             // change advances it.
-            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
+            tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "os_release", error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
                 None
             }
         };
@@ -974,7 +1102,7 @@ impl DeviceRecorder {
             // The home stays unrecorded, so the runner's next hello settles
             // it again.
             Err(error) => {
-                tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "first home not recorded");
+                tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "first_home", error = &error as &dyn std::error::Error, "first home not recorded");
             }
         }
     }
@@ -983,7 +1111,7 @@ impl DeviceRecorder {
     pub async fn touch(&self, device: DeviceId) {
         if let Err(error) = self.control.touch_device_seen(device.clone()).await {
             // The time is shown to the user and decides nothing.
-            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "last-seen time not recorded");
+            tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "last_seen", error = &error as &dyn std::error::Error, "last-seen time not recorded");
         }
         self.marks.mark(Part::Devices);
     }
@@ -993,7 +1121,7 @@ impl DeviceRecorder {
         if let Err(error) = self.control.set_device_installed(device.clone(), artifacts).await {
             // The list is shown to the user and offered to plugins; the next
             // report records it again.
-            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "installed artifacts not recorded");
+            tracing::warn!(event = "device_hello.record_failed", host_id = %device, what = "artifacts", error = &error as &dyn std::error::Error, "installed artifacts not recorded");
         }
         self.marks.mark(Part::Devices);
     }
@@ -1208,7 +1336,7 @@ mod tests {
         assert!(!devices.download_moved(&device, 1, download, until, expiry));
         tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
         assert_eq!(devices.state(&device), DeviceState::Updating);
-        devices.download_ended(&device, 1);
+        devices.download_ended(&device, 1, 0);
         assert_eq!(devices.download(&device), None);
         // The next hello ends the update; a later 409 shows a new one.
         assert!(devices.hello(&device));

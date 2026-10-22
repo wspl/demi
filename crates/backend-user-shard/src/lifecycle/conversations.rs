@@ -69,6 +69,7 @@ use std::rc::{Rc, Weak};
 use demi_backend_idle_watch::{Activity, IdlePolicy, Retirement};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::task::AbortOnDropHandle;
+use tracing::Instrument as _;
 
 use crate::shard::Shard;
 use demi_backend_host_access::root_of;
@@ -117,7 +118,8 @@ impl Shard {
             lifecycle.idle_window,
             lifecycle.idle_poll,
             self.tasks().clone(),
-        );
+        )
+        .instrument(tracing::info_span!("idle_watch", conversation = %id));
         let watch = AbortOnDropHandle::new(self.tasks().spawn_local(watch));
         self.idle_watches()
             .watches

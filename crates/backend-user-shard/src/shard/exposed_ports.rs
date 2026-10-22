@@ -177,7 +177,7 @@ impl Shard {
         match self.services().control.exposed_ports(self.user().clone()).await {
             Ok(exposed) => self.exposure.keep_only(&exposed),
             Err(error) => {
-                tracing::warn!(error = &error as &dyn std::error::Error, "the requests through removed ports were not ended");
+                tracing::warn!(event = "exposed_ports.end_failed", error = &error as &dyn std::error::Error, "the requests through removed ports were not ended");
             }
         }
     }
@@ -347,7 +347,7 @@ pub(crate) async fn endpoint_device(control: &ControlService, entry: &ProviderEn
     let devices = match read.await {
         Ok(devices) => devices,
         Err(error) => {
-            tracing::warn!(provider = %entry.id, error = &error as &dyn std::error::Error, "the device an endpoint names was not read");
+            tracing::warn!(event = "endpoint.device_read_failed", provider = %entry.id, error = &error as &dyn std::error::Error, "the device an endpoint names was not read");
             return None;
         }
     };

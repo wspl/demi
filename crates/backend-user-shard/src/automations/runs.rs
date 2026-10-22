@@ -255,9 +255,24 @@ impl Shard {
             run.note = Some(note);
         }
         if let Err(error) = control.insert_automation_run(run.clone()).await {
-            tracing::error!(automation = %automation.id, "a run was not recorded, and did not start: {error}");
+            tracing::error!(event = "automation_run.start_failed", user = %self.user(), automation = %automation.id, run = %run.id, %error, "a run was not recorded, and did not start");
             return;
         }
+        let (target, conversation) = match &automation.target {
+            AutomationTarget::Existing { conversation_id, .. } => ("existing", Some(conversation_id)),
+            AutomationTarget::New { .. } => ("new_conversation", None),
+        };
+        tracing::info!(
+            event = "automation.fired",
+            user = %self.user(),
+            automation = %automation.id,
+            run = %run.id,
+            trigger = cause_name(fired.cause),
+            target,
+            conversation = conversation.map(tracing::field::display),
+            skipped_reason = run.note.as_ref().map(note_name),
+            "an automation fired"
+        );
         self.mark(Part::Automations);
         if skipped {
             return;
@@ -392,9 +407,28 @@ impl Shard {
     /// while it worked start the next run.
     pub(crate) async fn end_run(&self, run: StoredRun) {
         let automation = run.automation.clone();
+        let (id, conversation) = (run.id.clone(), run.conversation.clone());
+        let ms = u64::try_from(self.services().control.now().as_millisecond() - run.at.as_millisecond()).unwrap_or(0);
+        let outcome = match run.state {
+            RunState::Running => "running",
+            RunState::Done => "done",
+            RunState::Notified => "notified",
+            RunState::Skipped => "skipped",
+            RunState::Failed => "failed",
+        };
         if let Err(error) = self.services().control.update_automation_run(run).await {
-            tracing::warn!(%automation, "a run's end was not recorded: {error}");
+            tracing::warn!(event = "automation_run.end_record_failed", %automation, run = %id, %error, "a run's end was not recorded");
         }
+        tracing::info!(
+            event = "automation_run.ended",
+            user = %self.user(),
+            %automation,
+            run = %id,
+            conversation = conversation.as_ref().map(tracing::field::display),
+            outcome,
+            ms,
+            "an automation's run ended"
+        );
         self.mark(Part::Automations);
         self.rearm_automations();
         self.run_ended(&automation).await;
@@ -415,7 +449,7 @@ impl Shard {
         let runs = match self.services().control.running_runs_in(conversation.clone()).await {
             Ok(runs) => runs,
             Err(error) => {
-                tracing::warn!(%conversation, "the running runs were not read: {error}");
+                tracing::warn!(event = "automation_runs.read_failed", %conversation, %error, "the running runs were not read");
                 return;
             }
         };
@@ -429,7 +463,7 @@ impl Shard {
                 Err(error) => {
                     // The run stays running; the next settle of the
                     // conversation reads it again.
-                    tracing::warn!(%conversation, "a run's turn was not read: {error}");
+                    tracing::warn!(event = "automation_run.turn_read_failed", %conversation, run = %run.id, %error, "a run's turn was not read");
                     continue;
                 }
             };
@@ -455,7 +489,7 @@ impl Shard {
         let runs = match self.services().control.running_runs(self.user().clone()).await {
             Ok(runs) => runs,
             Err(error) => {
-                tracing::warn!(user = %self.user(), "the runs left running were not read: {error}");
+                tracing::warn!(event = "automation_runs.left_read_failed", user = %self.user(), %error, "the runs left running were not read");
                 return;
             }
         };
@@ -465,11 +499,31 @@ impl Shard {
             // A turn the shutdown interrupted resumes, which ends it; one
             // that lost its message failed to start.
             if let Err(error) = self.restore_tree(&conversation).await {
-                tracing::warn!(%conversation, "a run's conversation did not open: {error}");
+                tracing::warn!(event = "automation_run.conversation_open_failed", %conversation, %error, "a run's conversation did not open");
                 continue;
             }
             self.settle_runs(&conversation).await;
         }
+    }
+}
+
+/// What started a run, as the log names it.
+fn cause_name(cause: RunCause) -> &'static str {
+    match cause {
+        RunCause::Time => "time",
+        RunCause::Change => "watch",
+        RunCause::Url => "url",
+        RunCause::Now => "now",
+    }
+}
+
+/// Why a run was skipped, as the log names it.
+fn note_name(note: &RunNote) -> &'static str {
+    match note {
+        RunNote::NoModel => "no_model",
+        RunNote::Offline { .. } => "offline",
+        RunNote::TargetGone => "target_gone",
+        _ => "other",
     }
 }
 

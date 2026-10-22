@@ -166,6 +166,25 @@ pub struct Shard {
 }
 
 impl Shard {
+    /// What this shard holds now.
+    fn census(&self) -> Census {
+        let mut census = Census {
+            shards: 1,
+            runners_online: u64::try_from(self.devices.links().len()).unwrap_or(u64::MAX),
+            ..Census::default()
+        };
+        for root in self.agent.live_roots() {
+            let Some(tree) = self.agent.tree(&root) else {
+                continue;
+            };
+            census.live_trees += 1;
+            census.live_sessions += u64::try_from(tree.nodes().len()).unwrap_or(u64::MAX);
+            census.running_turns += u64::from(tree.works());
+            census.trees_running_commands += u64::from(tree.runs_commands());
+        }
+        census
+    }
+
     /// The shard of `user`, whose agent server reaches it through `shard`.
     fn new(
         shard: Weak<Shard>,
@@ -399,8 +418,37 @@ impl Shard {
 async fn closed<T>(step: &'static str, work: impl Future<Output = T>) -> T {
     let started = std::time::Instant::now();
     let output = work.await;
-    tracing::info!(step, elapsed_ms = started.elapsed().as_millis() as u64, "a step of the shard's close ended");
+    tracing::info!(event = "shard_close.step_ended", step, ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), "a step of the shard's close ended");
     output
+}
+
+/// What the shards hold now, as the backend's resource sample and its stopping
+/// line count it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Census {
+    /// The users with a shard.
+    pub shards: u64,
+    /// The conversation trees live in memory.
+    pub live_trees: u64,
+    /// The agent sessions of those trees, the roots' and their children's.
+    pub live_sessions: u64,
+    /// The trees that work: a turn runs or waits to run, or a child is live.
+    pub running_turns: u64,
+    /// The trees with a command running.
+    pub trees_running_commands: u64,
+    /// The runners connected.
+    pub runners_online: u64,
+}
+
+impl std::ops::AddAssign for Census {
+    fn add_assign(&mut self, other: Self) {
+        self.shards += other.shards;
+        self.live_trees += other.live_trees;
+        self.live_sessions += other.live_sessions;
+        self.running_turns += other.running_turns;
+        self.trees_running_commands += other.trees_running_commands;
+        self.runners_online += other.runners_online;
+    }
 }
 
 /// Why a call produced no answer.
@@ -440,6 +488,25 @@ impl Shards {
             queue: &self.queues[index],
             user,
         }
+    }
+}
+
+impl Shards {
+    /// What every shard holds now; a shard thread that has closed counts
+    /// nothing.
+    pub async fn census(&self) -> Census {
+        let mut asked = Vec::new();
+        for queue in self.queues.iter() {
+            let (answer, answered) = oneshot::channel();
+            if queue.send(Message::Census(answer)).await.is_ok() {
+                asked.push(answered);
+            }
+        }
+        let mut census = Census::default();
+        for answered in futures_util::future::join_all(asked).await {
+            census += answered.unwrap_or_default();
+        }
+        census
     }
 }
 
@@ -516,6 +583,8 @@ impl ShardRef<'_> {
 
 enum Message {
     Call(Box<dyn Job>),
+    /// Answered with what the thread's shards hold now.
+    Census(oneshot::Sender<Census>),
     /// Answered once every shard closed.
     Close(oneshot::Sender<()>),
 }
@@ -661,7 +730,7 @@ impl ShardPool {
         // (`crates/backend-cloud/src/lib.rs`).
         let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
         if shared.claude_machine.set(machine.clone()).is_err() {
-            tracing::error!("the Claude Code machine was set twice; the first is kept");
+            tracing::error!(event = "assembly.set_twice", what = "claude_code_machine", "the Claude Code machine was set twice; the first is kept");
         }
         shared.assembly.set_machine(Arc::new(machine));
         // A provider entry's request to one of its owner's devices goes
@@ -697,6 +766,7 @@ impl ShardPool {
                 Worker::Inline(task) => {
                     if let Err(error) = task.await {
                         tracing::error!(
+                            event = "shard.loop_failed",
                             error = &error as &dyn std::error::Error,
                             "the shard loop failed"
                         );
@@ -705,7 +775,7 @@ impl ShardPool {
                 Worker::Thread(thread) => {
                     let joined = tokio::task::spawn_blocking(move || thread.join()).await;
                     if !matches!(joined, Ok(Ok(()))) {
-                        tracing::error!("a shard thread panicked");
+                        tracing::error!(event = "shard.thread_panicked", "a shard thread panicked");
                     }
                 }
             }
@@ -800,6 +870,13 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                     .clone();
                 calls.spawn_local(job.run(shard));
             }
+            Message::Census(answer) => {
+                let mut census = Census::default();
+                for shard in shards.values() {
+                    census += shard.census();
+                }
+                let _ = answer.send(census);
+            }
             Message::Close(done) => {
                 closer = Some(done);
                 break;
@@ -821,6 +898,8 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                 },
                 // Only the pool closes, once.
                 Some(Message::Close(done)) => drop(done),
+                // A closing shard thread counts nothing.
+                Some(Message::Census(answer)) => drop(answer),
                 // Every sender is gone: nothing more arrives while the
                 // shards close.
                 None => {
@@ -835,6 +914,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
         match message {
             Message::Call(job) => job.refuse(),
             Message::Close(done) => drop(done),
+            Message::Census(answer) => drop(answer),
         }
     }
     calls.close();

@@ -221,7 +221,7 @@ impl Shard {
         let note = match checked {
             Checked::Output(output, digest) => {
                 if let Err(error) = self.compare(automation, output, digest, generation, now).await {
-                    tracing::warn!(automation = %automation.id, "a watch's output was not recorded: {error}");
+                    tracing::warn!(event = "automation_watch.record_failed", automation = %automation.id, what = "output", %error, "a watch's output was not recorded");
                 }
                 return;
             }
@@ -244,7 +244,7 @@ impl Shard {
         run.state = note.0;
         match control.insert_automation_run(run).await {
             Ok(()) => self.mark(Part::Automations),
-            Err(error) => tracing::warn!(automation = %automation.id, "a watch's run was not recorded: {error}"),
+            Err(error) => tracing::warn!(event = "automation_watch.record_failed", automation = %automation.id, what = "run", %error, "a watch's run was not recorded"),
         }
     }
 

@@ -122,7 +122,8 @@ fn page_of<B>(request: &axum::http::Request<B>) -> Option<&str> {
 /// The span every event of `request` is logged in: its ID, method and path,
 /// never its query, which can carry a file's path or a token, the page load
 /// that made it and Cloudflare's `cf-ray` when a proxy passes it. The session
-/// gate records the caller as `user_id`.
+/// gate records the caller as `user_id`, and the lookup of the conversation or
+/// the device a route names records it as `conversation_id` or `host_id`.
 pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
     let id = request.extensions().get::<RequestId>();
     let ray = request
@@ -133,11 +134,32 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
         "request",
         request_id = id.map(tracing::field::display),
         method = %request.method(),
-        path = request.uri().path(),
+        path = logged_path(request.uri().path()).as_ref(),
         cf_ray = ray,
         page_id = page_of(request),
         user_id = tracing::field::Empty,
+        conversation_id = tracing::field::Empty,
+        host_id = tracing::field::Empty,
     )
+}
+
+/// The path as the log holds it: a share's token, which is the key to its
+/// link, is the segment after `shares` and never reaches a line.
+fn logged_path(path: &str) -> std::borrow::Cow<'_, str> {
+    let mut segments = path.split('/');
+    let mut after_shares = false;
+    if !segments.any(|segment| std::mem::replace(&mut after_shares, segment == "shares")) {
+        return std::borrow::Cow::Borrowed(path);
+    }
+    let mut hidden = false;
+    let redacted: Vec<&str> = path
+        .split('/')
+        .map(|segment| {
+            let secret = std::mem::replace(&mut hidden, segment == "shares");
+            if secret { "{token}" } else { segment }
+        })
+        .collect();
+    std::borrow::Cow::Owned(redacted.join("/"))
 }
 
 /// How long an abandoned request runs before its line is a warning.
@@ -186,7 +208,8 @@ impl Drop for Pending {
 }
 
 /// The line a request logs as it is answered, in its span: the status, how
-/// long it took and the `code` of a JSON error, at `info`, and at `warn` for
+/// long it took, the `code` of a JSON error, the answer's `bytes` when its
+/// length is known, whether it was a 304 and its `content_encoding`, at `info`, and at `warn` for
 /// a 5xx answer. An upgrade's answer logs nothing: its socket's end line is
 /// its line.
 pub(crate) fn answered<B>(response: &axum::http::Response<B>, took: Duration, _: &tracing::Span) {
@@ -196,9 +219,20 @@ pub(crate) fn answered<B>(response: &axum::http::Response<B>, took: Duration, _:
     }
     let code = response.extensions().get::<ErrorCode>().map(tracing::field::display);
     let duration_ms = u64::try_from(took.as_millis()).unwrap_or(u64::MAX);
+    // What the answer looks like on the wire: a proxy that rewrites it (a
+    // compression, a cache) shows in these, while the status stays 200.
+    let headers = response.headers();
+    let bytes = headers
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok());
+    let content_encoding = headers
+        .get(axum::http::header::CONTENT_ENCODING)
+        .and_then(|value| value.to_str().ok());
+    let not_modified = status == StatusCode::NOT_MODIFIED;
     if status.is_server_error() {
-        tracing::warn!(event = "request.answered", status = status.as_u16(), duration_ms, code, "a request was answered");
+        tracing::warn!(event = "request.answered", status = status.as_u16(), duration_ms, code, bytes, not_modified, content_encoding, "a request was answered");
     } else {
-        tracing::info!(event = "request.answered", status = status.as_u16(), duration_ms, code, "a request was answered");
+        tracing::info!(event = "request.answered", status = status.as_u16(), duration_ms, code, bytes, not_modified, content_encoding, "a request was answered");
     }
 }

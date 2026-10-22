@@ -81,11 +81,18 @@ fn prompt_hashes(request: &InferenceRequest) -> (Option<String>, Option<String>)
 /// Writes `row` and answers its id; a failure is logged and the row is
 /// lost.
 async fn write(control: &ControlService, row: UsageRow) -> Option<String> {
+    let (conversation, user, provider, model) =
+        (row.conversation.clone(), row.user.clone(), row.provider.clone(), row.model.clone());
     match control.append_usage(row).await {
         Ok(id) => Some(id),
         Err(error) => {
             // The row is lost; the request goes on (`crates/backend-providers/src/usage/mod.rs`).
             tracing::warn!(
+                event = "usage_ledger.write_failed",
+                %conversation,
+                %user,
+                %provider,
+                model,
                 error = &error as &dyn std::error::Error,
                 "a usage ledger row was not written"
             );
@@ -147,6 +154,12 @@ struct Calls {
     open: Option<Timestamp>,
     /// The windows the open call's response reported.
     observed: Vec<ObservedWindow>,
+    /// When the open call's first output came: a thinking, text or tool-call
+    /// event.
+    first_output: Option<Timestamp>,
+    /// The HTTP status the vendor refused the run with, once its failure
+    /// came.
+    status: Option<u16>,
     /// The row of the call that ended last, which a window the vendor
     /// reports before the next call starts is added to.
     last_row: Option<String>,
@@ -170,6 +183,8 @@ impl Calls {
             ledger,
             open,
             observed: Vec::new(),
+            first_output: None,
+            status: None,
             last_row: None,
             span,
         }
@@ -179,6 +194,26 @@ impl Calls {
         if self.open.is_none() {
             self.open = Some(self.ledger.clock.now());
             self.last_row = None;
+            self.first_output = None;
+        }
+    }
+
+    /// The run produced `event`: the first of thinking, text or a tool call
+    /// is the call's first output.
+    fn output(&mut self, event: &ProviderEvent) {
+        let output = matches!(
+            event,
+            ProviderEvent::ThinkingStart
+                | ProviderEvent::ThinkingDelta(_)
+                | ProviderEvent::RedactedThinking(_)
+                | ProviderEvent::TextDelta(_)
+                | ProviderEvent::ToolCallStart { .. }
+        );
+        if output && self.open.is_some() && self.first_output.is_none() {
+            self.first_output = Some(self.ledger.clock.now());
+        }
+        if let ProviderEvent::Error(failure) = event {
+            self.status = failure.diagnostics.as_ref().and_then(|diagnostics| diagnostics.http_status);
         }
     }
 
@@ -195,6 +230,9 @@ impl Calls {
         if let Err(error) = self.ledger.control.add_usage_quota(id, windows).await {
             // The windows are lost from the row; the request goes on.
             tracing::warn!(
+                event = "usage_ledger.quota_write_failed",
+                conversation = %self.ledger.conversation,
+                provider = %self.ledger.provider,
                 error = &error as &dyn std::error::Error,
                 "a usage ledger row's quota was not written"
             );
@@ -224,9 +262,16 @@ impl Calls {
             cache_write_1h_tokens,
             ..
         } = call;
+        let refused = matches!(outcome, Outcome::Refused(_));
         let outcome = outcome.text();
+        let ms = |from: Timestamp, to: Timestamp| u64::try_from(to.as_millisecond() - from.as_millisecond()).unwrap_or(0);
         tracing::info!(
+            event = "provider_call.ended",
             outcome,
+            error_code = refused.then_some(outcome.as_str()),
+            status = self.status,
+            ms = ms(started_at, ended_at),
+            first_token_ms = self.first_output.take().map(|first| ms(started_at, first)),
             vendor_id = vendor_id.as_deref(),
             input_tokens = usage.map(|usage| usage.input_tokens),
             output_tokens = usage.map(|usage| usage.output_tokens),
@@ -326,15 +371,22 @@ impl ProviderRuntime for MeteredRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         let span = tracing::info_span!(
             "provider_call",
-            request = %request.request_id,
-            agent = tracing::field::Empty,
+            provider_request_id = %request.request_id,
+            conversation = %self.ledger.conversation,
+            user = %self.ledger.user,
+            turn = tracing::field::Empty,
+            node = tracing::field::Empty,
             account = tracing::field::Empty,
             purpose = request.purpose.as_str(),
             provider = %self.ledger.provider,
             model = %request.model_id,
         );
         if let Some(agent) = request.agent {
-            span.record("agent", agent);
+            span.record("node", agent);
+        }
+        // A title request belongs to no turn.
+        if request.purpose != RequestPurpose::Title {
+            span.record("turn", request.turn_id.as_str());
         }
         if let Some(account) = &self.ledger.account {
             span.record("account", account.as_str());
@@ -344,6 +396,7 @@ impl ProviderRuntime for MeteredRuntime {
         let mut events = span.in_scope(|| self.inner.run(request));
         let run = async_stream::stream! {
             while let Some(event) = events.next().await {
+                calls.output(&event);
                 match event {
                     ProviderEvent::Call(CallEvent::Started) => calls.start(),
                     ProviderEvent::Call(CallEvent::Ended(call)) => calls.ended(call).await,

@@ -35,6 +35,7 @@
 use std::collections::VecDeque;
 use std::net::IpAddr;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 
 use axum::body::Bytes;
@@ -120,6 +121,32 @@ pub struct PageSocket {
     sent: u64,
     opened_at: Instant,
     origin: PageSocketOrigin,
+    /// Counts the socket among the open ones until it is dropped.
+    _open: OpenCount,
+}
+
+/// The page sockets open now, in every shard, which the backend's resource
+/// sample reads.
+static OPEN: AtomicU64 = AtomicU64::new(0);
+
+/// How many page sockets are open now.
+pub fn open_page_sockets() -> u64 {
+    OPEN.load(Ordering::Relaxed)
+}
+
+struct OpenCount;
+
+impl OpenCount {
+    fn new() -> Self {
+        OPEN.fetch_add(1, Ordering::Relaxed);
+        Self
+    }
+}
+
+impl Drop for OpenCount {
+    fn drop(&mut self) {
+        OPEN.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 /// The receiving half of a socket to a page, which notes when the page last
@@ -175,11 +202,12 @@ pub fn open_page_socket(
     origin: PageSocketOrigin,
 ) -> (PageSocket, PageStream) {
     tracing::info!(
+        event = "page_socket.opened",
         request_id = %origin.request,
         kind = origin.kind.name(),
         user = %origin.user,
         conversation = origin.conversation.as_ref().map(tracing::field::display),
-        device = origin.device.as_ref().map(tracing::field::display),
+        host_id = origin.device.as_ref().map(tracing::field::display),
         stream = origin.stream.as_deref(),
         ray = origin.ray.as_deref(),
         client = origin.client.map(tracing::field::display),
@@ -207,6 +235,7 @@ pub fn open_page_socket(
         sent: 0,
         opened_at: now,
         origin,
+        _open: OpenCount::new(),
     };
     (page, stream)
 }
@@ -281,17 +310,19 @@ impl PageSocket {
         macro_rules! ended {
             ($level:ident) => {
                 tracing::$level!(
+                    event = "page_socket.ended",
                     request_id = %self.origin.request,
                     kind = self.origin.kind.name(),
                     user = %self.origin.user,
                     conversation = self.origin.conversation.as_ref().map(tracing::field::display),
+                    host_id = self.origin.device.as_ref().map(tracing::field::display),
                     reason,
                     close_code = code,
                     close_reason,
                     close_late,
-                    lived = ?self.opened_at.elapsed(),
-                    since_sent = ?since_sent,
-                    since_received = ?from_page.received_at.elapsed(),
+                    life_ms = millis(self.opened_at.elapsed()),
+                    since_sent_ms = millis(since_sent),
+                    since_received_ms = millis(from_page.received_at.elapsed()),
                     sent = self.sent,
                     "a page socket ended"
                 )
@@ -421,4 +452,9 @@ impl Stream for PageStream {
         }
         this.poll_read(cx)
     }
+}
+
+/// A duration as the integer `_ms` fields of the log hold it.
+fn millis(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }

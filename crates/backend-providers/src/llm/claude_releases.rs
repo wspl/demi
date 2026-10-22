@@ -121,7 +121,7 @@ impl ClaudeReleases {
         // start, which still finds no release believed.
         let read_again = async move {
             if let Err(error) = distribution.latest(false).await {
-                tracing::warn!("the newest Claude Code release was not read: {error}");
+                tracing::warn!(event = "claude_release.read_failed", %error, "the newest Claude Code release was not read");
             }
         };
         let kept = self.0.newest.kept(&self.0.edge, read_again)?;

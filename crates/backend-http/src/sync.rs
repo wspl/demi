@@ -73,7 +73,7 @@ pub(super) async fn channel(
         // A shard that is closing takes no channel: dropping the socket
         // closes it, and the page connects again to the next backend.
         if adopted.is_err() {
-            tracing::info!("a synchronization channel arrived while the backend shuts down");
+            tracing::info!(event = "socket.refused", kind = "sync", reason = "shutting_down", "a synchronization channel arrived while the backend shuts down");
         }
     }))
 }

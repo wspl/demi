@@ -209,26 +209,48 @@ where
         };
         let Some(state) = state else {
             let search = (self.0.search)(conversation.clone(), device.clone(), key);
-            return match tokio::time::timeout(FIRST_SEARCH_HOLD, search).await {
+            let waited = std::time::Instant::now();
+            let searched = tokio::time::timeout(FIRST_SEARCH_HOLD, search).await;
+            self.host_wait_ended(conversation, device, waited, searched.is_ok());
+            return match searched {
                 Ok(Ok(found)) => Ok(Some(found.value)),
                 Ok(Err(SearchError::NotRunning | SearchError::Moved)) | Err(_) => Ok(None),
                 Ok(Err(SearchError::Access(error))) => {
-                    tracing::warn!(what = self.0.what, %conversation, %error, "a project search failed");
+                    tracing::warn!(event = "project_search.failed", what = self.0.what, %conversation, kind = "refusal", %error, "a project search failed");
                     Err(error)
                 }
                 Ok(Err(SearchError::Failed(message))) => {
-                    tracing::warn!(what = self.0.what, %conversation, %message, "a project search failed");
+                    tracing::warn!(event = "project_search.failed", what = self.0.what, %conversation, kind = "error", error = %message, "a project search failed");
                     Ok(None)
                 }
             };
         };
         let mut ended = state.ended.subscribe();
         // Past the deadline the call takes what is held, or nothing.
-        let _ = tokio::time::timeout_at(state.since + FIRST_SEARCH_HOLD, ended.wait_for(|count| *count > 0)).await;
+        if *ended.borrow() == 0 {
+            let waited = std::time::Instant::now();
+            let held = tokio::time::timeout_at(state.since + FIRST_SEARCH_HOLD, ended.wait_for(|count| *count > 0)).await;
+            self.host_wait_ended(conversation, device, waited, held.is_ok());
+        }
         match (state.held.borrow().clone(), state.refused.borrow().clone()) {
             (None, Some(refused)) => Err(refused),
             (held, _) => Ok(held),
         }
+    }
+
+    /// The line that ends a caller's wait for the first search of what is
+    /// kept: `ready` when the search answered within its hold.
+    fn host_wait_ended(&self, conversation: &ConversationId, device: &DeviceId, waited: std::time::Instant, ready: bool) {
+        tracing::info!(
+            event = "host_wait.ended",
+            host_id = %device,
+            %conversation,
+            what = "first_project_search",
+            search = self.0.what,
+            waited_ms = u64::try_from(waited.elapsed().as_millis()).unwrap_or(u64::MAX),
+            outcome = if ready { "ready" } else { "timed_out" },
+            "a call waited for a project search"
+        );
     }
 
     /// The Host of `device` came online again: what is kept there is
@@ -311,6 +333,8 @@ where
     // that failed alone does not search again, which would fail it again.
     let mut pending: BTreeSet<Subject> = BTreeSet::new();
     let mut went_live = false;
+    let mut reads_since = Instant::now();
+    let mut reads: u64 = 0;
     let mut renewal = tokio::time::interval_at(Instant::now() + RENEWAL, RENEWAL);
     loop {
         if state.online.replace(false) {
@@ -346,11 +370,11 @@ where
                 // Nothing is searched until the Host comes online again:
                 // while nothing is held, a caller answers the refusal.
                 Err(SearchError::Access(error)) => {
-                    tracing::warn!(what, %device, %error, "a project search could not subscribe; it waits for the Host to come online again");
+                    tracing::warn!(event = "project_search.subscribe_failed", what, host_id = %device, kind = "refusal", %error, retry = "host_online", "a project search could not subscribe");
                     state.refused.replace(Some(error));
                 }
                 Err(SearchError::Failed(message)) => {
-                    tracing::warn!(what, %device, %message, "a project search could not subscribe; it waits for the Host to come online again");
+                    tracing::warn!(event = "project_search.subscribe_failed", what, host_id = %device, kind = "error", error = %message, retry = "host_online", "a project search could not subscribe");
                 }
             }
         }
@@ -361,6 +385,7 @@ where
             else {
                 return;
             };
+            let searched = std::time::Instant::now();
             match searching.await {
                 Ok(found) => {
                     let wanted: BTreeSet<Subject> = found.watch.into_iter().collect();
@@ -373,15 +398,35 @@ where
                         holder.hold(subject.clone());
                     }
                     watched = wanted;
+                    let mut changed = None;
                     if let Some(shown) = inner.upgrade().as_deref().and_then(|inner| inner.shown.as_ref()) {
                         match (shown.store)(device.clone(), key.clone(), &found.value).await {
-                            Ok(true) => (shown.announce)(&state.users.borrow()),
-                            Ok(false) => {}
+                            Ok(true) => {
+                                changed = Some(true);
+                                (shown.announce)(&state.users.borrow())
+                            }
+                            Ok(false) => changed = Some(false),
                             // The page keeps showing what was stored before;
                             // the next search stores again.
-                            Err(error) => tracing::warn!(what, %device, %error, "a project search's result was not stored"),
+                            Err(error) => tracing::warn!(event = "project_search.store_failed", what, host_id = %device, %error, "a project search's result was not stored"),
                         }
                     }
+                    // A search that repeats without end shows in this count.
+                    if reads_since.elapsed() >= Duration::from_secs(60) {
+                        reads_since = Instant::now();
+                        reads = 0;
+                    }
+                    reads += 1;
+                    tracing::debug!(
+                        event = "project_search.refreshed",
+                        %conversation,
+                        host_id = %device,
+                        what,
+                        ms = u64::try_from(searched.elapsed().as_millis()).unwrap_or(u64::MAX),
+                        changed,
+                        reads_this_minute = reads,
+                        "a project search was read"
+                    );
                     *state.held.borrow_mut() = Some(found.value);
                     state.refused.replace(None);
                 }
@@ -392,11 +437,11 @@ where
                 // The conversation moved, which releases what it used here.
                 Err(SearchError::Moved) => {}
                 Err(SearchError::Access(error)) => {
-                    tracing::warn!(what, %device, %error, "a project search failed; the last result is kept");
+                    tracing::warn!(event = "project_search.refresh_failed", what, host_id = %device, kind = "refusal", %error, kept = "last_result", "a project search failed");
                     state.refused.replace(Some(error));
                 }
                 Err(SearchError::Failed(message)) => {
-                    tracing::warn!(what, %device, %message, "a project search failed; the last result is kept");
+                    tracing::warn!(event = "project_search.refresh_failed", what, host_id = %device, kind = "error", error = %message, kept = "last_result", "a project search failed");
                 }
             }
         }
@@ -425,7 +470,7 @@ where
                     }
                 }
                 HostEvent::Failed { subject, reason } => {
-                    tracing::warn!(what, %device, path = %subject.path, %reason, "a project file's subscription failed; a change to it goes unnoticed");
+                    tracing::warn!(event = "project_file.subscribe_failed", what, host_id = %device, path = %subject.path, %reason, "a project file's subscription failed; a change to it goes unnoticed");
                     watched.remove(&subject);
                     if pending.remove(&subject) && pending.is_empty() && went_live {
                         break;

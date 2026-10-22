@@ -240,7 +240,7 @@ impl Shard {
             (Err(error), _) | (_, Err(error)) => {
                 // The runners keep the forwards they were told last, until
                 // the next change or connection tells them again.
-                tracing::warn!(error = &error as &dyn std::error::Error, "the runners were not told of the user's forwards");
+                tracing::warn!(event = "port_forwards.announce_failed", error = &error as &dyn std::error::Error, "the runners were not told of the user's forwards");
                 return;
             }
         };

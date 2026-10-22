@@ -1028,7 +1028,8 @@ impl Asking for ImageCall {
             }
             Err(failure) => row.row().outcome = failure.outcome(),
         }
-        span.in_scope(|| tracing::info!(outcome = %row.row().outcome, "an image call ended"));
+        let (outcome, ms) = (row.row().outcome.clone(), row.ms());
+        span.in_scope(|| tracing::info!(event = "media.ended", kind = "image", outcome, ms, "an image call ended"));
         row.write().await;
         let image = made?;
         Ok(MadeImage {
@@ -1108,7 +1109,8 @@ impl Asking for AudioCall {
             }
             Err(failure) => row.row().outcome = failure.outcome(),
         }
-        span.in_scope(|| tracing::info!(outcome = %row.row().outcome, "an audio call ended"));
+        let (outcome, ms) = (row.row().outcome.clone(), row.ms());
+        span.in_scope(|| tracing::info!(event = "media.ended", kind = "audio", outcome, ms, "an audio call ended"));
         row.write().await;
         let made = made?;
         Ok(MadeAudio {
@@ -1197,12 +1199,13 @@ impl Asking for VideoCall {
             Ok(job) => job,
             Err(failure) => {
                 row.row().outcome = failure.outcome();
-                span.in_scope(|| tracing::info!(outcome = %row.row().outcome, "a video call ended at its ask"));
+                let (outcome, ms) = (row.row().outcome.clone(), row.ms());
+                span.in_scope(|| tracing::info!(event = "media.ended", kind = "video", stage = "ask", outcome, ms, "a video call ended at its ask"));
                 row.write().await;
                 return Err(failure);
             }
         };
-        span.in_scope(|| tracing::info!(job = %job, "a video's job was asked for"));
+        span.in_scope(|| tracing::info!(event = "media_job.asked", kind = "video", job = %job, "a video's job was asked for"));
         row.row().vendor_id = Some(job.clone());
         let asked = AskedVideo {
             job: job.clone(),
@@ -1309,7 +1312,8 @@ impl Job {
             ),
         };
         self.row.row().outcome = outcome;
-        self.span.in_scope(|| tracing::info!(outcome = %self.row.row().outcome, "a video's job ended"));
+        let (outcome, ms) = (self.row.row().outcome.clone(), self.row.ms());
+        self.span.in_scope(|| tracing::info!(event = "media.ended", kind = "video", stage = "job", job = %self.id, outcome, ms, "a video's job ended"));
         self.row.write().await;
         Some(result)
     }
@@ -1382,7 +1386,7 @@ impl Drop for Job {
         if !self.row.is_open() {
             return;
         }
-        self.span.in_scope(|| tracing::info!("a video's job was stopped"));
+        self.span.in_scope(|| tracing::info!(event = "media_job.stopped", job = %self.id, by = "drop", "a video's job was stopped"));
         let maker = self.maker.clone();
         let http = self.http.clone();
         let id = self.id.clone();
@@ -1397,7 +1401,7 @@ impl Drop for Job {
                     return;
                 };
                 if let Err(failure) = cancel.await.result {
-                    tracing::warn!(?failure, "a stopped video's job was not cancelled at the vendor");
+                    tracing::warn!(event = "media_job.cancel_failed", job = %id, code = failure.outcome(), "a stopped video's job was not cancelled at the vendor");
                 }
             }
             .instrument(self.span.clone()),
@@ -1524,13 +1528,20 @@ impl Making<'_> {
             let moment = retry_at
                 .or_else(|| provider.quota()?.used_up_until(now))
                 .filter(|moment| *moment > now);
+            let source = if moment.is_none() {
+                "default"
+            } else if retry_at.is_some() {
+                "vendor_refusal"
+            } else {
+                "snapshot"
+            };
             let until = moment.unwrap_or_else(|| {
                 Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)
                     .expect("half an hour from now is a time")
             });
             // Used up as a turn's failure marks it, whatever the call does
             // next.
-            assembly.mark_used_up(&entry.id, &account, until);
+            assembly.mark_used_up(&entry.id, &account, until, source);
             if rotation == Rotation::Manual {
                 return Err(used_up(moment, &trace));
             }
@@ -1549,8 +1560,11 @@ impl Making<'_> {
         let span = tracing::info_span!(
             "media_call",
             purpose,
-            request = %request_id,
-            agent = self.agent,
+            provider_request_id = %request_id,
+            conversation = %self.conversation,
+            user = %self.shard.user(),
+            turn = self.turn.as_ref().map(tracing::field::display),
+            node = self.agent,
             account = account.map(tracing::field::display),
             provider = %entry.id,
             model = %self.name,
@@ -1618,6 +1632,13 @@ impl OpenRow {
         self.row.as_mut().expect("a call's row is open until it is written")
     }
 
+    /// How long the call has lasted, in milliseconds.
+    fn ms(&mut self) -> u64 {
+        let now = self.shard.services().clock.now().as_millisecond();
+        let started = self.row().started_at.as_millisecond();
+        u64::try_from(now - started).unwrap_or(0)
+    }
+
     /// Keeps the windows of the account's quota a response reported.
     fn observe(&mut self, observed: &[QuotaWindow]) {
         if observed.is_empty() {
@@ -1630,10 +1651,18 @@ impl OpenRow {
     async fn write(&mut self) {
         let mut row = self.row.take().expect("a call's row is written once");
         row.ended_at = self.shard.services().clock.now();
+        let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
         if let Err(error) = self.shard.services().control.append_usage(row).await {
             // The row is lost; what the call made still comes back
             // (`crates/backend-database/src/usage.rs`).
-            tracing::warn!(error = &error as &dyn std::error::Error, "a usage ledger row was not written");
+            tracing::warn!(
+                event = "usage_ledger.write_failed",
+                conversation = %lost.0,
+                provider = %lost.1,
+                model = lost.2.as_str(),
+                error = &error as &dyn std::error::Error,
+                "a usage ledger row was not written"
+            );
         }
     }
 }
@@ -1643,10 +1672,18 @@ impl Drop for OpenRow {
         if let Some(mut row) = self.row.take() {
             row.ended_at = self.shard.services().clock.now();
             let control = self.shard.services().control.clone();
+            let lost = (row.conversation.clone(), row.provider.clone(), row.model.clone());
             // Nothing awaits a dropped call any more.
             tokio::spawn(async move {
                 if let Err(error) = control.append_usage(row).await {
-                    tracing::warn!(error = &error as &dyn std::error::Error, "a usage ledger row was not written");
+                    tracing::warn!(
+                        event = "usage_ledger.write_failed",
+                        conversation = %lost.0,
+                        provider = %lost.1,
+                        model = lost.2.as_str(),
+                        error = &error as &dyn std::error::Error,
+                        "a usage ledger row was not written"
+                    );
                 }
             });
         }

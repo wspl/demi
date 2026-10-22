@@ -193,6 +193,9 @@ impl EmailChanges {
         let verification = VerificationMail::new(email.clone(), code, expires_at, language);
         if let Err(error) = mail.send_verification(verification).await {
             tracing::warn!(
+                event = "mail.delivery_failed",
+                %user,
+                kind = "email_change",
                 error = &error as &dyn std::error::Error,
                 "a verification mail was not delivered"
             );

@@ -150,7 +150,7 @@ impl Shard {
                     expired.next
                 }
                 Err(error) => {
-                    tracing::warn!("the expired credentials were not removed: {error}");
+                    tracing::warn!(event = "credentials.expiry_failed", user = %self.user(), %error, "the expired credentials were not removed");
                     None
                 }
             };

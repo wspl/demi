@@ -127,7 +127,7 @@ async fn quota_moment(
         Some(account) => match assembly.for_account(&reader.entry, &account).await {
             Ok(provider) => provider?,
             Err(failure) => {
-                tracing::warn!(provider = %reader.entry.id, error = &failure as &dyn std::error::Error, "a usage limit's account was not read");
+                tracing::warn!(event = "failure_facts.read_failed", provider = %reader.entry.id, what = "usage_limit_account", error = &failure as &dyn std::error::Error, "a usage limit's account was not read");
                 return None;
             }
         },
@@ -153,7 +153,7 @@ async fn account_facts(
         Ok(candidates) if candidates.len() >= 2 => candidates,
         Ok(_) => return,
         Err(error) => {
-            tracing::warn!(provider = %entry.id, error = &error as &dyn std::error::Error, "a usage limit's accounts were not read");
+            tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "usage_limit_accounts", error = &error as &dyn std::error::Error, "a usage limit's accounts were not read");
             return;
         }
     };
@@ -201,7 +201,7 @@ async fn signed_out(
     let record = match assembly.vault().account(entry.id.clone(), account).await {
         Ok(record) => record?,
         Err(failure) => {
-            tracing::warn!(provider = %entry.id, error = &failure as &dyn std::error::Error, "a refused sign-in's account was not read");
+            tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "signed_out_account", error = &failure as &dyn std::error::Error, "a refused sign-in's account was not read");
             return None;
         }
     };
@@ -220,7 +220,9 @@ async fn reader(assembly: &ProviderAssembly, provider: &str) -> Option<Reader> {
         Ok(entry) => entry?,
         Err(error) => {
             tracing::warn!(
+                event = "failure_facts.read_failed",
                 provider,
+                what = "provider_entry",
                 error = &error as &dyn std::error::Error,
                 "a failure's provider entry was not read"
             );
@@ -230,7 +232,7 @@ async fn reader(assembly: &ProviderAssembly, provider: &str) -> Option<Reader> {
     match assembly.provider_for(&entry).await {
         Ok(provider) => Some(Reader { entry, provider }),
         Err(error) => {
-            tracing::warn!(provider = %entry.id, error = &error as &dyn std::error::Error, "a failure's provider was not built");
+            tracing::warn!(event = "failure_facts.read_failed", provider = %entry.id, what = "provider_build", error = &error as &dyn std::error::Error, "a failure's provider was not built");
             None
         }
     }

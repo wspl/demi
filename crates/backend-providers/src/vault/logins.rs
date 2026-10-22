@@ -166,9 +166,10 @@ impl Flow {
         }
         let now = Instant::now();
         tracing::info!(
+            event = "login.stage_reached",
             stage = stage.as_str(),
             previous = current.as_str(),
-            took_ms = millis(now - self.stage_since),
+            ms = millis(now - self.stage_since),
             "the login reached a stage"
         );
         *current = stage;
@@ -322,7 +323,7 @@ impl LoginFlows {
             cancel: cancel.clone(),
             ended: ending,
         };
-        span.in_scope(|| tracing::info!("a login started"));
+        span.in_scope(|| tracing::info!(event = "login.started", "a login started"));
         self.lock().insert(id.clone(), flow);
         self.announce(&starter);
         let prepared = async {
@@ -447,7 +448,7 @@ impl LoginFlows {
         *code_error = None;
         let taken = *codes_taken;
         drop(flows);
-        tracing::info!(login = %id, code = taken, "a code was handed to the login");
+        tracing::info!(event = "login.code_handed", login = %id, attempt = taken, "a code was handed to the login");
         self.announce(owner);
         Ok(taken)
     }
@@ -519,25 +520,26 @@ impl LoginFlows {
             let flow = flows
                 .get_mut(id)
                 .expect("a login's flow stays until it is retired");
-            let took_ms = millis(flow.started.elapsed());
+            let ms = millis(flow.started.elapsed());
             let LoginState::Pending { stage, .. } = &flow.state else {
                 unreachable!("a login ends once");
             };
             let stage = stage.as_str();
+            let (login, user) = (id, &flow.owner);
             flow.state = match ended_as {
                 Ok((provider_id, credential_id)) => {
-                    tracing::info!(took_ms, stage, "the login completed");
+                    tracing::info!(event = "login.ended", %login, %user, outcome = "completed", ms, stage, "the login completed");
                     LoginState::Completed {
                         provider_id,
                         credential_id,
                     }
                 }
                 Err(Unfinished::Cancelled) => {
-                    tracing::info!(took_ms, stage, "the login was cancelled");
+                    tracing::info!(event = "login.ended", %login, %user, outcome = "cancelled", ms, stage, "the login was cancelled");
                     LoginState::Cancelled
                 }
                 Err(Unfinished::Failed(message)) => {
-                    tracing::info!(took_ms, stage, reason = message, "the login failed");
+                    tracing::info!(event = "login.ended", %login, %user, outcome = "failed", ms, stage, "the login failed");
                     LoginState::Failed {
                         message,
                         request_id: flow.request.clone(),
@@ -675,13 +677,14 @@ impl LoginFlows {
         }
         let code_error = match pending.code_error {
             Some(refused) if refused.code == codes_taken => {
-                tracing::info!(code = refused.code, "the login's sign-in refused a code");
+                tracing::info!(event = "login.code_refused", attempt = refused.code, "the login's sign-in refused a code");
                 Some(refused.message)
             }
             Some(refused) => {
                 tracing::info!(
-                    code = refused.code,
-                    codes_taken,
+                    event = "login.code_refused",
+                    attempt = refused.code,
+                    newer_attempt = codes_taken,
                     "the login's sign-in refused a code the user has pasted another after"
                 );
                 None

@@ -42,7 +42,7 @@ pub async fn finish_deletions(control: &ControlService, shards: &Shards) -> Resu
         match finished {
             Ok(Ok(())) => {}
             Ok(Err((id, error))) => {
-                tracing::error!(conversation = %id, error = &error as &dyn std::error::Error, "a pending deletion was not finished");
+                tracing::error!(event = "conversation_deletion.failed", conversation = %id, stage = "finish", outcome = "next_start", error = &error as &dyn std::error::Error, "a pending deletion was not finished");
             }
             // The backend is shutting down; the next start finishes the rest.
             Err(_) => return Ok(()),
@@ -110,7 +110,7 @@ impl Shard {
         // The conversation is gone for every request already, so a failure
         // of what is left refuses nothing: the deletion stays pending.
         if let Err(error) = self.finish_deletion(&id).await {
-            tracing::error!(conversation = %id, error = &error as &dyn std::error::Error, "the deletion stays pending until the next start");
+            tracing::error!(event = "conversation_deletion.failed", conversation = %id, stage = "step_3", outcome = "pending", error = &error as &dyn std::error::Error, "the deletion stays pending until the next start");
             return Ok(true);
         }
         self.collect_blobs();

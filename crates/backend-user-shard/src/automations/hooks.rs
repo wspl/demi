@@ -283,7 +283,7 @@ impl Shard {
         match self.services().control.has_pending_calls(id.clone()).await {
             Ok(true) => self.gather(id),
             Ok(false) => {}
-            Err(error) => tracing::warn!(automation = %id, "the calls waiting for a run were not read: {error}"),
+            Err(error) => tracing::warn!(event = "automation_calls.failed", automation = %id, step = "run_ended", %error, "the calls waiting for a run were not read"),
         }
     }
 
@@ -294,7 +294,7 @@ impl Shard {
         let ids = match self.services().control.automations_with_pending_calls(self.user().clone()).await {
             Ok(ids) => ids,
             Err(error) => {
-                tracing::warn!(user = %self.user(), "the calls waiting for runs were not read: {error}");
+                tracing::warn!(event = "automation_calls.failed", user = %self.user(), step = "read_all", %error, "the calls waiting for runs were not read");
                 return;
             }
         };
@@ -302,7 +302,7 @@ impl Shard {
             match self.automation_working(&id).await {
                 Ok(true) => {}
                 Ok(false) => self.gather(&id),
-                Err(error) => tracing::warn!(automation = %id, "the calls waiting for a run stay: {error}"),
+                Err(error) => tracing::warn!(event = "automation_calls.failed", automation = %id, step = "keep", %error, "the calls waiting for a run stay"),
             }
         }
     }
@@ -393,14 +393,14 @@ async fn gather_until_quiet(
         Ok(Some(automation)) if !automation.paused && matches!(automation.trigger, Trigger::Url {}) => automation,
         Ok(_) => return,
         Err(error) => {
-            tracing::warn!(automation = %id, "a URL's calls started no run yet: {error}");
+            tracing::warn!(event = "automation_url_run.deferred", automation = %id, step = "read_automation", %error, "a URL's calls started no run yet");
             return;
         }
     };
     let calls = match control.take_pending_calls(id.clone()).await {
         Ok(calls) => calls,
         Err(error) => {
-            tracing::warn!(automation = %id, "a URL's calls started no run yet: {error}");
+            tracing::warn!(event = "automation_url_run.deferred", automation = %id, step = "take_calls", %error, "a URL's calls started no run yet");
             return;
         }
     };

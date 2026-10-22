@@ -52,7 +52,7 @@ pub async fn follow_usage(mut written: broadcast::Receiver<UsageWritten>, shards
                 }
             }
             Err(RecvError::Lagged(missed)) => {
-                tracing::warn!(missed, "ledger rows were not announced to their conversations");
+                tracing::warn!(event = "usage_ledger.announce_missed", missed, "ledger rows were not announced to their conversations");
             }
             Err(RecvError::Closed) => return,
         }

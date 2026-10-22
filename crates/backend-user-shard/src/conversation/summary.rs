@@ -176,6 +176,7 @@ impl Shard {
             Ok(facts) => facts.unwrap_or(SummaryFacts::EMPTY),
             Err(error) => {
                 tracing::error!(
+                    event = "conversation_summary.read_failed",
                     conversation = %id,
                     error = &error as &dyn std::error::Error,
                     "a conversation's database could not be read for its summary"
@@ -192,7 +193,9 @@ impl Shard {
 fn readable(id: &ConversationId, read: Result<WorkPanel, StorageError>) -> WorkPanel {
     read.unwrap_or_else(|error| {
         tracing::error!(
+            event = "conversation_summary.read_failed",
             conversation = %id,
+            what = "work_panel",
             error = &error as &dyn std::error::Error,
             "a conversation's work panel could not be read for its entry"
         );

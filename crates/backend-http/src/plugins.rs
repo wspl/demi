@@ -181,7 +181,7 @@ fn refused(error: PageCallError) -> ApiError {
         }) => ApiError::new(status_of(status), code, message),
         PageCallError::Plugin(PluginError::Ended { .. }) => ApiError::backend_closing(),
         PageCallError::Plugin(PluginError::Port { .. } | PluginError::Failed { .. }) => {
-            tracing::warn!(error = message, "a plugin's page call failed");
+            tracing::warn!(event = "plugin_page_call.failed", error = message, "a plugin's page call failed");
             ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ErrorCode::PluginFailed,

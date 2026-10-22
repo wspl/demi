@@ -77,6 +77,9 @@ pub trait IdlePolicy {
 /// failed, or a reading that did, is tried again a `poll` later, never in a
 /// tight loop.
 ///
+/// A line the watch logs names no resource: the caller runs the watch in a
+/// span that holds the resource's ID (`conversation`, `host_id`).
+///
 /// The retirement is a task of `tasks`, so a watch that is stopped lets a
 /// retirement already running finish, and the owner's close waits for it.
 pub async fn watch(policy: impl IdlePolicy, window: Duration, poll: Duration, tasks: TaskTracker) {
@@ -85,7 +88,7 @@ pub async fn watch(policy: impl IdlePolicy, window: Duration, poll: Duration, ta
         let activity = match policy.check().await {
             Ok(activity) => activity,
             Err(error) => {
-                tracing::warn!("an idle watch could not read its resource: {error}");
+                tracing::warn!(event = "idle_watch.failed", step = "resource", %error, "an idle watch could not read its resource");
                 tokio::time::sleep(poll).await;
                 continue;
             }
@@ -113,7 +116,7 @@ pub async fn watch(policy: impl IdlePolicy, window: Duration, poll: Duration, ta
                 continue;
             }
             Err(error) => {
-                tracing::warn!("an idle watch could not reserve its resource: {error}");
+                tracing::warn!(event = "idle_watch.failed", step = "reserve", %error, "an idle watch could not reserve its resource");
                 tokio::time::sleep(poll).await;
                 continue;
             }
@@ -123,7 +126,7 @@ pub async fn watch(policy: impl IdlePolicy, window: Duration, poll: Duration, ta
         let again = match policy.check().await {
             Ok(again) => again,
             Err(error) => {
-                tracing::warn!("an idle watch could not read its reserved resource: {error}");
+                tracing::warn!(event = "idle_watch.failed", step = "read_reserved", %error, "an idle watch could not read its reserved resource");
                 drop(retirement);
                 tokio::time::sleep(poll).await;
                 continue;
@@ -138,7 +141,7 @@ pub async fn watch(policy: impl IdlePolicy, window: Duration, poll: Duration, ta
         match retiring.await {
             Ok(Ok(())) => return,
             Ok(Err(error)) => {
-                tracing::warn!("a retirement failed and is tried again later: {error}");
+                tracing::warn!(event = "idle_watch.failed", step = "retire", retry = true, %error, "a retirement failed and is tried again later");
                 tokio::time::sleep(poll).await;
             }
             // The retirement panicked, and the watch ends with it.

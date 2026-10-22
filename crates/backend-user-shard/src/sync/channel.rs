@@ -41,6 +41,7 @@ use demi_backend_page_sync::{Part, Registration, StateVersion};
 use demi_conversation_socket_protocol::{Held, Version};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{Role, UserDto};
+use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::sessions::SessionId;
 use demi_web_api_protocol::state::{PageMessage, SyncEvent, SyncFollow, SyncFollowed};
 use futures_util::StreamExt as _;
@@ -222,7 +223,7 @@ impl Follows {
             (list, Held::Tag { tag }) => {
                 tracing::info!(
                     event = "follow.answered",
-                    value = ?list,
+                    value = list_name(list),
                     held_tag = !tag.is_empty(),
                     "a follow of a list was registered"
                 );
@@ -394,6 +395,8 @@ impl Channel<'_> {
             Ok(None) => Err(End::SessionEnded),
             Err(error) => {
                 tracing::error!(
+                    event = "page_session.read_failed",
+                    user = %self.session.user.id,
                     error = &error as &dyn std::error::Error,
                     "a page's session could not be read"
                 );
@@ -417,8 +420,13 @@ impl Channel<'_> {
             .read_part(part, &self.session.user, &self.session.token)
             .await
             .map_err(|error| {
+                let (name, conversation, plugin) = part_name(part);
                 tracing::error!(
-                    ?part,
+                    event = "state_part.read_failed",
+                    user = %self.session.user.id,
+                    part = name,
+                    conversation = conversation.map(tracing::field::display),
+                    plugin,
                     error = &error as &dyn std::error::Error,
                     "a part of a page's state could not be read"
                 );
@@ -530,5 +538,42 @@ async fn page_messages(
             Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
             Some(Ok(Message::Close(_)) | Err(_)) | None => return End::PageGone,
         }
+    }
+}
+
+/// A followed list as the protocol names it.
+fn list_name(list: SyncFollowed) -> String {
+    serde_json::to_value(list)
+        .ok()
+        .and_then(|name| name.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// A part of the product state by name, with the conversation or the plugin
+/// it is of.
+fn part_name(part: &Part) -> (&'static str, Option<&ConversationId>, Option<&str>) {
+    match part {
+        Part::Conversation(id) => ("conversation", Some(id), None),
+        Part::Metadata(id) => ("metadata", Some(id), None),
+        Part::ConversationOrder => ("conversation_order", None, None),
+        Part::Preferences => ("preferences", None, None),
+        Part::User => ("user", None, None),
+        Part::Workspaces => ("workspaces", None, None),
+        Part::Devices => ("devices", None, None),
+        Part::Providers => ("providers", None, None),
+        Part::Logins => ("logins", None, None),
+        Part::Cloud => ("cloud", None, None),
+        Part::Subagents => ("subagents", None, None),
+        Part::Instructions => ("instructions", None, None),
+        Part::Credentials => ("credentials", None, None),
+        Part::PortForwards => ("port_forwards", None, None),
+        Part::ExposedPorts => ("exposed_ports", None, None),
+        Part::Automations => ("automations", None, None),
+        Part::Passkeys => ("passkeys", None, None),
+        Part::Sessions => ("sessions", None, None),
+        Part::Users => ("users", None, None),
+        Part::Plugins => ("plugins", None, None),
+        Part::Plugin(id) => ("plugin", None, Some(id.as_str())),
+        Part::Models => ("models", None, None),
     }
 }
