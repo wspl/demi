@@ -13,7 +13,7 @@ contributors start with CONTRIBUTING.md. -->
 - Prefer protocols, APIs, and file interfaces over external CLI processes.
 - Everything committed, code, comments, documents, tests, fixtures, gallery data and commit messages alike, holds only invented examples: made-up tasks and titles, names such as *alex*, domains such as `example.com`, paths such as `/Users/alex`. Nothing committed comes from a real development session or environment: no conversation's title or words, no account of who asked for a change or how it was discussed, no real person's, account's, machine's, host's or server's name, no real path, address or secret.
 - Write code comments in English.
-- A work package is one change a user or a reviewer understands on its own, such as "a device is drawn as its system's logo" or "a Claude Code answer that replaces a failed stream is handed on": its decision record when it makes a new decision, its code and its tests together. It is one commit with a Conventional Commit subject that says what changed and why, pushed once; a later fix to it before it lands, a review's rework or a reworded sentence of its decision record included, is folded into that commit, never added as a commit of its own. A commit never holds a part of a work package, such as its runner half or its decision record alone.
+- A work package is one change a user or a reviewer understands on its own, such as "a device is drawn as its system's logo" or "a Claude Code answer that replaces a failed stream is handed on": its decision record when it makes a new decision, its code, and its tests where it needs any, together. It is one commit with a Conventional Commit subject that says what changed and why, pushed once; a later fix to it before it lands, a review's rework or a reworded sentence of its decision record included, is folded into that commit, never added as a commit of its own. A commit never holds a part of a work package, such as its runner half or its decision record alone.
 - Release only when the user asks for a release; releasing and upgrading the user's server then need no further confirmation. Deploy to the server `DEMI_DEPLOY_HOST` names in the user's `.env` by the steps of `docs/delivery/upgrades.md` § A development build on a server when the user or the workflow asks for it, and then the whole merged batch.
 
 # Building and Testing
@@ -25,7 +25,7 @@ contributors start with CONTRIBUTING.md. -->
 - Keep test binaries few, as `ARCHITECTURE.md` § Test binaries says.
 - A development build builds only the targets of the Hosts in use; all six targets are for a published release (`.github/workflows/release.yml`).
 - Do not run `cargo fmt` or `cargo clippy`, and do not add them to any check: neither is part of this project's validation.
-- The compiler is the only hard constraint on how code and text are written. A convention (naming, capitalization, layout, style) is written down in `ARCHITECTURE.md`, an entry comment or the gallery and followed; never enforce one with a lint, a script or a test. Tests protect behavior.
+- The compiler is the only hard constraint on how code and text are written. A convention (naming, capitalization, layout, style) is written down in `ARCHITECTURE.md`, an entry comment or the gallery and followed; never enforce one with a lint, a script or a test.
 
 # Product Checks
 
@@ -50,9 +50,9 @@ contributors start with CONTRIBUTING.md. -->
 
 - The code is the only authority on what Demi does and how. Whatever code can say, a type, a name, a test, the code says; a comment says only what the code cannot: a module's purpose and boundaries, an invariant, the reason for a non-obvious choice and the alternative it refused. A comment that restates what the code does is deleted.
 - A module's design lives in its entry comment (`lib.rs`, `main.rs`, `index.ts`), next to the code it describes, with an ASCII diagram of at most 80 columns where a structure or a flow is clearer drawn. `ARCHITECTURE.md` holds only the map and the rules that hold across modules, and the dependency graphs.
-- What a screen does and shows lives in the gallery and in the tests that protect it, never in prose.
+- What a screen does and shows lives in the gallery and its code, never in prose.
 - A new decision, one that changes what the user sees, a protocol or a module's boundaries, is written as a decision record (ADR) before it is built: `docs/decisions/NNNN-name.md`, numbered in order, following the minimal template of [MADR](https://adr.github.io/madr/). A decision that changes what the user sees draws the expected screen as an ASCII sketch. The lead shows it to the user, and it lands in its work package's commit. A merged decision record is never edited, except for its status; a later change is a new record that names the one it supersedes.
-- A bug fix makes no new decision and needs no decision record: its commit message says the symptom, the cause and the fix, and it adds a test that fails before the fix. A fix that changes a module's structure, its state's owners or its boundaries, is a decision and has its record.
+- A bug fix makes no new decision and needs no decision record: its commit message says the symptom, the cause and the fix. A fix that changes a module's structure, its state's owners or its boundaries, is a decision and has its record.
 - `docs/` holds only what is not about one module: the overview, the comparison, guides, operator steps (setup, installation, upgrades), testing, product checks, the localization glossary, the decision records and the brand's assets.
 
 # Coding Standards

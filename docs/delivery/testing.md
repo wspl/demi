@@ -1,90 +1,63 @@
 # Testing
 
-A test is worth its cost when it would fail for a change a user or another
-component would notice, and for no other change.
+Test code is costly and rare: every test is code to read, run and keep
+true, and a test that cannot fail for a reason a user would notice is only
+that cost. A test is written only when both hold:
+
+- The behavior, broken, would reach a user or another program.
+- Nothing else would catch it: not the compiler, not the types or the
+  generated contracts, not a test already there.
 
 For example, the pairing scenario starts a real backend and a real runner,
-pairs the runner with a code and runs a command on it. It fails in these
-cases:
+pairs the runner with a code and runs a command on it. It fails when the
+device token is malformed, when the runner cannot connect, or when the
+backend loses the device. A unit test that asserts the token is 64
+hexadecimal characters adds nothing: it cannot fail unless the scenario
+fails too, and it breaks when the format changes for a good reason.
 
-- The device token is malformed.
-- The runner cannot connect.
-- The backend loses the device.
+The commands that run the tests are in `crates/xtask/src/main.rs`, and the
+backend's scenario suites in `crates/backend/tests/backend/support.rs`.
 
-A unit test that asserts the token is 64 hexadecimal characters adds nothing to
-that scenario. It cannot fail unless the scenario fails too, and it would break
-if the token format changed for a good reason.
+## What is never tested
 
-This document says what a test protects, where it runs, how it proves itself,
-and what it can cost. The commands that run the tests are in
-`crates/xtask/src/main.rs`, and the backend's scenario suites in
-`crates/backend/tests/backend/support.rs`.
+- Wording: a prompt, a help text, a UI string or a message. A test may find
+  its place in a structure, never its words.
+- What the code restates: serialization a derive produces, constants,
+  accessors, the steps inside a function, the shape of a value nothing else
+  reads.
+- What cannot fail, such as output that contains no panic.
+- A defect asserted as correct to prove something else. Performance is
+  shown by measurement; a fixed bug of complexity, work that grew as the
+  product of two sizes, may count the work and bound it by the sizes.
+- A helper alone, when users reach the behavior through an entry point:
+  the helper's test passes even when nothing calls it.
 
-## What a test protects
+A fixed bug gets a test only when it meets the bar above, like any other
+behavior.
 
-Each test follows these rules:
+## Where a test runs
 
-- Each test protects one behavior that a user or another component relies on,
-  or one bug that was fixed. It checks that behavior at the boundary where it
-  is observable: an API scenario, a wire format, a state machine, a program's
-  output and exit status.
-- A test covers a behavior once, at one level, and not again in every layer
-  beneath it.
-- A test never restates the implementation: serialization that a derive
-  produces, constants, accessors, the steps inside a function, or the shape of
-  a value no other component reads.
-- A test never checks what cannot fail, such as asserting that output contains
-  no panic.
-- A test never asserts a defect as correct behavior to prove something else.
-  For example, to show that a cache hit does not read the cached file, do not
-  plant corrupt bytes and expect them to be accepted. Show a performance
-  property by measurement, not by a test.
+- **Scenarios first.** The real programs through their real boundaries: the
+  backend over HTTP and WebSocket, real runner processes, and a scripted
+  model (`crates/backend/tests/backend/support.rs`). One scenario covers
+  many modules and survives refactoring.
+- **Tables for dense logic.** Parsers, validators, state machines and a
+  vendor stream's conversion, with a table of their edge cases, where
+  reaching each case through a scenario would cost more than the logic.
+- **Contracts at their boundary.** A wire format another program or the web
+  app reads is pinned where it is encoded or decoded, with the values the
+  other side depends on. What generation already carries to the web app
+  ([Generated TypeScript](../../crates/xtask/src/contracts/mod.rs)), field
+  names and tags, is not pinned again; the fixtures both sides decode, the
+  rules the generator translates, checks only one side makes and stored
+  formats are.
 
-  A fixed bug of complexity, work that grew as the product of two sizes, is the
-  exception: a test can count the work deterministically, such as the reads of
-  a reactive list, and bound it by the sizes, never by time.
-- A test of a helper is not proof that the product works, because the helper's
-  test passes even when no entry point calls the helper. Prove the behavior
-  through the entry point that users reach.
-
-## Levels
-
-Tests run at the following levels:
-
-- **Scenarios first.** The default test runs the real programs through their
-  real boundaries: the backend over HTTP and WebSocket, real runner processes,
-  and a scripted model (`crates/backend/tests/backend/support.rs`). One
-  scenario covers many modules working together and survives refactoring,
-  because it depends on no internals.
-- **Tables for dense logic.** Test code with many cases and no side effects,
-  such as parsers, validators, state machines and a vendor stream's
-  conversion, directly with a table of its edge cases. Reaching every case
-  through a scenario would cost more than the logic is worth.
-- **Contracts at their boundary.** A test pins a contract as follows:
-  - Pin a wire format that another program or the web app reads where the code
-    encodes or decodes it, with the values the other side depends on.
-  - Do not pin a format that nothing outside the crate reads.
-  - When the other side's types are generated from the same definitions, as the
-    web app's are
-    ([Generated TypeScript](../../crates/xtask/src/contracts/mod.rs)),
-    generation carries the field names and tags, and a test that pins them
-    restates the derive. Pin what generation does not carry:
-    - The fixtures both sides decode.
-    - The rules the generator translates (strict or tolerant, optional or
-      nullable, bounds).
-    - Checks that only one side makes.
-    - Stored formats.
+A test covers a behavior once, at one level.
 
 ## Proof
 
-A test proves itself in these ways:
-
-- A test for a fixed bug fails on the code before the fix. Check it by running
-  the test at the parent commit, or by reverting the fix, before you commit.
-- A test for a new behavior fails when that behavior is broken: plant the
-  defect it guards against, see the test fail, then remove the defect.
-- A test that has never failed for a real reason is suspect, because it might
-  test nothing that can break.
+A test is seen to fail with the defect it guards against, at the parent
+commit or with the defect planted, before it is committed.
 
 ## Time and stability
 
@@ -170,31 +143,6 @@ Tests use resources and live in places by these rules:
   which raises its soft open-file limit to the hard limit (on macOS to
   `kern.maxfilesperproc`). A shell's low default, such as macOS's 256, needs no
   `ulimit`. A test that needs a lower limit sets it itself.
-- A new test goes into the existing test file for the code it covers. A test
-  for a fixed bug sits beside the tests of the behavior it restores and is
-  named after that behavior.
+- A new test goes into the existing test file for the code it covers.
 - Test support belongs to the crate that owns what is faked or observed, behind
   that crate's `testing` feature, never in its production build.
-
-## Coverage
-
-Coverage follows these rules:
-
-- Measure line coverage with `cargo llvm-cov` for the Rust workspace and
-  `bun test --coverage` for the web app's packages, and report it when you add
-  or review a body of tests.
-- Add a new test only when it either covers code that no test reached or adds
-  an edge case that no other test holds.
-- Coverage guides which tests to keep. It is not a target. Code that a test
-  runs without asserting its result is not proven.
-
-## Review checklist
-
-Ask these questions before you commit a test, and when you review one:
-
-1. Which behavior or fixed bug does it protect, and who relies on it?
-2. At which boundary does it observe the behavior, and does a scenario already
-   cover it?
-3. Did it fail before the fix, or with the planted defect?
-4. How long does it take, and what does it wait on?
-5. What does it leave behind: ports, processes, files?
