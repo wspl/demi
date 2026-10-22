@@ -5,13 +5,17 @@
 use axum::extract::ws::{CloseFrame, Message, close_code};
 use demi_runner_protocol::wire;
 
-use crate::link::{LinkEnd, SocketEnd};
+use crate::link::{Link, LinkEnd, SocketEnd};
 
 /// What the driver reads of one message of a runner's socket: a binary
 /// message's frame; the runner's refusal of a message of the backend's, as
 /// its close frame names it; the socket's failure; or nothing, for a ping,
-/// a pong or another close.
-pub fn socket_frame(message: Result<Message, axum::Error>) -> Option<Result<Vec<u8>, SocketEnd>> {
+/// a pong or another close; those say only that the runner is there, which
+/// `link` notes as it does for every frame.
+pub fn socket_frame(
+    link: &Link,
+    message: Result<Message, axum::Error>,
+) -> Option<Result<Vec<u8>, SocketEnd>> {
     match message {
         Ok(Message::Binary(frame)) => Some(Ok(frame.to_vec())),
         Ok(Message::Text(_)) => Some(Err(SocketEnd::Broken(
@@ -20,7 +24,11 @@ pub fn socket_frame(message: Result<Message, axum::Error>) -> Option<Result<Vec<
         Ok(Message::Close(Some(frame))) if frame.code == close_code::INVALID => {
             Some(Err(SocketEnd::Refused(frame.reason.to_string())))
         }
-        Ok(Message::Ping(_) | Message::Pong(_) | Message::Close(_)) => None,
+        Ok(Message::Ping(_) | Message::Pong(_)) => {
+            link.heard();
+            None
+        }
+        Ok(Message::Close(_)) => None,
         Err(error) => Some(Err(SocketEnd::Broken(error.to_string()))),
     }
 }

@@ -10,14 +10,14 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use axum::extract::ws::{Message, WebSocket};
+use axum::extract::ws::Message;
 use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
-use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, Serving, Updating, send};
+use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, RunnerSocket, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -56,7 +56,7 @@ impl Shard {
         device: DeviceRecord,
         runner: RunnerInfo,
         kept: KeptJobs,
-        mut socket: WebSocket,
+        mut socket: RunnerSocket,
     ) {
         // The update the runner was sent to is over, whatever this hello
         // comes to.
@@ -111,11 +111,10 @@ impl Shard {
             };
             if held.answers(self.services().runners.probe).await {
                 tracing::warn!(
-                    device = %device.id,
-                    "runner hello refused (already_connected): device {} already has a live connection [{}, {}]",
-                    device.id,
-                    runner.name,
-                    runner.platform
+                    event = "link.refused",
+                    host_id = %device.id,
+                    cause = "already_connected",
+                    "a runner's hello was refused: the device has a live connection"
                 );
                 let refusal = Inbound::HelloError {
                     code: HelloErrorCode::AlreadyConnected,
@@ -128,10 +127,10 @@ impl Shard {
                 return;
             }
             tracing::info!(
-                device = %device.id,
-                "the device's connection did not answer its ping and gives way to a new one [{}, {}]",
-                runner.name,
-                runner.platform
+                event = "link.replaced",
+                host_id = %device.id,
+                cause = "no_answer",
+                "the device's connection did not answer its ping and gives way to a new one"
             );
             held.disconnect(REPLACED);
         }
@@ -196,7 +195,7 @@ impl Shard {
         device: DeviceRecord,
         runner: RunnerInfo,
         instance: u64,
-        socket: WebSocket,
+        socket: RunnerSocket,
         bound: oneshot::Sender<DeviceDto>,
     ) {
         // A closing shard takes no runner, and the claim that waits for the

@@ -42,7 +42,7 @@ pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, ForwardEvent, HttpHead, HttpRequest, PackageEvent, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
     HostLog, LinkPolicy, SocketEnd,
-    END_GRACE, OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
+    END_GRACE, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
 pub use offers::{FileOffers, Offer};

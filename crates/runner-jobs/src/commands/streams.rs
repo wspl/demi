@@ -70,7 +70,7 @@ const OUTPUT_QUEUE: usize = 4;
 pub struct ServiceStreams {
     connection: ConnectionHandle,
     /// The connection's messages to the backend, which answer its streams.
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     pipes: PipeClient,
     services: ServiceHandle,
     bindings: Bindings,
@@ -84,7 +84,7 @@ pub struct ServiceStreams {
 impl ServiceStreams {
     pub fn new(
         connection: ConnectionHandle,
-        control: mpsc::Sender<wire::Frame>,
+        control: mpsc::UnboundedSender<wire::Frame>,
         pipes: PipeClient,
         services: ServiceHandle,
         draining: CancellationToken,
@@ -136,7 +136,6 @@ impl ServiceStreams {
         }
         let pipes = self.pipes.clone();
         let reply = self.control.clone();
-        let reporting = self.cancel.clone();
         let stream = self.cancel.child_token();
         let start = StreamStart {
             stream_id: stream_id.clone(),
@@ -153,20 +152,15 @@ impl ServiceStreams {
                 Ok(opened) => opened,
                 Err(StreamRefusal::Cancelled) => return,
                 Err(StreamRefusal::Refused { code, message }) => {
-                    send_error(&reply, stream_id, code, message, &stream).await;
+                    send_error(&reply, stream_id, code, message);
                     return;
                 }
             };
             // No bytes move before the answer.
             match wire::encode(&wire::Outbound::ServiceOpened { stream_id: stream_id.clone() }) {
                 Ok(message) => {
-                    tokio::select! {
-                        _ = stream.cancelled() => return,
-                        result = reply.send(message) => {
-                            if result.is_err() {
-                                return;
-                            }
-                        }
+                    if reply.send(message).is_err() {
+                        return;
                     }
                 }
                 Err(error) => {
@@ -194,15 +188,15 @@ impl ServiceStreams {
             if upload.is_err() || ended.input.is_err() {
                 stream.cancel();
             }
-            report_pipe(&reply, input.id, ended.input, &reporting).await;
-            report_pipe(&reply, output.id, upload, &reporting).await;
+            report_pipe(&reply, input.id, ended.input);
+            report_pipe(&reply, output.id, upload);
             // A one-shot call has no page to tell: its caller learns the
             // exit code and the operation's own words from this message.
             if let Some(Outcome { exit_code, stderr }) = ended.done {
                 match wire::encode(&wire::Outbound::ServiceDone { stream_id, exit_code, stderr }) {
                     Ok(message) => {
                         // A disconnected backend no longer waits for the call.
-                        let _ = reply.send(message).await;
+                        let _ = reply.send(message);
                     }
                     Err(error) => {
                         tracing::warn!("service_done encoding failed: {error}");
@@ -643,24 +637,18 @@ impl OutputSink for StreamSink {
     }
 }
 
-async fn send_error(
-    output: &mpsc::Sender<wire::Frame>,
+fn send_error(
+    output: &mpsc::UnboundedSender<wire::Frame>,
     stream_id: String,
     code: ServiceErrorCode,
     message: String,
-    cancel: &CancellationToken,
 ) {
     match wire::encode(&wire::Outbound::ServiceError {
         stream_id,
         code,
         message,
     }) {
-        Ok(message) => {
-            tokio::select! {
-                _ = cancel.cancelled() => {},
-                _ = output.send(message) => {},
-            }
-        }
+        Ok(message) => drop(output.send(message)),
         Err(error) => tracing::warn!("service_error encoding failed: {error}"),
     }
 }

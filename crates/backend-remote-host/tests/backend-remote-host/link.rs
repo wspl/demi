@@ -728,55 +728,6 @@ async fn a_failed_start_makes_the_next_job_send_its_manifest_again() {
     assert_eq!(manifests(&drain(&mut link).await), 1);
 }
 
-/// A job whose manifest waits for room in the connection's queue and is
-/// given up before it got there leaves the manifest unsent: the next job
-/// with the same commands sends it before its start.
-/// Cost: in process, no runner, a few milliseconds.
-#[tokio::test(flavor = "local")]
-async fn a_manifest_given_up_before_it_was_queued_goes_with_the_next_job() {
-    let device = device();
-    let mut link = device.connect(None);
-    let host = device.host("/work", Admission::Free);
-    let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
-    let selection = catalog.select(&CommandSet::new()).unwrap();
-    let start = |commands: Option<&demi_backend_remote_host::CommandSelection>| {
-        let host = host.clone();
-        let mut start = job_start("true");
-        start.commands = commands.cloned();
-        let id = start.id.clone();
-        let started = tokio::task::spawn_local(async move { host.start_job(start).await.map(drop) });
-        (id, started)
-    };
-    // Starts without commands fill the queue and the test's end of it, so
-    // the next send waits for room.
-    let fillers: Vec<_> = (0..4 * demi_backend_remote_host::OUTBOUND_FRAMES)
-        .map(|_| start(None))
-        .collect();
-    for _ in 0..20 {
-        tokio::task::yield_now().await;
-    }
-    let (_, given_up) = start(Some(&selection));
-    for _ in 0..20 {
-        tokio::task::yield_now().await;
-    }
-    given_up.abort();
-    assert!(given_up.await.unwrap_err().is_cancelled());
-    let (next, started) = start(Some(&selection));
-    let mut manifests = 0;
-    loop {
-        match link.next().await {
-            Inbound::Manifest { .. } => manifests += 1,
-            Inbound::JobStart { job_id, .. } if job_id == next => break,
-            _ => {}
-        }
-    }
-    assert_eq!(manifests, 1);
-    started.await.unwrap().unwrap();
-    for (_, filler) in fillers {
-        filler.await.unwrap().unwrap();
-    }
-}
-
 /// A resolver that answers from a script of its own.
 struct Scripted {
     calls: Cell<usize>,
@@ -1084,7 +1035,7 @@ async fn a_job_that_ends_cancels_its_pending_artifact_requests_without_an_answer
         artifact_answer(&link.next().await),
         Some((
             None,
-            Some("Artifact resolution request limit or duplicate id".into())
+            Some("Duplicate artifact resolution request id".into())
         ))
     );
     let observed = resolver.observed.borrow().clone().unwrap();
@@ -2203,7 +2154,7 @@ async fn an_unanswered_ping_ends_the_connection_unless_liveness_is_paused() {
     tokio::time::sleep(Duration::from_secs(30)).await;
     assert_eq!(
         link.ended().await,
-        LinkEnd::Disconnected("liveness: ping unanswered".into())
+        LinkEnd::Disconnected("liveness: nothing heard for 60 seconds".into())
     );
 }
 

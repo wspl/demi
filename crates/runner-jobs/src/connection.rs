@@ -30,8 +30,6 @@ use crate::commands::{
     rpc::CallEvent,
 };
 
-/// Requests waiting for the registration's owner; a sender waits for room.
-const REQUESTS: usize = 64;
 /// How long the backend has to answer which numbers a service may use. Where
 /// an artifact is has no deadline of its own: the backend may fetch it first,
 /// which takes as long as the server's disk or link does
@@ -59,7 +57,7 @@ pub enum Reach {
 #[derive(Clone)]
 pub struct Live {
     /// Replies and requests to the backend.
-    pub control: mpsc::Sender<wire::Frame>,
+    pub control: mpsc::UnboundedSender<wire::Frame>,
     /// Cancelled when the connection ends; cancelling it ends the
     /// connection.
     pub closed: CancellationToken,
@@ -69,7 +67,7 @@ pub struct Live {
 /// registration's owner.
 #[derive(Clone)]
 pub struct ConnectionHandle {
-    requests: mpsc::Sender<Request>,
+    requests: mpsc::UnboundedSender<Request>,
     reach: watch::Receiver<Reach>,
 }
 
@@ -78,7 +76,7 @@ pub enum Request {
     /// Where a callback call's events go, until `ended` is cancelled.
     Call {
         id: String,
-        events: mpsc::Sender<CallEvent>,
+        events: mpsc::UnboundedSender<CallEvent>,
         ended: CancellationToken,
     },
     /// A question to the backend; the asker cancels `abandoned` when it no
@@ -100,8 +98,8 @@ pub enum Request {
 impl ConnectionHandle {
     /// A handle whose requests arrive at the returned receiver and that
     /// reaches the backend as `reach` says.
-    pub fn new(reach: watch::Receiver<Reach>) -> (Self, mpsc::Receiver<Request>) {
-        let (requests, received) = mpsc::channel(REQUESTS);
+    pub fn new(reach: watch::Receiver<Reach>) -> (Self, mpsc::UnboundedReceiver<Request>) {
+        let (requests, received) = mpsc::unbounded_channel();
         (Self { requests, reach }, received)
     }
 
@@ -130,24 +128,22 @@ impl ConnectionHandle {
         }
     }
 
-    async fn request(&self, request: Request) -> Result<(), RuntimeError> {
+    fn request(&self, request: Request) -> Result<(), RuntimeError> {
         self.requests
             .send(request)
-            .await
             .map_err(|_| RuntimeError::Cancelled)
     }
 
     /// Sends the call's inbound events to `events` until `ended` is
     /// cancelled, or until the connection that serves now ends; false when
     /// the registration ended.
-    pub async fn register_call(
+    pub fn register_call(
         &self,
         id: String,
-        events: mpsc::Sender<CallEvent>,
+        events: mpsc::UnboundedSender<CallEvent>,
         ended: CancellationToken,
     ) -> bool {
         self.request(Request::Call { id, events, ended })
-            .await
             .is_ok()
     }
 
@@ -189,8 +185,7 @@ impl ConnectionHandle {
         self.request(Request::Ask {
             question: question(reply),
             abandoned,
-        })
-        .await?;
+        })?;
         let answer = async {
             match deadline {
                 None => Ok(answer.await),
@@ -209,7 +204,7 @@ impl ConnectionHandle {
     /// running holds its context any more.
     pub async fn context_released(&self, job_id: String) {
         // A registration that ended has no context left to end.
-        let _ended = self.request(Request::ContextReleased { job_id }).await;
+        let _ended = self.request(Request::ContextReleased { job_id });
     }
 
     /// Makes `context` live, with the leases that keep its services
@@ -226,7 +221,6 @@ impl ConnectionHandle {
             leases,
             reply,
         })
-        .await
         .map_err(|_| ended())?;
         answer.await.map_err(|_| ended())?
     }
@@ -288,15 +282,15 @@ impl ServiceBackend for ConnectionHandle {
 }
 
 impl ConnectionHandle {
-    /// Hands `message` to the connection that serves, waiting for room in
-    /// it, and for the next connection while the runner is away or the one
-    /// it waited on ended; an error once the runner ends, or for
-    /// a message that breaks the wire's rules.
+    /// Hands `message` to the connection that serves, and for the next
+    /// connection while the runner is away or the one it waited on ended; an
+    /// error once the runner ends, or for a message that breaks the wire's
+    /// rules.
     async fn send(&self, message: &wire::Outbound) -> Result<(), String> {
         let frame = wire::encode(message).map_err(|error| error.to_string())?;
         loop {
             let live = self.connected().await.map_err(|_| UNREACHABLE.to_owned())?;
-            if live.control.send(frame.clone()).await.is_ok() {
+            if live.control.send(frame.clone()).is_ok() {
                 return Ok(());
             }
         }
@@ -341,7 +335,7 @@ pub struct Relay {
 }
 
 struct Call {
-    events: mpsc::Sender<CallEvent>,
+    events: mpsc::UnboundedSender<CallEvent>,
     ended: CancellationToken,
 }
 
@@ -349,7 +343,7 @@ impl Relay {
     pub fn call(
         &mut self,
         id: String,
-        events: mpsc::Sender<CallEvent>,
+        events: mpsc::UnboundedSender<CallEvent>,
         ended: CancellationToken,
         watches: &mut JoinSet<Ended>,
     ) {
@@ -470,9 +464,9 @@ impl Relay {
             }
             _ => return false,
         };
-        // A call that cannot keep up with its events ends.
+        // A call that ended takes no more events.
         if let Some(call) = self.calls.get(id)
-            && call.events.try_send(event).is_err()
+            && call.events.send(event).is_err()
         {
             call.ended.cancel();
         }

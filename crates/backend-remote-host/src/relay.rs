@@ -212,7 +212,6 @@ impl CallEntry {
         link.send(&Inbound::RpcStdinPull {
             call_id: call_id.into(),
         })
-        .await
         .map_err(|error| PortError::Ended(error.to_string()))?;
         // A dropped sender is an input that ended.
         Ok(received.await.unwrap_or(None))
@@ -260,7 +259,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
                     call_id: call_id.clone(),
                     bytes: WireBytes(text.into_bytes()),
                 };
-                if let Err(error) = relaying.send(&error).await {
+                if let Err(error) = relaying.send(&error) {
                     tracing::debug!(call = %call_id, "rpc error not sent: {error}");
                 }
                 code
@@ -273,7 +272,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             call_id: call_id.clone(),
             exit_code,
         };
-        if let Err(error) = relaying.send(&exit).await {
+        if let Err(error) = relaying.send(&exit) {
             tracing::debug!(call = %call_id, "rpc exit not sent: {error}");
         }
     });
@@ -341,7 +340,7 @@ async fn run(
         stdin: stdin.as_ref().map(Pipe::wire_ref),
         stdout: stdout.wire_ref(),
     };
-    link.send(&pipes).await.map_err(|error| error.to_string())?;
+    link.send(&pipes).map_err(|error| error.to_string())?;
     let invocation = RpcInvocation {
         path: call.path,
         argv: call.argv,
@@ -537,7 +536,6 @@ impl PortTransport for RelayPort {
                         };
                         self.link
                             .send(&output)
-                            .await
                             .map_err(|error| PortError::Ended(error.to_string()))?;
                     }
                     Ok(PortResponse::Written {})

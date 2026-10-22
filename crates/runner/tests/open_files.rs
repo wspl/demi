@@ -269,7 +269,7 @@ fn reply(bytes: Vec<u8>) -> serde_json::Value {
 /// The next reply whose `key` is `value`; replies for other requests, such as
 /// a finished pipe's report, are skipped.
 async fn reply_for(
-    replies: &tokio::sync::Mutex<mpsc::Receiver<wire::Frame>>,
+    replies: &tokio::sync::Mutex<mpsc::UnboundedReceiver<wire::Frame>>,
     key: &str,
     value: &str,
 ) -> serde_json::Value {
@@ -345,7 +345,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     }
 
     // Host requests.
-    let (output, replies) = mpsc::channel(64);
+    let (output, replies) = mpsc::unbounded_channel();
     let replies = Arc::new(tokio::sync::Mutex::new(replies));
     let host = Arc::new(HostServer::new(output, root_path.clone(), pipes.clone()));
     {
@@ -581,7 +581,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     .unwrap();
     let manifest = serde_json::to_value(manifest).unwrap();
     let mut dispatch = Dispatch::new(&root_path, manifest, pipes.clone()).await;
-    let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
+    let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::unbounded_channel().1);
     let reached = Arc::new(AtomicUsize::new(0));
     let counted = reached.clone();
     tokio::spawn(async move {

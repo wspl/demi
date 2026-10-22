@@ -88,13 +88,13 @@ impl Replies {
 /// The connection's way to the backend.
 #[derive(Clone)]
 struct Backend {
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     closed: CancellationToken,
 }
 
 impl Backend {
-    /// Sends `message`; false once the connection closed.
-    async fn send(&self, message: &Outbound) -> bool {
+    /// Sends `message`; false once the connection's writer ended.
+    fn send(&self, message: &Outbound) -> bool {
         let frame = match wire::encode(message) {
             Ok(frame) => frame,
             Err(error) => {
@@ -104,10 +104,7 @@ impl Backend {
                 return true;
             }
         };
-        tokio::select! {
-            () = self.closed.cancelled() => false,
-            sent = self.control.send(frame) => sent.is_ok(),
-        }
+        self.control.send(frame).is_ok()
     }
 }
 
@@ -140,7 +137,7 @@ impl Forwarding {
         listed: watch::Sender<Arc<Vec<Listed>>>,
         direct: Direct,
         pipes: PipeClient,
-        control: mpsc::Sender<wire::Frame>,
+        control: mpsc::UnboundedSender<wire::Frame>,
         closed: CancellationToken,
     ) -> Self {
         let (events, received) = mpsc::unbounded_channel();
@@ -360,8 +357,7 @@ impl Serving {
                         .send(&Outbound::ForwardState {
                             forward: id,
                             state: None,
-                        })
-                        .await;
+                        });
                 }
             }
         }
@@ -424,8 +420,7 @@ impl Serving {
             .send(&Outbound::ForwardState {
                 forward: forward.to_owned(),
                 state,
-            })
-            .await;
+            });
     }
 
     /// Announces each listening forward's state that changed, such as a
@@ -462,8 +457,7 @@ impl Serving {
             .send(&Outbound::ForwardState {
                 forward: forward.to_owned(),
                 state,
-            })
-            .await;
+            });
     }
 }
 
@@ -591,7 +585,7 @@ impl Accepting {
                     id: id.clone(),
                     forward: forward.id.clone(),
                 };
-                if !self.backend.send(&open).await {
+                if !self.backend.send(&open) {
                     return;
                 }
                 let opened = tokio::time::timeout(DEADLINE, answered).await;
@@ -660,8 +654,8 @@ async fn relay(
         received
     };
     let (sent, received) = tokio::join!(sending, receiving);
-    report_pipe(&backend.control, output.id, sent, &backend.closed).await;
-    report_pipe(&backend.control, input.id, received, &backend.closed).await;
+    report_pipe(&backend.control, output.id, sent);
+    report_pipe(&backend.control, input.id, received);
 }
 
 /// Connects a connection that came through the relay to the forward's
@@ -689,10 +683,10 @@ async fn connect_relayed(
             let failed = futures_util::stream::once(async move { Err::<Bytes, _>(error) });
             let cancel = backend.closed.child_token();
             let sent = pipes.stream(&output.url, failed, &cancel).await;
-            report_pipe(&backend.control, output.id, sent, &backend.closed).await;
+            report_pipe(&backend.control, output.id, sent);
             // Taken and dropped: the Listen On runner's bytes go nowhere.
             let received = pipes.get(&input.url, cancel).await.map(drop);
-            report_pipe(&backend.control, input.id, received, &backend.closed).await;
+            report_pipe(&backend.control, input.id, received);
         }
     }
 }
@@ -764,7 +758,7 @@ impl Dial for RunnerDial {
                 device,
                 sdp: dialing.sdp,
             };
-            if !backend.send(&offer).await {
+            if !backend.send(&offer) {
                 direct.close(&peer);
                 return Err(None);
             }
@@ -800,7 +794,7 @@ impl Dial for RunnerDial {
                         found = candidates.recv() => match found {
                             Some(candidate) => {
                                 let found = Outbound::DirectCandidate { peer: ending.clone(), candidate };
-                                if !told.send(&found).await {
+                                if !told.send(&found) {
                                     return;
                                 }
                             }
@@ -810,7 +804,7 @@ impl Dial for RunnerDial {
                     }
                 }
                 ended.ended().await;
-                told.send(&Outbound::DirectClosed { peer: ending }).await;
+                told.send(&Outbound::DirectClosed { peer: ending });
             });
             match link.connected().await {
                 Ok(()) => Ok(RunnerPeer { link, peer, direct }),

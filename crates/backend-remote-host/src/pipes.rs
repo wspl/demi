@@ -242,6 +242,8 @@ impl Pipes {
     pub fn mint_within(&self, source: Option<&str>, sink: Option<&str>, arrival: Duration) -> Pipe {
         let id: Arc<str> = uuid::Uuid::new_v4().simple().to_string().into();
         let core = Core::new();
+        // One chunk at a time: a pipe carries bulk bytes, so its writer waits for
+        // its reader rather than the backend holding them without end.
         let (sender, receiver) = mpsc::channel(1);
         let deadline = watch::Sender::new(Some(Instant::now() + arrival));
         let end =

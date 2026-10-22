@@ -35,12 +35,12 @@ pub struct Dispatch {
     pub dispatcher: Arc<Dispatcher>,
     pub server: Server,
     /// Frames the connection sends the backend.
-    pub outgoing: mpsc::Receiver<wire::Frame>,
+    pub outgoing: mpsc::UnboundedReceiver<wire::Frame>,
     manifest: Arc<Manifest>,
     paths: ContextPaths,
     handle: ConnectionHandle,
     /// The connection's frames to the backend.
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     closed: CancellationToken,
     /// Keeps the connection reachable while the dispatch lives.
     _reach: watch::Sender<Reach>,
@@ -75,7 +75,7 @@ impl Dispatch {
         let server = Server::start(dispatcher.clone())
             .await
             .expect("local endpoint");
-        let (control, outgoing) = mpsc::channel(32);
+        let (control, outgoing) = mpsc::unbounded_channel();
         let closed = CancellationToken::new();
         let reach = watch::Sender::new(Reach::Connected(Live {
             control: control.clone(),
@@ -138,7 +138,7 @@ impl Dispatch {
                 // A command cancelled while it waited needs no answer.
                 let _ = arrival.written.send(());
                 if let Some(medium) = arrival.medium
-                    && control.send(medium).await.is_err()
+                    && control.send(medium).is_err()
                 {
                     return;
                 }
@@ -223,8 +223,8 @@ impl Drop for ContextGuard {
 /// A connection owner for callbacks, questions and contexts alone, until
 /// `closed`.
 async fn serve(
-    control: mpsc::Sender<wire::Frame>,
-    mut requests: mpsc::Receiver<Request>,
+    control: mpsc::UnboundedSender<wire::Frame>,
+    mut requests: mpsc::UnboundedReceiver<Request>,
     mut inbound: mpsc::Receiver<wire::Inbound>,
     mut removals: mpsc::Receiver<String>,
     index: watch::Sender<Arc<contexts::ContextIndex>>,
@@ -246,7 +246,7 @@ async fn serve(
                     let frame = relay
                         .ask(question, abandoned, &mut watches)
                         .expect("question frame");
-                    let _closed = control.send(frame).await;
+                    let _closed = control.send(frame);
                 }
                 Some(Request::Context { context, leases, reply }) => {
                     let _left = reply.send(contexts.insert(context, leases));

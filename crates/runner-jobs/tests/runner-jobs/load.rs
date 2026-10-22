@@ -49,7 +49,7 @@ async fn backend_commands_are_never_turned_away() {
         let manifest = serde_json::to_value(manifest).unwrap();
         let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let mut dispatch = Dispatch::new(&cwd, manifest, pipes).await;
-        let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
+        let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::unbounded_channel().1);
         // The backend never answers; count the calls that reach it.
         let reached = Arc::new(AtomicUsize::new(0));
         let counted = reached.clone();

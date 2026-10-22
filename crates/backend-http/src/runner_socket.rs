@@ -16,13 +16,13 @@ use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, Outbound, Runner
 
 use demi_backend_runners::claims::ClaimGrant;
 use demi_backend_runners::codes::ClaimCode;
-use demi_backend_runners::devices::send;
+use demi_backend_runners::devices::{RunnerSocket, send};
 
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::{KeptJobs, Shards};
 
 /// Serves a runner's socket until it is handed to a shard or closes.
-pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: WebSocket) {
+pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: RunnerSocket) {
     let deadline = services.runners.hello_deadline;
     let hello = match tokio::time::timeout(deadline, hello(&mut socket)).await {
         Ok(Some(hello)) => hello,
@@ -189,7 +189,7 @@ async fn closed(socket: &mut WebSocket) {
 }
 
 /// Answers the hello with a refusal and closes the socket.
-async fn refuse(mut socket: WebSocket, runner: &RunnerInfo, code: HelloErrorCode, reason: &str) {
+async fn refuse(mut socket: RunnerSocket, runner: &RunnerInfo, code: HelloErrorCode, reason: &str) {
     tracing::warn!(
         "runner hello refused ({code}): {reason} [{}, {}]",
         runner.name,
@@ -211,7 +211,7 @@ async fn refuse(mut socket: WebSocket, runner: &RunnerInfo, code: HelloErrorCode
 async fn await_claim(
     services: &Services,
     shards: &Shards,
-    mut socket: WebSocket,
+    mut socket: RunnerSocket,
     runner: RunnerInfo,
     instance: u64,
 ) {
@@ -263,7 +263,7 @@ async fn await_claim(
 /// unanswered, and the claim then deletes the device it made.
 async fn hand_over(
     shards: &Shards,
-    mut socket: WebSocket,
+    mut socket: RunnerSocket,
     runner: RunnerInfo,
     instance: u64,
     grant: ClaimGrant,

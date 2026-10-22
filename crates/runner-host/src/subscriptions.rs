@@ -19,6 +19,10 @@
 //! - Changes are gathered for `WATCH_GATHER`, and each subscription is sent at
 //!   most once per batch, with the highest number it saw. That is why a batch
 //!   names no paths and needs no size limit.
+//! - One batch waits for its taker at most (`Taken`). Changes made while it
+//!   waits merge into the next one, a subscription once with its highest
+//!   number, and the next batch goes once the last was taken, so a slow
+//!   uplink holds no more than the subscriptions' own count.
 //! - Starting and stopping a shared platform watch run on the blocking pool,
 //!   never on the control thread, so the last subscriber releases its watch
 //!   without waiting for a join. Closing also ends a watch still being started,
@@ -53,23 +57,29 @@ use std::{
 use demi_command_sdk::paths::resolve;
 use demi_runner_protocol::files::SubscriptionKind;
 use demi_runner_protocol::wire::{CHANGES_PER_MESSAGE, SUBSCRIPTION_LEASE, WATCH_GATHER};
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
 use crate::tree_watch::{Change, Event, Reach};
 use crate::watches::{Follower, Key, MAX_SINGLE_WATCHES, Status, Watches, lock};
 
+/// Held by a batch of changes until its taker has taken it; the next batch
+/// goes once it is dropped. A batch cut into messages shares it.
+#[derive(Debug, Clone)]
+pub struct Taken(#[allow(dead_code, reason = "held for its drop")] Arc<OwnedSemaphorePermit>);
+
 /// What the client hears of its subscriptions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum Report {
     /// The subscription is watched: a change at a number above `since` is
     /// reported.
     Live { id: String, since: u64 },
     /// It cannot be watched, for this reason; it is over.
     Failed { id: String, reason: String },
-    /// These changed, each with the number of its latest change.
-    Changed(Vec<(String, u64)>),
+    /// These changed, each with the number of its latest change. The taker
+    /// holds the batch's `Taken` until it has passed the changes on.
+    Changed(Vec<(String, u64)>, Taken),
 }
 
 /// What the client asks.
@@ -94,9 +104,9 @@ impl Subscriptions {
     /// The subscriptions of a client whose relative paths start in
     /// `default_cwd`, followed through `watches`; their reports come in
     /// order on the receiver.
-    pub fn new(watches: Watches, default_cwd: PathBuf) -> (Self, mpsc::Receiver<Report>) {
+    pub fn new(watches: Watches, default_cwd: PathBuf) -> (Self, mpsc::UnboundedReceiver<Report>) {
         let (requests, received) = mpsc::unbounded_channel();
-        let (reports, heard) = mpsc::channel(64);
+        let (reports, heard) = mpsc::unbounded_channel();
         let (statuses, statused) = mpsc::unbounded_channel();
         let owner = Owner {
             watches,
@@ -104,6 +114,7 @@ impl Subscriptions {
             subscriptions: HashMap::new(),
             bound: HashMap::new(),
             pending: Arc::new(Pending::default()),
+            taken: Arc::new(Semaphore::new(1)),
             reports,
             statuses,
         };
@@ -440,7 +451,9 @@ struct Owner {
     subscriptions: HashMap<String, Subscription>,
     bound: HashMap<Key, Bound>,
     pending: Arc<Pending>,
-    reports: mpsc::Sender<Report>,
+    /// One permit, held by the batch that waits for its taker.
+    taken: Arc<Semaphore>,
+    reports: mpsc::UnboundedSender<Report>,
     statuses: mpsc::UnboundedSender<(Key, Status)>,
 }
 
@@ -466,7 +479,13 @@ impl Owner {
                 }
                 () = sleep_until(flush), if flush.is_some() => {
                     flush = None;
-                    self.flush().await
+                    let sent = self.flush().await;
+                    // Changes the last batch's taker has not let go of wait
+                    // for the next gather, merged with those that follow.
+                    if sent && !lock(&self.pending.changes).is_empty() {
+                        flush = Some(Instant::now() + WATCH_GATHER);
+                    }
+                    sent
                 }
                 () = sleep_until(lease_ends), if lease_ends.is_some() => {
                     self.expire();
@@ -517,11 +536,11 @@ impl Owner {
         };
         let subject = match subject {
             Ok(subject) => subject,
-            Err(reason) => return self.report(Report::Failed { id, reason }).await,
+            Err(reason) => return self.report(Report::Failed { id, reason }),
         };
         let Some(key) = self.key_of(&subject, &[]) else {
             let reason = too_many_watches();
-            return self.report(Report::Failed { id, reason }).await;
+            return self.report(Report::Failed { id, reason });
         };
         self.bind(&id, &subject, &key);
         let subscription = Subscription {
@@ -661,7 +680,6 @@ impl Owner {
                     id: id.to_owned(),
                     reason,
                 })
-                .await
             }
             Status::Running => {
                 let Some(subscription) = self.subscriptions.get(id) else {
@@ -684,7 +702,7 @@ impl Owner {
                     let Some(own) = self.key_of(&subject, &left_out) else {
                         self.subscriptions.remove(id);
                         let reason = too_many_watches();
-                        return self.report(Report::Failed { id: id.to_owned(), reason }).await;
+                        return self.report(Report::Failed { id: id.to_owned(), reason });
                     };
                     self.bind(id, &subject, &own);
                     if let Some(subscription) = self.subscriptions.get_mut(id) {
@@ -704,7 +722,6 @@ impl Owner {
                     id: id.to_owned(),
                     since,
                 })
-                .await
             }
         }
     }
@@ -713,6 +730,11 @@ impl Owner {
     /// once; those that are not live, or whose lease ran out, are not.
     async fn flush(&mut self) -> bool {
         self.expire();
+        // The last batch has not been taken: these stay merged in `pending`.
+        let Ok(permit) = self.taken.clone().try_acquire_owned() else {
+            return true;
+        };
+        let taken = Taken(Arc::new(permit));
         let changes = std::mem::take(&mut *lock(&self.pending.changes));
         let mut changes: Vec<(String, u64)> = changes
             .into_iter()
@@ -724,7 +746,7 @@ impl Owner {
         }
         while !changes.is_empty() {
             let rest = changes.split_off(changes.len().min(CHANGES_PER_MESSAGE));
-            if !self.report(Report::Changed(changes)).await {
+            if !self.report(Report::Changed(changes, taken.clone())) {
                 return false;
             }
             changes = rest;
@@ -747,8 +769,8 @@ impl Owner {
         }
     }
 
-    async fn report(&self, report: Report) -> bool {
-        self.reports.send(report).await.is_ok()
+    fn report(&self, report: Report) -> bool {
+        self.reports.send(report).is_ok()
     }
 }
 

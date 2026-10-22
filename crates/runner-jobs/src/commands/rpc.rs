@@ -18,9 +18,6 @@ use std::{collections::BTreeMap, io, sync::Arc};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-/// A call's queue of inbound events; past it the call ends.
-const EVENTS: usize = 8;
-
 pub struct Request {
     pub context: Arc<ExecutionContext>,
     pub root: String,
@@ -45,7 +42,7 @@ pub enum CallEvent {
 
 struct CallTransport<'a> {
     id: &'a str,
-    output: &'a mpsc::Sender<wire::Frame>,
+    output: &'a mpsc::UnboundedSender<wire::Frame>,
     stop: &'a CancellationToken,
 }
 
@@ -67,7 +64,7 @@ impl Drop for Pending<'_> {
             call_id: self.id.clone(),
         }) {
             Ok(message) => {
-                if self.connection.control.try_send(message).is_err() {
+                if self.connection.control.send(message).is_err() {
                     self.connection.closed.cancel();
                 }
             }
@@ -87,7 +84,7 @@ pub struct RunningHint {
 impl Drop for RunningHint {
     fn drop(&mut self) {
         if let Some(message) = self.clear.take()
-            && self.connection.control.try_send(message).is_err()
+            && self.connection.control.send(message).is_err()
         {
             // Backend disconnection clears job hints if a clear cannot be queued.
             self.connection.closed.cancel();
@@ -125,7 +122,6 @@ pub async fn running_hint(
     connection
         .control
         .send(set)
-        .await
         .map_err(|_| ServiceError::Cancelled)?;
     Ok(Some(guard))
 }
@@ -151,10 +147,9 @@ pub async fn invoke(
     let id = uuid::Uuid::new_v4().simple().to_string();
     let stop = cancel.child_token();
     let _stop_guard = stop.clone().drop_guard();
-    let (events, receiver) = mpsc::channel(EVENTS);
+    let (events, receiver) = mpsc::unbounded_channel();
     if !handle
         .register_call(id.clone(), events, stop.clone())
-        .await
     {
         return Err(ServiceError::Cancelled);
     }
@@ -181,13 +176,11 @@ pub async fn invoke(
         connection
             .control
             .send(message)
-            .await
             .map_err(|_| ServiceError::Cancelled)?;
         if !request.live {
             connection
                 .control
                 .send(stdin_end(&id)?)
-                .await
                 .map_err(|_| ServiceError::Cancelled)?;
         }
         let transport = CallTransport {
@@ -212,7 +205,7 @@ pub async fn invoke(
 async fn exchange(
     pipes: &PipeClient,
     request: &Request,
-    mut events: mpsc::Receiver<CallEvent>,
+    mut events: mpsc::UnboundedReceiver<CallEvent>,
     input: Input,
     output: &mut CommandOutput<'_>,
     transport: &CallTransport<'_>,
@@ -225,6 +218,8 @@ async fn exchange(
     } = transport;
     let (stdin_sender, stdin_receiver) = oneshot::channel();
     let (stdout_sender, stdout_receiver) = oneshot::channel();
+    // One demand at a time: the backend asks for input only after it has
+    // taken the last, and a second is a protocol violation.
     let (pull, demanded) = mpsc::channel(1);
     let control = async {
         let mut pipe_senders = Some((stdin_sender, stdout_sender));
@@ -250,7 +245,6 @@ async fn exchange(
                     .map_err(|_| ServiceError::failed(RpcError::OverlappingDemands))?,
                 CallEvent::Pull => connection
                     .send(stdin_end(id)?)
-                    .await
                     .map_err(|_| ServiceError::Cancelled)?,
                 CallEvent::Exit(code) => {
                     if let Some((stdin, stdout)) = pipe_senders.take() {
@@ -310,7 +304,7 @@ async fn exchange(
 /// a failure to write the output ends it here.
 async fn download(
     pipes: &PipeClient,
-    connection: &mpsc::Sender<wire::Frame>,
+    connection: &mpsc::UnboundedSender<wire::Frame>,
     stop: &CancellationToken,
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
@@ -328,7 +322,7 @@ async fn download(
         Ok::<_, io::Error>(())
     }
     .await;
-    report(connection, reference, &result, stop).await?;
+    report(connection, reference, &result)?;
     match unwritten {
         Some(error) => Err(ServiceError::failed(io::Error::other(error))),
         None => Ok(()),
@@ -359,7 +353,6 @@ async fn send_input(
                 None => {
                     connection
                         .send(stdin_end(id)?)
-                        .await
                         .map_err(|_| ServiceError::Cancelled)?;
                     return Ok(());
                 }
@@ -367,7 +360,6 @@ async fn send_input(
             .map_err(ServiceError::failed)?;
             connection
                 .send(message)
-                .await
                 .map_err(|_| ServiceError::Cancelled)?;
         }
         return Ok(());
@@ -391,16 +383,15 @@ async fn send_input(
         // the report, which fails a pipe still open and with it the call,
         // whose exit carries the cause; a pipe already over, as the input of
         // a call that ended is, stays as it ended.
-        report(connection, &reference, &result, stop).await?;
+        report(connection, &reference, &result)?;
     }
     Ok(())
 }
 
-async fn report(
-    output: &mpsc::Sender<wire::Frame>,
+fn report(
+    output: &mpsc::UnboundedSender<wire::Frame>,
     reference: &PipeRef,
     result: &io::Result<()>,
-    stop: &CancellationToken,
 ) -> Result<(), ServiceError> {
     let message = wire::encode(&wire::Outbound::PipeDone {
         pipe_id: reference.id.clone(),
@@ -408,10 +399,7 @@ async fn report(
         error: result.as_ref().err().map(ToString::to_string),
     })
     .map_err(ServiceError::failed)?;
-    tokio::select! {
-        _ = stop.cancelled() => Err(ServiceError::Cancelled),
-        result = output.send(message) => result.map_err(|_| ServiceError::Cancelled),
-    }
+    output.send(message).map_err(|_| ServiceError::Cancelled)
 }
 /// A call's relay broke the rpc protocol (`crates/host-interface/src/rpc.rs`).
 #[derive(Debug, thiserror::Error)]

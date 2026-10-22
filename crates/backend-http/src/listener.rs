@@ -25,6 +25,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use axum::http::Request;
+use demi_runner_protocol::wire::WriteProgress;
 use axum::response::Response;
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
@@ -231,6 +232,7 @@ impl<I> ConnectionIo<I> {
                 closed,
                 opened: Instant::now(),
                 moved: AtomicU64::new(0),
+                writes: Arc::default(),
             })),
         }
     }
@@ -263,6 +265,9 @@ struct ControlState {
     opened: Instant,
     /// When bytes last moved, in milliseconds after `opened`.
     moved: AtomicU64,
+    /// Whether the connection's writes move, which the runner's socket
+    /// asks for ([`ConnectionControl::write_progress`]).
+    writes: Arc<WriteProgress>,
 }
 
 impl ControlState {
@@ -278,6 +283,12 @@ impl ControlState {
 }
 
 impl ConnectionControl {
+
+    /// Whether the connection's writes move: the runner's socket ends when
+    /// they stop for too long (`crates/runner-protocol/src/wire/mod.rs`).
+    pub(crate) fn write_progress(&self) -> Arc<WriteProgress> {
+        self.0.writes.clone()
+    }
 
     /// Closes the connection now.
     pub(crate) fn close(&self) {
@@ -357,6 +368,7 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for ConnectionIo<I> {
             return Poll::Ready(Err(closed_by_the_backend()));
         }
         let polled = Pin::new(&mut this.stream).poll_write(cx, buf);
+        this.control.0.writes.polled(&polled, |&written| written > 0);
         this.moved(&polled);
         polled
     }
@@ -371,6 +383,7 @@ impl<I: AsyncWrite + Unpin> AsyncWrite for ConnectionIo<I> {
             return Poll::Ready(Err(closed_by_the_backend()));
         }
         let polled = Pin::new(&mut this.stream).poll_write_vectored(cx, bufs);
+        this.control.0.writes.polled(&polled, |&written| written > 0);
         this.moved(&polled);
         polled
     }

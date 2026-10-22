@@ -3,6 +3,16 @@
 //! for, the routing of every message the runner sends, liveness, and the
 //! teardown that ends everything in flight when the connection goes.
 //!
+//! # Writing
+//!
+//! Every message the backend sends is control or input
+//! ([`Inbound::is_input`]). The two wait in queues of their own, which grow
+//! as far as what is sent, and the driver writes control first: a stop or a
+//! small request waits only for the frame being written, never for the input
+//! queued before it, and the ping is control. A frame whose write makes no
+//! progress for [`wire::LINK_WRITE_TIMEOUT`], and a connection that has said
+//! nothing for [`wire::LINK_SILENCE`], end the connection.
+//!
 //! The engine does no network IO. Its owner accepts the socket, reads the
 //! runner's `hello`, and hands the driver the socket's frames
 //! ([`LinkDriver::serve`]); the driver routes each message synchronously, so
@@ -46,19 +56,8 @@ use crate::{
 /// How often the backend asks a runner whether it is there.
 pub const PING_INTERVAL: Duration = Duration::from_secs(30);
 
-/// The frames the backend queues for a runner before a sender waits.
-pub const OUTBOUND_FRAMES: usize = 64;
-
-/// The artifact requests a connection answers at a time.
-const ARTIFACT_REQUESTS: usize = 32;
 /// Why an artifact request names no work the backend knows.
 const NO_LIVE_WORK: &str = "No matching live job or stream";
-/// The numbers requests a connection answers at a time.
-const NUMBERS_REQUESTS: usize = 32;
-/// The package messages a connection holds before it hands them on; one
-/// beyond is dropped and logged. The runner waits for its connection's room
-/// before it sends each, so only a runner that breaks that rule fills it.
-const PACKAGE_EVENTS: usize = 1024;
 
 /// How long the backend's work for a connection may go on once the
 /// connection ended, such as an rpc handler committing; whatever still runs
@@ -312,7 +311,10 @@ pub(crate) struct Inner {
     shell: Option<String>,
     /// The device's jobs, which outlive the connection.
     device_jobs: DeviceJobs,
-    outbound: mpsc::Sender<Vec<u8>>,
+    /// Where the messages the driver writes first wait.
+    control: mpsc::UnboundedSender<Vec<u8>>,
+    /// Where a command's input waits behind them.
+    input: mpsc::UnboundedSender<Vec<u8>>,
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     /// Where the runner's log lines are stored, when the policy keeps them.
@@ -325,7 +327,7 @@ pub(crate) struct Inner {
     /// still runs is aborted.
     overdue: CancellationToken,
     /// The package events waiting to be handed to the policy, in order.
-    package_events: mpsc::Sender<PackageEvent>,
+    package_events: mpsc::UnboundedSender<PackageEvent>,
     /// Cancelled when the connection ends.
     closed: CancellationToken,
     /// Why it ended, once it has.
@@ -333,6 +335,9 @@ pub(crate) struct Inner {
     /// Why the backend ends it; the driver returns with this.
     disconnect: RefCell<Option<String>>,
     liveness: Cell<Liveness>,
+    /// When anything last arrived from the runner, a message, a ping or a
+    /// pong.
+    heard: Cell<tokio::time::Instant>,
     /// Changes with each pong, which a probe of the connection waits for.
     pongs: watch::Sender<()>,
     /// What the runner last reported its artifact cache holds; none until
@@ -386,9 +391,7 @@ enum Admitted {
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Liveness {
     #[default]
-    Idle,
-    /// A ping is unanswered.
-    Waiting,
+    Watching,
     /// A checkpoint copies the machine: silence is no death.
     Paused,
 }
@@ -710,8 +713,9 @@ impl Link {
     /// jobs its runner's hello lists go on over it, are stopped when the
     /// backend has no command for them, or are lost (`crates/runner/src/connection/kept.rs`).
     pub fn new(options: LinkOptions) -> (Link, LinkDriver) {
-        let (outbound, frames) = mpsc::channel(OUTBOUND_FRAMES);
-        let (package_events, mut events) = mpsc::channel(PACKAGE_EVENTS);
+        let (control, controls) = mpsc::unbounded_channel();
+        let (input, inputs) = mpsc::unbounded_channel();
+        let (package_events, mut events) = mpsc::unbounded_channel();
         let link = Link(Rc::new(Inner {
             device: options.device,
             instance: options.hello.instance,
@@ -719,7 +723,8 @@ impl Link {
             kernel: options.kernel,
             shell: options.shell,
             device_jobs: options.jobs.clone(),
-            outbound,
+            control,
+            input,
             pipes: options.pipes,
             host_log: options.policy.host_log(),
             policy: options.policy,
@@ -730,7 +735,8 @@ impl Link {
             closed: CancellationToken::new(),
             end: RefCell::new(None),
             disconnect: RefCell::new(None),
-            liveness: Cell::new(Liveness::Idle),
+            liveness: Cell::new(Liveness::Watching),
+            heard: Cell::new(tokio::time::Instant::now()),
             installed: watch::Sender::new(None),
             pongs: watch::Sender::new(()),
         }));
@@ -747,7 +753,28 @@ impl Link {
                 following.post(&Inbound::LogFollow { since });
             });
         }
+        tracing::info!(
+            event = "link.opened",
+            host_id = %link.0.device,
+            protocol = wire::VERSION,
+            release = options.hello.release.as_str(),
+            "a runner connection opened"
+        );
+        let listed = options.hello.jobs.len();
         let adoption = options.jobs.adopt(&link, options.hello);
+        if listed > 0 || adoption.lost > 0 || !adoption.resend.is_empty() {
+            tracing::info!(
+                event = "jobs.adopted",
+                host_id = %link.0.device,
+                listed,
+                stopped = adoption.stop.len(),
+                released = adoption.release.len(),
+                resynced = adoption.resync.len(),
+                resent = adoption.resend.len(),
+                lost = adoption.lost,
+                "the jobs of a runner's hello were matched with the backend's"
+            );
+        }
         for job in adoption.stop {
             link.stop_unknown(job);
         }
@@ -761,12 +788,9 @@ impl Link {
             });
         }
         for (job, start, commands) in adoption.resend {
-            let sending = link.clone();
-            link.spawn("job start sent again", async move {
-                let sent = sending.send_job_start(commands.as_ref(), &start).await;
-                let start = sent.map_err(|_| start);
-                sending.0.device_jobs.resent(&sending, &job, start);
-            });
+            let sent = link.send_job_start(commands.as_ref(), &start);
+            let start = sent.map_err(|_| start);
+            link.0.device_jobs.resent(&link, &job, start);
         }
         let handing = link.clone();
         link.spawn("package events", async move {
@@ -782,8 +806,10 @@ impl Link {
         });
         let driver = LinkDriver {
             link: link.clone(),
-            frames,
+            controls,
+            inputs,
             ping: options.ping,
+            writes: None,
             tap: None,
         };
         (link, driver)
@@ -823,9 +849,26 @@ impl Link {
             })
         };
         match read.await {
-            Ok(output) => self.0.device_jobs.resynced(self, job, Some(&output), lengths),
+            Ok(output) => {
+                tracing::info!(
+                    event = "output.resynced",
+                    host_id = %self.0.device,
+                    job_id = job,
+                    stdout_bytes = lengths.stdout_bytes,
+                    stderr_bytes = lengths.stderr_bytes,
+                    "a job's kept output was read again"
+                );
+                self.0.device_jobs.resynced(self, job, Some(&output), lengths)
+            }
             Err(error) => {
-                tracing::info!(device = %self.0.device, %job, "the job's kept output was not read again: {error}");
+                tracing::warn!(
+                    event = "output.missed",
+                    host_id = %self.0.device,
+                    job_id = job,
+                    stdout_bytes = lengths.stdout_bytes,
+                    stderr_bytes = lengths.stderr_bytes,
+                    "a job's kept output could not be read again: {error}"
+                );
                 self.0.device_jobs.resynced(self, job, None, lengths);
             }
         }
@@ -888,9 +931,17 @@ impl Link {
         self.0.liveness.set(Liveness::Paused);
     }
 
-    /// Starts liveness again, with no ping outstanding.
+    /// Starts liveness again, counting the silence from now.
     pub fn resume_liveness(&self) {
-        self.0.liveness.set(Liveness::Idle);
+        self.heard();
+        self.0.liveness.set(Liveness::Watching);
+    }
+
+    /// Notes that something arrived from the runner, as a message, a ping or
+    /// a pong does; the connection that hears nothing for
+    /// [`wire::LINK_SILENCE`] is lost.
+    pub fn heard(&self) {
+        self.0.heard.set(tokio::time::Instant::now());
     }
 
     /// Whether the runner answers a ping within `within`, as a new hello for
@@ -904,7 +955,7 @@ impl Link {
         // Subscribing marks the pongs so far as seen.
         let mut pongs = self.0.pongs.subscribe();
         let asked = async {
-            if self.send(&Inbound::Ping {}).await.is_err() {
+            if self.send(&Inbound::Ping {}).is_err() {
                 return false;
             }
             // The connection holds the sender, so the watch never closes.
@@ -947,8 +998,7 @@ impl Link {
             release: release.to_owned(),
             sha256: sha256.to_owned(),
             size,
-        })
-        .await?;
+        })?;
         answered.receive().await.map(|_| ())
     }
 
@@ -1175,33 +1225,24 @@ impl Link {
     }
 
     /// Sends a job's `start`, after the manifest of its `commands` when the
-    /// connection did not carry that one last.
-    ///
-    /// The runner keeps every manifest the connection carried and the start
-    /// names the one it pins, so jobs starting at once need not take turns. A
-    /// manifest counts as carried only once it is in the connection's queue:
-    ///
-    /// - A job that finds it carried queues its start behind it.
-    /// - A job that starts while another's manifest still waits for room sends
-    ///   it again, which the runner takes as the same manifest.
-    pub(crate) async fn send_job_start(
+    /// connection did not carry that one last. The runner keeps every
+    /// manifest the connection carried and the start names the one it pins.
+    pub(crate) fn send_job_start(
         &self,
         commands: Option<&CommandSelection>,
         start: &Inbound,
     ) -> Result<(), HostError> {
-        let sent = async {
+        let sent = (|| {
             if let Some(commands) = commands
                 && self.sent_manifest().as_deref() != Some(commands.hash())
             {
                 self.send(&Inbound::Manifest {
                     manifest: commands.wire().clone(),
-                })
-                .await?;
+                })?;
                 self.set_sent_manifest(Some(commands.hash().to_owned()));
             }
-            self.send(start).await
-        };
-        let sent = sent.await;
+            self.send(start)
+        })();
         if sent.is_err() {
             // What the runner received is uncertain: the next job sends its
             // manifest again.
@@ -1227,52 +1268,32 @@ impl Link {
         HostError::offline(self.end_reason())
     }
 
-    /// Queues `message` for the runner, once there is room. A message over
-    /// the wire's limit fails here and leaves the connection as it is.
-    pub(crate) async fn send(&self, message: &Inbound) -> Result<(), HostError> {
+    /// Queues `message` for the runner, in the queue of its class. A message
+    /// over the wire's limit fails here and leaves the connection as it is.
+    pub(crate) fn send(&self, message: &Inbound) -> Result<(), HostError> {
         if self.is_closed() {
             return Err(self.offline());
         }
         let frame = frame(message)?;
-        self.send_frame(frame).await
+        self.queue(message.is_input(), frame)
     }
 
-    /// Queues `message` for the runner without waiting, for a caller that
-    /// cannot wait, such as a drop: at once when the queue has room, and
-    /// otherwise from a task of the connection, which its end waits for. A
-    /// closed connection sends nothing.
+    /// [`Link::send`] for a message whose failure nobody could act on, such
+    /// as a drop's: a closed connection has nothing left to tell the runner.
     pub(crate) fn post(&self, message: &Inbound) {
-        if self.is_closed() {
-            return;
-        }
-        // The messages posted are a few fields each, far below the limit
-        // that is the only reason a frame could not be made.
-        let Ok(frame) = frame(message) else {
-            return;
-        };
-        if let Err(mpsc::error::TrySendError::Full(frame)) = self.0.outbound.try_send(frame) {
-            let link = self.clone();
-            self.spawn("queued message", async move {
-                // A connection that ends first has nothing left to tell the
-                // runner.
-                let _ = link.send_frame(frame).await;
-            });
-        }
+        let _ = self.send(message);
     }
 
     /// Sends `frame` to the runner as it is, for a test of a message the
     /// runner cannot decode.
     #[cfg(feature = "testing")]
-    pub async fn send_raw(&self, frame: Vec<u8>) -> Result<(), HostError> {
-        self.send_frame(frame).await
+    pub fn send_raw(&self, frame: Vec<u8>) -> Result<(), HostError> {
+        self.queue(false, frame)
     }
 
-    async fn send_frame(&self, frame: Vec<u8>) -> Result<(), HostError> {
-        tokio::select! {
-            biased;
-            _ = self.0.closed.cancelled() => Err(self.offline()),
-            sent = self.0.outbound.send(frame) => sent.map_err(|_| self.offline()),
-        }
+    fn queue(&self, input: bool, frame: Vec<u8>) -> Result<(), HostError> {
+        let queue = if input { &self.0.input } else { &self.0.control };
+        queue.send(frame).map_err(|_| self.offline())
     }
 
     /// Sends the request `message` builds around a fresh id and waits for
@@ -1284,7 +1305,7 @@ impl Link {
     ) -> Result<Answer, HostError> {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let answered = self.wait_for(id.clone(), expected)?;
-        self.send(&message(id)).await?;
+        self.send(&message(id))?;
         answered.receive().await
     }
 
@@ -1395,9 +1416,6 @@ impl Link {
             }
             Outbound::Pong { jobs } => {
                 self.0.state.borrow_mut().pong_jobs = jobs;
-                if self.0.liveness.get() == Liveness::Waiting {
-                    self.0.liveness.set(Liveness::Idle);
-                }
                 self.0.pongs.send_replace(());
             }
             Outbound::Revoke {} => self.revoke(),
@@ -1699,13 +1717,9 @@ impl Link {
 
     /// Queues `event` for the policy, behind the ones before it.
     fn package_event(&self, event: PackageEvent) {
-        if let Err(mpsc::error::TrySendError::Full(event)) = self.0.package_events.try_send(event) {
-            let (package, kind) = match &event {
-                PackageEvent::Message { package, .. } => (package.as_str(), "message"),
-                PackageEvent::Lost { package } => (package.as_str(), "lost"),
-            };
-            tracing::warn!(device = %self.0.device, package, kind, "a package event was dropped: the runner sent more than the connection holds");
-        }
+        // The receiver lives as long as the connection's package task, which
+        // ends with the connection.
+        let _ = self.0.package_events.send(event);
     }
 
     /// Delivers a reply to what waits for `id`: the answer when it is the
@@ -1774,10 +1788,8 @@ impl Link {
             None => Some(NO_LIVE_WORK),
             Some(_) => {
                 let mut state = self.0.state.borrow_mut();
-                if state.artifact_requests.len() >= ARTIFACT_REQUESTS
-                    || !state.artifact_requests.insert(id.clone())
-                {
-                    Some("Artifact resolution request limit or duplicate id")
+                if !state.artifact_requests.insert(id.clone()) {
+                    Some("Duplicate artifact resolution request id")
                 } else {
                     None
                 }
@@ -1969,15 +1981,14 @@ impl Link {
     ) {
         let admitted = {
             let mut state = self.0.state.borrow_mut();
-            state.numbers_requests.len() < NUMBERS_REQUESTS
-                && state.numbers_requests.insert(id.clone())
+            state.numbers_requests.insert(id.clone())
         };
         let reserved =
             admitted.then(|| self.0.policy.reserve_numbers(conversation, sequence, count));
         let link = self.clone();
         self.spawn("numbers reservation", async move {
             let first = match reserved {
-                None => Err("Numbers request limit or duplicate id".to_owned()),
+                None => Err("Duplicate numbers request id".to_owned()),
                 Some(reserved) => {
                     let first = reserved.await;
                     link.0.state.borrow_mut().numbers_requests.remove(&id);
@@ -1989,7 +2000,7 @@ impl Link {
                 Err(error) => (None, Some(error)),
             };
             let answer = Inbound::NumbersReserved { id, first, error };
-            if let Err(error) = link.send(&answer).await {
+            if let Err(error) = link.send(&answer) {
                 tracing::warn!(device = %link.0.device, "numbers answer not sent: {error}");
             }
         });
@@ -2005,7 +2016,7 @@ impl Link {
             location,
             error,
         };
-        if let Err(error) = self.send(&answer).await {
+        if let Err(error) = self.send(&answer) {
             tracing::warn!(device = %self.0.device, "artifact location not sent: {error}");
         }
     }
@@ -2166,12 +2177,22 @@ impl Drop for Registration {
 /// The connection's driver: serves the socket its owner hands over.
 pub struct LinkDriver {
     link: Link,
-    frames: mpsc::Receiver<Vec<u8>>,
+    controls: mpsc::UnboundedReceiver<Vec<u8>>,
+    inputs: mpsc::UnboundedReceiver<Vec<u8>>,
     ping: Option<Duration>,
     tap: Option<mpsc::Sender<Outbound>>,
+    /// Whether the socket's writes move; without it a write has no deadline.
+    writes: Option<std::sync::Arc<wire::WriteProgress>>,
 }
 
 impl LinkDriver {
+    /// Ends the connection once the socket's writes make no progress for
+    /// [`wire::LINK_WRITE_TIMEOUT`].
+    pub fn watching_writes(mut self, writes: std::sync::Arc<wire::WriteProgress>) -> Self {
+        self.writes = Some(writes);
+        self
+    }
+
     /// Copies every message the runner sends into `tap`, for tests that
     /// audit the wire; a full tap loses the copy, never the message.
     pub fn tap(mut self, tap: mpsc::Sender<Outbound>) -> Self {
@@ -2192,9 +2213,11 @@ impl LinkDriver {
     {
         let LinkDriver {
             link,
-            mut frames,
+            mut controls,
+            mut inputs,
             ping,
             tap,
+            writes,
         } = self;
         let reading = async {
             tokio::pin!(incoming);
@@ -2209,6 +2232,7 @@ impl LinkDriver {
                     }
                     Some(Ok(frame)) => frame,
                 };
+                link.heard();
                 match wire::decode::<Outbound>(&frame) {
                     Ok(message) => {
                         if let Some(tap) = &tap {
@@ -2223,12 +2247,45 @@ impl LinkDriver {
         };
         let writing = async {
             tokio::pin!(outgoing);
-            while let Some(frame) = frames.recv().await {
-                if let Err(error) = outgoing.send(frame).await {
-                    return LinkEnd::Closed(format!("runner disconnected: {error}"));
+            loop {
+                // Control first: it waits only for the frame being written.
+                let frame = tokio::select! {
+                    biased;
+                    Some(frame) = controls.recv() => frame,
+                    Some(frame) = inputs.recv() => frame,
+                    else => return LinkEnd::Closed("runner disconnected".into()),
+                };
+                let sending = outgoing.send(frame);
+                tokio::pin!(sending);
+                let sent = match &writes {
+                    Some(writes) => tokio::select! {
+                        sent = &mut sending => Some(sent),
+                        () = writes.stalled() => None,
+                    },
+                    None => Some(sending.await),
+                };
+                match sent {
+                    Some(Ok(())) => {}
+                    Some(Err(error)) => {
+                        return LinkEnd::Closed(format!("runner disconnected: {error}"));
+                    }
+                    None => {
+                        tracing::warn!(
+                            event = "link.lost",
+                            host_id = %link.0.device,
+                            cause = "write",
+                            stalled_ms = wire::LINK_WRITE_TIMEOUT.as_millis() as u64,
+                            queued_control = controls.len(),
+                            queued_input = inputs.len(),
+                            "a write to the runner made no progress"
+                        );
+                        return LinkEnd::Disconnected(format!(
+                            "a write made no progress for {} seconds",
+                            wire::LINK_WRITE_TIMEOUT.as_secs()
+                        ));
+                    }
                 }
             }
-            LinkEnd::Closed("runner disconnected".into())
         };
         let liveness = async {
             let Some(every) = ping else {
@@ -2236,16 +2293,35 @@ impl LinkDriver {
             };
             let mut ticks = tokio::time::interval_at(tokio::time::Instant::now() + every, every);
             loop {
-                ticks.tick().await;
-                match link.0.liveness.get() {
-                    Liveness::Paused => continue,
-                    Liveness::Waiting => {
-                        return LinkEnd::Disconnected("liveness: ping unanswered".into());
-                    }
-                    Liveness::Idle => {
-                        link.0.liveness.set(Liveness::Waiting);
-                        if link.send(&Inbound::Ping {}).await.is_err() {
+                // A paused connection is lost at no time: wake again later.
+                let lost_at = if link.0.liveness.get() == Liveness::Paused {
+                    tokio::time::Instant::now() + wire::LINK_SILENCE
+                } else {
+                    link.0.heard.get() + wire::LINK_SILENCE
+                };
+                tokio::select! {
+                    _ = ticks.tick() => {
+                        if link.0.liveness.get() == Liveness::Watching
+                            && link.send(&Inbound::Ping {}).is_err()
+                        {
                             return LinkEnd::Closed("runner disconnected".into());
+                        }
+                    }
+                    () = tokio::time::sleep_until(lost_at) => {
+                        if link.0.liveness.get() == Liveness::Watching
+                            && link.0.heard.get() + wire::LINK_SILENCE <= tokio::time::Instant::now()
+                        {
+                            tracing::warn!(
+                                event = "link.lost",
+                                host_id = %link.0.device,
+                                cause = "silence",
+                                silent_ms = wire::LINK_SILENCE.as_millis() as u64,
+                                "nothing was heard from the runner"
+                            );
+                            return LinkEnd::Disconnected(format!(
+                                "liveness: nothing heard for {} seconds",
+                                wire::LINK_SILENCE.as_secs()
+                            ));
                         }
                     }
                 }

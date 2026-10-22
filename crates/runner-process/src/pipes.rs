@@ -600,25 +600,15 @@ impl<S: Stream<Item = io::Result<Bytes>>> Stream for BodyAttempt<S> {
     }
 }
 
-/// Reports a pipe end's outcome to the backend; `shutdown` stops reporting
-/// without a backend to receive it.
-pub async fn report_pipe(
-    output: &mpsc::Sender<wire::Frame>,
-    id: String,
-    result: io::Result<()>,
-    shutdown: &CancellationToken,
-) {
+/// Reports a pipe end's outcome to the backend.
+pub fn report_pipe(output: &mpsc::UnboundedSender<wire::Frame>, id: String, result: io::Result<()>) {
     match wire::encode(&wire::Outbound::PipeDone {
         pipe_id: id,
         ok: result.is_ok(),
         error: result.err().map(|error| error.to_string()),
     }) {
-        Ok(message) => {
-            tokio::select! {
-                _ = shutdown.cancelled() => {},
-                _ = output.send(message) => {},
-            }
-        }
+        // A connection that ended takes nothing more.
+        Ok(message) => drop(output.send(message)),
         Err(error) => tracing::warn!("pipe result encoding failed: {error}"),
     }
 }

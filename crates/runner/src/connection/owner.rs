@@ -3,8 +3,8 @@
 //!
 //! The jobs outlive it: it serves what the registration keeps while it lasts
 //! ([`Kept`]). Every branch of its loop returns without waiting for the work it
-//! started, apart from the wait for room in the backend's outbound queue, which
-//! the transport drains on its own.
+//! started: the queues to and from the transport have no length limit, so
+//! nothing waits for room.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -142,7 +142,7 @@ struct Owner<'r> {
     /// This connection's messages to the backend and its end.
     live: Live,
     /// This connection's queue of job and process output.
-    output: mpsc::Sender<wire::Frame>,
+    output: mpsc::UnboundedSender<wire::Frame>,
     /// This connection's queue of the Host's log lines.
     log: mpsc::Sender<wire::Frame>,
     /// The task that sends the Host's log lines, once the backend asked.
@@ -259,7 +259,7 @@ impl Owner<'_> {
             jobs: self.kept.hello_jobs(),
         })
         .map_err(io::Error::other)?;
-        self.send(hello).await?;
+        self.send(hello)?;
         let management = self.registered.management.clone();
         loop {
             tokio::select! {
@@ -271,7 +271,7 @@ impl Owner<'_> {
                 _ = management.removing.cancelled(), if !self.revoke_asked && management.phase() == Phase::Online => {
                     self.revoke_asked = true;
                     let revoke = wire::encode(&wire::Outbound::Revoke {}).map_err(io::Error::other)?;
-                    self.send(revoke).await?;
+                    self.send(revoke)?;
                 }
                 // Draining waits for the jobs that run (`crates/runner/src/connection/mod.rs`).
                 _ = management.draining.cancelled(), if self.kept.jobs.is_empty() => {
@@ -307,15 +307,14 @@ impl Owner<'_> {
         let artifacts = self.cached.borrow_and_update().clone();
         let frame =
             wire::encode(&wire::Outbound::Installed { artifacts }).map_err(io::Error::other)?;
-        self.send(frame).await
+        self.send(frame)
     }
 
-    /// Queues a frame for the backend, waiting for room.
-    async fn send(&self, frame: wire::Frame) -> io::Result<()> {
+    /// Queues a frame for the backend.
+    fn send(&self, frame: wire::Frame) -> io::Result<()> {
         self.live
             .control
             .send(frame)
-            .await
             .map_err(|_| io::Error::other("host connection closed"))
     }
 
@@ -328,7 +327,6 @@ impl Owner<'_> {
         for announcement in announcements {
             self.output
                 .send(announcement)
-                .await
                 .map_err(|_| io::Error::other("host connection closed"))?;
         }
         Ok(())
@@ -345,7 +343,7 @@ impl Owner<'_> {
                 result?;
                 // Said once the token is stored, so a runner that reports
                 // itself paired keeps its pairing.
-                tracing::warn!("online");
+                tracing::warn!(event = "link.opened", protocol = wire::VERSION, "online");
                 self.registered.announce_paired(&name);
             }
             Work::Done => {}
@@ -382,7 +380,7 @@ impl Owner<'_> {
                 self.work
                     .spawn(async move { Work::Stored(state.write_config(&config).await) });
                 management.set_phase(Phase::Online);
-                tracing::warn!("online");
+                tracing::warn!(event = "link.opened", protocol = wire::VERSION, "online");
                 registered.announce_paired(&device_name);
                 self.online().await?;
                 self.report_installed().await?;
@@ -441,7 +439,7 @@ impl Owner<'_> {
                     jobs: self.kept.jobs.job_count() as u64,
                 })
                 .map_err(io::Error::other)?;
-                self.send(pong).await?;
+                self.send(pong)?;
             }
             message if management.phase() == Phase::Online => self.message(message).await?,
             _ => {
@@ -493,7 +491,7 @@ impl Owner<'_> {
             match wire::encode(&reply) {
                 Ok(reply) => {
                     // A backend that went away needs no answer.
-                    let _ = control.send(reply).await;
+                    let _ = control.send(reply);
                 }
                 Err(error) => tracing::warn!("invalid prefetch answer: {error}"),
             }
@@ -531,7 +529,7 @@ impl Owner<'_> {
                     }) {
                         Ok(reply) => {
                             // A disconnected backend no longer needs an acknowledgement.
-                            let _ = control.send(reply).await;
+                            let _ = control.send(reply);
                         }
                         Err(error) => tracing::warn!("invalid release acknowledgement: {error}"),
                     }
@@ -550,7 +548,7 @@ impl Owner<'_> {
                     match wire::encode(&wire::Outbound::PackageReleased { id }) {
                         Ok(reply) => {
                             // A disconnected backend no longer needs an acknowledgement.
-                            let _ = control.send(reply).await;
+                            let _ = control.send(reply);
                         }
                         Err(error) => tracing::warn!("invalid release acknowledgement: {error}"),
                     }
@@ -628,7 +626,6 @@ impl Owner<'_> {
             } => {
                 let direct = self.direct.clone();
                 let control = self.live.control.clone();
-                let closed = self.live.closed.clone();
                 self.work.spawn(async move {
                     // The answer goes first; the candidates the peer finds
                     // after it follow until the peer ends.
@@ -647,7 +644,7 @@ impl Owner<'_> {
                                 None,
                             ),
                         };
-                    if !send_control(&control, &closed, &reply).await {
+                    if !send_control(&control, &reply) {
                         return Work::Done;
                     }
                     while let Some(candidate) = match &mut candidates {
@@ -658,7 +655,7 @@ impl Owner<'_> {
                             peer: peer.clone(),
                             candidate,
                         };
-                        if !send_control(&control, &closed, &found).await {
+                        if !send_control(&control, &found) {
                             break;
                         }
                     }
@@ -688,12 +685,7 @@ impl Owner<'_> {
             // The relay probe is answered at once, ahead of the connection's
             // bulk output, so its round trip is the path's own.
             Inbound::DirectPing { peer, id } => {
-                let control = self.live.control.clone();
-                let closed = self.live.closed.clone();
-                self.work.spawn(async move {
-                    send_control(&control, &closed, &wire::Outbound::DirectPong { peer, id }).await;
-                    Work::Done
-                });
+                send_control(&self.live.control, &wire::Outbound::DirectPong { peer, id });
             }
             Inbound::LogFollow { since } => {
                 if let Some(previous) = self.following.take() {
@@ -732,7 +724,7 @@ impl Owner<'_> {
         };
         tracing::warn!("backend work could not start: {error}");
         let reply = failure_exit(&work, error.to_string()).map_err(io::Error::other)?;
-        self.send(reply).await
+        self.send(reply)
     }
 
     /// Answers a second start of `job` with the job the runner has, since
@@ -750,7 +742,7 @@ impl Owner<'_> {
             None => failure_exit(&WorkId::Job(job.to_owned()), format!("job {job} was started already"))
                 .map_err(io::Error::other)?,
         };
-        self.send(reply).await
+        self.send(reply)
     }
 
     fn start_or_route(&mut self, message: &Inbound) -> io::Result<()> {
@@ -860,15 +852,20 @@ impl Owner<'_> {
                 .jobs
                 .input(&WorkId::Job(job_id.clone()), bytes.0.clone().into()),
             Inbound::SpawnStdinEnd { spawn_id } => {
-                self.kept.jobs.end_input(&WorkId::Spawn(spawn_id.clone()))
+                self.kept.jobs.end_input(&WorkId::Spawn(spawn_id.clone()));
+                Ok(())
             }
             Inbound::JobStdinEnd { job_id } => {
-                self.kept.jobs.end_input(&WorkId::Job(job_id.clone()))
+                self.kept.jobs.end_input(&WorkId::Job(job_id.clone()));
+                Ok(())
             }
-            Inbound::SpawnKill { spawn_id, signal } => self.kept.jobs.signal(
-                &WorkId::Spawn(spawn_id.clone()),
-                signal.unwrap_or(wire::Signal::Terminate),
-            ),
+            Inbound::SpawnKill { spawn_id, signal } => {
+                self.kept.jobs.signal(
+                    &WorkId::Spawn(spawn_id.clone()),
+                    signal.unwrap_or(wire::Signal::Terminate),
+                );
+                Ok(())
+            }
             Inbound::JobFollow { job_id, follow } => {
                 self.kept.jobs.follow(&WorkId::Job(job_id.clone()), *follow);
                 Ok(())
@@ -878,7 +875,8 @@ impl Owner<'_> {
                 self.kept.jobs.signal(
                     &WorkId::Job(job_id.clone()),
                     signal.unwrap_or(wire::Signal::Terminate),
-                )
+                );
+                Ok(())
             }
             _ => Err(io::Error::other("unexpected backend message")),
         }
@@ -995,7 +993,7 @@ async fn read_media(
     id: String,
     pipe: wire::PipeRef,
     pipes: PipeClient,
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     closed: CancellationToken,
 ) {
     let targets = paths
@@ -1023,15 +1021,14 @@ async fn read_media(
     });
     match reply {
         Ok(reply) => {
-            tokio::select! {
-                _ = closed.cancelled() => return,
-                _ = control.send(reply) => {},
+            if control.send(reply).is_err() {
+                return;
             }
         }
         Err(error) => tracing::warn!("job media read reply encoding failed: {error}"),
     }
     let result = pipes.put(&pipe.url, files::framed(opened), &closed).await;
-    report_pipe(&control, pipe.id, result, &closed).await;
+    report_pipe(&control, pipe.id, result);
 }
 
 /// Answers a `job_read` and streams the job's kept output, as it stands, into
@@ -1041,7 +1038,7 @@ async fn read_job(
     id: String,
     pipe: wire::PipeRef,
     pipes: PipeClient,
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     closed: CancellationToken,
 ) {
     let snapshot = match output_of {
@@ -1061,9 +1058,8 @@ async fn read_job(
     });
     match reply {
         Ok(reply) => {
-            tokio::select! {
-                _ = closed.cancelled() => return,
-                _ = control.send(reply) => {},
+            if control.send(reply).is_err() {
+                return;
             }
         }
         Err(error) => tracing::warn!("job read reply encoding failed: {error}"),
@@ -1072,16 +1068,12 @@ async fn read_job(
         Ok(stream) => pipes.put(&pipe.url, stream, &closed).await,
         Err(error) => Err(error),
     };
-    report_pipe(&control, pipe.id, result, &closed).await;
+    report_pipe(&control, pipe.id, result);
 }
 
 /// Sends `message` to the backend; false once the connection closed, which
 /// takes nothing more.
-async fn send_control(
-    control: &mpsc::Sender<wire::Frame>,
-    closed: &CancellationToken,
-    message: &wire::Outbound,
-) -> bool {
+fn send_control(control: &mpsc::UnboundedSender<wire::Frame>, message: &wire::Outbound) -> bool {
     let frame = match wire::encode(message) {
         Ok(frame) => frame,
         Err(error) => {
@@ -1091,8 +1083,5 @@ async fn send_control(
             return true;
         }
     };
-    tokio::select! {
-        _ = closed.cancelled() => false,
-        sent = control.send(frame) => sent.is_ok(),
-    }
+    control.send(frame).is_ok()
 }

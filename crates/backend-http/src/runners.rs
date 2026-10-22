@@ -43,6 +43,7 @@ use super::error::ApiError;
 use super::install::{current_runner_release, range_start};
 use super::listener::Peer;
 use super::runner_socket::accept;
+use demi_backend_runners::devices::RunnerSocket;
 
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
 /// wire's limit; a larger one closes it. A backend with runner releases
@@ -50,6 +51,7 @@ use super::runner_socket::accept;
 /// with 409 and the release to update to (`crates/runner/src/update.rs`).
 pub(super) async fn socket(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<Peer>,
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
@@ -69,7 +71,10 @@ pub(super) async fn socket(
     Ok(upgrade
         .max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| accept(state.services, state.shards, socket).instrument(span)))
+        .on_upgrade(move |socket| {
+            accept(state.services, state.shards, RunnerSocket::new(socket, peer.control.write_progress()))
+                .instrument(span)
+        }))
 }
 
 /// The update a runner must make before its socket opens: none from a

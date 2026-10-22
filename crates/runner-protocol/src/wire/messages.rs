@@ -882,6 +882,24 @@ pub enum Inbound {
 }
 
 impl Inbound {
+    /// Whether the message is a stream of bytes someone wrote, which the
+    /// backend writes behind every control message
+    /// (`crates/runner-protocol/src/wire/mod.rs`): a command's or a process's
+    /// stdin, and the stderr of a backend command a call relays with the exit
+    /// that ends it. Such a stream stays in order with itself, so its end comes
+    /// after its bytes.
+    pub fn is_input(&self) -> bool {
+        matches!(
+            self,
+            Self::SpawnStdin { .. }
+                | Self::SpawnStdinEnd { .. }
+                | Self::JobStdin { .. }
+                | Self::JobStdinEnd { .. }
+                | Self::RpcOutput { .. }
+                | Self::RpcExit { .. }
+        )
+    }
+
     /// The id of an fs call, which its reply carries.
     pub fn fs_request_id(&self) -> Option<&str> {
         match self {

@@ -79,7 +79,7 @@ pub enum ProcessInput {
 pub struct ChildProcess {
     pub input: mpsc::Sender<ProcessInput>,
     pub output: mpsc::Receiver<OutputChunk>,
-    signals: mpsc::Sender<Signal>,
+    signals: mpsc::UnboundedSender<Signal>,
     /// Ends with the process's exit, once it is reaped and its pipes drained.
     owner: Option<tokio::task::JoinHandle<ProcessExit>>,
     exited: Option<ProcessExit>,
@@ -114,7 +114,7 @@ impl ChildProcess {
         let stderr = child.stderr().take().expect("piped stderr");
         let (input, mut input_rx) = mpsc::channel(4);
         let (output_tx, output) = mpsc::channel(4);
-        let (signals, mut signal_rx) = mpsc::channel::<Signal>(4);
+        let (signals, mut signal_rx) = mpsc::unbounded_channel::<Signal>();
         let cancel = CancellationToken::new();
         let owner_cancel = cancel.clone();
         let owner = tokio::spawn(async move {
@@ -237,10 +237,9 @@ impl ChildProcess {
         })
     }
 
-    pub async fn signal(&self, signal: Signal) -> io::Result<()> {
+    pub fn signal(&self, signal: Signal) -> io::Result<()> {
         self.signals
             .send(signal)
-            .await
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "process has exited"))
     }
 

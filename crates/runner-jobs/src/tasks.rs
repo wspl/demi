@@ -14,9 +14,8 @@
 //!
 //! A job's last output leaves before `job_exit`.
 //!
-//! What goes beyond the first view never slows the job: a message that finds
-//! the connection's queue full waits for the stream's next interval and then
-//! carries the newest bytes.
+//! What goes beyond the first view never slows the job: its message is queued
+//! without waiting, at most once per interval.
 //!
 //! When a stream went beyond what the backend received, the backend reads the
 //! rest from the kept output. When that read fails, it keeps the first bytes, a
@@ -25,9 +24,10 @@
 //!
 //! # Input
 //!
-//! A job or process whose live stdin the runner has not taken, `INPUT_QUEUE`
-//! frames deep, is cancelled, because routing a message never waits for work
-//! that does not read its input.
+//! A job or process that does not read its live stdin holds it until it reads
+//! it, stops or ends: the queue has no length limit, routing a message never
+//! waits for work that does not read, and nothing is cancelled for not
+//! reading.
 
 use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
@@ -57,7 +57,7 @@ use std::{
     sync::Arc,
 };
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{Semaphore, mpsc, oneshot, watch},
     task::JoinSet,
     time::Instant,
 };
@@ -70,11 +70,6 @@ pub enum WorkId {
     Spawn(String),
 }
 
-/// Live stdin chunks a task has not read yet; past them the task is
-/// cancelled rather than holding up the connection.
-const INPUT_QUEUE: usize = 64;
-/// Signals a task has not taken yet.
-const SIGNAL_QUEUE: usize = 16;
 /// How long a task's pipe transfers may run on after its process ended.
 const PIPE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -95,7 +90,7 @@ pub struct JobTable {
 pub struct JobConfig {
     /// Where the tasks' messages go: to the connection that serves, and
     /// nowhere while none does.
-    pub output: mpsc::Sender<wire::Frame>,
+    pub output: mpsc::UnboundedSender<wire::Frame>,
     /// Where each job gets its own directory.
     pub directories: Arc<JobDirectories>,
     /// Where each conversation has its scratch directory.
@@ -122,8 +117,8 @@ pub struct Commands {
 }
 
 struct Entry {
-    input: mpsc::Sender<TaskInput>,
-    signals: mpsc::Sender<Signal>,
+    input: mpsc::UnboundedSender<TaskInput>,
+    signals: mpsc::UnboundedSender<Signal>,
     /// Whether the backend follows the job's output beyond each stream's
     /// first `JOB_VIEW_BYTES`.
     follow: watch::Sender<bool>,
@@ -137,8 +132,8 @@ enum TaskInput {
 
 /// What reaches a task from the backend while it runs.
 struct Controls {
-    input: mpsc::Receiver<TaskInput>,
-    signals: mpsc::Receiver<Signal>,
+    input: mpsc::UnboundedReceiver<TaskInput>,
+    signals: mpsc::UnboundedReceiver<Signal>,
     following: watch::Receiver<bool>,
 }
 
@@ -229,8 +224,8 @@ impl JobTable {
         if let WorkId::Job(job) = &key {
             self.started.insert(job.clone());
         }
-        let (input, receiver) = mpsc::channel(INPUT_QUEUE);
-        let (signals, signal_receiver) = mpsc::channel(SIGNAL_QUEUE);
+        let (input, receiver) = mpsc::unbounded_channel();
+        let (signals, signal_receiver) = mpsc::unbounded_channel();
         let (follow, following) = watch::channel(false);
         let cancel = CancellationToken::new();
         self.entries.insert(
@@ -243,14 +238,13 @@ impl JobTable {
             },
         );
         let config = self.config.clone();
-        let closed = self.closed.clone();
         self.running.spawn(async move {
             let controls = Controls {
                 input: receiver,
                 signals: signal_receiver,
                 following,
             };
-            let run = config.run(spec, controls, cancel, closed.clone());
+            let run = config.run(spec, controls, cancel);
             let outcome = std::panic::AssertUnwindSafe(run).catch_unwind().await;
             let terminal = match outcome {
                 Ok(Ok(terminal)) => Ok(terminal),
@@ -274,10 +268,7 @@ impl JobTable {
                     }
                     // Without a connection the exit waits with the job's
                     // directory.
-                    tokio::select! {
-                        _ = closed.cancelled() => {},
-                        _ = config.output.send(terminal.frame) => {},
-                    }
+                    let _ = config.output.send(terminal.frame);
                 }
                 Err(error) => tracing::warn!("task terminal encoding failed: {error}"),
             }
@@ -286,16 +277,18 @@ impl JobTable {
         Ok(())
     }
 
-    /// Live stdin is bounded; bulk streams use the independently flowing HTTP pipe.
+    /// Live stdin goes in chunks of at most `STDIN_CHUNK_BYTES`; bulk streams
+    /// use the independently flowing HTTP pipe.
     pub fn input(&self, id: &WorkId, bytes: Bytes) -> io::Result<()> {
         if bytes.len() > wire::STDIN_CHUNK_BYTES {
             return Err(io::Error::other("live stdin chunk exceeds 64 KiB"));
         }
-        self.send(id, TaskInput::Bytes(bytes))
+        self.send(id, TaskInput::Bytes(bytes));
+        Ok(())
     }
 
-    pub fn end_input(&self, id: &WorkId) -> io::Result<()> {
-        self.send(id, TaskInput::End)
+    pub fn end_input(&self, id: &WorkId) {
+        self.send(id, TaskInput::End);
     }
 
     /// Starts or stops following a job's output beyond each stream's first
@@ -306,31 +299,22 @@ impl JobTable {
         }
     }
 
-    pub fn signal(&self, id: &WorkId, signal: Signal) -> io::Result<()> {
+    pub fn signal(&self, id: &WorkId, signal: Signal) {
         let Some(entry) = self.entries.get(id) else {
-            return Ok(());
+            return;
         };
         if signal == Signal::Kill {
             entry.cancel.cancel();
-            return Ok(());
+            return;
         }
-        entry
-            .signals
-            .try_send(signal)
-            .map_err(|error| io::Error::other(format!("signal queue unavailable: {error}")))
+        // A task that ended takes no signal.
+        let _ = entry.signals.send(signal);
     }
 
-    fn send(&self, id: &WorkId, input: TaskInput) -> io::Result<()> {
-        let Some(entry) = self.entries.get(id) else {
-            return Ok(());
-        };
-        match entry.input.try_send(input) {
-            Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => Ok(()),
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                // Never block connection processing behind a task that is not reading.
-                entry.cancel.cancel();
-                Err(io::Error::other("live stdin buffer is full"))
-            }
+    fn send(&self, id: &WorkId, input: TaskInput) {
+        // A task that ended takes no input.
+        if let Some(entry) = self.entries.get(id) {
+            let _ = entry.input.send(input);
         }
     }
 
@@ -374,8 +358,8 @@ impl JobTable {
     pub fn stop_jobs(&self) {
         for (id, entry) in &self.entries {
             if let WorkId::Job(_) = id {
-                if entry.signals.try_send(Signal::Terminate).is_err() {
-                    // A job whose signals back up is ended at once.
+                if entry.signals.send(Signal::Terminate).is_err() {
+                    // A job that no longer takes signals is ended at once.
                     entry.cancel.cancel();
                 }
             }
@@ -465,7 +449,6 @@ impl JobConfig {
         spec: TaskSpec,
         controls: Controls,
         cancel: CancellationToken,
-        closed: CancellationToken,
     ) -> io::Result<Terminal> {
         let Controls {
             mut input,
@@ -626,7 +609,6 @@ impl JobConfig {
             // The read itself lasts until the backend ends it, within the
             // pipes' grace after the job's end.
             let reading = io_cancel.clone();
-            let shutdown = closed.clone();
             pipe_tasks.spawn(async move {
                 // The read, which the job may stop before the backend
                 // answers it, and its body once answered.
@@ -672,7 +654,7 @@ impl JobConfig {
                     // read's end for a cut response; the backend then ends
                     // the read, and what still arrives goes nowhere.
                     Ok(true) => {
-                        report_pipe(&output, reference.id, Ok(()), &shutdown).await;
+                        report_pipe(&output, reference.id, Ok(()));
                         // The pipe is over by the report; how its read ends
                         // tells nothing more.
                         let body = match body {
@@ -691,17 +673,18 @@ impl JobConfig {
                             _ = stopped.cancelled() => {}
                             _sent = input.send(ProcessInput::End) => {}
                         }
-                        report_pipe(&output, reference.id, result.map(|_| ()), &shutdown).await;
+                        report_pipe(&output, reference.id, result.map(|_| ()));
                     }
                 }
             });
         }
         let stdout_pipe = stdout.map(|reference| {
+            // A job's stdout is bulk: the job waits for the pipe's upload rather
+            // than the runner holding it without end.
             let (sender, mut receiver) = mpsc::channel::<Bytes>(4);
             let pipes = self.pipes.clone();
             let output = self.output.clone();
             let cancel = io_cancel.clone();
-            let shutdown = closed.clone();
             pipe_tasks.spawn(async move {
                 let stream = futures_util::stream::poll_fn(move |cx| {
                     receiver.poll_recv(cx).map(|bytes| bytes.map(Ok))
@@ -709,7 +692,7 @@ impl JobConfig {
                 // A stream pipe: what the job prints must reach the backend
                 // as it prints it, however long it runs (`crates/runner/src/main.rs`).
                 let result = pipes.stream(&reference.url, stream, &cancel).await;
-                report_pipe(&output, reference.id, result, &shutdown).await;
+                report_pipe(&output, reference.id, result);
             });
             sender
         });
@@ -722,6 +705,10 @@ impl JobConfig {
         // Whether the job's stdout ends a line, so that a medium's line
         // stands on a line of its own.
         let mut stdout_line_start = true;
+        // A raw process's output goes one frame at a time into the
+        // connection's queue, so a process that prints faster than the
+        // uplink carries is read no faster.
+        let paced = Arc::new(Semaphore::new(1));
         // The media that wait for the drain of the job's stdout pipe, and
         // the drain's answer.
         let mut waiting: Vec<Arrival> = Vec::new();
@@ -734,7 +721,7 @@ impl JobConfig {
                 _ = cancel.cancelled(), if !child.is_cancelled() => child.cancel(),
                 signal = signals.recv(), if !signals.is_closed() => {
                     if let Some(signal) = signal
-                        && let Err(error) = child.signal(signal).await {
+                        && let Err(error) = child.signal(signal) {
                         failure = Some(error.to_string());
                         child.cancel();
                     }
@@ -786,10 +773,7 @@ impl JobConfig {
                             .borrow_and_update()
                             .clone();
                         if let Some(message) = outliving_message(&id, &tasks) {
-                            tokio::select! {
-                                _ = cancel.cancelled() => child.cancel(),
-                                _ = self.output.send(message.map_err(io::Error::other)?) => {},
-                            }
+                            let _ = self.output.send(message.map_err(io::Error::other)?);
                         }
                     }
                     // The job's shell let go of its tasks: it is ending.
@@ -810,17 +794,14 @@ impl JobConfig {
                     drained = None;
                     while let Ok(chunk) = child.output.try_recv() {
                         let logs = job.as_mut().map(|(logs, ..)| logs);
-                        if take_chunk(chunk, logs, &id, &self.output, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                        if take_chunk(chunk, logs, &id, &self.output, &paced, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
                             child.cancel();
                         }
                     }
                     if let Some((logs, ..)) = job.as_mut() {
                         for arrival in waiting.drain(..) {
                             for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
-                                tokio::select! {
-                                    _ = cancel.cancelled() => child.cancel(),
-                                    _ = self.output.send(message) => {},
-                                }
+                                let _ = self.output.send(message);
                             }
                         }
                     }
@@ -830,7 +811,7 @@ impl JobConfig {
                         break;
                     };
                     let logs = job.as_mut().map(|(logs, ..)| logs);
-                    if take_chunk(chunk, logs, &id, &self.output, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
+                    if take_chunk(chunk, logs, &id, &self.output, &paced, stdout_pipe.as_ref(), &cancel, &mut stdout_line_start).await? {
                         child.cancel();
                     }
                 }
@@ -850,17 +831,14 @@ impl JobConfig {
             }
             for arrival in waiting.drain(..) {
                 for message in logs.arrive(&id, arrival, &mut stdout_line_start).await? {
-                    tokio::select! {
-                        _ = closed.cancelled() => {}
-                        _ = self.output.send(message) => {}
-                    }
+                    let _ = self.output.send(message);
                 }
             }
         }
         // A job's last output leaves before its exit: while followed, what
         // the backend does not hold; otherwise each stream's newest bytes.
         if let Some((logs, ..)) = job.as_mut() {
-            logs.send_last(&id, followed, &self.output, &closed).await?;
+            logs.send_last(&id, followed, &self.output)?;
         }
         let exit = child.wait().await;
         drop(execution);
@@ -975,9 +953,9 @@ impl Execution {
             ExecutionOwner::Shell(child) => child.is_cancelled(),
         }
     }
-    async fn signal(&self, signal: Signal) -> io::Result<()> {
+    fn signal(&self, signal: Signal) -> io::Result<()> {
         match &self.owner {
-            ExecutionOwner::Process(child) => child.signal(signal).await,
+            ExecutionOwner::Process(child) => child.signal(signal),
             ExecutionOwner::Shell(child) => child.signal(signal),
         }
     }
@@ -1009,7 +987,8 @@ async fn take_chunk(
     chunk: OutputChunk,
     logs: Option<&mut Logs>,
     id: &str,
-    output: &mpsc::Sender<wire::Frame>,
+    output: &mpsc::UnboundedSender<wire::Frame>,
+    paced: &Arc<Semaphore>,
     pipe: Option<&mpsc::Sender<Bytes>>,
     cancel: &CancellationToken,
     stdout_line_start: &mut bool,
@@ -1031,18 +1010,23 @@ async fn take_chunk(
                 })
             })
         }
-        None => Some(wire::encode(&wire::Outbound::SpawnOutput {
-            spawn_id: id.to_owned(),
-            stream: chunk.stream,
-            bytes: wire::WireBytes(chunk.bytes.to_vec()),
-        })),
+        None => {
+            let permit = tokio::select! {
+                _ = cancel.cancelled() => return Ok(true),
+                permit = paced.clone().acquire_owned() => permit.expect("the semaphore is never closed"),
+            };
+            Some(
+                wire::encode(&wire::Outbound::SpawnOutput {
+                    spawn_id: id.to_owned(),
+                    stream: chunk.stream,
+                    bytes: wire::WireBytes(chunk.bytes.to_vec()),
+                })
+                .map(|frame| frame.held_by(permit)),
+            )
+        }
     };
     if let Some(message) = message {
-        let message = message.map_err(io::Error::other)?;
-        tokio::select! {
-            _ = cancel.cancelled() => return Ok(true),
-            _ = output.send(message) => {},
-        }
+        let _ = output.send(message.map_err(io::Error::other)?);
     }
     if let (OutputStream::Stdout, Some(pipe)) = (chunk.stream, pipe) {
         tokio::select! {
@@ -1173,8 +1157,13 @@ struct Log {
     /// The length the last message beyond the first `JOB_VIEW_BYTES`
     /// reported.
     reported: u64,
-    /// When that message went, or found the connection's queue full.
+    /// When that message went.
     reported_at: Option<Instant>,
+    /// Held by the message beyond the first `JOB_VIEW_BYTES` while it waits
+    /// in the connection's queue, so a stream has one waiting at most and the
+    /// next one, made when it leaves, holds the newest bytes: a slow uplink
+    /// cannot pile previews up.
+    waiting: Arc<Semaphore>,
 }
 
 /// Which of a job's waiting messages beyond its views go.
@@ -1195,6 +1184,7 @@ impl Log {
             held: 0,
             reported: 0,
             reported_at: None,
+            waiting: Arc::new(Semaphore::new(1)),
         }
     }
 
@@ -1272,14 +1262,13 @@ impl Log {
     }
 
     /// Sends the stream's message beyond its first `JOB_VIEW_BYTES` when
-    /// one is `due`, without waiting for room: one that finds the
-    /// connection's queue full waits for the stream's next interval.
+    /// one is `due`.
     fn send_beyond(
         &mut self,
         job: &str,
         followed: bool,
         due: Due,
-        output: &mpsc::Sender<wire::Frame>,
+        output: &mpsc::UnboundedSender<wire::Frame>,
     ) -> io::Result<()> {
         let Some(at) = self.due(followed) else {
             return Ok(());
@@ -1287,13 +1276,17 @@ impl Log {
         if due == Due::Now && at > Instant::now() {
             return Ok(());
         }
+        let Ok(permit) = self.waiting.clone().try_acquire_owned() else {
+            // The last one has not left yet: the next goes an interval
+            // later, with the bytes that arrived by then.
+            self.reported_at = Some(Instant::now());
+            return Ok(());
+        };
         let message = self.beyond(job, followed).map_err(io::Error::other)?;
-        match output.try_send(message) {
-            Ok(()) => self.reported(followed),
-            Err(mpsc::error::TrySendError::Full(_)) => self.reported_at = Some(Instant::now()),
-            // A disconnected backend follows nothing; the job's cancellation
-            // ends it.
-            Err(mpsc::error::TrySendError::Closed(_)) => {}
+        // A disconnected backend follows nothing; the job's cancellation
+        // ends it.
+        if output.send(message.held_by(permit)).is_ok() {
+            self.reported(followed);
         }
         Ok(())
     }
@@ -1393,30 +1386,29 @@ impl Logs {
         job: &str,
         followed: bool,
         due: Due,
-        output: &mpsc::Sender<wire::Frame>,
+        output: &mpsc::UnboundedSender<wire::Frame>,
     ) -> io::Result<()> {
         self.stdout.send_beyond(job, followed, due, output)?;
         self.stderr.send_beyond(job, followed, due, output)
     }
 
     /// Sends each stream's last message beyond its first `JOB_VIEW_BYTES`
-    /// that waits, waiting for room, before the job's exit goes.
-    async fn send_last(
+    /// that waits, before the job's exit goes.
+    fn send_last(
         &mut self,
         job: &str,
         followed: bool,
-        output: &mpsc::Sender<wire::Frame>,
-        closed: &CancellationToken,
+        output: &mpsc::UnboundedSender<wire::Frame>,
     ) -> io::Result<()> {
         for log in [&mut self.stdout, &mut self.stderr] {
             if log.due(followed).is_none() {
                 continue;
             }
             let message = log.beyond(job, followed).map_err(io::Error::other)?;
-            tokio::select! {
-                // A disconnected backend no longer receives the job's output.
-                _ = closed.cancelled() => return Ok(()),
-                _ = output.send(message) => log.reported(followed),
+            // A disconnected backend follows nothing; the job's cancellation
+            // ends it.
+            if output.send(message).is_ok() {
+                log.reported(followed);
             }
         }
         Ok(())

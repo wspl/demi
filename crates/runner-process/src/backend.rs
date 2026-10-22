@@ -6,9 +6,10 @@
 //! Through the socket the URL still names the backend's origin, which requests
 //! carry as their host, but no TLS crosses the socket.
 
-use std::{io, path::PathBuf, str::FromStr};
+use std::{io, path::PathBuf, str::FromStr, sync::Arc};
 
 use demi_runner_protocol::values::{BackendUrl, ValueError};
+use demi_runner_protocol::wire::{Watched, WriteProgress};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
@@ -101,6 +102,18 @@ impl Backend {
         request: impl IntoClientRequest + Unpin,
         config: WebSocketConfig,
     ) -> Result<(BackendSocket, Response), tungstenite::Error> {
+        let (socket, response, _) = self.watched_websocket(request, config).await?;
+        Ok((socket, response))
+    }
+
+    /// As [`websocket`](Self::websocket), with whether its writes move,
+    /// which ends the runner's link when they stop
+    /// (`crates/runner-protocol/src/wire/mod.rs`).
+    pub async fn watched_websocket(
+        &self,
+        request: impl IntoClientRequest + Unpin,
+        config: WebSocketConfig,
+    ) -> Result<(BackendSocket, Response, Arc<WriteProgress>), tungstenite::Error> {
         let request = request.into_client_request()?;
         let stream: Box<dyn Duplex> = match &self.socket {
             #[cfg(unix)]
@@ -122,7 +135,12 @@ impl Backend {
                 Box::new(stream)
             }
         };
-        tokio_tungstenite::client_async_tls_with_config(request, stream, Some(config), None).await
+        let (stream, progress) = Watched::new(stream);
+        let stream: Box<dyn Duplex> = Box::new(stream);
+        let (socket, response) =
+            tokio_tungstenite::client_async_tls_with_config(request, stream, Some(config), None)
+                .await?;
+        Ok((socket, response, progress))
     }
 }
 

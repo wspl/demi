@@ -254,6 +254,8 @@ pub(crate) struct Adoption {
     /// Jobs the same runner never received, whose starts go again over the
     /// new connection, with the commands each needs.
     pub(crate) resend: Vec<(String, Inbound, Option<CommandSelection>)>,
+    /// How many jobs the runner does not list, which ended as lost.
+    pub(crate) lost: usize,
 }
 
 impl DeviceJobs {
@@ -577,6 +579,7 @@ impl DeviceJobs {
                 continue;
             }
             if let Some(job) = table.jobs.remove(&id) {
+                adoption.lost += 1;
                 job.lose(lost);
             }
         }
@@ -585,6 +588,7 @@ impl DeviceJobs {
         for id in hello.recorded {
             if !listed.contains(id.as_str()) && !table.jobs.contains_key(&id) {
                 let job = JobEntry::parked();
+                adoption.lost += 1;
                 job.shared.finish(JobEnd::lost(lost));
                 table.jobs.insert(id, job);
             }

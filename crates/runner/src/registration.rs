@@ -369,13 +369,15 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
                 return Ok(Ending::Stopped);
             }
             Ok(End::Revoked(projects)) => return Ok(Ending::Removed(projects)),
-            Ok(End::Disconnected) => tracing::warn!("backend connection lost"),
+            Ok(End::Disconnected) => {
+                tracing::warn!(event = "link.closed", reason = "the backend ended it", "backend connection lost")
+            }
             Err(error) => {
                 let text = format!("connection ended: {error}");
                 if failure.as_ref() == Some(&text) {
                     crate::console::line(crate::console::runner_line(&text));
                 } else {
-                    tracing::warn!("{text}");
+                    tracing::warn!(event = "link.closed", reason = %error, "{text}");
                 }
                 management.failed(crate::console::runner_line(&text));
                 failure = Some(text);

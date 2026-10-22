@@ -31,6 +31,19 @@
 //! A laptop whose Wi-Fi blinked reconnects within about 5 seconds instead of
 //! being refused until the heartbeat gives the old socket up.
 //!
+//! # Two classes of message
+//!
+//! Every message the backend sends is control or input ([`Inbound::is_input`]):
+//! input is a stream of bytes someone wrote, a command's or a process's stdin
+//! and the stderr of a backend command relayed to its caller with its exit;
+//! control is everything else. The backend writes control before input, so a
+//! stop, a ping or a small request waits only for the frame being written.
+//! Nothing on the link has a queue limit, and nothing is cancelled or dropped
+//! for one: what crosses is control and typed or model-written input, never
+//! bulk bytes, so a queue grows only as fast as people and models write, and a
+//! connection that makes no progress is ended ([`LINK_SILENCE`],
+//! [`LINK_WRITE_TIMEOUT`]) with what it queued.
+//!
 //! # A connection's end
 //!
 //! A connection's end ends everything it carries. The backend's work for it,
@@ -48,20 +61,19 @@
 //! message (a 5,000-file working tree list, a shell command as long as a model
 //! can write, about 0.5 MiB each).
 //!
-//! One connection carries everything, so a message in flight holds up the rest.
-//! At 4 MiB a message still leaves within the 30-second write deadline on an
-//! uplink of a little over 1 Mbit/s, and a full inbound queue of eight stays
-//! within 32 MiB.
+//! One connection carries everything, so a message in flight holds up the rest:
+//! at most 4 MiB of it, however slow the uplink, while its bytes move.
 //!
 //! Bulk bytes therefore never travel in a message: file contents and command IO
-//! go through pipes ([`PipeFrame`]). A full queue never closes the connection,
-//! only a message that breaks the protocol does.
+//! go through pipes ([`PipeFrame`]). Only a message that breaks the protocol
+//! closes the connection.
 
 mod encoding;
 mod kept;
 mod messages;
 mod pipe_frames;
 mod replies;
+mod write_watch;
 
 pub use encoding::{Timestamp, WireBytes};
 pub use kept::{
@@ -72,7 +84,7 @@ pub use messages::{
     ArtifactOwner, AutostartUnavailable, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitBranches, GitChange, GitChanges,
     GitCommit, GitCommitEntry, GitCommitFile, GitLog, GitLogEntry, commit_time,
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget,
-    LookPath, Looked, MAX_INSTALLED, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
+    LookPath, Looked, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef, FileOffer,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, WriteExists,
 };
@@ -82,6 +94,7 @@ pub use pipe_frames::{
     encode_data, end_frame, idle_frame,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
+pub use write_watch::{Watched, WriteProgress};
 
 use std::time::Duration;
 
@@ -90,41 +103,56 @@ use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names. A hello of another
 /// version is refused, whatever release headers the socket opened with.
-pub const VERSION: u32 = 58;
+pub const VERSION: u32 = 59;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`crates/runner-shell/src/job.rs`).
 pub const STOP_GRACE: Duration = Duration::from_secs(5);
-/// How often a runner asks its connection whether the backend is there, and
-/// how long one unanswered counts as lost (`crates/runner/src/connection/kept.rs`).
+/// How often a runner pings the backend (`crates/runner/src/connection/kept.rs`).
 pub const RUNNER_PING_INTERVAL: Duration = Duration::from_secs(30);
-pub const RUNNER_PING_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long either end lets a connection say nothing, no message, ping or
+/// pong, before it counts the connection lost: two ping intervals, so a
+/// network that stopped passing data while the socket stays open is found
+/// within a minute.
+pub const LINK_SILENCE: Duration = Duration::from_secs(60);
+/// How long a connection's writes may wait for room with no byte accepted
+/// before the writer counts the connection lost ([`WriteProgress`]): a frame
+/// however large is no stall while its bytes move.
+pub const LINK_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 /// The most background tasks a `job_outliving` names, and the most bytes of
 /// each one's command line: enough to tell a model what keeps its command
-/// running without crowding its output out of the result.
+/// running without crowding its output out of the result, which a model's
+/// context cannot hold without limit.
 pub const JOB_OUTLIVING_TASKS: usize = 32;
 pub const JOB_TASK_LINE_BYTES: usize = 256;
-/// The largest frame either end sends.
+/// The largest frame either end sends: each frame is held whole in memory.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends, and how much of
 /// its newest bytes beyond them it sends while nobody follows it: the model's
-/// view of a running command (`crates/runner-jobs/src/tasks.rs`).
+/// view of a running command (`crates/runner-jobs/src/tasks.rs`), which a
+/// model's context cannot hold without limit.
 pub const JOB_VIEW_BYTES: usize = 8 * 1024;
 /// The most bytes one message beyond a stream's first [`JOB_VIEW_BYTES`]
 /// carries while the backend follows the job: 4,096 characters of up to four
 /// bytes each.
 pub const JOB_LIVE_BYTES: usize = 16 * 1024;
 /// How often a followed job sends each stream's newest bytes beyond its
-/// first [`JOB_VIEW_BYTES`], at most.
+/// first [`JOB_VIEW_BYTES`], at most: with [`JOB_LIVE_BYTES`] it bounds how
+/// much a followed job sends in a second.
 pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
 /// How often a job nobody follows sends how long a stream grew beyond its
-/// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most.
+/// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most, for
+/// the same reason as [`JOB_LIVE_INTERVAL`].
 pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
 /// The most bytes of one binary message of a stream pipe's WebSocket
-/// (`crates/runner-host/src/lib.rs`): the runner splits larger writes.
+/// (`crates/runner-host/src/lib.rs`): the runner splits larger writes, so a
+/// reader holds one message at a time and a ping is not stuck behind a large
+/// one.
 pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
-/// The most bytes of a WebSocket close frame's reason.
+/// The most bytes of a WebSocket close frame's reason: the protocol's control
+/// frames carry 125 bytes, two of them the status code.
 const CLOSE_REASON_BYTES: usize = 123;
-/// The most bytes of one live stdin frame.
+/// The most bytes of one live stdin frame: a control message waits only for
+/// the frame being written, so this bounds how long input can delay it.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// How long the runner gathers the subscriptions that changed before it
 /// reports them, each once (`crates/runner-host/src/subscriptions.rs`).
@@ -133,7 +161,8 @@ pub const WATCH_GATHER: Duration = Duration::from_millis(100);
 /// `fs_renew` that started it, as each end counts it (`crates/runner-host/src/subscriptions.rs`).
 pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 /// The most subscriptions one `fs_changed` names; more changed at once go
-/// in as many messages as they take, within the frame limit.
+/// in as many messages as they take, which keeps each within
+/// [`MAX_MESSAGE_BYTES`].
 pub const CHANGES_PER_MESSAGE: usize = 16 * 1024;
 /// The most bytes of the lines one `log_lines` carries, a line over it being
 /// alone in its frame. A frame that is being written cannot be interrupted, and
@@ -159,11 +188,22 @@ pub enum WireError {
 
 /// An encoded message.
 #[derive(Clone)]
-pub struct Frame(Vec<u8>);
+pub struct Frame(Vec<u8>, Option<std::sync::Arc<dyn std::any::Any + Send + Sync>>);
 
 impl Frame {
+    /// The bytes to write. Whatever the frame was [held by](Self::held_by)
+    /// is released here, as the writer takes it.
     pub fn into_bytes(self) -> Vec<u8> {
         self.0
+    }
+
+    /// Makes the frame hold `guard` until it is written, or dropped unwritten.
+    /// A producer of machine-written bytes holds a permit this way, so that
+    /// each of its streams has one frame in the writer's queue at most and
+    /// the queue needs no length limit to keep from growing on a slow uplink.
+    pub fn held_by(mut self, guard: impl Send + Sync + 'static) -> Self {
+        self.1 = Some(std::sync::Arc::new(guard));
+        self
     }
 
     /// The encoded size, which [`MAX_MESSAGE_BYTES`] bounds.
@@ -180,7 +220,7 @@ pub fn encode<M: Serialize + garde::Validate<Context = ()>>(
     message
         .validate()
         .map_err(|report| WireError::Invalid(report.to_string()))?;
-    Ok(Frame(rmp_serde::to_vec_named(message)?))
+    Ok(Frame(rmp_serde::to_vec_named(message)?, None))
 }
 
 /// Decodes and validates one message; bytes after it are refused.
@@ -214,6 +254,17 @@ pub fn refusal(bytes: &[u8], error: &WireError) -> String {
         Ok(Typed { kind }) => format!("cannot decode {kind}: {error}"),
         Err(_) => format!("cannot decode a message: {error}"),
     }
+}
+
+/// The type of the message a [`refusal`]'s `reason` names, or `message` when
+/// it names none: what a log says of a refusal, which never holds the
+/// message's content, as the decoding error's text may.
+pub fn refused_kind(reason: &str) -> &str {
+    reason
+        .strip_prefix("cannot decode ")
+        .and_then(|rest| rest.split(':').next())
+        .filter(|kind| !kind.is_empty() && !kind.contains(' '))
+        .unwrap_or("message")
 }
 
 /// `reason` as a WebSocket close frame carries it: its first

@@ -1,9 +1,11 @@
-//! The backend WebSocket: one owner task reads messages into a queue of eight
-//! and writes the queued replies.
+//! The backend WebSocket: one owner task reads messages into a queue and
+//! writes the queued replies.
 //!
-//! - When the queue is full the reader waits, so the backend's writes wait too.
-//!   Only a message that breaks the protocol closes the connection (the limits
-//!   and why: `demi_runner_protocol::wire`).
+//! - The queues of the backend's messages, of control and of output have no
+//!   length limit, so the reader never waits for work that does not read, and
+//!   nothing is cancelled or dropped for a count. Only a message that breaks
+//!   the protocol closes the connection (the limits and why:
+//!   `demi_runner_protocol::wire`).
 //! - A message the runner cannot decode ends the connection with a close frame
 //!   naming its type and the decoding error.
 //! - A connection the runner ends on purpose, as a drain or a stop does, ends
@@ -12,7 +14,7 @@
 //! - The runner pings the backend and counts a connection it hears nothing on
 //!   as lost, as one the network dropped without closing it is.
 
-use std::{io, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 
 use demi_command_protocol::host_target;
 use demi_runner_process::backend::Backend;
@@ -39,22 +41,24 @@ use tokio_tungstenite::{
 use tokio_util::sync::CancellationToken;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
-const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 /// How long an ending the runner chose may take to send what is queued, its
 /// close frame and to hear the backend's; a backend that takes longer sees
 /// the connection end without them.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
-const QUEUE_MESSAGES: usize = 8;
+/// The Host's log frames waiting to be written. The one queue on the link
+/// with a length: its lines wait in the Host's log file, which holds them, and
+/// a frame waits only for room here (`crates/runner/src/host_log.rs`).
+const LOG_QUEUE: usize = 8;
 
 pub struct Transport {
     /// Job and process output, behind the control replies.
-    pub output: mpsc::Sender<Frame>,
+    pub output: mpsc::UnboundedSender<Frame>,
     /// Replies and requests, written first.
-    pub control: mpsc::Sender<Frame>,
+    pub control: mpsc::UnboundedSender<Frame>,
     /// The Host's log lines, written last: a command's exit or an answer
     /// leaves before a log frame (`crates/runner/src/host_log.rs`).
     pub log: mpsc::Sender<Frame>,
-    pub input: mpsc::Receiver<Inbound>,
+    pub input: mpsc::UnboundedReceiver<Inbound>,
     cancel: CancellationToken,
     owner: Option<JoinHandle<io::Result<()>>>,
 }
@@ -113,12 +117,12 @@ impl Transport {
             .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));
         let connected = tokio::select! {
             _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "connection cancelled")),
-            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, backend.websocket(request, config)) => {
+            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, backend.watched_websocket(request, config)) => {
                 result.map_err(io::Error::other)?
             }
         };
         match connected {
-            Ok((socket, _)) => Ok(Connected::Open(Self::from_socket(socket, cancel))),
+            Ok((socket, _, writes)) => Ok(Connected::Open(Self::from_socket(socket, writes, cancel))),
             Err(Error::Http(response)) if response.status() == StatusCode::CONFLICT => {
                 let body = response.body().as_deref().unwrap_or_default();
                 let update = RunnerUpdate::decode(body)
@@ -129,15 +133,20 @@ impl Transport {
         }
     }
 
-    pub fn from_socket<S>(socket: WebSocketStream<S>, cancel: CancellationToken) -> Self
+    /// Serves `socket`, whose writes `writes` notes.
+    pub fn from_socket<S>(
+        socket: WebSocketStream<S>,
+        writes: Arc<wire::WriteProgress>,
+        cancel: CancellationToken,
+    ) -> Self
     where
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
         let cancel = cancel.child_token();
-        let (output, mut outgoing) = mpsc::channel::<Frame>(QUEUE_MESSAGES);
-        let (control, mut controls) = mpsc::channel::<Frame>(128);
-        let (log, mut logs) = mpsc::channel::<Frame>(QUEUE_MESSAGES);
-        let (incoming, input) = mpsc::channel(QUEUE_MESSAGES);
+        let (output, mut outgoing) = mpsc::unbounded_channel::<Frame>();
+        let (control, mut controls) = mpsc::unbounded_channel::<Frame>();
+        let (log, mut logs) = mpsc::channel::<Frame>(LOG_QUEUE);
+        let (incoming, input) = mpsc::unbounded_channel();
         let stopped = cancel.clone();
         let owner = tokio::spawn(async move {
             let (mut writer, mut reader) = socket.split();
@@ -147,13 +156,19 @@ impl Transport {
                 loop {
                     // The backend answers each ping, and pings itself.
                     let Ok(message) =
-                        tokio::time::timeout(wire::RUNNER_PING_TIMEOUT, reader.next()).await
+                        tokio::time::timeout(wire::LINK_SILENCE, reader.next()).await
                     else {
+                        tracing::warn!(
+                            event = "link.lost",
+                            cause = "silence",
+                            silent_ms = wire::LINK_SILENCE.as_millis() as u64,
+                            "nothing arrived from the backend"
+                        );
                         return Err(io::Error::new(
                             io::ErrorKind::TimedOut,
                             format!(
-                                "the backend did not answer for {} seconds",
-                                wire::RUNNER_PING_TIMEOUT.as_secs()
+                                "nothing arrived from the backend for {} seconds",
+                                wire::LINK_SILENCE.as_secs()
                             ),
                         ));
                     };
@@ -164,17 +179,30 @@ impl Transport {
                         Message::Binary(bytes) => {
                             let message = match wire::decode(&bytes) {
                                 Ok(message) => message,
-                                Err(error) => return Ok(Some(wire::refusal(&bytes, &error))),
+                                Err(error) => {
+                                    let refusal = wire::refusal(&bytes, &error);
+                                    tracing::warn!(
+                                        event = "message.refused",
+                                        direction = "from_backend",
+                                        kind = wire::refused_kind(&refusal),
+                                        "a message of the backend could not be decoded"
+                                    );
+                                    return Ok(Some(refusal));
+                                }
                             };
-                            // A full queue stops the reading until the
-                            // connection's owner takes a message.
-                            if incoming.send(message).await.is_err() {
+                            if incoming.send(message).is_err() {
                                 return Ok(None);
                             }
                         }
                         // The backend closed it over a message of this
                         // runner's that it cannot decode, and says which.
                         Message::Close(Some(frame)) if frame.code == CloseCode::Invalid => {
+                            tracing::warn!(
+                                event = "message.refused",
+                                direction = "to_backend",
+                                kind = wire::refused_kind(&frame.reason),
+                                "the backend could not decode a message of the runner"
+                            );
                             return Err(io::Error::new(
                                 io::ErrorKind::InvalidData,
                                 format!("the backend {}", frame.reason),
@@ -201,10 +229,7 @@ impl Transport {
                     let message = tokio::select! {
                         biased;
                         _ = pings.tick() => {
-                            tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Ping(Vec::new().into())))
-                                .await
-                                .map_err(io::Error::other)?
-                                .map_err(io::Error::other)?;
+                            watched(&writes, writer.send(Message::Ping(Vec::new().into()))).await?;
                             continue;
                         }
                         Some(message) = controls.recv() => message,
@@ -212,7 +237,7 @@ impl Transport {
                         Some(message) = logs.recv() => message,
                         else => break,
                     };
-                    write(&mut writer, message).await?;
+                    write(&mut writer, &writes, message).await?;
                 }
                 Ok::<_, io::Error>(())
             };
@@ -248,7 +273,7 @@ impl Transport {
             // rather than lose it (`crates/runner/src/connection/mod.rs`).
             let close = async {
                 while let Ok(message) = controls.try_recv().or_else(|_| outgoing.try_recv()) {
-                    write(&mut writer, message).await?;
+                    write(&mut writer, &writes, message).await?;
                 }
                 let frame = CloseFrame {
                     code: CloseCode::Away,
@@ -295,7 +320,7 @@ impl Transport {
 
 /// Writes one queued frame. Replies over the limit already failed their
 /// requests; anything else this large breaks the protocol.
-async fn write<S>(writer: &mut S, message: Frame) -> io::Result<()>
+async fn write<S>(writer: &mut S, writes: &wire::WriteProgress, message: Frame) -> io::Result<()>
 where
     S: futures_util::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 {
@@ -309,10 +334,37 @@ where
             ),
         ));
     }
-    tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Binary(bytes.into())))
-        .await
-        .map_err(io::Error::other)?
-        .map_err(io::Error::other)
+    watched(writes, writer.send(Message::Binary(bytes.into()))).await
+}
+
+/// Runs a write, ending it once the socket's writes stall
+/// ([`wire::WriteProgress::stalled`]).
+async fn watched(
+    writes: &wire::WriteProgress,
+    sending: impl Future<Output = Result<(), tokio_tungstenite::tungstenite::Error>>,
+) -> io::Result<()> {
+    tokio::select! {
+        sent = sending => sent.map_err(io::Error::other),
+        () = writes.stalled() => Err(write_stalled()),
+    }
+}
+
+/// The error of a write that made no progress for [`wire::LINK_WRITE_TIMEOUT`],
+/// which ends the connection.
+fn write_stalled() -> io::Error {
+    tracing::warn!(
+        event = "link.lost",
+        cause = "write",
+        stalled_ms = wire::LINK_WRITE_TIMEOUT.as_millis() as u64,
+        "a write to the backend made no progress"
+    );
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        format!(
+            "a write made no progress for {} seconds",
+            wire::LINK_WRITE_TIMEOUT.as_secs()
+        ),
+    )
 }
 
 impl Drop for Transport {

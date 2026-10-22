@@ -19,7 +19,7 @@ async fn filesystem_requests_wait_instead_of_failing() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("file"), "x").unwrap();
-        let (output, mut replies) = mpsc::channel(1024);
+        let (output, mut replies) = mpsc::unbounded_channel();
         let pipes = PipeClient::new(
             &"http://127.0.0.1:1".parse().unwrap(),
             tokio::sync::watch::Sender::new(None).subscribe(),
@@ -70,7 +70,7 @@ fn repository() -> (tempfile::TempDir, PathBuf) {
 async fn working_tree_requests_wait_instead_of_failing() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let repositories: Vec<_> = (0..16).map(|_| repository()).collect();
-        let (output, mut replies) = mpsc::channel(1024);
+        let (output, mut replies) = mpsc::unbounded_channel();
         let pipes = PipeClient::new(
             &"http://127.0.0.1:1".parse().unwrap(),
             tokio::sync::watch::Sender::new(None).subscribe(),

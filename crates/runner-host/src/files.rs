@@ -65,7 +65,7 @@ use crate::{fs::error_code, git::GitService};
 const CHUNK_BYTES: usize = 64 * 1024;
 
 pub struct FileTransfers {
-    output: mpsc::Sender<wire::Frame>,
+    output: mpsc::UnboundedSender<wire::Frame>,
     pipes: PipeClient,
     transfers: TaskTracker,
     /// Ends every transfer: cancelled by `close` and by the host connection's
@@ -75,7 +75,7 @@ pub struct FileTransfers {
 
 impl FileTransfers {
     pub fn new(
-        output: mpsc::Sender<wire::Frame>,
+        output: mpsc::UnboundedSender<wire::Frame>,
         pipes: PipeClient,
         cancel: CancellationToken,
     ) -> Self {
@@ -109,7 +109,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let read = open_read(target, offset.unwrap_or(0), length, held.as_deref(), &transfer).await;
             let read = match read {
@@ -117,8 +116,8 @@ impl FileTransfers {
                 Err(error) => {
                     // Nothing moves; the pipe end is still reported, as every
                     // end named to the runner is.
-                    send(&reply, fs_error(id, read_at, &error), &shutdown).await;
-                    report_pipe(&reply, output.id, Err(error), &shutdown).await;
+                    send(&reply, fs_error(id, read_at, &error));
+                    report_pipe(&reply, output.id, Err(error));
                     return;
                 }
             };
@@ -127,17 +126,17 @@ impl FileTransfers {
                 read_at,
                 result: wire::FsResult::ReadFile(read.opened),
             }));
-            if !send(&reply, opened, &shutdown).await {
+            if !send(&reply, opened) {
                 return;
             }
             let Some(body) = read.body else {
                 // Nothing moves; the pipe end is still reported.
                 let result = Err(io::Error::other("the file is unchanged"));
-                report_pipe(&reply, output.id, result, &shutdown).await;
+                report_pipe(&reply, output.id, result);
                 return;
             };
             let result = pipes.put(&output.url, body, &transfer).await;
-            report_pipe(&reply, output.id, result, &shutdown).await;
+            report_pipe(&reply, output.id, result);
         });
         Ok(())
     }
@@ -163,7 +162,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let opened = open_files(targets, Some(limit), &transfer).await;
             let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
@@ -171,11 +169,11 @@ impl FileTransfers {
                 read_at,
                 result: wire::FsResult::ReadFiles(file_reads(&opened)),
             }));
-            if !send(&reply, answer, &shutdown).await {
+            if !send(&reply, answer) {
                 return;
             }
             let result = pipes.put(&output.url, framed(opened), &transfer).await;
-            report_pipe(&reply, output.id, result, &shutdown).await;
+            report_pipe(&reply, output.id, result);
         });
         Ok(())
     }
@@ -201,7 +199,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let result = match target {
                 Ok(target) => {
@@ -218,7 +215,7 @@ impl FileTransfers {
                 .as_ref()
                 .map(|_| ())
                 .map_err(|error| io::Error::new(error.kind(), error.to_string()));
-            report_pipe(&reply, input.id, reported, &shutdown).await;
+            report_pipe(&reply, input.id, reported);
             let message = match result {
                 Ok(()) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                     id,
@@ -227,7 +224,7 @@ impl FileTransfers {
                 })),
                 Err(error) => fs_error(id, read_at, &error),
             };
-            send(&reply, message, &shutdown).await;
+            send(&reply, message);
         });
         Ok(())
     }
@@ -251,7 +248,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let mut bytes = Vec::new();
             let mut looked = Vec::with_capacity(paths.len());
@@ -275,13 +271,13 @@ impl FileTransfers {
                     })
                 })
             });
-            if !send(&reply, answer, &shutdown).await {
+            if !send(&reply, answer) {
                 return;
             }
             if let Some(output) = output {
                 let body = futures_util::stream::iter([Ok::<_, io::Error>(Bytes::from(bytes))]);
                 let result = pipes.put(&output.url, body, &transfer).await;
-                report_pipe(&reply, output.id, result, &shutdown).await;
+                report_pipe(&reply, output.id, result);
             }
         });
         Ok(())
@@ -307,7 +303,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let result = match target {
                 Ok(target) => {
@@ -320,7 +315,7 @@ impl FileTransfers {
                 .as_ref()
                 .map(|_| ())
                 .map_err(|error| io::Error::new(error.kind(), error.to_string()));
-            report_pipe(&reply, input.id, reported, &shutdown).await;
+            report_pipe(&reply, input.id, reported);
             let message = match result {
                 Ok(name) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                     id,
@@ -329,7 +324,7 @@ impl FileTransfers {
                 })),
                 Err(error) => fs_error(id, read_at, &error),
             };
-            send(&reply, message, &shutdown).await;
+            send(&reply, message);
         });
         Ok(())
     }
@@ -356,7 +351,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let result = match target {
                 Ok(target) => download_file(&pipes, &source, &target, exists, &transfer).await,
@@ -370,7 +364,7 @@ impl FileTransfers {
                 })),
                 Err(error) => fs_error(id, read_at, &error),
             };
-            send(&reply, message, &shutdown).await;
+            send(&reply, message);
         });
         Ok(())
     }
@@ -402,7 +396,6 @@ impl FileTransfers {
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
-        let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             // Past the working-tree capacity a request waits for a slot
             // (`crates/runner-host/src/lib.rs`).
@@ -428,9 +421,9 @@ impl FileTransfers {
                         code: error.code().to_owned(),
                         message: error.message(),
                     });
-                    send(&reply, message, &shutdown).await;
+                    send(&reply, message);
                     let unused = io::Error::other(error.message());
-                    report_pipe(&reply, output.id, Err(unused), &shutdown).await;
+                    report_pipe(&reply, output.id, Err(unused));
                     return;
                 }
             };
@@ -439,12 +432,12 @@ impl FileTransfers {
                 read_at,
                 result: wire::GitResult::Show,
             }));
-            if !send(&reply, found, &shutdown).await {
+            if !send(&reply, found) {
                 return;
             }
             let body = futures_util::stream::iter([Ok::<_, io::Error>(Bytes::from(bytes))]);
             let result = pipes.put(&output.url, body, &transfer).await;
-            report_pipe(&reply, output.id, result, &shutdown).await;
+            report_pipe(&reply, output.id, result);
         });
         Ok(())
     }
@@ -1024,13 +1017,8 @@ fn fs_error(id: String, read_at: ReadAt, error: &io::Error) -> Result<wire::Fram
     })
 }
 
-/// Sends one reply unless the connection is shutting down; false when it
-/// could not be sent.
-async fn send(
-    output: &mpsc::Sender<wire::Frame>,
-    message: Result<wire::Frame, wire::WireError>,
-    shutdown: &CancellationToken,
-) -> bool {
+/// Sends one reply; false when it could not be sent.
+fn send(output: &mpsc::UnboundedSender<wire::Frame>, message: Result<wire::Frame, wire::WireError>) -> bool {
     let message = match message {
         Ok(message) => message,
         Err(error) => {
@@ -1038,8 +1026,5 @@ async fn send(
             return false;
         }
     };
-    tokio::select! {
-        _ = shutdown.cancelled() => false,
-        result = output.send(message) => result.is_ok(),
-    }
+    output.send(message).is_ok()
 }

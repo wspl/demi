@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 /// The clock is paused, so the backend's minute passes at once.
 #[tokio::test(start_paused = true)]
 async fn an_artifact_location_the_backend_answers_after_a_minute_still_arrives() {
-    let (control, _frames) = mpsc::channel(1);
+    let (control, _frames) = mpsc::unbounded_channel();
     let reach = watch::Sender::new(Reach::Connected(Live {
         control,
         closed: CancellationToken::new(),

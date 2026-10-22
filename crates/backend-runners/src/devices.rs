@@ -653,7 +653,6 @@ impl Devices {
         slot.target.replace(reported.target);
         self.returning.forget(device);
         slot.publish(&link);
-        tracing::info!(device = %device, "runner connected");
         Serving {
             slot,
             device: device.clone(),
@@ -801,6 +800,34 @@ fn device_access(device: &DeviceId, slot: &DeviceSlot) -> RemoteHost {
     RemoteHost::new(key, "/".into(), slot.link.subscribe(), slot.jobs.clone(), Admission::Free)
 }
 
+/// A runner's socket as the edge accepted it, with whether its writes move,
+/// which ends the connection when they stop
+/// (`crates/runner-protocol/src/wire/mod.rs`).
+pub struct RunnerSocket {
+    socket: WebSocket,
+    progress: Arc<wire::WriteProgress>,
+}
+
+impl RunnerSocket {
+    pub fn new(socket: WebSocket, progress: Arc<wire::WriteProgress>) -> Self {
+        Self { socket, progress }
+    }
+}
+
+impl std::ops::Deref for RunnerSocket {
+    type Target = WebSocket;
+
+    fn deref(&self) -> &WebSocket {
+        &self.socket
+    }
+}
+
+impl std::ops::DerefMut for RunnerSocket {
+    fn deref_mut(&mut self) -> &mut WebSocket {
+        &mut self.socket
+    }
+}
+
 /// A bound connection, served over its socket by the task that adopted it.
 pub struct Serving {
     slot: Rc<DeviceSlot>,
@@ -832,7 +859,7 @@ impl Serving {
 
     /// Serves the connection until either end closes it, then marks the
     /// device offline and records when it was last seen.
-    pub async fn serve(self, socket: WebSocket) {
+    pub async fn serve(self, socket: RunnerSocket) {
         let Serving {
             slot,
             device,
@@ -843,8 +870,10 @@ impl Serving {
             wait,
             marks,
         } = self;
+        let RunnerSocket { socket, progress } = socket;
+        let driver = driver.watching_writes(progress);
         let (mut outgoing, incoming) = socket.split();
-        let incoming = incoming.filter_map(|message| ready(socket_frame(message)));
+        let incoming = incoming.filter_map(|message| ready(socket_frame(&link, message)));
         let served = driver.serve(
             incoming,
             (&mut outgoing)
@@ -871,12 +900,28 @@ impl Serving {
             () = held => unreachable!("the installed artifacts are watched until the connection ends"),
         };
         match &end {
-            LinkEnd::Refused(reason) | LinkEnd::RunnerRefused(reason) => {
-                tracing::warn!(device = %device, "runner connection closed: {reason}")
-            }
-            LinkEnd::Closed(reason) | LinkEnd::Disconnected(reason) => {
-                tracing::info!(device = %device, "runner connection ended: {reason}");
-            }
+            // A message one end could not decode ended the connection; the
+            // log names its type, never its content.
+            LinkEnd::Refused(reason) => tracing::warn!(
+                event = "message.refused",
+                host_id = %device,
+                direction = "from_runner",
+                kind = wire::refused_kind(reason),
+                "a message of the runner could not be decoded"
+            ),
+            LinkEnd::RunnerRefused(reason) => tracing::warn!(
+                event = "message.refused",
+                host_id = %device,
+                direction = "to_runner",
+                kind = wire::refused_kind(reason),
+                "the runner could not decode a message of the backend"
+            ),
+            LinkEnd::Closed(reason) | LinkEnd::Disconnected(reason) => tracing::info!(
+                event = "link.closed",
+                host_id = %device,
+                reason = reason.as_str(),
+                "a runner connection ended"
+            ),
         }
         if let Some(projects) = slot.revoked.take() {
             let frame = wire::encode(&Inbound::Revoked { projects })

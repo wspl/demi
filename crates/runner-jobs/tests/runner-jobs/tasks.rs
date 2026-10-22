@@ -195,14 +195,13 @@ impl ShellJob for Played {
 /// job directories; the jobs arrive at the returned receiver as they start.
 async fn table(
     root: &Path,
-    capacity: usize,
 ) -> (
     JobTable,
-    mpsc::Receiver<wire::Frame>,
+    mpsc::UnboundedReceiver<wire::Frame>,
     Arc<JobDirectories>,
     mpsc::UnboundedReceiver<Puppet>,
 ) {
-    let (output, receiver) = mpsc::channel(capacity);
+    let (output, receiver) = mpsc::unbounded_channel();
     let token = tokio::sync::watch::Sender::new(Some("test-token".parse().unwrap())).subscribe();
     let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), token).unwrap();
     let directories = JobDirectories::open(root.join("jobs")).await;
@@ -278,7 +277,7 @@ fn stream_bytes(records: &[KeptRecord], stream: OutputStream) -> Vec<u8> {
 #[tokio::test]
 async fn a_shell_job_keeps_every_read_and_sends_only_its_views() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver, directories, mut jobs) = table(root.path(), 8).await;
+    let (mut table, mut receiver, directories, mut jobs) = table(root.path()).await;
     start(&mut table, root.path(), "the views");
     let job = jobs.recv().await.unwrap();
     assert_eq!(job.script, "the views");
@@ -380,7 +379,7 @@ fn job_directories(directories: &JobDirectories) -> Vec<std::path::PathBuf> {
 #[tokio::test]
 async fn an_endless_job_keeps_its_first_and_last_output_within_the_bound() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver, directories, mut jobs) = table(root.path(), 64).await;
+    let (mut table, mut receiver, directories, mut jobs) = table(root.path()).await;
     let total = 24 * 1024 * 1024;
     start(&mut table, root.path(), "endless");
     let job = jobs.recv().await.unwrap();
@@ -434,7 +433,7 @@ async fn an_endless_job_keeps_its_first_and_last_output_within_the_bound() {
 }
 
 /// The next reply of the job's, within a hang guard.
-async fn reply(receiver: &mut mpsc::Receiver<wire::Frame>) -> Reply {
+async fn reply(receiver: &mut mpsc::UnboundedReceiver<wire::Frame>) -> Reply {
     let message = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
         .await
         .expect("a reply within the hang guard")
@@ -444,7 +443,7 @@ async fn reply(receiver: &mut mpsc::Receiver<wire::Frame>) -> Reply {
 
 /// The next stdout bytes beyond the view, and where they start; what says
 /// only a stream's length is passed over.
-async fn beyond(receiver: &mut mpsc::Receiver<wire::Frame>) -> (u64, Vec<u8>) {
+async fn beyond(receiver: &mut mpsc::UnboundedReceiver<wire::Frame>) -> (u64, Vec<u8>) {
     loop {
         match reply(receiver).await {
             Reply::Output {
@@ -489,7 +488,7 @@ async fn written(directories: &JobDirectories, bytes: usize) {
 #[tokio::test]
 async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver, directories, mut jobs) = table(root.path(), 64).await;
+    let (mut table, mut receiver, directories, mut jobs) = table(root.path()).await;
     let job = WorkId::Job("job".into());
     start(&mut table, root.path(), "followed");
     let mut played = jobs.recv().await.unwrap();
@@ -602,7 +601,7 @@ async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
 #[tokio::test]
 async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     let root = tempfile::tempdir().unwrap();
-    let (mut table, mut receiver, _directories, mut jobs) = table(root.path(), 1).await;
+    let (mut table, mut receiver, _directories, mut jobs) = table(root.path()).await;
     start(&mut table, root.path(), "endless");
     let job = jobs.recv().await.unwrap();
     // Prints until the job is cancelled, as a shell's loop does.

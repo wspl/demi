@@ -27,7 +27,7 @@ pub struct HostServer {
     /// The connection's file system watches, which a direct channel's
     /// watches share (`crates/runner-host/src/subscriptions.rs`).
     shared_watches: Watches,
-    output: mpsc::Sender<wire::Frame>,
+    output: mpsc::UnboundedSender<wire::Frame>,
     filesystem: TaskTracker,
     filesystem_capacity: Arc<Semaphore>,
     git: GitService,
@@ -48,7 +48,7 @@ impl Drop for HostServer {
 }
 
 impl HostServer {
-    pub fn new(output: mpsc::Sender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient) -> Self {
+    pub fn new(output: mpsc::UnboundedSender<wire::Frame>, default_cwd: PathBuf, pipes: PipeClient) -> Self {
         let cancel = CancellationToken::new();
         // The working tree's changes and the backend's subscriptions share
         // one watch per tree (`crates/runner-host/src/subscriptions.rs`).
@@ -151,14 +151,9 @@ impl HostServer {
             };
             match reply {
                 Ok(reply) => {
-                    tokio::select! {
-                        _ = cancel.cancelled() => {},
-                        result = output.send(reply) => {
-                            if result.is_err() {
-                                // The connection owner has closed its receiver.
-                                cancel.cancel();
-                            }
-                        }
+                    if output.send(reply).is_err() {
+                        // The connection owner has closed its receiver.
+                        cancel.cancel();
                     }
                 }
                 Err(error) => {
@@ -216,7 +211,7 @@ impl HostServer {
 
 /// Sends the backend's subscriptions' reports as messages, until the
 /// connection closes.
-async fn report(mut reports: mpsc::Receiver<Report>, output: mpsc::Sender<wire::Frame>, cancel: CancellationToken) {
+async fn report(mut reports: mpsc::UnboundedReceiver<Report>, output: mpsc::UnboundedSender<wire::Frame>, cancel: CancellationToken) {
     loop {
         let report = tokio::select! {
             () = cancel.cancelled() => return,
@@ -225,6 +220,7 @@ async fn report(mut reports: mpsc::Receiver<Report>, output: mpsc::Sender<wire::
                 None => return,
             },
         };
+        let mut held = None;
         let message = match report {
             Report::Live { id, since } => Outbound::FsLive {
                 id,
@@ -232,7 +228,10 @@ async fn report(mut reports: mpsc::Receiver<Report>, output: mpsc::Sender<wire::
                 epoch: crate::numbers::epoch().to_owned(),
             },
             Report::Failed { id, reason } => Outbound::FsFailed { id, reason },
-            Report::Changed(changes) => Outbound::FsChanged { changes },
+            Report::Changed(changes, taken) => {
+                held = Some(taken);
+                Outbound::FsChanged { changes }
+            }
         };
         let frame = match wire::encode(&message) {
             Ok(frame) => frame,
@@ -241,11 +240,14 @@ async fn report(mut reports: mpsc::Receiver<Report>, output: mpsc::Sender<wire::
                 continue;
             }
         };
-        tokio::select! {
-            () = cancel.cancelled() => return,
-            sent = output.send(frame) => if sent.is_err() {
-                return;
-            },
+        // The batch's `Taken` goes with its frame, and is released as the
+        // writer takes the frame.
+        let frame = match held {
+            Some(taken) => frame.held_by(taken),
+            None => frame,
+        };
+        if output.send(frame).is_err() {
+            return;
         }
     }
 }

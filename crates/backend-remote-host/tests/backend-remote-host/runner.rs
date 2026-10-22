@@ -540,7 +540,7 @@ async fn a_message_the_runner_cannot_decode_ends_the_connection_and_the_lost_pro
     assert_eq!(newer[0], 0x81, "a map of one field");
     newer[0] = 0x82;
     newer.extend(b"\xa5shell\x01");
-    fixture.link().await.send_raw(newer).await.unwrap();
+    fixture.link().await.send_raw(newer).unwrap();
     let ProcessEnd::Lost(reason) = process.exit.await else {
         panic!("the process was not lost with the connection");
     };

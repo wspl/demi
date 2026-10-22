@@ -192,7 +192,7 @@ impl RemoteHost {
             stdin: job.stdin,
             stdout: job.stdout,
         };
-        if let Err(error) = link.send_job_start(job.commands.as_ref(), &start).await {
+        if let Err(error) = link.send_job_start(job.commands.as_ref(), &start) {
             self.0.jobs.forget(&id);
             claimed.shared.finish(JobEnd::lost(&error.message));
             return Err(error);
@@ -761,8 +761,7 @@ impl RemoteHost {
             cwd: request.cwd,
             input,
             output,
-        })
-        .await?;
+        })?;
         opened.receive().await?;
         Ok(stream)
     }
@@ -1038,7 +1037,6 @@ impl RemoteJob {
                     job_id: self.id.clone(),
                     follow,
                 })
-                .await
             }
             None => Ok(()),
         }
@@ -1082,7 +1080,6 @@ impl RemoteJob {
             job_id: self.id.clone(),
             bytes,
         })
-        .await
     }
 
     pub async fn close_stdin(&self) -> Result<(), HostError> {
@@ -1091,7 +1088,6 @@ impl RemoteJob {
                 link.send(&Inbound::JobStdinEnd {
                     job_id: self.id.clone(),
                 })
-                .await
             }
             None => Ok(()),
         }
@@ -1154,7 +1150,6 @@ impl RemoteJob {
             .send(&Inbound::JobRelease {
                 job_id: self.id.clone(),
             })
-            .await
         {
             tracing::debug!(job = %self.id, "job release not sent: {error}");
         }
@@ -1219,7 +1214,6 @@ impl RemoteJob {
                     job_id: self.id.clone(),
                     signal: Some(signal),
                 })
-                .await
             }
             None => Ok(()),
         }
@@ -1244,13 +1238,13 @@ pub(crate) async fn filled_job_read(link: &Link, job: &str) -> Result<PipeReader
 
 /// Sends `bytes` as ordered frames of at most [`STDIN_CHUNK_BYTES`], each in
 /// the message `frame` makes of it.
-async fn send_stdin(
+fn send_stdin(
     link: &Link,
     bytes: &[u8],
     frame: impl Fn(WireBytes) -> Inbound,
 ) -> Result<(), HostError> {
     for chunk in bytes.chunks(STDIN_CHUNK_BYTES) {
-        link.send(&frame(WireBytes(chunk.to_vec()))).await?;
+        link.send(&frame(WireBytes(chunk.to_vec())))?;
     }
     Ok(())
 }
@@ -1717,7 +1711,7 @@ impl HostProcess for RemoteHost {
                         .collect()
                 }),
             };
-            if let Err(error) = link.send(&spawn).await {
+            if let Err(error) = link.send(&spawn) {
                 link.with_state(|state| state.remove_spawn(&id));
                 return Err(error);
             }
@@ -1775,7 +1769,6 @@ impl ProcessControl for SpawnControl {
                         spawn_id: self.id.clone(),
                         bytes,
                     })
-                    .await
                 }
                 None => Ok(()),
             }
@@ -1789,7 +1782,6 @@ impl ProcessControl for SpawnControl {
                     link.send(&Inbound::SpawnStdinEnd {
                         spawn_id: self.id.clone(),
                     })
-                    .await
                 }
                 None => Ok(()),
             }
@@ -1808,7 +1800,6 @@ impl ProcessControl for SpawnControl {
                         spawn_id: self.id.clone(),
                         signal: Some(signal),
                     })
-                    .await
                 }
                 None => Ok(()),
             }

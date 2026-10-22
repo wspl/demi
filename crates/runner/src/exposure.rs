@@ -51,7 +51,7 @@ const HOP_BY_HOP: [&str; 9] = [
 pub struct Exposure {
     http: reqwest::Client,
     pipes: PipeClient,
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     closed: CancellationToken,
     /// Each request's task: dropped with the connection, which aborts them.
     requests: JoinSet<()>,
@@ -68,7 +68,7 @@ struct Request {
 }
 
 impl Exposure {
-    pub fn new(pipes: PipeClient, control: mpsc::Sender<wire::Frame>, closed: CancellationToken) -> io::Result<Self> {
+    pub fn new(pipes: PipeClient, control: mpsc::UnboundedSender<wire::Frame>, closed: CancellationToken) -> io::Result<Self> {
         // A port of this device is reached as it is: no proxy, `localhost`
         // is 127.0.0.1 whatever the device resolves it to, and a redirect
         // is the answer, which the backend's client follows or not.
@@ -135,7 +135,7 @@ impl Exposure {
 struct Serving {
     http: reqwest::Client,
     pipes: PipeClient,
-    control: mpsc::Sender<wire::Frame>,
+    control: mpsc::UnboundedSender<wire::Frame>,
     closed: CancellationToken,
 }
 
@@ -180,14 +180,14 @@ impl Serving {
                     || "the answer pipe ended before the answer".to_owned(),
                     ToString::to_string,
                 );
-                self.send(&Outbound::HttpFailed { id, message: ended }).await;
+                self.send(&Outbound::HttpFailed { id, message: ended });
                 let abandoned = io::Error::new(io::ErrorKind::Interrupted, "the request was abandoned");
                 (sent, Err(abandoned))
             }
         };
-        report_pipe(&self.control, answer.id, sent, &self.closed).await;
+        report_pipe(&self.control, answer.id, sent);
         if let Some(body) = body {
-            report_pipe(&self.control, body.id, body_read, &self.closed).await;
+            report_pipe(&self.control, body.id, body_read);
         }
     }
 
@@ -220,7 +220,7 @@ impl Serving {
                 return body_read;
             }
         };
-        if !self.send_frame(answered).await {
+        if !self.send_frame(answered) {
             return body_read;
         }
         let mut stream = response.bytes_stream();
@@ -239,8 +239,7 @@ impl Serving {
         self.send(&Outbound::HttpFailed {
             id: id.to_owned(),
             message: why.clone(),
-        })
-        .await;
+        });
         // The pipe ends either way: it ended already when nothing takes this.
         let _ = chunks.send(Err(io::Error::other(why))).await;
     }
@@ -290,11 +289,11 @@ impl Serving {
         }
     }
 
-    /// Sends `message`; false once the connection closed. The runner's own
+    /// Sends `message`; false once the connection's writer ended. The runner's own
     /// messages always encode.
-    async fn send(&self, message: &Outbound) -> bool {
+    fn send(&self, message: &Outbound) -> bool {
         match wire::encode(message) {
-            Ok(frame) => self.send_frame(frame).await,
+            Ok(frame) => self.send_frame(frame),
             Err(error) => {
                 tracing::warn!("an exposed port's message could not be encoded: {error}");
                 true
@@ -302,11 +301,8 @@ impl Serving {
         }
     }
 
-    async fn send_frame(&self, frame: wire::Frame) -> bool {
-        tokio::select! {
-            () = self.closed.cancelled() => false,
-            sent = self.control.send(frame) => sent.is_ok(),
-        }
+    fn send_frame(&self, frame: wire::Frame) -> bool {
+        self.control.send(frame).is_ok()
     }
 }
 

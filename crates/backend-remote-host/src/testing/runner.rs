@@ -441,7 +441,7 @@ async fn adopt(
         hello: said,
     });
     device.send_replace(DeviceLink::Online(link.clone()));
-    let incoming = incoming.filter_map(|message| ready(crate::socket_frame(message)));
+    let incoming = incoming.filter_map(|message| ready(crate::socket_frame(&link, message)));
     let frames = (&mut outgoing)
         .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into()))));
     let driver = match tap {

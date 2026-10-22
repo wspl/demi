@@ -66,7 +66,7 @@ pub struct HostOperations {
     pub control: Handle,
     /// The connection's messages to the backend, which also carry its
     /// streams' artifact requests.
-    pub backend: mpsc::Sender<wire::Frame>,
+    pub backend: mpsc::UnboundedSender<wire::Frame>,
     /// The connection's end, which ends every operation.
     pub closed: CancellationToken,
     /// The forwards this runner is an end of, as the backend last said.
@@ -76,9 +76,7 @@ pub struct HostOperations {
 /// An open direct stream as the backend knows it: reported open before it
 /// is made, and closed as it is dropped.
 struct ReportedStream {
-    backend: mpsc::Sender<wire::Frame>,
-    control: Handle,
-    closed: CancellationToken,
+    backend: mpsc::UnboundedSender<wire::Frame>,
     stream: String,
     name: String,
     conversation: String,
@@ -88,7 +86,7 @@ impl ReportedStream {
     /// Tells the backend the stream opened or closed, unless the
     /// connection ended first: the backend's end of it ended what it knew
     /// of the stream already.
-    fn report(&self, open: bool) -> impl Future<Output = ()> + Send + 'static {
+    fn report(&self, open: bool) {
         send_report(
             Outbound::DirectStream {
                 stream: self.stream.clone(),
@@ -96,55 +94,27 @@ impl ReportedStream {
                 conversation: self.conversation.clone(),
                 open,
             },
-            self.backend.clone(),
-            self.closed.clone(),
-        )
+            &self.backend,
+        );
     }
 
     /// What tells the backend whether the stream's page watches it, in the
     /// order the page said it.
     fn watched(&self) -> Box<dyn Fn(bool) + Send + Sync> {
-        let (backend, control, closed, stream) = (
-            self.backend.clone(),
-            self.control.clone(),
-            self.closed.clone(),
-            self.stream.clone(),
-        );
-        // One task sends them all, so the backend hears them in order.
-        let (said, mut saying) = mpsc::unbounded_channel::<bool>();
-        control.spawn(async move {
-            while let Some(watched) = saying.recv().await {
-                let report = Outbound::DirectStreamWatched { stream: stream.clone(), watched };
-                send_report(report, backend.clone(), closed.clone()).await;
-            }
-        });
+        let (backend, stream) = (self.backend.clone(), self.stream.clone());
         Box::new(move |watched| {
-            // The task ended only with the connection, which has no backend
-            // left to tell.
-            let _ = said.send(watched);
+            let report = Outbound::DirectStreamWatched { stream: stream.clone(), watched };
+            send_report(report, &backend);
         })
     }
 }
 
-/// Sends `report` to the backend, unless the connection ended first.
-fn send_report(
-    report: Outbound,
-    backend: mpsc::Sender<wire::Frame>,
-    closed: CancellationToken,
-) -> impl Future<Output = ()> + Send + 'static {
-    async move {
-        let frame = match wire::encode(&report) {
-            Ok(frame) => frame,
-            Err(error) => {
-                tracing::warn!("a direct stream's report encoding failed: {error}");
-                return;
-            }
-        };
-        tokio::select! {
-            _ = closed.cancelled() => {}
-            // A connection that ended has no backend left to tell.
-            _ = backend.send(frame) => {}
-        }
+/// Sends `report` to the backend; a connection that ended has no backend
+/// left to tell.
+fn send_report(report: Outbound, backend: &mpsc::UnboundedSender<wire::Frame>) {
+    match wire::encode(&report) {
+        Ok(frame) => drop(backend.send(frame)),
+        Err(error) => tracing::warn!("a direct stream's report encoding failed: {error}"),
     }
 }
 
@@ -152,7 +122,7 @@ impl Drop for ReportedStream {
     fn drop(&mut self) {
         // Its opening went ahead of this, or never went, and then the
         // backend ignores a stream it does not know.
-        self.control.spawn(self.report(false));
+        self.report(false);
     }
 }
 
@@ -419,15 +389,13 @@ impl Operations for HostOperations {
     fn stream_activity(&self, conversation: &str, name: &str) -> BoxFuture<'static, StreamActivity> {
         let stream = ReportedStream {
             backend: self.backend.clone(),
-            control: self.control.clone(),
-            closed: self.closed.clone(),
             stream: uuid::Uuid::new_v4().simple().to_string(),
             name: name.to_owned(),
             conversation: conversation.to_owned(),
         };
         Box::pin(async move {
             // In the backend's queue before anything the stream asks it.
-            stream.report(true).await;
+            stream.report(true);
             StreamActivity {
                 stream: stream.stream.clone(),
                 watched: stream.watched(),
@@ -521,7 +489,9 @@ impl PageWatchTask {
                             Some(subject) => page.failed(&subject, &reason),
                             None => Vec::new(),
                         },
-                        Report::Changed(changes) => {
+                        // The page's own channel bounds what it holds, so the batch is
+                        // taken as it is handled.
+                        Report::Changed(changes, _taken) => {
                             let changes: Vec<(Subject, u64)> = changes
                                 .into_iter()
                                 .filter_map(|(id, at)| held.subject(&id).map(|subject| (subject, at)))

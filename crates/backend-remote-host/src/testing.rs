@@ -48,7 +48,7 @@ use demi_shared_types::BlobRef;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, watch};
-use tokio_util::sync::{CancellationToken, PollSender};
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     Admission, ArtifactResolver, DeviceJobs, DeviceLink, Hello, JobOrigin, Link, LinkEnd,
@@ -297,7 +297,11 @@ impl TestDevice {
             hello,
         });
         let (runner, incoming) = mpsc::channel::<Result<Vec<u8>, crate::SocketEnd>>(8);
-        let (outgoing, sent) = mpsc::channel::<Vec<u8>>(crate::OUTBOUND_FRAMES);
+        let (outgoing, sent) = mpsc::unbounded_channel::<Vec<u8>>();
+        let outgoing = futures_util::sink::unfold(outgoing, |outgoing, frame: Vec<u8>| async move {
+            outgoing.send(frame).map_err(|error| error.to_string())?;
+            Ok::<_, String>(outgoing)
+        });
         let incoming = futures_util::stream::unfold(incoming, |mut incoming| async move {
             incoming.recv().await.map(|frame| (frame, incoming))
         });
@@ -307,7 +311,7 @@ impl TestDevice {
         let served = {
             let link = link.clone();
             tokio::task::spawn_local(async move {
-                let end = driver.serve(incoming, PollSender::new(outgoing)).await;
+                let end = driver.serve(incoming, outgoing).await;
                 went_offline(&device, &link, identity);
                 end
             })
@@ -339,7 +343,7 @@ fn went_offline(device: &watch::Sender<DeviceLink>, link: &Link, identity: HostI
 /// sends and sends what a runner would.
 pub struct TestLink {
     link: Link,
-    sent: mpsc::Receiver<Vec<u8>>,
+    sent: mpsc::UnboundedReceiver<Vec<u8>>,
     runner: Option<mpsc::Sender<Result<Vec<u8>, crate::SocketEnd>>>,
     served: tokio::task::JoinHandle<LinkEnd>,
 }

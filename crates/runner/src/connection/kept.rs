@@ -27,7 +27,7 @@
 //! started anew. A job the backend has no command for is stopped.
 //!
 //! The runner notices a loss itself: it pings the backend and counts a
-//! connection unanswered for `RUNNER_PING_TIMEOUT` as lost.
+//! connection that says nothing for `LINK_SILENCE` as lost.
 
 use std::sync::Arc;
 
@@ -47,9 +47,6 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::Registered;
 
-/// The jobs' messages a connection has not taken yet.
-const OUTPUT_QUEUE: usize = 8;
-
 /// What the registration keeps from one connection to the next.
 pub struct Kept {
     pub jobs: JobTable,
@@ -59,13 +56,13 @@ pub struct Kept {
     pub watches: JoinSet<Ended>,
     /// How the jobs' commands reach the backend.
     pub handle: ConnectionHandle,
-    requests: mpsc::Receiver<Request>,
+    requests: mpsc::UnboundedReceiver<Request>,
     reach: watch::Sender<Reach>,
     /// The connection the jobs' messages go to; none while none serves.
-    output: watch::Sender<Option<mpsc::Sender<wire::Frame>>>,
+    output: watch::Sender<Option<mpsc::UnboundedSender<wire::Frame>>>,
     /// The queue the jobs' messages wait in for that connection, which a
     /// message about a job's context joins behind the job's exit.
-    queue: mpsc::Sender<wire::Frame>,
+    queue: mpsc::UnboundedSender<wire::Frame>,
     /// Passes the jobs' messages on to that connection.
     _forwarder: AbortOnDropHandle<()>,
 }
@@ -84,7 +81,7 @@ impl Kept {
         let directories = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
         let (handle, requests) = ConnectionHandle::new(reaching);
-        let (jobs_output, forwarded) = mpsc::channel(OUTPUT_QUEUE);
+        let (jobs_output, forwarded) = mpsc::unbounded_channel();
         let output = watch::Sender::new(None);
         let forwarder = tokio::spawn(forward(forwarded, output.subscribe()));
         let queue = jobs_output.clone();
@@ -127,7 +124,7 @@ impl Kept {
     /// commands' requests go to it. Answers what the connection sends again
     /// of the jobs not released: their media's announcements and the exits
     /// of those that ended.
-    pub fn connected(&mut self, live: Live, output: mpsc::Sender<wire::Frame>) -> Vec<wire::Frame> {
+    pub fn connected(&mut self, live: Live, output: mpsc::UnboundedSender<wire::Frame>) -> Vec<wire::Frame> {
         self.output.send_replace(Some(output));
         self.reach.send_replace(Reach::Connected(live));
         self.directories.announcements()
@@ -166,7 +163,7 @@ impl Kept {
     pub async fn handle(
         &mut self,
         event: Event,
-        control: Option<&mpsc::Sender<wire::Frame>>,
+        control: Option<&mpsc::UnboundedSender<wire::Frame>>,
         registered: &Registered,
     ) {
         match event {
@@ -186,7 +183,7 @@ impl Kept {
                 };
                 // Without a connection the asker sees its connection's end.
                 if let Some(control) = control {
-                    let _gone = control.send(frame).await;
+                    let _gone = control.send(frame);
                 }
             }
             Event::Request(Request::Context {
@@ -220,7 +217,7 @@ impl Kept {
         match wire::encode(&wire::Outbound::JobContextEnded { job_id }) {
             // The queue's forwarder ends with the registration.
             Ok(frame) => {
-                let _ended = self.queue.send(frame).await;
+                let _ended = self.queue.send(frame);
             }
             Err(error) => tracing::warn!("a job context's end does not encode: {error}"),
         }
@@ -263,18 +260,18 @@ async fn sleep_until(at: Option<Instant>) {
     }
 }
 
-/// Passes each job message on to the connection that serves, waiting for
-/// room in its queue; without one, the message goes nowhere, since the next
-/// connection reads what it needs from the jobs' kept output.
+/// Passes each job message on to the connection that serves; without one, the
+/// message goes nowhere, since the next connection reads what it needs from
+/// the jobs' kept output.
 async fn forward(
-    mut messages: mpsc::Receiver<wire::Frame>,
-    output: watch::Receiver<Option<mpsc::Sender<wire::Frame>>>,
+    mut messages: mpsc::UnboundedReceiver<wire::Frame>,
+    output: watch::Receiver<Option<mpsc::UnboundedSender<wire::Frame>>>,
 ) {
     while let Some(message) = messages.recv().await {
         let current = output.borrow().clone();
         if let Some(current) = current {
             // A connection that ended takes nothing more.
-            let _gone = current.send(message).await;
+            let _gone = current.send(message);
         }
     }
 }

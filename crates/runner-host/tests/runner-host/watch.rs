@@ -23,8 +23,8 @@ use tokio_util::sync::CancellationToken;
 const GUARD: Duration = Duration::from_secs(60);
 
 /// A Host server whose pipes go to `origin`, and the messages it sends.
-fn server(root: &Path, origin: &str) -> (HostServer, mpsc::Receiver<wire::Frame>) {
-    let (output, replies) = mpsc::channel(1024);
+fn server(root: &Path, origin: &str) -> (HostServer, mpsc::UnboundedReceiver<wire::Frame>) {
+    let (output, replies) = mpsc::unbounded_channel();
     // A pipe goes out with the device's token.
     let token = "device-token".parse().ok();
     let pipes = PipeClient::new(
@@ -35,7 +35,7 @@ fn server(root: &Path, origin: &str) -> (HostServer, mpsc::Receiver<wire::Frame>
     (HostServer::new(output, root.into(), pipes), replies)
 }
 
-async fn next(replies: &mut mpsc::Receiver<wire::Frame>) -> Outbound {
+async fn next(replies: &mut mpsc::UnboundedReceiver<wire::Frame>) -> Outbound {
     wire::decode(&replies.recv().await.unwrap().into_bytes()).unwrap()
 }
 
@@ -51,7 +51,7 @@ fn subscribe(host: &HostServer, id: &str, kind: SubscriptionKind, path: &Path) {
 
 /// Waits for each of `ids` to be live, which comes before anything it
 /// reports: the number each started at.
-async fn live(replies: &mut mpsc::Receiver<wire::Frame>, ids: &[&str]) -> BTreeMap<String, u64> {
+async fn live(replies: &mut mpsc::UnboundedReceiver<wire::Frame>, ids: &[&str]) -> BTreeMap<String, u64> {
     let mut waiting: BTreeSet<&str> = ids.iter().copied().collect();
     let mut since = BTreeMap::new();
     while !waiting.is_empty() {
@@ -69,7 +69,7 @@ async fn live(replies: &mut mpsc::Receiver<wire::Frame>, ids: &[&str]) -> BTreeM
 
 /// The batches the runner reports until each of `wanted` changed, each
 /// checked to name an id once: every id they named, with the latest number.
-async fn changed(replies: &mut mpsc::Receiver<wire::Frame>, wanted: &[&str]) -> BTreeMap<String, u64> {
+async fn changed(replies: &mut mpsc::UnboundedReceiver<wire::Frame>, wanted: &[&str]) -> BTreeMap<String, u64> {
     let mut waiting: BTreeSet<&str> = wanted.iter().copied().collect();
     let mut seen = BTreeMap::new();
     while !waiting.is_empty() {
@@ -90,7 +90,7 @@ async fn changed(replies: &mut mpsc::Receiver<wire::Frame>, wanted: &[&str]) -> 
 }
 
 /// The number a read of `path` answers with: the Host's before it read.
-async fn read_at(host: &HostServer, replies: &mut mpsc::Receiver<wire::Frame>, path: &Path) -> ReadAt {
+async fn read_at(host: &HostServer, replies: &mut mpsc::UnboundedReceiver<wire::Frame>, path: &Path) -> ReadAt {
     host.handle_filesystem(Inbound::FsStat {
         id: "stat".into(),
         path: path.to_string_lossy().into_owned(),
@@ -552,7 +552,7 @@ fn read_file(host: &HostServer, path: &Path, version: Option<String>) {
 }
 
 /// The opened file the read answers, then how its pipe ended.
-async fn read_answer(replies: &mut mpsc::Receiver<wire::Frame>) -> (wire::OpenedFile, bool) {
+async fn read_answer(replies: &mut mpsc::UnboundedReceiver<wire::Frame>) -> (wire::OpenedFile, bool) {
     let opened = match next(replies).await {
         Outbound::FsOk(wire::FsOk {
             result: FsResult::ReadFile(opened),

@@ -13,13 +13,13 @@ pub struct Volumes {
     syncs: TaskTracker,
     sync_capacity: Arc<Semaphore>,
     stop: CancellationToken,
-    output: mpsc::Sender<wire::Frame>,
+    output: mpsc::UnboundedSender<wire::Frame>,
 }
 
 impl Volumes {
     pub fn new(
         mounts: Vec<PathBuf>,
-        output: mpsc::Sender<wire::Frame>,
+        output: mpsc::UnboundedSender<wire::Frame>,
         stop: CancellationToken,
     ) -> Self {
         Self {
@@ -50,7 +50,7 @@ impl Volumes {
                 id,
                 error: result.err().map(|error| error.to_string()),
             });
-            send(&output, message, &stop).await;
+            send(&output, message, &stop);
         });
         Ok(())
     }
@@ -69,18 +69,15 @@ impl Drop for Volumes {
     }
 }
 
-async fn send(
-    output: &mpsc::Sender<wire::Frame>,
+fn send(
+    output: &mpsc::UnboundedSender<wire::Frame>,
     message: Result<wire::Frame, wire::WireError>,
     stop: &CancellationToken,
 ) {
     match message {
         Ok(message) => {
-            tokio::select! {
-                _ = stop.cancelled() => {},
-                result = output.send(message) => {
-                    if result.is_err() { stop.cancel(); }
-                }
+            if output.send(message).is_err() {
+                stop.cancel();
             }
         }
         Err(error) => {
