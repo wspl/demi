@@ -1,5 +1,6 @@
-import { computed, type ComputedRef } from 'vue'
+import { computed, watch, type ComputedRef } from 'vue'
 import type { SessionPhase } from '@demicodes/protocol'
+import { pageLog } from '../infra/log'
 import { activitySlotKind, type ActivitySlotInput } from './activity-slot'
 import { turnStartingMessage } from './send-way'
 import type { AgentActivity } from './agent-activity'
@@ -25,6 +26,8 @@ export interface ActivitySlotSources {
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions: () => readonly PendingSubmissionState[]
   activity: () => AgentActivity
+  /** The conversation and agent the row is of, which its lines are written under. */
+  scope?: () => { conversation: string | undefined; node: string | null }
 }
 
 /**
@@ -48,7 +51,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
    */
   startingTurn: ComputedRef<boolean>
 } {
-  const { input, phase, pendingSubmissions, activity } = sources
+  const { input, phase, pendingSubmissions, activity, scope } = sources
 
   // A message on its way that waits for the socket still starts its turn: the
   // row says Requesting from the send.
@@ -63,5 +66,41 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   const slot = computed<ActivitySlotState | null>(() =>
     kind.value === null ? null : { kind: 'requesting', since: activity().waitingSince })
 
+  logTimer(slot, scope)
+
   return { slot, startingTurn }
+}
+
+/**
+ * Writes the row's count as the log tells it: where the count started from, the
+ * server's word (`since`) or this page's own action (none yet), and every
+ * change of that start, so a count that restarted says why. `at: 'view'` is
+ * the row a view that opened already found waiting.
+ */
+function logTimer(slot: ComputedRef<ActivitySlotState | null>, scope: ActivitySlotSources['scope']): void {
+  let startedAt: number | null = null
+  watch(slot, (now, before) => {
+    const where = scope?.()
+    const fields = { timer: 'requesting', ...(where?.node ? { node: where.node } : {}) }
+    const conversation = where?.conversation
+    if (now !== null && !before) {
+      startedAt = performance.now()
+      pageLog.info('timer.started', {
+        ...fields,
+        since: now.since === null ? 'page_action' : 'server',
+        elapsed_ms: now.since === null ? 0 : Math.max(0, Date.now() - now.since),
+        at: before === undefined ? 'view' : 'change',
+      }, conversation)
+    } else if (now !== null && before !== null && before !== undefined && now.since !== before.since) {
+      pageLog.info('timer.reset', {
+        ...fields,
+        from_since: before.since,
+        to_since: now.since,
+        cause: before.since === null ? 'server_wait' : now.since === null ? 'action_sent' : 'server_new_wait',
+      }, conversation)
+    } else if (now === null && before) {
+      pageLog.info('timer.ended', { ...fields, ms: startedAt === null ? 0 : Math.round(performance.now() - startedAt) }, conversation)
+      startedAt = null
+    }
+  }, { immediate: true })
 }

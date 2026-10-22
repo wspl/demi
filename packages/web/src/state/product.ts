@@ -6,9 +6,9 @@ import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { pageLog } from '@demicodes/web-ui/infra/log'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, openSocket, pingOn, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
-import { backendUnreachable } from '@demicodes/web-ui/transport/connection'
+import { backendUnreachable, connectionCause, connectionState, type ConnectionState } from '@demicodes/web-ui/transport/connection'
 import { t } from './locales/text'
-import { ApiError, apiRequest, apiUrl, notifySessionEnded, readResponse, unreachable as backendNotReached, waitForBackendWith } from '../api/client'
+import { ApiError, apiRequest, apiUrl, logReadAnswered, logReadFailed, notifySessionEnded, readResponse, unreachable as backendNotReached, waitForBackendWith } from '../api/client'
 import {
   productStateSchema,
   syncEventSchema,
@@ -386,13 +386,27 @@ export const useProduct = defineStore('product', () => {
   const restarting = ref(false)
   /** Consecutive connections that ended, and reads of the state that failed, before the state was read. */
   const failures = ref(0)
-  /** Whether the page cannot reach the backend. */
-  const unreachable = computed(() => backendUnreachable({
+  const connectionFacts = () => ({
     online: browserOnline.value,
     restarting: restarting.value,
     failedAttempts: failures.value,
     hasSnapshot: snapshot.value !== null,
-  }))
+  })
+  /** Whether the page cannot reach the backend. */
+  const unreachable = computed(() => backendUnreachable(connectionFacts()))
+  /** Every change of where the connection stands is a line, with how long it stood there. */
+  let connectionSince = Date.now()
+  watch(() => connectionState(connectionFacts()), (to: ConnectionState, from: ConnectionState) => {
+    const now = Date.now()
+    pageLog.info('connection.state_changed', {
+      from,
+      to,
+      cause: connectionCause(connectionFacts()),
+      ms_in_from: now - connectionSince,
+      attempt: failures.value,
+    })
+    connectionSince = now
+  })
   /**
    * The page has no state yet and could not reach the backend so far, as a
    * page loaded while Demi restarts: it says it connects where the app will
@@ -581,7 +595,7 @@ export const useProduct = defineStore('product', () => {
       }
       // A message outside the contract changes nothing; a new connection
       // follows from what the page holds. The console says what did not read.
-      reportError(t('failures.readSync'), schemaRefusal(parsed.error))
+      reportError(t('failures.readSync'), schemaRefusal(parsed.error), { site: 'failures.readSync' })
       replace()
     }
     channel.onclose = (close) => {
@@ -712,12 +726,12 @@ export const useProduct = defineStore('product', () => {
       if (signal.aborted) {
         return
       }
+      const began = performance.now()
       try {
         const at = slot.now()
-        const began = performance.now()
-        const state = await fetchState(signal)
+        const { state, response } = await fetchState(signal)
         signal.throwIfAborted()
-        pageLog.info('read.answered', { read: 'state', stale, ms: Math.round(performance.now() - began) })
+        logReadAnswered(response, began, { read: 'state', stale })
         failures.value = 0
         restarting.value = false
         slot.replace(withHeldLists(state), { since: at })
@@ -748,9 +762,8 @@ export const useProduct = defineStore('product', () => {
           connect()
           return
         }
-        console.error('The state did not read', error)
         failures.value += 1
-        pageLog.warn('read.failed', { read: 'state', failures: failures.value, code: error instanceof ApiError ? error.code : null })
+        logReadFailed(error, began, { read: 'state', failures: failures.value })
         // The backend's own failure, which it answered, fails the regions
         // until the page has a state; a read that could not reach it keeps
         // them loading.
@@ -766,7 +779,7 @@ export const useProduct = defineStore('product', () => {
   }
 
   /** Reads the state. */
-  async function fetchState(signal: AbortSignal): Promise<PageState> {
+  async function fetchState(signal: AbortSignal): Promise<{ state: PageState; response: Response }> {
     const response = await apiRequest('/state', { signal, waits: false })
     const body = await readResponse(response, z.unknown())
     signal.throwIfAborted()
@@ -785,7 +798,7 @@ export const useProduct = defineStore('product', () => {
       }
       throw new Error(`The state did not read:\n${schemaRefusal(parsed.error)}`)
     }
-    return parsed.data
+    return { state: parsed.data, response }
   }
 
   /** Where the channel stands as a write is sent, which its answer is measured against. */
@@ -1057,14 +1070,14 @@ export const useProduct = defineStore('product', () => {
         await sleep(Math.random() * RESTART_SPREAD_MS, run.signal)
       }
       for (let failed = 0; ; ) {
+        const began = performance.now()
         try {
           const at = slot.now()
-          const began = performance.now()
           const response = await apiRequest(route.route, { signal: run.signal })
           const tag = response.headers.get('ETag') ?? ''
           const body = await readResponse(response, route.schema as z.ZodType<never>)
           run.signal.throwIfAborted()
-          pageLog.info('read.answered', { read: part, stale, ms: Math.round(performance.now() - began) })
+          logReadAnswered(response, began, { read: part, stale })
           slot.receive(part, (state) => withPart(state, (route.event as (body: never, state: ProductState) => PartEvent)(body, state)), { since: at })
           listTags.set(part, tag)
           listReads.delete(part)
@@ -1079,7 +1092,7 @@ export const useProduct = defineStore('product', () => {
             listLoads[part] = 'failed'
           }
           failed += 1
-          console.error('A list did not read', part, error)
+          logReadFailed(error, began, { read: part, failures: failed })
           await new Promise<void>((resolve) => {
             const wait = waitToReconnect(failed, resolve)
             run.signal.addEventListener('abort', () => wait.cancel(), { once: true })

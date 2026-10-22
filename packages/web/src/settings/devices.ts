@@ -4,7 +4,8 @@ import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
-import { errorCode, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { errorCode, errorFields, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { useProduct } from '../state/product'
 import { cloudDeviceIn } from '../state/hosts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
@@ -60,7 +61,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     } catch (error) {
       // A device another page revoked meanwhile is revoked: that is done.
       if (!current.signal.aborted && errorCode(error) !== 'device_not_found') {
-        reportError(t('devices.revokeFailed'), error, { userVisible: true })
+        reportError(t('devices.revokeFailed'), error, { site: 'devices.revokeFailed', userVisible: true })
       }
     }
   }
@@ -74,6 +75,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   function change(
     id: string,
     body: { name: string } | { route: DeviceRoute },
+    site: string,
     failed: HeadlineText,
   ): Promise<void> {
     const shown = product.change('devices', (state) => ({
@@ -99,19 +101,19 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       .catch((error) => {
         shown.drop()
         if (!current.signal.aborted) {
-          reportError(failed, error, { userVisible: true })
+          reportError(failed, error, { site, userVisible: true })
         }
       })
   }
 
   /** Gives a paired device a new name, as the backend keeps it: without the spaces around it. */
   function rename(id: string, name: string): Promise<void> {
-    return change(id, { name: name.trim() }, t('devices.renameFailed'))
+    return change(id, { name: name.trim() }, 'devices.renameFailed', t('devices.renameFailed'))
   }
 
   /** Sets a paired device's route, which every page of the user's follows. */
   function setRoute(id: string, route: DeviceRoute): Promise<void> {
-    return change(id, { route }, t('devices.routeFailed'))
+    return change(id, { route }, 'devices.routeFailed', t('devices.routeFailed'))
   }
 
   async function resetCloud(operationId: string): Promise<void> {
@@ -131,7 +133,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         // and its own text goes to the console.
         const refused = error instanceof ApiError && error.code !== null
         if (!refused) {
-          console.error('[demi] Cloud reset failed:', error)
+          void pageLog.error('cloud.reset_failed', errorFields(error))
         }
         resetError.value = shownError(
           error,

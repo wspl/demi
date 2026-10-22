@@ -177,7 +177,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     let tabs = panels.get(conversationId)
     if (!tabs) {
       const created = new PanelTabs(panelBackend(conversationId), (error) => {
-        reportError(t('failures.changeWorkPanel'), error, { userVisible: true })
+        reportError(t('failures.changeWorkPanel'), error, { site: 'failures.changeWorkPanel', userVisible: true })
       })
       panels.set(conversationId, created)
       let readBefore = false

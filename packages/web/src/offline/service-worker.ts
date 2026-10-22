@@ -1,5 +1,6 @@
 import {
   OPEN_CONVERSATION,
+  WORKER_LOG,
   WORDS_CACHE,
   WORDS_KEY,
   notificationWordsSchema,
@@ -143,10 +144,19 @@ async function showPush(data: PushMessageData | null): Promise<void> {
   try {
     message = data?.json() ?? null
   } catch (error) {
-    console.error('A push is not JSON', error)
+    await tellPages('push.unreadable', { where: 'json', error_class: error instanceof Error ? error.name : typeof error })
   }
-  const shown = await pushedNotification(message, words)
+  const told: Promise<void>[] = []
+  const shown = await pushedNotification(message, words, (event, fields) => told.push(tellPages(event, fields)))
+  await Promise.all(told)
   await self.registration.showNotification(shown.title, shown.options)
+}
+
+/** Tells the open pages of a failure, for them to write in the log (`WORKER_LOG`). */
+async function tellPages(event: string, fields: Record<string, string | number>): Promise<void> {
+  for (const page of await self.clients.matchAll({ type: 'window', includeUncontrolled: true })) {
+    page.postMessage({ type: WORKER_LOG, event, fields })
+  }
 }
 
 /** The words the page left; none before it left any, or when they do not read. */

@@ -349,7 +349,7 @@ export const useResources = defineStore('resources', () => {
       .catch((error) => {
         change.drop()
         if (!signal.aborted) {
-          reportError(t('failures.updateSettings'), error, { userVisible: true })
+          reportError(t('failures.updateSettings'), error, { site: 'failures.updateSettings', userVisible: true })
         }
       })
   }

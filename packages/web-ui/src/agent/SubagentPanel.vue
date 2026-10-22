@@ -28,6 +28,8 @@ import { shownError, type ShownError } from '../infra/errors'
 
 const props = withDefaults(
   defineProps<{
+    /** The conversation the agents belong to, which their lists' lines in the log are written under. */
+    conversation?: string
     agents: readonly SubagentRecord[]
     /** The conversation's commands: a child's running calls show theirs. */
     terminals?: readonly TerminalRecord[]
@@ -290,6 +292,7 @@ function closeTab(id: string): void {
         v-else
         class="min-h-0 flex-1"
         :conversation-id="active.id"
+        :conversation="props.conversation"
         :node="active.id"
         :cwd="active.cwd"
         :blocks="shown?.blocks ?? []"

@@ -157,7 +157,7 @@ function save(draft: SettingsSubagentDraft): Promise<void> {
   // The draft stays, for the dialog to keep its fields until the backend took them.
   current.draft = draft
   const id = current.id
-  return answerInDialog(() => shownEditor(id), t('subagents.saveFailed'), failed, () => props.saveProfile(id, draft))
+  return answerInDialog(() => shownEditor(id), 'subagents.saveFailed', t('subagents.saveFailed'), failed, () => props.saveProfile(id, draft))
 }
 
 /** Deleting asks first, over the profile's dialog. */
@@ -168,7 +168,7 @@ async function remove(): Promise<void> {
   if (!id) {
     return
   }
-  await answerInDialog(() => shownEditor(id), t('subagents.deleteFailed'), failed, () => props.deleteProfile(id))
+  await answerInDialog(() => shownEditor(id), 'subagents.deleteFailed', t('subagents.deleteFailed'), failed, () => props.deleteProfile(id))
   // The question closes with its answer, if it still asks about this profile.
   if (editor.value?.id === id) {
     deleteOpen.value = false

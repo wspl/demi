@@ -63,7 +63,7 @@ const creation = { action: 'create', target: 'credential:new' }
 function create(draft: SettingsCredentialDraft): Promise<void> {
   return answerInDialog(
     () => (creating.value?.open ? creating.value : null),
-    t('credentials.saveFailed'),
+    'credentials.saveFailed', t('credentials.saveFailed'),
     failed,
     () => props.createCredential(draft),
   )
@@ -92,7 +92,7 @@ async function remove(): Promise<void> {
   try {
     await props.deleteCredential(credential.id)
   } catch (error) {
-    reportError(t('credentials.deleteFailed'), error, { userVisible: true })
+    reportError(t('credentials.deleteFailed'), error, { site: 'credentials.deleteFailed', userVisible: true })
   } finally {
     if (deleting.value?.id === credential.id) {
       deleteOpen.value = false

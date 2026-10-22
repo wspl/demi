@@ -11,7 +11,8 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { t } from './locales/text'
-import { coded, errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
+import { coded, errorFields, errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
 import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
@@ -49,6 +50,7 @@ export function createConversationUploads(
     if (!item.file && !item.claim) {
       return Promise.resolve()
     }
+    const began = performance.now()
     const upload = (async () => {
       const ready = await uploads.start(
         item.id,
@@ -60,11 +62,13 @@ export function createConversationUploads(
         },
         (update) => applyAttachmentUpdate(item, attachingUpdate(update, !!item.file)),
       ).catch((error: unknown) => {
+        pageLog.warn('upload.ended', { attachment: item.id, bytes: item.file?.size ?? null, ms: Math.round(performance.now() - began), outcome: 'failed', ...errorFields(error) })
         // A failed upload keeps its capsule, which says so and offers Retry.
         applyAttachmentUpdate(item, { phase: 'failed' })
         onChange()
         throw error
       })
+      pageLog.info('upload.ended', { attachment: item.id, bytes: item.file?.size ?? null, ms: Math.round(performance.now() - began), outcome: ready ? 'uploaded' : 'stopped' })
       if (ready)
         onChange()
     })()
@@ -86,7 +90,7 @@ export function createConversationUploads(
    */
   function uploadInComposer(item: ComposerFile): Promise<boolean> {
     return uploadFile(item).then(() => true, (error: unknown) => {
-      reportError(t('failures.uploadAttachment'), error)
+      reportError(t('failures.uploadAttachment'), error, { site: 'failures.uploadAttachment' })
       return false
     })
   }

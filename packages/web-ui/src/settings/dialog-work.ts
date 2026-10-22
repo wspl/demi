@@ -18,6 +18,7 @@ export interface WorkDialog {
  */
 export async function answerInDialog(
   shown: () => WorkDialog | null,
+  site: string,
   title: HeadlineText,
   refusal: (error: unknown) => ShownError,
   work: () => Promise<void>,
@@ -37,7 +38,7 @@ export async function answerInDialog(
     if (refused) {
       refused.error = refusal(error)
     } else {
-      reportError(title, error, { userVisible: true })
+      reportError(title, error, { site, userVisible: true })
     }
   }
 }

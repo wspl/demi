@@ -95,7 +95,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
         }
       } catch (error) {
         conversation.sides = conversation.sides.filter((each) => each.id !== question.id)
-        reportError(t('failures.askSideQuestion'), error, { userVisible: true })
+        reportError(t('failures.askSideQuestion'), error, { site: 'failures.askSideQuestion', conversation: conversation.id, userVisible: true })
       }
     })
   }
@@ -104,7 +104,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
    * Sends the side question `id` the action `send` names, a follow-up or a
    * Retry, while its card shows it working.
    */
-  async function sending(conversation: SideHolder, id: string, title: string, send: () => Promise<void>): Promise<void> {
+  async function sending(conversation: SideHolder, id: string, site: string, title: string, send: () => Promise<void>): Promise<void> {
     const side = sideOf(conversation, id)
     if (!side) {
       return
@@ -119,7 +119,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
         if (side.sent !== null && toRaw(side.sent) === sent) {
           side.sent = null
         }
-        reportError(title, error, { userVisible: true })
+        reportError(title, error, { site, conversation: conversation.id, userVisible: true })
       }
     })
   }
@@ -151,7 +151,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
           folding.intent = folding.confirmed
           side.record = { ...side.record, folded: folding.confirmed }
         }
-        reportError(t('failures.foldSideQuestion'), error, { userVisible: true })
+        reportError(t('failures.foldSideQuestion'), error, { site: 'failures.foldSideQuestion', conversation: conversation.id, userVisible: true })
       } finally {
         folding.writes -= 1
         if (folding.writes === 0) {
@@ -173,7 +173,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
       try {
         await stopSideQuestion(conversation.id, id)
       } catch (error) {
-        reportError(t('failures.stopSideQuestion'), error, { userVisible: true })
+        reportError(t('failures.stopSideQuestion'), error, { site: 'failures.stopSideQuestion', conversation: conversation.id, userVisible: true })
       }
     })
   }
@@ -200,7 +200,7 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
         // Another page deleted it first: the card is gone either way.
         if (!(error instanceof ApiError && error.status === 404)) {
           side.deleting = false
-          reportError(t('failures.deleteSideQuestion'), error, { userVisible: true })
+          reportError(t('failures.deleteSideQuestion'), error, { site: 'failures.deleteSideQuestion', conversation: conversation.id, userVisible: true })
           return
         }
       }
@@ -218,8 +218,8 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
         return conversation.sides.filter((side) => !side.deleting).map(shown)
       },
       ask: (question) => void ask(conversation, question),
-      followUp: (id, text) => void sending(conversation, id, t('failures.sendFollowUp'), () => followUpSideQuestion(conversation.id, id, text)),
-      retry: (id) => void sending(conversation, id, t('failures.retrySideQuestion'), () => retrySideQuestion(conversation.id, id)),
+      followUp: (id, text) => void sending(conversation, id, 'failures.sendFollowUp', t('failures.sendFollowUp'), () => followUpSideQuestion(conversation.id, id, text)),
+      retry: (id) => void sending(conversation, id, 'failures.retrySideQuestion', t('failures.retrySideQuestion'), () => retrySideQuestion(conversation.id, id)),
       stop: (id) => void stop(conversation, id),
       remove: (id) => void remove(conversation, id),
       fold: (id, folded) => void fold(conversation, id, folded),

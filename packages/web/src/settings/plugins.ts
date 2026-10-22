@@ -38,6 +38,7 @@ export const usePluginSettings = defineStore('plugin-settings', () => {
           return
         }
         reportError(enabled ? t('plugins.turnOnFailed') : t('plugins.turnOffFailed'), error, {
+          site: enabled ? 'plugins.turnOnFailed' : 'plugins.turnOffFailed',
           userVisible: true,
         })
       })

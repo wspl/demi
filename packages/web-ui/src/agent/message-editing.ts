@@ -320,7 +320,7 @@ async function sendMessageEdit(
     reportError(
       rejected ? t('transcript.edit.rejected') : t('transcript.edit.unconfirmed'),
       error,
-      { userVisible: true, expected: rejected },
+      { site: rejected ? 'transcript.edit.rejected' : 'transcript.edit.unconfirmed', userVisible: true, expected: rejected },
     )
   }
 }

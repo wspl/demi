@@ -120,34 +120,34 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   })
 
   /** The one toast of a provider operation that failed, titled by what failed. */
-  function report(title: HeadlineText, error: unknown): void {
+  function report(site: string, title: HeadlineText, error: unknown): void {
     if (isAbortError(error)) {
       return
     }
     if (!lifetime.signal.aborted) {
-      reportError(title, error, { userVisible: true })
+      reportError(title, error, { site, userVisible: true })
     }
   }
 
-  /** What a failed operation's toast is titled, in the Writing page's alert style. */
-  function failureTitle(operation: SettingsProviderOperation): HeadlineText {
+  /** What a failed operation's toast is titled, in the Writing page's alert style, and the ID the log names it by. */
+  function failureTitle(operation: SettingsProviderOperation): { site: string; title: HeadlineText } {
     switch (operation.kind) {
       case 'saving':
-        return t('providers.saveFailed')
+        return { site: 'providers.saveFailed', title: t('providers.saveFailed') }
       case 'testing':
-        return t('providers.testFailed')
+        return { site: 'providers.testFailed', title: t('providers.testFailed') }
       case 'refreshing':
-        return t('providers.refreshModelsFailed')
+        return { site: 'providers.refreshModelsFailed', title: t('providers.refreshModelsFailed') }
       case 'removing':
-        return t('providers.removeFailed')
+        return { site: 'providers.removeFailed', title: t('providers.removeFailed') }
       case 'cli':
-        return t('providers.cliUpdateFailed')
+        return { site: 'providers.cliUpdateFailed', title: t('providers.cliUpdateFailed') }
       case 'account':
         switch (operation.action) {
           case 'remove':
-            return t('providers.removeAccountFailed')
+            return { site: 'providers.removeAccountFailed', title: t('providers.removeAccountFailed') }
           case 'test':
-            return t('providers.testAccountFailed')
+            return { site: 'providers.testAccountFailed', title: t('providers.testAccountFailed') }
         }
     }
   }
@@ -196,7 +196,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       () => {},
       (error) => {
         if (!current.signal.aborted) {
-          report(failureTitle(operation), error)
+          const { site, title } = failureTitle(operation)
+          report(site, title, error)
         }
       },
     )
@@ -257,7 +258,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       select(saved.provider.id)
     }).catch((error) => {
       if (!current.signal.aborted) {
-        report(t('providers.addFailed'), error)
+        report('providers.addFailed', t('providers.addFailed'), error)
       }
     })
   }
@@ -531,7 +532,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     void readCli(provider.id, false, lifetime.signal).catch((error) => {
       if (!lifetime.signal.aborted) {
-        reportError(t('providers.cliReadFailed'), error)
+        reportError(t('providers.cliReadFailed'), error, { site: 'providers.cliReadFailed' })
       }
     })
   }
@@ -541,7 +542,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       try {
         await readCli(provider.id, true, signal)
       } catch (error) {
-        report(t('providers.checkUpdatesFailed'), error)
+        report('providers.checkUpdatesFailed', t('providers.checkUpdatesFailed'), error)
       }
     })
   }
@@ -551,7 +552,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       try {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
       } catch (error) {
-        report(t('providers.cliInstallFailed'), error)
+        report('providers.cliInstallFailed', t('providers.cliInstallFailed'), error)
       }
     })
   }
@@ -609,7 +610,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ? { message: error.message, requestId: error.requestId }
           : shownError(error)
         // The account's line shows it, wherever its windows show; no toast.
-        reportError(t('providers.usageFailed'), error)
+        reportError(t('providers.usageFailed'), error, { site: 'providers.usageFailed' })
       }
     } finally {
       if (current === lifetime) {
@@ -681,7 +682,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
       .catch((error) => {
         shown.drop()
-        report(t('providers.reorderFailed'), error)
+        report('providers.reorderFailed', t('providers.reorderFailed'), error)
       })
   }
 
@@ -711,7 +712,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
       .catch((error) => {
         shown.drop()
-        report(t('providers.reorderProvidersFailed'), error)
+        report('providers.reorderProvidersFailed', t('providers.reorderProvidersFailed'), error)
       })
   }
 
@@ -745,7 +746,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
       .catch((error) => {
         shown.drop()
-        report(t('providers.switchFailed'), error)
+        report('providers.switchFailed', t('providers.switchFailed'), error)
         return false
       })
   }
@@ -917,7 +918,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   async function cancelLogin(id: string): Promise<void> {
     await apiRequest(`/providers/subscription-login/${encodeURIComponent(id)}`, { method: 'DELETE' })
-      .catch((error: unknown) => report(t('providers.cancelLoginFailed'), error))
+      .catch((error: unknown) => report('providers.cancelLoginFailed', t('providers.cancelLoginFailed'), error))
   }
 
   /**

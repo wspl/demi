@@ -582,6 +582,7 @@ class UserStateRefusals {
     if (this.refusing === 1) {
       // What did not read is for a developer, in the console.
       reportError(t('dataUnreadable'), refusal, {
+        site: 'dataUnreadable',
         userVisible: true,
         message: t('reloadMayHelp'),
         detail: `the user state of the ${this.plugin} plugin`,
@@ -640,12 +641,12 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
   const errors: PageContext['errors'] = {
     report: (message, error) => {
       if (!dropped(error)) {
-        reportError(message, error, { userVisible: true })
+        reportError(message, error, { site: `plugin.${page.plugin}.failed`, userVisible: true })
       }
     },
     defect: (message, error) => {
       if (!dropped(error)) {
-        reportDefect(message, error)
+        reportDefect(`plugin.${page.plugin}.defect`, message, error)
       }
     },
   }

@@ -147,7 +147,7 @@ const useSessionStore = defineStore('sessions', () => {
     } catch (error) {
       // A browser already signed out is what was asked: its row leaves all the same.
       if (!(error instanceof ApiError && error.code === 'session_not_found')) {
-        reportError(t('handoff.signOutFailed'), error, { userVisible: true })
+        reportError(t('handoff.signOutFailed'), error, { site: 'handoff.signOutFailed', userVisible: true })
         return
       }
     }

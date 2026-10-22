@@ -184,7 +184,7 @@ export const usePermissions = defineStore('permissions', () => {
           return
         }
       }
-      reportError(t('failures.answerRequest'), error, { userVisible: true })
+      reportError(t('failures.answerRequest'), error, { site: 'failures.answerRequest', userVisible: true })
       // The request is as it was, unless a newer read came meanwhile.
       if (state.held === before.held) {
         state.requests = before.requests

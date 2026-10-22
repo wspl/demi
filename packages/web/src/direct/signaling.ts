@@ -187,7 +187,7 @@ export class DeviceSignaling {
     const parsed = directMessageSchema.safeParse(value)
     if (!parsed.success) {
       // What did not read is for a developer; the socket starts again.
-      reportError(t('failures.readChannel'), schemaRefusal(parsed.error))
+      reportError(t('failures.readChannel'), schemaRefusal(parsed.error), { site: 'failures.readChannel' })
       socket.close()
       return
     }

@@ -54,7 +54,7 @@ const usePortForwardStore = defineStore('port-forward-settings', () => {
       product.answered(at, forwardsAnswer((current) => withForward(current, forward)))
       return forward.id
     } catch (error) {
-      reportError(t('portForwards.addFailed'), error, { userVisible: true })
+      reportError(t('portForwards.addFailed'), error, { site: 'portForwards.addFailed', userVisible: true })
       return null
     }
   }
@@ -73,7 +73,7 @@ const usePortForwardStore = defineStore('port-forward-settings', () => {
       if (refusedField(error)) {
         throw error
       }
-      reportError(t('portForwards.saveFailed'), error, { userVisible: true })
+      reportError(t('portForwards.saveFailed'), error, { site: 'portForwards.saveFailed', userVisible: true })
     }
   }
 
@@ -82,7 +82,7 @@ const usePortForwardStore = defineStore('port-forward-settings', () => {
     try {
       await apiRequest(`/port-forwards/${encodeURIComponent(id)}/retry`, { method: 'POST' })
     } catch (error) {
-      reportError(t('portForwards.retryFailed'), error, { userVisible: true })
+      reportError(t('portForwards.retryFailed'), error, { site: 'portForwards.retryFailed', userVisible: true })
     }
   }
 
@@ -92,7 +92,7 @@ const usePortForwardStore = defineStore('port-forward-settings', () => {
       await apiRequest(`/port-forwards/${encodeURIComponent(id)}`, { method: 'DELETE' })
       product.answered(at, forwardsAnswer((current) => current.filter((forward) => forward.id !== id)))
     } catch (error) {
-      reportError(t('portForwards.removeFailed'), error, { userVisible: true })
+      reportError(t('portForwards.removeFailed'), error, { site: 'portForwards.removeFailed', userVisible: true })
     }
   }
 

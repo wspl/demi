@@ -83,37 +83,37 @@ const useUserStore = defineStore('user-settings', () => {
       if (error instanceof ApiError && error.code === 'verification_required') {
         return { kind: 'needsVerification' }
       }
-      reportError(t('users.newPasswordFailed'), error, { userVisible: true })
+      reportError(t('users.newPasswordFailed'), error, { site: 'users.newPasswordFailed', userVisible: true })
       return { kind: 'failed' }
     }
   }
 
   /** One change of an account; the channel brings the list. */
-  async function change(id: string, body: UserChange, title: string): Promise<void> {
+  async function change(id: string, body: UserChange, site: string, title: string): Promise<void> {
     try {
       await apiRequest(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', ...jsonBody(body) })
     } catch (error) {
-      reportError(title, error, { userVisible: true })
+      reportError(title, error, { site, userVisible: true })
     }
   }
 
   async function setRole(id: string, role: Exclude<UserRole, 'master'>): Promise<void> {
-    await change(id, { role }, t('users.roleFailed'))
+    await change(id, { role }, 'users.roleFailed', t('users.roleFailed'))
   }
 
   async function setDisabled(id: string, disabled: boolean): Promise<void> {
-    await change(id, { disabled }, disabled ? t('users.disableFailed') : t('users.enableFailed'))
+    await change(id, { disabled }, disabled ? 'users.disableFailed' : 'users.enableFailed', disabled ? t('users.disableFailed') : t('users.enableFailed'))
   }
 
   async function setCloudStorage(id: string, cloudStorage: SettingsCloudStorage): Promise<void> {
-    await change(id, { cloudStorage }, t('users.cloudStorageFailed'))
+    await change(id, { cloudStorage }, 'users.cloudStorageFailed', t('users.cloudStorageFailed'))
   }
 
   async function signOutEverywhere(id: string): Promise<void> {
     try {
       await apiRequest(`/users/${encodeURIComponent(id)}/sign-out`, { method: 'POST' })
     } catch (error) {
-      reportError(t('users.signOutFailed'), error, { userVisible: true })
+      reportError(t('users.signOutFailed'), error, { site: 'users.signOutFailed', userVisible: true })
     }
   }
 

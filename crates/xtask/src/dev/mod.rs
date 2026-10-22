@@ -38,7 +38,9 @@
 //!
 //! The backend is `target/debug/demi-backend` in isolated mode with the public
 //! URL `http://127.0.0.1:<port>`. The command passes on none of its own
-//! `DEMI_*` variables, which the backend and the runner would refuse.
+//! `DEMI_*` variables, which the backend and the runner would refuse, except
+//! `DEMI_LOG`, which the backend takes, so that a development build can select
+//! the levels the log keeps.
 //!
 //! The server release beside the data directory is assembled anew on each run
 //! and holds only `commands/` and `release.json`, with a release of each
@@ -578,6 +580,9 @@ fn spawn_backend(
         .env("DEMI_BACKEND_PUBLIC_URL", public)
         .env("DEMI_MACHINE_MANAGER_SOCKET", socket)
         .stdin(Stdio::null());
+    if let Some(log) = std::env::var_os("DEMI_LOG") {
+        command.command_mut().env("DEMI_LOG", log);
+    }
     if let Some(codex) = codex {
         command
             .command_mut()

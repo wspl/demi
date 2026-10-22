@@ -256,7 +256,10 @@ async function deleteProject(specimen: 'demo' | 'marks', id: string): Promise<vo
   await slow()
   const rows = list.value.filter((conversation) => conversation.projectId === id)
   if (rows.some((conversation) => conversation.status === 'active')) {
-    reportError(sidebarText('refused.deleteProject'), refusal('turn_in_flight'), { userVisible: true })
+    reportError(sidebarText('refused.deleteProject'), refusal('turn_in_flight'), {
+      site: 'refused.deleteProject',
+      userVisible: true,
+    })
     return
   }
   projectList.value = projectList.value.filter((project) => project.id !== id)

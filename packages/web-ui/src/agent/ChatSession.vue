@@ -1044,6 +1044,7 @@ watch(
           <SubagentPanel
             v-model:open="agentsOpen"
             v-model:active-id="activeSubagentId"
+            :conversation="conversation.id"
             :agents="shownAgents"
             :terminals="conversation.terminals"
             @abort="emit('abortSubagents')"

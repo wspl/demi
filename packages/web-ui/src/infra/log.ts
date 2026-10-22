@@ -25,6 +25,8 @@
  *   ever; the backend's request line for each `POST /log` says it.
  */
 
+import { errorFields, type PageErrorReport } from './errors'
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 /** A scalar: what a line's fields hold. */
@@ -105,6 +107,13 @@ const HIDDEN_BYTES = 16 * 1024
 const ERROR_EVENT = 'error.reported'
 const EVENT = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
 const DROPPED_KEY = 'demi.page-log.dropped'
+/**
+ * The most lines the page holds while it cannot send: signed out, or without a
+ * network, or a page, such as the gallery, that sends none. The oldest go, and the
+ * next request says how many (`log.dropped`), so that a page that cannot send does
+ * not grow without end.
+ */
+const MAX_BUFFERED = 5_000
 
 let sender: PageLogSender | null = null
 /** Whether the app says the page is signed in, which nothing is sent without. */
@@ -206,6 +215,11 @@ function write(
     line.conversationId = conversationId
   }
   buffer.push(line)
+  if (buffer.length > MAX_BUFFERED) {
+    const oldest = buffer.shift()!
+    settle([oldest], null)
+    drop(1, 'the page held more lines than it keeps while it could not send')
+  }
   if (level === 'error') {
     const carried = new Promise<string | null>((resolve) => awaiting.set(line, resolve))
     void flush()
@@ -403,8 +417,18 @@ export function pageLogSignedIn(signed: boolean): void {
  * once; answers the ID of the request that carried it, once it is sent, or null
  * when it did not get in. It says what failed and where, never a value the page held.
  */
-export function logPageError(report: { title: string; message: string; detail: string }): Promise<string | null> {
-  return pageLog.error(ERROR_EVENT, report)
+export function logPageError(report: PageErrorReport): Promise<string | null> {
+  const { conversation, errorClass, requestId, ...fields } = report
+  return pageLog.error(ERROR_EVENT, { ...fields, error_class: errorClass, request_id: requestId }, conversation)
+}
+
+/**
+ * Writes that the browser's storage of `key` could not be read or written, which
+ * the page goes on without: the one event of every such failure, told apart by
+ * `key` and `op`. `more` names what the key is about, as a device's ID.
+ */
+export function logStorageFailed(key: string, op: 'read' | 'write', error: unknown, more: Record<string, unknown> = {}): void {
+  pageLog.warn('storage.failed', { key, op, ...more, ...errorFields(error) })
 }
 
 /** Writes the page's lines. */

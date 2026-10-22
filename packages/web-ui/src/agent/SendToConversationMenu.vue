@@ -54,7 +54,7 @@ function send(to: string | null): void {
   }
   words.then(
     (taken) => props.targets.send(to, taken),
-    (error) => reportError(t('transcript.sendFailed'), error, { userVisible: true }),
+    (error) => reportError(t('transcript.sendFailed'), error, { site: 'transcript.sendFailed', userVisible: true }),
   )
 }
 

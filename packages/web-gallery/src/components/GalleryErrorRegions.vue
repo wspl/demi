@@ -41,6 +41,7 @@ const toastShown = ref(true)
  */
 function failOnThePage(): void {
   reportError('Could Not Read the Plugin’s Data', new Error('Invalid server response: Invalid input: expected string, received number'), {
+    site: 'dataUnreadable',
     userVisible: true,
     detail: '✖ Invalid input: expected string, received number\n  → at sections[0].title',
   })

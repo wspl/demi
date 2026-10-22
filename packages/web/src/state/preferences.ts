@@ -264,7 +264,7 @@ export const usePreferences = defineStore('preferences', () => {
         change.drop()
       }
       if (!current.signal.aborted) {
-        reportError(t('failures.updateSettings'), error, { userVisible: true })
+        reportError(t('failures.updateSettings'), error, { site: 'failures.updateSettings', userVisible: true })
       }
     }
   }
@@ -314,7 +314,7 @@ export const usePreferences = defineStore('preferences', () => {
           reported = { sent: JSON.stringify(patch.locale), stored: JSON.stringify(product.snapshot?.preferences.locale ?? null) }
       } catch (error) {
         if (!current.signal.aborted) {
-          reportError(t('failures.updateTimeZoneLanguage'), error)
+          reportError(t('failures.updateTimeZoneLanguage'), error, { site: 'failures.updateTimeZoneLanguage' })
         }
       } finally {
         if (reporting === key) {
@@ -339,7 +339,7 @@ export const usePreferences = defineStore('preferences', () => {
       } catch (error) {
         shown.drop()
         if (!current.signal.aborted) {
-          reportError(t('failures.changeContextLimit'), error, { userVisible: true })
+          reportError(t('failures.changeContextLimit'), error, { site: 'failures.changeContextLimit', userVisible: true })
         }
       }
     })

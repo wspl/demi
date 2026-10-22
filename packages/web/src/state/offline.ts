@@ -14,6 +14,8 @@ import {
   type Version,
 } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { pageLog } from '@demicodes/web-ui/infra/log'
+import { viewSupplied } from '@demicodes/web-ui/infra/view-timing'
 import { heldTranscript, type HeldBlock, type HeldTranscript, type TranscriptWindow } from '@demicodes/web-ui/transport/protocol'
 import { onSessionExpired } from '../api/client'
 import {
@@ -231,7 +233,7 @@ export async function readAccountCopy(): Promise<AccountCopy | null> {
   const record = ofThisBuild(value) ? accountRecordSchema.safeParse(value) : null
   if (record === null || !record.success) {
     if (record !== null) {
-      reportError(t('failures.readOffline'), schemaRefusal(record.error))
+      reportError(t('failures.readOffline'), schemaRefusal(record.error), { site: 'failures.readOffline' })
     }
     await deleteAccountCache()
     return null
@@ -258,7 +260,7 @@ function ours<S extends z.ZodType<{ userId: string }>>(schema: S, value: unknown
   }
   const record = schema.safeParse(value)
   if (!record.success) {
-    reportError(t('failures.readOffline'), schemaRefusal(record.error))
+    reportError(t('failures.readOffline'), schemaRefusal(record.error), { site: 'failures.readOffline' })
     return null
   }
   return record.data.userId === userId ? record.data : null
@@ -270,16 +272,18 @@ function ours<S extends z.ZodType<{ userId: string }>>(schema: S, value: unknown
  * fails says so on the console, and the conversation has no copy then.
  */
 export async function readConversationCopy(userId: string, id: string): Promise<ConversationCopy | null> {
+  const began = performance.now()
   try {
     const value = await database.transaction(CONVERSATIONS, 'readonly', (store) => store.get(id))
     const record = ours(conversationRecordSchema, value, userId)
+    pageLog.info('offline_copy.read', { what: 'conversation', found: record !== null, ms: Math.round(performance.now() - began) }, id)
     if (!record) {
       return null
     }
     const { build: _build, userId: _user, ...copy } = record
     return copy
   } catch (error) {
-    reportError(t('failures.readOffline'), error)
+    reportError(t('failures.readOffline'), error, { site: 'failures.readOffline' })
     return null
   }
 }
@@ -294,10 +298,12 @@ export async function writeConversationCopy(userId: string, id: string, copy: Co
     return
   }
   const record = { build: cacheBuild(), userId, ...copy }
+  const began = performance.now()
   try {
     await withRoom(id, () => database.transaction(CONVERSATIONS, 'readwrite', (store) => store.put(record, id)))
+    pageLog.debug('offline_copy.kept', { what: 'conversation', ms: Math.round(performance.now() - began) }, id)
   } catch (error) {
-    reportError(t('failures.keepOffline'), error)
+    reportError(t('failures.keepOffline'), error, { site: 'failures.keepOffline' })
   }
 }
 
@@ -308,17 +314,25 @@ export async function writeConversationCopy(userId: string, id: string, copy: Co
  * console, and the node has no copy then.
  */
 export async function readNodeCopy(userId: string, node: string): Promise<NodeCopy | null> {
+  const began = performance.now()
+  /** The line of a read that found nothing whole, or something. */
+  const told = (found: boolean, conversation: string | undefined, more: Record<string, number | null> = {}) =>
+    pageLog.info('offline_copy.read', { what: 'node', node, found, ms: Math.round(performance.now() - began), ...more }, conversation)
   try {
     const record = await viewedNode(userId, node)
     const latest = record?.runs.at(-1)
     if (!record || !latest || latest.end < record.length) {
+      told(false, record?.conversation, { runs: record?.runs.length ?? null, length: record?.length ?? null })
       return null
     }
     const start = Math.max(latest.start, latest.end - DISK_WINDOW)
     const window = await readRun(node, start, latest.end)
     if (!window) {
+      told(false, record.conversation, { runs: record.runs.length, length: record.length })
       return null
     }
+    viewSupplied(record.conversation, node === record.conversation ? null : node, 'offline_copy')
+    told(true, record.conversation, { blocks: window.blocks.length, length: record.length })
     return {
       transcript: heldTranscript(record.length, window.blocks.length ? [{ start, blocks: window.blocks }] : [], record.version),
       failures: window.failures,
@@ -326,7 +340,7 @@ export async function readNodeCopy(userId: string, node: string): Promise<NodeCo
       summaries: record.summaries,
     }
   } catch (error) {
-    reportError(t('failures.readOffline'), error)
+    reportError(t('failures.readOffline'), error, { site: 'failures.readOffline' })
     return null
   }
 }
@@ -347,16 +361,19 @@ export async function readNodeBlocks(
     const value = await database.transaction(NODES, 'readonly', (store) => store.get(node))
     const run = ours(nodeRecordSchema, value, userId)?.runs.find((each) => each.start < end && each.end > end)
     if (!run) {
+      pageLog.info('offline_copy.read', { what: 'earlier_blocks', node, found: false, end })
       return null
     }
     const start = Math.max(run.start, end - DISK_WINDOW)
     const read = await readRun(node, start, end + 1)
     if (read?.blocks.at(-1)?.id !== edge) {
+      pageLog.info('offline_copy.read', { what: 'earlier_blocks', node, found: false, end })
       return null
     }
+    pageLog.info('offline_copy.read', { what: 'earlier_blocks', node, found: true, end, blocks: read.blocks.length - 1 })
     return { window: { start, blocks: read.blocks.slice(0, -1) }, failures: read.failures }
   } catch (error) {
-    reportError(t('failures.readOffline'), error)
+    reportError(t('failures.readOffline'), error, { site: 'failures.readOffline' })
     return null
   }
 }
@@ -390,7 +407,7 @@ async function readRun(node: string, start: number, end: number): Promise<{ bloc
   for (const value of values) {
     const record = blockRecordSchema.safeParse(value)
     if (!record.success) {
-      reportError(t('failures.readOffline'), schemaRefusal(record.error))
+      reportError(t('failures.readOffline'), schemaRefusal(record.error), { site: 'failures.readOffline' })
       return null
     }
     blocks.push(record.data.block)
@@ -411,6 +428,7 @@ export async function writeNode(userId: string, node: string, write: NodeWrite):
   if (!writable(userId)) {
     return
   }
+  const began = performance.now()
   try {
     await withRoom(write.conversation, () => database.across([NODES, BLOCKS], 'readwrite', (transaction) => {
       const nodes = transaction.objectStore(NODES)
@@ -438,9 +456,10 @@ export async function writeNode(userId: string, node: string, write: NodeWrite):
       }
       return () => {}
     }))
+    pageLog.debug('offline_copy.kept', { what: 'node', node, blocks: write.blocks.length, length: write.length, ms: Math.round(performance.now() - began) }, write.conversation)
     scheduleEviction()
   } catch (error) {
-    reportError(t('failures.keepOffline'), error)
+    reportError(t('failures.keepOffline'), error, { site: 'failures.keepOffline', conversation: write.conversation })
   }
 }
 
@@ -620,7 +639,7 @@ function scheduleEviction(): void {
   }
   const fail = (error: unknown) => {
     finish()
-    reportError(t('failures.keepOffline'), error)
+    reportError(t('failures.keepOffline'), error, { site: 'failures.keepOffline' })
   }
   const measure = () => {
     written = false
@@ -694,7 +713,7 @@ export interface CacheProduct {
 export function startAccountCache(session: CacheSession, product: CacheProduct) {
   const copy = readAccountCopy().catch((error: unknown) => {
     // A database that fails leaves the page as it is without a copy.
-    reportError(t('failures.readOffline'), error)
+    reportError(t('failures.readOffline'), error, { site: 'failures.readOffline' })
     return null
   })
   const stopShowing = watch(
@@ -724,7 +743,7 @@ export function startAccountCache(session: CacheSession, product: CacheProduct) 
     if (user) {
       ended = { userId: user.id, user: toRaw(user) }
     }
-    void deleteAccountCache().catch((error: unknown) => reportError(t('failures.keepOffline'), error))
+    void deleteAccountCache().catch((error: unknown) => reportError(t('failures.keepOffline'), error, { site: 'failures.keepOffline' }))
   })
   return {
     async signInOffline(): Promise<UserDto | null> {
@@ -774,7 +793,7 @@ function keepAccountCopy(account: () => AccountCopy | null): { settled(): Promis
       }
     } catch (error) {
       // The page works without the copy; it goes on showing the backend's state.
-      reportError(t('failures.keepOffline'), error)
+      reportError(t('failures.keepOffline'), error, { site: 'failures.keepOffline' })
     }
   }
 

@@ -52,7 +52,7 @@ export function loadKatex(): Promise<void> {
       regionsChanged()
       renderAgain()
     },
-    (error: unknown) => reportError(t('markdown.mathUnavailable'), chunkLoadFailure(error)),
+    (error: unknown) => reportError(t('markdown.mathUnavailable'), chunkLoadFailure(error), { site: 'markdown.mathUnavailable' }),
   )
   return loading
 }

@@ -39,5 +39,5 @@ export const useEditor = editorChunk.use
  * environment's failure, one that threw a defect.
  */
 export function reportSyntaxColorsUnavailable(error: unknown): void {
-  reportError(t('syntaxColorsUnavailable'), chunkLoadFailure(error))
+  reportError(t('syntaxColorsUnavailable'), chunkLoadFailure(error), { site: 'syntaxColorsUnavailable' })
 }

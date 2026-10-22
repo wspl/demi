@@ -59,6 +59,7 @@ const useSubagentStore = defineStore('subagent-settings', () => {
     key: string,
     next: (current: SubagentSettings) => SubagentSettings,
     write: () => Promise<Answer | undefined>,
+    site: string,
     failed: HeadlineText,
   ): Promise<void> {
     const change = product.change('subagents', (state) => ({ ...state, subagents: next(heldSettings(state)) }))
@@ -72,7 +73,7 @@ const useSubagentStore = defineStore('subagent-settings', () => {
         // A profile another page deleted meanwhile has nothing to switch,
         // and the channel takes it off the list.
         if (errorCode(error) !== 'profile_not_found') {
-          reportError(failed, error, { userVisible: true })
+          reportError(failed, error, { site, userVisible: true })
         }
       })
   }
@@ -88,6 +89,7 @@ const useSubagentStore = defineStore('subagent-settings', () => {
       'subagents',
       (current) => ({ ...current, enabled }),
       () => putSubagents({ enabled }),
+      enabled ? 'subagents.turnOnFailed' : 'subagents.turnOffFailed',
       enabled ? t('subagents.turnOnFailed') : t('subagents.turnOffFailed'),
     )
   }
@@ -98,6 +100,7 @@ const useSubagentStore = defineStore('subagent-settings', () => {
       limit,
       (current) => ({ ...current, [limit]: value }),
       () => putSubagents({ [limit]: value }),
+      'subagents.limitFailed',
       t('subagents.limitFailed'),
     )
   }
@@ -122,6 +125,7 @@ const useSubagentStore = defineStore('subagent-settings', () => {
         const profile = await patchProfile(id, { enabled })
         return settingsAnswer((current) => withProfile(current, profile))
       },
+      enabled ? 'subagents.enableFailed' : 'subagents.disableFailed',
       enabled ? t('subagents.enableFailed') : t('subagents.disableFailed'),
     )
   }

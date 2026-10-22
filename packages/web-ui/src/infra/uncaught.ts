@@ -1,6 +1,6 @@
 import type { App } from 'vue'
 import { isAbortError } from '@demicodes/utils'
-import { chunkLoadFailure, environmental, reportDefect } from './errors'
+import { chunkLoadFailure, environmental, reportDefect, withoutQuoted } from './errors'
 
 /**
  * Tells of every JavaScript error nothing caught, through `reportError`, so that
@@ -37,9 +37,6 @@ const EXTENSION_SCRIPT = /(chrome|moz|safari|safari-web)-extension:\/\//
 /** What a browser says of an error in a script of another origin, hiding the error itself. */
 const HIDDEN_ERROR = /^Script error\.?$/
 
-/** A quoted piece of a message, which a `SyntaxError` of the browser takes from the text it could not read. */
-const QUOTED = /(["'`]).*?\1/g
-
 /** Whether an error is already being reported, so that a failure of the report itself ends there. */
 let reporting = false
 
@@ -50,7 +47,7 @@ let reporting = false
  */
 function asError(thrown: unknown): Error {
   if (thrown instanceof SyntaxError) {
-    const message = thrown.message.replace(QUOTED, '…')
+    const message = withoutQuoted(thrown.message)
     const clean = new SyntaxError(message)
     clean.stack = thrown.stack?.replace(thrown.message, message)
     return clean
@@ -66,7 +63,7 @@ function classify(thrown: Error): Error {
   return chunkLoadFailure(thrown) as Error
 }
 
-function reportUncaught(thrown: unknown, where: string): void {
+function reportUncaught(thrown: unknown, site: string, where: string): void {
   if (reporting || isAbortError(thrown)) {
     return
   }
@@ -74,7 +71,7 @@ function reportUncaught(thrown: unknown, where: string): void {
   try {
     const error = classify(asError(thrown))
     if (!EXTENSION_SCRIPT.test(error.stack ?? '')) {
-      reportDefect(where, error)
+      reportDefect(site, where, error)
     }
   } finally {
     reporting = false
@@ -88,16 +85,16 @@ export function reportUncaughtErrors(app: App): () => void {
     if (hidden || OBSERVER_NOTICE.test(event.message) || EXTENSION_SCRIPT.test(event.filename)) {
       return
     }
-    reportUncaught(event.error ?? event.message, 'an error nothing caught')
+    reportUncaught(event.error ?? event.message, 'uncaught.window_error', 'an error nothing caught')
   }
   const rejected = (event: PromiseRejectionEvent) => {
-    reportUncaught(event.reason, 'a promise rejected that nothing waited for')
+    reportUncaught(event.reason, 'uncaught.unhandled_rejection', 'a promise rejected that nothing waited for')
   }
   window.addEventListener('error', failed)
   window.addEventListener('unhandledrejection', rejected)
   app.config.errorHandler = (error, instance, info) => {
     const component = instance?.$options.__name ?? instance?.$options.name
-    reportUncaught(error, `Vue reported an error in ${component ?? 'a component'}: ${info}`)
+    reportUncaught(error, 'uncaught.vue_error_handler', `Vue reported an error in ${component ?? 'a component'}: ${info}`)
   }
   return () => {
     window.removeEventListener('error', failed)

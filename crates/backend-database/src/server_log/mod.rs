@@ -6,7 +6,8 @@
 //!   backend `tracing` events --- layer ---+
 //!   a runner's `log_lines` frames --------+--> queue --> writer thread --> log.sqlite
 //!   a page's `POST /log` lines -----------+     (4096)    commits every 200 ms,
-//!                                                         trims by batches
+//!      (only the levels DEMI_LOG selects          trims by batches
+//!       for the target `page`)
 //! ```
 //!
 //! - A `tracing` layer turns each backend event into a row and queues it
@@ -34,9 +35,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use demi_shared_types::{HostLogLine, LogLine, LogOrigin};
+use demi_shared_types::{HostLogLine, LogLevel, LogLine, LogOrigin};
+use tracing::Level;
+use tracing_subscriber::filter::Targets;
 
 pub use layer::ServerLogLayer;
+
+/// The target `DEMI_LOG` names the page's lines by, as `info,page=debug` does.
+pub const PAGE_TARGET: &str = "page";
 
 /// The database's file in the data directory.
 pub const DATABASE: &str = "log.sqlite";
@@ -79,7 +85,14 @@ enum Message {
 
 /// Starts the log of the data directory `data_dir`: the writer thread, and
 /// the layer that goes into the process's `tracing` subscriber.
-pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, ServerLogLayer)> {
+///
+/// `filter` is `DEMI_LOG`: a page's lines are stored at the levels it selects
+/// for the target [`PAGE_TARGET`], as the backend's own are for theirs.
+pub fn open(
+    data_dir: &Path,
+    limits: Limits,
+    filter: Targets,
+) -> io::Result<(ServerLogWriter, ServerLogLayer)> {
     std::fs::create_dir_all(data_dir)?;
     let path = data_dir.join(DATABASE);
     let dropped = Arc::new(AtomicU64::new(0));
@@ -97,6 +110,7 @@ pub fn open(data_dir: &Path, limits: Limits) -> io::Result<(ServerLogWriter, Ser
             log: ServerLog {
                 path,
                 sink: Some(sink.clone()),
+                filter: Some(Arc::new(filter)),
             },
             thread,
         },
@@ -158,6 +172,8 @@ impl ServerLogWriter {
 pub struct ServerLog {
     path: PathBuf,
     sink: Option<Sink>,
+    /// What `DEMI_LOG` selects, which a page's lines are held to.
+    filter: Option<Arc<Targets>>,
 }
 
 impl ServerLog {
@@ -167,6 +183,7 @@ impl ServerLog {
         Self {
             path: data_dir.join(DATABASE),
             sink: None,
+            filter: None,
         }
     }
 
@@ -199,12 +216,22 @@ impl ServerLog {
 
     /// Stores the lines of a page's `POST /log`, which the route has
     /// checked and given their page, user and origin.
+    ///
+    /// A line below the level `DEMI_LOG` selects for [`PAGE_TARGET`] is not
+    /// stored, as a backend event below it is not: a page writes `debug` lines
+    /// for every scroll, which the log keeps only when asked.
     pub fn store_page(&self, lines: Vec<LogLine>) {
         let Some(sink) = &self.sink else {
             return;
         };
         for line in lines {
-            sink.push(Row { line, seq: None });
+            let selected = self
+                .filter
+                .as_ref()
+                .is_none_or(|filter| filter.would_enable(PAGE_TARGET, &tracing_level(line.level)));
+            if selected {
+                sink.push(Row { line, seq: None });
+            }
         }
     }
 
@@ -222,5 +249,15 @@ impl ServerLog {
             }
             Err(_) => None,
         }
+    }
+}
+
+fn tracing_level(level: LogLevel) -> Level {
+    match level {
+        LogLevel::Trace => Level::TRACE,
+        LogLevel::Debug => Level::DEBUG,
+        LogLevel::Info => Level::INFO,
+        LogLevel::Warn => Level::WARN,
+        LogLevel::Error => Level::ERROR,
     }
 }
