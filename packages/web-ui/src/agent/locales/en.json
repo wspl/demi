@@ -197,7 +197,6 @@
     "loading": "Loading conversation…",
     "loadFailed": "Couldn’t load this conversation.",
     "notFound": "Conversation not found",
-    "unavailableOffline": "This conversation isn’t available offline.",
     "noneOpen": "No conversation open",
     "empty": "No messages",
     "start": "Start a Conversation",

@@ -3325,22 +3325,27 @@ test('a conversation restored from the archive whose first session cannot connec
 })
 
 // A first opening whose socket cannot be made, of a conversation the disk
-// keeps nothing of, says it is offline, never a session it never had, and
-// shows the session once a socket answers. Cost: two sockets, no wait.
-test('a first opening that cannot connect says it is offline, and only then shows its session', async () => {
+// keeps nothing of, keeps loading, never says it is offline or shows a
+// session it never had, and shows the session once a socket answers. Cost: two
+// sockets, no wait.
+test('a first opening that cannot connect keeps loading, and only then shows its session', async () => {
   records.find((item) => item.id === FIRST)!.status = 'running'
   const { conversation, sockets, opening } = await startOpening(FIRST)
   await openSent(sockets)
+  const loads: string[] = []
+  const stop = watch(() => conversation.load, (load) => loads.push(load), { flush: 'sync' })
   sockets[0]!.end()
-  await waitFor(() => conversation.load === 'offline', () => `it is ${conversation.load}`)
+  await returned()
+  await openSent(sockets, 1)
+  stop()
+  // It never left loading while the first socket's end was waited out.
+  expect(loads).toEqual([])
   expect(shownStep(conversation)).toEqual({
-    load: 'offline', transcript: [], agents: [], phase: 'idle', commands: [], status: 'active',
+    load: 'loading', transcript: [], agents: [], phase: 'idle', commands: [], status: 'active',
   })
   // It fails nothing meanwhile.
   expect(conversation.lastError).toBeNull()
 
-  await returned()
-  await openSent(sockets, 1)
   const open = sockets[1]!.sent.find((frame) => frame.type === 'open')!
   deliver(sockets[1]!, [...backendOpening(FIRST, open, [FIRST]), { type: 'agent', revision: 2, agent: rootEntry(FIRST, 'running') }])
   await waitFor(() => conversation.load === 'ready', () => `it is ${conversation.load}`)

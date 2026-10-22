@@ -3729,14 +3729,6 @@ onBeforeUnmount(() => {
             </div>
           </GallerySpecimen>
           <GallerySpecimen
-            variant="offline · not kept for opening offline"
-            wide
-          >
-            <div class="gallery-frame h-[16rem] bg-surface">
-              <SessionStatus kind="offline" />
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen
             variant="missing · live"
             wide
           >

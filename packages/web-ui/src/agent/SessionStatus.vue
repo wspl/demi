@@ -2,13 +2,13 @@
 import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
-import { CloudOff, MessageSquareDashed, MessageSquareOff } from '@lucide/vue'
+import { MessageSquareDashed, MessageSquareOff } from '@lucide/vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { sessionStatusCopy, type SessionStatusKind } from './session-status'
 
 /**
  * The session pane's stand-in for the transcript: loading, failed, empty,
- * missing, not available offline, or no conversation open.
+ * missing, or no conversation open.
  *
  * It is the shared `RegionStatus` pane over the session copy table, filling the
  * pane it replaces. Only the kinds with nothing under them act. A failure
@@ -37,7 +37,7 @@ const status = computed(() => (props.kind === 'loading' || props.kind === 'faile
   <RegionStatus
     class="h-full min-h-0 flex-1"
     :status="status"
-    :icon="kind === 'empty' || kind === 'none' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : kind === 'offline' ? CloudOff : undefined"
+    :icon="kind === 'empty' || kind === 'none' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : undefined"
     :label="copy.label"
     :loading-label="sessionStatusCopy('loading').label"
     :detail="detail?.message"

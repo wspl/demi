@@ -110,8 +110,9 @@ export interface ConversationRuntimeOptions {
   draft?: () => number | undefined
   /**
    * Whether the page shows the transcript before the session opens, as from
-   * what it kept on disk: without, a first opening shows the pane loading,
-   * and offline when it cannot connect. Shown by default.
+   * what it kept on disk: without, a first opening shows the pane loading
+   * until the session opens, however long the backend takes to answer. Shown
+   * by default.
    */
   shown?: () => boolean
 }
@@ -603,9 +604,11 @@ export class ConversationRuntime {
   private async openSession(controller: AbortController, afterLoss: boolean): Promise<ConversationClient> {
     for (let wait = afterLoss; ; wait = true) {
       if (wait) {
-        // A first opening that cannot connect is still an opening: it says
-        // that it connects and shows nothing of a session it never had.
-        this.options.state.load = this.opened ? 'reconnecting' : this.shown() ? 'connecting' : 'offline'
+        // A first opening that cannot connect is still an opening: with a copy
+        // it says that it connects; without one it keeps loading, as it has
+        // nothing of a session it never had to show, and no words a reader
+        // could act on.
+        this.options.state.load = this.opened ? 'reconnecting' : this.shown() ? 'connecting' : 'loading'
         this.connectionFailures += 1
         await this.pause(controller.signal)
       }

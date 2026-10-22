@@ -197,7 +197,6 @@
     "loading": "正在加载对话…",
     "loadFailed": "无法加载此对话。",
     "notFound": "找不到对话",
-    "unavailableOffline": "此对话无法离线使用。",
     "noneOpen": "没有打开的对话",
     "empty": "没有消息",
     "start": "开始对话",

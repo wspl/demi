@@ -249,9 +249,9 @@ test('a page that starts without the backend is signed in with the cached sideba
   // It shows what the disk keeps, and says it connects.
   await waitFor(() => conversations.items.find((item) => item.id === FIRST)?.load === 'connecting')
   expect(texts(FIRST)).toEqual(['Fix the login', 'And the tests'])
-  // One the page never opened says so.
+  // One the page never opened keeps loading, and says nothing of being offline.
   void conversations.activate(SECOND)
-  await waitFor(() => conversations.items.find((item) => item.id === SECOND)?.load === 'offline')
+  await waitFor(() => conversations.items.find((item) => item.id === SECOND)?.load === 'loading')
   expect(texts(SECOND)).toEqual([])
 
   // The backend answers again: the conversation the page shows opens from it.

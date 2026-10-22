@@ -27,10 +27,8 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  * - `reconnecting`: an open session whose connection was lost. What it showed
  *   stays while it is tried again.
  * - `failed`: the opening failed, or the session refused to open.
- * - `offline`: the opening cannot reach the backend and the page keeps no copy
- *   of the conversation for opening offline. It opens once the backend answers.
  */
-export type SessionLoad = ListLoad | 'reading' | 'opening' | 'connecting' | 'reconnecting' | 'offline'
+export type SessionLoad = ListLoad | 'reading' | 'opening' | 'connecting' | 'reconnecting'
 
 /**
  * Whether the session has told the conversation's turn, which the Resume
@@ -47,7 +45,7 @@ export function sessionShown(load: SessionLoad): boolean {
  * of a message in it, unless its opening failed.
  */
 export function transcriptShown(load: SessionLoad): boolean {
-  return load !== 'reading' && load !== 'loading' && load !== 'failed' && load !== 'offline'
+  return load !== 'reading' && load !== 'loading' && load !== 'failed'
 }
 
 /**
@@ -55,7 +53,7 @@ export function transcriptShown(load: SessionLoad): boolean {
  * now is not new.
  */
 export function isOpening(load: SessionLoad): boolean {
-  return load === 'reading' || load === 'loading' || load === 'opening' || load === 'connecting' || load === 'offline'
+  return load === 'reading' || load === 'loading' || load === 'opening' || load === 'connecting'
 }
 
 /**
@@ -65,10 +63,8 @@ export function isOpening(load: SessionLoad): boolean {
  *   is the way in.
  * - `none` is the chat route with no conversation open at all, so the pane
  *   itself offers to start one.
- * - `offline` is a conversation the page cannot read while the backend cannot
- *   be reached and keeps no copy of.
  */
-export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'none' | 'offline'
+export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'none'
 
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
@@ -88,9 +84,6 @@ export function sessionPaneStatus(
   // The copy on disk is being read: nothing shows for the moment it takes.
   if (load === 'reading') {
     return null
-  }
-  if (load === 'offline') {
-    return 'offline'
   }
   if (load === 'failed') {
     return hasTranscript ? null : 'failed'
@@ -176,9 +169,6 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
       label: t('session.noneOpen'),
       action: 'create',
     }
-  }
-  if (kind === 'offline') {
-    return { label: t('session.unavailableOffline') }
   }
   return { label: t('session.empty') }
 }
