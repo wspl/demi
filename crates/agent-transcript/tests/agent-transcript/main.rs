@@ -1,9 +1,5 @@
-//! The transcript's rules at its boundary: where it is cut, what the model
-//! receives of it, its token estimates, the run each block joins, and the pictures a reply
-//! names.
+//! The transcript's rules compaction rests on: its token estimates and what
+//! the model receives past a summary.
 
-mod cut;
 mod estimate;
-mod pictures;
 mod replay;
-mod runs;

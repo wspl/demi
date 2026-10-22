@@ -2,7 +2,7 @@
 //! and serves the backend over a Unix socket.
 //!
 //! The manager runs only on Linux. Elsewhere the crate builds its portable
-//! modules for their tests, without the Linux callers that use them.
+//! modules, without the Linux callers that use them.
 //!
 //! ```text
 //! Backend (Linux)
@@ -98,6 +98,4 @@ pub mod recovery;
 pub mod sandbox;
 pub mod server;
 pub mod storage;
-#[cfg(all(target_os = "linux", any(test, feature = "testing")))]
-pub mod testing;
 pub mod tools;

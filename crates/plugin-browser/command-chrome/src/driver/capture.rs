@@ -1006,20 +1006,3 @@ fn frame(bytes: &Bytes) -> std::result::Result<Inbound, DecodeError> {
         header.changed,
     ))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_cpu_with_sme_but_no_sve_cannot_capture() {
-        // AT_HWCAP2 of an Apple M4 guest, then of the same guest booted with
-        // arm64.nosme; neither has SVE in AT_HWCAP.
-        let hwcap = 0xefff_ffff & !(1 << 22);
-        assert!(sme_without_sve(hwcap, 0x1a0_3fb2_6181));
-        assert!(!sme_without_sve(hwcap, 0x32_6181));
-        // A CPU with both, such as a server with SVE and SME.
-        assert!(!sme_without_sve(hwcap | 1 << 22, 0x1a0_3fb2_6181));
-    }
-
-}

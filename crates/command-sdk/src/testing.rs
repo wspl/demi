@@ -16,7 +16,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{Artifacts, ArtifactsAsk, Client, MessagesAsk, Numbers, NumbersAsk, ServiceError};
+use crate::{ArtifactsAsk, Client, MessagesAsk, Numbers, NumbersAsk, ServiceError};
 
 /// Every pause a [`crate::descriptors::Backoff`] of this process has taken.
 static PAUSES: AtomicU64 = AtomicU64::new(0);
@@ -85,28 +85,6 @@ pub async fn answer_numbers(
             })
             .await
     }))
-}
-
-/// An artifacts source that answers every request with `answer`, for a test
-/// that calls a handler without an artifacts stream, as the runner would
-/// answer it: with the path it installed, or the Host's artifacts of a line.
-/// Its task ends with the last clone.
-pub fn artifacts_from(
-    answer: impl Fn(ArtifactAsk) -> Result<ArtifactReply, String> + Send + 'static,
-) -> Artifacts {
-    let (artifacts, mut requests) = Artifacts::channel();
-    tokio::spawn(async move {
-        while let Some(pending) = requests.recv().await {
-            let reply = pending
-                .request
-                .ask()
-                .map_err(|error| error.to_string())
-                .and_then(&answer);
-            // A caller that stopped waiting needs no answer.
-            let _left = pending.answer.send(reply);
-        }
-    });
-    artifacts
 }
 
 /// Opens the messages stream of the service `client` drives and takes every

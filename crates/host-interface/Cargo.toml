@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -26,11 +26,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 typed-path = "0.12"
-
-[dev-dependencies]
-# The crate's own tests use its test support.
-demi-host-interface = { path = ".", features = ["testing"] }
-tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 # The Host conformance cases and an in-memory rpc port (`shell::testing`).

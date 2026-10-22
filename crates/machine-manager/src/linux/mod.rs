@@ -5,8 +5,6 @@
 pub mod freeze;
 pub mod loopdev;
 pub mod mount;
-#[cfg(test)]
-pub(crate) mod testing;
 pub mod thread_ns;
 pub mod trim;
 

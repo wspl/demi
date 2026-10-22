@@ -6,8 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# No doc examples: rustdoc has nothing to test. The tests are in
-# tests/claude_code, so the library needs no test harness of its own.
+# No doc examples.
 doctest = false
 test = false
 bench = false
@@ -30,7 +29,6 @@ bytes.workspace = true
 # stream of its messages, and these channels are both.
 futures-channel = { version = "0.3", features = ["sink"] }
 futures-util.workspace = true
-http.workspace = true
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 # The SDK MCP server; `local` runs its service loop and handlers on the
 # user's shard, which is one thread.
@@ -43,8 +41,3 @@ tokio.workspace = true
 tokio-util = { workspace = true, features = ["codec"] }
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
-
-[dev-dependencies]
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
-# Closing a process that ignores SIGTERM is tested on a paused clock.
-tokio = { workspace = true, features = ["test-util"] }

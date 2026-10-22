@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -84,10 +84,3 @@ uu_chown = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_IO"] }
-
-[dev-dependencies]
-demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
-demi-runner-shell = { path = ".", features = ["testing"] }
-rlimit = "0.11"
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -15,11 +15,6 @@ bench = false
 name = "demi-mobile"
 path = "src/main.rs"
 test = false
-
-[features]
-# A driver the tests script (`testing`), and the iOS helper's framing for
-# a test that plays the helper.
-testing = ["tonic/server", "tonic/router", "demi-shared-h264/testing", "demi-shared-openh264/testing", "demi-shared-recording/testing"]
 
 [dependencies]
 bytes.workspace = true
@@ -94,11 +89,3 @@ zstd = { version = "0.13", default-features = false }
 # The emulator's gRPC interface, compiled without protoc.
 protox = "0.10"
 tonic-prost-build = "0.14"
-
-[dev-dependencies]
-demi-shared-openh264 = { path = "../../shared-openh264", features = ["testing"] }
-demi-command-package-mobile-protocol = { path = "../protocol" }
-demi-command-sdk = { path = "../../command-sdk", features = ["testing"] }
-demi-mobile = { path = ".", features = ["testing"] }
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

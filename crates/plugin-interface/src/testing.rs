@@ -235,11 +235,6 @@ impl TestDemi {
             .unwrap_or_default()
     }
 
-    /// The bytes of the blob `blob`, if the plugin put it.
-    pub fn blob_bytes(&self, blob: &BlobRef) -> Option<B64Bytes> {
-        self.blobs.borrow().get(blob).cloned()
-    }
-
     /// The plugin's set of Host directories.
     pub fn directories(&self) -> Vec<HostDirectory> {
         self.directories.borrow().clone()

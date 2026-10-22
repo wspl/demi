@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -31,9 +31,3 @@ tokio-util.workspace = true
 url = { version = "2", features = ["serde"] }
 # `TestDemi::until`, which wakes at each port message.
 tokio = { workspace = true, optional = true }
-
-[dev-dependencies]
-demi-plugin-interface = { path = ".", features = ["testing"] }
-demi-host-interface = { path = "../host-interface", features = ["testing"] }
-schemars.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }

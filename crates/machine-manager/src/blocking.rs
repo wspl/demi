@@ -9,11 +9,6 @@ pub struct OffLoop {
 }
 
 impl OffLoop {
-    /// A token for a test that runs blocking functions on its own thread.
-    #[cfg(test)]
-    pub(crate) fn in_test() -> Self {
-        Self { _private: () }
-    }
 }
 
 /// Runs `job` on the blocking pool and returns its result. A panic in the

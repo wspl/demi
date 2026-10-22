@@ -5,9 +5,8 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -29,9 +28,3 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 url = "2"
-
-[dev-dependencies]
-# The program started and driven as a service (`testing::ServiceProcess`).
-demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
-futures-util.workspace = true
-sha2 = "0.10"

@@ -76,11 +76,6 @@ impl Page {
         Self::offer_as(direct, peer, introduction, false).await
     }
 
-    /// Offers the page's peer for live views (`crates/runner-direct/src/lib.rs`).
-    pub async fn offer_live(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
-        Self::offer_as(direct, peer, introduction, true).await
-    }
-
     async fn offer_as(direct: &Direct, peer: &str, introduction: Introduction, live: bool) -> Result<Self, Refused> {
         Self::connect(async |offer| {
             let introduced = Introduced::Page { page: introduction, live };

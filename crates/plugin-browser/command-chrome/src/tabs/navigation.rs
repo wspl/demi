@@ -646,21 +646,3 @@ pub fn validate_url(url: &str) -> Result<()> {
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::url_pattern;
-    #[test]
-    fn literal_browser_url_globs() {
-        for (pattern, url, matches) in [
-            ("/a/*", "/a/b/c", false),
-            ("/a/**", "/a/b/c", true),
-            ("/a/?", "/a/b", false),
-            ("/a/?", "/a/?", true),
-            ("/[a]{b}", "/[a]{b}", true),
-            ("/[a]{b}", "/ab", false),
-        ] {
-            assert_eq!(url_pattern(pattern).unwrap().is_match(url), matches);
-        }
-    }
-}

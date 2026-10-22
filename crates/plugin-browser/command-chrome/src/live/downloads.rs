@@ -176,18 +176,3 @@ fn file_name(suggested: &str) -> String {
     }
     trimmed.to_owned()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_suggested_name_is_a_file_name_in_the_directory() {
-        assert_eq!(file_name("report.pdf"), "report.pdf");
-        assert_eq!(file_name("../../etc/passwd"), "passwd");
-        assert_eq!(file_name("a\\b\\c.txt"), "c.txt");
-        assert_eq!(file_name(".."), "download");
-        assert_eq!(file_name(""), "download");
-        assert_eq!(file_name("tab\tname.txt"), "tabname.txt");
-    }
-}

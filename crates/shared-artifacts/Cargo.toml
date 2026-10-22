@@ -5,9 +5,8 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -37,8 +36,3 @@ tokio.workspace = true
 tokio-util.workspace = true
 zip = { version = "6", default-features = false, features = ["deflate"] }
 zstd = { version = "0.13", default-features = false, features = ["zstdmt"] }
-
-[dev-dependencies]
-demi-shared-artifacts = { path = ".", features = ["testing"] }
-# A paused clock for the install lock's waits.
-tokio = { workspace = true, features = ["test-util"] }

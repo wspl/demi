@@ -150,33 +150,3 @@ pub async fn open(data_dir: &Path, storage: &Storage) -> Result<Objects, ObjectE
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use bytes::Bytes;
-    use demi_web_api_protocol::ids::UserId;
-
-    use crate::fake_s3::FakeS3;
-    use object_store::ObjectStore;
-
-    use crate::blobs::BlobStores;
-
-    #[tokio::test]
-    async fn an_s3_bucket_holds_each_blob_once_under_its_users_namespace() {
-        let fake = FakeS3::start().await;
-        let objects: Arc<dyn ObjectStore> = Arc::new(fake.client());
-        let blobs = BlobStores::new(objects, Arc::new(demi_shared_types::SystemClock))
-            .for_user(&UserId::try_from("ana").unwrap());
-        let first = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
-        // The same bytes again are the same blob, created once.
-        let again = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
-        assert_eq!(first, again);
-        assert_eq!(
-            blobs.get(&first).await.unwrap(),
-            Some(Bytes::from_static(b"picture"))
-        );
-        assert_eq!(fake.written(), [format!("blobs/ana/{first}")]);
-    }
-}

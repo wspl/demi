@@ -5,9 +5,8 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-
 [lib]
-# The crate's one test binary is tests/cli (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false

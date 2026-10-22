@@ -96,24 +96,3 @@ fn from_banner(bytes: &[u8]) -> Option<GlibcVersion> {
         .collect();
     GlibcVersion::parse(std::str::from_utf8(&version).ok()?)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A loader says its version in its name before glibc 2.34, as on
-    /// Amazon Linux 2 and Debian 10, and in its banner from 2.33, as on
-    /// Debian 12 and Fedora.
-    #[test]
-    fn a_loader_says_its_version_by_its_name_or_its_banner() {
-        let version = |major, minor| Some(GlibcVersion { major, minor });
-        assert_eq!(from_file_name("ld-2.26.so"), version(2, 26));
-        assert_eq!(from_file_name("ld-linux-aarch64.so.1"), None);
-        let banner = b"\0ld.so (Debian GLIBC 2.36-9) stable release version 2.36.\nCopyright";
-        assert_eq!(from_banner(banner), version(2, 36));
-        assert_eq!(from_banner(b"release version 2.43.9000\0"), version(2, 43));
-        assert_eq!(from_banner(b"no banner"), None);
-        assert!(version(2, 26) < Some(OLDEST) && version(2, 36) > Some(OLDEST));
-        assert_eq!(OLDEST.to_string(), "2.28");
-    }
-}

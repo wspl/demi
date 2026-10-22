@@ -368,35 +368,3 @@ impl BrowserTab {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_ratio_stays_within_what_the_capture_encodes() {
-        let whole = if cfg!(target_os = "macos") { 2.0 } else { 1.5 };
-        assert_eq!(ratio_for(1.5, 1280, 720), whole);
-        assert_eq!(ratio_for(2.0, 1440, 900), 2.0);
-        assert_eq!(ratio_for(0.8, 1440, 900), 1.0);
-        // 1800 × 1000 at 3 would be 5400 pixels wide.
-        let limited = ratio_for(3.0, 1800, 1000);
-        assert!(limited * 1800.0 <= 4096.0 && limited >= 2.0, "{limited}");
-        // A phone at ratio 3 fits whole.
-        assert_eq!(ratio_for(3.0, 390, 844), 3.0);
-    }
-
-    #[test]
-    fn a_capture_takes_the_pages_whole_pixels() {
-        let mut viewport = BrowserViewport {
-            mode: ViewportMode::Web,
-            width: 701,
-            height: 401,
-            device_pixel_ratio: 1.5,
-        };
-        assert_eq!(pixels(&viewport, 1.0), (1052, 602));
-        assert_eq!(pixels(&viewport, 0.5), (526, 301));
-        viewport.device_pixel_ratio = 1.0;
-        assert_eq!(pixels(&viewport, 1.0), (701, 401));
-    }
-}

@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -40,9 +40,3 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[dev-dependencies]
-# The program started and driven as a service (`testing::ServiceProcess`).
-demi-command-sdk = { path = "../../command-sdk", features = ["testing"] }
-serde_json.workspace = true
-tempfile = "3"

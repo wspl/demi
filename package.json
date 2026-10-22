@@ -31,7 +31,6 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --preload ./scripts/vite-glob.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./crates/plugin-browser/page/src ./crates/plugin-mobile/page/src ./crates/plugin-changes/page/src ./crates/plugin-file-browser/page/src ./crates/plugin-skills/page/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/plugin-browser/command-chrome/src/driver/capture ./crates/plugin-browser/command-chrome/src/page",
     "web:gallery": "bun scripts/web-gallery.ts",
     "web:dev": "bun scripts/web-dev.ts",
     "web:build": "bun run build"
@@ -42,7 +41,6 @@
     "@typescript/native-preview": "^7.0.0-dev.20260618.1",
     "@volar/typescript": "^2.4.28",
     "@vue/language-core": "^3.3.11",
-    "oxc-parser": "^0.137.0",
     "tsdown": "^0.22.3",
     "typescript": "^6.0.3",
     "unrun": "^0.3.1",

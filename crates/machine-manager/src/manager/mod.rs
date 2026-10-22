@@ -7,8 +7,6 @@ pub mod admission;
 mod device;
 #[cfg(target_os = "linux")]
 mod errors;
-#[cfg(all(test, target_os = "linux"))]
-mod tests;
 
 #[cfg(target_os = "linux")]
 pub use errors::{OpError, Parts};

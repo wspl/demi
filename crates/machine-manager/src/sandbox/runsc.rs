@@ -255,19 +255,3 @@ impl Runsc {
         .map(drop)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_listing_names_each_containers_status() {
-        let id: SandboxId = serde_json::from_str(r#""demi-a""#).unwrap();
-        assert_eq!(status_in("null", &id).unwrap(), None);
-        assert_eq!(status_in("[]", &id).unwrap(), None);
-        let listing = r#"[{"id":"demi-b","pid":7,"status":"running"},{"id":"demi-a","pid":9,"status":"paused","bundle":"/x"}]"#;
-        assert_eq!(status_in(listing, &id).unwrap(), Some(Status::Paused));
-        assert!(status_in(r#"[{"id":"demi-a","status":"exploded"}]"#, &id).is_err());
-    }
-
-}

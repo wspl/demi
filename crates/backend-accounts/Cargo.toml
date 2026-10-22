@@ -6,8 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests are unit tests and the crate has no integration tests
-# (`ARCHITECTURE.md`). It has no doc examples.
+# No doc examples.
 doctest = false
 bench = false
 
@@ -50,6 +49,3 @@ rust-i18n = "4.2.4"
 # Web Push's encryption and VAPID signature (RFC 8291, RFC 8292), in
 # RustCrypto's pure-Rust implementations.
 web-push-native = "0.5"
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["test-util"] }

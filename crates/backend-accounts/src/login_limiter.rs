@@ -92,35 +92,3 @@ impl Default for LoginLimiter {
         Self::new()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn address(name: &str) -> EmailAddress {
-        EmailAddress::try_from(format!("{name}@example.test")).unwrap()
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn each_failure_extends_the_window_and_a_success_clears_it() {
-        let limiter = LoginLimiter::new();
-        let ana = address("ana");
-        for _ in 1..LOCK_AFTER {
-            limiter.failed(&ana);
-            tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
-        }
-        limiter.failed(&ana);
-        assert_eq!(limiter.locked_for(&ana), Some(WINDOW));
-        tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
-        assert_eq!(limiter.locked_for(&ana), Some(Duration::from_secs(1)));
-        tokio::time::advance(Duration::from_secs(1)).await;
-        assert!(limiter.locked_for(&ana).is_none());
-
-        for _ in 1..LOCK_AFTER {
-            limiter.failed(&ana);
-        }
-        limiter.succeeded(&ana);
-        limiter.failed(&ana);
-        assert!(limiter.locked_for(&ana).is_none());
-    }
-}

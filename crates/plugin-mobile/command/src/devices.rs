@@ -694,12 +694,6 @@ impl Devices {
         self.announcer.attach(messages);
     }
 
-    /// Follows the changes of the open devices.
-    #[cfg(feature = "testing")]
-    pub fn revisions(&self) -> watch::Receiver<u64> {
-        self.revision.subscribe()
-    }
-
     /// The conversations that hold devices, for the runner's `status`.
     pub fn conversations(&self) -> Vec<String> {
         let state = self.state.lock().expect("the registry is intact");
@@ -1197,13 +1191,6 @@ impl Devices {
         }
         self.changed(&open.conversation);
         self.tasks.spawn(self.clone().resume(entry, RECONNECT_DELAY));
-    }
-
-    /// Stops every task and lets nothing go, as a program that is killed:
-    /// for a test of what the next program does.
-    #[cfg(feature = "testing")]
-    pub fn killed(&self) {
-        self.stopping.cancel();
     }
 
     fn changed(&self, conversation: &str) {

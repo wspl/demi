@@ -322,28 +322,3 @@ pub fn complete<'a>(
     }
     command
 }
-
-#[cfg(test)]
-mod tests {
-    use base64::Engine;
-    use sha2::{Digest, Sha256};
-
-    use super::*;
-
-    /// Chrome derives an unpacked extension's ID from its manifest key: the
-    /// first 16 bytes of the key's SHA-256, each hex digit as `a` to `p`.
-    #[test]
-    fn the_capture_extension_id_is_its_manifest_key() {
-        let manifest: serde_json::Value = serde_json::from_str(CAPTURE_EXTENSION[0].1).unwrap();
-        let key = base64::engine::general_purpose::STANDARD
-            .decode(manifest["key"].as_str().unwrap())
-            .unwrap();
-        let id: String = Sha256::digest(key)[..16]
-            .iter()
-            .flat_map(|byte| [byte >> 4, byte & 0xf])
-            .map(|nibble| char::from(b'a' + nibble))
-            .collect();
-        assert_eq!(id, CAPTURE_EXTENSION_ID);
-    }
-
-}

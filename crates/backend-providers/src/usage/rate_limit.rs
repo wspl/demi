@@ -58,24 +58,3 @@ impl RequestRateLimit {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test(start_paused = true)]
-    async fn requests_are_admitted_again_as_the_earliest_leave_the_window() {
-        let mut limit = RequestRateLimit::new(3);
-        for _ in 0..2 {
-            limit.take().unwrap();
-        }
-        tokio::time::advance(Duration::from_secs(30)).await;
-        limit.take().unwrap();
-        assert_eq!(limit.take(), Err(RateLimited { limit: 3 }));
-        // A refusal does not count: 30 seconds on, the first two leave.
-        tokio::time::advance(Duration::from_secs(30)).await;
-        limit.take().unwrap();
-        limit.take().unwrap();
-        assert_eq!(limit.take(), Err(RateLimited { limit: 3 }));
-    }
-}

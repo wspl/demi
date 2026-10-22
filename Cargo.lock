@@ -1884,7 +1884,6 @@ name = "demi-agent-store"
 version = "0.1.62"
 dependencies = [
  "bytes",
- "demi-agent-store",
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-host-interface",
@@ -2089,7 +2088,6 @@ dependencies = [
  "object_store",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "url",
@@ -2112,7 +2110,6 @@ dependencies = [
  "demi-web-api-protocol",
  "futures-util",
  "serde_json",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2184,12 +2181,10 @@ dependencies = [
  "futures-util",
  "garde",
  "http",
- "rusqlite",
  "schemars",
  "serde",
  "serde_json",
  "shlex",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2288,7 +2283,6 @@ dependencies = [
  "shlex",
  "thiserror 2.0.20",
  "tokio",
- "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -2364,7 +2358,6 @@ dependencies = [
  "serde_json_canonicalizer",
  "serde_with",
  "sha2 0.10.9",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2508,32 +2501,22 @@ dependencies = [
 name = "demi-browser"
 version = "0.1.62"
 dependencies = [
- "axum",
- "base64 0.22.1",
  "bytes",
  "demi-command-package-browser-chrome",
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
- "demi-live-view-protocol",
  "demi-shared-cli",
  "demi-shared-openh264",
  "demi-shared-recording",
  "demi-shared-recording-protocol",
  "futures-util",
- "image",
- "libc",
  "png",
- "reqwest",
  "serde_json",
- "sysinfo",
- "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -2545,10 +2528,8 @@ dependencies = [
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-shared-cli",
- "futures-util",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2595,7 +2576,6 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "sysinfo",
  "tempfile",
  "thiserror 2.0.20",
@@ -2703,7 +2683,6 @@ dependencies = [
  "bytes",
  "clap",
  "demi-command-protocol",
- "demi-command-sdk",
  "demi-shared-artifacts",
  "futures-util",
  "h2",
@@ -2712,7 +2691,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sync_wrapper",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2738,7 +2716,6 @@ dependencies = [
 name = "demi-fetch"
 version = "0.1.62"
 dependencies = [
- "axum",
  "bytes",
  "demi-command-package-fetch-protocol",
  "demi-command-protocol",
@@ -2756,7 +2733,6 @@ dependencies = [
  "serde",
  "serde_json",
  "shlex",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2779,11 +2755,9 @@ dependencies = [
  "image",
  "nom-exif",
  "regex",
- "serde_json",
  "shlex",
  "similar",
  "strsim",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2798,7 +2772,6 @@ dependencies = [
  "bytes",
  "demi-command-declarations",
  "demi-command-protocol",
- "demi-host-interface",
  "demi-shared-types",
  "futures-util",
  "garde",
@@ -2856,7 +2829,6 @@ name = "demi-machine-manager"
 version = "0.1.62"
 dependencies = [
  "clap",
- "demi-machine-manager",
  "demi-machine-manager-protocol",
  "demi-runner-protocol",
  "demi-shared-artifacts",
@@ -2874,7 +2846,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tar",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2912,7 +2883,6 @@ dependencies = [
  "demi-command-sdk",
  "demi-live-view",
  "demi-live-view-protocol",
- "demi-mobile",
  "demi-shared-artifacts",
  "demi-shared-cli",
  "demi-shared-h264",
@@ -2959,17 +2929,14 @@ dependencies = [
 name = "demi-plugin-audio"
 version = "0.1.62"
 dependencies = [
- "demi-command-declarations",
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-plugin-media",
  "demi-shared-types",
- "demi-web-api-protocol",
  "futures-util",
  "schemars",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -3019,12 +2986,10 @@ dependencies = [
 name = "demi-plugin-image"
 version = "0.1.62"
 dependencies = [
- "demi-command-declarations",
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-plugin-media",
  "demi-shared-types",
- "demi-web-api-protocol",
  "futures-util",
  "image",
  "schemars",
@@ -3039,7 +3004,6 @@ version = "0.1.62"
 dependencies = [
  "demi-command-declarations",
  "demi-host-interface",
- "demi-plugin-interface",
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
@@ -3089,12 +3053,9 @@ dependencies = [
 name = "demi-plugin-skills"
 version = "0.1.62"
 dependencies = [
- "demi-command-declarations",
  "demi-host-interface",
  "demi-plugin-interface",
- "demi-plugin-skills",
  "demi-shared-types",
- "demi-web-api-protocol",
  "futures-util",
  "gix",
  "schemars",
@@ -3112,17 +3073,14 @@ dependencies = [
 name = "demi-plugin-video"
 version = "0.1.62"
 dependencies = [
- "demi-command-declarations",
  "demi-host-interface",
  "demi-plugin-interface",
  "demi-plugin-media",
  "demi-shared-types",
- "demi-web-api-protocol",
  "futures-util",
  "schemars",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -3134,14 +3092,12 @@ dependencies = [
  "demi-command-package-fetch-protocol",
  "demi-host-interface",
  "demi-plugin-interface",
- "demi-web-api-protocol",
  "eventsource-stream",
  "futures-util",
  "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
- "tokio",
  "url",
 ]
 
@@ -3171,7 +3127,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -3187,7 +3142,6 @@ dependencies = [
  "demi-shared-types",
  "futures-channel",
  "futures-util",
- "http",
  "reqwest",
  "rmcp",
  "serde",
@@ -3206,13 +3160,11 @@ version = "0.1.62"
 dependencies = [
  "async-stream",
  "bytes",
- "demi-provider-codex",
  "demi-provider-common",
  "demi-shared-artifacts",
  "demi-shared-types",
  "futures-util",
  "http",
- "jiff",
  "reqwest",
  "semver",
  "serde",
@@ -3232,7 +3184,6 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
- "demi-provider-common",
  "demi-shared-artifacts",
  "demi-shared-gates",
  "demi-shared-types",
@@ -3268,7 +3219,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -3295,11 +3245,9 @@ dependencies = [
  "async-stream",
  "bytes",
  "demi-provider-common",
- "demi-provider-grok-build",
  "demi-shared-types",
  "futures-util",
  "http",
- "jiff",
  "reqwest",
  "semver",
  "serde",
@@ -3321,7 +3269,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -3391,7 +3338,6 @@ dependencies = [
  "bytes",
  "demi-command-protocol",
  "demi-command-sdk",
- "demi-runner-command-packages",
  "demi-runner-process",
  "demi-runner-protocol",
  "demi-shared-artifacts",
@@ -3400,8 +3346,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "sha2 0.10.9",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -3413,11 +3357,8 @@ name = "demi-runner-direct"
 version = "0.1.62"
 dependencies = [
  "bytes",
- "demi-command-protocol",
  "demi-live-view-protocol",
- "demi-runner-direct",
  "demi-runner-protocol",
- "demi-shared-types",
  "futures-util",
  "garde",
  "if-addrs",
@@ -3549,7 +3490,6 @@ dependencies = [
  "demi-command-sdk",
  "demi-runner-process",
  "demi-runner-protocol",
- "demi-runner-shell",
  "diffutils",
  "findutils",
  "futures-util",
@@ -3618,7 +3558,6 @@ dependencies = [
  "demi-shared-cli",
  "dotenvy",
  "jiff",
- "rusqlite",
  "rustix",
  "semver",
  "serde",
@@ -3640,7 +3579,6 @@ version = "0.1.62"
 dependencies = [
  "async-compression",
  "bytes",
- "demi-shared-artifacts",
  "futures-util",
  "reqwest",
  "serde",
@@ -3679,7 +3617,6 @@ dependencies = [
  "openh264",
  "openh264-sys2",
  "thiserror 2.0.20",
- "tokio",
  "tracing",
  "windows 0.62.2",
  "yuv",
@@ -3694,7 +3631,6 @@ dependencies = [
  "demi-shared-artifacts",
  "futures-util",
  "openh264",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -3707,12 +3643,10 @@ dependencies = [
  "demi-shared-h264",
  "demi-shared-openh264",
  "demi-shared-recording-protocol",
- "demi-shared-types",
  "image",
  "openh264",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -7585,15 +7519,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d87ecb2933e8aeadb3e3a02b828fed80a7528047e68b4f424523a0981a3a084"
 
 [[package]]
-name = "nasm-rs"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "706bf8a5e8c8ddb99128c3291d31bd21f4bcde17f0f4c20ec678d85c74faa149"
-dependencies = [
- "log",
-]
-
-[[package]]
 name = "netlink-packet-core"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8074,11 +7999,8 @@ version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "414f5bd53da84e126dc9449eb6f0003bb6994b2de63c48119b0c9b7a8b28086a"
 dependencies = [
- "cc",
  "libloading",
- "nasm-rs",
  "sha2 0.10.9",
- "walkdir",
 ]
 
 [[package]]
@@ -11149,10 +11071,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac2a5518c70fa84342385732db33fb3f44bc4cc748936eb5833d2df34d6445ef"
 dependencies = [
  "async-trait",
- "axum",
  "base64 0.22.1",
  "bytes",
- "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -11161,7 +11081,6 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
- "socket2",
  "sync_wrapper",
  "tokio",
  "tokio-stream",

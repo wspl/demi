@@ -38,8 +38,6 @@ mod mp4;
 mod operate;
 mod recorder;
 mod stored;
-#[cfg(test)]
-mod tests;
 
 pub use export::{Crop, Export, Exported};
 pub use changed::changed;

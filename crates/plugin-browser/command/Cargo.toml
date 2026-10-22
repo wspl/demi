@@ -5,9 +5,8 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -34,24 +33,3 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[dev-dependencies]
-axum = "0.8"
-demi-shared-openh264 = { path = "../../shared-openh264", features = ["testing"] }
-demi-shared-recording = { path = "../../shared-recording", features = ["testing"] }
-base64 = "0.22"
-# The browser libraries' test support, for the Chrome tests.
-demi-command-package-browser-chrome = { path = "../command-chrome", features = ["testing"] }
-demi-command-sdk = { path = "../../command-sdk", features = ["testing"] }
-demi-live-view-protocol = { path = "../../live-view-protocol", features = ["testing"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
-# The repair tests fetch from their fixture site.
-reqwest = { workspace = true, features = ["rustls", "stream"] }
-tempfile = "3"
-url = "2"
-uuid = { version = "1", features = ["v4"] }
-
-# The retirement tests read the process table.
-[target.'cfg(unix)'.dev-dependencies]
-libc = "0.2"
-sysinfo = { version = "0.39", default-features = false, features = ["system"] }

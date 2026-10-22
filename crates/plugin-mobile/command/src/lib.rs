@@ -53,8 +53,6 @@ mod operations;
 mod pictures;
 mod refs;
 mod scale;
-#[cfg(feature = "testing")]
-pub mod testing;
 mod text;
 mod tree;
 
@@ -339,4 +337,3 @@ async fn stream_file(context: &InvocationContext, file: &std::path::Path, about:
         context.output.stdout(Bytes::copy_from_slice(&buffer[..count])).await?;
     }
 }
-

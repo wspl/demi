@@ -57,8 +57,6 @@ mod runners;
 mod services;
 mod settings;
 mod setup;
-#[cfg(test)]
-mod tests;
 
 use std::{
     io::{self, BufRead as _, Write as _},

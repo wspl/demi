@@ -32,28 +32,9 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
     Ahead, InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
-    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolDefinition, ToolResultKinds,
+    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolResultKinds,
     UserPart,
 };
-
-/// A tool whose input lists its fields as `shell`'s does: `description`
-/// first, then the rest out of alphabetical order, so a request that sorts
-/// or otherwise reorders a schema's properties shows.
-pub fn titled_tool() -> ToolDefinition {
-    let schema = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "description": { "type": "string" },
-            "script": { "type": "string" },
-            "intervalMs": { "type": "integer" },
-        },
-    });
-    ToolDefinition {
-        name: "shell".into(),
-        description: "Run a script".into(),
-        input_schema: schema.as_object().unwrap().clone(),
-    }
-}
 
 /// Builders of the events a scripted run yields.
 pub mod event {
@@ -114,12 +95,6 @@ pub mod event {
             retry_after: None,
         })
     }
-}
-
-/// Whether every vendor accepts `id` as a tool call's: letters, digits,
-/// `_` and `-`, Anthropic's rule, the strictest.
-pub fn every_vendor_accepts(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// A request with a user message `hello` and nothing else; tests replace the
@@ -422,19 +397,6 @@ impl Clock for TokioClock {
         let elapsed = i64::try_from(self.origin.elapsed().as_millis()).unwrap_or(i64::MAX);
         Timestamp::from_millisecond(self.start.as_millisecond().saturating_add(elapsed))
             .expect("a test's time stays in range")
-    }
-}
-
-/// What a login of a test works with: `pending` gets what the user must
-/// do, no code is pasted, and nothing stops it.
-pub fn login_io(
-    pending: &(dyn Fn(demi_shared_types::LoginPending) + Send + Sync),
-) -> crate::credentials::LoginIo<'_> {
-    crate::credentials::LoginIo {
-        pending,
-        stage: &|_| {},
-        codes: tokio::sync::mpsc::unbounded_channel().1,
-        stop: CancellationToken::new(),
     }
 }
 

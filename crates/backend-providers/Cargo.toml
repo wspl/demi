@@ -6,9 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the catalog cache's, the vault's and the meter's internals, so
-# they are unit tests and the crate has no integration tests
-# (`ARCHITECTURE.md`). It has no doc examples.
+# No doc examples.
 doctest = false
 bench = false
 
@@ -42,9 +40,3 @@ tokio-util.workspace = true
 tracing.workspace = true
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-
-[dev-dependencies]
-demi-backend-database = { path = "../backend-database", features = ["testing"] }
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
-tempfile = "3"
-tokio = { workspace = true, features = ["test-util"] }

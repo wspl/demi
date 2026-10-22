@@ -6,9 +6,7 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the stores' private parts, so they are unit tests and the
-# crate has no integration tests (`ARCHITECTURE.md`);
-# no doc examples.
+# No doc examples.
 doctest = false
 bench = false
 
@@ -34,7 +32,3 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url = { version = "2", features = ["serde"] }
-
-[dev-dependencies]
-axum = "0.8"
-tempfile = "3"

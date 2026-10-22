@@ -6,7 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# One test binary, the integration tests' (`ARCHITECTURE.md`); no doc examples.
+# No doc examples.
 test = false
 doctest = false
 bench = false
@@ -32,12 +32,6 @@ tokio-util.workspace = true
 tracing.workspace = true
 # A STUN request's transaction id, which only has to be unpredictable.
 uuid = { version = "1", features = ["v4"] }
-
-[dev-dependencies]
-demi-runner-direct = { path = ".", features = ["testing"] }
-demi-command-protocol = { path = "../command-protocol" }
-demi-shared-types = { path = "../shared-types" }
-tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 # A page in process that connects to a runner's peers, for the tests of

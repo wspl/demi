@@ -90,11 +90,6 @@ impl ActivityGate {
         Self::gate(None)
     }
 
-    /// A gate whose changes also bump `hub`.
-    pub fn with_hub(hub: ActivityHub) -> Self {
-        Self::gate(Some(hub))
-    }
-
     fn gate(hub: Option<ActivityHub>) -> Self {
         Self(Arc::new(Inner {
             permits: Arc::new(Semaphore::new(PERMITS as usize)),

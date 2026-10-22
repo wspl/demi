@@ -133,9 +133,7 @@ fn android() {
         // Pictures arrive as `Bytes`, which the encoder and the
         // screenshot take without a copy.
         .bytes(".")
-        // The tests' stub emulator serves it.
-        .build_server(true)
-        .server_mod_attribute("android.emulation.control", "#[cfg(feature = \"testing\")]")
+        .build_server(false)
         .compile_fds(descriptors)
         .unwrap_or_else(|error| panic!("the emulator's interface was not generated: {error}"));
     let cache = target_directory(&out).join("android-helper");

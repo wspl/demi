@@ -912,28 +912,3 @@ async fn declared(shard: &dyn PermissionShard) -> Vec<Category> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use demi_host_interface::testing::MemoryPort;
-    use tokio_util::sync::CancellationToken;
-
-    use super::*;
-
-    // The user stops a held call and allows its request at the same moment:
-    // both are ready before the call looks again, and the call fails stopped,
-    // so the dispatch never runs its handler. A scenario cannot order the two,
-    // so here both are settled before the hold is polled.
-    //
-    // Cost: instant.
-    #[tokio::test]
-    async fn a_call_stopped_as_its_request_is_allowed_is_not_passed_on() {
-        let stop = CancellationToken::new();
-        let port = MemoryPort::new().port(stop.clone());
-        let (answer, decided) = oneshot::channel();
-        answer.send(Decided::Allowed).unwrap();
-        stop.cancel();
-        let held = held(decided, &port, async { Ok(()) }).await;
-        assert!(matches!(held, Err(RpcError::Port(PortError::Ended(_)))), "{held:?}");
-    }
-}

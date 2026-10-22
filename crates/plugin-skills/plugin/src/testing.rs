@@ -75,14 +75,6 @@ impl Repos {
         git(&repo, &["commit", "-q", "--allow-empty", "-m", "skills"]);
     }
 
-    /// Writes `bytes` into `owner/repo`'s tree and commits it with the rest.
-    pub fn commit_bytes(&self, name: &str, path: &str, bytes: &[u8]) {
-        let repo = self.root.path().join(name);
-        write(&repo.join(path), bytes, false);
-        git(&repo, &["add", "-A"]);
-        git(&repo, &["commit", "-q", "-m", "bytes"]);
-    }
-
     /// Moves the plugins' clock `duration` on.
     pub fn pass(&self, duration: Duration) {
         let milliseconds = i64::try_from(duration.as_millis()).unwrap();
