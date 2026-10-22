@@ -40,8 +40,8 @@ written by the release before. What migrates, and what is read as it is.
 
 ## Performance
 
-What the change costs and saves: what the spike measured, and what only the
-whole change can show, to be measured before and after.
+What the change costs and saves, measured or to be measured, before and
+after.
 
 ## Drawbacks
 
@@ -50,6 +50,12 @@ Why this might not be done.
 ## Rationale and alternatives
 
 The options considered, and why this one; what not doing it means.
+
+## Spike
+
+What the spike ran and what it showed: that the library, protocol or
+mechanism the design rests on does what the design needs of it, and how.
+None when the decision rests on no such behavior.
 
 ## Prior art
 
