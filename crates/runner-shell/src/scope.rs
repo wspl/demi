@@ -11,9 +11,14 @@
 //! - An external program's stdout or stderr redirected into a file goes through
 //!   a runner-owned pipe that forwards into the registered file through the
 //!   same recorder. The child completes only after those streams have drained,
-//!   a forwarding error failing it.
+//!   a forwarding error failing it. A background task's program writes the
+//!   file itself, as it may outlive the job and the runner.
 //! - What an external program writes through its other inherited descriptors
 //!   stays outside tracking.
+//!
+//! A job that has ended leaves what it started running, and none of that is
+//! the job's work any more: its writes are no longer recorded, since the
+//! report they would join has gone.
 
 use std::{
     collections::HashMap,
@@ -213,7 +218,12 @@ pub struct Scope {
     /// `du`'s printer, which is outside every runtime.
     runtime: tokio::runtime::Handle,
     pub commands: Option<JobCommands>,
+    /// The job's edit recorder; the scope records into it only until the job
+    /// detaches (`Scope::recorder`).
     pub edits: Option<demi_command_sdk::edits::Recorder>,
+    /// Whether the scope's work is a background task's, whose programs write
+    /// the files they are redirected to themselves (`external_output`).
+    background: bool,
     /// Readable once `cancellation` is, so blocking IO polls it with its
     /// file; made when blocking IO first needs it. A std mutex: the job's
     /// unit threads share it for the moment it takes to make.
@@ -230,18 +240,21 @@ pub struct Scope {
 }
 
 impl Scope {
-    /// A job's scope, which `cancellation` ends with everything the job
-    /// runs. Made inside a Tokio runtime, which it keeps.
+    /// A job's scope, which `cancellation` ends with everything the job runs
+    /// until the job detaches. Made inside a Tokio runtime, which it keeps.
     pub fn new(cancellation: CancellationToken, commands: Option<JobCommands>) -> Self {
-        let stop = Stop::job(&cancellation);
+        let (work, roots) = Work::new(cancellation);
+        let stop = Stop::job(&roots);
+        let work = Arc::new(work);
         Self {
             cancellation: stop.shell.clone(),
             stop,
-            work: Arc::new(Work::new(cancellation)),
+            work,
             tasks: TaskTracker::new(),
             runtime: tokio::runtime::Handle::current(),
             commands,
             edits: None,
+            background: false,
             files: Arc::new(Mutex::new(HashMap::new())),
             timings: crate::timing::Timings::default(),
             #[cfg(unix)]
@@ -290,6 +303,14 @@ impl Scope {
         self.tasks.wait().await;
     }
 
+    /// The recorder of the job's edits while the job runs; none once it has
+    /// ended, whatever it left running writing then.
+    fn recorder(&self) -> Option<&demi_command_sdk::edits::Recorder> {
+        self.edits
+            .as_ref()
+            .filter(|_| !self.work.detach.is_cancelled())
+    }
+
     /// A part of this scope's work that a signal stops on its own: a
     /// background task, or the command a `timeout` runs.
     pub(crate) fn part(&self) -> Self {
@@ -301,6 +322,17 @@ impl Scope {
             interrupt: Arc::new(Mutex::new(None)),
             timings: self.timings.part(),
             ..self.clone()
+        }
+    }
+
+    /// A background task: a part of its own, and with tasks of its own, so
+    /// that the job's end waits for none of its work. A task that holds the
+    /// job's output open keeps the job running by that, and no other does.
+    fn task(&self) -> Self {
+        Self {
+            tasks: TaskTracker::new(),
+            background: true,
+            ..self.part()
         }
     }
 
@@ -372,7 +404,7 @@ impl Scope {
         self.ready(file, true)?;
         #[cfg(windows)]
         let _operation = self.interruptible_io()?;
-        if tracking && let (Some(edits), Some(path)) = (&self.edits, self.file_path(file)) {
+        if tracking && let (Some(edits), Some(path)) = (self.recorder(), self.file_path(file)) {
             return edits.record(&path, || (&*file).write(buffer));
         }
         // A pipe that polls writable takes this much without blocking, so
@@ -397,12 +429,12 @@ impl Scope {
                 options.open(path)
             })
         };
-        let file = match (&self.edits, writing) {
+        let file = match (self.recorder(), writing) {
             (Some(edits), true) => edits.record(path, open)?,
             _ => open()?,
         };
         if writing
-            && self.edits.is_some()
+            && self.recorder().is_some()
             && file.metadata().is_ok_and(|metadata| metadata.is_file())
             && let Ok(identity) = file_identity(&file)
         {
@@ -427,7 +459,7 @@ impl Scope {
         if std::fs::metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
             return None;
         }
-        let mut recording = self.edits.as_ref()?.begin()?;
+        let mut recording = self.recorder()?.begin()?;
         recording.track(path);
         Some(Box::new(recording))
     }
@@ -539,6 +571,29 @@ impl Scope {
     }
 }
 
+/// The control of the job's own output streams. The files a shell makes of
+/// them, a task's included, keep the mark, so that the shell can tell a task
+/// that still holds them from one that redirected both elsewhere.
+pub(crate) struct JobOutput(pub(crate) Arc<dyn FileControl>);
+
+impl FileControl for JobOutput {
+    fn duplicate(&self, file: &File) -> io::Result<File> {
+        self.0.duplicate(file)
+    }
+    fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(file, buffer)
+    }
+    fn write(&self, file: &File, buffer: &[u8]) -> io::Result<usize> {
+        self.0.write(file, buffer)
+    }
+    fn rebound(&self, owner: &Arc<dyn FileControl>) -> Arc<dyn FileControl> {
+        Arc::new(Self(owner.clone()))
+    }
+    fn is_host_output(&self) -> bool {
+        true
+    }
+}
+
 impl FileControl for Scope {
     fn duplicate(&self, file: &File) -> io::Result<File> {
         self.duplicate(file)
@@ -554,14 +609,14 @@ impl FileControl for Scope {
 
 impl ExecutionHost for Scope {
     /// A background task is a part of the job of its own, numbered within
-    /// the job (`crates/runner-shell/src/work.rs`).
+    /// the runner (`crates/runner-shell/src/work.rs`).
     fn background_task(&self) -> io::Result<Option<BackgroundTask>> {
         self.check()?;
-        let task = self.part();
-        let id = self.work.add_task(task.stop.clone());
+        let task = self.task();
+        let end = self.work.add_task(task.stop.clone());
         Ok(Some(BackgroundTask {
-            id,
-            guard: Box::new(task.stop.done.clone().drop_guard()),
+            id: end.id,
+            guard: Box::new(end),
             host: Arc::new(task),
         }))
     }
@@ -579,7 +634,12 @@ impl ExecutionHost for Scope {
         &self,
         file: File,
     ) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
-        if self.file_path(&file).is_none() {
+        // A background task's program may outlive the job, whose runner then
+        // is no place for its output to pass through: the runner's exit would
+        // break the pipe, and the program would die of it on its next write.
+        // Its writes are not recorded as edits, as those of a job that has
+        // ended are not.
+        if self.background || self.file_path(&file).is_none() {
             return Ok((file, None));
         }
         let (reader, writer) = self.descriptors(super::job::pipe)?;
@@ -614,6 +674,10 @@ impl ExecutionHost for Scope {
 
     fn task_guard(&self) -> Box<dyn Send + Sync> {
         Box::new(self.tasks.token())
+    }
+
+    fn background_task_output(&self, held: bool) {
+        self.stop.set_holds_output(held);
     }
 
     fn file_control(&self) -> Arc<dyn FileControl> {
@@ -653,7 +717,7 @@ impl ExecutionHost for Scope {
             command.env(CONTEXT_ENV, &commands.context);
         }
         let command = tokio::process::Command::from(command);
-        let mut command = process::wrap(command, true, &child_attributes(attributes));
+        let mut command = process::wrap_for_job(command, &child_attributes(attributes));
         // A signal waits until the child is in the table, which it may act
         // on before the start returns.
         let starting = self.work.starting();
@@ -669,6 +733,7 @@ impl ExecutionHost for Scope {
         let kill = self.stop.kill.clone();
         let counted = self.timings.current();
         let (result, receiver) = tokio::sync::oneshot::channel();
+        let runtime = self.runtime.clone();
         self.tasks.spawn(async move {
             let mut failure = None;
             let ended = tokio::select! {
@@ -688,13 +753,7 @@ impl ExecutionHost for Scope {
             if let Ok(status) = &status {
                 group.ended(shell_status(*status));
             }
-            // After a signal that ends a process, the rest of the group ends
-            // in its own time, unless it is killed (`crates/runner-shell/src/job.rs`); otherwise it ends with its
-            // leader.
             let signalled = group.signalled();
-            if !signalled && let Err(error) = process::kill(child.as_mut()) {
-                failure = Some(error);
-            }
             let outcome = match (status, failure) {
                 (Ok(status), None) => Ok(std::process::Output {
                     status,
@@ -705,23 +764,52 @@ impl ExecutionHost for Scope {
             };
             // The shell may have failed before waiting; the owner still reaps the child.
             let _receiver_closed = result.send(outcome);
-            #[cfg(unix)]
-            if signalled {
+            // The rest of the group runs on when its leader ends, as in bash:
+            // a program's own background children are the job's to stop, and
+            // once the job has ended, nobody's. After a signal that ends a
+            // process, the job waits for them, unless they are killed
+            // (`crates/runner-shell/src/job.rs`).
+            let poll = Duration::from_millis(if signalled { 25 } else { 1000 });
+            let remains = async move {
                 tokio::select! {
-                    _ = kill.cancelled() => {}
-                    () = process::group_ended(pid) => {}
+                    biased;
+                    _ = kill.cancelled() => {
+                        if let Err(error) = process::kill(child.as_mut()) {
+                            tracing::warn!("killing what remains of process group {pid} failed: {error}");
+                        }
+                    }
+                    () = group_ended(child.as_mut(), pid, poll) => {}
                 }
-                if let Err(error) = process::kill(child.as_mut()) {
-                    // The leader has been reaped; its status went to the shell.
-                    tracing::warn!("killing what remains of process group {pid} failed: {error}");
-                }
+                drop(group);
+            };
+            if signalled {
+                remains.await;
+            } else {
+                runtime.spawn(remains);
             }
-            drop(group);
         });
         Ok(ChildProcess::managed(
             pid,
             Box::pin(async move { receiver.await.map_err(io::Error::other)? }),
         ))
+    }
+}
+
+/// Ends once no process of the group `group`, which `child` led, is left: the
+/// system is asked every `poll`. On Windows it ends once no process of the job
+/// object `child` made is left, which `child`'s wait gives.
+async fn group_ended(child: &mut dyn process_wrap::tokio::ChildWrapper, group: i32, poll: Duration) {
+    #[cfg(unix)]
+    {
+        let _ = child;
+        process::group_ended(group, poll).await;
+    }
+    #[cfg(windows)]
+    {
+        // The job object ends its wait once its last process has: the handle it
+        // holds, which closing would kill them, stays until then.
+        let _ = (group, poll);
+        let _ = child.wait().await;
     }
 }
 
@@ -745,6 +833,7 @@ pub(crate) fn child_attributes(
         umask: attributes.umask,
         #[cfg(unix)]
         limits: attributes.limits.clone(),
+        hangup_ignored: attributes.hangup_ignored,
     }
 }
 
@@ -772,11 +861,11 @@ impl uucore::context::Control for UtilityControl {
     /// `mv`'s own writes are untracked, its copying fallback being no
     /// edit; its rename is recorded as the rename it is.
     fn edit_rename(&self, from: &Path, to: &Path) -> Option<Box<dyn Send>> {
-        Some(Box::new(self.scope.edits.as_ref()?.rename(from, to)))
+        Some(Box::new(self.scope.recorder()?.rename(from, to)))
     }
     /// `rm`'s removal is listed, for a request's earlier edits there.
     fn edit_remove(&self, path: &Path) -> Option<Box<dyn Send>> {
-        Some(Box::new(self.scope.edits.as_ref()?.remove(path)))
+        Some(Box::new(self.scope.recorder()?.remove(path)))
     }
     fn check(&self) -> io::Result<()> {
         self.scope.check()
@@ -844,6 +933,9 @@ impl uucore::context::Control for UtilityControl {
     ) -> io::Result<Box<dyn uucore::context::UtilityRun>> {
         if context.name == crate::timeout::NAME {
             return crate::timeout::start(self, context, args);
+        }
+        if context.name == crate::nohup::NAME {
+            return crate::nohup::start(self, context, args);
         }
         let cancellation = self.scope.cancellation.child_token();
         let running = self.scope.work.utility(context.name);

@@ -295,7 +295,7 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
     // Clone the inputs.
     let mut cloned_shell = shell.clone();
     let mut cloned_params = params.clone();
-    let cloned_ao_list = ao_list.clone();
+    let mut cloned_ao_list = ao_list.clone();
     // The task's host, if it gives the task one, owns its work from here on.
     let (task_id, task_guard) = cloned_shell.start_background_task(&mut cloned_params)?;
 
@@ -310,10 +310,19 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
     });
     cloned_params.set_fd(openfiles::OpenFiles::STDIN_FD, null);
 
+    if task_id.is_some() {
+        let held = holds_host_output(&cloned_ao_list, &cloned_shell, &cloned_params);
+        cloned_shell.background_task_output(held);
+    }
+
     let guard = (cloned_shell.execution_guard(), task_guard);
     let join_handle = tokio::task::spawn_blocking(move || {
         let _guard = guard;
         tokio::runtime::Handle::current().block_on(async move {
+            // The task opens its own redirections, as bash's forked child does:
+            // a FIFO's open that waits for its other end holds up the task, not
+            // the shell that started it.
+            apply_own_redirects(&mut cloned_ao_list, &mut cloned_shell, &mut cloned_params).await;
             cloned_ao_list
                 .execute(&mut cloned_shell, &cloned_params)
                 .await
@@ -328,6 +337,157 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
         )
         .with_task_id(task_id),
     ))
+}
+
+/// The redirections of a background list's only command, taken off it, when they all name a file
+/// or a descriptor; the list is left as it was otherwise. The others make work of their own, such
+/// as a here-document's or a process substitution's, which stays with the command.
+fn split_own_redirects(list: &mut ast::AndOrList) -> Option<Vec<ast::IoRedirect>> {
+    if !list.additional.is_empty() || list.first.seq.len() != 1 {
+        return None;
+    }
+    let mut split = list.clone();
+    let mut redirects: Vec<ast::IoRedirect> = Vec::new();
+    match &mut split.first.seq[0] {
+        ast::Command::Simple(simple) => {
+            for part in [
+                simple.prefix.as_mut().map(|prefix| &mut prefix.0),
+                simple.suffix.as_mut().map(|suffix| &mut suffix.0),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let mut kept = Vec::new();
+                for item in part.drain(..) {
+                    match item {
+                        CommandPrefixOrSuffixItem::IoRedirect(redirect) => redirects.push(redirect),
+                        other => kept.push(other),
+                    }
+                }
+                *part = kept;
+            }
+        }
+        ast::Command::Compound(_, list_slot) => {
+            if let Some(list) = list_slot.take() {
+                redirects = list.0;
+            }
+        }
+        _ => {}
+    }
+    let plain = redirects.iter().all(|redirect| match redirect {
+        ast::IoRedirect::File(_, _, target) => match target {
+            ast::IoFileRedirectTarget::Filename(_) | ast::IoFileRedirectTarget::Fd(_) => true,
+            ast::IoFileRedirectTarget::Duplicate(word) => literal_duplicate(word).is_some(),
+            ast::IoFileRedirectTarget::ProcessSubstitution(..) => false,
+        },
+        ast::IoRedirect::OutputAndError(..) => true,
+        ast::IoRedirect::HereDocument(..) | ast::IoRedirect::HereString(..) => false,
+    });
+    if redirects.is_empty() || !plain {
+        return None;
+    }
+    *list = split;
+    Some(redirects)
+}
+
+/// What a duplicating redirection's word names without being expanded: a descriptor, or none, and
+/// whether it closes the redirected one (`2>&1`, `2>&1-`, `>&-`).
+fn literal_duplicate(word: &ast::Word) -> Option<(Option<ShellFd>, bool)> {
+    let (digits, dash) = match word.value.strip_suffix('-') {
+        Some(digits) => (digits, true),
+        None => (word.value.as_str(), false),
+    };
+    if digits.is_empty() {
+        return dash.then_some((None, true));
+    }
+    if !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some((Some(digits.parse().ok()?), dash))
+}
+
+/// Whether a background list holds the host's own output open once its own redirections are
+/// applied (`split_own_redirects`): whether stdout or stderr is still a file of the host's. It
+/// reads the redirections without applying them, which the task does.
+fn holds_host_output<SE: extensions::ShellExtensions>(
+    list: &ast::AndOrList,
+    shell: &Shell<SE>,
+    params: &ExecutionParameters,
+) -> bool {
+    let mut overlay: std::collections::HashMap<ShellFd, bool> = std::collections::HashMap::new();
+    let redirects = split_own_redirects(&mut list.clone()).unwrap_or_default();
+    let held = |overlay: &std::collections::HashMap<ShellFd, bool>, fd: ShellFd| {
+        overlay.get(&fd).copied().unwrap_or_else(|| {
+            params
+                .try_fd(shell, fd)
+                .is_some_and(|file| file.is_host_output())
+        })
+    };
+    for redirect in &redirects {
+        match redirect {
+            ast::IoRedirect::OutputAndError(..) => {
+                overlay.insert(openfiles::OpenFiles::STDOUT_FD, false);
+                overlay.insert(openfiles::OpenFiles::STDERR_FD, false);
+            }
+            ast::IoRedirect::File(fd, kind, target) => {
+                let fd = fd.unwrap_or_else(|| get_default_fd_for_redirect_kind(kind));
+                let now = match target {
+                    ast::IoFileRedirectTarget::Fd(source) => held(&overlay, *source),
+                    ast::IoFileRedirectTarget::Duplicate(word) => match literal_duplicate(word) {
+                        Some((Some(source), false)) => held(&overlay, source),
+                        Some((Some(source), true)) => {
+                            let now = held(&overlay, source);
+                            overlay.insert(source, false);
+                            now
+                        }
+                        Some((None, _)) | None => false,
+                    },
+                    _ => false,
+                };
+                overlay.insert(fd, now);
+            }
+            _ => {}
+        }
+    }
+    [openfiles::OpenFiles::STDOUT_FD, openfiles::OpenFiles::STDERR_FD]
+        .into_iter()
+        .any(|fd| held(&overlay, fd))
+}
+
+/// Applies the redirections of a background list's only command before the list runs, as bash's
+/// fork does in the subshell before the command: the task's own descriptors are the redirected
+/// ones from the start, and it no longer holds those they replaced, such as the standard
+/// streams of the shell that started it. A list of several commands keeps them until it ends,
+/// as bash's subshell does. A redirection that fails stays with the command, which reports it.
+async fn apply_own_redirects<SE: extensions::ShellExtensions>(
+    list: &mut ast::AndOrList,
+    shell: &mut Shell<SE>,
+    params: &mut ExecutionParameters,
+) {
+    let original = list.clone();
+    let Some(redirects) = split_own_redirects(list) else {
+        return;
+    };
+    let mut applied = params.clone();
+    for redirect in &redirects {
+        if setup_redirect(shell, &mut applied, redirect).await.is_err() {
+            *list = original;
+            return;
+        }
+    }
+    for fd in 0..=9 {
+        match applied.open_files.fd_entry(fd) {
+            openfiles::OpenFileEntry::Open(file) => {
+                let file = file.clone();
+                shell.open_files_mut().set_fd(fd, file);
+            }
+            openfiles::OpenFileEntry::NotPresent => {
+                shell.open_files_mut().remove_fd(fd);
+            }
+            openfiles::OpenFileEntry::NotSpecified => {}
+        }
+    }
+    *params = applied;
 }
 
 #[async_trait::async_trait]

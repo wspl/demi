@@ -13,10 +13,13 @@ use demi_runner_process::{
 use demi_runner_protocol::manifest::Manifest;
 use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     io,
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -40,6 +43,11 @@ pub struct ExecutionContext {
     /// them; none for a job whose media reach no model.
     pub viewable: Option<Viewable>,
     aliases: tempfile::TempDir,
+    /// How many leases of the context are held (`ContextLease`).
+    leased: AtomicUsize,
+    /// Whether the job has ended and only what it left running holds the
+    /// context.
+    ended: AtomicBool,
 }
 
 impl ExecutionContext {
@@ -73,6 +81,8 @@ impl ExecutionContext {
             media,
             viewable,
             aliases,
+            leased: AtomicUsize::new(0),
+            ended: AtomicBool::new(false),
         })
     }
 
@@ -98,12 +108,54 @@ impl ExecutionContext {
         ]))
     }
 
+    /// Whether something holds the context beyond the job's own end.
+    fn leased(&self) -> bool {
+        self.leased.load(Ordering::SeqCst) > 0
+    }
+
+    /// Whether the job has ended, and what it left running holds the context:
+    /// the job's report of edits has gone, so that work records none.
+    pub fn ended(&self) -> bool {
+        self.ended.load(Ordering::SeqCst)
+    }
+
     /// Whether the context's manifest carries `digest` for this host.
     pub fn carries(&self, digest: &str) -> bool {
         self.manifest
             .packages
             .values()
             .any(|package| package.carries(host_target(), digest).is_some())
+    }
+}
+
+/// A hold on a job's context for as long as anything the job started runs,
+/// which is longer than the job when it left something running: that work still
+/// runs the job's declared commands and finds its aliases. The context ends once
+/// the job has ended and the last lease is dropped.
+pub struct ContextLease {
+    context: Arc<ExecutionContext>,
+    runtime: tokio::runtime::Handle,
+}
+
+impl ContextLease {
+    /// A lease on `context`, made inside the runtime that serves the connection.
+    pub fn new(context: Arc<ExecutionContext>) -> Self {
+        context.leased.fetch_add(1, Ordering::SeqCst);
+        Self {
+            context,
+            runtime: tokio::runtime::Handle::current(),
+        }
+    }
+}
+
+impl Drop for ContextLease {
+    fn drop(&mut self) {
+        if self.context.leased.fetch_sub(1, Ordering::SeqCst) == 1 {
+            let context = self.context.clone();
+            self.runtime.spawn(async move {
+                context.connection.context_released(context.job_id.clone()).await;
+            });
+        }
     }
 }
 
@@ -163,6 +215,9 @@ impl Contexts {
 pub struct ContextTable {
     index: watch::Sender<Arc<ContextIndex>>,
     leases: HashMap<String, PackageLeases>,
+    /// The jobs that ended while something they left running held their
+    /// context: it ends once that is gone (`ContextTable::released`).
+    ending: HashSet<String>,
 }
 
 impl ContextTable {
@@ -171,6 +226,7 @@ impl ContextTable {
         Self {
             index,
             leases: HashMap::new(),
+            ending: HashSet::new(),
         }
     }
 
@@ -199,21 +255,36 @@ impl ContextTable {
         }
     }
 
-    /// Ends the context of `job_id`, once its process and streams finished.
-    pub fn remove(&mut self, job_id: &str) {
+    /// Ends the context of `job_id`, once its process and streams finished and
+    /// nothing it left running holds it; whether it ended now.
+    pub fn remove(&mut self, job_id: &str) -> bool {
         let mut entries = ContextIndex::clone(&self.index.borrow());
         let Some(id) = entries
             .values()
             .find(|context| context.job_id == job_id)
             .map(|context| context.id.clone())
         else {
-            return;
+            return false;
         };
+        if entries[&id].leased() {
+            entries[&id].ended.store(true, Ordering::SeqCst);
+            self.ending.insert(job_id.to_owned());
+            return false;
+        }
         if let Some(context) = entries.remove(&id) {
             context.cancel.cancel();
         }
         self.leases.remove(&id);
         self.index.send_replace(Arc::new(entries));
+        true
+    }
+}
+
+impl ContextTable {
+    /// The last lease on the context of `job_id` was dropped: it ends if its
+    /// job has; whether it ended now.
+    pub fn released(&mut self, job_id: &str) -> bool {
+        self.ending.remove(job_id) && self.remove(job_id)
     }
 }
 

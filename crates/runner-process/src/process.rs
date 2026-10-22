@@ -34,7 +34,8 @@ pub struct SpawnOptions {
 }
 
 /// What a process the runner starts gets besides its command: the umask and
-/// resource limits its job's `umask` and `ulimit` set (`crates/runner-shell/src/process_builtins.rs`). Nothing set, it gets the runner's own,
+/// resource limits its job's `umask` and `ulimit` set, and the ignored `SIGHUP`
+/// of its job's `nohup` (`crates/runner-shell/src/process_builtins.rs`). Nothing set, it gets the runner's own,
 /// and the open-file limits the runner was started with (`crates/command-sdk/src/descriptors.rs`).
 #[derive(Debug, Clone, Default)]
 pub struct ChildAttributes {
@@ -44,6 +45,8 @@ pub struct ChildAttributes {
     /// not listed keeps the runner's.
     #[cfg(unix)]
     pub limits: Vec<(rlimit::Resource, u64, u64)>,
+    /// Whether the process ignores `SIGHUP`, as `nohup` leaves a program.
+    pub hangup_ignored: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -466,16 +469,20 @@ pub fn set_attributes(command: &mut std::process::Command, attributes: &ChildAtt
     let umask = attributes
         .umask
         .map(|umask| rustix::fs::Mode::from_raw_mode(umask as rustix::fs::RawMode));
-    if limits.is_empty() && umask.is_none() {
+    let hangup_ignored = attributes.hangup_ignored;
+    if limits.is_empty() && umask.is_none() && !hangup_ignored {
         return;
     }
     // SAFETY: the hook runs in the child between fork and exec. It makes only
-    // `umask` and `setrlimit` calls, which are async-signal-safe, and
-    // allocates nothing unless one of them fails.
+    // `umask`, `signal` and `setrlimit` calls, which are async-signal-safe,
+    // and allocates nothing unless one of them fails.
     unsafe {
         command.pre_exec(move || {
             if let Some(umask) = umask {
                 rustix::process::umask(umask);
+            }
+            if hangup_ignored {
+                libc::signal(libc::SIGHUP, libc::SIG_IGN);
             }
             for &(resource, soft, hard) in &limits {
                 rlimit::setrlimit(resource, soft, hard)?;
@@ -490,12 +497,31 @@ pub fn set_attributes(command: &mut std::process::Command, attributes: &ChildAtt
 /// and, with `group`, leads a process group of its own (a job object on
 /// Windows).
 pub fn wrap(command: Command, group: bool, attributes: &ChildAttributes) -> CommandWrap {
+    wrapped(command, group, true, attributes)
+}
+
+/// A program of a job's script, which leads a process group of its own (a job
+/// object on Windows) and is killed when its handle is dropped only on Windows,
+/// where its job object then ends it with the runner. Elsewhere it runs on
+/// when the runner stops, as a program a closed bash session left does.
+pub fn wrap_for_job(command: Command, attributes: &ChildAttributes) -> CommandWrap {
+    wrapped(command, true, cfg!(windows), attributes)
+}
+
+fn wrapped(
+    command: Command,
+    group: bool,
+    kill_on_drop: bool,
+    attributes: &ChildAttributes,
+) -> CommandWrap {
     let mut command = CommandWrap::from(command);
     #[cfg(unix)]
     set_attributes(command.command_mut().as_std_mut(), attributes);
     #[cfg(windows)]
     let _no_attributes_on_windows = attributes;
-    command.wrap(KillOnDrop);
+    if kill_on_drop {
+        command.wrap(KillOnDrop);
+    }
     if group {
         #[cfg(unix)]
         command.wrap(process_wrap::tokio::ProcessGroup::leader());
@@ -597,7 +623,8 @@ pub struct ProcessorTime {
     pub system: Duration,
 }
 
-/// Waits for `child` to end and reaps it, with the processor time it used,
+/// Waits for `child`, the leader of its group or job object, to end and reaps
+/// it, with the processor time it used,
 /// which the system keeps only until the reaping (`crates/runner-shell/src/process_builtins.rs`). Dropped while it waits, it has reaped nothing.
 /// A time it cannot read counts as none: it only shortens what `time`
 /// reports, while the wait itself goes on.
@@ -617,7 +644,8 @@ pub async fn wait_timed(child: &mut dyn ChildWrapper) -> io::Result<(ExitStatus,
     let handle = child
         .process_handle()
         .and_then(|handle| handle.try_clone_to_owned().ok());
-    let status = child.wait().await?;
+    // Its own end, not that of the group's other processes, which run on.
+    let status = child.inner_mut().wait().await?;
     #[cfg(windows)]
     let time = handle
         .and_then(|handle| handle_time(std::os::windows::io::AsHandle::as_handle(&handle)).ok())
@@ -1018,18 +1046,19 @@ pub async fn strays_ended(mut strays: Vec<Stray>) {
 }
 
 /// Ends once no process of the group `group` is left, as a stop waits for
-/// every process of a group it signalled (`crates/runner-shell/src/job.rs`). No call tells when a group empties: this asks the system
-/// every 25 ms, as a utility waits for its child.
+/// every process of a group it signalled (`crates/runner-shell/src/job.rs`).
+/// No call tells when a group empties: this asks the system every `poll`, as a
+/// utility waits for its child; a stop that waits for the group asks often, a
+/// group that outlives its job seldom.
 #[cfg(unix)]
-pub async fn group_ended(group: i32) {
-    const POLL: Duration = Duration::from_millis(25);
+pub async fn group_ended(group: i32, poll: Duration) {
     let Some(group) = rustix::process::Pid::from_raw(group) else {
         return;
     };
     // Any failure, ESRCH or macOS's EPERM for a group of exiting members
     // (`gone`), means no process of it runs on.
     while rustix::process::test_kill_process_group(group).is_ok() {
-        tokio::time::sleep(POLL).await;
+        tokio::time::sleep(poll).await;
     }
 }
 

@@ -140,6 +140,8 @@ async fn jobs_started_at_once_each_run_with_the_manifest_their_start_names() {
                 } => {
                     exits.insert(job_id, (exit_code, spawn_error.and_then(|error| error.detail)));
                 }
+                // A job's context ends after its exit.
+                Outbound::JobContextEnded { .. } => {}
                 other => panic!("unexpected {other:?}"),
             }
         }
@@ -349,7 +351,7 @@ const STRAY_CHILD: &str = "DEMI_TEST_STRAY_CHILD";
 /// A program the stop tests run in a job, not a test of its own.
 ///
 /// Started with `STRAY_DIRECTORY` set, it starts itself again and ends once its
-/// child has left its group, which the runner kills when its leader ends, so
+/// child has left its group, which the leader's end leaves alone, so
 /// the child is an orphan. The child:
 ///
 /// - calls `setsid`, which takes it out of the job's process groups;

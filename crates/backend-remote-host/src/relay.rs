@@ -303,7 +303,11 @@ impl From<&str> for Ended {
 /// parks one, is taken up first (`crates/agent-session/src/reports.rs`).
 async fn origin_of(link: &Link, job: &str) -> Result<Rc<JobOrigin>, String> {
     let unknown = || "rpc requires a live job dispatched to this device".to_owned();
-    let mut claimed = link.device_jobs().claimed(job).ok_or_else(unknown)?;
+    // What a job left running after its end calls the job's commands as the
+    // job did, while the runner keeps its execution context.
+    let Some(mut claimed) = link.device_jobs().claimed(job) else {
+        return link.device_jobs().detached(job).ok_or_else(unknown);
+    };
     if !*claimed.borrow_and_update() {
         link.policy().take_up_job(job.to_owned()).await?;
         claimed.wait_for(|claimed| *claimed).await.map_err(|_| unknown())?;

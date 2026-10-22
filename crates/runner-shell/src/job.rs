@@ -1,8 +1,19 @@
 //! A resident shell job with bounded input and output and an owned completion
 //! task.
 //!
-//! Completion means the job has released its local work and IO, not merely that
-//! its foreground script returned.
+//! # When a job ends
+//!
+//! A job ends as a script does that a program runs with its output on a pipe:
+//! once its script has exited and nothing it started holds that output (stdout
+//! or stderr) open, as the reader of a pipe sees its end. A background task
+//! holds it unless its own redirections send both streams elsewhere, and so
+//! does a program, which keeps it through its own children too.
+//!
+//! What the script left running then runs on, detached (`Work::detach`):
+//! nothing of the job reaches it again, neither a stop nor the job's drop, and
+//! the job's lease is held until the last of it is gone. A job that is stopped,
+//! or whose cancellation is observed, ends with its work instead: it detaches
+//! nothing, and ends once every process group its parts started has ended.
 //!
 //! # Stopping a job
 //!
@@ -282,6 +293,25 @@ impl Job {
                     _ => {}
                 }
             }
+            // A job that ended by itself leaves what it started running, and no
+            // cancellation reaches that again. A job that was stopped ends
+            // once what it started has ended, or has been killed: a signal
+            // that stopped it went to every group its tasks started, and the
+            // stop sends `KILL` after `STOP_GRACE` to the rest.
+            let stopped = owner_cancel.is_cancelled()
+                || owner_signal.lock().expect("the stop signal is intact").is_some();
+            if !stopped {
+                owner_scope.work.detach();
+            } else {
+                let killed = async {
+                    owner_cancel.cancelled().await;
+                    tokio::time::sleep(KILLED_WORK).await;
+                };
+                tokio::select! {
+                    () = owner_scope.work.groups_gone() => {}
+                    () = killed => {}
+                }
+            }
             // A killed job ends once what it killed outside its groups has
             // ended; a job that ended otherwise leaves them alone, and the
             // handle's drop ends their watch.
@@ -384,6 +414,10 @@ impl ShellJob for Job {
     /// takes the signal, and the job ends once every process of them has.
     /// Its processes that left its groups take each signal too.
     fn signal(&self, signal: Signal) -> io::Result<()> {
+        // What an ended job left running is nobody's to stop.
+        if self.scope.work.detach.is_cancelled() {
+            return Ok(());
+        }
         match signal {
             Signal::Kill => {
                 self.cancel();

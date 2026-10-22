@@ -305,6 +305,14 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
         Ok((Some(task.id), Some(task.guard)))
     }
 
+    /// Tells the host of the background task this shell runs whether the task holds the host's own
+    /// output open (`ExecutionHost::background_task_output`).
+    pub(crate) fn background_task_output(&self, held: bool) {
+        if let Some(host) = &self.execution_host {
+            host.background_task_output(held);
+        }
+    }
+
     /// Returns a new shell instance created with the given options.
     /// Does *not* load any configuration files (e.g., bashrc).
     ///

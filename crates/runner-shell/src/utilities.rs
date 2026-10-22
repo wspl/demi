@@ -149,7 +149,7 @@ pub(crate) fn named(program: &std::ffi::OsStr) -> Option<&'static str> {
     let mut names = UTILITIES
         .iter()
         .map(|(name, _)| *name)
-        .chain([crate::timeout::NAME]);
+        .chain([crate::timeout::NAME, crate::nohup::NAME]);
     names.find(|name| *name == program)
 }
 

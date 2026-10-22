@@ -97,6 +97,11 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
                 other => panic!("unexpected runner reply {other:?}"),
             }
         }
+        // The job's context ends after its exit, in the queue that holds it.
+        assert!(matches!(
+            host.frame().await,
+            Outbound::JobContextEnded { job_id } if job_id == "job"
+        ));
         let stdout = String::from_utf8(stdout).unwrap();
         assert!(stdout.starts_with("Usage: fixture ") && stdout.contains("\n\nRemote declaration\n"), "{stdout}");
         assert!(stdout.ends_with("done"), "{stdout}");

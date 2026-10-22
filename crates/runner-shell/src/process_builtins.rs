@@ -31,9 +31,9 @@
 //!
 //! # Windows
 //!
-//! These builtins and `timeout` are the job's on Windows too, never a program
-//! of the same name there (`timeout.exe` waits for a key press, Git's
-//! `kill.exe` knows no task id).
+//! These builtins, `timeout` and `nohup` are the job's on Windows too, never a
+//! program of the same name there (`timeout.exe` waits for a key press, Git's
+//! `kill.exe` knows no task id, and a Host without Git has no `nohup`).
 //!
 //! - Windows has no signals, so `kill` and `timeout` end what they would signal
 //!   and report 128 plus the Linux number, which a script tests as on Linux.
@@ -46,6 +46,8 @@ use std::{
 };
 
 use futures_util::{FutureExt as _, StreamExt as _, stream::FuturesUnordered};
+
+use crate::work::Work;
 
 use brush_core::{
     CommandArg, ExecutionContext, ExecutionControlFlow, ExecutionExitCode, ExecutionResult,
@@ -65,7 +67,7 @@ pub(crate) fn register(registrations: &mut HashMap<String, Registration<DefaultS
         Registration {
             execute_func: disown,
             content_func: |name, _, _| {
-                Ok(format!("{name}: keeps each task in its job, which runs on while the task does"))
+                Ok(format!("{name}: removes jobs from the table of the script's jobs"))
             },
             disabled: false,
             special_builtin: false,
@@ -90,6 +92,16 @@ pub(crate) fn register(registrations: &mut HashMap<String, Registration<DefaultS
         crate::timeout::NAME.into(),
         Registration {
             execute_func: timeout,
+            content_func: |name, _, _| Ok(format!("{name}: use {name} --help for its options")),
+            disabled: false,
+            special_builtin: false,
+            declaration_builtin: false,
+        },
+    );
+    registrations.insert(
+        crate::nohup::NAME.into(),
+        Registration {
+            execute_func: nohup,
             content_func: |name, _, _| Ok(format!("{name}: use {name} --help for its options")),
             disabled: false,
             special_builtin: false,
@@ -223,14 +235,95 @@ fn fg(
     Box::pin(async move { refused(&context, "no job control") })
 }
 
-/// `disown` would let a task outlive its job; here it keeps the task in its
-/// job, which runs on while the task does and whose stop stops it, so it
-/// succeeds and changes nothing else (`crates/runner-shell/src/work.rs`).
+/// `disown`, as bash's: removes jobs from the script's table, so that `wait`
+/// without an argument and `jobs` no longer see them. The job runs on, and
+/// holds the command's output as before. With `-h` nothing is removed: bash
+/// only marks the job, to keep `SIGHUP` from it, which a job's end never sends.
+/// `-a` takes every job, `-r` every running job, and without a job the current
+/// one.
 fn disown(
-    _context: ExecutionContext<'_>,
-    _args: Vec<CommandArg>,
+    context: ExecutionContext<'_>,
+    args: Vec<CommandArg>,
 ) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
-    Box::pin(async { Ok(ExecutionResult::success()) })
+    let words: Vec<String> = args.iter().skip(1).map(ToString::to_string).collect();
+    Box::pin(async move {
+        let (mut all, mut running, mut keep) = (false, false, false);
+        let mut specs = Vec::new();
+        let mut options = true;
+        for word in words {
+            if options && word == "--" {
+                options = false;
+            } else if options && word.len() > 1 && word.starts_with('-') {
+                for flag in word.chars().skip(1) {
+                    match flag {
+                        'a' => all = true,
+                        'r' => running = true,
+                        'h' => keep = true,
+                        _ => {
+                            writeln!(context.stderr(), "disown: -{flag}: invalid option")?;
+                            writeln!(context.stderr(), "disown: usage: disown [-h] [-ar] [jobspec ... | pid ...]")?;
+                            return Ok(ExecutionExitCode::from(2).into());
+                        }
+                    }
+                }
+            } else {
+                specs.push(word);
+            }
+        }
+        context.shell.jobs_mut().poll()?;
+        let is_running = |job: &brush_core::jobs::Job| matches!(job.state, brush_core::jobs::JobState::Running);
+        let mut status = 0;
+        let mut taken: Vec<usize> = Vec::new();
+        if specs.is_empty() {
+            if all || running {
+                taken.extend(
+                    context
+                        .shell
+                        .jobs()
+                        .jobs
+                        .iter()
+                        .filter(|job| all && !running || is_running(job))
+                        .map(|job| job.id),
+                );
+            } else if let Some(job) = context.shell.jobs().jobs.last() {
+                taken.push(job.id);
+            } else {
+                writeln!(context.stderr(), "disown: current: no such job")?;
+                status = 1;
+            }
+        } else {
+            for word in &specs {
+                let found = if word.starts_with('%') {
+                    context.shell.jobs_mut().resolve_job_spec(word).map(|job| job.id)
+                } else if let Ok(id) = word.parse::<i32>() {
+                    context
+                        .shell
+                        .jobs()
+                        .jobs
+                        .iter()
+                        .find(|job| job.task_id() == Some(id))
+                        .map(|job| job.id)
+                } else {
+                    None
+                };
+                match found {
+                    Some(id) => taken.push(id),
+                    None => {
+                        writeln!(context.stderr(), "disown: {word}: no such job")?;
+                        status = 1;
+                    }
+                }
+            }
+        }
+        if !keep {
+            context
+                .shell
+                .jobs_mut()
+                .jobs
+                .retain(|job| !taken.contains(&job.id) || (running && !is_running(job)));
+        }
+        Ok(ExecutionExitCode::from(status).into())
+    })
 }
 
 /// Brush's `kill`, which lists signals for the runner's.
@@ -265,7 +358,7 @@ fn wait(
     }
     Box::pin(async move {
         if words.is_empty() {
-            wait_tasks(context.shell, |_| {}).await?;
+            wait_tasks(context.shell, false, |_| {}).await?;
             return Ok(ExecutionResult::success());
         }
         let scope = crate::interpreter::scope(context.shell)?;
@@ -320,7 +413,7 @@ fn wait(
                 .position(|listed| Some(listed.id) == job)
                 .expect("the job was just found");
             let job = jobs.remove(at);
-            status = task_status(&scope, job).await?;
+            status = task_status(job).await?;
         }
         Ok(ExecutionExitCode::from(status).into())
     })
@@ -330,40 +423,46 @@ fn wait(
 /// plus the signal that stopped it, as a subshell such a signal ends gives,
 /// or else its last command's.
 async fn task_status(
-    scope: &crate::scope::Scope,
     mut job: brush_core::jobs::Job,
 ) -> Result<u8, brush_core::Error> {
     let ended = job.wait().await;
     let signal = job
         .task_id()
-        .and_then(|id| scope.work.task(id))
-        .and_then(|task| task.signal());
+        .and_then(Work::task)
+        .and_then(|(_, task)| task.signal());
     match (signal, ended) {
         (Some(signal), _) => Ok((128 + signal) as u8),
         (None, ended) => Ok(ended?.exit_code.into()),
     }
 }
 
-/// Waits for every background task of `shell` to end, as `wait` alone and
-/// the end of a job do. A task a signal stopped ended as asked. `running`
-/// hears the command lines of the tasks that still run: once those that had
-/// ended are waited for, and again after each end.
+/// Waits for the background tasks of `shell` to end, as `wait` alone and the
+/// end of a script do. A task a signal stopped ended as asked. With `holding`
+/// it waits only for the tasks that hold the job's output open: the others
+/// are the script's no more, and run on. `running` hears the command lines of
+/// the tasks that still run: once those that had ended are waited for, and
+/// again after each end.
 pub(crate) async fn wait_tasks(
     shell: &mut Shell,
+    holding: bool,
     mut running: impl FnMut(Vec<String>),
 ) -> Result<(), brush_core::Error> {
-    let scope = crate::interpreter::scope(shell)?;
     let jobs = std::mem::take(&mut shell.jobs_mut().jobs);
+    let jobs = jobs.into_iter().filter(|job| {
+        !holding
+            || job
+                .task_id()
+                .and_then(Work::task)
+                .is_none_or(|(_, task)| task.holds_output())
+    });
+    let jobs: Vec<_> = jobs.collect();
     let mut lines: BTreeMap<usize, String> = jobs
         .iter()
         .map(|job| (job.id, job.command_line.clone()))
         .collect();
     let mut waits: FuturesUnordered<_> = jobs
         .into_iter()
-        .map(|job| {
-            let scope = &scope;
-            async move { (job.id, task_status(scope, job).await) }
-        })
+        .map(|job| async move { (job.id, task_status(job).await) })
         .collect();
     loop {
         while let Some(Some((id, status))) = waits.next().now_or_never() {
@@ -469,7 +568,6 @@ fn kill(
             writeln!(stderr, "{KILL_USAGE}")?;
             return Ok(ExecutionExitCode::InvalidUsage.into());
         }
-        let scope = crate::interpreter::scope(context.shell)?;
         for target in targets {
             let task = if target.starts_with('%') {
                 let task = context
@@ -492,7 +590,7 @@ fn kill(
                 }
                 // A task's id stands for the task with a minus sign too,
                 // as a process group's does.
-                if scope.work.task(pid.saturating_abs()).is_some() {
+                if Work::task(pid.saturating_abs()).is_some() {
                     Some(pid.saturating_abs())
                 } else {
                     let sent = demi_runner_process::process::signal_target(pid, signal);
@@ -512,15 +610,13 @@ fn kill(
             let Some(id) = task else {
                 continue;
             };
-            let task = scope
-                .work
-                .task(id)
-                .expect("a job's task stays in its table");
-            if task.done.is_cancelled() {
+            // The task's own job takes the signal: the task may be one a
+            // command that has ended left running.
+            let Some((work, task)) = Work::task(id).filter(|(_, task)| !task.done.is_cancelled()) else {
                 writeln!(stderr, "kill: ({id}) - No such process")?;
                 return Ok(ExecutionResult::general_error());
-            }
-            if let Err(error) = scope.work.signal(&task, signal, false) {
+            };
+            if let Err(error) = work.signal(&task, signal, false) {
                 let reason = uucore::error::strip_errno(&error);
                 writeln!(stderr, "kill: ({id}) - {reason}")?;
                 return Ok(ExecutionResult::general_error());
@@ -607,6 +703,61 @@ fn timeout(
                         &mut stderr,
                     )
                 }
+                _ => return Err(error),
+            },
+        };
+        Ok(ExecutionExitCode::from(status).into())
+    })
+}
+
+/// `nohup` in the job's shell: COMMAND runs as `exec` runs its command, a
+/// builtin, a standard utility, a script or a program, with `SIGHUP` ignored
+/// for the programs it starts.
+fn nohup(
+    context: ExecutionContext<'_>,
+    args: Vec<CommandArg>,
+) -> BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
+    Box::pin(async move {
+        let words: Vec<String> = args.iter().skip(1).map(ToString::to_string).collect();
+        let mut stderr = context.stderr();
+        let command = match crate::nohup::parse(&words) {
+            crate::nohup::Parsed::Run(command) => command,
+            parsed => {
+                let status = crate::nohup::answer(&parsed, &mut context.stdout(), &mut stderr);
+                return Ok(ExecutionExitCode::from(status).into());
+            }
+        };
+        let mut target = context.shell.clone();
+        target.child_attributes_mut().hangup_ignored = true;
+        let program = command[0].clone();
+        let mut simple = SimpleCommand::new(
+            ShellForCommand::OwnedShell {
+                target: Box::new(target),
+                parent: context.shell,
+            },
+            context.params,
+            program.clone(),
+            command
+                .iter()
+                .map(|arg| CommandArg::String(arg.clone()))
+                .collect(),
+        );
+        simple.use_functions = false;
+        let status = match simple.execute().await {
+            Ok(started) => {
+                let result: ExecutionResult = started.wait().await?.into();
+                result.exit_code.into()
+            }
+            Err(error) => match error.kind() {
+                brush_core::ErrorKind::CommandNotFound(_) => {
+                    crate::nohup::not_run(&program, "No such file or directory", true, &mut stderr)
+                }
+                brush_core::ErrorKind::FailedToExecuteCommand(_, reason) => crate::nohup::not_run(
+                    &program,
+                    &uucore::error::strip_errno(reason),
+                    reason.kind() == std::io::ErrorKind::NotFound,
+                    &mut stderr,
+                ),
                 _ => return Err(error),
             },
         };

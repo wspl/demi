@@ -64,6 +64,7 @@
 mod declared;
 mod interpreter;
 mod job;
+mod nohup;
 mod process_builtins;
 mod scope;
 mod shebang;
@@ -138,6 +139,7 @@ impl JobShell for ShellRuntime {
     fn start(&self, job: JobStart) -> BoxFuture<'_, io::Result<Box<dyn ShellJob>>> {
         Box::pin(async move {
             let mut scope = scope::Scope::new(job.cancellation, job.commands);
+            scope.work.hold(job.lease);
             scope.edits = job.edits;
             let job = job::Job::start(
                 job.script,

@@ -1113,6 +1113,12 @@ pub enum Outbound {
         )]
         tasks: Vec<String>,
     },
+    /// A job's execution context ended: its `demi` commands reach the backend
+    /// no more, whether run by the job's own script or by what the script left
+    /// running. Sent after the job's `job_exit`, at once when nothing the job
+    /// left running holds the context, else when the last of that has ended.
+    /// Only a job started with declared commands has a context.
+    JobContextEnded { job_id: String },
     /// A job's end, its status given as `spawn_exit` gives a process's.
     JobExit {
         job_id: String,

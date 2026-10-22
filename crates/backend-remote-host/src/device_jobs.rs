@@ -51,6 +51,11 @@ pub struct DeviceJobs(Rc<RefCell<Table>>);
 #[derive(Default)]
 struct Table {
     jobs: HashMap<String, JobEntry>,
+    /// The origins of the jobs that ended while the runner keeps their
+    /// execution context for what they left running, until it says the
+    /// context ended: what that work runs of the job's declared commands is
+    /// still the job's own.
+    contexts: HashMap<String, Rc<JobOrigin>>,
     /// The instance and the release of the device's runner that last said
     /// hello since the backend started.
     runner: Option<(u64, String)>,
@@ -356,9 +361,21 @@ impl DeviceJobs {
         };
         // A parked job that ended is its consumer's now.
         if job.shared.ended().is_some() {
-            table.jobs.remove(id);
+            forget(&mut table, id);
         }
         claimed
+    }
+
+    /// The origin of the job `id`, which ended while its runner keeps its
+    /// execution context for what it left running.
+    pub(crate) fn detached(&self, id: &str) -> Option<Rc<JobOrigin>> {
+        self.0.borrow().contexts.get(id).cloned()
+    }
+
+    /// The runner ended the execution context of the job `id`: its commands
+    /// are no one's any more.
+    pub(crate) fn context_ended(&self, id: &str) {
+        self.0.borrow_mut().contexts.remove(id);
     }
 
     /// Whether an agent took the job `id` up, from now on; none for a job
@@ -449,6 +466,7 @@ impl DeviceJobs {
     /// the output that waited for a read of its kept output; an end that
     /// waited too gives way to the loss, since its output cannot be read.
     pub fn lose_all(&self, reason: &str) {
+        self.0.borrow_mut().contexts.clear();
         let jobs: Vec<JobEntry> = self.0.borrow_mut().jobs.drain().map(|(_, job)| job).collect();
         for job in jobs {
             job.lose(reason);
@@ -486,6 +504,11 @@ impl DeviceJobs {
         } else {
             RUNNER_RESTARTED
         };
+        // The execution contexts a runner that started anew or was replaced
+        // kept are gone with it.
+        if lost != NEVER_RECEIVED {
+            table.contexts.clear();
+        }
         let mut adoption = Adoption::default();
         let listed: HashSet<&str> = hello.jobs.iter().map(|job| job.job_id.as_str()).collect();
         for kept in &hello.jobs {
@@ -612,7 +635,19 @@ fn settle(table: &mut Table, id: &str, end: JobEnd) {
     job.cancel.cancel();
     job.shared.finish(end);
     if !job.parked {
-        table.jobs.remove(id);
+        forget(table, id);
+    }
+}
+
+/// Removes the job `id` from the table. A job with declared commands has an
+/// execution context, which the runner may keep beyond the job's end, so its
+/// origin stays until the runner says the context ended.
+fn forget(table: &mut Table, id: &str) {
+    if let Some(job) = table.jobs.remove(id)
+        && job.commands.is_some()
+        && let Some(origin) = job.origin
+    {
+        table.contexts.insert(id.to_owned(), origin);
     }
 }
 

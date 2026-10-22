@@ -1552,6 +1552,7 @@ impl Link {
                     job.shared.outlived_by(tasks);
                 });
             }
+            Outbound::JobContextEnded { job_id } => self.0.device_jobs.context_ended(&job_id),
             Outbound::JobExit {
                 job_id,
                 exit_code,

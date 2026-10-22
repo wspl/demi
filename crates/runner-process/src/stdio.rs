@@ -84,7 +84,9 @@ pub fn is_live(file: &File, env: &BTreeMap<String, String>) -> io::Result<bool> 
     {
         use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
         use windows_sys::Win32::{
-            Foundation::{CompareObjectHandles, DUPLICATE_SAME_ACCESS, DuplicateHandle},
+            Foundation::{
+                CompareObjectHandles, DUPLICATE_SAME_ACCESS, DuplicateHandle, ERROR_INVALID_HANDLE,
+            },
             System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_DUP_HANDLE},
         };
         let (pid, handle) = reference
@@ -110,7 +112,14 @@ pub fn is_live(file: &File, env: &BTreeMap<String, String>) -> io::Result<bool> 
             )
         } == 0
         {
-            return Err(io::Error::last_os_error());
+            let error = io::Error::last_os_error();
+            // The job's input is closed once the job has ended, and what a
+            // job left running starts its commands after that: none of its
+            // inputs is the live one then.
+            return match error.raw_os_error() {
+                Some(code) if code == ERROR_INVALID_HANDLE as i32 => Ok(false),
+                _ => Err(error),
+            };
         }
         let duplicated = unsafe { OwnedHandle::from_raw_handle(duplicated) };
         Ok(unsafe { CompareObjectHandles(file.as_raw_handle(), duplicated.as_raw_handle()) } != 0)

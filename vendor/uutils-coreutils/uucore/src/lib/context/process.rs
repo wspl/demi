@@ -149,6 +149,7 @@ impl Command {
             stdin,
             stdout,
             stderr,
+            ended: false,
             _guard: guard,
         })
     }
@@ -201,6 +202,7 @@ impl Command {
             stdin: parent_stdin,
             stdout: parent_stdout,
             stderr: parent_stderr,
+            ended: false,
             _guard: Some(control.task_guard()),
         })
     }
@@ -349,6 +351,8 @@ pub struct Child {
     pub stdin: Option<super::fs::File>,
     pub stdout: Option<super::fs::File>,
     pub stderr: Option<super::fs::File>,
+    /// Whether the child's end was seen: what it left running then runs on.
+    ended: bool,
     _guard: Option<Box<dyn Send + Sync>>,
 }
 
@@ -375,10 +379,12 @@ impl Child {
         }
     }
     pub fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
-        match &mut self.inner {
+        let status = match &mut self.inner {
             Running::Process(child) => child.try_wait(),
             Running::Utility(run) => run.try_wait(),
-        }
+        }?;
+        self.ended |= status.is_some();
+        Ok(status)
     }
     pub fn wait(&mut self) -> std::io::Result<ExitStatus> {
         self.stdin.take();
@@ -429,6 +435,11 @@ impl Child {
 
 impl Drop for Child {
     fn drop(&mut self) {
+        // A child that ended on its own leaves its own children running, as
+        // any program does.
+        if self.ended {
+            return;
+        }
         if let Err(error) = self.kill() {
             eprintln!("utility child cleanup failed: {error}");
         }

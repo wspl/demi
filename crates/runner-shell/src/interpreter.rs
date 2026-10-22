@@ -14,7 +14,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::scope::Scope;
+use crate::scope::{JobOutput, Scope};
 
 pub struct ShellOptions {
     pub scope: Scope,
@@ -63,14 +63,14 @@ pub async fn execute(
             1,
             OpenFile::Controlled {
                 file: options.stdout,
-                control: control.clone(),
+                control: Arc::new(JobOutput(control.clone())),
             },
         ),
         (
             2,
             OpenFile::Controlled {
                 file: options.stderr,
-                control,
+                control: Arc::new(JobOutput(control)),
             },
         ),
     ]);
@@ -113,11 +113,11 @@ pub async fn execute(
     let result = shell
         .run_string(script, &SourceInfo::default(), &shell.default_exec_params())
         .await?;
-    // The runner job owns asynchronous shell tasks until completion or cancellation.
-    // Keep their interpreter and builtin threads alive while retaining the foreground status,
-    // and tell the job which tasks keep it running now that its script has ended.
+    // The script has ended. A background task that holds the job's output open
+    // keeps the job running, and the job says which do; those that do not run
+    // on without it.
     let work = options.scope.work.clone();
-    crate::process_builtins::wait_tasks(&mut shell, |tasks| work.outlived_by(tasks)).await?;
+    crate::process_builtins::wait_tasks(&mut shell, true, |tasks| work.outlived_by(tasks)).await?;
     Ok(ShellResult {
         code: result.exit_code.into(),
     })

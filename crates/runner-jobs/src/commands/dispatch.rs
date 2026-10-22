@@ -233,7 +233,7 @@ impl Dispatcher {
                 let request = Invocation {
                     context: context.command.clone(),
                     json: Some(parsed.json),
-                    edits: Some(context.edits.clone()),
+                    edits: (!context.ended()).then(|| context.edits.clone()),
                     live_input: Some(raw.live),
                     viewable: context.viewable.clone(),
                     operation: binding.operation.clone(),

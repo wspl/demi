@@ -27,9 +27,19 @@ pub trait FileControl: Send + Sync {
     fn duplicate(&self, file: &File) -> io::Result<File> {
         file.try_clone()
     }
+    /// The control a file gets when its shell moves to `owner`. By default it is `owner`'s; a
+    /// control that marks its files (`is_host_output`) keeps the mark on the files it controls.
+    fn rebound(&self, owner: &Arc<dyn FileControl>) -> Arc<dyn FileControl> {
+        owner.clone()
+    }
+    /// Whether the files this control controls are the host's own output, which a task that
+    /// holds open keeps its host's reader from seeing the end of.
+    fn is_host_output(&self) -> bool {
+        false
+    }
 }
 
-/// What a shell's `umask` and `ulimit` set for the processes it starts. A shell
+/// What a shell's `umask`, `ulimit` and `nohup` set for the processes it starts. A shell
 /// embedded in a host process keeps them for itself, since changing that
 /// process would change them for everything else it runs; the host applies them
 /// to each process the shell starts, before the process runs its program.
@@ -42,6 +52,9 @@ pub struct ChildAttributes {
     /// hard limit; a resource not listed keeps what the host gives it.
     #[cfg(unix)]
     pub limits: Vec<(rlimit::Resource, u64, u64)>,
+    /// Whether the processes the shell starts ignore `SIGHUP`, as `nohup` leaves them; a system
+    /// without signals has no such processes to change.
+    pub hangup_ignored: bool,
 }
 
 /// A background task, a list after `&` or a coprocess, as its host runs it.
@@ -125,6 +138,11 @@ pub trait ExecutionHost: Any + Send + Sync {
         let _ = (script, path);
         Ok(None)
     }
+    /// Tells the host of a background task that, once the task's own redirections are applied,
+    /// it does (`held`) or does not hold the host's own output open.
+    fn background_task_output(&self, held: bool) {
+        let _ = held;
+    }
 }
 
 impl OpenFile {
@@ -132,8 +150,13 @@ impl OpenFile {
     /// does; other files have none.
     pub(crate) fn rebind(&mut self, owner: &Arc<dyn FileControl>) {
         if let Self::Controlled { control, .. } = self {
-            *control = owner.clone();
+            *control = control.rebound(owner);
         }
+    }
+
+    /// Whether the file is the host's own output (`FileControl::is_host_output`).
+    pub fn is_host_output(&self) -> bool {
+        matches!(self, Self::Controlled { control, .. } if control.is_host_output())
     }
 
     /// Attach the embedding owner's IO behavior to a native file or pipe.

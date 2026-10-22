@@ -35,7 +35,7 @@ use crate::kept_output::KeptOutput;
 use crate::scratch::{SCRATCH_ENV, Scratch};
 use crate::{
     commands::{
-        contexts::{self, ContextPaths, ExecutionContext, PinnedManifest},
+        contexts::{self, ContextLease, ContextPaths, ExecutionContext, PinnedManifest},
         dispatch::Dispatcher,
     },
     connection::ConnectionHandle,
@@ -596,6 +596,9 @@ impl JobConfig {
                         cancellation: cancel.child_token(),
                         commands,
                         edits: recorder,
+                        lease: execution.clone().map(|context| {
+                            Box::new(ContextLease::new(context)) as Box<dyn Send + Sync>
+                        }),
                     })
                     .await?;
                 outliving = Some(child.outliving());

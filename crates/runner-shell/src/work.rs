@@ -11,19 +11,31 @@
 //! A background task runs in the runner, so no operating-system process stands
 //! for it:
 //!
-//! - `$!` names it with an id no process ID takes ([`FIRST_TASK`]), and `kill`,
-//!   `wait` and `jobs -p` take it wherever bash takes a process ID.
+//! - `$!` names it with an id no process ID takes ([`FIRST_TASK`]) and no other
+//!   task of the runner takes, and `kill`, `wait` and `jobs -p` take it wherever
+//!   bash takes a process ID. The id is the runner's, so a later command's
+//!   `kill` reaches a task the command that started it left running.
 //! - `kill` on a task's id stops its shell work at its next step and sends
 //!   `SIGTERM` to every process group it started (`KILL` kills them and the
 //!   rest of its work).
-//! - `disown` and `nohup` keep a task in its job, since the runner leaves no
-//!   process that no command stands for. A server meant to outlive a script
-//!   runs as a command of its own.
+//!
+//! # What a job leaves running
+//!
+//! A job ends as bash's script does with its output on a pipe: once its script
+//! has exited and nothing it started holds that output. What it left running
+//! then runs on, detached ([`Work::detach`]): it belongs to no command, and
+//! neither the command's cancellation nor its end reaches it. A part's tokens
+//! therefore descend from roots of the job's own, which the job's cancellation
+//! ends only until it detaches, and the job's lease, such as its command
+//! context, is held until its last part is gone.
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     io,
-    sync::{Arc, Mutex, RwLock, RwLockReadGuard},
+    sync::{
+        Arc, LazyLock, Mutex, RwLock, RwLockReadGuard, Weak,
+        atomic::{AtomicBool, AtomicI32, Ordering},
+    },
 };
 
 #[cfg(unix)]
@@ -38,6 +50,21 @@ pub(crate) const FIRST_TASK: i32 = 4_194_305;
 /// How many ended processes' statuses a job keeps for `wait`, as bash keeps
 /// those of a bounded number of its children.
 const ENDED: usize = 1024;
+
+/// The tasks of every job of the runner that run, by id: a task keeps running
+/// after its command, and a later command signals it by the id `$!` gave. A
+/// task leaves the table when it ends (`TaskEnd`), so the table holds no more
+/// than what runs.
+static TASKS: LazyLock<Mutex<HashMap<i32, Task>>> = LazyLock::new(Mutex::default);
+
+/// The id of the next background task of the runner, as an offset from
+/// [`FIRST_TASK`].
+static STARTED: AtomicI32 = AtomicI32::new(0);
+
+struct Task {
+    work: Weak<Work>,
+    stop: Arc<Stop>,
+}
 
 /// One part of a job that a signal stops on its own: the job itself, a
 /// background task, or the command a `timeout` runs. A part's parts are
@@ -54,17 +81,22 @@ pub(crate) struct Stop {
     signal: Mutex<Option<i32>>,
     /// Cancelled once a background task's list has run.
     pub(crate) done: CancellationToken,
+    /// Whether a background task holds the job's output open: until it
+    /// redirects both streams elsewhere, it does.
+    holds_output: AtomicBool,
 }
 
 impl Stop {
-    /// The job's own part, which `cancellation` ends with everything in it.
-    pub(crate) fn job(cancellation: &CancellationToken) -> Arc<Self> {
+    /// The job's own part, which the job's cancellation ends with everything
+    /// in it until the job detaches.
+    pub(crate) fn job(roots: &Roots) -> Arc<Self> {
         Arc::new(Self {
             parent: None,
-            shell: cancellation.child_token(),
-            kill: cancellation.child_token(),
+            shell: roots.shell.child_token(),
+            kill: roots.kill.child_token(),
             signal: Mutex::new(None),
             done: CancellationToken::new(),
+            holds_output: AtomicBool::new(true),
         })
     }
 
@@ -76,7 +108,17 @@ impl Stop {
             kill: self.kill.child_token(),
             signal: Mutex::new(None),
             done: CancellationToken::new(),
+            holds_output: AtomicBool::new(true),
         })
+    }
+
+    /// Whether a background task holds the job's output open.
+    pub(crate) fn holds_output(&self) -> bool {
+        self.holds_output.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_holds_output(&self, holds: bool) {
+        self.holds_output.store(holds, Ordering::Relaxed);
     }
 
     /// The signal that stopped the part, the last of those that did.
@@ -108,12 +150,44 @@ impl Stop {
     }
 }
 
+/// A background task's entry in the runner's table, which ends it when it
+/// drops: the task has ended, and `done` says so.
+pub(crate) struct TaskEnd {
+    pub(crate) id: i32,
+    _done: tokio_util::sync::DropGuard,
+}
+
+impl Drop for TaskEnd {
+    fn drop(&mut self) {
+        TASKS
+            .lock()
+            .expect("the runner's task table is intact")
+            .remove(&self.id);
+    }
+}
+
+/// The tokens every part of a job descends from. They follow the job's
+/// cancellation until the job detaches, and never after.
+pub(crate) struct Roots {
+    shell: CancellationToken,
+    kill: CancellationToken,
+}
+
 /// The job's background tasks and process groups.
 pub(crate) struct Work {
-    /// Ends the job and everything it runs.
+    /// Ends the job and everything it runs, until it detaches.
     pub(crate) cancellation: CancellationToken,
-    tasks: Mutex<Tasks>,
+    /// Cancelled once the job has ended by itself: what it left running goes on
+    /// without it, so its cancellation no longer reaches any of it.
+    pub(crate) detach: CancellationToken,
+    /// What the job holds for as long as anything of it runs, such as its
+    /// command context (`Work::hold`).
+    lease: Mutex<Option<Box<dyn Send + Sync>>>,
+    /// Ends the roots' forwarder once the work is gone.
+    _forwarder: tokio_util::sync::DropGuard,
     groups: Mutex<Groups>,
+    /// Told whenever a process group leaves the table.
+    gone: tokio::sync::Notify,
     /// Held to read while a process starts and enters the table, and to
     /// write while a signal goes to the table's groups: a process may act
     /// before its start returns, such as print what a script waits for
@@ -147,16 +221,11 @@ impl Drop for RunningUtility {
 }
 
 #[derive(Default)]
-struct Tasks {
-    started: i32,
-    by_id: HashMap<i32, Arc<Stop>>,
-}
-
-#[derive(Default)]
 struct Groups {
     /// By the ID of each group's leader, which is the group's ID.
     running: HashMap<i32, Group>,
-    /// The statuses of the leaders that ended, newest last.
+    /// The statuses of the leaders that ended, newest last, until the job
+    /// detaches.
     ended: VecDeque<(i32, u8)>,
 }
 
@@ -178,15 +247,68 @@ pub(crate) enum Process {
 }
 
 impl Work {
-    pub(crate) fn new(cancellation: CancellationToken) -> Self {
-        Self {
+    /// A job's work, `cancellation` ending it and everything it runs until it
+    /// detaches. Made inside a Tokio runtime.
+    pub(crate) fn new(cancellation: CancellationToken) -> (Self, Roots) {
+        let roots = Roots {
+            shell: CancellationToken::new(),
+            kill: CancellationToken::new(),
+        };
+        let detach = CancellationToken::new();
+        let dropped = CancellationToken::new();
+        let forwarded = (cancellation.clone(), roots.shell.clone(), roots.kill.clone());
+        let (detached, gone) = (detach.clone(), dropped.clone());
+        tokio::spawn(async move {
+            let (cancellation, shell, kill) = forwarded;
+            tokio::select! {
+                biased;
+                () = detached.cancelled() => {}
+                () = gone.cancelled() => {}
+                () = cancellation.cancelled() => {
+                    shell.cancel();
+                    kill.cancel();
+                }
+            }
+        });
+        let work = Self {
             cancellation,
-            tasks: Mutex::default(),
+            detach,
+            lease: Mutex::new(None),
+            _forwarder: dropped.drop_guard(),
             groups: Mutex::default(),
+            gone: tokio::sync::Notify::new(),
             starting: RwLock::default(),
             outliving: watch::Sender::new(Vec::new()),
             utilities: Mutex::default(),
+        };
+        (work, roots)
+    }
+
+    /// The job has ended by itself, and what it left running goes on without
+    /// it. Nothing waits for a status any more, so none is kept: a job that
+    /// leaves a loop running, which starts a program at each turn, holds no
+    /// table that grows with it.
+    pub(crate) fn detach(&self) {
+        self.detach.cancel();
+        self.groups.lock().expect("the group table is intact").ended.clear();
+    }
+
+    /// Ends once no process group the job's parts started is left.
+    pub(crate) async fn groups_gone(&self) {
+        loop {
+            let gone = self.gone.notified();
+            tokio::pin!(gone);
+            gone.as_mut().enable();
+            if self.groups.lock().expect("the group table is intact").running.is_empty() {
+                return;
+            }
+            gone.await;
         }
+    }
+
+    /// Holds `lease` until the last of what the job runs is gone.
+    pub(crate) fn hold(&self, lease: Option<Box<dyn Send + Sync>>) {
+        *self.lease.lock().expect("the lease is intact") = lease;
     }
 
     /// Counts the utility `name` as running until the entry drops.
@@ -225,19 +347,29 @@ impl Work {
         self.starting.read().expect("the start lock is intact")
     }
 
-    /// Numbers a new background task, within the job.
-    pub(crate) fn add_task(&self, stop: Arc<Stop>) -> i32 {
-        let mut tasks = self.tasks.lock().expect("the task table is intact");
-        let id = FIRST_TASK + tasks.started;
-        tasks.started += 1;
-        tasks.by_id.insert(id, stop);
-        id
+    /// Numbers a new background task of this job, for the whole runner, until
+    /// the entry drops.
+    pub(crate) fn add_task(self: &Arc<Self>, stop: Arc<Stop>) -> TaskEnd {
+        let id = FIRST_TASK + STARTED.fetch_add(1, Ordering::Relaxed);
+        TASKS.lock().expect("the runner's task table is intact").insert(
+            id,
+            Task {
+                work: Arc::downgrade(self),
+                stop: stop.clone(),
+            },
+        );
+        TaskEnd {
+            id,
+            _done: stop.done.clone().drop_guard(),
+        }
     }
 
-    /// The background task `id` names, if one of the job's does.
-    pub(crate) fn task(&self, id: i32) -> Option<Arc<Stop>> {
-        let tasks = self.tasks.lock().expect("the task table is intact");
-        tasks.by_id.get(&id).cloned()
+    /// The background task `id` names, if one of the runner's jobs has it, and
+    /// the job's work, which a signal to it goes through.
+    pub(crate) fn task(id: i32) -> Option<(Arc<Work>, Arc<Stop>)> {
+        let tasks = TASKS.lock().expect("the runner's task table is intact");
+        let task = tasks.get(&id)?;
+        Some((task.work.upgrade()?, task.stop.clone()))
     }
 
     /// Records the process group `group`, which `stop`'s part started, until
@@ -425,11 +557,15 @@ impl Drop for GroupEntry {
     fn drop(&mut self) {
         let mut groups = self.work.groups.lock().expect("the group table is intact");
         groups.running.remove(&self.group);
-        if let Some(status) = self.status.as_ref().and_then(|sender| *sender.borrow()) {
+        if !self.work.detach.is_cancelled()
+            && let Some(status) = self.status.as_ref().and_then(|sender| *sender.borrow())
+        {
             if groups.ended.len() == ENDED {
                 groups.ended.pop_front();
             }
             groups.ended.push_back((self.group, status));
         }
+        drop(groups);
+        self.work.gone.notify_waiters();
     }
 }

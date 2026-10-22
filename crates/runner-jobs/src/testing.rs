@@ -251,12 +251,15 @@ async fn serve(
                 Some(Request::Context { context, leases, reply }) => {
                     let _left = reply.send(contexts.insert(context, leases));
                 }
+                Some(Request::ContextReleased { job_id }) => {
+                    contexts.released(&job_id);
+                }
                 None => return,
             },
             Some(message) = inbound.recv() => {
                 relay.route(&message);
             }
-            Some(job_id) = removals.recv() => contexts.remove(&job_id),
+            Some(job_id) = removals.recv() => { contexts.remove(&job_id); }
             Some(ended) = watches.join_next() => {
                 relay.ended(ended.expect("relay watches do not panic"));
             }

@@ -45,6 +45,10 @@ pub struct JobStart {
     pub commands: Option<JobCommands>,
     /// Records the files the job changes (`crates/command-sdk/src/edits.rs`).
     pub edits: Option<Recorder>,
+    /// Held until the last of what the job started is gone, which may be long
+    /// after the job's end: the job's command context, which what it left
+    /// running still uses (`crates/runner-shell/src/work.rs`).
+    pub lease: Option<Box<dyn Send + Sync>>,
 }
 
 /// The shell that runs the runner's jobs.
@@ -56,7 +60,8 @@ pub trait JobShell: Send + Sync {
     fn builtin_names(&self) -> BTreeSet<String>;
 }
 
-/// One running job. Dropping it cancels the job.
+/// One running job. Dropping it cancels the job, unless it has ended by itself:
+/// what it left running then runs on.
 pub trait ShellJob: Send + Sync {
     /// Where the job's input goes.
     fn input(&self) -> &mpsc::Sender<ProcessInput>;

@@ -314,7 +314,9 @@ fn path(value: &str) -> String {
 /// The unit: the launcher with `run --log`, named the manager's runner by
 /// [`SUPERVISED`], at boot with lingering or at the user's first login,
 /// again 10 s after a failure; its output goes nowhere, since the runner
-/// writes its own log.
+/// writes its own log. A stop or a restart ends the runner's process alone:
+/// what a command left running, detached from it, goes on, as it does when
+/// the runner replaces itself.
 #[cfg(target_os = "linux")]
 fn unit(launcher: &str, home: &str, directory: &str) -> String {
     format!(
@@ -327,6 +329,7 @@ fn unit(launcher: &str, home: &str, directory: &str) -> String {
          WorkingDirectory={home}\n\
          Restart=on-failure\n\
          RestartSec=10\n\
+         KillMode=process\n\
          StandardOutput=null\n\
          StandardError=null\n\
          \n\

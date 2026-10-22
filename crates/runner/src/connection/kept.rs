@@ -63,6 +63,9 @@ pub struct Kept {
     reach: watch::Sender<Reach>,
     /// The connection the jobs' messages go to; none while none serves.
     output: watch::Sender<Option<mpsc::Sender<wire::Frame>>>,
+    /// The queue the jobs' messages wait in for that connection, which a
+    /// message about a job's context joins behind the job's exit.
+    queue: mpsc::Sender<wire::Frame>,
     /// Passes the jobs' messages on to that connection.
     _forwarder: AbortOnDropHandle<()>,
 }
@@ -84,6 +87,7 @@ impl Kept {
         let (jobs_output, forwarded) = mpsc::channel(OUTPUT_QUEUE);
         let output = watch::Sender::new(None);
         let forwarder = tokio::spawn(forward(forwarded, output.subscribe()));
+        let queue = jobs_output.clone();
         let jobs = JobTable::new(JobConfig {
             output: jobs_output,
             directories: directories.clone(),
@@ -109,6 +113,7 @@ impl Kept {
             requests,
             reach,
             output,
+            queue,
             _forwarder: AbortOnDropHandle::new(forwarder),
         }
     }
@@ -192,13 +197,32 @@ impl Kept {
                 // A job that gave up no longer needs to know.
                 let _gone = reply.send(self.contexts.insert(context, leases));
             }
+            Event::Request(Request::ContextReleased { job_id }) => {
+                if self.contexts.released(&job_id) {
+                    self.context_ended(job_id).await;
+                }
+            }
             Event::Finished(id) => {
-                if let WorkId::Job(job) = &id {
-                    self.contexts.remove(job);
+                if let WorkId::Job(job) = &id
+                    && self.contexts.remove(job)
+                {
+                    self.context_ended(job.clone()).await;
                 }
                 registered.management.set_jobs(self.jobs.job_count());
             }
             Event::Watch(ended) => self.relay.ended(ended),
+        }
+    }
+
+    /// Tells the backend that the context of job `job_id` ended, in the queue
+    /// that holds the job's exit, which it follows.
+    async fn context_ended(&self, job_id: String) {
+        match wire::encode(&wire::Outbound::JobContextEnded { job_id }) {
+            // The queue's forwarder ends with the registration.
+            Ok(frame) => {
+                let _ended = self.queue.send(frame).await;
+            }
+            Err(error) => tracing::warn!("a job context's end does not encode: {error}"),
         }
     }
 

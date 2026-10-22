@@ -5,7 +5,8 @@
 //! - a callback call registers where its events go;
 //! - an artifact download asks where its artifact is;
 //! - a service asks for its conversation numbers;
-//! - a job makes its execution context live.
+//! - a job makes its execution context live, and says when nothing it left
+//!   running holds the context any more.
 //!
 //! The handle outlives each connection, since a job does: work that needs the
 //! backend waits for the next connection while the runner is away, however long
@@ -92,6 +93,8 @@ pub enum Request {
         leases: PackageLeases,
         reply: oneshot::Sender<io::Result<()>>,
     },
+    /// Nothing the job `job_id` left running holds its context any more.
+    ContextReleased { job_id: String },
 }
 
 impl ConnectionHandle {
@@ -200,6 +203,13 @@ impl ConnectionHandle {
             _ = live.closed.cancelled() => Err(RuntimeError::Cancelled),
             answer = answer => answer?.map_err(|_| RuntimeError::Cancelled),
         }
+    }
+
+    /// Tells the registration's owner that nothing the job `job_id` left
+    /// running holds its context any more.
+    pub async fn context_released(&self, job_id: String) {
+        // A registration that ended has no context left to end.
+        let _ended = self.request(Request::ContextReleased { job_id }).await;
     }
 
     /// Makes `context` live, with the leases that keep its services
