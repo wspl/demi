@@ -55,6 +55,8 @@ test('two cards on one paragraph stand after it in the order asked, and the laye
           ask: () => {},
           followUp: () => {},
           retry: () => {},
+          stop: () => {},
+          remove: () => {},
           fold: (id: string, folded: boolean) => {
             questions.value = questions.value.map((each) => (each.id === id ? { ...each, folded } : each))
           },
@@ -102,7 +104,7 @@ test('a card offers Reply only once its answer is made', async () => {
   const { provideMediaViewer } = await import('../../files/media-viewer')
   const host = document.createElement('div')
   document.body.append(host)
-  const turns = ref([{ question: 'Why stale?', status: 'Thinking…' as string | null, answer: '', streaming: false }])
+  const turns = ref([{ question: 'Why stale?', status: 'Thinking…' as string | null, answer: '', streaming: false, stopped: false }])
   const app = createApp(defineComponent({
     setup: () => {
       provideMediaViewer()
@@ -114,10 +116,10 @@ test('a card offers Reply only once its answer is made', async () => {
   await nextTick()
   const reply = () => [...host.querySelectorAll('[role="button"]')].some((button) => button.textContent?.trim() === 'Reply')
   expect(reply()).toBe(false)
-  turns.value = [{ question: 'Why stale?', status: null, answer: 'Its TTL', streaming: true }]
+  turns.value = [{ question: 'Why stale?', status: null, answer: 'Its TTL', streaming: true, stopped: false }]
   await nextTick()
   expect(reply()).toBe(false)
-  turns.value = [{ question: 'Why stale?', status: null, answer: 'Its TTL is an hour.', streaming: false }]
+  turns.value = [{ question: 'Why stale?', status: null, answer: 'Its TTL is an hour.', streaming: false, stopped: false }]
   await nextTick()
   expect(reply()).toBe(true)
 })

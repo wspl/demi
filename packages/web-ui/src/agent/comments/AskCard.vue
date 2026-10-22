@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ArrowUpRight, MessageCircleQuestionMark, X } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { ArrowUpRight, MessageCircleQuestionMark, Square, X } from '@lucide/vue'
 import type { Block, ProviderFailureFacts } from '@demicodes/protocol'
 import Button from '../../ui/Button.vue'
 import { ICON_PX } from '../../ui/icon-metrics'
@@ -20,6 +20,9 @@ import type { CardTurn } from './asks'
  * - Each question is in bold, with its short answer.
  * - While the question works, one status line stands in place of the steps. A
  *   failure shows its record with Retry.
+ * - A square Stop at the header's end, before ↗, ends a working question; the
+ *   turn keeps what it answered, under a muted Stopped, and the focus moves to
+ *   Reply.
  * - × at the card's corner folds it into the margin. Open Full Conversation,
  *   beside it, shows every step in the subagent window.
  * - Reply opens a field for a follow-up.
@@ -45,6 +48,7 @@ const reply = defineModel<string>('reply', { default: '' })
 const emit = defineEmits<{
   ask: [question: string]
   retry: []
+  stop: []
   collapse: []
   openFull: []
 }>()
@@ -58,6 +62,23 @@ const root = ref<HTMLElement>()
 const working = computed(() => {
   const last = props.turns.at(-1)
   return last !== undefined && (last.status !== null || last.streaming)
+})
+
+/**
+ * Stop was pressed: once the turn is over, the focus it leaves with the button
+ * goes to Reply, which comes in its place.
+ */
+const stopPressed = ref(false)
+function stop(): void {
+  stopPressed.value = true
+  emit('stop')
+}
+watch(working, async (now) => {
+  if (now || !stopPressed.value)
+    return
+  stopPressed.value = false
+  await nextTick()
+  root.value?.querySelector<HTMLElement>('[data-ask-reply]')?.focus()
 })
 
 function send(text: string): void {
@@ -105,6 +126,13 @@ defineExpose({ element: root, failed: () => props.failure != null })
     <div class="-mr-1.5 -mt-1.5 mb-1.5 flex items-center gap-1.5">
       <MessageCircleQuestionMark :size="ICON_PX.in24" class="shrink-0 text-[var(--ask-ink)]" aria-hidden="true" />
       <span class="min-w-0 flex-1 truncate text-detail text-fg-muted">{{ title ?? t('ask.ask') }}</span>
+      <!--
+        While the question works: the header has a place for it, the body
+        none, so nothing moves when it goes.
+      -->
+      <Tooltip v-if="working" :content="t('ask.stop')">
+        <IconButton :icon="Square" size="sm" variant="ghost" :aria-label="t('ask.stop')" @click="stop" />
+      </Tooltip>
       <Tooltip :content="t('ask.openFull')">
         <IconButton :icon="ArrowUpRight" size="sm" variant="ghost" :aria-label="t('ask.openFull')" @click="emit('openFull')" />
       </Tooltip>
@@ -120,6 +148,7 @@ defineExpose({ element: root, failed: () => props.failure != null })
         <div class="whitespace-pre-wrap font-semibold text-fg-emphasis">{{ turn.question }}</div>
         <Shimmer v-if="turn.status !== null" active class="truncate text-fg-muted">{{ turn.status }}</Shimmer>
         <StreamedMarkdown v-else-if="turn.answer !== ''" :content="turn.answer" :pictures="turn.pictures" :streaming="turn.streaming" class="text-fg-body" />
+        <span v-if="turn.stopped" class="text-fg-muted">{{ t('transcript.stopped') }}</span>
       </div>
       <div v-if="failure" class="flex flex-col items-start gap-2">
         <ErrorBlock
@@ -150,7 +179,7 @@ defineExpose({ element: root, failed: () => props.failure != null })
         Its label reads at the card's size, the reply's, as the question and
         answer do.
       -->
-      <Button size="sm" @click="replying = true"><span class="text-conversation">{{ t('ask.reply') }}</span></Button>
+      <Button size="sm" data-ask-reply @click="replying = true"><span class="text-conversation">{{ t('ask.reply') }}</span></Button>
     </div>
   </div>
 </template>

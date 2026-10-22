@@ -36,6 +36,8 @@
     "askSideQuestion": "質問できませんでした",
     "sendFollowUp": "続けての質問を送信できませんでした",
     "retrySideQuestion": "再試行できませんでした",
+    "stopSideQuestion": "停止できませんでした",
+    "deleteSideQuestion": "削除できませんでした",
     "foldSideQuestion": "質問を変更できませんでした"
   },
   "drafts": {

@@ -41,6 +41,16 @@ export async function retrySideQuestion(conversationId: string, sideId: string):
   await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/retry`, { method: 'POST' })
 }
 
+/** Stops the side question's turn and commands; a Stop pressed before its question reached it waits for it, on the backend. */
+export async function stopSideQuestion(conversationId: string, sideId: string): Promise<void> {
+  await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}/stop`, { method: 'POST' })
+}
+
+/** Deletes the side question, stopped first, with its card, as if it had not been asked. */
+export async function deleteSideQuestion(conversationId: string, sideId: string): Promise<void> {
+  await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}`, { method: 'DELETE' })
+}
+
 export async function foldSideQuestion(conversationId: string, sideId: string, folded: boolean): Promise<AnsweredSide> {
   const response = await apiRequest(`${sidesPath(conversationId)}/${encodeURIComponent(sideId)}`, {
     method: 'PATCH',

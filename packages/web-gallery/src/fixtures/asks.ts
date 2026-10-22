@@ -120,3 +120,8 @@ export function askFailure(id: string, turn: number): Block {
     },
   }
 }
+
+/** The record a Stop leaves at the end of a side question's turn. */
+export function askStopped(id: string, turn: number): Block {
+  return { type: 'abort', id: `${id}-x${turn}`, createdAt: at(), model: demoModel, isResumed: false }
+}

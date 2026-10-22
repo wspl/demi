@@ -47,7 +47,7 @@ export function takeAgents(
   const children = new Map(conversation.subagents.map((agent) => [agent.id, agent]))
   const sides = new Map(conversation.sides.map((side) => [side.id, side]))
   const listedChildren = whole ? [] : [...conversation.subagents]
-  const listedSides = whole ? conversation.sides.filter((side) => !side.listed) : [...conversation.sides]
+  let listedSides = whole ? conversation.sides.filter((side) => !side.listed) : [...conversation.sides]
   for (const entry of entries) {
     const role = entry.role
     if (role.kind === 'root') {
@@ -63,6 +63,9 @@ export function takeAgents(
       } else {
         listedChildren.push({ ...fields, history: EMPTY_TRANSCRIPT, shownAt: null, failures: {} })
       }
+    } else if (entry.deleted) {
+      // The user deleted the side question: every page that holds it drops it.
+      listedSides = listedSides.filter((each) => each.id !== entry.id)
     } else {
       const { kind: _kind, ...side } = role
       const held = sides.get(entry.id) ?? sideRecord({ id: entry.id, ...side })

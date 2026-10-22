@@ -2,12 +2,15 @@ import { toRaw } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { NewSideQuestion, ReplyAsking, ShownSideQuestion } from '@demicodes/web-ui/agent/comments/asks'
+import { ApiError } from '../api/client'
 import { t } from './locales/text'
 import {
   askSideQuestion,
+  deleteSideQuestion,
   foldSideQuestion,
   followUpSideQuestion,
   retrySideQuestion,
+  stopSideQuestion,
 } from '../api/side-questions'
 import type { Conversation, SentAction, SideRecord } from '../state/types'
 import { settleSent, sideActivity, sideRecord } from './side-records'
@@ -45,6 +48,19 @@ function shown(side: SideRecord): ShownSideQuestion {
  * show at once; a refused one goes back.
  */
 export const useSideQuestions = defineStore('sideQuestions', () => {
+  /**
+   * The last request each side question's actions sent, so that its next
+   * action goes after it: a Stop or a deletion never reaches the backend
+   * before the question or follow-up it follows.
+   */
+  const tails = new Map<string, Promise<void>>()
+
+  function serially(id: string, run: () => Promise<void>): Promise<void> {
+    const next = (tails.get(id) ?? Promise.resolve()).then(run)
+    tails.set(id, next)
+    return next
+  }
+
   function sideOf(conversation: SideHolder, id: string): SideRecord | undefined {
     return conversation.sides.find((side) => side.id === id)
   }
@@ -66,20 +82,22 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
     const sent: SentAction = { heldWhenSent: side.history, taken: false }
     side.sent = sent
     conversation.sides = [...conversation.sides, side]
-    try {
-      const record = await askSideQuestion(conversation.id, question)
-      const held = sideOf(conversation, question.id)
-      // The entry that names it may have come first, and says the same or later.
-      if (held && !held.listed) {
-        held.record = record
+    await serially(question.id, async () => {
+      try {
+        const record = await askSideQuestion(conversation.id, question)
+        const held = sideOf(conversation, question.id)
+        // The entry that names it may have come first, and says the same or later.
+        if (held && !held.listed) {
+          held.record = record
+        }
+        if (held) {
+          taken(held, sent)
+        }
+      } catch (error) {
+        conversation.sides = conversation.sides.filter((each) => each.id !== question.id)
+        reportError(t('failures.askSideQuestion'), error, { userVisible: true })
       }
-      if (held) {
-        taken(held, sent)
-      }
-    } catch (error) {
-      conversation.sides = conversation.sides.filter((each) => each.id !== question.id)
-      reportError(t('failures.askSideQuestion'), error, { userVisible: true })
-    }
+    })
   }
 
   /**
@@ -93,15 +111,17 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
     }
     const sent: SentAction = { heldWhenSent: side.history, taken: false }
     side.sent = sent
-    try {
-      await send()
-      taken(side, sent)
-    } catch (error) {
-      if (side.sent !== null && toRaw(side.sent) === sent) {
-        side.sent = null
+    await serially(id, async () => {
+      try {
+        await send()
+        taken(side, sent)
+      } catch (error) {
+        if (side.sent !== null && toRaw(side.sent) === sent) {
+          side.sent = null
+        }
+        reportError(title, error, { userVisible: true })
       }
-      reportError(title, error, { userVisible: true })
-    }
+    })
   }
 
   /**
@@ -144,17 +164,64 @@ export const useSideQuestions = defineStore('sideQuestions', () => {
   }
 
   /**
+   * Stops the side question `id`: the backend ends its turn and commands once
+   * the question or follow-up on its way has reached it, and the transcript
+   * shows the stop.
+   */
+  async function stop(conversation: SideHolder, id: string): Promise<void> {
+    await serially(id, async () => {
+      try {
+        await stopSideQuestion(conversation.id, id)
+      } catch (error) {
+        reportError(t('failures.stopSideQuestion'), error, { userVisible: true })
+      }
+    })
+  }
+
+  /**
+   * × on a question still on its first answer: its card is gone at once, and
+   * the backend stops it and deletes it; a refused deletion brings the card
+   * back.
+   */
+  async function remove(conversation: SideHolder, id: string): Promise<void> {
+    const side = sideOf(conversation, id)
+    if (!side) {
+      return
+    }
+    side.deleting = true
+    await serially(id, async () => {
+      // Its question was refused: no side question was made to delete.
+      if (!sideOf(conversation, id)) {
+        return
+      }
+      try {
+        await deleteSideQuestion(conversation.id, id)
+      } catch (error) {
+        // Another page deleted it first: the card is gone either way.
+        if (!(error instanceof ApiError && error.status === 404)) {
+          side.deleting = false
+          reportError(t('failures.deleteSideQuestion'), error, { userVisible: true })
+          return
+        }
+      }
+      conversation.sides = conversation.sides.filter((each) => each.id !== id)
+    })
+  }
+
+  /**
    * What the conversation's replies do with its side questions, `readPage`
    * reading a page of one's transcript by its node.
    */
   function asking(conversation: SideHolder, readPage: (id: string, at: 'latest' | 'before') => void): ReplyAsking {
     return {
       get questions() {
-        return conversation.sides.map(shown)
+        return conversation.sides.filter((side) => !side.deleting).map(shown)
       },
       ask: (question) => void ask(conversation, question),
       followUp: (id, text) => void sending(conversation, id, t('failures.sendFollowUp'), () => followUpSideQuestion(conversation.id, id, text)),
       retry: (id) => void sending(conversation, id, t('failures.retrySideQuestion'), () => retrySideQuestion(conversation.id, id)),
+      stop: (id) => void stop(conversation, id),
+      remove: (id) => void remove(conversation, id),
       fold: (id, folded) => void fold(conversation, id, folded),
       read: readPage,
     }

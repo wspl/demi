@@ -3524,14 +3524,24 @@ onBeforeUnmount(() => {
           <GalleryAsks seed="live" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Asking" note="Just asked: the card is titled Ask until the small model's title arrives, and its one status line says it thinks. Reply still asks a follow-up, × folds it and ↗ opens the side conversation.">
+      <GallerySection title="Ask · Asking" note="Just asked: the card is titled Ask until the small model's title arrives, and its one status line says it thinks, with a square Stop in the header before ↗. × deletes the question with its card, as if it had not been asked, and ↗ opens the side conversation.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="asking" />
         </div>
       </GallerySection>
-      <GallerySection title="Ask · Working" note="Titled, while it works: the one status line names the step it runs, never the steps themselves; ↗ shows them all in the subagent window.">
+      <GallerySection title="Ask · Working" note="Titled, while it works: the one status line names the step it runs, never the steps themselves, with a square Stop in the header before ↗, which ends the answer where it is and goes with it; × deletes the question with its card, since its first answer is not made; ↗ shows them all in the subagent window.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="working" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Stopped" note="Stop ended the answer where it was: the header's Stop is gone, the card keeps the answer so far, a muted Stopped stands under it, and Reply asks a follow-up as before.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="stopped" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Stopped Before an Answer" note="Stopped before the answer began: the card shows the question and a muted Stopped, and Reply still asks a follow-up.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="stopped-empty" />
         </div>
       </GallerySection>
       <GallerySection title="Ask · Answered" note="The question in bold and its short answer, with a bordered Reply below it.">

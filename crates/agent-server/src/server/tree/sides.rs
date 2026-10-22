@@ -9,11 +9,14 @@
 //!
 //! It runs beside the root's turn and never waits for it. It closes once it is
 //! quiescent, which delivers nothing to anyone, and opens again for a follow-up
-//! or a Retry. The pages follow its transcript as any node's, and its card in
-//! its agent entry.
+//! or a Retry. The user can stop it: its turn records the stop and its commands
+//! are asked to stop, and it closes at once, like an aborted child, so a
+//! command's end opens no turn of its own. The pages follow its transcript as
+//! any node's, and its card in its agent entry.
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     rc::{Rc, Weak},
 };
 
@@ -31,7 +34,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use super::{
     Tree, agents, cut_path, note_agent,
-    supervisor::OWNER_CLOSING,
+    supervisor::{OWNER_CLOSING, stop_all},
     told::{self, Asked},
 };
 use crate::{
@@ -334,6 +337,11 @@ impl<H: HostResolver> Tree<H> {
                     return;
                 }
             };
+            let stopping = if records.iter().any(|record| record.closed.is_some()) {
+                self.stopping_subtrees().await
+            } else {
+                HashSet::new()
+            };
             for record in records {
                 if self.disposing.get() {
                     return;
@@ -342,6 +350,9 @@ impl<H: HostResolver> Tree<H> {
                     self.agents.put(agents::resting(record.id.clone(), agents::side_role(of)));
                 }
                 if record.closed.is_some() {
+                    // Its commands whose stop was still in progress are taken
+                    // up, as a closed child's are.
+                    self.take_up_stopping(&record, &stopping).await;
                     let store = self.store.session_store(&record.id);
                     let read = async {
                         let Some(checkpoint) = store.load().await? else {
@@ -548,6 +559,79 @@ impl<H: HostResolver> Tree<H> {
         Ok(told::untold(&held, seen))
     }
 
+    /// Stops the side question `id` as the user's Stop does: its turn records
+    /// its stop, after the start lock, so a question or a follow-up that is
+    /// still on its way reaches it first and is stopped too, never dropped.
+    ///
+    /// Its commands are asked to stop and the call returns without waiting
+    /// for their ends or their Host, as a child's close does. Their ends open
+    /// no turn: the side question closes at once, as an aborted child does,
+    /// and the reports wait for its next message. A side question that does
+    /// nothing is left as it is.
+    pub(crate) async fn stop_side(self: &Rc<Self>, id: NodeId) -> Result<(), AskError> {
+        let tree = self.clone();
+        let stopped = self.lifecycle.spawn_local(async move {
+            let _turn = tree.starts.acquire(id.clone()).await;
+            let Some(side) = tree.live_side(&id).await else {
+                let failed = |error: demi_agent_store::StoreError| AskError::Failed(error.to_string());
+                let known = tree.store.node(&id).await.map_err(failed)?.is_some_and(|record| record.side.is_some());
+                return if known { Ok(()) } else { Err(AskError::Unknown) };
+            };
+            let session = side.node.session();
+            let status = session.status();
+            if status.settle == Settle::Settled && !status.input && !status.commands {
+                return Ok(());
+            }
+            session.hold();
+            stop_all(session).await;
+            let shells = side.node.stop_shells().await;
+            tree.keep_stopping(&side.node.record(), shells);
+            if !side.closing.replace(true) {
+                side.stop_supervision();
+                tree.begin_close_side(side, ClosePhase::Aborted);
+            }
+            Ok(())
+        });
+        stopped.await.map_err(|error| AskError::Failed(format!("the stop did not run: {error}")))?
+    }
+
+    /// Deletes the side question `id`, as if it had not been asked: it stops as
+    /// [`Self::stop_side`] does, closes, and then its node and card go, and its
+    /// entry becomes the change that every page holding it takes ([`Agents::delete`]).
+    ///
+    /// It takes the start lock, so a question still on its way reaches the side
+    /// question first and is deleted with it.
+    pub(crate) async fn delete_side(self: &Rc<Self>, id: NodeId) -> Result<(), AskError> {
+        let tree = self.clone();
+        let deleted = self.lifecycle.spawn_local(async move {
+            let _turn = tree.starts.acquire(id.clone()).await;
+            let failed = |error: demi_agent_store::StoreError| AskError::Failed(error.to_string());
+            if !tree.store.node(&id).await.map_err(failed)?.is_some_and(|record| record.side.is_some()) {
+                return Err(AskError::Unknown);
+            }
+            if let Some(side) = tree.live_side(&id).await {
+                let session = side.node.session();
+                session.hold();
+                stop_all(session).await;
+                let shells = side.node.stop_shells().await;
+                tree.keep_stopping(&side.node.record(), shells);
+                // The sender lives in the side, which the close holds.
+                let mut closed = side.closed.subscribe();
+                if !side.closing.replace(true) {
+                    side.stop_supervision();
+                    tree.begin_close_side(side, ClosePhase::Aborted);
+                }
+                let _ = closed.wait_for(|closed| *closed).await;
+            }
+            tree.closed_sides.borrow_mut().remove(&id);
+            tree.store.delete_node(&id).await.map_err(failed)?;
+            tree.agents.delete(&id);
+            tree.bump();
+            Ok(())
+        });
+        deleted.await.map_err(|error| AskError::Failed(format!("the deletion did not run: {error}")))?
+    }
+
     /// Whether every live side question does nothing by itself.
     pub(super) fn sides_quiescent(&self) -> bool {
         self.sides.borrow().is_empty()
@@ -583,7 +667,7 @@ impl<H: HostResolver> Tree<H> {
     /// Closes `side`: its session saves its final checkpoint, the close is
     /// committed, and it leaves the live ones. Its completion reaches no
     /// one.
-    fn begin_close_side(self: &Rc<Self>, side: Rc<Side<H>>, failure: Option<String>) {
+    fn begin_close_side(self: &Rc<Self>, side: Rc<Side<H>>, phase: ClosePhase) {
         let tree = self.clone();
         self.lifecycle.spawn_local(async move {
             let id = side.node.id().clone();
@@ -602,10 +686,6 @@ impl<H: HostResolver> Tree<H> {
             };
             let ended = session.with_window(|transcript| ClosedSide::of(&id, &earlier, transcript.blocks(), side.node.record().side));
             side.events.borrow_mut().take();
-            let phase = match failure {
-                Some(failure) => ClosePhase::Error { failure },
-                None => ClosePhase::Completed,
-            };
             let close = NodeClose { phase, at: tree.clock.now() };
             if let Err(error) = tree.store.close_node(&id, close).await {
                 tree.report(format!("side question {id} did not close: {error}"));
@@ -663,7 +743,10 @@ async fn side_supervision<H: HostResolver>(tree: Weak<Tree<H>>, side: Weak<Side<
                 return;
             };
             if let Some(failure) = live_tree.decide_side(&live_side) {
-                live_tree.begin_close_side(live_side, failure);
+                live_tree.begin_close_side(live_side, match failure {
+                    Some(failure) => ClosePhase::Error { failure },
+                    None => ClosePhase::Completed,
+                });
                 return;
             }
         }

@@ -1,10 +1,10 @@
 //! A conversation's side questions, each in the user's shard.
 //!
-//! Asking one under the id the page chose, a follow-up, a Retry and folding
-//! its card. Each is an agent of the conversation, which a page lists from the
-//! conversation's agents; its answers are its transcript, read with `GET
-//! /conversations/:id/agents/:node/transcript` and followed on the
-//! conversation's socket.
+//! Asking one under the id the page chose, a follow-up, a Retry, a Stop, a
+//! deletion and folding its card. Each is an agent of the conversation, which
+//! a page lists from the conversation's agents; its answers are its
+//! transcript, read with `GET /conversations/:id/agents/:node/transcript` and
+//! followed on the conversation's socket.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -75,6 +75,44 @@ pub(super) async fn retry(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.retry_side(id, side).await })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /conversations/:id/side-questions/:side/stop`: 204 once its turn
+/// and commands are stopped, or when nothing ran; 404 when the conversation
+/// has no such side question.
+pub(super) async fn stop(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, side)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let id = conversation(id)?;
+    let side = side_id(side)?;
+    state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.stop_side(id, side).await })
+        .await?
+        .map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `DELETE /conversations/:id/side-questions/:side`: 204 once the side
+/// question is stopped and gone with its card; 404 when the conversation has
+/// no such side question.
+pub(super) async fn delete(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, side)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let id = conversation(id)?;
+    let side = side_id(side)?;
+    state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.delete_side(id, side).await })
         .await?
         .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)

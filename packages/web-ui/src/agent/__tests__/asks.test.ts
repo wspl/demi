@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { Block } from '@demicodes/protocol'
 import { EMPTY_TRANSCRIPT, heldTranscript } from '@demicodes/conversation-client'
-import { cardContent, pageToRead, shownTurns, type ShownSideQuestion } from '../comments/asks'
+import { cardContent, pageToRead, shownTurns, unanswered, type ShownSideQuestion } from '../comments/asks'
 import { AT_REST } from '../agent-activity'
 import { model } from './agent-harness'
 
@@ -64,8 +64,8 @@ test('a card shows its own questions and answers, never the history it started f
     text('a2', after(7), 'Yes, a minute.'),
   ], false))
   expect(card.turns).toEqual([
-    { question: 'Why stale?', status: null, answer: 'Its TTL is an hour.', streaming: false },
-    { question: 'Can it be shorter?', status: null, answer: 'Yes, a minute.', streaming: false },
+    { question: 'Why stale?', status: null, answer: 'Its TTL is an hour.', streaming: false, stopped: false },
+    { question: 'Can it be shorter?', status: null, answer: 'Yes, a minute.', streaming: false, stopped: false },
   ])
   expect(card.failure).toBeNull()
 })
@@ -78,7 +78,38 @@ test('a working turn shows one status line until its answer starts', () => {
   expect(cardContent(question([...asked, call('c1', after(2), 'Find the cache lifetime')], true)).turns.at(-1)!.status)
     .toBe('Find the cache lifetime')
   expect(cardContent(question([...asked, text('a1', after(3), 'Its TTL')], true)).turns.at(-1))
-    .toEqual({ question: 'Why stale?', status: null, answer: 'Its TTL', streaming: true })
+    .toEqual({ question: 'Why stale?', status: null, answer: 'Its TTL', streaming: true, stopped: false })
+})
+
+// A stopped turn ends with the abort record: the card keeps what it wrote
+// before, and a later turn is not marked.
+test('a stopped turn keeps its partial answer and is marked stopped', () => {
+  const abort: Block = { type: 'abort', id: 'x1', createdAt: after(4), model, isResumed: false }
+  const asked = [...history, user('q1', after(1), FIRST, 'side')]
+  const partial = cardContent(question([...asked, text('a1', after(3), 'Its TTL'), abort], false)).turns
+  expect(partial).toEqual([{ question: 'Why stale?', status: null, answer: 'Its TTL', streaming: false, stopped: true }])
+  const none = cardContent(question([...asked, call('c1', after(2), 'Find the cache lifetime'), abort], false)).turns
+  expect(none).toEqual([{ question: 'Why stale?', status: null, answer: '', streaming: false, stopped: true }])
+  // A follow-up on its way makes the question work, but the stopped turn is
+  // over: no status line comes back to it.
+  const resent = cardContent(question([...asked, call('c1', after(2), 'Find the cache lifetime'), abort], true)).turns
+  expect(resent).toEqual(none)
+  const followed = cardContent(question([...asked, abort, user('q2', after(5), 'Again?'), text('a2', after(6), 'Yes.')], false)).turns
+  expect(followed.map((turn) => turn.stopped)).toEqual([true, false])
+})
+
+// × deletes a question whose first answer is still being made, streaming
+// included, and folds every other card: an answered one, a follow-up's, a
+// stopped one.
+test('only a question still on its first answer is deleted by ×', () => {
+  const asked = [...history, user('q1', after(1), FIRST, 'side')]
+  const abort: Block = { type: 'abort', id: 'x1', createdAt: after(4), model, isResumed: false }
+  expect(unanswered(question(asked, true))).toBe(true)
+  expect(unanswered(question([...asked, text('a1', after(3), 'Its TTL')], true))).toBe(true)
+  expect(unanswered(question([...asked, text('a1', after(3), 'Its TTL is an hour.')], false))).toBe(false)
+  expect(unanswered(question([...asked, text('a1', after(3), 'Its TTL is an hour.'), user('q2', after(5), 'Shorter?')], true))).toBe(false)
+  expect(unanswered(question([...asked, abort], true))).toBe(false)
+  expect(unanswered(question([...asked, abort], false))).toBe(false)
 })
 
 // A turn that ended with a failure offers its record, for Retry.

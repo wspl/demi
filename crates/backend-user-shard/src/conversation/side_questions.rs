@@ -5,7 +5,7 @@
 //! - Its card's title is written by the user's small model, as a
 //!   conversation's.
 //! - Its follow-ups and Retry are turns of its node.
-//! - It has a fold.
+//! - It has a fold, and a Stop that ends its turn and its commands.
 //! - It is an agent of the conversation: its title and fold, which the backend
 //!   keeps, reach its agent entry as they change
 //!   (`crates/agent-server/src/server/tree/agents.rs`).
@@ -158,6 +158,29 @@ impl Shard {
         self.side_question(&record.id, &side).await?;
         self.open_for_side(&record.id).await?;
         self.agent().retry_side(&root_of(&record.id), side).await?;
+        Ok(())
+    }
+
+    /// Stops the turn and the commands of the side question `side` of the
+    /// user's conversation `id`. A conversation whose tree is not open has
+    /// nothing running.
+    pub async fn stop_side(&self, id: ConversationId, side: NodeId) -> Result<(), SideRefusal> {
+        let record = self.side_conversation(&id, false).await?;
+        self.side_question(&record.id, &side).await?;
+        match self.agent().stop_side(&root_of(&record.id), side).await {
+            Err(AskError::NotOpen) => Ok(()),
+            result => Ok(result?),
+        }
+    }
+
+    /// Deletes the side question `side` of the user's conversation `id`, as if
+    /// it had not been asked: it stops, and its record and card go. The tree
+    /// opens for it, which holds the nodes it may still run.
+    pub async fn delete_side(&self, id: ConversationId, side: NodeId) -> Result<(), SideRefusal> {
+        let record = self.side_conversation(&id, true).await?;
+        self.side_question(&record.id, &side).await?;
+        self.open_for_side(&record.id).await?;
+        self.agent().delete_side(&root_of(&record.id), side).await?;
         Ok(())
     }
 

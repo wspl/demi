@@ -20,6 +20,7 @@
     "expand": "펼치기",
     "thinking": "생각 중…",
     "retry": "다시 시도",
+    "stop": "중지",
     "pictureFailed": "이미지에 대해 질문할 수 없음"
   },
   "transcript": {

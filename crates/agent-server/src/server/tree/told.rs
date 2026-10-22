@@ -28,7 +28,8 @@ impl Asked {
     ///
     /// The result is the question the user typed, then each later message of
     /// its own, each with the last text its turn wrote. A turn still working,
-    /// or one that wrote no text, as a failed one, is told once it answers.
+    /// or one that wrote no text, as a failed one, is told once it answers. A
+    /// turn the user stopped is never told, whatever it wrote before.
     pub(super) fn of(id: &NodeId, of: SideOf, earlier: &[Block], blocks: &[Block], ended: bool) -> Self {
         let first = |block: &Block| matches!(block, Block::User(user) if user.turn_id.as_str() == id.as_str());
         let since = match earlier.iter().position(first) {
@@ -38,14 +39,19 @@ impl Asked {
                 None => return Self { of, pairs: Vec::new() },
             },
         };
-        let mut turns: Vec<(String, Option<&str>)> = Vec::new();
+        let mut turns: Vec<(String, Option<&str>, bool)> = Vec::new();
         for block in since {
             match block {
-                Block::User(_) if turns.is_empty() => turns.push((of.question.clone(), None)),
-                Block::User(user) => turns.push((text_of(&user.content), None)),
+                Block::User(_) if turns.is_empty() => turns.push((of.question.clone(), None, false)),
+                Block::User(user) => turns.push((text_of(&user.content), None, false)),
                 Block::Text(text) => {
                     if let Some(turn) = turns.last_mut() {
                         turn.1 = Some(&text.text);
+                    }
+                }
+                Block::Abort(_) => {
+                    if let Some(turn) = turns.last_mut() {
+                        turn.2 = true;
                     }
                 }
                 _ => {}
@@ -56,7 +62,7 @@ impl Asked {
         }
         let pairs = turns
             .into_iter()
-            .filter_map(|(question, answer)| Some((question, bound_text(answer?).into_owned())))
+            .filter_map(|(question, answer, stopped)| Some((question, bound_text(answer.filter(|_| !stopped)?).into_owned())))
             .collect();
         Self { of, pairs }
     }

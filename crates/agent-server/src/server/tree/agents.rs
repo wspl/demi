@@ -180,6 +180,15 @@ impl Agents {
         self.sink.emit(ServerFrame::Agent { revision, agent: entry });
     }
 
+    /// The agent `id` was deleted: its entry stays as a tombstone, which the
+    /// `agent` frame announces at the next revision and the changes since a
+    /// revision a page holds list, so every page that holds it drops it. The
+    /// whole `agents` frame lists no tombstone.
+    pub(crate) fn delete(&self, id: &NodeId) {
+        self.cards.borrow_mut().remove(id);
+        self.change(id, |entry| entry.deleted = true);
+    }
+
     /// Changes the entry of the agent `id` with `change`; nothing for an
     /// agent the collection does not hold yet.
     pub(crate) fn change(&self, id: &NodeId, change: impl FnOnce(&mut AgentEntry)) {
@@ -322,7 +331,8 @@ impl Agents {
                 let mut entry = kept.entry.clone();
                 entry.waited_ms = entry.waited_ms.and_then(|_| waits(&entry.id));
                 let changed = since.is_none_or(|since| kept.revision > since);
-                (changed || entry.waited_ms.is_some()).then_some(entry)
+                // A tombstone is a change to tell, never an agent to list.
+                ((changed || entry.waited_ms.is_some()) && (since.is_some() || !entry.deleted)).then_some(entry)
             })
             .collect();
         agents.sort_by_key(rank);
@@ -333,9 +343,15 @@ impl Agents {
         }
     }
 
-    /// Every entry, in the order the frames list them.
+    /// Every entry but a tombstone's, in the order the frames list them.
     pub(crate) fn all(&self) -> Vec<AgentEntry> {
-        let mut agents: Vec<AgentEntry> = self.entries.borrow().values().map(|kept| kept.entry.clone()).collect();
+        let mut agents: Vec<AgentEntry> = self
+            .entries
+            .borrow()
+            .values()
+            .filter(|kept| !kept.entry.deleted)
+            .map(|kept| kept.entry.clone())
+            .collect();
         agents.sort_by_key(rank);
         agents
     }
@@ -375,6 +391,7 @@ pub(crate) fn resting(id: NodeId, role: AgentRole) -> AgentEntry {
         queue: Vec::new(),
         pending_steers: Vec::new(),
         starting: None,
+        deleted: false,
     }
 }
 

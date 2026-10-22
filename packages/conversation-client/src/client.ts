@@ -973,8 +973,13 @@ export class ConversationClient {
    */
   private takeAgent(agent: AgentEntry): WaitingChanged {
     const previous = this.agents.get(agent.id)
-    this.agents.set(agent.id, agent)
     const changed = { queue: false, pending: false, starting: false }
+    // A deleted agent is gone from the collection, as the whole frame has it.
+    if (agent.deleted) {
+      this.agents.delete(agent.id)
+      return changed
+    }
+    this.agents.set(agent.id, agent)
     if (agent.role.kind === 'root') {
       changed.queue = JSON.stringify(this.queue) !== JSON.stringify(agent.queue)
       changed.pending = JSON.stringify(this.pending) !== JSON.stringify(agent.pendingSteers)

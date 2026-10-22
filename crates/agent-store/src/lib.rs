@@ -210,6 +210,11 @@ pub trait AgentTreeStore {
         close: NodeClose,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
+    /// Deletes a side question's node, and no other, with everything that is
+    /// its own, in one commit: its checkpoint, its rows, its card and the commands recorded
+    /// running. Nothing else of the tree refers to it.
+    fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>>;
+
     /// Makes a closed node live again in one commit: a new round, which
     /// starts at `started_at`, and the reviving message, if any, queued in
     /// its checkpoint; a side question's Retry revives it with none. A

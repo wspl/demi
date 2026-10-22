@@ -1108,7 +1108,7 @@ impl<H: HostResolver> Tree<H> {
     /// hundreds of closed children costs one query, not two per child. The
     /// subagents above each are found in the tree's summaries, which hold
     /// every subagent of the tree.
-    async fn stopping_subtrees(&self) -> HashSet<NodeId> {
+    pub(super) async fn stopping_subtrees(&self) -> HashSet<NodeId> {
         let running = match self.store.running_nodes().await {
             Ok(running) => running,
             Err(error) => {
@@ -1142,7 +1142,7 @@ impl<H: HostResolver> Tree<H> {
     /// Restore skips the children, not their commands. The commands show as
     /// stopping again, are asked to stop again, and end as their runners
     /// report.
-    fn take_up_stopping<'a>(
+    pub(super) fn take_up_stopping<'a>(
         self: &'a Rc<Self>,
         record: &'a NodeRecord,
         stopping: &'a HashSet<NodeId>,
@@ -1422,7 +1422,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// Keeps the shells of the closed or closing child `record` while a
     /// command of theirs has not ended, and forgets them once each has.
-    fn keep_stopping(self: &Rc<Self>, record: &NodeRecord, environments: Vec<Rc<dyn ShellEnvironment>>) {
+    pub(super) fn keep_stopping(self: &Rc<Self>, record: &NodeRecord, environments: Vec<Rc<dyn ShellEnvironment>>) {
         let commands: Vec<(Rc<dyn ShellEnvironment>, CommandId)> = environments
             .iter()
             .flat_map(|environment| {

@@ -401,7 +401,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route(
             "/conversations/{id}/side-questions/{side}",
-            patch(side_questions::fold),
+            patch(side_questions::fold).delete(side_questions::delete),
         )
         .route(
             "/conversations/{id}/side-questions/{side}/messages",
@@ -410,6 +410,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route(
             "/conversations/{id}/side-questions/{side}/retry",
             post(side_questions::retry),
+        )
+        .route(
+            "/conversations/{id}/side-questions/{side}/stop",
+            post(side_questions::stop),
         )
         .route("/conversations/{id}/shares", post(shares::create))
         .route(

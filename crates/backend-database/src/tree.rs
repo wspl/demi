@@ -434,6 +434,30 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
+    fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        let node = id.clone();
+        Box::pin(async move {
+            // Only a side question's node: a wrong id deletes no other. The
+            // node's rows go with it, each table that names it deleting by
+            // cascade.
+            let changed = self
+                .db
+                .call(move |connection| {
+                    Ok(connection.execute(
+                        "DELETE FROM nodes WHERE id = ?1 AND id IN (SELECT node_id FROM side_questions)",
+                        [node.as_str()],
+                    )?)
+                })
+                .await
+                .map_err(store_error)?;
+            if changed == 0 {
+                return Err(missing(id));
+            }
+            (self.saved)(id, None);
+            Ok(())
+        })
+    }
+
     fn reopen_node<'a>(
         &'a self,
         id: &'a NodeId,

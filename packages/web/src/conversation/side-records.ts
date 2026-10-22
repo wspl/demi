@@ -16,6 +16,7 @@ export function sideRecord(record: SideRecord['record']): SideRecord {
     waitingSince: null,
     sent: null,
     folding: null,
+    deleting: false,
   }
 }
 

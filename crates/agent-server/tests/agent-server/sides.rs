@@ -2,17 +2,19 @@
 //! history through one of its replies, whose first request is the one the root
 //! would send next with the side's message, and which the root never learns of.
 
-use demi_agent_server::{side_instruction, testing::{TestClient, agent_entries, entry_in}};
+use demi_agent_server::{side_instruction, testing::{ScriptedProviders, TestClient, agent_entries, entry_in}};
 use demi_agent_store::{ClosePhase, SideOf};
 use demi_conversation_socket_protocol::{AgentRole, ClientFrame, ServerFrame};
 use demi_provider_common::{InferenceItem, InferenceRequest, Medium, UserPart, testing::{Turn, event}};
 use demi_shared_types::{Block, BlockId, FileExtension, MediaSource, NodeId, Timestamp};
-use demi_agent_store::testing::model_reading;
+use demi_agent_store::testing::{MemoryTreeStore, model_reading};
 use serde_json::json;
+
+use std::{rc::Rc, time::Duration};
 
 use crate::subagents::{closed_phase, fixture, held_said, refused, root, root_receipts, said};
 use crate::support::{
-        Fixture, Gate, Model, TestProduct, agent, conversation, held, request_text, send, streamed_then_held, texts, until,
+        Fixture, Gate, Model, ScriptedShells, TestProduct, agent, conversation, scripted_host_server, held, request_text, send, streamed_then_held, texts, until,
     };
 
 /// The brief the root's first message gives; the side's first request
@@ -260,6 +262,163 @@ async fn a_side_question_outlives_the_roots_stop_and_its_follow_up_continues_its
     assert!(model.is_done());
 }
 
+// Stop ends the side question's turn and records the stop in its transcript,
+// the root's turn is not touched, and a follow-up asks again from its history.
+// Runs a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_stopped_side_question_records_its_stop_and_takes_a_follow_up() {
+    let model = Model::default();
+    model.root([said("The card reads a stale cache.")]);
+    model.child(FIRST, [Turn::pending(), said("Shorten it to a minute.")]);
+    let (fixture, _client) = replied(&model).await;
+    let block = last_text(&fixture);
+    fixture
+        .server
+        .ask(&conversation(), side(), asking(block, "Why is it stale?"))
+        .await
+        .unwrap();
+    until(|| model.requests_of(FIRST).len() == 1).await;
+
+    fixture.server.stop_side(&conversation(), side()).await.expect("the stop is taken");
+    assert_eq!(closed_phase(&fixture, &side()), Some(ClosePhase::Aborted));
+    let ended = fixture.store.checkpoint(&side()).unwrap().transcript;
+    assert!(matches!(ended.last(), Some(Block::Abort(_))), "{ended:?}");
+    // Nothing runs: another Stop is taken and records nothing more.
+    fixture.server.stop_side(&conversation(), side()).await.expect("a second stop is taken");
+    assert_eq!(fixture.store.checkpoint(&side()).unwrap().transcript.len(), ended.len());
+    assert!(fixture.server.stop_side(&conversation(), NodeId::try_from("nobody").unwrap()).await.is_err());
+
+    fixture
+        .server
+        .ask_more(&conversation(), side(), "What should it be?".into())
+        .await
+        .expect("the follow-up is taken");
+    until(|| model.requests_of(FIRST).len() == 2).await;
+    until(|| fixture.store.record(&side()).unwrap().closed.is_some()).await;
+    assert!(model.is_done());
+}
+
+// A side question deleted while its first answer is on its way stops, and its
+// record and its card go, and its entry is one change that the pages holding it
+// take: one that held an earlier revision is told it since, a page that opens
+// is not sent it. The root is never told of it, and a follow-up finds no such
+// side question. Runs a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_deleted_side_question_is_gone_from_the_store_the_pages_and_the_roots_next_message() {
+    let model = Model::default();
+    model.root([said("The card reads a stale cache."), said("Noted.")]);
+    model.child(FIRST, [Turn::pending()]);
+    let (fixture, mut client) = replied(&model).await;
+    let block = last_text(&fixture);
+    client.subscribe(&side()).await;
+    fixture
+        .server
+        .ask(&conversation(), side(), asking(block, "Why is it stale?"))
+        .await
+        .unwrap();
+    until(|| model.requests_of(FIRST).len() == 1).await;
+    let before = client.received();
+    assert!(before.iter().filter_map(|frame| entry_in(frame, &side())).next().is_some(), "{before:?}");
+    let held = fixture.server.tree(&root()).unwrap().agents_version();
+
+    fixture.server.delete_side(&conversation(), side()).await.expect("the deletion is taken");
+    assert!(fixture.store.record(&side()).is_none());
+    // The deletion is one change, at the next revision, as any entry's.
+    let after = client.received();
+    let deleted: Vec<_> = after
+        .iter()
+        .filter(|frame| matches!(frame, ServerFrame::Agent { agent, .. } if agent.id == side() && agent.deleted))
+        .collect();
+    assert_eq!(deleted.len(), 1, "{after:?}");
+    assert!(!after.iter().any(|frame| matches!(frame, ServerFrame::Agents { .. })), "{after:?}");
+    // A page that held the revision before it is told the change since.
+    client.send(ClientFrame::AgentsSince { held }).await;
+    let answer = client.received();
+    let Some(ServerFrame::Agents { since, agents, .. }) = answer.iter().find(|frame| matches!(frame, ServerFrame::Agents { .. })) else {
+        panic!("{answer:?}")
+    };
+    assert!(since.is_some());
+    assert!(agents.iter().any(|entry| entry.id == side() && entry.deleted), "{agents:?}");
+    // A page that holds none is sent the agents, which list no deleted one.
+    let mut fresh = TestClient::connect(&fixture.server, &conversation());
+    fresh.open().await;
+    let opened = fresh.received();
+    assert!(opened.iter().flat_map(agent_entries).all(|entry| entry.id != side()), "{opened:?}");
+    assert!(fixture.server.ask_more(&conversation(), side(), "Again?".into()).await.is_err());
+    assert!(fixture.server.delete_side(&conversation(), side()).await.is_err());
+
+    client.send(send("m2", "Fix it.")).await;
+    until(|| model.root_requests().len() == 2).await;
+    assert!(told_blocks(&fixture).await.is_empty());
+}
+
+// A side question leaves a command running and idles. Stop returns although the
+// command's runner never answers, closes it, and the command's end, which the
+// runner reports later, opens no turn: the model gets no further request.
+// Under a second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn the_end_of_a_command_a_stop_ended_wakes_no_turn_of_the_side_question() {
+    let model = Model::default();
+    model.root([said("The card reads a stale cache.")]);
+    model.child(
+        FIRST,
+        [
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "serve", "description": "Start the server", "background": true}),
+            )]),
+            said("serving"),
+            said("woken by the command's end"),
+        ],
+    );
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = TestClient::connect(&server, &conversation());
+    page.open().await;
+    page.send(send("m1", FIRST)).await;
+    until(|| model.root_requests().len() == 1).await;
+    until(|| server.tree(&root()).unwrap().is_quiescent()).await;
+    let block = server
+        .tree(&root())
+        .unwrap()
+        .root()
+        .session()
+        .transcript()
+        .blocks
+        .iter()
+        .rev()
+        .find_map(|block| match block {
+            Block::Text(text) => Some(text.id.clone()),
+            _ => None,
+        })
+        .expect("the root replied");
+    server.ask(&conversation(), side(), asking(block, "Why is it stale?")).await.unwrap();
+    // The command's call window passes on the paused clock.
+    for _ in 0..30 {
+        if model.requests_of(FIRST).len() == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert_eq!(model.requests_of(FIRST).len(), 2);
+
+    tokio::time::timeout(Duration::from_secs(60), server.stop_side(&conversation(), side()))
+        .await
+        .expect("a stop waits for no command's end")
+        .expect("the stop is taken");
+    assert_eq!(store.record(&side()).and_then(|record| record.closed).map(|close| close.phase), Some(ClosePhase::Aborted));
+
+    // The runner reports the end, long after.
+    shells.last().end();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert_eq!(model.requests_of(FIRST).len(), 2);
+    assert_eq!(store.record(&side()).and_then(|record| record.closed).map(|close| close.phase), Some(ClosePhase::Aborted));
+}
+
 // A side question asks `demi agent` to start a subagent, send a
 // message and change its directory: each is refused in words that say a
 // side question cannot, and nothing starts. Runs a few milliseconds.
@@ -387,6 +546,46 @@ async fn told_blocks(fixture: &Fixture) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+// A turn the user stopped is never told to the root, the question before its
+// answer included; a later follow-up that answered is, as before. Runs a few
+// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn the_root_is_never_told_a_turn_the_user_stopped() {
+    let model = Model::default();
+    let gate = Gate::new();
+    model.root([said("The card reads a stale cache."), said("Noted.")]);
+    // The first turn writes half a sentence and is stopped there.
+    model.child(
+        FIRST,
+        [
+            streamed_then_held(&gate, vec![event::text("Its TTL is")], vec![event::response(1, 1)]),
+            said("Yes, a minute."),
+        ],
+    );
+    let (fixture, client) = replied(&model).await;
+    let block = last_text(&fixture);
+    fixture
+        .server
+        .ask(&conversation(), side(), asking(block, "Why is it stale?"))
+        .await
+        .unwrap();
+    until(|| model.requests_of(FIRST).len() == 1).await;
+    fixture.server.stop_side(&conversation(), side()).await.unwrap();
+    fixture
+        .server
+        .ask_more(&conversation(), side(), "Can it be shorter?".into())
+        .await
+        .unwrap();
+    until(|| model.requests_of(FIRST).len() == 2).await;
+    until(|| closed_phase(&fixture, &side()).is_some() && fixture.store.record(&side()).unwrap().round == 2).await;
+
+    client.send(send("m2", "Fix it.")).await;
+    until(|| model.root_requests().len() == 2).await;
+    let told = format!("{TOLD}\n\nOn \"stale cache\":\nQ: Can it be shorter?\nA: Yes, a minute.");
+    assert_eq!(told_blocks(&fixture).await, [told]);
+    assert!(!request_text(&model.root_requests()[1]).contains("Why is it stale?"));
 }
 
 const TOLD: &str = "The user asked these aside and was answered there; they show what the user was unsure of, for you to know, with no need to answer them again.";

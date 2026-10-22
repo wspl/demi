@@ -36,6 +36,8 @@
     "askSideQuestion": "Could Not Ask",
     "sendFollowUp": "Could Not Send the Follow-Up",
     "retrySideQuestion": "Could Not Retry",
+    "stopSideQuestion": "Could Not Stop",
+    "deleteSideQuestion": "Could Not Delete",
     "foldSideQuestion": "Could Not Change the Side Question"
   },
   "drafts": {

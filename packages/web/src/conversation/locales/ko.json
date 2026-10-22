@@ -36,6 +36,8 @@
     "askSideQuestion": "질문할 수 없습니다",
     "sendFollowUp": "이어지는 질문을 보낼 수 없습니다",
     "retrySideQuestion": "다시 시도할 수 없습니다",
+    "stopSideQuestion": "중지할 수 없습니다",
+    "deleteSideQuestion": "삭제할 수 없습니다",
     "foldSideQuestion": "질문을 변경할 수 없습니다"
   },
   "drafts": {

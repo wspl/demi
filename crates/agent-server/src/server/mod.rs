@@ -573,6 +573,18 @@ impl<H: HostResolver> AgentServer<H> {
         self.tree(root).ok_or(AskError::NotOpen)?.retry_side(side).await
     }
 
+    /// Stops the turn and the commands of the side question `side` of the
+    /// conversation `root`, whose tree is open.
+    pub async fn stop_side(&self, root: &NodeId, side: NodeId) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.stop_side(side).await
+    }
+
+    /// Deletes the side question `side` of the conversation `root`, whose tree
+    /// is open, with its card.
+    pub async fn delete_side(&self, root: &NodeId, side: NodeId) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.delete_side(side).await
+    }
+
     /// Stores a Fork's seed as the first checkpoint of the new root
     /// `destination`, in one create commit; opening the conversation assembles
     /// its runtime.

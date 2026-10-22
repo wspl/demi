@@ -913,6 +913,19 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
+    fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let mut stored = self.stored.borrow_mut();
+            // Only a side question's node, as the database's.
+            if stored.nodes.get(id).is_none_or(|node| node.record.side.is_none()) {
+                return Err(missing(id));
+            }
+            stored.nodes.remove(id);
+            stored.running.remove(id);
+            Ok(())
+        })
+    }
+
     fn reopen_node<'a>(
         &'a self,
         id: &'a NodeId,

@@ -106,6 +106,33 @@ test('a side question\'s changed entry changes its card and keeps its transcript
   expect(shown.sides[0]!.history).toBe(history)
 })
 
+// Another page deletes the side question: its entry comes as a deleted change,
+// and the card goes from this page too, without the agents coming whole.
+test('a deleted side question\'s change removes its card', () => {
+  const shown = conversation()
+  expect(shown.sides).toHaveLength(1)
+  takeAgents(shown, [{ ...entry(false), deleted: true }], { epoch: 'e', revision: 2 }, Date.now(), false)
+  expect(shown.sides).toHaveLength(0)
+})
+
+// × on a question still on its first answer deletes it: the card goes at once,
+// and a refused deletion brings it back.
+test('a deletion shows at once and a refused one goes back', async () => {
+  const sides = useSideQuestions()
+  const shown = conversation()
+  const asking = sides.asking(shown, () => {})
+
+  changes.push(refused)
+  asking.remove(SIDE)
+  expect(asking.questions).toHaveLength(0)
+  await until(() => asking.questions.length).toBe(1)
+
+  changes.push(() => new Response(null, { status: 204 }))
+  asking.remove(SIDE)
+  expect(asking.questions).toHaveLength(0)
+  await until(() => shown.sides.length).toBe(0)
+})
+
 // × folds the card at once; a fold the backend refuses opens it again.
 test('a fold shows at once and a refused one goes back', async () => {
   const sides = useSideQuestions()

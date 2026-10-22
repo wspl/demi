@@ -228,6 +228,8 @@ export interface SideRecord {
   sent: SentAction | null
   /** The folds and openings of its card on their way, one at a time; none while none is. */
   folding: SideFolding | null
+  /** The user deleted it and the backend has yet to: its card is gone already, and returns if the backend refuses. */
+  deleting: boolean
 }
 
 /**

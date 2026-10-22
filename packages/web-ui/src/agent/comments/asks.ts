@@ -75,6 +75,15 @@ export interface ReplyAsking {
   followUp: (id: string, text: string) => void
   retry: (id: string) => void
   /**
+   * Stop ends the working turn of the side question and its commands.
+   */
+  stop: (id: string) => void
+  /**
+   * × on a question still on its first answer ([`unanswered`]): the backend
+   * stops it and deletes it with its card, as if it had not been asked.
+   */
+  remove: (id: string) => void
+  /**
    * × folds the card into the margin's mark; the mark or the words open it
    * again.
    */
@@ -93,6 +102,15 @@ export interface ReplyAsking {
   openFull?: (id: string) => void
 }
 
+/**
+ * The side question's first answer is still being made: × deletes it rather
+ * than folding it.
+ */
+export function unanswered(question: ShownSideQuestion): boolean {
+  const { turns } = cardContent(question)
+  return question.working && turns.length === 1 && !turns[0]!.stopped
+}
+
 /** One question and its answer as the card shows them. */
 export interface CardTurn {
   question: string
@@ -104,6 +122,8 @@ export interface CardTurn {
   /** The pictures of the Host the answer shows, with their copies once it is complete. */
   pictures?: readonly ReplyPicture[]
   streaming: boolean
+  /** The user stopped the turn: the answer is what it wrote before. */
+  stopped: boolean
 }
 
 type ErrorBlock = Extract<Block, { type: 'error' }>
@@ -180,13 +200,16 @@ export function cardContent(question: ShownSideQuestion): CardContent {
       const texts = turn.blocks.filter((block) => block.type === 'text')
       const reply = texts.at(-1)
       const answer = reply?.text ?? ''
-      const running = question.working && turn === last
+      // A stopped turn is over, whatever else is on its way: the card never
+      // shows its status line again.
+      const stopped = turn.blocks.at(-1)?.type === 'abort'
+      const running = question.working && turn === last && !stopped
       const writing = running && turn.blocks.at(-1)?.type === 'text'
       if (!running || writing)
-        return { question: turn.question, status: null, answer, ...(reply?.pictures ? { pictures: reply.pictures } : {}), streaming: writing }
+        return { question: turn.question, status: null, answer, ...(reply?.pictures ? { pictures: reply.pictures } : {}), streaming: writing, stopped }
       const step = turn.blocks.at(-1)
       const status = step?.type === 'tool_call' ? toolCallTitle(step) : t('ask.thinking')
-      return { question: turn.question, status, answer: '', streaming: false }
+      return { question: turn.question, status, answer: '', streaming: false, stopped }
     }),
     failure,
   }

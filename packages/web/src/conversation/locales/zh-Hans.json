@@ -36,6 +36,8 @@
     "askSideQuestion": "无法提问",
     "sendFollowUp": "无法发送追问",
     "retrySideQuestion": "无法重试",
+    "stopSideQuestion": "无法停止",
+    "deleteSideQuestion": "无法删除",
     "foldSideQuestion": "无法更改旁问"
   },
   "drafts": {

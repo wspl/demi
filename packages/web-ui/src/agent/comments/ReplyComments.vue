@@ -17,7 +17,7 @@ import type { MarkedComment, ReplyCommenting } from './comments'
 import { publishMarks, type MarkKind } from './highlights'
 import CommentItem from './CommentItem.vue'
 import AskCard from './AskCard.vue'
-import { cardContent, pageToRead, readKey, type ReplyAsking, type ShownSideQuestion } from './asks'
+import { cardContent, pageToRead, readKey, unanswered, type ReplyAsking, type ShownSideQuestion } from './asks'
 
 /**
  * The comments and side questions on a transcript's replies, drawn over the
@@ -381,6 +381,14 @@ async function fold(question: ShownSideQuestion): Promise<void> {
     return
   const target = before < view.top ? view.top + 16 : before
   scroller.scrollTop += after - target
+}
+
+/** × on a card: deletes a question still on its first answer, else folds it. */
+function close(question: ShownSideQuestion): void {
+  if (unanswered(question))
+    props.asking?.remove(question.id)
+  else
+    void fold(question)
 }
 
 /**
@@ -763,7 +771,8 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
         @update:reply="replyOf(question.id).text = $event"
         @ask="asking.followUp(question.id, $event)"
         @retry="asking.retry(question.id)"
-        @collapse="fold(question)"
+        @stop="asking.stop(question.id)"
+        @collapse="close(question)"
         @open-full="asking.openFull?.(question.id)"
       />
     </Teleport>
