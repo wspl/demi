@@ -94,13 +94,10 @@ pub fn host_environment() -> impl Iterator<Item = (String, String)> {
 /// The shell runtime (`crates/runner/src/main.rs`): every interpreter unit
 /// and utility of a job runs on a thread of its blocking pool, apart from the
 /// control thread. A unit blocked on a full pipe waits for a sibling that has
-/// a thread of its own, since the pool is far larger than a job can use.
+/// a thread of its own, so the pool takes a thread for every unit and has no
+/// bound of Demi's: the system's own limit on threads is the only one.
 #[derive(Clone)]
 pub struct ShellRuntime(tokio::runtime::Handle);
-
-/// Far above the units a job can have: each holds at least one pipe, and a
-/// process has at most a few thousand open files.
-const UNIT_THREADS: usize = 4096;
 
 impl ShellRuntime {
     /// One worker drives the units' asynchronous parts, such as reaping
@@ -108,7 +105,9 @@ impl ShellRuntime {
     pub fn build() -> io::Result<tokio::runtime::Runtime> {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
-            .max_blocking_threads(UNIT_THREADS)
+            // Tokio takes a bound; this is as large as it takes without
+            // overflowing its own sums.
+            .max_blocking_threads(usize::MAX / 2)
             .thread_name("shell")
             .enable_all()
             .build()

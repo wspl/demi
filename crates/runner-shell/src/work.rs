@@ -30,7 +30,7 @@
 //! context, is held until its last part is gone.
 
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap},
     io,
     sync::{
         Arc, LazyLock, Mutex, RwLock, RwLockReadGuard, Weak,
@@ -46,10 +46,6 @@ use tokio_util::sync::CancellationToken;
 /// The id of a job's first background task: one more than Linux's largest
 /// process ID, so no process takes it.
 pub(crate) const FIRST_TASK: i32 = 4_194_305;
-
-/// How many ended processes' statuses a job keeps for `wait`, as bash keeps
-/// those of a bounded number of its children.
-const ENDED: usize = 1024;
 
 /// The tasks of every job of the runner that run, by id: a task keeps running
 /// after its command, and a later command signals it by the id `$!` gave. A
@@ -224,9 +220,10 @@ impl Drop for RunningUtility {
 struct Groups {
     /// By the ID of each group's leader, which is the group's ID.
     running: HashMap<i32, Group>,
-    /// The statuses of the leaders that ended, newest last, until the job
-    /// detaches.
-    ended: VecDeque<(i32, u8)>,
+    /// The statuses of the leaders that ended, by their IDs, until the job
+    /// detaches. An ID the system gives again replaces its status, so the
+    /// table holds no more than the system has IDs.
+    ended: HashMap<i32, u8>,
 }
 
 struct Group {
@@ -389,7 +386,7 @@ impl Work {
         };
         let mut groups = self.groups.lock().expect("the group table is intact");
         // A process ID that ended may be taken again.
-        groups.ended.retain(|&(pid, _)| pid != group);
+        groups.ended.remove(&group);
         groups.running.insert(
             group,
             Group {
@@ -411,11 +408,7 @@ impl Work {
         if let Some(group) = groups.running.get(&pid) {
             return group.status.clone().map(Process::Running);
         }
-        groups
-            .ended
-            .iter()
-            .find(|&&(ended, _)| ended == pid)
-            .map(|&(_, status)| Process::Ended(status))
+        groups.ended.get(&pid).map(|&status| Process::Ended(status))
     }
 
     /// Sends `signal` to `part` of the job as a `kill` sends it to a task:
@@ -560,10 +553,7 @@ impl Drop for GroupEntry {
         if !self.work.detach.is_cancelled()
             && let Some(status) = self.status.as_ref().and_then(|sender| *sender.borrow())
         {
-            if groups.ended.len() == ENDED {
-                groups.ended.pop_front();
-            }
-            groups.ended.push_back((self.group, status));
+            groups.ended.insert(self.group, status);
         }
         drop(groups);
         self.work.gone.notify_waiters();

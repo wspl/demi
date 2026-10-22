@@ -25,7 +25,8 @@ use std::{
 
 use brush_core::execution_host::ScriptInterpreter;
 
-/// The most of a first line that is read; Linux's own limit is 255.
+/// The most of a first line that is read; Linux's own limit is 255. A file
+/// that is no script, a program or a data file, has no line end to read to.
 const LINE_BYTES: u64 = 1024;
 
 /// What runs `script`, from its first line; none when it has no `#!` line, or cannot be read, which its start

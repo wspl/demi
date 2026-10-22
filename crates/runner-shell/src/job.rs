@@ -104,11 +104,14 @@ pub struct Job {
     strays: Option<mpsc::UnboundedSender<i32>>,
 }
 
-/// The most one read of a job's output takes.
+/// The most one read of a job's output takes: a read needs a buffer of some
+/// size, and the chunk it fills is what the queue above holds.
 const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 
 /// How long a killed job waits for its in-process work before it ends
-/// without it.
+/// without it. A killed job has to end whatever its in-process work is
+/// doing, which no kill reaches (§ Work inside the runner); no wait can be
+/// without an end.
 const KILLED_WORK: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// A job's three pipes: the ends the interpreter uses and the runner's.
@@ -175,6 +178,9 @@ impl Job {
         if live {
             env.insert(LIVE_INPUT_ENV.into(), reference(&input_reference)?);
         }
+        // Queues of a few chunks: a job that prints faster than its output is
+        // taken, or is sent input faster than it reads, waits instead of
+        // filling the runner's memory.
         let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
         let cancel = scope.work.cancellation.clone();
