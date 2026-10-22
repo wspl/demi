@@ -23,8 +23,7 @@ pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 /// or its picture needs before its bytes. It never changes.
 ///
 /// A frame or a page that carries blocks carries the attachments their texts
-/// name that their agent shows, read when it is sent, never stored with the
-/// blocks (`docs/decisions/0029-a-conversation-opens-whole.md`).
+/// name, read when it is sent, never stored with the blocks (`docs/decisions/0029-a-conversation-opens-whole.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConversationAttachment {
@@ -146,7 +145,7 @@ pub enum ServerFrame {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(dive)]
         versions: Vec<BlockVersions>,
-        /// The attachments its blocks name that the node's replies show.
+        /// The attachments its blocks name.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(skip)]
         attachments: Vec<ConversationAttachment>,
@@ -168,8 +167,7 @@ pub enum ServerFrame {
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
-        /// The attachments the blocks and the text its patches add name that
-        /// the node's replies show.
+        /// The attachments the blocks and the text its patches add name.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[garde(skip)]
         attachments: Vec<ConversationAttachment>,

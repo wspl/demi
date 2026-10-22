@@ -135,13 +135,13 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** The devices the conversation's agents attached, as a slot under the revision the metadata's hosts carry. */
   attachedHosts: Raw<Slot<AttachedHost[]>>
   /**
-   * The descriptions of the attachments its agents' replies name, by the
-   * node whose replies show them and then by their ids, such as `a3`: what
-   * the transcript's frames and pages and the socket's later uploads bring
+   * The descriptions of the attachments its replies name, by their ids, such
+   * as `a3`, whichever agent uploaded them: what the transcript's frames and
+   * pages and the socket's later uploads bring
    * (`docs/decisions/0029-a-conversation-opens-whole.md`). An attachment
    * never changes, so a description, once held, stands.
    */
-  attachmentDescriptions: Record<string, Record<string, ConversationAttachment>>
+  attachmentDescriptions: Record<string, ConversationAttachment>
   subagents: SubagentRecord[]
   /**
    * The children whose transcripts the page shows, the child its Agents

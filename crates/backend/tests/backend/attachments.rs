@@ -251,8 +251,7 @@ async fn the_pages_are_sent_a_new_attachment_with_its_description_as_it_is_store
     let script = "mkfifo gate && demi attachment upload shot.png > /dev/null && read -r go < gate";
     let turn = work.turn(vec![shell("t1", script), say("uploaded")]);
     let announced = async {
-        let (node, attachments) = page.attachments_until().await;
-        assert_eq!(node.as_str(), CONVERSATION);
+        let attachments = page.attachments_until().await;
         assert_eq!(
             attachments.iter().map(|attachment| (attachment.id.as_str(), attachment.name.as_str())).collect::<Vec<_>>(),
             [("a1", "shot.png")]
@@ -427,16 +426,16 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
 // A few seconds: the root, its child and a side question each run shell jobs
 // on a real device.
 //
-// A reply shows only what its own agent uploaded, as each transcript page
-// carries the attachments its replies name:
+// An attachment belongs to the conversation, so a reply shows any of them, as
+// each transcript page carries the attachments its replies name:
 //
-// - The root shows its a1, the child its a2, the side question its a3, each
-//   none of another's.
+// - The root uploads a1, the child a2, the side question a3, and the replies
+//   of all three show all three.
 //
-// Planted defect this catches: an upload recorded by the agent's number, which
-// a side question shares with the root, so the root shows the side's file.
+// Planted defect this catches: a page that carries only what the replying
+// agent uploaded, so a reply that names another agent's file shows it missing.
 #[tokio::test]
-async fn a_reply_shows_the_uploads_of_its_own_agent() {
+async fn a_reply_shows_the_uploads_of_any_agent_of_the_conversation() {
     use demi_shared_types::Block;
 
     use crate::conversations::{FIRST, last_text, transcript};
@@ -451,7 +450,7 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
     }
     let mut socket = crate::conversations::Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    // Every agent's last reply names all three; each shows its own.
+    // Every agent's last reply names all three; each shows all three.
     let named = |text: &str| delivering(text, &["a1", "a2", "a3"]);
     // Each round's child waits until the root's turn has ended, so that its
     // completion wakes the idle root, which answers it.
@@ -505,9 +504,9 @@ async fn a_reply_shows_the_uploads_of_its_own_agent() {
     .await;
 
     for (node, shown) in [
-        (FIRST, ["a1"].as_slice()),
-        (child.as_str(), ["a2"].as_slice()),
-        (SIDE, ["a3"].as_slice()),
+        (FIRST, ["a1", "a2", "a3"].as_slice()),
+        (child.as_str(), ["a1", "a2", "a3"].as_slice()),
+        (SIDE, ["a1", "a2", "a3"].as_slice()),
     ] {
         let answered: Vec<String> = named_attachments(&backend, &master, FIRST, node)
             .await

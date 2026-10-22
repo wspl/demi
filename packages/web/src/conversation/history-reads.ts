@@ -77,7 +77,7 @@ export interface HistoryHolder {
   /** A conversation's side questions, whose transcripts its routes read by their nodes as a subagent's; a share has none. */
   sides?: HistoryAgent[]
   /** A conversation's descriptions of the attachments its replies name, which its pages bring (`describeAttachments`); a share has none. */
-  attachmentDescriptions?: Record<string, Record<string, ConversationAttachment>>
+  attachmentDescriptions?: Record<string, ConversationAttachment>
 }
 
 /**
@@ -229,7 +229,7 @@ export function createHistoryReads<T extends HistoryHolder>(
     const pageRange = { start: page.start, end: page.start + page.blocks.length }
     const failures = { ...page.failures }
     if (holder.attachmentDescriptions) {
-      describeAttachments({ attachmentDescriptions: holder.attachmentDescriptions }, node ?? holder.id, page.attachments ?? [])
+      describeAttachments({ attachmentDescriptions: holder.attachmentDescriptions }, page.attachments ?? [])
     }
     if (node === null) {
       holder.history = boundedHistory(addPage(holder.history, page, live(holder, null)), holder, pageRange)

@@ -84,22 +84,19 @@ export function takeAgents(
 }
 
 /**
- * Holds `attachments`, the descriptions of attachments the replies of the
- * node `node` show, as a frame or a page brings them; a description held
- * already stands, as the attachment does.
+ * Holds `attachments`, the descriptions of attachments of the conversation,
+ * as a frame or a page brings them; a description held already stands, as the
+ * attachment does.
  */
 export function describeAttachments(
   holder: Pick<Conversation, 'attachmentDescriptions'>,
-  node: string,
   attachments: readonly ConversationAttachment[],
 ): void {
-  // The raw map, so descriptions stay plain objects the offline copy can keep.
-  const held = toRaw(holder.attachmentDescriptions[node] ?? {})
-  const fresh = attachments.filter((attachment) => !(attachment.id in held))
-  if (fresh.length > 0) {
-    holder.attachmentDescriptions[node] = {
-      ...held,
-      ...Object.fromEntries(fresh.map((attachment) => [attachment.id, attachment])),
+  // The raw map's checks, so descriptions stay plain objects the offline copy can keep.
+  const held = toRaw(holder.attachmentDescriptions)
+  for (const attachment of attachments) {
+    if (!(attachment.id in held)) {
+      holder.attachmentDescriptions[attachment.id] = attachment
     }
   }
 }
@@ -123,7 +120,7 @@ export function applyConversationEvent(
       takeAgents(conversation, [event.agent], { epoch: held.epoch, revision: event.revision }, event.receivedAt, false)
     }
   } else if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
-    describeAttachments(conversation, event.node, event.attachments)
+    describeAttachments(conversation, event.attachments)
     // The root's messages are the runtime's.
     const record = event.node === conversation.id ? undefined : nodeRecord(conversation, event.node)
     if (record) {

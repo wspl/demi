@@ -222,8 +222,7 @@ impl Shard {
         // before the sequences, so every number copied lies below the next one.
         //
         // The source's root uploaded what the destination's root, which holds its
-        // history, did: its replies show them still. Another agent's stay that
-        // agent's, which no reply here shows.
+        // history, did; another agent's uploads stay recorded under that agent.
         let (source_root, destination_root) = (root_of(&source.id), root_of(&destination));
         let attachments: Vec<_> = services
             .conversations

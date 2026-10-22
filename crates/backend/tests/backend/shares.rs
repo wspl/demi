@@ -284,24 +284,22 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         .await;
     let own = transcript(&backend, &master, FIRST).await;
     let child = crate::conversations::child_of(&own.subagents[0]).number;
-    // The child's attachment, which no text of the root names, as the page
-    // was sent it when the child stored it.
-    let child_node = own.subagents[0].id.as_str().to_owned();
+    // The child's attachment, which no text of the root names as a block, as
+    // the page was sent it when the child stored it.
     let viewed = loop {
-        let (node, attachments) = socket.attachments_until().await;
+        let attachments = socket.attachments_until().await;
         if let Some(viewed) = attachments.into_iter().find(|attachment| attachment.id == "a3") {
-            assert_eq!(node.as_str(), child_node);
             break viewed.blob;
         }
     };
-    // The root's reply shows only what the root uploaded: its a2, not the
-    // user's a1, the child's a3 or a4, which does not exist yet.
+    // The root's reply shows the conversation's a1 and a2 that it names as
+    // blocks, whoever stored them, not a4, which does not exist yet.
     let shown: Vec<String> = crate::conversations::named_attachments(&backend, &master, FIRST, FIRST)
         .await
         .into_iter()
         .map(|attachment| attachment.id)
         .collect();
-    assert_eq!(shown, ["a2"]);
+    assert_eq!(shown, ["a1", "a2"]);
 
     let ShareAnswer::Conversation { token, .. } =
         shared(&share(&backend, &master, json!({ "kind": "conversation" })).await)
@@ -375,9 +373,10 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
     missed(&public(&backend, &answer, "/attachments/a4", None).await, "an attachment that did not exist");
-    // The user's file, which the answer names as a block, is no upload of
-    // the root's, so its reply does not show it and the share keeps none.
-    missed(&public(&backend, &answer, "/attachments/a1", None).await, "a file the agent did not upload");
+    // The user's file, which the answer names as a block too, is the
+    // conversation's as any upload is, so the share keeps it.
+    let sent = public(&backend, &answer, "/attachments/a1", None).await;
+    assert_eq!(sent.status, StatusCode::OK, "{}", String::from_utf8_lossy(&sent.body));
     // The child's attachment, which the answer names only as text, in a
     // sentence, in code and in a comment, is not served, nor its bytes.
     missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment named only as text");

@@ -75,7 +75,7 @@ export type ClientSessionEvent =
       versions: BlockVersions[]
       /** The facts of the error blocks in `blocks`. */
       failures: Failures
-      /** The descriptions of the attachments `blocks` name that the node's replies show. */
+      /** The descriptions of the attachments `blocks` name. */
       attachments: ConversationAttachment[]
       /** The index the client named when it subscribed; a reset elsewhere means a rewrite. */
       asked: number | undefined
@@ -88,7 +88,7 @@ export type ClientSessionEvent =
       version: Version
       /** The facts of the error blocks the patches bring. */
       failures: Failures
-      /** The descriptions of the attachments the patches name that the node's replies show. */
+      /** The descriptions of the attachments the patches name. */
       attachments: ConversationAttachment[]
     }
   | {

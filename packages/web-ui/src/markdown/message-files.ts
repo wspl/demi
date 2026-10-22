@@ -38,7 +38,6 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
     const next = files()
     const same = previous !== undefined && next !== undefined
       && previous.cwd === next.cwd
-      && previous.node === next.node
       && previous.home === next.home
       && previous.contents === next.contents
       && !previous.open === !next.open

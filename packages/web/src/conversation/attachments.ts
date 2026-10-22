@@ -9,9 +9,9 @@ import { useConversations } from './store'
  * The attachments that the messages of the conversation `conversationId` names
  * show, as its page gives them to its messages, from the descriptions the
  * conversation holds (`Conversation.attachmentDescriptions`): those its
- * transcript's frames and pages brought with the messages that name them,
- * as a reply of the node that asks shows them, so only one that node
- * uploaded.
+ * transcript's frames and pages brought with the messages that name them.
+ * An attachment belongs to the conversation, so a reply of any of its agents
+ * shows any of them, whoever uploaded it.
  *
  * A name with no description is missing: one above the conversation's
  * latest attachment may still come, and shows once the socket brings its
@@ -20,7 +20,7 @@ import { useConversations } from './store'
  */
 export function useMessageAttachments(
   conversationId: () => string | undefined,
-): ComputedRef<((id: string, node: string | null) => AttachmentLookup) | undefined> {
+): ComputedRef<((id: string) => AttachmentLookup) | undefined> {
   const conversations = useConversations()
   return computed(() => {
     const shown = conversationId()
@@ -28,8 +28,8 @@ export function useMessageAttachments(
     if (shown === undefined) {
       return undefined
     }
-    return (id, node) => {
-      const described = conversation?.attachmentDescriptions[node ?? shown]?.[id]
+    return (id) => {
+      const described = conversation?.attachmentDescriptions[id]
       return described ? { state: 'found', attachment: describedAttachment(described, blobUrl) } : { state: 'missing' }
     }
   })

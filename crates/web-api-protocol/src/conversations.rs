@@ -376,10 +376,9 @@ pub enum ConversationFrame {
     /// named at its open, and at each change of it; the page that wrote a
     /// change knows its revision from its save's answer.
     Draft { draft: ConversationDraft },
-    /// The attachments the agent `node` uploaded since the socket's last
-    /// metadata, which a reply of the node may already name.
+    /// The attachments agents uploaded since the socket's last metadata,
+    /// which a reply may already name.
     Attachments {
-        node: NodeId,
         attachments: Vec<ConversationAttachment>,
     },
 }
@@ -524,7 +523,7 @@ pub struct TranscriptPage {
     /// The versions of its blocks that have others; none in a share.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<BlockVersions>,
-    /// The attachments its blocks name that the agent's replies show.
+    /// The attachments its blocks name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<ConversationAttachment>,
 }

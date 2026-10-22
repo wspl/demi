@@ -55,7 +55,7 @@ pub(super) async fn transcript(
     let mut page = page_answer(read, no_node, no_block, outside, changed)?;
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
-    page.attachments = attachment_facts(&services.conversations, &record.id, &node, reply_blocks(&page.blocks))
+    page.attachments = attachment_facts(&services.conversations, &record.id, reply_blocks(&page.blocks))
         .await
         .map_err(ApiError::conversation_unreadable)?;
     Ok(Json(page))

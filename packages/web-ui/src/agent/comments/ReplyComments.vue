@@ -753,7 +753,6 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
     <Teleport v-for="question in questions" :key="question.id" :to="hostOf(question.id)">
       <AskCard
         v-if="!question.folded"
-        :node="question.id"
         :title="question.title"
         :turns="cardContent(question).turns"
         :failure="cardContent(question).failure"

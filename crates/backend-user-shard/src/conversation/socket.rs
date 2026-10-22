@@ -52,7 +52,7 @@
 //! # Attachments
 //!
 //! A transcript frame carries the attachments its blocks and its appended
-//! text name that the node's replies show (`attachment_facts`), read as it is
+//! text name, whichever agent stored them (`attachment_facts`), read as it is
 //! sent, as its failure facts are. A reply streams in pieces, so a frame that
 //! completes a tag in the text so far names it, whichever piece it ends in.
 //!
@@ -82,7 +82,7 @@ use demi_conversation_socket_protocol::{
     RemoveOutcome, SavedDelivery, SendMessage, ServerFrame, TranscriptPatch, Version, decode_client_frame,
 };
 use demi_shared_gates::Purpose;
-use demi_shared_types::{Block, BlockId, NodeId, TurnId, UserContentBlock};
+use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
 use demi_web_api_protocol::conversations::{ConversationFrame, ConversationMetadata, FirstMessageAnswer};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
@@ -778,7 +778,7 @@ impl Shard {
 
     /// A server frame as the page receives it: a transcript frame carries
     /// the failure facts of the error blocks it brings, and the attachments
-    /// its blocks and its appended text name that the node's replies show.
+    /// its blocks and its appended text name.
     /// Its blocks hold their media by reference already (§ Media by
     /// reference).
     async fn present(&self, conversation: &ConversationId, streamed: &mut StreamedText, frame: ServerFrame) -> ServerFrame {
@@ -795,9 +795,9 @@ impl Shard {
                 ..
             } => {
                 let failures = failure_facts(assembly, self.user(), &blocks).await;
-                let attachments = self.named_attachments(conversation, &node, reply_blocks(&blocks)).await;
+                let attachments = self.named_attachments(conversation, reply_blocks(&blocks)).await;
                 streamed.reset(&node, start, &blocks);
-                streamed.sent(&node, &attachments);
+                streamed.sent(&attachments);
                 ServerFrame::TranscriptReset {
                     node,
                     start,
@@ -837,16 +837,15 @@ impl Shard {
         }
     }
 
-    /// The attachments `replies` name that the replies of `node` show. A
+    /// The attachments `replies` name that the conversation has. A
     /// failed read is logged and carries none: the reply shows the tag's
     /// place as missing, as for a number the conversation does not have.
     async fn named_attachments<'a>(
         &self,
         conversation: &ConversationId,
-        node: &NodeId,
         replies: impl IntoIterator<Item = &'a demi_shared_types::TextBlock>,
     ) -> Vec<ConversationAttachment> {
-        attachment_facts(&self.services().conversations, conversation, node, replies)
+        attachment_facts(&self.services().conversations, conversation, replies)
             .await
             .unwrap_or_else(|error| {
                 tracing::warn!(
@@ -914,18 +913,11 @@ impl Shard {
             shown.draft = Some(draft.revision);
             frames.push(ConversationFrame::Draft { draft });
         }
-        let mut by_node: Vec<(NodeId, Vec<ConversationAttachment>)> = Vec::new();
-        for (node, row) in uploaded {
-            match by_node.iter_mut().find(|(each, _)| *each == node) {
-                Some((_, attachments)) => attachments.push(row.description()),
-                None => by_node.push((node, vec![row.description()])),
-            }
+        if !uploaded.is_empty() {
+            frames.push(ConversationFrame::Attachments {
+                attachments: uploaded.into_iter().map(|row| row.description()).collect(),
+            });
         }
-        frames.extend(
-            by_node
-                .into_iter()
-                .map(|(node, attachments)| ConversationFrame::Attachments { node, attachments }),
-        );
         if frames.is_empty() {
             return true;
         }

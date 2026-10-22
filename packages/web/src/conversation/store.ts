@@ -1186,7 +1186,7 @@ export const useConversations = defineStore('conversations', () => {
         if (parsed.data.type === 'conversation') {
           takeMetadata(conversation, parsed.data.metadata)
         } else if (parsed.data.type === 'attachments') {
-          describeAttachments(conversation, parsed.data.node, parsed.data.attachments)
+          describeAttachments(conversation, parsed.data.attachments)
         } else {
           // A draft no newer than the one held, as this page's own save's,
           // which its answer's revision already holds, changes nothing.
@@ -1302,9 +1302,7 @@ export const useConversations = defineStore('conversations', () => {
       }
     }
     if (copy) {
-      for (const [node, described] of Object.entries(copy.attachments)) {
-        describeAttachments(conversation, node, Object.values(described))
-      }
+      describeAttachments(conversation, Object.values(copy.attachments))
     }
     copies.shownFromDisk(conversation.id, conversation.id, root.transcript)
     conversation.history = root.transcript
@@ -1334,7 +1332,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.shownAt = null
     conversation.shownWithin = 0
     conversation.failures = page.failures ?? {}
-    describeAttachments(conversation, conversation.id, page.attachments ?? [])
+    describeAttachments(conversation, page.attachments ?? [])
     conversation.instructions = page.instructions
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)

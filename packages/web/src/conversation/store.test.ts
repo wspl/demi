@@ -3848,8 +3848,8 @@ function shownFacts(conversation: ReturnType<typeof useConversations>['items'][n
     workflows: metadata?.workflows.list.state ?? null,
     // The tabs are the conversation's entry's, which the list brings before the conversation opens.
     tabs: useProduct().snapshot?.conversations.find((entry) => entry.id === conversation.id)?.panel.tabs.map((tab) => tab.id) ?? [],
-    attachment: conversation.attachmentDescriptions[conversation.id]?.a1
-      ? [conversation.attachmentDescriptions[conversation.id]!.a1!.width, conversation.attachmentDescriptions[conversation.id]!.a1!.height]
+    attachment: conversation.attachmentDescriptions.a1
+      ? [conversation.attachmentDescriptions.a1.width, conversation.attachmentDescriptions.a1.height]
       : null,
   }
 }
@@ -3947,19 +3947,19 @@ test('an attachment uploaded after the opening reaches the open page with its de
   const first = store.items.find((item) => item.id === FIRST)!
   await store.activate(FIRST)
   const before = requests.length
-  sendOnSockets(FIRST, { type: 'attachments', node: FIRST, attachments: [{ id: 'a2', name: 'plot.png', mediaType: 'image/png', size: 4096, width: 800, height: 600, blob: SHA }] })
+  sendOnSockets(FIRST, { type: 'attachments', attachments: [{ id: 'a2', name: 'plot.png', mediaType: 'image/png', size: 4096, width: 800, height: 600, blob: SHA }] })
   await nextTick()
-  expect(first.attachmentDescriptions[FIRST]?.a2).toMatchObject({ name: 'plot.png', width: 800, height: 600 })
+  expect(first.attachmentDescriptions.a2).toMatchObject({ name: 'plot.png', width: 800, height: 600 })
   expect(requests.slice(before)).toEqual([])
   // A second upload joins the first, and the disk keeps both: the descriptions
   // stay plain objects, which IndexedDB can clone.
-  sendOnSockets(FIRST, { type: 'attachments', node: FIRST, attachments: [{ id: 'a3', name: 'map.png', mediaType: 'image/png', size: 1024, width: 400, height: 300, blob: SHA }] })
+  sendOnSockets(FIRST, { type: 'attachments', attachments: [{ id: 'a3', name: 'map.png', mediaType: 'image/png', size: 1024, width: 400, height: 300, blob: SHA }] })
   await nextTick()
   await store.keepCopies()
   const copy = await readConversationCopy(productState().user.id, FIRST)
-  expect(Object.keys(copy?.attachments[FIRST] ?? {}).sort()).toEqual(Object.keys(first.attachmentDescriptions[FIRST]!).sort())
-  expect(copy?.attachments[FIRST]?.a2).toMatchObject({ name: 'plot.png' })
-  expect(copy?.attachments[FIRST]?.a3).toMatchObject({ name: 'map.png', width: 400 })
+  expect(Object.keys(copy?.attachments ?? {}).sort()).toEqual(Object.keys(first.attachmentDescriptions).sort())
+  expect(copy?.attachments.a2).toMatchObject({ name: 'plot.png' })
+  expect(copy?.attachments.a3).toMatchObject({ name: 'map.png', width: 400 })
   signOut()
 })
 

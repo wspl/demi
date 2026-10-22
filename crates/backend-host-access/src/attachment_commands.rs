@@ -257,8 +257,7 @@ async fn upload(
     let device = DeviceId::try_from(invocation.host.as_str())
         .map_err(|_| RpcError::Failed(format!("{}: names no device", invocation.host)))?;
     // The node of the agent that runs the command, a side question's
-    // included, uploads the files, which its replies alone show; none when
-    // the user runs it.
+    // included, is recorded as the files' uploader; none when the user runs it.
     let node = invocation.caller.as_ref().map(|caller| caller.node.clone());
     let mut uploaded = Vec::new();
     let mut failed = false;

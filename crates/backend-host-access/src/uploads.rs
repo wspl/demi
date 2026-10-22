@@ -53,7 +53,7 @@ impl dyn HostShard + '_ {
             size: bytes.len() as u64,
             pixels: pixel_size(opening, &record.media_type),
             blob: record.sha256.clone(),
-            // The user's file is no agent's upload, which no reply shows.
+            // The user's file is no agent's upload.
             node: None,
             source: None,
         };

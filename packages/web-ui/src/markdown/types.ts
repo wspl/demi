@@ -100,15 +100,12 @@ export interface ConversationFiles {
    */
   showInFiles?(target: Pick<MessageFileTarget, 'path' | 'root'>): void
   /**
-   * The conversation's attachment `id`, such as `a3`, as a reply of the
-   * agent of `node` shows it: null for the conversation's own agent, a
-   * subagent's or a side question's id otherwise. A reply shows only what
-   * its own agent uploaded, or the agent it was forked from for the history
-   * it copied, so a file the user sent or another agent uploaded is missing
-   * there. A render reads it as it is now and renders again when the answer
-   * arrives; absent, an attachment shows its alt text.
+   * The conversation's attachment `id`, such as `a3`: a reply shows any
+   * attachment of its conversation, whoever uploaded it. A render reads it as
+   * it is now and renders again when the answer arrives; absent, an
+   * attachment shows its alt text.
    */
-  attachment?(id: string, node: string | null): AttachmentLookup
+  attachment?(id: string): AttachmentLookup
   /**
    * Opens attachment `id`, a file that is no image, video or audio, in the
    * work panel through the `attachment` intent, previewed from its copy; absent
@@ -158,11 +155,6 @@ export interface MessageCommitTarget {
  */
 export interface MessageFiles extends ConversationFiles {
   cwd: string
-  /**
-   * The node of the agent that wrote the messages: a subagent's or a side
-   * question's id; null or absent, the conversation's own agent.
-   */
-  node?: string | null
 }
 
 /**

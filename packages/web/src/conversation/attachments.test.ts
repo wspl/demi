@@ -82,18 +82,17 @@ function stubBackend(
 
 /**
  * The conversation holds the description of attachment `id`, `held`, as
- * its transcript's frames bring it, for the replies of `node`.
+ * its transcript's frames bring it.
  */
 function describe(
   pinia: ReturnType<typeof createPinia>,
   id: string,
   held: { name: string; mediaType: string; source?: { host: string; path: string } },
-  node = CONVERSATION,
   blob = BLOB,
 ): void {
   const conversation = useConversations(pinia).items.find((item) => item.id === CONVERSATION)!
   const { name, mediaType, source } = held
-  describeAttachments(conversation, node, [{
+  describeAttachments(conversation, [{
     id, name, mediaType, size: 4, ...(mediaType.startsWith('image/') ? { width: 4, height: 3 } : {}), blob, ...(source ? { source } : {}),
   }])
 }
@@ -157,13 +156,13 @@ test('a reply that named an attachment before its upload shows the image in plac
   // The deadline only guards against a reply that never shows it.
 }, 2000)
 
-// A reply shows only what its own agent uploaded: a subagent's reply that names
-// the root's a2, which it never uploaded, shows a2 missing, and its own a3
-// shows. The backend stub answers each number only to the agent that uploaded
-// it, as the transcript's frames do. Planted defect this catches: a lookup
-// that ignores the reply's agent, so a guessed number shows another agent's
-// file. A few milliseconds.
-test('a subagent\'s reply shows the attachment it uploaded and a number it did not upload as missing', async () => {
+// An attachment belongs to the conversation: a subagent's reply that names
+// a2 and a3, which the conversation describes, shows both, and shows a9, which
+// it does not describe, missing; the lookup asks who wrote the reply, not who
+// uploaded the file. Planted defect this catches: a lookup keyed by the reply's
+// agent, so a reply that names another agent's file shows it missing. A few
+// milliseconds.
+test('a subagent\'s reply shows the attachments of the conversation, whichever agent uploaded them', async () => {
   const CHILD = 'node-child'
   const asked = stubBackend(new Set())
   const pinia = createPinia()
@@ -173,7 +172,7 @@ test('a subagent\'s reply shows the attachment it uploaded and a number it did n
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
   describe(pinia, 'a2', { name: 'a2.png', mediaType: 'image/png' })
-  describe(pinia, 'a3', { name: 'a3.png', mediaType: 'image/png' }, CHILD)
+  describe(pinia, 'a3', { name: 'a3.png', mediaType: 'image/png' })
   const page = document.createElement('div')
   document.body.append(page)
   const app = createApp({
@@ -181,16 +180,16 @@ test('a subagent\'s reply shows the attachment it uploaded and a number it did n
       provideMediaViewer()
       const attachments = useMessageAttachments(() => CONVERSATION)
       provideMessageFiles(() => ({ cwd: '/work', node: CHILD, ...(attachments.value ? { attachment: attachments.value } : {}) }))
-      return () => h(StreamedMarkdown, { content: 'The screenshots:\n\n<attachment id="a2" />\n\nMine:\n\n<attachment id="a3" />' })
+      return () => h(StreamedMarkdown, { content: 'The screenshots:\n\n<attachment id="a2" />\n\nMine:\n\n<attachment id="a3" />\n\nNone:\n\n<attachment id="a9" />' })
     },
   })
   app.use(pinia)
-  const shown = changed(page, () => page.querySelector('img') !== null && page.textContent?.includes('No attachment') === true)
+  const shown = changed(page, () => page.querySelectorAll('img').length === 2 && page.textContent?.includes('No attachment') === true)
   app.mount(page)
   await shown
   const reply = page.firstElementChild!
-  expect(reply.textContent).toContain('No attachment a2 in this conversation')
-  expect([...reply.querySelectorAll('img')].map((image) => image.getAttribute('alt'))).toEqual(['a3.png'])
+  expect([...reply.querySelectorAll('img')].map((image) => image.getAttribute('alt'))).toEqual(['a2.png', 'a3.png'])
+  expect(reply.textContent).toContain('No attachment a9 in this conversation')
   expect(asked).toEqual([])
   app.unmount()
   product.stop()
@@ -450,7 +449,7 @@ test('a picture attachment opens in the Media tab as its copy, asking nothing ab
   product.start()
   channels.last().connect(productState({ conversations: [conversationSummary(CONVERSATION, 'Work')] }))
   describe(pinia, 'a15', held)
-  describe(pinia, 'a16', held, CONVERSATION, OTHER_BLOB)
+  describe(pinia, 'a16', held, OTHER_BLOB)
   const { host, contents, described } = openingHost(present)
   let revealed = 0
   const page = document.createElement('div')

@@ -273,12 +273,11 @@ impl Socket {
         }
     }
 
-    /// The next attachments the socket sends as they are stored, with the
-    /// node that uploaded them.
-    pub(crate) async fn attachments_until(&mut self) -> (NodeId, Vec<demi_web_api_protocol::attachments::ConversationAttachment>) {
+    /// The next attachments the socket sends as they are stored.
+    pub(crate) async fn attachments_until(&mut self) -> Vec<demi_web_api_protocol::attachments::ConversationAttachment> {
         loop {
-            if let ConversationFrame::Attachments { node, attachments } = self.conversation_frame().await {
-                return (node, attachments);
+            if let ConversationFrame::Attachments { attachments } = self.conversation_frame().await {
+                return attachments;
             }
         }
     }
@@ -789,7 +788,7 @@ pub(crate) fn delivering(text: &str, numbers: &[&str]) -> String {
 }
 
 /// The attachments the latest page of the agent `node`'s transcript carries:
-/// those its replies name that they show.
+/// those its replies name.
 pub(crate) async fn named_attachments(
     backend: &TestBackend,
     session: &Session,

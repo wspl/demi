@@ -263,11 +263,11 @@ function attachmentAudio(attachment: MessageAttachment): string {
 export const ATTACHMENT_CARD_ATTRIBUTE = 'data-attachment-card'
 
 /**
- * The attachment `id` a message names, as `files` show it to the agent that
- * wrote the message; none while the page cannot ask.
+ * The attachment `id` a message names, as `files` show it; none while the
+ * page cannot ask.
  */
 export function messageAttachment(files: MessageFiles | undefined, id: string): AttachmentLookup | undefined {
-  return files?.attachment?.(id, files.node ?? null)
+  return files?.attachment?.(id)
 }
 
 /**

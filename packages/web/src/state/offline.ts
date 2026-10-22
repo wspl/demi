@@ -108,8 +108,8 @@ const conversationRecordSchema = z.object({
   userId: z.string(),
   metadata: conversationMetadataSchema,
   agents: z.object({ version: versionSchema, entries: z.array(agentEntrySchema) }),
-  /** The descriptions of the attachments its replies name, by node and id. */
-  attachments: z.record(z.string(), z.record(z.string(), conversationAttachmentSchema)),
+  /** The descriptions of the attachments its replies name, by id. */
+  attachments: z.record(z.string(), conversationAttachmentSchema),
 })
 
 /** A run of blocks the disk holds whole, from `start` to before `end`. */

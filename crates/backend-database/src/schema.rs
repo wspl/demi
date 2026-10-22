@@ -2149,14 +2149,12 @@ ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 /// longer writes the file there (`crates/backend-host-access/src/uploads.rs`): see
 /// [`number_attachments`].
 ///
-/// An attachment keeps the node of the agent that uploaded it, whose replies alone
-/// show it. No release kept it:
+/// An attachment keeps the node of the agent that uploaded it. No release kept it:
 ///
 /// - A file a message holds, which this step or an earlier one numbered, is the
 ///   user's.
 /// - Every other row, an agent's upload, is the upload of the agent whose text
-///   first delivered it as a block, or the root's when none did, so a reply that
-///   showed it still does.
+///   first delivered it as a block, or the root's when none did.
 fn conversation_from_0_1_28(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "ALTER TABLE attachments ADD COLUMN node_id TEXT;
@@ -5560,7 +5558,8 @@ mod tests {
     /// they are, and only the agent's upload of 0.1.21 is the root's.
     ///
     /// Planted defect this catches: the last step taking every row an early step
-    /// numbered for the root's upload, so the root's replies show the user's files.
+    /// numbered for the root's upload, so the user's files are recorded as the
+    /// root's and the socket announces them as agent uploads.
     ///
     /// One small database, milliseconds.
     #[test]

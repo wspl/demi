@@ -20,9 +20,10 @@
 //! A row is written once, or copied into a Fork's destination, and never
 //! changes.
 //!
-//! A reply shows only the attachments its own agent uploaded, or the agent it was
-//! forked from for the history it copied. The page asks for each as
-//! [`read_shown`] reads it, and a share keeps each as [`SHOWN`] pairs it.
+//! An attachment belongs to the conversation: a reply of any of its agents shows
+//! any attachment it has, whoever stored it, as [`read_all`] reads them. The node
+//! only records who stored one, which also decides which rows [`uploaded_after`]
+//! announces: an agent's upload, never a file the user sent.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -127,22 +128,6 @@ pub struct StoredAttachment {
     pub node: Option<NodeId>,
 }
 
-/// The table `shown (node, uploader)`, a recursive common table expression a
-/// statement starts `WITH`.
-///
-/// The replies of `node` show what `uploader` uploaded, for each node and
-/// itself, and for each node and every agent it was forked from, recursively,
-/// since the history a forked agent copied was written by the agent it was forked
-/// from. A file the user sent, or another agent uploaded, is no file of its
-/// replies.
-pub const SHOWN: &str = "RECURSIVE shown (node, uploader) AS (
-       SELECT id, id FROM nodes
-       UNION
-       SELECT shown.node, source.id FROM shown
-         JOIN nodes AS forked ON forked.id = shown.uploader
-         JOIN nodes AS source ON source.number = forked.forked_from
-     )";
-
 /// Writes `rows` in `transaction`, the caller's, which gives their numbers
 /// or copies them; a number that has a row keeps it.
 pub fn insert(transaction: &Transaction<'_>, rows: &[StoredAttachment]) -> Result<(), StorageError> {
@@ -183,57 +168,28 @@ pub fn read(
         .transpose()
 }
 
-/// The attachment `number` as a reply of the node `node` shows it: none when
-/// the conversation has none by it, or [`SHOWN`] does not pair the node
-/// with its uploader.
-pub fn read_shown(
-    connection: &Connection,
-    number: AttachmentNumber,
-    node: &NodeId,
-) -> Result<Option<AttachmentRow>, StorageError> {
-    connection
-        .prepare_cached(&format!(
-            "WITH {SHOWN}
-             SELECT number, name, media_type, size, width, height, blob, source_host, source_path
-             FROM attachments AS attachment JOIN shown ON shown.uploader = attachment.node_id
-             WHERE attachment.number = ?1 AND shown.node = ?2"
-        ))?
-        .query_row(params![column(number.0), node.as_str()], |row| Ok(decode_row(row)))
-        .optional()?
-        .transpose()
-}
-
-/// The attachments of `numbers` as a reply of the node `node` shows them,
-/// each that the conversation has and [`SHOWN`] pairs with the node, in
-/// their order.
-pub fn read_all_shown(
+/// The attachments of `numbers` that the conversation has, in their order.
+pub fn read_all(
     connection: &Connection,
     numbers: &BTreeSet<AttachmentNumber>,
-    node: &NodeId,
 ) -> Result<Vec<AttachmentRow>, StorageError> {
     let mut rows = Vec::new();
     for number in numbers {
-        rows.extend(read_shown(connection, *number, node)?);
+        rows.extend(read(connection, *number)?);
     }
     Ok(rows)
 }
 
-/// The attachments agents uploaded with a number above `after`, each with
-/// the node of the agent that uploaded it, in their order; none a user sent.
-pub fn uploaded_after(connection: &Connection, after: u64) -> Result<Vec<(NodeId, AttachmentRow)>, StorageError> {
+/// The attachments agents uploaded with a number above `after`, in their
+/// order; none a user sent.
+pub fn uploaded_after(connection: &Connection, after: u64) -> Result<Vec<AttachmentRow>, StorageError> {
     connection
         .prepare_cached(
-            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path, node_id
+            "SELECT number, name, media_type, size, width, height, blob, source_host, source_path
              FROM attachments WHERE number > ?1 AND node_id IS NOT NULL ORDER BY number",
         )?
-        .query_map([column(after)], |row| {
-            Ok((row.get::<_, String>("node_id")?, decode_row(row)))
-        })?
-        .map(|row| {
-            let (node, row) = row?;
-            let node = decode(TABLE, "node_id", NodeId::try_from(node))?;
-            Ok((node, row?))
-        })
+        .query_map([column(after)], |row| Ok(decode_row(row)))?
+        .map(|row| row?)
         .collect()
 }
 
