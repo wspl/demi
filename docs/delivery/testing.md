@@ -1,63 +1,36 @@
 # Testing
 
-Test code is costly and rare: every test is code to read, run and keep
-true, and a test that cannot fail for a reason a user would notice is only
-that cost. A test is written only when both hold:
+Test code is rare. Anything could be tested, and tests written freely
+outgrow the code they test; a test is written only for logic that is
+complex or uncertain, where running the product would not show whether it is
+right:
 
-- The behavior, broken, would reach a user or another program.
-- Nothing else would catch it: not the compiler, not the types or the
-  generated contracts, not a test already there.
+- an algorithm, such as the transcript's virtual list;
+- a layout or a value computed from many inputs;
+- concurrency and ordering, such as streams that must not wait on each
+  other, or a reconnect.
 
-For example, the pairing scenario starts a real backend and a real runner,
-pairs the runner with a code and runs a command on it. It fails when the
-device token is malformed, when the runner cannot connect, or when the
-backend loses the device. A unit test that asserts the token is 64
-hexadecimal characters adds nothing: it cannot fail unless the scenario
-fails too, and it breaks when the format changes for a good reason.
+A test gives the logic input at its interface and checks its output, never
+its internal steps. The logic is changed often; a test of its steps goes
+stale with every change and is rewritten, where a test of its input and
+output still holds. Every other rule here follows from this one.
 
-The commands that run the tests are in `crates/xtask/src/main.rs`, and the
-backend's scenario suites in `crates/backend/tests/backend/support.rs`.
+Not tested:
 
-## What is never tested
+- A user's path through the product, such as pairing a device or sending a
+  message: an agent accepts it on the running product.
+- What the screen shows: the gallery and the product check's screenshots
+  show it.
+- Compatibility across versions, stored data or the messages between
+  programs: an agent accepts it when it upgrades.
+- Wording: a prompt, a help text, a UI string or a message.
+- Anything simple enough to be right by reading it.
 
-- Wording: a prompt, a help text, a UI string or a message. A test may find
-  its place in a structure, never its words.
-- What the code restates: serialization a derive produces, constants,
-  accessors, the steps inside a function, the shape of a value nothing else
-  reads.
-- What cannot fail, such as output that contains no panic.
-- A defect asserted as correct to prove something else. Performance is
-  shown by measurement; a fixed bug of complexity, work that grew as the
-  product of two sizes, may count the work and bound it by the sizes.
-- A helper alone, when users reach the behavior through an entry point:
-  the helper's test passes even when nothing calls it.
+A fixed bug is verified where it was seen; being a bug does not make it need
+a test. A test is seen to fail with the defect it guards against, planted,
+before it is committed.
 
-A fixed bug gets a test only when it meets the bar above, like any other
-behavior.
-
-## Where a test runs
-
-- **Scenarios first.** The real programs through their real boundaries: the
-  backend over HTTP and WebSocket, real runner processes, and a scripted
-  model (`crates/backend/tests/backend/support.rs`). One scenario covers
-  many modules and survives refactoring.
-- **Tables for dense logic.** Parsers, validators, state machines and a
-  vendor stream's conversion, with a table of their edge cases, where
-  reaching each case through a scenario would cost more than the logic.
-- **Contracts at their boundary.** A wire format another program or the web
-  app reads is pinned where it is encoded or decoded, with the values the
-  other side depends on. What generation already carries to the web app
-  ([Generated TypeScript](../../crates/xtask/src/contracts/mod.rs)), field
-  names and tags, is not pinned again; the fixtures both sides decode, the
-  rules the generator translates, checks only one side makes and stored
-  formats are.
-
-A test covers a behavior once, at one level.
-
-## Proof
-
-A test is seen to fail with the defect it guards against, at the parent
-commit or with the defect planted, before it is committed.
+The commands that run the tests are in `crates/xtask/src/main.rs`.
 
 ## Time and stability
 
