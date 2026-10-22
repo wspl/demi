@@ -456,7 +456,7 @@ fn background_call(command: &str, background: bool, description: &str) -> Vec<Pr
         event::tool_call(
             &format!("work-{command}"),
             "work",
-            json!({ "commandId": command, "background": background, "description": description }),
+            json!({ "commandId": command, "service": background, "description": description }),
         ),
         event::response(1, 1),
     ]
