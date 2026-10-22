@@ -3164,6 +3164,7 @@ dependencies = [
  "demi-runner-shell",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-shared-types",
  "dunce",
  "futures-util",
  "hostname",

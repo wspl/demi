@@ -19,6 +19,7 @@ use std::{
     rc::Rc,
 };
 
+use demi_host_interface::ProcessEnd;
 use demi_runner_protocol::wire::{self, Inbound, JOB_VIEW_BYTES, KeptJob};
 use demi_shared_types::StreamKind;
 use tokio::{sync::watch, time::Instant};
@@ -106,6 +107,11 @@ pub(crate) struct JobEntry {
     /// Whether its start waits to go again over the connection that
     /// serves: its controls wait for it.
     resending: bool,
+    /// When the backend learned of the job, for its `command.ended` line.
+    began: Instant,
+    /// The device whose runner has it, for the same line; none until a
+    /// runner serves a job a restarted backend took up.
+    host_id: Option<String>,
 }
 
 /// What arrives of a job while its kept output is read again after a new
@@ -288,6 +294,8 @@ impl DeviceJobs {
                 sent_to: None,
                 start: None,
                 resending: false,
+                began: Instant::now(),
+                host_id: Some(link.device().to_owned()),
             },
         );
         claimed
@@ -347,6 +355,8 @@ impl DeviceJobs {
             sent_to: None,
             start: None,
             resending: false,
+            began: Instant::now(),
+            host_id: None,
         });
         job.parked = false;
         job.origin = entry.origin;
@@ -456,10 +466,22 @@ impl DeviceJobs {
     /// connection's read, and the job stays as it was when the first
     /// connection was lost.
     pub(crate) fn detach(&self, link: &Link) {
-        for job in self.0.borrow_mut().jobs.values_mut() {
+        for (id, job) in self.0.borrow_mut().jobs.iter_mut() {
             if job.attached.as_ref().is_some_and(|attached| attached.is(link)) {
                 job.attached = None;
                 job.away_since = Some(Instant::now());
+                if job.shared.ended().is_none() {
+                    tracing::info!(
+                        event = "command.state_changed",
+                        job_id = id.as_str(),
+                        host_id = link.device(),
+                        from = "running",
+                        to = "away",
+                        cause = "link_ended",
+                        age_ms = job.began.elapsed().as_millis() as u64,
+                        "a command's job waits for its runner's next connection"
+                    );
+                }
             }
         }
     }
@@ -469,9 +491,9 @@ impl DeviceJobs {
     /// waited too gives way to the loss, since its output cannot be read.
     pub fn lose_all(&self, reason: &str) {
         self.0.borrow_mut().contexts.clear();
-        let jobs: Vec<JobEntry> = self.0.borrow_mut().jobs.drain().map(|(_, job)| job).collect();
-        for job in jobs {
-            job.lose(reason);
+        let jobs: Vec<(String, JobEntry)> = self.0.borrow_mut().jobs.drain().collect();
+        for (id, job) in jobs {
+            job.lose(&id, reason);
         }
     }
 
@@ -530,7 +552,20 @@ impl DeviceJobs {
                 .jobs
                 .entry(kept.job_id.clone())
                 .or_insert_with(JobEntry::parked);
+            if job.attached.is_none() {
+                tracing::info!(
+                    event = "command.state_changed",
+                    job_id = kept.job_id.as_str(),
+                    host_id = link.device(),
+                    from = if job.parked { "parked" } else { "away" },
+                    to = if kept.ended.is_none() { "running" } else { "ended" },
+                    cause = "runner_listed",
+                    ms_in_from = job.away_since.map(|since| since.elapsed().as_millis() as u64),
+                    "a command's job was found on its runner's new connection"
+                );
+            }
             job.attached = Some(link.downgrade());
+            job.host_id = Some(link.device().to_owned());
             job.away_since = None;
             job.attachments.send_modify(|count| *count += 1);
             // The runner has it: its start never goes again.
@@ -580,7 +615,7 @@ impl DeviceJobs {
             }
             if let Some(job) = table.jobs.remove(&id) {
                 adoption.lost += 1;
-                job.lose(lost);
+                job.lose(&id, lost);
             }
         }
         // A recorded job the runner does not list was lost; its agent
@@ -589,7 +624,9 @@ impl DeviceJobs {
             if !listed.contains(id.as_str()) && !table.jobs.contains_key(&id) {
                 let job = JobEntry::parked();
                 adoption.lost += 1;
-                job.shared.finish(JobEnd::lost(lost));
+                let end = JobEnd::lost(lost);
+                command_ended(&id, &job, &end);
+                job.shared.finish(end);
                 table.jobs.insert(id, job);
             }
         }
@@ -629,6 +666,34 @@ impl DeviceJobs {
     }
 }
 
+/// The line a job's end writes, for the Host and the conversation it ran
+/// for when the backend knows them.
+fn command_ended(id: &str, job: &JobEntry, end: &JobEnd) {
+    let (outcome, exit, signal, reason) = match &end.status {
+        ProcessEnd::Exited(code) => ("exited", Some(*code), None, None),
+        ProcessEnd::Signalled(signal) => ("signalled", None, Some(signal.as_str()), None),
+        ProcessEnd::NotStarted(_) => ("not_started", None, None, None),
+        ProcessEnd::Lost(reason) => ("lost", None, None, Some(reason.as_str())),
+    };
+    let origin = job.origin.as_deref();
+    let caller = origin.and_then(|origin| origin.caller.as_ref());
+    tracing::info!(
+        event = "command.ended",
+        job_id = id,
+        host_id = job.host_id.as_deref(),
+        conversation = origin.map(|origin| origin.context.conversation.as_str()),
+        node = caller.map(|caller| caller.node.to_string()),
+        turn = caller.and_then(|caller| caller.turn.as_ref()).map(ToString::to_string),
+        outcome,
+        exit,
+        signal,
+        reason,
+        ms = job.began.elapsed().as_millis() as u64,
+        output_bytes = end.output.map(|output| output.stdout_bytes + output.stderr_bytes),
+        "a command's job ended"
+    );
+}
+
 /// The job `id` of `table` ended with `end`: its consumer learns the end,
 /// and it leaves the table, unless it is parked, when it waits there for
 /// the agent that takes it up.
@@ -637,6 +702,7 @@ fn settle(table: &mut Table, id: &str, end: JobEnd) {
         return;
     };
     job.cancel.cancel();
+    command_ended(id, job, &end);
     job.shared.finish(end);
     if !job.parked {
         forget(table, id);
@@ -688,18 +754,22 @@ impl JobEntry {
             sent_to: None,
             start: None,
             resending: false,
+            began: Instant::now(),
+            host_id: None,
         }
     }
 
     /// Ends the job as lost for `reason`, after the output that waited for
     /// a read of its kept output.
-    fn lose(mut self, reason: &str) {
+    fn lose(mut self, id: &str, reason: &str) {
         if let Some(resync) = self.resyncing.take() {
             // The loss replaces the end that waited.
             let _end = resync.release(&mut self);
         }
         self.cancel.cancel();
-        self.shared.finish(JobEnd::lost(reason));
+        let end = JobEnd::lost(reason);
+        command_ended(id, &self, &end);
+        self.shared.finish(end);
     }
 
     /// Passes `chunk` to the consumer: the part of a stream's first

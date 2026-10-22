@@ -585,7 +585,7 @@ impl RemoteShellEnvironment {
         match (self.0.options.context)().await {
             Ok(context) => Some(context),
             Err(error) => {
-                tracing::warn!("a command taken up again has no command context: {error}");
+                tracing::warn!(event = "command_context.missing", host_id = self.0.options.host.device_id().as_deref(), %error, "a command taken up again has no command context");
                 None
             }
         }
@@ -682,7 +682,7 @@ impl RemoteShellEnvironment {
                     // The job's end or the connection's loss says what
                     // happened; a following that could not change is
                     // diagnostic.
-                    tracing::debug!(%command, "could not change the job's following: {error}");
+                    tracing::debug!(event = "job_follow.change_failed", host_id = self.0.options.host.device_id().as_deref(), %command, %error, "the job's following could not change");
                 }
             }
             tokio::select! {
@@ -828,7 +828,7 @@ impl RemoteShellEnvironment {
             None => (WholeOutput::new(received, None), String::new(), false),
             Some(Ok(output)) => (output, String::new(), true),
             Some(Err(error)) => {
-                tracing::warn!(%command, "could not read the command's kept output: {error}");
+                tracing::warn!(event = "command_output.read_failed", host_id = self.0.options.host.device_id().as_deref(), %command, %error, "the command's kept output could not be read");
                 // The output ends with each stream's newest bytes the
                 // runner sent, past what lies between them and the start.
                 let newest = Received::newest_bytes(&streams);

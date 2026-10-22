@@ -368,9 +368,10 @@ impl Owner<'_> {
                 // Before any job of this connection starts, so a
                 // conversation made since the backend listed them keeps the
                 // directory its first job makes.
+                let _hello = demi_runner_process::steps::step("hello", "backend");
                 if let Err(error) = registered.scratch.keep_only(&conversations, &archived).await {
                     // The next connection tries again.
-                    tracing::warn!("the scratch directories could not be listed: {error}");
+                    tracing::warn!(event = "scratch_directories.list_failed", %error, "the scratch directories could not be listed");
                 }
                 let state = registered.state.clone();
                 let config = RunnerConfig {
@@ -390,7 +391,7 @@ impl Owner<'_> {
                 // The code is a secret for the person at the console; the log
                 // only says that one is waiting.
                 management.tell_code(&claim_token);
-                tracing::info!("waiting to be paired");
+                tracing::info!(event = "runner.connection_changed", to = "waiting_to_pair", cause = "claim_pending", "the runner waits to be paired");
             }
             Inbound::Claimed {
                 device_token,
@@ -410,7 +411,7 @@ impl Owner<'_> {
                 self.report_installed().await?;
             }
             Inbound::HelloError { code, reason } => {
-                tracing::warn!("registration refused ({code}): {reason}");
+                tracing::warn!(event = "runner.registration_refused", code = %code, %reason, "the backend refused the runner's registration");
                 if code == wire::HelloErrorCode::AlreadyConnected {
                     return Ok(Some(End::Disconnected));
                 }
@@ -462,6 +463,8 @@ impl Owner<'_> {
         let control = self.live.control.clone();
         let closed = self.live.closed.clone();
         self.work.spawn(async move {
+            let began = std::time::Instant::now();
+            let size = expected.size;
             let placed = match &installed {
                 Some(installed) => {
                     installed
@@ -477,11 +480,11 @@ impl Owner<'_> {
             }
             let reply = match placed {
                 Ok(()) => {
-                    tracing::info!("runner release {release} is downloaded ahead");
+                    tracing::info!(event = "runner_release.prefetched", release = release.as_str(), bytes = size, ms = began.elapsed().as_millis() as u64, "a runner release is downloaded ahead");
                     wire::Outbound::Prefetched { release }
                 }
                 Err(error) => {
-                    tracing::warn!("runner release {release} was not downloaded ahead: {error}");
+                    tracing::warn!(event = "runner_release.prefetch_failed", release = release.as_str(), ms = began.elapsed().as_millis() as u64, %error, "a runner release was not downloaded ahead");
                     wire::Outbound::PrefetchFailed {
                         release,
                         reason: error.to_string(),
@@ -493,7 +496,7 @@ impl Owner<'_> {
                     // A backend that went away needs no answer.
                     let _ = control.send(reply);
                 }
-                Err(error) => tracing::warn!("invalid prefetch answer: {error}"),
+                Err(error) => tracing::warn!(event = "runner_release.prefetch_answer_invalid", %error, "the answer to a prefetch does not encode"),
             }
             Work::Done
         });
@@ -531,7 +534,7 @@ impl Owner<'_> {
                             // A disconnected backend no longer needs an acknowledgement.
                             let _ = control.send(reply);
                         }
-                        Err(error) => tracing::warn!("invalid release acknowledgement: {error}"),
+                        Err(error) => tracing::warn!(event = "runner_release.acknowledgement_invalid", %error, "a release acknowledgement does not encode"),
                     }
                     Work::Done
                 });
@@ -550,7 +553,7 @@ impl Owner<'_> {
                             // A disconnected backend no longer needs an acknowledgement.
                             let _ = control.send(reply);
                         }
-                        Err(error) => tracing::warn!("invalid release acknowledgement: {error}"),
+                        Err(error) => tracing::warn!(event = "runner_release.acknowledgement_invalid", %error, "a release acknowledgement does not encode"),
                     }
                     Work::Done
                 });
@@ -722,7 +725,18 @@ impl Owner<'_> {
             Inbound::Spawn { spawn_id, .. } => WorkId::Spawn(spawn_id),
             _ => return Err(error),
         };
-        tracing::warn!("backend work could not start: {error}");
+        tracing::warn!(
+            event = "backend_work.start_failed",
+            kind = match &work {
+                WorkId::Job(_) => "job",
+                WorkId::Spawn(_) => "spawn",
+            },
+            id = match &work {
+                WorkId::Job(id) | WorkId::Spawn(id) => id.as_str(),
+            },
+            %error,
+            "backend work could not start"
+        );
         let reply = failure_exit(&work, error.to_string()).map_err(io::Error::other)?;
         self.send(reply)
     }
@@ -733,7 +747,7 @@ impl Owner<'_> {
     /// whose end the backend has, or one that failed before it made its
     /// directory, answers that it was started already.
     async fn started_again(&mut self, job: &str) -> io::Result<()> {
-        tracing::warn!(job, "a job was started again; it runs once");
+        tracing::warn!(event = "job.started_again", job_id = job, "a job was started again; it runs once");
         if self.kept.jobs.runs(job) {
             return Ok(());
         }
@@ -902,7 +916,7 @@ impl Owner<'_> {
             if let Ok(work @ Work::Installed { .. }) = work
                 && let Err(error) = self.worked(work)
             {
-                tracing::warn!("the manifest was not installed: {error}");
+                tracing::warn!(event = "manifest.install_failed", %error, "a command manifest was not installed");
             }
         }
     }
@@ -1025,7 +1039,7 @@ async fn read_media(
                 return;
             }
         }
-        Err(error) => tracing::warn!("job media read reply encoding failed: {error}"),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "job_media_read", %error, "a job media read reply was not encoded"),
     }
     let result = pipes.put(&pipe.url, files::framed(opened), &closed).await;
     report_pipe(&control, pipe.id, result);
@@ -1062,7 +1076,7 @@ async fn read_job(
                 return;
             }
         }
-        Err(error) => tracing::warn!("job read reply encoding failed: {error}"),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "job_read", %error, "a job read reply was not encoded"),
     }
     let result = match snapshot {
         Ok(stream) => pipes.put(&pipe.url, stream, &closed).await,
@@ -1079,7 +1093,7 @@ fn send_control(control: &mpsc::UnboundedSender<wire::Frame>, message: &wire::Ou
         Err(error) => {
             // The runner's own messages always encode; one that does not is
             // not sent, and the page falls back to the relay.
-            tracing::warn!("a direct message's encoding failed: {error}");
+            tracing::warn!(event = "reply.encode_failed", what = "direct_message", %error, "a direct message was not encoded");
             return true;
         }
     };

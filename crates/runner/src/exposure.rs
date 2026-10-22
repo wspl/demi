@@ -21,6 +21,7 @@ use std::collections::HashSet;
 use std::error::Error as _;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
 
 use bytes::Bytes;
 use demi_runner_process::pipes::{PipeClient, report_pipe};
@@ -60,6 +61,7 @@ pub struct Exposure {
 /// One `http_request`.
 struct Request {
     id: String,
+    port: u16,
     url: String,
     method: String,
     headers: Vec<HttpHeader>,
@@ -114,6 +116,7 @@ impl Exposure {
         while self.requests.try_join_next().is_some() {}
         let request = Request {
             id,
+            port,
             url,
             method,
             headers,
@@ -131,6 +134,13 @@ impl Exposure {
     }
 }
 
+/// What one request's end line says of its answer.
+#[derive(Default)]
+struct Seen {
+    status: AtomicU16,
+    bytes: AtomicU64,
+}
+
 /// What one request's task uses.
 struct Serving {
     http: reqwest::Client,
@@ -146,7 +156,10 @@ type Chunks = mpsc::Sender<io::Result<Bytes>>;
 impl Serving {
     async fn serve(self, request: Request) {
         let cancel = self.closed.child_token();
+        let began = std::time::Instant::now();
+        let seen = Seen::default();
         let Request {
+            port,
             id,
             url,
             method,
@@ -163,7 +176,7 @@ impl Serving {
             read.recv().await.map(|chunk| (chunk, read))
         });
         let piped = self.pipes.stream(&answer.url, streamed, &cancel);
-        let exchange = self.exchange(&id, &url, &method, &headers, body.as_ref(), chunks, &cancel);
+        let exchange = self.exchange(&id, &url, &method, &headers, body.as_ref(), chunks, &cancel, &seen);
         tokio::pin!(piped);
         let mut exchange = Box::pin(exchange);
         let first = tokio::select! {
@@ -182,11 +195,21 @@ impl Serving {
                     || "the answer pipe ended before the answer".to_owned(),
                     ToString::to_string,
                 );
-                self.send(&Outbound::HttpFailed { id, message: ended });
+                self.send(&Outbound::HttpFailed { id: id.clone(), message: ended });
                 let abandoned = io::Error::new(io::ErrorKind::Interrupted, "the request was abandoned");
                 (sent, Err(abandoned))
             }
         };
+        tracing::info!(
+            event = "exposed_port.request_ended",
+            id = id.as_str(),
+            port,
+            outcome = if sent.is_ok() && seen.status.load(Ordering::Relaxed) != 0 { "answered" } else { "failed" },
+            status = seen.status.load(Ordering::Relaxed),
+            bytes = seen.bytes.load(Ordering::Relaxed),
+            ms = began.elapsed().as_millis() as u64,
+            "a request to an exposed port ended"
+        );
         report_pipe(&self.control, answer.id, sent);
         if let Some(body) = body {
             report_pipe(&self.control, body.id, body_read);
@@ -206,11 +229,12 @@ impl Serving {
         body: Option<&PipeRef>,
         chunks: Chunks,
         cancel: &CancellationToken,
+        seen: &Seen,
     ) -> io::Result<()> {
         let (response, body_read) = match self.make(url, method, headers, body, cancel).await {
             Ok(made) => made,
             Err((error, body_read)) => {
-                tracing::debug!("a request to an exposed port failed: {error}");
+                tracing::debug!(event = "exposed_port.request_failed", id, %error, "a request to an exposed port failed");
                 self.fail(id, error.to_string(), &chunks).await;
                 return body_read;
             }
@@ -222,12 +246,16 @@ impl Serving {
                 return body_read;
             }
         };
+        seen.status.store(response.status().as_u16(), Ordering::Relaxed);
         if !self.send_frame(answered) {
             return body_read;
         }
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let ended = chunk.is_err();
+            if let Ok(bytes) = &chunk {
+                seen.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+            }
             if chunks.send(chunk.map_err(io::Error::other)).await.is_err() || ended {
                 break;
             }
@@ -297,7 +325,7 @@ impl Serving {
         match wire::encode(message) {
             Ok(frame) => self.send_frame(frame),
             Err(error) => {
-                tracing::warn!("an exposed port's message could not be encoded: {error}");
+                tracing::warn!(event = "reply.encode_failed", what = "exposed_port", %error, "an exposed port's message was not encoded");
                 true
             }
         }

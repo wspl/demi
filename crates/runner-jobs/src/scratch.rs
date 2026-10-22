@@ -104,12 +104,16 @@ impl Scratch {
             let directory = entry.path();
             match tokio::fs::remove_dir_all(&directory).await {
                 Ok(()) => tracing::info!(
-                    "removed the scratch directory {} of a conversation that no longer exists",
-                    directory.display()
+                    event = "scratch_directory.removed",
+                    directory = %name.to_string_lossy(),
+                    reason = "conversation_gone",
+                    "the scratch directory of a conversation that no longer exists was removed"
                 ),
                 Err(error) => tracing::warn!(
-                    "the scratch directory {} could not be removed: {error}",
-                    directory.display()
+                    event = "scratch_directory.remove_failed",
+                    directory = %name.to_string_lossy(),
+                    %error,
+                    "the scratch directory of a conversation that no longer exists could not be removed"
                 ),
             }
         }
@@ -125,11 +129,13 @@ impl Scratch {
         let directory = demi_command_protocol::recordings_in(&self.root, conversation);
         match tokio::fs::remove_dir_all(&directory).await {
             Ok(()) => tracing::info!(
-                "removed the recordings {} of an archived or deleted conversation",
-                directory.display()
+                event = "recordings.removed",
+                conversation,
+                reason = "archived_or_deleted",
+                "the recordings of an archived or deleted conversation were removed"
             ),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => tracing::warn!("the recordings {} could not be removed: {error}", directory.display()),
+            Err(error) => tracing::warn!(event = "recordings.remove_failed", conversation, %error, "the recordings of an archived or deleted conversation could not be removed"),
         }
     }
 }

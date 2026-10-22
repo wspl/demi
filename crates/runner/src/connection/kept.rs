@@ -177,7 +177,7 @@ impl Kept {
                 let frame = match self.relay.ask(question, abandoned, &mut self.watches) {
                     Ok(frame) => frame,
                     Err(error) => {
-                        tracing::warn!("a question to the backend does not encode: {error}");
+                        tracing::warn!(event = "reply.encode_failed", what = "question", %error, "a question to the backend was not encoded");
                         return;
                     }
                 };
@@ -219,7 +219,7 @@ impl Kept {
             Ok(frame) => {
                 let _ended = self.queue.send(frame);
             }
-            Err(error) => tracing::warn!("a job context's end does not encode: {error}"),
+            Err(error) => tracing::warn!(event = "reply.encode_failed", what = "job_context_end", %error, "a job context's end was not encoded"),
         }
     }
 

@@ -184,7 +184,7 @@ impl Drop for StateLease {
             && let Err(error) = std::fs::remove_file(path)
             && error.kind() != io::ErrorKind::NotFound
         {
-            tracing::warn!("failed to remove active state: {error}");
+            tracing::warn!(event = "runner_state.remove_failed", %error, "the active state was not removed");
         }
         // Closing the file releases the operating-system lock on every exit path.
     }

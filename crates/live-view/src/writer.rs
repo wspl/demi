@@ -110,7 +110,7 @@ impl<M: ModuleMessage> Writer<M> {
     /// from a source's defect, such as a page observer's.
     pub async fn control(&self, message: &M) {
         if let Err(report) = garde::Validate::validate(message) {
-            tracing::warn!("live view message refused: {}", DecodeError::from(report));
+            tracing::warn!(event = "live_view_message.refused", reason = %DecodeError::from(report), "a live view message was refused");
             return;
         }
         let bytes = frames::control(message);

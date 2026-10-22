@@ -15,14 +15,14 @@ pub struct EditReport {
 }
 
 /// The report of what `recorder` recorded of a job.
-pub fn finish(recorder: Option<&Recorder>) -> EditReport {
+pub fn finish(job: &str, recorder: Option<&Recorder>) -> EditReport {
     let Some(recorder) = recorder else {
         return EditReport::default();
     };
     let journal = match recorder.report() {
         Ok(journal) => journal,
         Err(error) => {
-            tracing::warn!("edit report failed: {error}");
+            tracing::warn!(event = "edit_report.failed", job_id = job, %error, "a job's edit report was not made");
             return EditReport::default();
         }
     };
@@ -48,7 +48,7 @@ pub fn finish(recorder: Option<&Recorder>) -> EditReport {
                         removed += counts.1;
                     }
                     Err(error) => {
-                        tracing::warn!("edit snapshot read failed: {error}");
+                        tracing::warn!(event = "edit_report.snapshot_failed", job_id = job, %error, "an edit's snapshot could not be read");
                         edit.original = None;
                         edit.modified = None;
                     }

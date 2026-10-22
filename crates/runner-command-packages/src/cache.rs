@@ -444,7 +444,7 @@ impl ArtifactCache {
         let records = match self.records().await {
             Ok(records) => records,
             Err(error) => {
-                tracing::warn!("the artifact cache could not be listed: {error}");
+                tracing::warn!(event = "artifact_cache.list_failed", step = "publish", %error, "the artifact cache could not be listed");
                 return;
             }
         };
@@ -719,7 +719,7 @@ impl ArtifactCache {
         let records = match self.records().await {
             Ok(records) => records,
             Err(error) => {
-                tracing::warn!("the artifact cache could not be listed: {error}");
+                tracing::warn!(event = "artifact_cache.list_failed", step = "remove_older", %error, "the artifact cache could not be listed");
                 return;
             }
         };
@@ -743,9 +743,12 @@ impl ArtifactCache {
             };
             if let Err(error) = removed {
                 tracing::info!(
-                    "{} {} stays in the artifact cache for now: {error}",
-                    record.name,
-                    record.version
+                    event = "artifact_cache.kept",
+                    name = record.name.as_str(),
+                    version = record.version.as_str(),
+                    reason = "removal_failed",
+                    %error,
+                    "an older artifact stays in the artifact cache for now"
                 );
             }
         }
@@ -758,7 +761,7 @@ impl ArtifactCache {
         let mut entries = match tokio::fs::read_dir(&self.root).await {
             Ok(entries) => entries,
             Err(error) => {
-                tracing::warn!("the artifact cache could not be listed: {error}");
+                tracing::warn!(event = "artifact_cache.list_failed", step = "remove_older_staging", %error, "the artifact cache could not be listed");
                 return;
             }
         };
@@ -800,8 +803,20 @@ impl ArtifactCache {
             let read = tokio::fs::read(entry.path()).await;
             match read.map(|bytes| serde_json::from_slice::<LineRecord>(&bytes)) {
                 Ok(Ok(record)) => records.push((sha256.to_owned(), record)),
-                Ok(Err(error)) => tracing::warn!("{}: {error}", entry.path().display()),
-                Err(error) => tracing::warn!("{}: {error}", entry.path().display()),
+                Ok(Err(error)) => tracing::warn!(
+                    event = "artifact_cache.record_failed",
+                    entry = %entry.path().display(),
+                    cause = "unreadable_json",
+                    %error,
+                    "an artifact's record did not parse"
+                ),
+                Err(error) => tracing::warn!(
+                    event = "artifact_cache.record_failed",
+                    entry = %entry.path().display(),
+                    cause = "unreadable_file",
+                    %error,
+                    "an artifact's record could not be read"
+                ),
             }
         }
         Ok(records)
@@ -847,8 +862,11 @@ impl ArtifactCache {
             }
             Err(error) => {
                 tracing::warn!(
-                    "preinstalled artifact in {} not used, downloading it: {error}",
-                    directory.display()
+                    event = "artifact_cache.preinstalled_unused",
+                    directory = %directory.display(),
+                    fallback = "download",
+                    %error,
+                    "a preinstalled artifact was not used, so it is downloaded"
                 );
                 None
             }

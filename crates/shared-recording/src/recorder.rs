@@ -377,7 +377,7 @@ impl Writer {
             duration_us: u64::try_from(ran.as_micros()).unwrap_or(u64::MAX),
         });
         if let Err(error) = write_meta(&self.directory, &self.meta) {
-            tracing::warn!("a recording's end was not written: {error}");
+            tracing::warn!(event = "recording.end_write_failed", %error, "a recording's end was not written");
         }
         self.shared.ended.cancel();
     }

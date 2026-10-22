@@ -125,7 +125,7 @@ impl Delivery {
             return;
         }
         let Some(chunks) = frames::chunks(source, self.generation, frame) else {
-            tracing::warn!("live view frame of {} bytes has too many chunks", frame.data.len());
+            tracing::warn!(event = "live_view_frame.refused", bytes = frame.data.len(), reason = "too_many_chunks", "a live view frame was refused");
             self.lost(stream);
             self.pace(stream);
             return;
@@ -202,14 +202,15 @@ impl Delivery {
             return;
         }
         // Why a picture changed quality is found in the Host's log, not guessed.
-        tracing::debug!(
-            "live view encoding {} bps, {} fps, scale {}: least round trip {:?}, window {} bytes, {} in flight",
-            encoding.0,
-            encoding.1,
-            encoding.2,
-            self.rate.round_trip(),
-            self.rate.window(),
-            self.rate.in_flight(),
+        tracing::info!(
+            event = "live_view.rate_changed",
+            bps = encoding.0,
+            fps = encoding.1,
+            scale = encoding.2,
+            rtt_ms = self.rate.round_trip().map(|rtt| rtt.as_millis() as u64),
+            window_bytes = self.rate.window(),
+            in_flight = self.rate.in_flight(),
+            "a live view's encoding changed"
         );
         self.applied = Some(encoding);
         if let Some(stream) = stream {

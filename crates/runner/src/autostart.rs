@@ -117,7 +117,33 @@ impl Registration {
                 name: self.id.clone(),
             });
         }
-        manager::ensure(self).await
+        let ensured = manager::ensure(self).await;
+        let mechanism = manager::MECHANISM;
+        match &ensured {
+            Ok(Supervision::Restarts) => tracing::info!(
+                event = "autostart.ensured",
+                mechanism,
+                outcome = "in_place",
+                "the runner's autostart is in place"
+            ),
+            #[cfg(windows)]
+            Ok(Supervision::AtLogon) => tracing::warn!(
+                event = "autostart.ensured",
+                mechanism,
+                outcome = "degraded",
+                degraded_to = "run_value",
+                "the runner starts at logon only, and not again after a crash"
+            ),
+            Err(reason) => tracing::warn!(
+                event = "autostart.ensured",
+                mechanism,
+                outcome = "unavailable",
+                detail_code = reason.code(),
+                reason = reason.sentence(&self.home.to_string_lossy()),
+                "the runner has no autostart"
+            ),
+        }
+        ensured
     }
 
     /// Whether the registration exists, so that the manager starts the
@@ -414,6 +440,9 @@ mod macos {
     use super::{AutostartUnavailable, Registration, Supervision, plist, run, system, write};
     use std::path::PathBuf;
 
+    /// What the log calls this manager.
+    pub const MECHANISM: &str = "launch_agent";
+
     impl Registration {
         fn label(&self) -> String {
             format!("sh.demi.runner.{}", self.id)
@@ -464,7 +493,7 @@ mod macos {
         // An agent loaded with another definition, such as one naming
         // another installation of this name, is loaded again.
         if loaded && let Err(error) = launchctl(&["bootout", &service]).await {
-            tracing::warn!("the runner's LaunchAgent could not be unloaded to load its new definition: {error}");
+            tracing::warn!(event = "autostart.step_failed", mechanism = MECHANISM, step = "launch_agent_unload", %error, "the runner's LaunchAgent could not be unloaded to load its new definition");
             return Ok(Supervision::Restarts);
         }
         // Loading it starts the manager's runner at once, which finds the
@@ -472,7 +501,7 @@ mod macos {
         // cannot load it now, as without the user's login session, loads it
         // at the next login.
         if let Err(error) = launchctl(&["bootstrap", &Registration::domain(), &path.to_string_lossy()]).await {
-            tracing::warn!("the runner's LaunchAgent is in place and loads at the next login; it could not be loaded now: {error}");
+            tracing::warn!(event = "autostart.step_failed", mechanism = MECHANISM, step = "launch_agent_load", %error, "the runner's LaunchAgent is in place and loads at the next login; it could not be loaded now");
         }
         Ok(Supervision::Restarts)
     }
@@ -533,6 +562,9 @@ use macos as manager;
 mod linux {
     use super::{AutostartUnavailable, Registration, Supervision, run, system, unit, write};
     use std::path::{Path, PathBuf};
+
+    /// What the log calls this manager.
+    pub const MECHANISM: &str = "systemd_user";
 
     impl Registration {
         fn unit_name(&self) -> String {
@@ -604,7 +636,7 @@ mod linux {
         match run("loginctl", linger).await {
             Ok(_) => Ok(Supervision::Restarts),
             Err(error) => {
-                tracing::warn!("lingering could not be turned on: {error}");
+                tracing::warn!(event = "autostart.step_failed", mechanism = MECHANISM, step = "linger", %error, "lingering could not be turned on");
                 Err(AutostartUnavailable::LingerOff { user })
             }
         }
@@ -645,6 +677,9 @@ use linux as manager;
 #[cfg(windows)]
 mod windows {
     use super::{AutostartUnavailable, Registration, SUPERVISED, Supervision, run, system, task};
+
+    /// What the log calls this manager.
+    pub const MECHANISM: &str = "scheduled_task";
 
     /// The key whose values Windows starts at the user's logon.
     const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -719,7 +754,7 @@ mod windows {
                 // The task starts the runner; a `Run` value of before would
                 // start a second one.
                 if let Err(error) = run_value::remove(&registration.name()) {
-                    tracing::warn!("the runner's Run value stays beside its scheduled task: {error}");
+                    tracing::warn!(event = "autostart.step_failed", mechanism = MECHANISM, step = "run_value", %error, "the runner's Run value stays beside its scheduled task");
                 }
                 Ok(Supervision::Restarts)
             }
@@ -730,7 +765,7 @@ mod windows {
                         error: format!("{refused}; {error}"),
                     }
                 })?;
-                tracing::warn!("the runner starts at logon from its Run value, and not again after a crash: Windows refused its scheduled task: {refused}");
+                tracing::warn!(event = "autostart.step_failed", mechanism = MECHANISM, step = "scheduled_task", error = %refused, "Windows refused the runner's scheduled task");
                 Ok(Supervision::AtLogon)
             }
         }

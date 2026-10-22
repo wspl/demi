@@ -160,7 +160,7 @@ impl HostServer {
                     }
                 }
                 Err(error) => {
-                    tracing::warn!("{work} response encoding failed: {error}");
+                    tracing::warn!(event = "reply.encode_failed", what = work, %error, "a response was not encoded");
                     cancel.cancel();
                 }
             }
@@ -239,7 +239,7 @@ async fn report(mut reports: mpsc::UnboundedReceiver<Report>, output: mpsc::Unbo
         let frame = match wire::encode(&message) {
             Ok(frame) => frame,
             Err(error) => {
-                tracing::warn!("a subscription's report could not be encoded: {error}");
+                tracing::warn!(event = "reply.encode_failed", what = "subscription_report", %error, "a subscription's report was not encoded");
                 continue;
             }
         };

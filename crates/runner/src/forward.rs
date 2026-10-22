@@ -100,7 +100,7 @@ impl Backend {
             Err(error) => {
                 // The runner's own messages always encode; one that does
                 // not is not sent, and its connection is refused.
-                tracing::warn!("a forward's message could not be encoded: {error}");
+                tracing::warn!(event = "reply.encode_failed", what = "forward", %error, "a forward's message was not encoded");
                 return true;
             }
         };
@@ -411,7 +411,7 @@ impl Serving {
                 listener.state = Some(listening(0, 0, None));
             }
             Err(error) => {
-                tracing::info!("forward {forward} cannot listen on port {}: {error}", listener.port);
+                tracing::warn!(event = "forward.listen_failed", forward, port = listener.port, %error, "a forward cannot listen on its port");
                 listener.state = Some(ForwardRunState::PortInUse);
             }
         }
@@ -540,7 +540,7 @@ impl Accepting {
                 }
                 // A connection that went before it was taken, or a lack of
                 // descriptors: the listener goes on.
-                Err(error) => tracing::debug!("forward {} did not accept: {error}", accepting.forward),
+                Err(error) => tracing::debug!(event = "forward.accept_failed", forward = accepting.forward.as_str(), %error, "a forward did not accept a connection"),
             }
         }
     }
@@ -679,7 +679,7 @@ async fn connect_relayed(
     match connected {
         Ok(tcp) => relay(tcp, input, output, &pipes, &backend, &ended).await,
         Err(error) => {
-            tracing::debug!("a forwarded connection could not connect: {error}");
+            tracing::debug!(event = "forwarded_connection.connect_failed", %error, "a forwarded connection could not connect");
             let failed = futures_util::stream::once(async move { Err::<Bytes, _>(error) });
             let cancel = backend.closed.child_token();
             let sent = pipes.stream(&output.url, failed, &cancel).await;
@@ -768,7 +768,7 @@ impl Dial for RunnerDial {
                     None
                 }
                 Ok(Inbound::DirectDialRefused { code, message, .. }) => {
-                    tracing::debug!("the backend did not introduce a pair: {message}");
+                    tracing::debug!(event = "forward.pair_missing", code = ?code, reason = %message, "the backend did not introduce a pair");
                     Some(match code {
                         DialRefusal::Busy => Some(PairReason::Busy),
                         DialRefusal::InvalidOffer | DialRefusal::Unavailable => None,

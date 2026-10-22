@@ -57,7 +57,7 @@ impl IgnoreFilter {
             Err(error) => {
                 // Without the rules nothing counts as ignored, as before they
                 // existed: a page lists the changes once too often.
-                tracing::warn!("the repository of a watch could not be opened: {error}");
+                tracing::warn!(event = "watch_repository.open_failed", path = %path.display(), %error, "the repository of a watch could not be opened");
                 return None;
             }
         };
@@ -119,7 +119,7 @@ impl IgnoreFilter {
     fn warn(&mut self, error: &str) {
         if !self.warned {
             self.warned = true;
-            tracing::warn!("which changed paths git ignores could not be told: {error}");
+            tracing::warn!(event = "watch_ignore.query_failed", %error, "which changed paths git ignores could not be told");
         }
     }
 

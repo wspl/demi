@@ -271,7 +271,7 @@ impl Out {
                     Ok(Some(frame)) => frame,
                     Ok(None) => break,
                     Err(error) => {
-                        tracing::debug!("a live view's stream broke its framing: {error}");
+                        tracing::debug!(event = "live_view_stream.framing_broke", %error, "a live view's stream broke its framing");
                         return false;
                     }
                 };

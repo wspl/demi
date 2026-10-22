@@ -516,7 +516,7 @@ impl Scope {
                     if error.raw_os_error()
                         != Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND as i32)
                     {
-                        tracing::warn!("shell IO cancellation failed: {error}");
+                        tracing::warn!(event = "shell_io.cancel_failed", %error, "a shell's IO was not cancelled");
                         return;
                     }
                 }
@@ -773,7 +773,7 @@ impl ExecutionHost for Scope {
                     biased;
                     _ = kill.cancelled() => {
                         if let Err(error) = process::kill(child.as_mut()) {
-                            tracing::warn!("killing what remains of process group {pid} failed: {error}");
+                            tracing::warn!(event = "process_group.kill_failed", pid, %error, "what remains of a process group was not killed");
                         }
                     }
                     () = group_ended(child.as_mut(), pid, poll) => {}
@@ -1016,7 +1016,7 @@ impl UtilityProcess {
                 }
             }
             Err(error) => {
-                tracing::warn!("reading a utility child's processor time failed: {error}");
+                tracing::warn!(event = "utility_child.cpu_read_failed", %error, "a utility child's processor time could not be read");
                 self.counted = None;
             }
         }

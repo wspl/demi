@@ -12,6 +12,9 @@ use bytes::BytesMut;
 use demi_runner_protocol::direct::{MESSAGE_BYTES, WriteEnd};
 use demi_runner_protocol::forward::{DEADLINE, ForwardHeader};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 use str0m::channel::ChannelId;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpStream;
@@ -47,6 +50,47 @@ impl Took {
     }
 }
 
+/// The one line a forwarded connection ends with, written when it is
+/// dropped, whichever way it ends, a cancelled one included.
+struct Ending {
+    began: Instant,
+    bytes_in: AtomicU64,
+    bytes_out: AtomicU64,
+    /// The outcome and its cause.
+    how: Mutex<(&'static str, &'static str)>,
+}
+
+impl Ending {
+    fn new() -> Self {
+        Self {
+            began: Instant::now(),
+            bytes_in: AtomicU64::new(0),
+            bytes_out: AtomicU64::new(0),
+            how: Mutex::new(("cancelled", "channel_gone")),
+        }
+    }
+
+    fn ended(&self, outcome: &'static str, cause: &'static str) {
+        *self.how.lock().expect("the ending's lock is intact") = (outcome, cause);
+    }
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        // `bytes_in` came from the TCP connection, `bytes_out` went to it.
+        let (outcome, cause) = *self.how.lock().expect("the ending's lock is intact");
+        tracing::info!(
+            event = "forwarded_connection.ended",
+            outcome,
+            cause,
+            bytes_in = self.bytes_in.load(Ordering::Relaxed),
+            bytes_out = self.bytes_out.load(Ordering::Relaxed),
+            ms = self.began.elapsed().as_millis() as u64,
+            "a forwarded connection ended"
+        );
+    }
+}
+
 impl ForwardChannel {
     /// Carries `tcp`'s bytes both ways until both sides ended, either side
     /// failed or the channel went; then the channel closes.
@@ -63,6 +107,8 @@ impl ForwardChannel {
         // than once what it holds drained, which a program that stopped
         // reading never lets happen.
         let aborting = abort.drop_guard();
+        let ending = Ending::new();
+        let ending = &ending;
         let (mut reader, mut writer) = tcp.into_split();
         let reading = async {
             let mut buffer = BytesMut::with_capacity(MESSAGE_BYTES);
@@ -72,16 +118,28 @@ impl ForwardChannel {
                 match read {
                     Ok(0) => {
                         let end = serde_json::to_string(&WriteEnd { end: true }).expect("an end serializes");
-                        return output.send(Output::Text(end)).await.is_ok();
+                        let sent = output.send(Output::Text(end)).await.is_ok();
+                        if !sent {
+                            ending.ended("failed", "channel_closed");
+                        }
+                        return sent;
                     }
                     Ok(_) => {
                         let chunk = buffer.split().freeze();
+                        let bytes = chunk.len() as u64;
                         if output.send(Output::Binary(chunk)).await.is_err() {
+                            ending.ended("failed", "channel_closed");
                             return false;
                         }
+                        ending.bytes_in.fetch_add(bytes, Ordering::Relaxed);
                     }
                     Err(error) => {
-                        tracing::debug!("a forwarded connection could not be read: {error}");
+                        tracing::debug!(
+                            event = "forwarded_connection.read_failed",
+                            %error,
+                            "a forwarded connection could not be read"
+                        );
+                        ending.ended("failed", "read_failed");
                         return false;
                     }
                 }
@@ -92,9 +150,15 @@ impl ForwardChannel {
                 match message {
                     Input::Bytes(bytes) => {
                         if let Err(error) = writer.write_all(&bytes).await {
-                            tracing::debug!("a forwarded connection could not be written: {error}");
+                            tracing::debug!(
+                                event = "forwarded_connection.write_failed",
+                                %error,
+                                "a forwarded connection could not be written"
+                            );
+                            ending.ended("failed", "write_failed");
                             return false;
                         }
+                        ending.bytes_out.fetch_add(bytes.len() as u64, Ordering::Relaxed);
                         took.report(bytes.len());
                     }
                     Input::End => {
@@ -106,6 +170,7 @@ impl ForwardChannel {
                 }
             }
             // The channel went before the other side ended its writing.
+            ending.ended("failed", "channel_closed");
             false
         };
         tokio::pin!(reading, writing);
@@ -127,6 +192,7 @@ impl ForwardChannel {
                 }
             }
         }
+        ending.ended("completed", "both_ended");
         aborting.disarm();
     }
 }
@@ -182,6 +248,12 @@ pub(crate) async fn serve(
                 () = channel.splice(tcp) => {}
             }
         }
-        Err(error) => tracing::debug!("a forwarded connection was refused: {}", error.message),
+        Err(error) => tracing::info!(
+            event = "forwarded_connection.ended",
+            outcome = "refused",
+            cause = "target_refused",
+            reason = error.message.as_str(),
+            "a forwarded connection was refused"
+        ),
     }
 }

@@ -247,7 +247,7 @@ impl Installed {
             .map_err(io::Error::other)?;
         // The release is in place; its download holds nothing anyone needs.
         if let Err(error) = tokio::fs::remove_dir_all(&download).await {
-            tracing::warn!("the download {} stays: {error}", download.display());
+            tracing::warn!(event = "runner_update.download_kept", file = %download.display(), %error, "a finished download stays");
         }
         Ok(path)
     }
@@ -257,7 +257,7 @@ impl Installed {
         let mut entries = match tokio::fs::read_dir(releases).await {
             Ok(entries) => entries,
             Err(error) => {
-                tracing::warn!("the earlier runner releases stay: {error}");
+                tracing::warn!(event = "runner_update.prune_failed", %error, "the earlier runner releases stay");
                 return;
             }
         };
@@ -267,7 +267,7 @@ impl Installed {
                 continue;
             }
             if let Err(error) = tokio::fs::remove_dir_all(entry.path()).await {
-                tracing::warn!("runner release {name:?} stays: {error}");
+                tracing::warn!(event = "runner_update.prune_failed", release = %name.to_string_lossy(), %error, "an earlier runner release stays");
             }
         }
     }
@@ -380,7 +380,7 @@ impl InstallerLock {
 impl Drop for InstallerLock {
     fn drop(&mut self) {
         if let Err(error) = std::fs::remove_dir(&self.path) {
-            tracing::warn!("the installer lock {} stays: {error}", self.path.display());
+            tracing::warn!(event = "installer_lock.kept", file = %self.path.display(), %error, "the installer lock stays");
         }
     }
 }

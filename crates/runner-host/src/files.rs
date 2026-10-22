@@ -895,7 +895,7 @@ impl DirectoryWrite<'_> {
         if let Err(error) = written {
             // The next write removes what this one leaves.
             if let Err(left) = crate::fs::remove_all(&partial, cancel).await {
-                tracing::debug!("a directory write left {}: {left}", partial.display());
+                tracing::debug!(event = "directory_write.left_partial", path = %partial.display(), error = %left, "a directory write left its partial directory");
             }
             return Err(error);
         }
@@ -1022,7 +1022,7 @@ fn send(output: &mpsc::UnboundedSender<wire::Frame>, message: Result<wire::Frame
     let message = match message {
         Ok(message) => message,
         Err(error) => {
-            tracing::warn!("file transfer reply encoding failed: {error}");
+            tracing::warn!(event = "reply.encode_failed", what = "file_transfer", %error, "a file transfer reply was not encoded");
             return false;
         }
     };

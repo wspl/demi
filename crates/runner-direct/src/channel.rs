@@ -322,7 +322,7 @@ impl Channel {
                 // with the next pump.
                 Ok(false) => {}
                 Err(error) => {
-                    tracing::debug!("a direct channel failed: {error}");
+                    tracing::debug!(event = "direct_channel.failed", %error, "a direct channel failed");
                     return Pumped { wrote, done: true };
                 }
             }
@@ -369,7 +369,7 @@ impl Channel {
                 // Every channel's queue together is full.
                 Ok(false) => break,
                 Err(error) => {
-                    tracing::debug!("a direct channel failed: {error}");
+                    tracing::debug!(event = "direct_channel.failed", %error, "a direct channel failed");
                     return Pumped { wrote, done: true };
                 }
             }

@@ -139,7 +139,12 @@ pub fn open(settings: Settings, load: &Load) -> Result<Box<dyn Encoder>> {
     if hardware() {
         match hardware_encoder(settings) {
             Ok(encoder) => return Ok(encoder),
-            Err(error) => tracing::warn!("the hardware encoder did not start, so OpenH264 codes: {error}"),
+            Err(error) => tracing::warn!(
+                event = "h264_encoder.fallback",
+                to = "openh264",
+                %error,
+                "the hardware encoder did not start, so OpenH264 codes"
+            ),
         }
     }
     Ok(Box::new(software::software(settings, load)?))
@@ -155,7 +160,7 @@ pub fn hardware() -> bool {
             rate: Rate::Quality,
         };
         let found = hardware_encoder(probe).is_ok();
-        tracing::debug!(found, "whether this Host has a hardware H.264 encoder");
+        tracing::debug!(event = "h264_encoder.probed", hardware = found, "whether this Host has a hardware H.264 encoder was found");
         found
     })
 }

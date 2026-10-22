@@ -482,10 +482,11 @@ async fn stop_strays(
         let work = scope.work.clone();
         let job = job.clone();
         async move {
+            let named = job.clone();
             tokio::task::spawn_blocking(move || work.strays(&job, &known))
                 .await
                 .unwrap_or_else(|failure| {
-                    tracing::warn!("finding the job's processes outside its groups failed: {failure}");
+                    tracing::warn!(event = "job_strays.stop_failed", job_id = named, step = "find", error = %failure, "a job's processes outside its groups were not found");
                     Vec::new()
                 })
         }
@@ -503,25 +504,25 @@ async fn stop_strays(
                 };
                 let strays = find(known).await;
                 if let Err(failure) = scope.signal(signal, false) {
-                    tracing::warn!("signalling the job's process groups failed: {failure}");
+                    tracing::warn!(event = "job_strays.stop_failed", job_id = job, step = "signal_groups", error = %failure, "a job's process groups were not signalled");
                 }
-                known = reach(strays, signal);
+                known = reach(&job, strays, signal);
             }
         }
     }
     let strays = find(known).await;
-    demi_runner_process::process::strays_ended(reach(strays, number(Signal::Kill))).await;
+    demi_runner_process::process::strays_ended(reach(&job, strays, number(Signal::Kill))).await;
 }
 
 /// Sends `signal` to each of `strays`; answers those it was sent to.
 #[cfg(unix)]
-fn reach(strays: Vec<Stray>, signal: i32) -> Vec<Stray> {
+fn reach(job: &str, strays: Vec<Stray>, signal: i32) -> Vec<Stray> {
     strays
         .into_iter()
         .filter(|stray| match demi_runner_process::process::signal_process(stray.pid, signal) {
             Ok(()) => true,
             Err(failure) => {
-                tracing::warn!("signalling process {}, outside the job's groups, failed: {failure}", stray.pid);
+                tracing::warn!(event = "job_strays.stop_failed", job_id = job, step = "signal_process", pid = stray.pid, error = %failure, "a process outside a job's groups was not signalled");
                 false
             }
         })

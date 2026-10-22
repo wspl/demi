@@ -576,8 +576,10 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         .with(layer.with_filter(LevelFilter::INFO))
         .with(host_log::Console.with_filter(LevelFilter::WARN))
         .init();
+    // Kept until the runner ends: it says when this thread did not run.
+    let _control_watch = demi_runner_process::steps::watch_control_loop();
     if let Some(reason) = unresolved {
-        tracing::warn!("the device environment is the runner's own: {reason}");
+        tracing::warn!(event = "runner.environment_own", %reason, "the device environment is the runner's own");
     }
     // Every job and stream shares this process's open files; without the raise the runner still works, waiting sooner.
     #[cfg(unix)]
@@ -589,12 +591,13 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                 limit.raised,
             );
             tracing::info!(
-                "open-file limit {} (started with {})",
-                limit.raised,
-                limit.started_soft
+                event = "open_files.limit_raised",
+                raised = limit.raised,
+                started_soft = limit.started_soft,
+                "the open-file limit was raised"
             )
         }
-        Err(error) => tracing::warn!("the open-file limit could not be raised: {error}"),
+        Err(error) => tracing::warn!(event = "open_files.limit_raise_failed", %error, "the open-file limit could not be raised"),
     }
     // Read once before any job runs, since reading it may briefly set a
     // stricter one (`process::umask`).
@@ -657,7 +660,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     };
     // Past this point the log holds what went wrong, and the console hears it.
     if let Err(error) = &outcome {
-        tracing::error!("{error}");
+        tracing::error!(event = "runner.exited", %error, "the runner ended with an error");
     }
     log.close().await;
     match outcome {
@@ -731,13 +734,13 @@ async fn prepare_temporary(directory: &Path) {
     let directory = directory.to_owned();
     let emptied = tokio::task::spawn_blocking(move || {
         if let Err(error) = std::fs::create_dir_all(&directory) {
-            tracing::warn!(directory = %directory.display(), "the temporary directory could not be made: {error}");
+            tracing::warn!(event = "temporary_directory.make_failed", directory = %directory.display(), %error, "the temporary directory could not be made");
             return;
         }
         let entries = match std::fs::read_dir(&directory) {
             Ok(entries) => entries,
             Err(error) => {
-                tracing::warn!(directory = %directory.display(), "the temporary directory could not be listed: {error}");
+                tracing::warn!(event = "temporary_directory.list_failed", directory = %directory.display(), %error, "the temporary directory could not be listed");
                 return;
             }
         };
@@ -748,13 +751,13 @@ async fn prepare_temporary(directory: &Path) {
                 _ => std::fs::remove_file(&path),
             };
             if let Err(error) = removed {
-                tracing::warn!(path = %path.display(), "a temporary file was not removed: {error}");
+                tracing::warn!(event = "temporary_file.remove_failed", file = %path.display(), %error, "a temporary file was not removed");
             }
         }
     })
     .await;
     if let Err(error) = emptied {
-        tracing::warn!("the temporary directory was not emptied: {error}");
+        tracing::warn!(event = "temporary_directory.clear_failed", step = "empty", %error, "the temporary directory was not emptied");
     }
 }
 

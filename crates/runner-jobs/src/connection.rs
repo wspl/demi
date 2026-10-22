@@ -275,7 +275,7 @@ impl ServiceBackend for ConnectionHandle {
             // A runner that ends stops its services anyway, and
             // its next start names another instance, which says the same.
             if let Err(error) = self.send(&wire::Outbound::PackageLost { package }).await {
-                tracing::info!("a lost service was not reported: {error}");
+                tracing::warn!(event = "lost_service.report_failed", %error, "a lost service was not reported");
             }
         })
     }

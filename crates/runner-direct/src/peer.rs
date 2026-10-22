@@ -195,7 +195,12 @@ async fn bind(
                     }
                     // An address ICE does not take, such as a link-local
                     // one, is not offered.
-                    Err(error) => tracing::debug!("{local} is not offered: {error}"),
+                    Err(error) => tracing::debug!(
+                        event = "direct_address.not_offered",
+                        address = %local,
+                        %error,
+                        "an address is not offered"
+                    ),
                 }
             }
             // An address that went away meanwhile is not offered.
@@ -316,24 +321,38 @@ impl Peer {
             videos: HashMap::new(),
             next_video: 0,
         };
-        let give_up = Instant::now() + CONNECT_TIMEOUT;
+        let began = Instant::now();
+        let kind = match &served.behaviour {
+            Behaviour::Page { .. } => "page",
+            Behaviour::Runner { .. } => "runner",
+            Behaviour::Offerer => "offerer",
+        };
+        let mut setup_ms = None;
+        let mut tried = 0u32;
+        let give_up = began + CONNECT_TIMEOUT;
         let end = loop {
             let timeout = match served.drain(&mut rtc, &sockets).await {
                 Ok(Some(timeout)) => timeout,
-                Ok(None) => break failed("the connection closed"),
-                Err(error) => {
-                    tracing::debug!("a direct peer failed: {error}");
-                    break failed("the connection failed");
-                }
+                Ok(None) => break failed("connection_closed", None),
+                Err(error) => break failed("connection_failed", Some(error.to_string())),
             };
             if served.connected && *status.borrow() == PeerStatus::Connecting {
                 status.send_replace(PeerStatus::Connected);
+                let setup = began.elapsed().as_millis() as u64;
+                setup_ms = Some(setup);
+                tracing::info!(
+                    event = "direct_path.chosen",
+                    path = "direct",
+                    peer = kind,
+                    why = if crossing && remote_public { "stun_ok" } else { "local_pair" },
+                    setup_ms = setup,
+                    "a peer connected on a direct path"
+                );
             }
             if served.pump(&mut rtc) {
                 // What was written goes out now, not at str0m's next timer.
                 if let Err(error) = rtc.handle_input(Input::Timeout(now())) {
-                    tracing::debug!("a direct peer failed: {error}");
-                    break failed("the connection failed");
+                    break failed("connection_failed", Some(error.to_string()));
                 }
                 continue;
             }
@@ -346,7 +365,7 @@ impl Peer {
                 }
                 datagram = received.recv() => match datagram {
                     Some(datagram) => Wake::Datagram(datagram),
-                    None => break failed("its sockets closed"),
+                    None => break failed("sockets_closed", None),
                 },
                 servers = &mut resolving, if !servers_known => {
                     servers_known = true;
@@ -388,16 +407,19 @@ impl Peer {
                 Wake::Remote(Remote::Candidate(candidate)) => {
                     remote_public |= is_public(candidate);
                     match Candidate::from_sdp_string(candidate) {
-                        Ok(candidate) => rtc.add_remote_candidate(candidate),
+                        Ok(candidate) => {
+                            rtc.add_remote_candidate(candidate);
+                            tried += 1;
+                        }
                         // A candidate ICE cannot use, such as a browser's
                         // name for its address, is passed over.
-                        Err(error) => tracing::debug!("a candidate is passed over: {error}"),
+                        Err(error) => tracing::debug!(event = "direct_candidate.skipped", %error, "a candidate is passed over"),
                     }
                     Input::Timeout(now())
                 }
                 Wake::Remote(Remote::Answer(answer)) => {
                     let Some(pending) = offered.take() else {
-                        tracing::debug!("an answer to a peer that offered nothing is passed over");
+                        tracing::debug!(event = "direct_answer.skipped", reason = "no_offer", "an answer to a peer that offered nothing is passed over");
                         continue;
                     };
                     remote_public |= answer.lines().any(is_public);
@@ -409,8 +431,12 @@ impl Peer {
                                 .map_err(|error| error.to_string())
                         });
                     if let Err(error) = accepted {
-                        tracing::debug!("a direct peer's answer is refused: {error}");
-                        break failed("its answer could not be taken");
+                        tracing::debug!(
+                            event = "direct_answer.refused",
+                            %error,
+                            "a direct peer's answer is refused"
+                        );
+                        break failed("answer_refused", Some(error));
                     }
                     Input::Timeout(now())
                 }
@@ -440,11 +466,16 @@ impl Peer {
                 Wake::Output => continue,
             };
             if let Err(error) = rtc.handle_input(input) {
-                tracing::debug!("a direct peer failed: {error}");
-                break failed("the connection failed");
+                break failed("connection_failed", Some(error.to_string()));
             }
         };
-        tracing::debug!("a direct peer ended: {end:?}");
+        let (outcome, cause, error) = match &end {
+            End::Closed => ("closed", "closed_by_runner", None),
+            End::TimedOut => ("timed_out", "connect_timeout", None),
+            // The other side closed it: an ending, not a failure.
+            End::Failed { why: "connection_closed", .. } => ("closed", "closed_by_peer", None),
+            End::Failed { why, error } => ("failed", *why, error.as_deref()),
+        };
         let reason = match end {
             End::Closed => None,
             _ if served.connected => Some(PairReason::Dropped),
@@ -457,6 +488,34 @@ impl Peer {
             }),
             _ => Some(PairReason::Unreachable),
         };
+        if !served.connected {
+            tracing::info!(
+                event = "direct_path.chosen",
+                path = "relay",
+                peer = kind,
+                why = match reason {
+                    None => "closed_before_connecting",
+                    Some(PairReason::NotOffered) => "no_candidate",
+                    Some(PairReason::Network { side: PairSide::Browser }) => "browser_network",
+                    Some(PairReason::Network { side: PairSide::Device }) => "device_network",
+                    Some(_) => "unreachable",
+                },
+                candidates_tried = tried,
+                setup_ms = began.elapsed().as_millis() as u64,
+                "a peer did not connect, so the relay carries"
+            );
+        }
+        tracing::info!(
+            event = "direct_peer.ended",
+            peer = kind,
+            outcome,
+            cause,
+            error,
+            connected = served.connected,
+            setup_ms,
+            ms = began.elapsed().as_millis() as u64,
+            "a direct peer ended"
+        );
         status.send_replace(PeerStatus::Ended(reason));
         // The other side hears the close at once, rather than when its
         // checks of a peer gone quiet give up.
@@ -478,13 +537,16 @@ enum End {
     Closed,
     /// It did not connect in time.
     TimedOut,
-    Failed,
+    /// It broke, for `why`, with the error that said so.
+    Failed {
+        why: &'static str,
+        error: Option<String>,
+    },
 }
 
-/// A peer's loop ends failed, which the runner's log says why.
-fn failed(why: &str) -> End {
-    tracing::debug!("a direct peer failed: {why}");
-    End::Failed
+/// A peer's loop ends failed, which `direct_peer.ended` says why.
+fn failed(why: &'static str, error: Option<String>) -> End {
+    End::Failed { why, error }
 }
 
 /// What woke a peer's loop.
@@ -514,7 +576,12 @@ fn offer_public(
             true
         }
         Err(error) => {
-            tracing::debug!("{mapped} is not offered: {error}");
+            tracing::debug!(
+                event = "direct_address.not_offered",
+                address = %mapped,
+                %error,
+                "an address is not offered"
+            );
             false
         }
     }
@@ -538,7 +605,7 @@ async fn read(socket: Arc<UdpSocket>, datagrams: mpsc::Sender<Datagram>) {
             // An ICMP error a send provoked, as some systems report on the
             // next receive: the socket goes on.
             Err(error) => {
-                tracing::debug!("a direct peer's socket could not receive: {error}");
+                tracing::debug!(event = "direct_socket.receive_failed", %error, "a direct peer's socket could not receive");
                 continue;
             }
         };
@@ -594,7 +661,7 @@ impl Served {
                     {
                         // A pair that cannot route, such as loopback to a
                         // network address, is one ICE does not pick.
-                        tracing::trace!("a direct peer's datagram to {} failed: {error}", transmit.destination);
+                        tracing::trace!(event = "direct_datagram.send_failed", destination = %transmit.destination, %error, "a direct peer's datagram did not go");
                     }
                 }
                 RtcOutput::Event(event) => {

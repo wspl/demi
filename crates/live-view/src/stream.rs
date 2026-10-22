@@ -299,7 +299,36 @@ struct Viewer<L> {
     scale: f64,
 }
 
+/// The line a stream ends with, written when `run` returns whichever way.
+struct Ending {
+    source: String,
+    began: Instant,
+    frames: u64,
+    dropped: u64,
+    bytes: u64,
+    rate_changes: u64,
+    cause: &'static str,
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        tracing::info!(
+            event = "live_view.stream_ended",
+            source = self.source.as_str(),
+            cause = self.cause,
+            ms = self.began.elapsed().as_millis() as u64,
+            frames = self.frames,
+            dropped = self.dropped,
+            bytes = self.bytes,
+            rate_changes = self.rate_changes,
+            "a live view's stream ended"
+        );
+    }
+}
+
 struct Running<C, L> {
+    /// When this capture started.
+    began: Instant,
     capture: C,
     /// The generation the viewers last heard of.
     epoch: u32,
@@ -340,6 +369,15 @@ async fn run<S: Source>(
     mut wake: watch::Receiver<u64>,
     mut ready: watch::Receiver<bool>,
 ) {
+    let mut ending = Ending {
+        source: source.name(),
+        began: Instant::now(),
+        frames: 0,
+        dropped: 0,
+        bytes: 0,
+        rate_changes: 0,
+        cause: "owner_dropped",
+    };
     let mut viewers: HashMap<u64, Viewer<S::Layout>> = HashMap::new();
     let mut running: Option<Running<S::Capture, S::Layout>> = None;
     let mut epoch = 0;
@@ -407,6 +445,7 @@ async fn run<S: Source>(
             match source.start(size, fps, bitrate, &stop).await {
                 Ok(Some(capture)) => {
                     running = Some(Running {
+                        began: Instant::now(),
                         capture,
                         epoch,
                         size,
@@ -428,7 +467,14 @@ async fn run<S: Source>(
                 }
                 // The source says when captures may start again.
                 Err(StartError::Stopped(reason)) => {
-                    tracing::warn!("live view capture of {} stopped: {reason}", source.name());
+                    tracing::warn!(
+                        event = "live_view_capture.ended",
+                        source = ending.source.as_str(),
+                        outcome = "stopped",
+                        ms = 0u64,
+                        %reason,
+                        "a live view capture was stopped by its source"
+                    );
                     for viewer in viewers.values() {
                         let _behind = viewer.events.try_send(Event::Stopped(reason.clone()));
                     }
@@ -436,7 +482,14 @@ async fn run<S: Source>(
                     stopped = Some(reason);
                 }
                 Err(StartError::Failed(reason)) => {
-                    tracing::warn!("live view capture of {}: {reason}", source.name());
+                    tracing::warn!(
+                        event = "live_view_capture.ended",
+                        source = ending.source.as_str(),
+                        outcome = "start_failed",
+                        ms = 0u64,
+                        %reason,
+                        "a live view capture did not start"
+                    );
                     report(&viewers, &mut failure, reason);
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
                     attempt = Instant::now() + retry;
@@ -448,6 +501,7 @@ async fn run<S: Source>(
         {
             running.capture.encoding(bitrate, fps);
             running.encoding = (bitrate, fps);
+            ending.rate_changes += 1;
         }
         // Only a start that waits for its retry time sleeps: until the owner
         // made the source ready, or while it may not be captured, the loop
@@ -465,10 +519,16 @@ async fn run<S: Source>(
             }
         };
         tokio::select! {
-            _ = ended.cancelled() => return,
+            _ = ended.cancelled() => {
+                ending.cause = "source_gone";
+                return;
+            }
             // A viewer asked again, or the source came back by itself.
             change = source.changed(stopped.is_some()) => match change {
-                Change::Gone => return,
+                Change::Gone => {
+                    ending.cause = "source_gone";
+                    return;
+                }
                 Change::Resumed => {
                     stopped = None;
                     retry = Duration::ZERO;
@@ -559,8 +619,12 @@ async fn run<S: Source>(
                         running.sequence = frame.sequence;
                     }
                     failure = None;
+                    ending.frames += 1;
+                    ending.bytes += frame.data.len() as u64;
                     for viewer in viewers.values() {
-                        let _behind = viewer.events.try_send(Event::Frame(frame.clone()));
+                        if viewer.events.try_send(Event::Frame(frame.clone())).is_err() {
+                            ending.dropped += 1;
+                        }
                     }
                 }
                 // A source that stopped drawing before capture began sends
@@ -569,13 +633,27 @@ async fn run<S: Source>(
                 // one still silent then asks again.
                 Some(CaptureEvent::Started | CaptureEvent::Stalled) => source.redraw(),
                 Some(CaptureEvent::Failed(message)) => {
-                    tracing::warn!("live view capture of {}: {message}", source.name());
+                    tracing::warn!(
+                        event = "live_view_capture.ended",
+                        source = ending.source.as_str(),
+                        outcome = "failed",
+                        ms = running.as_ref().map_or(0, |running| running.began.elapsed().as_millis() as u64),
+                        reason = %message,
+                        "a live view capture failed"
+                    );
                     report(&viewers, &mut failure, message);
                     running = None;
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
                     attempt = Instant::now() + retry;
                 }
                 None => {
+                    tracing::info!(
+                        event = "live_view_capture.ended",
+                        source = ending.source.as_str(),
+                        outcome = "closed",
+                        ms = running.as_ref().map_or(0, |running| running.began.elapsed().as_millis() as u64),
+                        "a live view capture ended"
+                    );
                     running = None;
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
                     attempt = Instant::now() + retry;

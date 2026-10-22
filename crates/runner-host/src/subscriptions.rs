@@ -522,6 +522,7 @@ impl Owner {
     }
 
     async fn subscribe(&mut self, id: String, kind: SubscriptionKind, path: String, suffix: Option<String>) -> bool {
+        let _step = demi_runner_process::steps::step("subscribe", id.as_str());
         let lease = Instant::now() + SUBSCRIPTION_LEASE;
         let resolved = resolve(&self.default_cwd, &path);
         let subject = match resolved {
@@ -639,6 +640,7 @@ impl Owner {
         let empty = index.is_empty();
         drop(index);
         if empty {
+            let _step = demi_runner_process::steps::step("watch_teardown", id);
             self.bound.remove(key);
         }
     }
@@ -675,7 +677,7 @@ impl Owner {
             Status::Starting => true,
             Status::Failed(reason) => {
                 self.end(id);
-                tracing::info!("a subscription cannot be watched: {reason}");
+                tracing::info!(event = "subscription.unwatchable", id, %reason, "a subscription cannot be watched");
                 self.report(Report::Failed {
                     id: id.to_owned(),
                     reason,
@@ -717,7 +719,7 @@ impl Owner {
                 if let Some(subscription) = self.subscriptions.get_mut(id) {
                     subscription.live = true;
                 }
-                tracing::debug!(id, since, "a subscription is live");
+                tracing::debug!(event = "subscription.live", id, since, "a subscription is live");
                 self.report(Report::Live {
                     id: id.to_owned(),
                     since,
@@ -742,7 +744,7 @@ impl Owner {
             .collect();
         changes.sort();
         if !changes.is_empty() {
-            tracing::debug!(count = changes.len(), "subscriptions changed");
+            tracing::debug!(event = "subscriptions.changed", count = changes.len(), "subscriptions changed");
         }
         while !changes.is_empty() {
             let rest = changes.split_off(changes.len().min(CHANGES_PER_MESSAGE));

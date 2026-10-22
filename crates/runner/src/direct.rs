@@ -116,7 +116,7 @@ impl ReportedStream {
 fn send_report(report: Outbound, backend: &mpsc::UnboundedSender<wire::Frame>) {
     match wire::encode(&report) {
         Ok(frame) => drop(backend.send(frame)),
-        Err(error) => tracing::warn!("a direct stream's report encoding failed: {error}"),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "direct_report", %error, "a direct stream's report was not encoded"),
     }
 }
 

@@ -142,6 +142,15 @@ impl RemoteHost {
         Some(self.0.default_cwd.clone())
     }
 
+    /// The device whose runner serves this Host now, for the log; none while
+    /// no runner is connected.
+    pub fn device_id(&self) -> Option<String> {
+        match &*self.0.link.borrow() {
+            DeviceLink::Online(link) => Some(link.device().to_owned()),
+            DeviceLink::Offline { .. } => None,
+        }
+    }
+
     /// A new job's id, which a job's records name before it starts.
     pub fn job_id() -> String {
         uuid::Uuid::new_v4().simple().to_string()
@@ -152,6 +161,17 @@ impl RemoteHost {
     pub async fn start_job(&self, job: JobStart) -> Result<RemoteJob, HostError> {
         let lease = self.admit()?;
         let id = job.id.clone();
+        tracing::info!(
+            event = "command.started",
+            job_id = id.as_str(),
+            host_id = self.device_id().as_deref(),
+            conversation = job.context.conversation.as_str(),
+            node = job.caller.as_ref().map(|caller| caller.node.to_string()),
+            turn = job.caller.as_ref().and_then(|caller| caller.turn.as_ref()).map(ToString::to_string),
+            piped = job.stdin.is_some() || job.stdout.is_some(),
+            declared_commands = job.commands.is_some(),
+            "a command's job started"
+        );
         let origin = Rc::new(JobOrigin {
             host: self.0.key.clone(),
             context: job.context.clone(),
@@ -414,7 +434,7 @@ impl RemoteHost {
             },
             input: input.wire_ref(),
         });
-        let written = reply_after_input(input, path, written).await?;
+        let written = reply_after_input(link.device(), input, path, written).await?;
         match written {
             Answer::Fs(FsResult::WriteFile(name), _) => Ok(name),
             _ => Err(mismatch()),
@@ -498,7 +518,7 @@ impl RemoteHost {
             directory_mode,
             input: input.wire_ref(),
         });
-        let written = reply_after_input(&input, path, written);
+        let written = reply_after_input(link.device(), &input, path, written);
         let ((), written) = tokio::join!(upload, written);
         if let Err(error) = &written {
             input.fail(&error.message);
@@ -979,6 +999,14 @@ impl RemoteJob {
         &self.id
     }
 
+    /// The device the job runs on, while a connection serves it.
+    fn host_id(&self) -> Option<String> {
+        match &*self.device.borrow() {
+            DeviceLink::Online(link) => Some(link.device().to_owned()),
+            DeviceLink::Offline { .. } => None,
+        }
+    }
+
     /// The connection that serves the job's device now, for the job's
     /// controls: none while the job's start waits to go again over it,
     /// since a signal or input sent before the start would reach no job;
@@ -1151,7 +1179,7 @@ impl RemoteJob {
                 job_id: self.id.clone(),
             })
         {
-            tracing::debug!(job = %self.id, "job release not sent: {error}");
+            tracing::warn!(event = "link.send_failed", host_id = link.device(), what = "job_release", job_id = %self.id, %error, "a message to a runner was not sent");
         }
     }
 
@@ -1168,6 +1196,15 @@ impl RemoteJob {
     ///
     /// Ends with the job's end, which only its runner reports, or its loss.
     pub async fn stop(&self) -> JobEnd {
+        tracing::info!(
+            event = "command.state_changed",
+            job_id = self.id.as_str(),
+            host_id = self.host_id().as_deref(),
+            from = "running",
+            to = "stopping",
+            cause = "stop_requested",
+            "a command's job is being stopped"
+        );
         let mut attachments = self.clone();
         loop {
             // The connection this round's signals go over, none while away:
@@ -1201,7 +1238,7 @@ impl RemoteJob {
     /// stop sends it again over the next connection.
     async fn stop_signal(&self, signal: wire::Signal) {
         if let Err(error) = self.kill(signal).await {
-            tracing::debug!(job = %self.id, "the job's {signal} was not sent: {error}");
+            tracing::warn!(event = "link.send_failed", host_id = self.host_id().as_deref(), what = "signal", signal = %signal, job_id = %self.id, %error, "a job's signal was not sent");
         }
     }
 
@@ -2003,27 +2040,50 @@ const REPLY_AFTER_INPUT: Duration = Duration::from_secs(60);
 /// interrupted and closes the connection that carried the pipe, which ends the
 /// runner's read, so the runner removes its temporary file.
 async fn reply_after_input<T>(
+    host_id: &str,
     input: &Pipe,
     path: &str,
     reply: impl Future<Output = Result<T, HostError>>,
 ) -> Result<T, HostError> {
+    let began = tokio::time::Instant::now();
+    let drained = std::cell::Cell::new(None);
     let overdue = async {
         match input.done().await {
-            Ok(()) => tokio::time::sleep(REPLY_AFTER_INPUT).await,
+            Ok(()) => {
+                drained.set(Some(began.elapsed()));
+                tokio::time::sleep(REPLY_AFTER_INPUT).await
+            }
             // A failed pipe ends the write on the runner, which answers so.
             Err(_) => std::future::pending().await,
         }
     };
-    tokio::select! {
-        reply = reply => reply,
+    let (result, overdue) = tokio::select! {
+        reply = reply => (reply, false),
         () = overdue => {
             input.close_sink_connection();
-            Err(HostError::interrupted(format!(
+            let error = HostError::interrupted(format!(
                 "the Host did not finish writing {path} within {} seconds of receiving it",
                 REPLY_AFTER_INPUT.as_secs()
-            )))
+            ));
+            (Err(error), true)
         }
-    }
+    };
+    let ms = began.elapsed();
+    let drain = drained.get();
+    tracing::info!(
+        event = "host_write.ended",
+        host_id,
+        outcome = match (&result, overdue) {
+            (_, true) => "reply_overdue",
+            (Ok(_), _) => "ok",
+            (Err(_), _) => "interrupted",
+        },
+        drain_ms = drain.map(|drain| drain.as_millis() as u64),
+        reply_ms = drain.map(|drain| ms.saturating_sub(drain).as_millis() as u64),
+        ms = ms.as_millis() as u64,
+        "a write to a Host ended"
+    );
+    result
 }
 
 fn protocol(message: &str) -> HostError {

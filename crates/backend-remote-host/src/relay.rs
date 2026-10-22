@@ -230,16 +230,43 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
     let command = call.path.join(" ");
     link.spawn(command.clone(), async move {
         let call_id = call.call_id.clone();
+        let job_id = call.job_id.clone();
+        let began = tokio::time::Instant::now();
         let origin = tokio::select! {
             origin = origin_of(&relaying, &call.job_id) => origin,
             () = entry.stopped.cancelled() => Err(entry
                 .cause()
                 .map_or_else(|| "rpc call ended".to_owned(), |cause| cause.text().to_owned())),
         };
+        let no_origin = origin.is_err();
         let ran = match origin {
             Ok(origin) => run(&relaying, call, origin, &entry).await,
             Err(error) => Err(Ended::Failed(error)),
         };
+        let (outcome, reason, exit) = match (&ran, entry.cause()) {
+            (Ok(code), _) => ("ok", None, Some(*code)),
+            (Err(Ended::Usage(_)), _) => ("refused", Some("usage"), None),
+            (Err(Ended::Failed(_)), Some(Stop::Cancelled)) => ("cancelled", Some("cancelled_by_runner"), None),
+            (Err(Ended::Failed(_)), Some(Stop::Ended(text))) => (
+                "cancelled",
+                Some(if text.contains("disconnected") { "runner_disconnected" } else { "ended" }),
+                None,
+            ),
+            (Err(Ended::Failed(_)), None) if no_origin => ("refused", Some("no_origin"), None),
+            (Err(Ended::Failed(_)), None) => ("failed", Some("handler_failed"), None),
+        };
+        tracing::info!(
+            event = "rpc_call.ended",
+            host_id = relaying.device(),
+            job_id = job_id.as_str(),
+            call = call_id.as_str(),
+            command = command.as_str(),
+            outcome,
+            reason,
+            exit,
+            ms = began.elapsed().as_millis() as u64,
+            "a runner's call of a demi command ended"
+        );
         let exit_code = match ran {
             Ok(code) => code,
             Err(ended) => {
@@ -260,7 +287,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
                     bytes: WireBytes(text.into_bytes()),
                 };
                 if let Err(error) = relaying.send(&error) {
-                    tracing::debug!(call = %call_id, "rpc error not sent: {error}");
+                    tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "rpc_error", call = %call_id, %error, "a message to a runner was not sent");
                 }
                 code
             }
@@ -273,7 +300,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             exit_code,
         };
         if let Err(error) = relaying.send(&exit) {
-            tracing::debug!(call = %call_id, "rpc exit not sent: {error}");
+            tracing::warn!(event = "link.send_failed", host_id = relaying.device(), what = "exit", call = %call_id, %error, "a message to a runner was not sent");
         }
     });
 }
@@ -471,7 +498,7 @@ impl RelayPort {
                 Ok(writer) => writer.end(),
                 // Handed to a device, whose upload ends it.
                 Err(PipeError::AlreadyFixed(_)) => {}
-                Err(error) => tracing::debug!(call = %self.call_id, "stdout not ended: {error}"),
+                Err(error) => tracing::warn!(event = "link.send_failed", host_id = self.link.device(), what = "stdout_end", call = %self.call_id, %error, "a call's standard output was not ended"),
             },
             Stdout::Writing(writer) => writer.end(),
             Stdout::Busy | Stdout::Done => {}

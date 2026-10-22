@@ -282,7 +282,7 @@ impl JobDirectories {
             match jobs.get(job) {
                 Some(held) if !held.running => jobs.remove(job).map(|held| held.path),
                 Some(_) => {
-                    tracing::warn!(job, "a running job's directory was not released");
+                    tracing::warn!(event = "job_directory.release_failed", job_id = job, reason = "running", "a running job's directory was not released");
                     None
                 }
                 None => None,
@@ -307,7 +307,7 @@ impl JobDirectories {
                 Ok(entries) => entries,
                 Err(error) if error.kind() == io::ErrorKind::NotFound => return,
                 Err(error) => {
-                    tracing::warn!(directory = %root.display(), "the job directories could not be listed: {error}");
+                    tracing::warn!(event = "job_directories.failed", step = "list", directory = %root.display(), %error, "the job directories could not be listed");
                     return;
                 }
             };
@@ -317,13 +317,13 @@ impl JobDirectories {
                     && !running.contains(&path)
                     && let Err(error) = std::fs::remove_dir_all(&path)
                 {
-                    tracing::warn!(directory = %path.display(), "a job directory was not removed: {error}");
+                    tracing::warn!(event = "job_directories.failed", step = "remove", directory = %path.display(), %error, "a job directory was not removed");
                 }
             }
         })
         .await;
         if let Err(error) = cleared {
-            tracing::warn!("the job directories were not cleared: {error}");
+            tracing::warn!(event = "job_directories.failed", step = "clear", %error, "the job directories were not cleared");
         }
     }
 }
@@ -340,11 +340,11 @@ async fn remove(path: PathBuf) {
         if let Err(error) = std::fs::remove_dir_all(&path)
             && error.kind() != io::ErrorKind::NotFound
         {
-            tracing::warn!(directory = %path.display(), "a job directory was not removed: {error}");
+            tracing::warn!(event = "job_directories.failed", step = "remove", directory = %path.display(), %error, "a job directory was not removed");
         }
     })
     .await;
     if let Err(error) = removed {
-        tracing::warn!("a job directory was not removed: {error}");
+        tracing::warn!(event = "job_directories.failed", step = "remove", %error, "a job directory was not removed, its task failed");
     }
 }

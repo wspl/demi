@@ -1675,6 +1675,19 @@ pub enum AutostartUnavailable {
 }
 
 impl AutostartUnavailable {
+    /// The cause as the log names it.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::NoSystemd => "no_systemd",
+            Self::NoUserManager { .. } => "no_user_manager",
+            Self::NotWritten { .. } => "not_written",
+            Self::LingerOff { .. } => "linger_off",
+            Self::Refused { .. } => "refused",
+            Self::UnusableName { .. } => "unusable_name",
+            Self::UnknownAccount => "unknown_account",
+        }
+    }
+
     /// The cause in English, as the runner's log and the installers say it
     /// after [`crate::console::NO_AUTOSTART`]; a path under `home` is
     /// written from `~`.

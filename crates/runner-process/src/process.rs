@@ -634,7 +634,7 @@ pub async fn wait_timed(child: &mut dyn ChildWrapper) -> io::Result<(ExitStatus,
     #[cfg(unix)]
     let time = match child.id() {
         Some(pid) => ended_wait(pid).await.unwrap_or_else(|error| {
-            tracing::warn!("reading the processor time of process {pid} failed: {error}");
+            tracing::warn!(event = "process_cpu.read_failed", pid, %error, "the processor time of a process could not be read");
             ProcessorTime::default()
         }),
         // Reaped already, its time went with it.

@@ -143,7 +143,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
                 return Ok(Ending::HandedOver);
             }
             Err(error) => {
-                tracing::warn!("the runner goes on unsupervised: the service manager did not start the installation's runner: {error}");
+                tracing::warn!(event = "runner.unsupervised", cause = "service_manager_did_not_start", %error, "the runner goes on unsupervised: the service manager did not start the installation's runner");
                 lease = match state.try_lock()? {
                     Some(lease) => lease,
                     // The manager started it all the same.
@@ -156,31 +156,33 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         }
     }
     runner.autostart_unavailable = supervision.and_then(Result::err);
-    let unstartable = |reason: String| {
-        tracing::error!("{reason}; starting the runner again changes nothing");
+    let unstartable = |reason: &'static str, error: Option<String>| {
+        tracing::error!(
+            event = "runner.start_blocked",
+            reason,
+            error,
+            "the installation's state is one no start can change"
+        );
         Ok(Ending::Unstartable)
     };
     let saved = match state.config().await {
         Ok(saved) => saved,
-        Err(error) => return unstartable(format!("the installation's configuration cannot be read: {error}")),
+        Err(error) => return unstartable("config_unreadable", Some(error.to_string())),
     };
     if let Some(saved) = &saved
         && saved.backend_url != *options.backend.url()
     {
-        return unstartable(format!(
-            "the installation is registered to another backend, {}",
-            saved.backend_url
-        ));
+        return unstartable("registered_to_another_backend", Some(saved.backend_url.to_string()));
     }
     let token = match &options.token {
         Some(token) => Some(token.clone()),
         None => match state.token().await {
             Ok(token) => token,
-            Err(error) => return unstartable(format!("the device token cannot be read: {error}")),
+            Err(error) => return unstartable("token_unreadable", Some(error.to_string())),
         },
     };
     if runner.managed == Some(true) && token.is_none() {
-        return unstartable("a managed runner requires a device token".into());
+        return unstartable("managed_without_token", None);
     }
     state
         .write_config(&RunnerConfig {
@@ -190,7 +192,8 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         .await?;
     // Every pipe request reads the token; only a claim changes it.
     let token = watch::Sender::new(token);
-    tracing::info!("runner {} started", runner.version);
+    tracing::info!(event = "runner.started", version = runner.version.as_str(), pid = std::process::id(), "the runner started");
+    let started = std::time::Instant::now();
     // A Cloud image preinstalls the command artifacts there. The runner
     // looks on every Host, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
@@ -221,7 +224,6 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     }
     if let Some(reason) = &runner.autostart_unavailable {
         let sentence = reason.sentence(&runner.identity.home_dir);
-        tracing::info!("this device will not start Demi by itself after a restart: {sentence}");
         management.tell_no_autostart(&sentence);
     }
     let dispatcher = Arc::new(Dispatcher {
@@ -298,7 +300,22 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     };
     registry.close().await;
     let closed = server.close().await;
-    tracing::info!("runner stopped");
+    tracing::info!(
+        event = "runner.stopped",
+        cause = match &outcome {
+            Ok(Ending::Stopped) => "stopped",
+            Ok(Ending::Replaced(_)) => "replaced",
+            Ok(Ending::Removed(_)) => "removed",
+            Ok(Ending::Uninstalled(_)) => "uninstalled",
+            Ok(Ending::Held) => "held",
+            Ok(Ending::Refused(_)) => "refused",
+            Ok(Ending::HandedOver) => "handed_over",
+            Ok(Ending::Unstartable) => "unstartable",
+            Err(_) => "failed",
+        },
+        ms = started.elapsed().as_millis() as u64,
+        "the runner stopped"
+    );
     let released = lease.release();
     let ending = outcome?;
     closed.and(released)?;
@@ -311,6 +328,7 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
     // A backend that stays away fails the same way every few seconds. The
     // console hears each attempt; the log keeps one line per change.
     let mut failure: Option<String> = None;
+    let mut attempt = 0u32;
     loop {
         // Draining waits for the jobs, which run on without a connection.
         if management.stop.is_cancelled()
@@ -319,16 +337,26 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
             return Ok(Ending::Stopped);
         }
         management.set_phase(Phase::Connecting);
+        attempt += 1;
         if failure.is_none() {
-            tracing::info!("connecting to {}", registered.backend.url());
+            tracing::info!(
+                event = "runner.connecting",
+                backend = registered.backend.url().as_str(),
+                attempt,
+                "the runner is connecting to its backend"
+            );
         }
+        let began = std::time::Instant::now();
         let result = connection(registered, kept).await;
+        let attempt_ms = began.elapsed().as_millis() as u64;
         // A connection that went online starts the retries over: its failure
         // is a new one, logged and retried after the first delay, however
         // long ago the last failure was (`crates/runner/src/host_log.rs`).
-        if management.phase() == Phase::Online {
+        let was_online = management.phase() == Phase::Online;
+        if was_online {
             failure = None;
             delay = Duration::from_millis(250);
+            attempt = 0;
         }
         let result = match result {
             Ok(Attempt::Update(update)) => {
@@ -338,7 +366,9 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
                         registered.runner.version, update.release
                     )));
                 };
-                tracing::info!("updating to runner release {}", update.release);
+                tracing::info!(event = "runner.updating", release = update.release.as_str(), "the runner is updating to its backend's release");
+                let updating = std::time::Instant::now();
+                let _placing = demi_runner_process::steps::step("update_place", update.release.as_str());
                 let token = registered.token.borrow().clone();
                 match installed
                     .update(registered.backend.url(), token.as_ref(), &update, &management.stop)
@@ -348,13 +378,31 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
                     // stopped, and the backend learns from its hello that
                     // they were lost to the update (`crates/runner/src/update.rs`).
                     Ok(successor) => {
+                        tracing::info!(
+                            event = "runner_update.ended",
+                            release = update.release.as_str(),
+                            outcome = "replaced",
+                            bytes = update.executable.as_ref().map(|executable| executable.size),
+                            ms = updating.elapsed().as_millis() as u64,
+                            "the runner's update is in place"
+                        );
                         kept.stop_jobs(registered).await;
                         return Ok(Ending::Replaced(successor));
                     }
-                    Err(error) => Err(io::Error::other(format!(
-                        "the update to runner release {} failed: {error}",
-                        update.release
-                    ))),
+                    Err(error) => {
+                        tracing::warn!(
+                            event = "runner_update.ended",
+                            release = update.release.as_str(),
+                            outcome = "failed",
+                            ms = updating.elapsed().as_millis() as u64,
+                            %error,
+                            "the runner's update failed"
+                        );
+                        Err(io::Error::other(format!(
+                            "the update to runner release {} failed: {error}",
+                            update.release
+                        )))
+                    }
                 }
             }
             Ok(Attempt::Ended(end)) => Ok(end),
@@ -370,14 +418,29 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
             }
             Ok(End::Revoked(projects)) => return Ok(Ending::Removed(projects)),
             Ok(End::Disconnected) => {
-                tracing::warn!(event = "link.closed", reason = "the backend ended it", "backend connection lost")
+                tracing::warn!(
+                    event = "link.closed",
+                    reason = "the backend ended it",
+                    was_online,
+                    attempt_ms,
+                    retry_ms = delay.as_millis() as u64,
+                    "backend connection lost"
+                )
             }
             Err(error) => {
                 let text = format!("connection ended: {error}");
                 if failure.as_ref() == Some(&text) {
                     crate::console::line(crate::console::runner_line(&text));
                 } else {
-                    tracing::warn!(event = "link.closed", reason = %error, "{text}");
+                    tracing::warn!(
+                        event = "link.closed",
+                        reason = %error,
+                        was_online,
+                        attempt,
+                        attempt_ms,
+                        retry_ms = delay.as_millis() as u64,
+                        "{text}"
+                    );
                 }
                 management.failed(crate::console::runner_line(&text));
                 failure = Some(text);
@@ -411,7 +474,7 @@ async fn revocation_window(registered: &Registered) -> Infallible {
     // A runner that was never paired has no device to revoke.
     if registered.token.borrow().is_some() {
         tokio::time::sleep(REVOCATION_WAIT).await;
-        tracing::warn!("the backend could not be asked to revoke this device; it lists the device until the user revokes it");
+        tracing::warn!(event = "runner_revocation.unreachable", wait_ms = REVOCATION_WAIT.as_millis() as u64, "the backend could not be asked to revoke this device; it lists the device until the user revokes it");
         management.settle(Revocation::Unreached);
     } else {
         management.settle(Revocation::Unpaired);

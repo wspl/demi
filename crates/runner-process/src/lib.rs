@@ -6,6 +6,7 @@
 //! - the way to the backend and its pipes;
 //! - lines and tails of streams;
 //! - private state files, and line counts of a change;
+//! - the steps that may hold up the control thread, and its watch;
 //! - the local command client, and the job shell contract.
 //!
 //! The crate knows nothing of the backend connection, jobs, commands, services
@@ -19,4 +20,5 @@ pub mod pipes;
 pub mod private_files;
 pub mod process;
 pub mod stdio;
+pub mod steps;
 pub mod tail;

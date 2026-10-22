@@ -685,8 +685,12 @@ impl Owner {
         };
         let Some(client) = client else {
             tracing::info!(
-                "service {} is no longer needed and its start stops",
-                current.id
+                event = "service.state_changed",
+                service = current.id.as_str(),
+                from = "starting",
+                to = "stopped",
+                cause = "not_needed",
+                "a service is no longer needed and its start stops"
             );
             current.stop.cancel();
             self.entries.remove(digest);
@@ -740,8 +744,12 @@ impl Owner {
             }
             Ok(false) => {
                 tracing::info!(
-                    "service {} holds no lease or conversation and stops",
-                    current.id
+                    event = "service.state_changed",
+                    service = current.id.as_str(),
+                    from = "ready",
+                    to = "stopped",
+                    cause = "no_lease_no_conversation",
+                    "a service holds no lease or conversation and stops"
                 );
                 current.stop.cancel();
                 self.entries.remove(&checked.digest);
@@ -752,8 +760,13 @@ impl Owner {
             // nothing: stopping it would end every conversation it serves.
             Err(error) => {
                 tracing::warn!(
-                    "service {} did not say which conversations it holds ({error}); it stays",
-                    current.id
+                    event = "service.state_changed",
+                    service = current.id.as_str(),
+                    from = "ready",
+                    to = "ready",
+                    cause = "holds_unknown",
+                    %error,
+                    "a service did not say which conversations it holds, so it stays"
                 );
                 #[cfg(feature = "testing")]
                 decided(&self.decisions, &checked.digest, Decision::Unanswered);
@@ -922,6 +935,7 @@ async fn live(
     state: watch::Sender<State>,
 ) {
     let descriptor = start.descriptor;
+    let began = std::time::Instant::now();
     let _held = cache.holds().hold(&start.artifact.sha256);
     let started = async {
         let wanted = Wanted {
@@ -964,13 +978,30 @@ async fn live(
         Ok(service) => service,
         Err(error) => {
             if !matches!(error, RuntimeError::Cancelled) {
-                tracing::warn!("service {} did not start: {error}", descriptor.id);
+                tracing::warn!(
+                    event = "service.state_changed",
+                    service = descriptor.id.as_str(),
+                    from = "starting",
+                    to = "failed",
+                    ms = began.elapsed().as_millis() as u64,
+                    %error,
+                    "a service did not start"
+                );
             }
             state.send_replace(State::Ended(Arc::new(error)));
             return;
         }
     };
-    tracing::info!("service {} started (pid {})", descriptor.id, service.pid());
+    tracing::info!(
+        event = "service.state_changed",
+        service = descriptor.id.as_str(),
+        from = "starting",
+        to = "ready",
+        ms = began.elapsed().as_millis() as u64,
+        pid = service.pid(),
+        "a service started"
+    );
+    let ready = std::time::Instant::now();
     state.send_replace(State::Ready {
         client: service.client().clone(),
         info: Arc::new(service.info().clone()),
@@ -978,7 +1009,15 @@ async fn live(
     let ended = service.ended().await;
     let Some(reason) = ended.reason else {
         // A service asked to stop released its conversations first.
-        tracing::info!("service {} stopped", descriptor.id);
+        tracing::info!(
+            event = "service.state_changed",
+            service = descriptor.id.as_str(),
+            from = "ready",
+            to = "stopped",
+            cause = "asked",
+            ms = ready.elapsed().as_millis() as u64,
+            "a service stopped"
+        );
         state.send_replace(State::Ended(Arc::new(RuntimeError::Stopped)));
         return;
     };
@@ -988,7 +1027,15 @@ async fn live(
         stderr: ended.stderr,
     };
     // Its standard error is in the log already, line by line.
-    tracing::warn!("service {} {}", exit.service, exit.reason);
+    tracing::warn!(
+        event = "service.state_changed",
+        service = exit.service.as_str(),
+        from = "ready",
+        to = "exited",
+        ms = ready.elapsed().as_millis() as u64,
+        reason = %exit.reason,
+        "a service ended by itself"
+    );
     state.send_replace(State::Ended(Arc::new(exit.into())));
     // What it kept for its conversations went with it, unsaid
     // (`crates/command-protocol/src/messages.rs`).
@@ -1045,9 +1092,14 @@ async fn conversation_call(
                 {
                     completed = true
                 }
-                Record::Stderr(chunk) => tracing::warn!(
-                    "conversation {request:?}: {}",
-                    String::from_utf8_lossy(&chunk).trim_end()
+                Record::Stderr(chunk) => tracing::debug!(
+                    event = "conversation_call.stderr",
+                    call = match request {
+                        ConversationRequest::Status {} => "status",
+                        ConversationRequest::Release { .. } => "release",
+                    },
+                    bytes = chunk.len(),
+                    "a conversation call wrote to its standard error"
                 ),
                 _ => return Err("the conversation operation failed".into()),
             }

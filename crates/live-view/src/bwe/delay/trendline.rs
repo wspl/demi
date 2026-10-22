@@ -137,7 +137,7 @@ impl TrendlineEstimator {
 
     fn update_trendline(&mut self, variation: InterGroupDelayDelta, now: Instant) -> Option<()> {
         let trend = self.linear_fit().unwrap_or(self.previous_trend);
-        trace!("Computed trend {:?}", trend);
+        trace!(event = "bwe.trend_computed", trend, "a delay trend was computed");
         log_trendline_estimate!(trend);
 
         self.detect(trend, variation, now);
@@ -207,10 +207,11 @@ impl TrendlineEstimator {
 
             overuse.count += 1;
             trace!(
-                timeoverusing = ?overuse.time_overusing,
+                event = "bwe.overuse_maybe",
+                time_overusing_ms = (overuse.time_overusing.as_secs_f64() * 1000.0) as i64,
                 trend,
                 previous_trend = self.previous_trend,
-                "Trendline Estimator: Maybe overusing"
+                "the delay trend may be overusing"
             );
 
             if overuse.time_overusing > OVER_USE_TIME_THRESHOLD
@@ -263,8 +264,9 @@ impl TrendlineEstimator {
         self.delay_threshold = self.delay_threshold.clamp(6.0, 600.0);
 
         trace!(
-            "Adaptive delay variation threshold changed to: {}",
-            self.delay_threshold
+            event = "bwe.threshold_changed",
+            threshold = self.delay_threshold,
+            "the adaptive delay variation threshold changed"
         );
     }
 
@@ -273,7 +275,7 @@ impl TrendlineEstimator {
             return;
         }
 
-        trace!("TrendLineEstimator: Setting hypothesis to {new_hypothesis}");
+        trace!(event = "bwe.hypothesis_set", hypothesis = %new_hypothesis, "the bandwidth hypothesis was set");
         self.hypothesis = new_hypothesis;
     }
 }

@@ -164,7 +164,7 @@ impl ServiceStreams {
                     }
                 }
                 Err(error) => {
-                    tracing::warn!("service_opened encoding failed: {error}");
+                    tracing::warn!(event = "reply.encode_failed", what = "service_opened", %error, "a service stream's opening was not encoded");
                     return;
                 }
             }
@@ -199,7 +199,7 @@ impl ServiceStreams {
                         let _ = reply.send(message);
                     }
                     Err(error) => {
-                        tracing::warn!("service_done encoding failed: {error}");
+                        tracing::warn!(event = "reply.encode_failed", what = "service_done", %error, "a service stream's end was not encoded");
                     }
                 }
             }
@@ -309,7 +309,7 @@ impl Opening {
             conversation: context.conversation.clone(),
         };
         let refused = |code: ServiceErrorCode, message: String| {
-            log.event(&format!("refused ({code}): {message}"));
+            log.event("service_stream.refused", Some(&code.to_string()), Some(&message));
             StreamRefusal::Refused { code, message }
         };
         let services = &opener.services;
@@ -375,7 +375,7 @@ impl Opening {
                 Err(message) => return Err(refused(ServiceErrorCode::ServiceFailed, message)),
             },
         };
-        log.event("opened");
+        log.event("service_stream.opened", None, None);
         Ok(OpenedStream {
             exchange: Exchange::new(input, output),
             log,
@@ -433,7 +433,7 @@ impl OpenedStream {
         let ended = match result {
             Ok(completion) => {
                 if let Some(error) = &completion.error {
-                    log.event(&format!("failed: {}: {}", error.code, error.message));
+                    log.event("service_stream.failed", Some(&error.code.to_string()), Some(&error.message));
                 }
                 let outcome = Outcome {
                     exit_code: completion.exit_code,
@@ -449,7 +449,7 @@ impl OpenedStream {
                 input: Err(error),
             },
             Err(Some(ExchangeError::Service(error))) => {
-                log.event(&format!("failed: {error}"));
+                log.event("service_stream.failed", None, Some(&error.to_string()));
                 StreamEnded {
                     done: None,
                     input: Err(io::Error::other("the service stream's invocation failed")),
@@ -460,7 +460,7 @@ impl OpenedStream {
                 input: Err(io::Error::new(io::ErrorKind::Interrupted, "service stream cancelled")),
             },
         };
-        log.event("ended");
+        log.event("service_stream.ended", None, None);
         ended
     }
 }
@@ -536,11 +536,16 @@ struct StreamLog {
 }
 
 impl StreamLog {
-    fn event(&self, text: &str) {
+    /// A stream's state change, `event` as `service_stream.opened` is; a
+    /// failure says its `code` and what the service said of it.
+    fn event(&self, event: &str, code: Option<&str>, error: Option<&str>) {
         tracing::info!(
+            event,
             conversation = self.conversation.as_str(),
-            "{} {text}",
-            self.source
+            stream = self.source.as_str(),
+            code,
+            error,
+            "a service stream changed"
         );
     }
 
@@ -649,6 +654,6 @@ fn send_error(
         message,
     }) {
         Ok(message) => drop(output.send(message)),
-        Err(error) => tracing::warn!("service_error encoding failed: {error}"),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "service_error", %error, "a service stream's error was not encoded"),
     }
 }

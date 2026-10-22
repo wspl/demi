@@ -317,6 +317,7 @@ mod platform {
                 // The worker already exited, so there is nothing to stop.
             }
             if let Some(thread) = self.thread.take() {
+                let _step = demi_runner_process::steps::step("watch_teardown", "folder_adder");
                 // A thread that panicked has nothing left to release.
                 let _ = thread.join();
             }
@@ -673,6 +674,7 @@ mod fsevents {
                 cf::CFRunLoopStop(self.run_loop.0);
             }
             if let Some(thread) = self.thread.take() {
+                let _step = demi_runner_process::steps::step("watch_teardown", "fsevents");
                 // A thread that panicked has nothing left to release.
                 let _ = thread.join();
             }
@@ -785,7 +787,7 @@ mod fsevents {
                 // A stream that keeps them is only busier: nothing depends
                 // on its leaving them out but its cost.
                 if FSEventStreamSetExclusionPaths(stream, excluded) == 0 {
-                    tracing::warn!("FSEvents did not leave out the folders git ignores");
+                    tracing::warn!(event = "fsevents.ignore_unsupported", "FSEvents did not leave out the folders git ignores");
                 }
                 cf::CFRelease(excluded);
             }
@@ -904,6 +906,7 @@ mod kqueue {
             // has a thread that ended already.
             let _ = unsafe { kq::kevent(&*self.queue, &[stop], &mut Vec::<Event>::new(), None) };
             if let Some(thread) = self.thread.take() {
+                let _step = demi_runner_process::steps::step("watch_teardown", "kqueue");
                 // A thread that panicked has nothing left to release.
                 let _ = thread.join();
             }
@@ -999,7 +1002,7 @@ mod kqueue {
                                 }
                                 Err(reason) => {
                                     raws.push(Raw::Lost { under: None });
-                                    tracing::warn!("a watch of {} could not go on: {reason}", path.display());
+                                    tracing::warn!(event = "watch.stopped", path = %path.display(), %reason, "a watch could not go on");
                                 }
                             }
                         }

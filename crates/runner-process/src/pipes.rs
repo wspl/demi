@@ -492,7 +492,7 @@ where
         match attempt().await {
             Ok(value) => return Ok(value),
             Err(Attempt::Lost(error)) if started.elapsed() < RECONNECT_FOR => {
-                tracing::debug!("a pipe request lost its connection and goes again: {error}");
+                tracing::debug!(event = "pipe_request.retried", cause = "connection_lost", %error, "a pipe request lost its connection and goes again");
                 tokio::time::sleep(RECONNECT_PAUSE).await;
             }
             Err(error) => return Err(error.into_io()),
@@ -610,6 +610,6 @@ pub fn report_pipe(output: &mpsc::UnboundedSender<wire::Frame>, id: String, resu
     }) {
         // A connection that ended takes nothing more.
         Ok(message) => drop(output.send(message)),
-        Err(error) => tracing::warn!("pipe result encoding failed: {error}"),
+        Err(error) => tracing::warn!(event = "reply.encode_failed", what = "pipe_result", %error, "a pipe result was not encoded"),
     }
 }

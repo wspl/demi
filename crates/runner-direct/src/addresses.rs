@@ -28,7 +28,7 @@ impl Addresses {
                     Err(error) => {
                         // Loopback alone still serves a browser on this
                         // machine.
-                        tracing::warn!("the network interfaces could not be listed: {error}");
+                        tracing::warn!(event = "network_interfaces.list_failed", %error, "the network interfaces could not be listed");
                         Vec::new()
                     }
                 };

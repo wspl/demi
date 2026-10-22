@@ -325,7 +325,7 @@ pub(crate) async fn supervise<E>(
             );
         }
         if let Err(error) = scope.signal(signal, options.foreground) {
-            tracing::warn!("timeout could not signal its command: {error}");
+            tracing::warn!(event = "timeout.signal_failed", %error, "timeout could not signal its command");
         }
     };
     let Some(duration) = options.duration else {

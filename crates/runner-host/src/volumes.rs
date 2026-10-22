@@ -82,7 +82,7 @@ fn send(
             }
         }
         Err(error) => {
-            tracing::warn!("volume response encoding: {error}");
+            tracing::warn!(event = "reply.encode_failed", what = "volume", %error, "a volume response was not encoded");
             stop.cancel();
         }
     }

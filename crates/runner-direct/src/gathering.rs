@@ -126,7 +126,13 @@ pub(crate) async fn resolve(servers: Vec<StunUrl>) -> Vec<SocketAddr> {
                 }
             }
             // A server out of reach gives no address; the others may.
-            Err(error) => tracing::debug!("STUN server {server} does not resolve: {error}"),
+            Err(error) => tracing::debug!(
+                event = "stun.failed",
+                step = "resolve",
+                server = %server,
+                %error,
+                "a STUN server did not resolve"
+            ),
         }
     }
     addresses
@@ -185,7 +191,12 @@ impl Gathering {
         }
         for id in given_up {
             if let Some(request) = self.pending.remove(&id) {
-                tracing::debug!("STUN server {} did not answer", request.server);
+                tracing::debug!(
+                    event = "stun.failed",
+                    step = "no_answer",
+                    server = %request.server,
+                    "a STUN server did not answer"
+                );
             }
         }
     }
@@ -207,6 +218,12 @@ impl Gathering {
 async fn send(request: &Request) {
     if let Err(error) = request.socket.send_to(&request.bytes, request.server).await {
         // A route that is down now may be up at the resend.
-        tracing::debug!("a STUN request to {} could not go: {error}", request.server);
+        tracing::debug!(
+            event = "stun.failed",
+            step = "send",
+            server = %request.server,
+            %error,
+            "a STUN request could not go"
+        );
     }
 }

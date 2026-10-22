@@ -270,7 +270,7 @@ impl JobTable {
                     // directory.
                     let _ = config.output.send(terminal.frame);
                 }
-                Err(error) => tracing::warn!("task terminal encoding failed: {error}"),
+                Err(error) => tracing::warn!(event = "reply.encode_failed", what = "task_terminal", %error, "a task's end was not encoded"),
             }
             key
         });
@@ -456,6 +456,14 @@ impl JobConfig {
             mut following,
         } = controls;
         let id = spec.id;
+        let mut life = Life::new(
+            &id,
+            matches!(spec.command, TaskCommand::Shell { .. }),
+            match &spec.command {
+                TaskCommand::Shell { conversation, .. } => Some(conversation.clone()),
+                TaskCommand::Process { .. } => None,
+            },
+        );
         let mut env = spec.env;
         let mut job = None;
         // A job's execution context, held until the job has ended.
@@ -485,6 +493,7 @@ impl JobConfig {
                 let child = match child {
                     Ok(child) => child,
                     Err(error) => {
+                        life.ended(None, None, "spawn_failed", Some(spawn_kind(error.kind)), 0);
                         return Terminal::of(wire::encode(&wire::Outbound::SpawnExit {
                             spawn_id: id,
                             exit_code: None,
@@ -534,7 +543,7 @@ impl JobConfig {
                 let recorder = match recorder {
                     Ok(recorder) => Some(recorder),
                     Err(error) => {
-                        tracing::warn!("edit recording failed: {error}");
+                        tracing::warn!(event = "edit_record.failed", job_id = %id, %error, "a job's edits could not be recorded");
                         None
                     }
                 };
@@ -590,11 +599,6 @@ impl JobConfig {
                 }
                 (Execution::shell(child), stdin, stdout)
             }
-        };
-        let kind = if job.is_some() {
-            WorkId::Job(id.clone())
-        } else {
-            WorkId::Spawn(id.clone())
         };
         let io_cancel = cancel.child_token();
         let _io_guard = io_cancel.clone().drop_guard();
@@ -870,18 +874,42 @@ impl JobConfig {
                 Some(runner_failure(reason))
             }
             Some(reason) => {
-                tracing::warn!("{kind:?} ended with a failure of the runner's: {reason}");
+                tracing::warn!(
+                    event = "task.failed",
+                    kind = if job.is_some() { "job" } else { "spawn" },
+                    job_id = %id,
+                    %reason,
+                    "a task ended with a failure of the runner's own"
+                );
                 None
             }
             None => None,
         };
         let (code, signal) = (exit.code, exit.signal.clone());
+        // A failure of the runner's beside a status is only logged, so a spawn
+        // error here is one the runner made.
+        let cause = if spawn_error.is_some() {
+            "runner_failure"
+        } else if cancel.is_cancelled() {
+            "killed"
+        } else if signal.is_some() {
+            "stopped"
+        } else {
+            "exited"
+        };
+        let spawn_detail = spawn_error.as_ref().map(|error| spawn_kind(error.kind));
+        let output_bytes = job.as_ref().map_or(0, |(logs, ..)| {
+            let lengths = logs.lengths();
+            lengths.stdout_bytes + lengths.stderr_bytes
+        });
+        life.ended(code, signal.clone(), cause, spawn_detail, output_bytes);
         match job {
             // The job's directory stays running until its exit is built, and
             // then lasts until the backend releases it.
             Some((logs, recorder, _running)) => {
                 let output = logs.lengths();
-                let edits = tokio::task::spawn_blocking(move || crate::edit_report::finish(recorder.as_ref()))
+                let named = id.clone();
+                let edits = tokio::task::spawn_blocking(move || crate::edit_report::finish(&named, recorder.as_ref()))
                 .await
                 .map_err(io::Error::other)?;
                 Terminal::of(
@@ -1124,6 +1152,94 @@ pub fn failure_exit(work: &WorkId, reason: String) -> Result<wire::Frame, wire::
             signal: None,
             spawn_error,
         }),
+    }
+}
+
+/// The word the log gives a spawn error's kind.
+fn spawn_kind(kind: wire::SpawnErrorKind) -> &'static str {
+    match kind {
+        wire::SpawnErrorKind::ExecutableNotFound => "executable_not_found",
+        wire::SpawnErrorKind::PermissionDenied => "permission_denied",
+        wire::SpawnErrorKind::CwdUnusable => "cwd_unusable",
+        wire::SpawnErrorKind::IsDirectory => "is_directory",
+        wire::SpawnErrorKind::Other => "other",
+    }
+}
+
+/// A work's life in the log: `job.started` as it is made, and the one line
+/// `job.ended` when it is dropped, whichever way `run` leaves, a failure of
+/// the runner's own by `?` included.
+struct Life {
+    id: String,
+    conversation: Option<String>,
+    began: Instant,
+    end: Option<Ending>,
+}
+
+struct Ending {
+    exit: Option<i32>,
+    signal: Option<String>,
+    cause: &'static str,
+    spawn_error: Option<&'static str>,
+    output_bytes: u64,
+}
+
+impl Life {
+    fn new(id: &str, shell: bool, conversation: Option<String>) -> Self {
+        tracing::info!(
+            event = "job.started",
+            job_id = id,
+            conversation = conversation.as_deref(),
+            shell = if shell { "builtin" } else { "process" },
+            "a job started"
+        );
+        Self {
+            id: id.to_owned(),
+            conversation,
+            began: Instant::now(),
+            end: None,
+        }
+    }
+
+    fn ended(
+        &mut self,
+        exit: Option<i32>,
+        signal: Option<String>,
+        cause: &'static str,
+        spawn_error: Option<&'static str>,
+        output_bytes: u64,
+    ) {
+        self.end = Some(Ending {
+            exit,
+            signal,
+            cause,
+            spawn_error,
+            output_bytes,
+        });
+    }
+}
+
+impl Drop for Life {
+    fn drop(&mut self) {
+        let end = self.end.take().unwrap_or(Ending {
+            exit: None,
+            signal: None,
+            cause: "runner_failure",
+            spawn_error: None,
+            output_bytes: 0,
+        });
+        tracing::info!(
+            event = "job.ended",
+            job_id = self.id.as_str(),
+            conversation = self.conversation.as_deref(),
+            exit = end.exit,
+            signal = end.signal.as_deref(),
+            cause = end.cause,
+            spawn_error = end.spawn_error,
+            output_bytes = end.output_bytes,
+            ms = self.began.elapsed().as_millis() as u64,
+            "a job ended"
+        );
     }
 }
 

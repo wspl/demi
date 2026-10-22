@@ -193,7 +193,7 @@ async fn answer_numbers(service: &str, stream: RequestStream, backend: Arc<dyn S
         })
         .await;
     if let Err(error) = answered {
-        tracing::warn!("service {service}'s numbers stream broke: {error}");
+        tracing::warn!(event = "service_stream.broke", service, stream = "numbers", %error, "a service's stream broke, so its requests then fail");
     }
 }
 
@@ -231,7 +231,7 @@ async fn answer_messages(service: &str, stream: RequestStream, backend: Arc<dyn 
         () = forward => unreachable!("the forwarder ends only when the answering end does"),
     };
     if let Err(error) = answered {
-        tracing::warn!("service {service}'s messages stream broke: {error}");
+        tracing::warn!(event = "service_stream.broke", service, stream = "messages", %error, "a service's stream broke, so its requests then fail");
     }
 }
 
@@ -251,7 +251,7 @@ async fn answer_artifacts(service: &str, stream: RequestStream, artifacts: Arc<S
         })
         .await;
     if let Err(error) = answered {
-        tracing::warn!("service {service}'s artifacts stream broke: {error}");
+        tracing::warn!(event = "service_stream.broke", service, stream = "artifacts", %error, "a service's stream broke, so its requests then fail");
     }
 }
 
@@ -335,9 +335,11 @@ async fn shut_down<Failure>(
         tokio::select! {
             _ = &mut deadline => {
                 tracing::warn!(
-                    "{} did not shut down within {} seconds and was killed",
-                    stderr.source,
-                    STOP_TIMEOUT.as_secs()
+                    event = "service.killed",
+                    service = stderr.source.as_str(),
+                    waited_ms = STOP_TIMEOUT.as_millis() as u64,
+                    reason = "stop_timeout",
+                    "a service did not shut down in time and was killed"
                 );
                 return;
             }
@@ -360,12 +362,12 @@ async fn finish(
     let running = match child.try_wait() {
         Ok(status) => status.is_none(),
         Err(error) => {
-            tracing::warn!("{}: {error}", stderr.source);
+            tracing::warn!(event = "service.finish_failed", service = stderr.source.as_str(), %error, "the state of a service's process could not be read");
             true
         }
     };
     if running && let Err(error) = Box::into_pin(child.kill()).await {
-        tracing::warn!("{} could not be killed: {error}", stderr.source);
+        tracing::warn!(event = "service.kill_failed", service = stderr.source.as_str(), %error, "a service's process could not be killed");
     }
     Ended {
         reason,
@@ -443,7 +445,7 @@ impl Stderr {
                 self.tail.push(&buffer[..count]);
             }
             Err(error) => {
-                tracing::warn!("{} standard error: {error}", self.source);
+                tracing::warn!(event = "service.stderr_read_failed", service = self.source.as_str(), %error, "a service's standard error could not be read");
                 self.close();
             }
         }

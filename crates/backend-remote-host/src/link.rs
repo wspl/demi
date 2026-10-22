@@ -838,24 +838,30 @@ impl Link {
     /// and delivers what its consumer did not receive: the output the
     /// runner printed while no connection served (`crates/runner/src/connection/kept.rs`). A read that fails delivers only what arrives from now on.
     async fn resync(&self, job: &str, lengths: wire::OutputLengths) {
+        let began = tokio::time::Instant::now();
         let read = async {
             let reader = crate::remote_host::filled_job_read(self, job).await?;
             let bytes = crate::remote_host::collect_pipe(reader, wire::JOB_KEPT_READ_BYTES).await?;
-            decode_output(&bytes, None).map_err(|error| {
-                HostError::new(
-                    HostErrorKind::Protocol,
-                    format!("the job's kept output does not decode: {error}"),
-                )
-            })
+            let read_bytes = bytes.len();
+            decode_output(&bytes, None)
+                .map(|output| (output, read_bytes))
+                .map_err(|error| {
+                    HostError::new(
+                        HostErrorKind::Protocol,
+                        format!("the job's kept output does not decode: {error}"),
+                    )
+                })
         };
         match read.await {
-            Ok(output) => {
+            Ok((output, read_bytes)) => {
                 tracing::info!(
                     event = "output.resynced",
                     host_id = %self.0.device,
                     job_id = job,
                     stdout_bytes = lengths.stdout_bytes,
                     stderr_bytes = lengths.stderr_bytes,
+                    read_bytes,
+                    ms = began.elapsed().as_millis() as u64,
                     "a job's kept output was read again"
                 );
                 self.0.device_jobs.resynced(self, job, Some(&output), lengths)
@@ -864,10 +870,12 @@ impl Link {
                 tracing::warn!(
                     event = "output.missed",
                     host_id = %self.0.device,
+                    %error,
                     job_id = job,
                     stdout_bytes = lengths.stdout_bytes,
                     stderr_bytes = lengths.stderr_bytes,
-                    "a job's kept output could not be read again: {error}"
+                    ms = began.elapsed().as_millis() as u64,
+                    "a job's kept output could not be read again"
                 );
                 self.0.device_jobs.resynced(self, job, None, lengths);
             }
@@ -961,10 +969,20 @@ impl Link {
             // The connection holds the sender, so the watch never closes.
             pongs.changed().await.is_ok()
         };
-        tokio::select! {
+        let answered = tokio::select! {
             answered = tokio::time::timeout(within, asked) => answered.unwrap_or(false),
             () = self.ended() => false,
+        };
+        if !answered && !self.is_closed() {
+            tracing::warn!(
+                event = "link.ping_unanswered",
+                host_id = %self.0.device,
+                within_ms = within.as_millis() as u64,
+                since_heard_ms = self.0.heard.get().elapsed().as_millis() as u64,
+                "a runner did not answer a ping that asked whether its connection lives"
+            );
         }
+        answered
     }
 
     /// The jobs running on the device: the runner's own count, or the work
@@ -1211,9 +1229,11 @@ impl Link {
                 biased;
                 () = task => {}
                 () = overdue.cancelled() => tracing::warn!(
-                    device = %device,
-                    "{name} aborted {} seconds after its runner connection ended",
-                    END_GRACE.as_secs()
+                    event = "link_task.aborted",
+                    host_id = %device,
+                    task = name.as_str(),
+                    grace_ms = END_GRACE.as_millis() as u64,
+                    "a task of a runner connection was aborted after its end"
                 ),
             }
         });
@@ -1297,9 +1317,50 @@ impl Link {
         message: impl FnOnce(String) -> Inbound,
     ) -> Result<Answer, HostError> {
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let answered = self.wait_for(id.clone(), expected)?;
-        self.send(&message(id))?;
-        answered.receive().await
+        let operation = match expected {
+            Expected::Fs(name) | Expected::Git(name) => name,
+            Expected::Release => "release",
+            Expected::PackageRelease => "package_release",
+            Expected::Sync => "sync",
+            Expected::Prefetch => "prefetch",
+            Expected::Service => "service",
+            Expected::JobRead => "job_read",
+            Expected::JobMediaRead => "job_media_read",
+            Expected::DirectOffer => "direct_offer",
+            Expected::Http => "http",
+        };
+        let kind = match expected {
+            Expected::Fs(_) => "fs",
+            Expected::Git(_) => "git",
+            _ => "runner",
+        };
+        tracing::info!(
+            event = "host_call.started",
+            host_id = %self.0.device,
+            call = id.as_str(),
+            kind,
+            operation,
+            "a call to a Host began"
+        );
+        // Written when the call is dropped, a call its caller gave up included.
+        let mut ending = CallEnding {
+            host_id: self.0.device.clone(),
+            call: id.clone(),
+            kind,
+            operation,
+            began: tokio::time::Instant::now(),
+            outcome: "cancelled",
+            send_ms: None,
+            bytes: None,
+        };
+        let answered = self.wait_for(id.clone(), expected).inspect_err(|error| ending.fail(error))?;
+        let message = message(id);
+        ending.bytes = frame(&message).map(|frame| frame.len()).ok();
+        self.send(&message).inspect_err(|error| ending.fail(error))?;
+        ending.send_ms = Some(ending.began.elapsed().as_millis() as u64);
+        let answer = answered.receive().await.inspect_err(|error| ending.fail(error))?;
+        ending.outcome = "ok";
+        Ok(answer)
     }
 
     /// Registers a reply to wait for under `id`, before its request goes
@@ -1483,6 +1544,12 @@ impl Link {
                 self.with_subscriptions(|subscriptions| subscriptions.live(&id, since, epoch));
             }
             Outbound::FsChanged { changes } => {
+                tracing::debug!(
+                    event = "file_watch.fired",
+                    host_id = %self.0.device,
+                    changes = changes.len(),
+                    "a runner reported changes of watched paths"
+                );
                 self.with_subscriptions(|subscriptions| subscriptions.changed(changes));
             }
             Outbound::FsFailed { id, reason } => {
@@ -1563,7 +1630,15 @@ impl Link {
                     job.shared.outlived_by(tasks);
                 });
             }
-            Outbound::JobContextEnded { job_id } => self.0.device_jobs.context_ended(&job_id),
+            Outbound::JobContextEnded { job_id } => {
+                tracing::info!(
+                    event = "job_context.ended",
+                    host_id = %self.0.device,
+                    job_id = job_id.as_str(),
+                    "a runner's job context ended"
+                );
+                self.0.device_jobs.context_ended(&job_id);
+            }
             Outbound::JobExit {
                 job_id,
                 exit_code,
@@ -1679,7 +1754,7 @@ impl Link {
                         .pipes
                         .fail_from_device(&pipe_id, &self.0.device, &reason)
                     {
-                        tracing::info!(device = %self.0.device, pipe = %pipe_id, "pipe failed on the device: {reason}");
+                        tracing::info!(event = "pipe.failed", host_id = %self.0.device, pipe = %pipe_id, %reason, "a pipe failed on the device");
                     }
                 }
             }
@@ -1712,7 +1787,20 @@ impl Link {
     fn package_event(&self, event: PackageEvent) {
         // The receiver lives as long as the connection's package task, which
         // ends with the connection.
-        let _ = self.0.package_events.send(event);
+        if let Err(lost) = self.0.package_events.send(event) {
+            let (package, kind) = match &lost.0 {
+                PackageEvent::Message { package, .. } => (package.as_str(), "message"),
+                PackageEvent::Lost { package } => (package.as_str(), "lost"),
+            };
+            tracing::warn!(
+                event = "package_event.dropped",
+                host_id = %self.0.device,
+                package,
+                kind,
+                cause = "link_ended",
+                "a package's event was dropped, the connection's package task ended"
+            );
+        }
     }
 
     /// Delivers a reply to what waits for `id`: the answer when it is the
@@ -1767,7 +1855,7 @@ impl Link {
         let device = self.0.device.clone();
         self.spawn("revocation", async move {
             if let Err(error) = revocation.await {
-                tracing::warn!(device = %device, "the runner's revocation failed: {error}");
+                tracing::warn!(event = "runner_revocation.failed", host_id = %device, %error, "the runner's revocation failed");
             }
         });
     }
@@ -1876,7 +1964,7 @@ impl Link {
         {
             let mut state = self.0.state.borrow_mut();
             if state.direct_streams.contains_key(&stream) {
-                tracing::warn!(device = %self.0.device, %stream, "a direct stream was reported open twice");
+                tracing::warn!(event = "direct_stream.reported_twice", host_id = %self.0.device, %stream, "a direct stream was reported open twice");
                 return;
             }
             let opened = DirectStream {
@@ -1912,7 +2000,7 @@ impl Link {
                     }));
                 }
                 Err(error) => {
-                    tracing::warn!(device = %link.0.device, %conversation, "a direct stream was not admitted: {error}");
+                    tracing::warn!(event = "direct_stream.refused", host_id = %link.0.device, %conversation, %error, "a direct stream was not admitted");
                     open.admitted.send_replace(Admitted::No);
                 }
             }
@@ -1957,7 +2045,7 @@ impl Link {
                 Ok(lease) if open.watched && open.lease.is_none() => open.lease = Some(lease),
                 Ok(_) => {}
                 Err(error) => {
-                    tracing::warn!(device = %link.0.device, %conversation, "a direct stream watched again holds nothing: {error}");
+                    tracing::warn!(event = "direct_stream.rewatch_failed", host_id = %link.0.device, %conversation, %error, "a direct stream watched again holds nothing");
                 }
             }
         });
@@ -1994,7 +2082,7 @@ impl Link {
             };
             let answer = Inbound::NumbersReserved { id, first, error };
             if let Err(error) = link.send(&answer) {
-                tracing::warn!(device = %link.0.device, "numbers answer not sent: {error}");
+                tracing::warn!(event = "numbers_answer.send_failed", host_id = %link.0.device, %error, "a numbers answer was not sent");
             }
         });
     }
@@ -2010,7 +2098,7 @@ impl Link {
             error,
         };
         if let Err(error) = self.send(&answer) {
-            tracing::warn!(device = %self.0.device, "artifact location not sent: {error}");
+            tracing::warn!(event = "artifact_location.send_failed", host_id = %self.0.device, %error, "an artifact location was not sent");
         }
     }
 
@@ -2059,14 +2147,21 @@ impl Link {
     ///
     /// The device's jobs wait for its next connection
     /// (`crates/runner/src/connection/kept.rs`).
-    pub(crate) fn teardown(&self, reason: &str) {
+    pub(crate) fn teardown(&self, reason: &str) -> Aborted {
         if self.0.end.borrow().is_some() {
-            return;
+            return Aborted::default();
         }
         *self.0.end.borrow_mut() = Some(reason.into());
         self.0.closed.cancel();
         let mut state = std::mem::take(&mut *self.0.state.borrow_mut());
         state.subscriptions.end();
+        let aborted = Aborted {
+            host_calls: state.waiting.len(),
+            spawns: state.spawns.len(),
+            services: state.services.len(),
+            rpc_calls: state.calls.len(),
+            tasks: 0,
+        };
         for (_, waiting) in state.waiting {
             // A requester that gave up waits for nothing.
             let _ = waiting.answer.send(Err(HostError::offline(reason)));
@@ -2087,7 +2182,60 @@ impl Link {
         }
         self.0.pipes.device_gone(&self.0.device);
         self.0.tasks.close();
+        aborted
     }
+}
+
+/// The line that ends a call to a Host.
+struct CallEnding {
+    host_id: String,
+    call: String,
+    kind: &'static str,
+    operation: &'static str,
+    began: tokio::time::Instant,
+    outcome: &'static str,
+    send_ms: Option<u64>,
+    bytes: Option<usize>,
+}
+
+impl CallEnding {
+    fn fail(&mut self, error: &HostError) {
+        self.outcome = match error.kind {
+            HostErrorKind::Offline | HostErrorKind::Unavailable => "offline",
+            HostErrorKind::Interrupted => "cancelled",
+            HostErrorKind::Failed { .. } | HostErrorKind::TooLarge | HostErrorKind::Protocol => "refused",
+        };
+    }
+}
+
+impl Drop for CallEnding {
+    fn drop(&mut self) {
+        tracing::info!(
+            event = "host_call.ended",
+            host_id = self.host_id.as_str(),
+            call = self.call.as_str(),
+            kind = self.kind,
+            operation = self.operation,
+            outcome = self.outcome,
+            ms = self.began.elapsed().as_millis() as u64,
+            send_ms = self.send_ms,
+            bytes = self.bytes,
+            "a call to a Host ended"
+        );
+    }
+}
+
+/// What a connection's end cut short, for its `link.ended` line.
+#[derive(Default)]
+pub(crate) struct Aborted {
+    /// The Host's calls that waited for an answer.
+    host_calls: usize,
+    spawns: usize,
+    services: usize,
+    /// The runner's `demi` calls that ran.
+    rpc_calls: usize,
+    /// The tasks of the backend's that outlasted [`END_GRACE`].
+    tasks: usize,
 }
 
 /// What a connection's state offers the Host facets.
@@ -2212,6 +2360,9 @@ impl LinkDriver {
             tap,
             writes,
         } = self;
+        let began = tokio::time::Instant::now();
+        let frames_in = std::cell::Cell::new(0u64);
+        let frames_out = std::cell::Cell::new(0u64);
         let reading = async {
             tokio::pin!(incoming);
             loop {
@@ -2226,6 +2377,7 @@ impl LinkDriver {
                     Some(Ok(frame)) => frame,
                 };
                 link.heard();
+                frames_in.set(frames_in.get() + 1);
                 match wire::decode::<Outbound>(&frame) {
                     Ok(message) => {
                         if let Some(tap) = &tap {
@@ -2258,7 +2410,7 @@ impl LinkDriver {
                     None => Some(sending.await),
                 };
                 match sent {
-                    Some(Ok(())) => {}
+                    Some(Ok(())) => frames_out.set(frames_out.get() + 1),
                     Some(Err(error)) => {
                         return LinkEnd::Closed(format!("runner disconnected: {error}"));
                     }
@@ -2329,12 +2481,32 @@ impl LinkDriver {
                 LinkEnd::Disconnected(reason)
             }
         };
-        link.teardown(&end.reason());
+        let mut aborted = link.teardown(&end.reason());
         if tokio::time::timeout(END_GRACE, link.0.tasks.wait()).await.is_err() {
+            aborted.tasks = link.0.tasks.len();
             link.0.overdue.cancel();
             // Every task ends at the cancellation, each logging its name.
             link.0.tasks.wait().await;
         }
+        tracing::info!(
+            event = "link.ended",
+            host_id = %link.0.device,
+            cause = match &end {
+                LinkEnd::Closed(_) => "closed_by_runner",
+                LinkEnd::Refused(_) => "refused_by_backend",
+                LinkEnd::RunnerRefused(_) => "refused_by_runner",
+                LinkEnd::Disconnected(_) => "disconnected_by_backend",
+            },
+            session_ms = began.elapsed().as_millis() as u64,
+            frames_in = frames_in.get(),
+            frames_out = frames_out.get(),
+            host_calls_aborted = aborted.host_calls,
+            spawns_aborted = aborted.spawns,
+            services_aborted = aborted.services,
+            rpc_calls_aborted = aborted.rpc_calls,
+            tasks_aborted = aborted.tasks,
+            "a runner connection's life ended"
+        );
         end
     }
 }

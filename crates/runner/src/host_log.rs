@@ -63,15 +63,16 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{
-    Event, Level, Subscriber,
+    Event, Subscriber,
     field::{Field, Visit},
 };
 use tracing_subscriber::layer::{Context, Layer};
 
 use demi_runner_process::private_files::chmod;
+use demi_shared_types::log_layer::LineLayer;
 use demi_runner_protocol::wire::{
     self, HostLogLine, LOG_FRAME_BYTES, LogLevel, LogLine, LogOrigin,
 };
@@ -124,6 +125,7 @@ pub async fn open(directory: PathBuf) -> io::Result<(HostLogWriter, HostLogLayer
     let lost = Arc::new(AtomicU64::new(0));
     let (latest, newest) = watch::channel(files.last.unwrap_or(0));
     let (queue, queued) = mpsc::channel(QUEUE);
+    let writer = queue.clone();
     let thread = std::thread::Builder::new().name("host-log".into()).spawn({
         let dropped = dropped.clone();
         let lost = lost.clone();
@@ -131,12 +133,19 @@ pub async fn open(directory: PathBuf) -> io::Result<(HostLogWriter, HostLogLayer
     })?;
     Ok((
         HostLogWriter {
-            queue: queue.clone(),
+            queue: writer.clone(),
             newest,
             lost,
             thread,
         },
-        HostLogLayer { queue, dropped },
+        LineLayer::new(
+            LogOrigin::Runner,
+            Box::new(move |line| {
+                if queue.try_send(Message::Line(kept(line))).is_err() {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                }
+            }),
+        ),
     ))
 }
 
@@ -242,76 +251,36 @@ impl HostLogFollower {
     }
 }
 
-/// The layer: each event it is given becomes a line in the files.
-pub struct HostLogLayer {
-    queue: mpsc::Sender<Message>,
-    dropped: Arc<AtomicU64>,
-}
+/// The layer: each event it is given becomes a line in the files, by the
+/// layer every process shares (`crates/shared-types/src/log_layer.rs`), whose
+/// lines [`kept`] adapts to what the runner's files hold.
+pub type HostLogLayer = LineLayer<Box<dyn Fn(LogLine) + Send + Sync>>;
 
-impl<S: Subscriber> Layer<S> for HostLogLayer {
-    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-        let line = line_of(event);
-        if self.queue.try_send(Message::Line(line)).is_err() {
-            self.dropped.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-}
-
-/// An event as a line: its `event` field names it, else its target does; an
-/// event of a resident service's standard error (it has a `source`) is a
-/// `stderr` line with the text in its fields. A line a service wrote as a
-/// [`LogLine`] arrives whole in the `service_line` field
-/// (`crates/runner-command-packages/src/process.rs`) and is kept as it is.
-fn line_of(event: &Event<'_>) -> LogLine {
-    let mut collected = Collected::default();
-    event.record(&mut collected);
-    let metadata = event.metadata();
-    let mut values = collected.values;
-    if let Some(Value::String(written)) = values.remove("service_line")
-        && let Ok(mut line) = serde_json::from_str::<LogLine>(&written)
+/// A line as the files keep it. A line a service wrote as a [`LogLine`]
+/// arrives whole in the `service_line` field
+/// (`crates/runner-command-packages/src/process.rs`) and is kept as it is. A
+/// line of a service's standard error (it has a `source`) is a `stderr` line
+/// with its text in `text`; the text of any other line is cut, since a line
+/// must fit a frame.
+fn kept(mut line: LogLine) -> LogLine {
+    if let Some(Value::String(written)) = line.fields.remove("service_line")
+        && let Ok(mut whole) = serde_json::from_str::<LogLine>(&written)
     {
-        line.origin = LogOrigin::Runner;
-        return line;
+        whole.origin = LogOrigin::Runner;
+        return whole;
     }
-    let mut refused = false;
-    let mut text = |name: &str| match values.remove(name) {
-        Some(Value::String(text)) => Some(text),
-        Some(other) => Some(other.to_string()),
-        None => None,
+    let source = match line.fields.remove("source") {
+        Some(Value::String(source)) if source != "runner" => Some(source),
+        _ => None,
     };
-    // Only a string that is a name is the event's; any other value logged
-    // under `event`, a payload as much as a typo, is left out of the line.
-    let named = match text("event") {
-        Some(name) if wire::is_event_name(&name) => Some(name),
-        Some(_) => {
-            refused = true;
-            None
-        }
-        None => None,
-    };
-    let source = text("source").filter(|source| source != "runner");
-    let conversation = text("conversation").or_else(|| text("conversation_id"));
-    let turn = text("turn").or_else(|| text("turn_id"));
-    let request = text("request_id");
-    let (event_name, message_key) = match (&named, &source) {
-        (Some(name), _) => (name.clone(), "message"),
-        (None, Some(_)) => ("stderr".to_owned(), "text"),
-        (None, None) => (metadata.target().to_owned(), "message"),
-    };
-    let mut line = LogLine::new(now(), LogOrigin::Runner, level_of(*metadata.level()), event_name);
-    line.conversation_id = conversation;
-    line.turn_id = turn;
-    line.request_id = request;
-    if refused {
-        values.insert("event_refused".into(), true.into());
+    let key = if source.is_some() { "text" } else { "message" };
+    if let Some(Value::String(text)) = line.fields.remove("message") {
+        line.fields.insert(key.into(), cut(text).into());
     }
     if let Some(source) = source {
-        values.insert("source".into(), source.into());
+        line.event = "stderr".into();
+        line.fields.insert("source".into(), source.into());
     }
-    if !collected.message.is_empty() {
-        values.insert(message_key.into(), cut(collected.message).into());
-    }
-    line.fields = values;
     line
 }
 
@@ -325,69 +294,6 @@ fn cut(mut text: String) -> String {
         text.truncate(end);
     }
     text
-}
-
-fn level_of(level: Level) -> LogLevel {
-    match level {
-        Level::TRACE => LogLevel::Trace,
-        Level::DEBUG => LogLevel::Debug,
-        Level::INFO => LogLevel::Info,
-        Level::WARN => LogLevel::Warn,
-        Level::ERROR => LogLevel::Error,
-    }
-}
-
-/// An event's message and other fields, each as JSON.
-#[derive(Default)]
-struct Collected {
-    message: String,
-    values: Map<String, Value>,
-}
-
-impl Visit for Collected {
-    fn record_i64(&mut self, field: &Field, value: i64) {
-        self.values.insert(field.name().into(), value.into());
-    }
-
-    fn record_u64(&mut self, field: &Field, value: u64) {
-        self.values.insert(field.name().into(), value.into());
-    }
-
-    fn record_f64(&mut self, field: &Field, value: f64) {
-        self.values.insert(field.name().into(), value.into());
-    }
-
-    fn record_bool(&mut self, field: &Field, value: bool) {
-        self.values.insert(field.name().into(), value.into());
-    }
-
-    fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "message" {
-            self.message = value.to_owned();
-        } else {
-            self.values.insert(field.name().into(), value.into());
-        }
-    }
-
-    fn record_error(&mut self, field: &Field, value: &(dyn std::error::Error + 'static)) {
-        let mut text = value.to_string();
-        let mut source = value.source();
-        while let Some(cause) = source {
-            // Writing to a String does not fail.
-            let _ = write!(text, ": {cause}");
-            source = cause.source();
-        }
-        self.values.insert(field.name().into(), text.into());
-    }
-
-    fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        let text = format!("{value:?}");
-        if field.name() == "message" {
-            self.message = text;
-        } else {
-            self.values.insert(field.name().into(), text.into());
-        }
-    }
 }
 
 /// The console layer: each event it is given goes to standard error, which a
