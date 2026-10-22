@@ -1,5 +1,5 @@
 import { shallowRef, type Component, type Directive, type VNode } from 'vue'
-import { Copy, Download, ExternalLink, Link, PanelRight, SquareArrowOutUpRight } from '@lucide/vue'
+import { Copy, Download, ExternalLink, Link, PanelRight, Search, SquareArrowOutUpRight } from '@lucide/vue'
 import type { CopySource } from '../composables/useCopy'
 import type { Operation } from './operations'
 import { t as shared } from '../locales/text'
@@ -85,7 +85,7 @@ export interface ContextMenuDeclaration {
   text?: boolean
   /**
    * What the object offers for its own text selected (`readSelection`), after
-   * the selection's Copy in its menu.
+   * the selection's Copy and Search with Google in its menu.
    */
   selectionEntries?: (selected: ResolvedSelection) => readonly ContextMenuEntry[]
   /**
@@ -275,8 +275,17 @@ function caretAt(point: { x: number; y: number }): { node: Node; offset: number 
 function selectionMenu(reading: SelectionReading, services: ContextMenuServices): ComposedMenu {
   const { object } = reading
   const offered = object ? declarations.get(object)?.selectionEntries?.({ ...reading, object }) ?? [] : []
-  const group: ContextMenuGroup = [{ icon: Copy, label: shared('common.copy'), run: () => services.copy(reading.text) }, ...offered]
+  const group: ContextMenuGroup = [
+    { icon: Copy, label: shared('common.copy'), run: () => services.copy(reading.text) },
+    { icon: Search, label: t('contextMenu.searchWithGoogle'), run: () => services.openLink(googleSearch(reading.text)) },
+    ...offered,
+  ]
   return { groups: () => [group], objects: object ? [object] : [], opened: () => {}, closed: () => {} }
+}
+
+/** Google's results for `text`, as a browser's Search with Google opens them. */
+function googleSearch(text: string): string {
+  return `https://www.google.com/search?q=${encodeURIComponent(text.trim())}`
 }
 
 /**

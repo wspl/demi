@@ -47,6 +47,7 @@
     "copyLink": "复制链接",
     "copyImage": "复制图片",
     "saveImage": "保存图片",
-    "copyCode": "复制代码"
+    "copyCode": "复制代码",
+    "searchWithGoogle": "使用 Google 搜索"
   }
 }
