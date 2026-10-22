@@ -25,11 +25,13 @@
  * to each other show as one step, while each stays its own block with its
  * signature for replay: only the page joins them.
  *
- * A run's time is the time of its steps added up, each from its start to its
- * end. A command left in the background counts only until its call returned,
- * and the wait for the model between steps is not counted. A call's block
- * records when it returned (`endedAt`), and a thinking block ends where the
- * next block starts.
+ * A run's time is the union of its steps' spans, each from its start to its
+ * end, so time that passed counts once however many steps ran in it. A call
+ * that started a command ends where the time its row shows for the command
+ * ends, also when the command went on in the background after the call
+ * returned; another call ends where it returned (`endedAt`), and a thinking
+ * block where the next block starts. The wait for the model between steps is
+ * not counted.
  */
 import type { HeldBlock, TextArrival } from '@demicodes/conversation-client'
 import type { MessageListBlock } from './pending-steers'
@@ -38,6 +40,8 @@ import { upperFirst } from '@demicodes/utils'
 import { formatSpan } from '../ui/dates'
 import { t } from './locales/text'
 import { parseToolCallInput } from './block-helpers'
+import type { LiveCallLookup } from './live-calls'
+import { shellRowTime } from './terminals'
 import { reportMark, reportShown } from './command-reports'
 import { receiptRow } from './agent-receipts'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
@@ -402,20 +406,42 @@ function joinedThinking(parts: readonly HeldThinking[]): HeldThinking & { parts:
 }
 
 /**
- * The time `group`'s steps took, each from its start to its end, added up: a
- * call until it returned, so a command left running in the background counts
- * only until then, and a thinking until the next block started. The time the
- * turn waited for the model between steps is no step's. A notice or a receipt
- * takes none.
+ * The time `group`'s steps took: the union of their spans, so commands that
+ * run at once, or a command that runs on while the next steps work, count the
+ * time that passed once, never more than passed between the run's first start
+ * and its last end. A step's span runs from its start to its end. A call that
+ * started a command ends where the time its shell row shows for that command
+ * (`shellRowTime`) ends, so a command that went on in the background after the
+ * call returned counts until it ended, and the run says the number the row
+ * says; any other call ends where it returned, and a thinking where the next
+ * block started. The time the turn waited for the model between steps is no
+ * step's. A notice or a receipt takes none.
  */
-export function runTime(group: WorkGroupBlock): number {
-  let total = 0
+export function runTime(group: WorkGroupBlock, liveCalls: LiveCallLookup = () => undefined): number {
+  const spans: [number, number][] = []
   group.steps.forEach((step, index) => {
-    const end = step.type === 'tool_call' ? step.endedAt : step.type === 'thinking' ? group.ends[index]! : null
-    if (end !== null && 'createdAt' in step)
-      total += Math.max(0, Date.parse(end) - Date.parse(step.createdAt))
+    if (!('createdAt' in step))
+      return
+    const start = Date.parse(step.createdAt)
+    const command = step.type === 'tool_call' ? shellRowTime(step, liveCalls(step.toolUseId)) : null
+    const end = command?.kind === 'ran'
+      ? start + command.ms
+      : step.type === 'tool_call' ? parseEnd(step.endedAt) : step.type === 'thinking' ? parseEnd(group.ends[index]!) : null
+    if (end !== null && end > start)
+      spans.push([start, end])
   })
+  let total = 0
+  let reached = -Infinity
+  for (const [start, end] of spans.toSorted((a, b) => a[0] - b[0])) {
+    total += Math.max(0, end - Math.max(start, reached))
+    reached = Math.max(reached, end)
+  }
   return total
+}
+
+/** The time of an end, null where the step has none. */
+function parseEnd(end: string | null): number | null {
+  return end === null ? null : Date.parse(end)
 }
 
 /**
@@ -423,9 +449,9 @@ export function runTime(group: WorkGroupBlock): number {
  * the same sentence, Ran 3 commands for 1m 32s, as Thought for 5s says it; a
  * run under a second says no time, as Thought briefly names none.
  */
-export function runLabel(group: WorkGroupBlock): string {
+export function runLabel(group: WorkGroupBlock, liveCalls: LiveCallLookup = () => undefined): string {
   const what = workSummary(group.steps)
-  const time = runTime(group)
+  const time = runTime(group, liveCalls)
   return time < 1000 ? what : t('transcript.work.took', { what, span: formatSpan(time) })
 }
 

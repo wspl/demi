@@ -8,6 +8,7 @@ import FunctionalBlock from './FunctionalBlock.vue'
 import StepRow from './StepRow.vue'
 import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
+import { useLiveCalls } from '../live-calls'
 import { runLabel, stepKey, type WorkGroupBlock } from '../work-groups'
 import { useEditSelection, useFilePills, useTranscript } from '../edit-selection'
 import { changeFile, pillSelection, requestFileSelection, runFiles } from '../../files/request-changes'
@@ -33,7 +34,8 @@ const isOpen = defineModel<boolean>('open', { default: false })
 
 const lone = computed(() => (props.group.steps.length === 1 ? props.group.steps[0]! : null))
 /** What the run did and the time its steps took. */
-const label = computed(() => runLabel(props.group))
+const liveCalls = useLiveCalls()
+const label = computed(() => runLabel(props.group, liveCalls))
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
 const transcript = useTranscript()

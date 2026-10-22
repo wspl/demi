@@ -5,6 +5,7 @@ import { followedBlockId, groupWork, runLabel, workGrouping, workSummary, type W
 import { isThinkingBlockStreaming } from '../block-streaming'
 import { rowKey } from '../row-key'
 import { createdAt, model } from './agent-harness'
+import type { TerminalRecord } from '../terminals'
 
 // Cost: pure, a few milliseconds for the file.
 
@@ -326,9 +327,10 @@ test('a joined thinking step streams and ends with its last part', () => {
   expect(isThinkingBlockStreaming(blocks as Block[], 'running', blocks.findIndex((block) => block.id === followedBlockId(row)))).toBe(true)
 })
 // A run says its total time in its sentence, running or ended, its steps'
-// times added up: a call from its start until it returned, a command left
-// in the background only until then, a thinking until the next block
-// started, and never the model's wait between steps.
+// times, where time that passed once counts once: a call from its start
+// until it returned, a command it started for as long as its own row says it
+// ran, a thinking until the next block started, and never the model's wait
+// between steps.
 describe('the time a run took', () => {
   const at = (seconds: number) => new Date(Date.parse(createdAt) + seconds * 1000).toISOString()
   const timed = (block: Block, start: number, end?: number): Block =>
@@ -357,6 +359,35 @@ describe('the time a run took', () => {
     // call B 7–10 s returned first: 6 s and 3 s, never the thinking until B.
     expect(label(run('k', timed(thinking('k', 'Run both.'), 0), timed(call('a', 'shell', undefined, 'executing'), 6), timed(call('b'), 7, 10)), true))
       .toBe('Ran 1 command for 9s')
+  })
+
+  test('a command that ran on after its call returned counts the time its own row shows', () => {
+    // The call starts a server and returns after 2 s; the command ends 40 s
+    // after it started. Another command takes 10 s, after it.
+    const first = timed(call('a', 'shell', { script: 'bun dev', description: 'Start the server' }), 0, 2)
+    const second = timed(call('b'), 50, 60)
+    const server: TerminalRecord = {
+      id: '7', title: 'Start the server', phase: 'exited', exitCode: 0, output: '', toolUseId: 'a-use',
+      startedAt: at(0), endedAt: at(40),
+    }
+    const live = (toolUseId: string) => (toolUseId === 'a-use' ? server : undefined)
+    const group = groupWork([text('q'), ...run('k', first, second)], false).find((row) => row.type === 'work_group') as WorkGroupBlock
+    expect(runLabel(group, live)).toBe('Ran 2 commands for 50s')
+  })
+
+  test('commands that run at once count the time that passed, once', () => {
+    // The server runs from 0 s to 40 s, a check from 14 s to 24 s inside it,
+    // and a build from 36 s to 46 s across its end.
+    const first = timed(call('a', 'shell', { script: 'bun dev', description: 'Start the server' }), 0, 2)
+    const second = timed(call('b'), 14, 24)
+    const third = timed(call('c'), 36, 46)
+    const server: TerminalRecord = {
+      id: '7', title: 'Start the server', phase: 'exited', exitCode: 0, output: '', toolUseId: 'a-use',
+      startedAt: at(0), endedAt: at(40),
+    }
+    const live = (toolUseId: string) => (toolUseId === 'a-use' ? server : undefined)
+    const group = groupWork([text('q'), ...run('k', first, second, third)], false).find((row) => row.type === 'work_group') as WorkGroupBlock
+    expect(runLabel(group, live)).toBe('Ran 3 commands for 46s')
   })
 
   test('a run under a second says no time', () => {
