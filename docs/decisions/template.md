@@ -19,8 +19,9 @@ older page, runner or data meets.
 
 ## Spike
 
-What ran, what it showed, and what the design costs: time, memory, bytes.
-None when the design rests on nothing unproven.
+The points the design was not sure of, what ran to settle each, and what it
+showed, with what the design costs where that was one of them. None when
+nothing was uncertain.
 
 ## Prior art
 

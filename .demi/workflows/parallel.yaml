@@ -14,7 +14,7 @@ instructions: |
   One task goes to one agent; never split a task across several.
 
   Flow of a work package
-  1. A new decision: write its record on the branch first, as the branch's one commit; show it to the user. A decision that rests on how a library, a protocol or a mechanism behaves is first proven feasible and sound by a spike, the smallest code that runs it as the design would, and its record says what the spike showed.
+  1. A new decision: write its record on the branch first, as the branch's one commit; show it to the user. A point the design is not sure of, such as how a library, a protocol or a mechanism behaves, is settled first by a spike, the smallest code that answers it, and the record says what it showed; a design with no such point has no spike.
   2. Brief one implementer for the whole request, on one branch in a free slot. A new screen, panel or control stops at a gallery prototype for the user's agreement first.
   3. Review when the change has logic a user would meet. Decide which findings to fix (what users will plausibly meet, data loss, security).
   4. Merge on the user's approval. When a branch is ready, show the user what it changed in the system's structure, drawn in ASCII with a few plain sentences, the modules it touches and the lines it adds and removes in each; when the user approves, tell its implementer to merge it on origin's `feat/demi-next` in its slot, and it reports the merge commit. Deploy only when the user asks, the merged batch by the steps of `docs/delivery/upgrades.md` § A development build on a server, in the user's checkout; one deploy at a time.
