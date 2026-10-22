@@ -3,7 +3,7 @@ import { elementScroll, measureElement as measureRow, useVirtualizer, type Range
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
 import { revealOffset } from '../ui/reveal'
-import { moveRows, rowsBefore, scrolledRows, type RowsBefore } from './row-motion'
+import { moveRows, rowsBefore, rowTails, scrolledRows, type RowsBefore, type RowTail } from './row-motion'
 
 type ScrollIntent = 'up' | 'down' | null
 interface VirtualizedBlock {
@@ -610,6 +610,8 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   // How tall the list placed each row, by key, when it last settled.
   const placedHeights = () => new Map(virtualizer.value.getVirtualItems().map((item) => [String(item.key), item.size]))
   let settled = new Map<string, number>()
+  // Where each row's text ended in it then, for a row that grew above its end.
+  let settledTails = new Map<string, RowTail>()
   const layout = () => `${virtualizer.value.getTotalSize()}|${virtualizer.value.getVirtualItems().map((item) => `${String(item.key)}:${item.start}`).join()}`
   function seeRows(): void {
     const el = scrollContainer.value
@@ -618,7 +620,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
         seen = null
       return
     }
-    seen = el && isRestored.value && !holdsView() ? rowsBefore(el, settled) : null
+    seen = el && isRestored.value && !holdsView() ? rowsBefore(el, settled, settledTails) : null
     unpainted = true
     // The frame that follows is painted at the end of the second callback.
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -631,6 +633,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
     if (el && seen)
       moveRows(el, seen, placedHeights(), shouldAutoScroll.value)
     settled = placedHeights()
+    settledTails = scrollContainer.value ? rowTails(scrollContainer.value) : new Map()
   }, { flush: 'post' })
 
   watch(

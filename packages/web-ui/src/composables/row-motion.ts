@@ -9,10 +9,54 @@ const ROW_MOVE_ID = 'row-move'
 /** What a row element is found by, and named by, in the list. */
 const ROW = '[data-row-key]'
 
-/** Where each row stood on the screen and how tall it was, by its key, and how far the scroller was scrolled. */
+/** The rendered message in a row, whose last block is where the row's text ends. */
+const MESSAGE = '.markdown-body'
+
+/**
+ * The last block of a row's text, by its place among its message's blocks (a
+ * message is drawn anew whenever its text changes, so the element itself is
+ * never the same), and how far below the row's top it stood.
+ */
+export interface RowTail {
+  index: number
+  offset: number
+}
+
+/** The last block of the row's last message. */
+function lastBlock(row: HTMLElement): { message: Element, block: Element } | null {
+  const messages = row.querySelectorAll(MESSAGE)
+  const message = messages[messages.length - 1]
+  const block = message?.lastElementChild
+  return message && block ? { message, block } : null
+}
+
+/** The tail of every row, by its key, as the rows stand now. */
+export function rowTails(scroller: HTMLElement): Map<string, RowTail> {
+  const tails = new Map<string, RowTail>()
+  for (const row of scroller.querySelectorAll<HTMLElement>(ROW)) {
+    const last = lastBlock(row)
+    if (last)
+      tails.set(row.dataset['rowKey']!, { index: last.message.childElementCount - 1, offset: last.block.getBoundingClientRect().top - row.getBoundingClientRect().top })
+  }
+  return tails
+}
+
+/** How far a row's tail block stands lower in it than it did, as when something above it grew. */
+function tailDisplaced(row: HTMLElement, was: RowTail | undefined): number {
+  const message = was && row.querySelectorAll(MESSAGE)
+  const block = message?.[message.length - 1]?.children[was!.index]
+  return was && block ? block.getBoundingClientRect().top - row.getBoundingClientRect().top - was.offset : 0
+}
+
+/**
+ * Where each row stood on the screen and how tall it was, by its key, how far
+ * the scroller was scrolled, and where each row's text ended in it when the
+ * list last settled.
+ */
 export interface RowsBefore {
   tops: Map<string, number>
   heights: Map<string, number>
+  tails: Map<string, RowTail>
   scrollTop: number
 }
 
@@ -21,12 +65,12 @@ export interface RowsBefore {
  * `scroller`'s, a move still running included. `heights` is how tall the list
  * placed the rows when it last settled.
  */
-export function rowsBefore(scroller: HTMLElement, heights: Map<string, number>): RowsBefore {
+export function rowsBefore(scroller: HTMLElement, heights: Map<string, number>, tails: Map<string, RowTail>): RowsBefore {
   const top = scroller.getBoundingClientRect().top
   const tops = new Map<string, number>()
   for (const row of scroller.querySelectorAll<HTMLElement>(ROW))
     tops.set(row.dataset['rowKey']!, row.getBoundingClientRect().top - top)
-  return { tops, heights, scrollTop: scroller.scrollTop }
+  return { tops, heights, tails, scrollTop: scroller.scrollTop }
 }
 
 /**
@@ -36,7 +80,7 @@ export function rowsBefore(scroller: HTMLElement, heights: Map<string, number>):
  */
 export function scrolledRows(before: RowsBefore, scrollTop: number): RowsBefore {
   const by = scrollTop - before.scrollTop
-  return { tops: new Map([...before.tops].map(([key, top]) => [key, top - by])), heights: before.heights, scrollTop }
+  return { tops: new Map([...before.tops].map(([key, top]) => [key, top - by])), heights: before.heights, tails: before.tails, scrollTop }
 }
 
 /** The properties whose animation changes an element's height. */
@@ -69,6 +113,13 @@ function changesHeight(animation: Animation): boolean {
  * stood there before, so they move only as the list scrolls to follow its end,
  * with every row. A row that comes in starts no higher than the row above it
  * does.
+ *
+ * A row that grew above its last block, as a formula does when it is drawn,
+ * keeps that block where it stood: the list scrolls to follow its end by as
+ * much, and the rows above are not drawn back to where they stood but go with
+ * the scroll. The reader reads the end of the text and sees it still, never
+ * pushed down and drawn back; what lies above the growth moves once, as the
+ * page does above an image that has loaded.
  *
  * A row whose own height is animating, as a fold or the roll of a face is,
  * gets no move of its own, and the rows below it follow it frame by frame: a
@@ -113,18 +164,33 @@ export function moveRows(scroller: HTMLElement, before: RowsBefore, heights: Map
     if (was !== undefined && now !== undefined)
       by += now - was
   }
+  // The first row that grew above its last block, and by how much.
+  let tailRow = -1
+  let tailBy = 0
+  for (const [index, row] of rows.entries()) {
+    const key = row.dataset['rowKey']!
+    const by = before.tops.has(key) ? tailDisplaced(row, before.tails.get(key)) : 0
+    if (by >= 1) {
+      tailRow = index
+      tailBy = by
+      break
+    }
+  }
   // Where the row above starts, relative to its place, and where it ends.
   let aboveOffset = 0
   let aboveBottom = Number.NEGATIVE_INFINITY
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     const key = row.dataset['rowKey']!
     const box = row.getBoundingClientRect()
     const now = box.top - top
     const was = before.tops.get(key)
     let from = 0
     if (starts.includes(row)) {
-      if (was !== undefined)
+      if (was !== undefined) {
         from = was + grown.get(key)! - now
+        if (from > 0 && index <= tailRow)
+          from = Math.max(0, from - tailBy)
+      }
       else if (following && scrolled > 0)
         from = scrolled
       // A row that comes in never starts over the row above it.
