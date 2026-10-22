@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { ChangeView, joinPath, treeLayout, usePage, type TabUpdate } from '@demicodes/plugin-sdk'
+import { ChangeView, joinPath, treeLayout, usePage, usePaneReady, type TabUpdate } from '@demicodes/plugin-sdk'
 import {
   changePath,
   changeView,
@@ -34,6 +34,9 @@ const emit = defineEmits<{ update: [data: ChangeData, how?: TabUpdate] }>()
 
 const page = usePage()
 const files = page.files(props.conversation)
+// What the view lists is the working tree of the conversation's directory: the pane
+// reads until the conversation's opening brings it.
+usePaneReady(() => files.workspace !== null)
 files.showChanges(() => viewDirectory(props.data))
 const intents = page.intents
 

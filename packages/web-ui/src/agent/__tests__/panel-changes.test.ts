@@ -31,7 +31,7 @@ function backend(first: PanelRead) {
     /** Each request, as the changes it carried. */
     sent,
     refused,
-    /** The backend announces its panel, as the conversation's metadata brings it. */
+    /** The backend announces its panel, as the conversation's entry in the list brings it. */
     announce: (next: PanelRead) => tabs.receive(next),
     /**
      * Answers the oldest request still waiting: changed, unless the test says
@@ -115,7 +115,7 @@ test('a panel announced before the answer of the page\'s own change holds it, an
   world.tabs.start()
   await settled()
   world.tabs.change({ type: 'create', tab: page('b') })
-  // The metadata of the page's own change comes before its answer.
+  // The list entry of the page's own change comes before its answer.
   world.announce({ revision: 2, tabs: [page('a'), page('b')] })
   await world.answer(2)
   expect(ids(world.tabs)).toEqual(['a', 'b'])

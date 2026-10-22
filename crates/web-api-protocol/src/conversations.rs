@@ -17,7 +17,7 @@ use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
 use crate::drafts::ConversationDraft;
 use crate::hosts::ConversationHosts;
-use crate::panel::PanelRead;
+use crate::panel::{HeldState, WorkPanel};
 use crate::permissions::ConversationPermissions;
 use crate::saved::SavedListing;
 use crate::shares::ConversationShare;
@@ -180,8 +180,9 @@ pub struct CreatedConversation {
     pub first_message: Option<FirstMessageAnswer>,
 }
 
-/// A conversation as the sidebar lists it: what the sidebar shows of it, and
-/// no more. What a page shows only of an open conversation is its
+/// A conversation as the list carries it: what the sidebar shows of it, and
+/// its work panel's tabs, which the page draws before it opens the
+/// conversation. What a page shows only of an open conversation is its
 /// [`ConversationMetadata`], and what the backend keeps for itself, such as
 /// the owner, stays out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -226,6 +227,12 @@ pub struct ConversationSummary {
     #[schemars(with = "Nullable<crate::automations::FiledRun>")]
     #[garde(skip)]
     pub automation: Option<crate::automations::FiledRun>,
+    /// The conversation's work panel: its tabs under the revision that counts
+    /// its changes. The page draws the panel's frame and tabs from it as soon
+    /// as the conversation is listed
+    /// (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+    #[garde(dive)]
+    pub panel: WorkPanel,
 }
 
 /// What a page shows of an open conversation beside its sidebar entry, its
@@ -278,10 +285,12 @@ pub struct ConversationMetadata {
     /// The messages the conversation keeps saved for later, as the composer
     /// lists them, under the revision of the list.
     pub saved: SavedListing,
-    /// The conversation's work panel: its tabs under the panel's revision, with
-    /// the states the plugins hold for it.
+    /// The conversation states the plugins hold for its work panel's tabs,
+    /// each under its revision. The panel's tabs are the entry's
+    /// (`ConversationSummary::panel`), which the page has before it opens the
+    /// conversation (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
     #[garde(dive)]
-    pub panel: PanelRead,
+    pub panel_states: Vec<HeldState>,
     /// The conversation's attached hosts, under a revision an attach, a
     /// detach or a rename raises.
     pub hosts: ConversationHosts,

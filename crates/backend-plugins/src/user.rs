@@ -40,7 +40,7 @@ use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId}
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
-use demi_web_api_protocol::panel::{HeldState, PanelChange, PanelEffect, PanelRead, WorkPanel};
+use demi_web_api_protocol::panel::{HeldState, PanelChange, PanelEffect, WorkPanel};
 use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
 use demi_web_api_protocol::workflows::WatchSubject;
 use futures_util::StreamExt as _;
@@ -436,9 +436,9 @@ impl Shared {
         }
     }
 
-    /// Applies `change` to the conversation's panel and marks its summary,
-    /// whose revision the pages read the panel by; answers the panel's
-    /// revision and what the change did.
+    /// Applies `change` to the conversation's panel and marks its entry in the
+    /// list, which carries the panel; answers the panel's revision and what
+    /// the change did.
     async fn apply_panel(
         &self,
         conversation: &ConversationId,
@@ -450,7 +450,7 @@ impl Shared {
             .await?
         {
             PanelOutcome::Changed { revision, effects } => {
-                self.marks.mark(Part::Metadata(conversation.clone()));
+                self.marks.mark(Part::Conversation(conversation.clone()));
                 Ok((revision, effects))
             }
             PanelOutcome::Unchanged { revision } => Ok((revision, Vec::new())),
@@ -690,8 +690,8 @@ impl UserPlugins {
     }
 
     /// Removes the tabs of plugin `plugin`'s kinds from every panel of the
-    /// user's conversations, archived ones included, and marks the summary
-    /// of each that changed.
+    /// user's conversations, archived ones included, and marks the entry in the
+    /// list of each that changed.
     async fn close_tabs(&self, plugin: usize) -> Result<(), StorageError> {
         let Some(page) = &self.0.registry.plugins[plugin].page else {
             return Ok(());
@@ -702,7 +702,7 @@ impl UserPlugins {
             .close_panel_kinds(self.0.user.clone(), page.panel_kinds.clone())
             .await?;
         for conversation in closed {
-            self.0.marks.mark(Part::Metadata(conversation));
+            self.0.marks.mark(Part::Conversation(conversation));
         }
         Ok(())
     }
@@ -1018,16 +1018,16 @@ impl UserPlugins {
         self.0.control.panel(conversation).await
     }
 
-    /// The conversation's work panel with the held states of the plugins the
-    /// user has on whose conversation state is held, each as its plugin holds
-    /// it now: a plugin that has none, or fails, adds nothing, and the page
-    /// reads that state itself.
-    pub async fn panel_read(
+    /// The held conversation states of the plugins the user has on whose
+    /// conversation state is held, each as its plugin holds it now: a plugin
+    /// that has none, or fails, adds nothing, and the page reads that state
+    /// itself. The page has the panel's tabs from the conversation's entry
+    /// already.
+    pub async fn panel_states(
         &self,
         conversation: ConversationId,
         cancel: CancellationToken,
-    ) -> Result<PanelRead, StorageError> {
-        let panel = self.0.control.panel(conversation.clone()).await?;
+    ) -> Result<Vec<HeldState>, StorageError> {
         let enabled = self.enabled().await?;
         let mut states = Vec::new();
         for (index, registered) in self.0.registry.plugins.iter().enumerate() {
@@ -1054,11 +1054,7 @@ impl UserPlugins {
                 });
             }
         }
-        Ok(PanelRead {
-            revision: panel.revision,
-            tabs: panel.tabs,
-            states,
-        })
+        Ok(states)
     }
 
     /// A page's changes of the conversation's work panel, all or none: each tab

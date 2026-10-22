@@ -13,24 +13,14 @@ export type PanelChange =
   | { type: 'move'; id: string; index: number }
 
 /**
- * A conversation state a plugin holds, with the revision it was held at, as
- * the backend sends it with the panel (`crates/backend-http/src/panel.rs`).
- */
-export interface HeldPluginState {
-  plugin: string
-  revision: number
-  state: unknown
-}
-
-/**
- * The backend's panel: its tabs, and how many changes made them, with the
- * states plugins hold, which a kind's content shows from the moment its tab
- * appears. A panel without them, as a specimen's, holds none.
+ * The backend's panel: its tabs, and how many changes made them. It comes with
+ * the conversation's entry in the list, so the panel draws as soon as the
+ * conversation is listed
+ * (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
  */
 export interface PanelRead {
   revision: number
   tabs: PanelTab[]
-  states?: readonly HeldPluginState[]
 }
 
 /**
@@ -138,7 +128,7 @@ interface Unsent {
  *   together, in order, as one request, so Close Others is one request.
  * - An answer that changed the panel one revision past the one the page holds
  *   is the panel with the request in it. Any other answer waits for the panel
- *   it names, which the conversation's metadata brings.
+ *   it names, which the conversation's entry in the list brings.
  * - A change leaves once a panel at least as new as its answer is held, so a
  *   panel received after a removal never brings the tab back.
  * - A request the backend refuses leaves at once, and the panel shows as the
@@ -158,8 +148,6 @@ export class PanelTabs {
     private readonly backend: PanelBackend,
     /** Reports a change the backend refused. */
     private readonly refused: (error: unknown) => void,
-    /** Takes the plugin states a panel read brings, as it is taken. */
-    private readonly held: (states: readonly HeldPluginState[]) => void = () => {},
   ) {
     this.tabs = computed(() => this.slot.shown.value ?? [])
   }
@@ -200,12 +188,10 @@ export class PanelTabs {
 
   /**
    * Takes the panel as its owner announced it, such as in the
-   * conversation's metadata: one no newer than the panel held changes
-   * nothing.
+   * conversation's entry in the list: one no newer than the panel held
+   * changes nothing.
    */
   receive(panel: PanelRead): void {
-    // The states first: the tabs that need them show with them.
-    this.held(panel.states ?? [])
     this.slot.replace(panel.tabs, { revisions: { '': panel.revision } })
   }
 

@@ -11,9 +11,9 @@ import { useWorkPanel } from './work'
 /**
  * The work panel beside one conversation: its saved tabs and pinned tabs from
  * the work store, and the kinds of the plugin pages the user has on, bound
- * to the conversation. It shows with the conversation's other facts, once the
- * opening has them (`docs/decisions/0029-a-conversation-opens-whole.md`): a
- * panel drawn before them shows the pinned tabs alone, then the saved ones.
+ * to the conversation. It draws its frame and its tabs as soon as the
+ * conversation is in the list, which carries them, and not after its opening
+ * (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
  */
 const props = defineProps<{ conversationId: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -27,11 +27,8 @@ const state = computed(() => work.stateFor(props.conversationId))
 
 const recorded = computed(() => work.recorded(props.conversationId))
 
-/** Whether the conversation's opening has its facts, from the disk's copy or the socket's opening. */
-const opened = computed(() => {
-  const load = conversations.items.find((item) => item.id === props.conversationId)?.load
-  return load !== 'reading' && load !== 'loading'
-})
+/** Whether the conversation is in the list, whose entry carries the panel's tabs. */
+const listed = computed(() => conversations.items.some((item) => item.id === props.conversationId))
 
 /**
  * The pages' kinds for this conversation (`packages/web-ui/src/plugins/page.ts`), while the panel
@@ -49,7 +46,7 @@ const kinds = useBoundKinds(
 
 <template>
   <WorkPanel
-    v-if="opened"
+    v-if="listed"
     :panel="state.panel"
     :tabs-read="state.tabsRead"
     :pinned="state.pinned"

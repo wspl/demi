@@ -22,7 +22,7 @@ function changeBody(change: PanelChange) {
   }
 }
 
-/** The conversation's work panel's changes over its route; its metadata brings the panel. */
+/** The conversation's work panel's changes over its route; the conversation's entry in the list brings the panel. */
 export function panelBackend(conversationId: string): PanelBackend {
   const panel = `/conversations/${encodeURIComponent(conversationId)}/panel`
   return {

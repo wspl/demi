@@ -249,7 +249,7 @@ async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_m
     let bound = call(&backend, &master, &id, "bind", json!({ "panelTab": "new" })).await;
     assert_eq!(bound.status, StatusCode::OK);
     assert_eq!(bound.json::<Value>(), json!({ "tab": null }));
-    let panel = serde_json::to_value(crate::conversations::metadata(&backend, &master, &id).await.panel).unwrap();
+    let panel = serde_json::to_value(crate::conversations::summary(&backend, &master, &id).await.panel).unwrap();
     let failure = panel["tabs"]
         .as_array()
         .and_then(|tabs| tabs.iter().find(|tab| tab["id"] == "new"))

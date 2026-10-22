@@ -80,7 +80,7 @@ export function conversationStates(
   }
 
   /**
-   * Takes a state the backend sent along with the conversation's panel, as
+   * Takes a state the backend sent along with the conversation's metadata (`panelStates`), as
    * if it had been read: a state that is not newer than the one held is left.
    */
   function hold(plugin: string, conversation: string, revision: number, state: unknown): void {
@@ -136,8 +136,8 @@ export function conversationStates(
 
 /**
  * The page's one set of plugin conversation states: the plugin pages follow
- * them through the host (`productPageHost`), and a conversation's panel read
- * brings the ones its plugins hold.
+ * them through the host (`productPageHost`), and a conversation's metadata
+ * brings the ones its plugins hold for the panel's tabs.
  */
 export const usePluginStates = defineStore('plugin-states', () => {
   const product = useProduct()

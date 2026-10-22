@@ -1,6 +1,6 @@
 //! The work panel's route: a request of changes, which the user's shard applies
 //! whole or not at all and answers with the panel's revision; the
-//! conversation's metadata carries the tabs.
+//! conversation's entry in the list carries the tabs.
 //!
 //! An archived conversation refuses every change.
 //!

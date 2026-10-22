@@ -28,10 +28,10 @@ export class GalleryPanel implements PanelBackend {
    * plugin is; a tab the user created is none of the plugin's business.
    */
   removed: ((tab: PanelTab) => void) | null = null
-  /** Each change, the plugin's included, with the panel as it is then, as the conversation's metadata brings it. */
+  /** Each change, the plugin's included, with the panel as it is then, as the conversation's entry in the list brings it. */
   changed: ((panel: PanelRead) => void) | null = null
 
-  /** The panel as it is now, as the conversation's metadata carries it. */
+  /** The panel as it is now, as the conversation's entry in the list carries it. */
   current(): PanelRead {
     return { revision: this.revision, tabs: this.tabs.map((tab) => ({ ...tab })) }
   }

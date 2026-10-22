@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0049
 ---
 
 # A conversation opens whole

@@ -5,6 +5,8 @@
 //! conversation's requests apply one at a time, each whole or not at all. The
 //! backend never interprets a tab.
 
+use std::collections::HashMap;
+
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::{PanelChange, PanelDocument, PanelEffect, Refused, WorkPanel};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -73,6 +75,40 @@ impl ControlService {
                 revision,
                 tabs: document.tabs,
             })
+        })
+        .await
+    }
+
+    /// The panels of `owner`'s conversations that are archived, or that are
+    /// not, by conversation; one that never changed has no entry. A stored
+    /// document that no longer matches the panel's shape is that
+    /// conversation's own failure, not the read's, so the list the panels go
+    /// in does not fail for it.
+    pub async fn panels(
+        &self,
+        owner: UserId,
+        archived: bool,
+    ) -> Result<HashMap<ConversationId, Result<WorkPanel, StorageError>>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(
+                "SELECT conversations.id, conversation_panels.revision, conversation_panels.document
+                 FROM conversation_panels
+                 JOIN conversations ON conversations.id = conversation_panels.conversation_id
+                 WHERE conversations.user_id = ?1 AND conversations.archived = ?2",
+            )?;
+            let mut rows = statement.query(params![owner.as_str(), archived])?;
+            let mut panels = HashMap::new();
+            while let Some(row) = rows.next()? {
+                let id = decode("conversations", "id", ConversationId::try_from(row.get::<_, String>(0)?))?;
+                let revision = row.get::<_, i64>(1)?;
+                let document = row.get::<_, String>(2)?;
+                let panel = decode("conversation_panels", "revision", u64::try_from(revision)).and_then(|revision| {
+                    let document: PanelDocument = json("conversation_panels", "document", &document)?;
+                    Ok(WorkPanel { revision, tabs: document.tabs })
+                });
+                panels.insert(id, panel);
+            }
+            Ok(panels)
         })
         .await
     }

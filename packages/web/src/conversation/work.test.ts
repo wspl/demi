@@ -1,6 +1,9 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
+import type { ConversationSummary } from '../api/generated/web-api'
+
+/** A tab as the backend's list carries it. */
+type PanelTab = ConversationSummary['panel']['tabs'][number]
 
 // The work store on a page of happy-dom, whose width the tests turn between
 // the desktop's and a phone's (`phone.ts`), and whose address and history a
@@ -26,12 +29,11 @@ const { z } = await import('zod')
 const { waitFor } = await import('@demicodes/utils')
 const { createRouter, createWebHistory } = await import('vue-router')
 const { useSession } = await import('../auth/session')
-const { identitySchema, panelReadSchema } = await import('../api/generated/web-api')
+const { identitySchema } = await import('../api/generated/web-api')
 const { readLocalState } = await import('../state/local')
 const { useResources } = await import('../state/resources')
 const { useProduct } = await import('../state/product')
 const { conversationSummary, productState } = await import('../__tests__/product-state')
-const { showMetadata } = await import('../__tests__/shown-metadata')
 const { useConversations } = await import('./store')
 const { useWorkPanel } = await import('./work')
 
@@ -257,7 +259,7 @@ test('an attachment’s card opens it in a tab of its own, and a later click sel
 /**
  * Answers the work panel's change route as the backend does, from `stored`,
  * keeping each change it was sent; a read of the panel, which its
- * conversation's metadata brings, is counted and refused.
+ * conversation's entry in the list brings, is counted and refused.
  */
 function stubPanelRoutes(stored: { revision: number; tabs: PanelTab[] }) {
   const route = { stored, reads: 0, sent: [] as { method: string; path: string; body: unknown }[] }
@@ -316,7 +318,7 @@ test('a new conversation\'s panel reads and sends nothing until its first send c
   }])
 })
 
-test('the selection is this page\'s own, and the metadata brings another page\'s tab with no read', async () => {
+test('the selection is this page\'s own, and the list brings another page\'s tab with no read', async () => {
   signIn('one')
   const route = stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://a.test/' } }] })
   const conversations = useConversations()
@@ -324,8 +326,7 @@ test('the selection is this page\'s own, and the metadata brings another page\'s
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   const product = useProduct()
   const summary = (panelRevision: number) => {
-    useProduct().read = productState({ conversations: [conversationSummary(id, '')] })
-    showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored, revision: panelRevision }) })
+    useProduct().read = productState({ conversations: [conversationSummary(id, '', { panel: { ...route.stored, revision: panelRevision } })] })
   }
   summary(1)
   const work = useWorkPanel()
@@ -336,7 +337,7 @@ test('the selection is this page\'s own, and the metadata brings another page\'s
   await nextTick()
   expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 
-  // Another page added a tab: the metadata brings it.
+  // Another page added a tab: the list brings it.
   route.stored = { revision: 2, tabs: [...route.stored.tabs, { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } }] }
   summary(2)
   await settled()
@@ -369,10 +370,9 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   const product = useProduct()
   const summary = (panelRevision: number) => {
     useProduct().read = productState({
-      conversations: [conversationSummary(id, '')],
+      conversations: [conversationSummary(id, '', { panel: { ...route.stored, revision: panelRevision } })],
       plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
     })
-    showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored, revision: panelRevision }) })
   }
   summary(1)
   const work = useWorkPanel()
@@ -442,12 +442,9 @@ test('on a phone a conversation comes up without its panel; only a show while th
   const product = useProduct()
   const summaries = () => {
     product.read = productState({
-      conversations: [a, b].map((id) => conversationSummary(id, '')),
+      conversations: [a, b].map((id) => conversationSummary(id, '', { panel: stored[id]! })),
       plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
     })
-    for (const id of [a, b]) {
-      showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...stored[id]! }) })
-    }
   }
   summaries()
   const work = useWorkPanel()
@@ -628,10 +625,9 @@ test('a link naming a closed tab shows what the panel would without it, its addr
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   const plugin = (name: string) => ({ id: name, name, description: 'A plugin.', enabled: true, packages: [] })
   useProduct().read = productState({
-    conversations: [conversationSummary(id, '')],
+    conversations: [conversationSummary(id, '', { panel: route.stored })],
     plugins: [plugin('changes'), plugin('file-browser')],
   })
-  showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored }) })
   const work = useWorkPanel()
   const router = attachRouter(work)
   await moving(router, () => void router.push(`/chat/${id}?panel=t7`))
@@ -690,10 +686,9 @@ test('a show from before the page read the tabs leaves an address that names a f
   conversations.items.find((item) => item.id === id)!.persistence = 'synced'
   const plugin = (name: string) => ({ id: name, name, description: 'A plugin.', enabled: true, packages: [] })
   useProduct().read = productState({
-    conversations: [conversationSummary(id, '')],
+    conversations: [conversationSummary(id, '', { panel: route.stored })],
     plugins: [plugin('browser'), plugin('file-browser')],
   })
-  showMetadata(id, { panel: panelReadSchema.parse({ states: [], ...route.stored }) })
   const work = useWorkPanel()
   const router = attachRouter(work)
   const link = `/chat/${id}?panel=file&path=/work/a.md&view=preview`

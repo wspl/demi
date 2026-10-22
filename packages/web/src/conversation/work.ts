@@ -132,8 +132,9 @@ function queryAddress(query: LocationQuery): PanelAddress {
  *   did not write, such as one the sidebar opens, shows the panel as kept,
  *   and the address then says so; a phone, where the panel covers the
  *   conversation, comes up without it.
- * - The backend's tabs are read when their revision rises, with this page's
- *   changes shown at once over them.
+ * - The backend's tabs are taken from the conversation's entry in the list
+ *   when their revision rises, with this page's changes shown at once over
+ *   them.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
@@ -177,10 +178,6 @@ export const useWorkPanel = defineStore('work-panel', () => {
     if (!tabs) {
       const created = new PanelTabs(panelBackend(conversationId), (error) => {
         reportError(t('failures.changeWorkPanel'), error, { userVisible: true })
-      }, (held) => {
-        for (const { plugin, revision, state } of held) {
-          pluginStates.hold(plugin, conversationId, revision, state)
-        }
       })
       panels.set(conversationId, created)
       let readBefore = false
@@ -461,14 +458,26 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return states.get(conversationId)!
   }
 
-  // Each conversation's panel is the one its metadata brings, under its
-  // revision, whatever the page shows.
+  // Each conversation's panel is the one its entry in the list brings, under
+  // its revision, whatever the page shows: the panel draws as soon as the
+  // conversation is listed (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
   watch(
-    () => conversations.items.map((item) => [item.id, item.metadata.shown.value?.panel] as const),
+    () => (product.snapshot?.conversations ?? []).map((entry) => [entry.id, entry.panel] as const),
     (followed) => {
       for (const [id, panel] of followed) {
-        if (panel !== undefined) {
-          tabsOf(id).receive(panel)
+        tabsOf(id).receive(panel)
+      }
+    },
+    { immediate: true, flush: 'sync' },
+  )
+  // The states the plugins hold for the tabs come with the conversation's
+  // metadata, the disk's copy or the socket's opening, under their revisions.
+  watch(
+    () => conversations.items.map((item) => [item.id, item.metadata.shown.value?.panelStates] as const),
+    (followed) => {
+      for (const [id, held] of followed) {
+        for (const { plugin, revision, state } of held ?? []) {
+          pluginStates.hold(plugin, id, revision, state)
         }
       }
     },

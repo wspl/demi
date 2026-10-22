@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { FileView, treeLayout, usePage, type TabUpdate } from '@demicodes/plugin-sdk'
+import { FileView, PaneReading, treeLayout, usePage, usePaneReady, type TabUpdate } from '@demicodes/plugin-sdk'
 import { fileView, locateFolder, shownPath, showFile, showMode, treeShown, type FileData } from './data'
-import { t } from './locales/text'
 
 /**
  * The File view of one conversation: one file of its Host beside the Host's
@@ -10,7 +9,8 @@ import { t } from './locales/text'
  * link in a Markdown preview replaces the file, and a folder the crumb row
  * goes to is found in the tree, each a step of the web browser's history,
  * which the view's Back and Forward take while they stay in the
- * conversation's panel.
+ * conversation's panel. Until the conversation's working directory is known,
+ * which its opening brings, the pane says it reads.
  */
 const props = defineProps<{
   conversation: string
@@ -23,6 +23,7 @@ const emit = defineEmits<{ update: [data: FileData, how?: TabUpdate] }>()
 const page = usePage()
 const files = page.files(props.conversation)
 const workspace = computed(() => files.workspace)
+usePaneReady(() => workspace.value !== null)
 
 /** The directory the view was opened for, whose tree it shows: the conversation's unless a child's link opened it. */
 const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
@@ -77,11 +78,7 @@ watch([() => props.data.tree, view], ([tree, shown]) => {
     @back="page.panel.go('back')"
     @forward="page.panel.go('forward')"
   />
-  <div
-    v-else
-    class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
-  >
-    <span>{{ t('kind.title') }}</span>
-    <span class="max-w-full truncate px-4 font-mono text-[11px]">{{ data.path }}</span>
+  <div v-else class="relative flex-1">
+    <PaneReading />
   </div>
 </template>

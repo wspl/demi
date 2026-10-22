@@ -93,6 +93,28 @@ const shownTab = computed(() => tabs.value.find((item) => item.tab.id === select
 const present = computed(() => [...pinnedTabs.value.map((item) => item.kind.kind), ...props.panel.tabs.map((tab) => tab.id)])
 /** Every content the panel keeps, by the id of its tab or pinned kind. */
 const kept = shallowRef<readonly string[]>(keptContents([], selection.value, present.value))
+/**
+ * The contents the panel showed first, as the page loaded, the panel opened or
+ * its kinds were bound anew: each says what it reads from its start
+ * (`PaneScope`'s `first`). A content shown by a switch is none of them.
+ */
+const firstShown = shallowRef<ReadonlySet<string>>(new Set(kept.value))
+/**
+ * A number for each kind as bound, which a pane's key holds: a kind bound anew (for another
+ * conversation, or its plugin turned off and on) is a pane of its own, with its own first view,
+ * while turning an unrelated plugin on or off leaves the shown pane mounted.
+ */
+const bindings = new WeakMap<object, number>()
+let bound = 0
+function bindingOf(kind: object): number {
+  let number = bindings.get(kind)
+  if (number === undefined) {
+    bound += 1
+    number = bound
+    bindings.set(kind, number)
+  }
+  return number
+}
 watch([selection, present], ([shown, ids]) => {
   kept.value = keptContents(kept.value, shown, ids)
 })
@@ -113,6 +135,7 @@ function replaceTabs(): void {
 // nothing of the old ones stays.
 watch(() => props.kinds, () => {
   kept.value = keptContents([], selection.value, present.value)
+  firstShown.value = new Set(kept.value)
   replaceTabs()
 })
 watch(() => props.tabsRead, (read) => {
@@ -324,9 +347,10 @@ function reorder(from: number, to: number): void {
       <PaneScope
         v-for="content in contents"
         v-show="content.id === selection"
-        :key="content.id"
+        :key="`${bindingOf(content.kind)}:${content.id}`"
         :name="content.name"
         :shown="content.id === selection"
+        :first="firstShown.has(content.id)"
         class="flex min-h-0 flex-1 flex-col"
       >
         <component

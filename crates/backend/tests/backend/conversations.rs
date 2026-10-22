@@ -1199,7 +1199,8 @@ async fn a_new_conversation_takes_its_first_message_with_its_creation_and_a_repe
 //
 // Planted defects it catches: the metadata sent after the handshake, which a
 // page applies as a second step, and lists carried as their revisions alone,
-// which a page reads by routes after the opening.
+// which a page reads by routes after the opening, and the work panel's tabs
+// left out of the conversation's entry, which a reload then draws a blank frame for.
 #[tokio::test]
 async fn an_open_sends_every_fact_the_view_shows_before_its_handshake_in_one_message() {
     let vendor = MockVendor::start().await;
@@ -1221,6 +1222,12 @@ async fn an_open_sends_every_fact_the_view_shows_before_its_handshake_in_one_mes
         .post(&format!("/api/conversations/{FIRST}/panel/changes"), Some(&master), json!({ "changes": [tab] }))
         .await;
     assert_eq!(changed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&changed.body));
+    // The panel's tabs are the conversation's entry's, which the page has before it opens.
+    let listed = summary(&backend, &master, FIRST).await;
+    assert_eq!(
+        (listed.panel.revision, listed.panel.tabs.iter().map(|tab| tab.id.as_str()).collect::<Vec<_>>()),
+        (1, vec!["p1"])
+    );
 
     // Cold, and again as a reconnect that holds the draft.
     for draft in [None, Some(0)] {
@@ -1237,10 +1244,6 @@ async fn an_open_sends_every_fact_the_view_shows_before_its_handshake_in_one_mes
         assert_eq!(
             metadata.saved.messages.iter().map(|message| message.opening.as_str()).collect::<Vec<_>>(),
             ["Check the DNS next"]
-        );
-        assert_eq!(
-            (metadata.panel.revision, metadata.panel.tabs.iter().map(|tab| tab.id.as_str()).collect::<Vec<_>>()),
-            (1, vec!["p1"])
         );
         assert_eq!((metadata.hosts.hosts.len(), metadata.permissions.requests.len()), (0, 0));
         // The handshake follows, in a message of its own.

@@ -67,7 +67,7 @@ const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
-// The pane waits for the browser's tab list, which comes with the panel: until
+// The pane waits for the browser's tab list, which comes with the conversation's opening: until
 // it is in, the area under the address stays empty. A Cloud still starting, or
 // a list that could not be read, says so in the area.
 const pane = usePaneWaiting()

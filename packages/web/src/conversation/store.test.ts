@@ -3841,7 +3841,8 @@ function shownFacts(conversation: ReturnType<typeof useConversations>['items'][n
     hosts: (conversation.attachedHosts.shown.value ?? []).map((host) => host.name),
     permissions: metadata?.permissions.requests.map((request) => request.id) ?? [],
     workflows: metadata?.workflows.list.state ?? null,
-    tabs: metadata?.panel.tabs.map((tab) => tab.id) ?? [],
+    // The tabs are the conversation's entry's, which the list brings before the conversation opens.
+    tabs: useProduct().snapshot?.conversations.find((entry) => entry.id === conversation.id)?.panel.tabs.map((tab) => tab.id) ?? [],
     attachment: conversation.attachmentDescriptions[conversation.id]?.a1
       ? [conversation.attachmentDescriptions[conversation.id]!.a1!.width, conversation.attachmentDescriptions[conversation.id]!.a1!.height]
       : null,
@@ -3865,9 +3866,11 @@ test('a conversation opens in one step with its model, saved messages, hosts, pe
     hosts: { revision: 1, hosts: [{ deviceId: 'ci', name: 'ci', cwd: '/work', attachedAt: '2026-09-09T00:00:00.000Z' }] },
     permissions: { revision: 1, requests: [{ kind: 'permission', id: 'pr-1', categories: [{ id: 'skills.manage', action: 'manage skills', description: 'Manage Skills.' }], host: null, command: 'demi skills add acme/tools', agent: null, createdAt: '2026-10-05T00:00:00.000Z' }] },
     workflows: { revision: 1, list: { state: 'read', list: { directory: '/work/.demi/workflows', unavailable: null, workflows: [] }, readAt: '2026-10-05T00:00:00.000Z' } },
-    panel: { revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://example.test/' } }], states: [] },
     lastAttachment: 1,
   })
+  records.find((record) => record.id === FIRST)!.panel = { revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://example.test/' } }] }
+  channels.last().send({ type: 'conversation', conversation: records.find((record) => record.id === FIRST)! })
+  await nextTick()
   rootBlocks.set(FIRST, [{ ...shownBlock, text: 'Here it is: <attachment id="a1" />' }])
   rootAttachments.set(FIRST, [{ id: 'a1', name: 'chart.png', mediaType: 'image/png', size: 2048, width: 640, height: 480, blob: SHA }])
   const whole: Omit<ReturnType<typeof shownFacts>, 'load'> = {

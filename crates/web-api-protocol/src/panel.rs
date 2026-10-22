@@ -18,8 +18,11 @@ pub const PANEL_BYTES_MAX: usize = 64 * 1024;
 pub const PANEL_TAB_ID_MAX: usize = 64;
 
 /// A conversation's panel as the database keeps it: the tabs in order, and
-/// how many changes made them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
+/// how many changes made them. The conversation's entry in the list carries
+/// it, so the page draws the panel's frame and tabs as soon as the
+/// conversation is listed
+/// (`docs/decisions/0049-the-work-panel-shows-at-once.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct WorkPanel {
     #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -38,23 +41,10 @@ impl WorkPanel {
     }
 }
 
-/// What a conversation's metadata carries of its panel: the tabs, and the
-/// conversation states that plugins hold (a manifest state that declares itself
-/// held) as of their revision, which the page takes as it would read them, so a
-/// kind's content has them when its tab appears.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct PanelRead {
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub revision: u64,
-    #[garde(dive)]
-    pub tabs: Vec<PanelTab>,
-    #[garde(dive)]
-    pub states: Vec<HeldState>,
-}
-
 /// A plugin's conversation state as the plugin holds it, with the revision it
-/// was held at (`PluginStateAnswer`).
+/// was held at (`PluginStateAnswer`). A conversation's metadata carries the
+/// states of the plugins that declare theirs held, so a kind's content has
+/// them when the page reads it, never a read of its own.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct HeldState {
@@ -68,7 +58,7 @@ pub struct HeldState {
 
 /// One tab of the panel: its kind, and what the page and the kind's plugin
 /// keep for it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PanelTab {
     #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]

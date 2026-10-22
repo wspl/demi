@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by 0049
 ---
 
 # A work panel pane changes whole

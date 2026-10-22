@@ -2,13 +2,15 @@
 //!
 //! - The backend changes a request of changes at a time, all or none, and
 //!   never interprets them.
-//! - The conversation's metadata carries the tabs under the revision that
-//!   counts the changes, and a page that shows it hears of each change.
+//! - The conversation's entry in the list carries the tabs under the revision
+//!   that counts the changes, and every page hears of each change.
+//! - The conversation's metadata carries the states plugins hold for them.
 //! - Each tab's id is used once.
 //! - Turning a plugin off closes its kinds' tabs in every panel, an archived
 //!   conversation's included.
 
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
@@ -37,14 +39,24 @@ struct Panel<'a> {
 }
 
 impl Panel<'_> {
-    /// The panel as the conversation's metadata carries it.
+    /// The panel as the conversation's entry in the list carries it.
     async fn read(&self) -> Value {
         let detail: Value = self
             .backend
             .get(&format!("/api/conversations/{}", self.id), Some(self.master))
             .await
             .json();
-        detail["metadata"]["panel"].clone()
+        detail["conversation"]["panel"].clone()
+    }
+
+    /// The states plugins hold for the panel, as the conversation's metadata carries them.
+    async fn states(&self) -> Value {
+        let detail: Value = self
+            .backend
+            .get(&format!("/api/conversations/{}", self.id), Some(self.master))
+            .await
+            .json();
+        detail["metadata"]["panelStates"].clone()
     }
 
     /// The ids of the tabs, in order.
@@ -115,21 +127,25 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
         master: &master,
         id: conversation(&backend, &master).await,
     };
-    assert_eq!(panel.read().await, json!({ "revision": 0, "tabs": [], "states": [] }));
-    let (mut shown, _) = crate::conversations::Socket::shown(&backend, &master, &panel.id, 0).await;
+    assert_eq!(panel.read().await, json!({ "revision": 0, "tabs": [] }));
+    let mut channel = backend.sync(&master).await;
+    channel.snapshot().await;
 
     let created = panel.create(page("p1", "https://a.test/")).await;
     assert_eq!(
         created.json::<Value>(),
         json!({ "revision": 1, "changed": true })
     );
-    // A page that shows the conversation hears of the change with its tabs.
-    let heard = shown.metadata_until(|metadata| metadata.panel.revision == 1).await.panel;
-    assert_eq!(serde_json::to_value(&heard).unwrap(), json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")], "states": [] }));
-    drop(shown);
+    // Every page hears of the change with the entry, which carries the tabs.
+    let heard = channel
+        .until(|event| matches!(event, SyncEvent::Conversation { conversation } if conversation.id.as_str() == panel.id && conversation.panel.revision == 1))
+        .await;
+    let Some(SyncEvent::Conversation { conversation }) = heard.last() else { unreachable!() };
+    assert_eq!(serde_json::to_value(&conversation.panel).unwrap(), json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")] }));
+    drop(channel);
     assert_eq!(
         panel.read().await,
-        json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")], "states": [] })
+        json!({ "revision": 1, "tabs": [page("p1", "https://a.test/")] })
     );
     assert_eq!(panel.summary_revision().await, 1);
     // Creating it again, as a page whose answer was lost does, creates nothing.
@@ -312,7 +328,7 @@ async fn an_attachments_tab_is_kept_until_the_user_closes_it() {
     });
     let created = panel.create(tab.clone()).await;
     assert_eq!(created.json::<Value>(), json!({ "revision": 1, "changed": true }));
-    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab], "states": [] }));
+    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab] }));
     assert_eq!(revision(&panel.remove("t1").await), 2);
     assert_eq!(panel.ids().await, Vec::<String>::new());
     backend.close().await;
@@ -341,7 +357,7 @@ async fn a_media_tab_is_kept_with_its_place_until_the_user_closes_it() {
     });
     let created = panel.create(tab.clone()).await;
     assert_eq!(created.json::<Value>(), json!({ "revision": 1, "changed": true }));
-    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab], "states": [] }));
+    assert_eq!(panel.read().await, json!({ "revision": 1, "tabs": [tab] }));
     assert_eq!(revision(&panel.remove("t1").await), 2);
     assert_eq!(panel.ids().await, Vec::<String>::new());
     backend.close().await;
@@ -388,11 +404,11 @@ async fn turning_a_plugin_off_closes_its_tabs_and_leaves_the_others() {
     backend.close().await;
 }
 
-/// The panel read carries the conversation states plugins hold, with the
-/// revision each was held at, and leaves out one that holds none, so a kind's
-/// content has what it shows when its tab appears.
+/// The conversation's metadata carries the conversation states plugins hold, with
+/// the revision each was held at, and leaves out one that holds none, so a kind's
+/// content has what it shows without a read of its own.
 #[tokio::test]
-async fn the_panel_read_carries_the_conversation_states_that_plugins_hold() {
+async fn the_metadata_carries_the_conversation_states_that_plugins_hold() {
     let harness = Harness::new().with_panel_fixture();
     let (backend, master) = harness.start_set_up().await;
     let panel = Panel {
@@ -400,7 +416,7 @@ async fn the_panel_read_carries_the_conversation_states_that_plugins_hold() {
         master: &master,
         id: conversation(&backend, &master).await,
     };
-    assert_eq!(panel.read().await["states"], json!([]));
+    assert_eq!(panel.states().await, json!([]));
 
     let held = backend
         .post(
@@ -410,12 +426,46 @@ async fn the_panel_read_carries_the_conversation_states_that_plugins_hold() {
         )
         .await;
     assert_eq!(held.status, StatusCode::OK, "{}", String::from_utf8_lossy(&held.body));
-    let states = panel.read().await["states"].clone();
+    let states = panel.states().await;
     let revision = states[0]["revision"].as_u64().unwrap();
     assert_eq!(
         states,
         json!([{ "plugin": "fixture-panel", "revision": revision, "state": { "tabs": 2 } }])
     );
     assert!(revision >= 1);
+    backend.close().await;
+}
+
+// Planted defect this catches: a panel document that does not decode failing the
+// whole list, or the entry of its conversation, which then no page can list. One
+// backend, a few requests.
+#[tokio::test]
+async fn a_panel_that_cannot_be_read_costs_only_its_conversations_tabs() {
+    let harness = Harness::new().with_panel_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let whole = Panel { backend: &backend, master: &master, id: conversation(&backend, &master).await };
+    let broken = Panel { backend: &backend, master: &master, id: conversation(&backend, &master).await };
+    revision(&whole.create(page("p1", "https://a.test/")).await);
+    revision(&broken.create(page("p1", "https://b.test/")).await);
+    let control = rusqlite::Connection::open(harness.data_dir().join("control.sqlite")).unwrap();
+    control
+        .execute(
+            "UPDATE conversation_panels SET document = '{\"tabs\": 5}' WHERE conversation_id = ?1",
+            [&broken.id],
+        )
+        .unwrap();
+    drop(control);
+
+    let listed = crate::conversations::summaries(&backend, &master).await;
+    let tabs = |id: &str| {
+        listed
+            .iter()
+            .find(|summary| summary.id.as_str() == id)
+            .map(|summary| summary.panel.tabs.len())
+    };
+    assert_eq!((tabs(&whole.id), tabs(&broken.id)), (Some(1), Some(0)));
+    let mut channel = backend.sync(&master).await;
+    let state = channel.snapshot().await;
+    assert_eq!(state.conversations.len(), 2);
     backend.close().await;
 }

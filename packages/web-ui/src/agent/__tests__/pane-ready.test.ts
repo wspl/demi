@@ -4,7 +4,9 @@ import { afterEach, expect, jest, test } from 'bun:test'
 // A pane of the work panel changes whole (docs/decisions/0038-a-pane-changes-whole.md):
 // a click makes the new tab's view the shown one at once, its area stays empty
 // while its parts read, draws when the last is in, and says what it reads past
-// 300 ms. One Vue app on a happy-dom page, a few ms.
+// 300 ms. The first view the panel shows says it from its start
+// (docs/decisions/0049-the-work-panel-shows-at-once.md). One Vue app on a
+// happy-dom page, a few ms.
 
 GlobalRegistrator.register({ url: 'https://demi.test/' })
 await import('../../__tests__/vue-components')
@@ -50,13 +52,12 @@ const kind: PanelTabKind<{ title: string }> = {
   content: View as never,
 }
 
-function mountPanel(titles: string[], selected: { value: string }) {
+function mountPanel(titles: string[], selected: { value: string }, kinds: { value: readonly PanelTabKind[] } = { value: [kind] }) {
   const tabs = titles.map((title) => ({ id: title, kind: 'page', data: { title } }))
   const root = document.createElement('div')
   document.body.append(root)
-  const kinds = [kind]
   const app = createApp({
-    render: () => h(WorkPanel, { panel: { history: [selected.value], tabs }, pinned: {}, kinds }),
+    render: () => h(WorkPanel, { panel: { history: [selected.value], tabs }, pinned: {}, kinds: kinds.value }),
   })
   app.mount(root)
   unmount = () => app.unmount()
@@ -73,7 +74,7 @@ function area(root: HTMLElement, title: string): HTMLElement {
   return root.querySelector<HTMLElement>(`[data-body="${title}"]`)!.closest<HTMLElement>('.relative.isolate')!
 }
 
-test('a pane\'s area stays empty at its size while its parts read, and draws when the last is in', async () => {
+test('the first view says what it reads from its start, draws whole when the last part is in, and a later read in the pane waits 300 ms to say it', async () => {
   jest.useFakeTimers()
   for (const key of Object.keys(arrived))
     delete arrived[key]
@@ -82,15 +83,10 @@ test('a pane\'s area stays empty at its size while its parts read, and draws whe
   const root = mountPanel(['a.ts'], sel)
   await nextTick()
 
-  // The address is the view's from the first frame; the area under it is empty.
+  // The address is the view's from the first frame; the area under it is empty and says what it reads.
   expect(root.querySelector('[data-address="a.ts"]')).not.toBeNull()
   expect(area(root, 'a.ts').className).toContain('invisible')
   expect(tree(root, 'a.ts').className).toContain('invisible')
-  expect(root.querySelector('[data-pane-reading]')).toBeNull()
-
-  // Past 300 ms it says what it reads.
-  jest.advanceTimersByTime(PANE_WAIT_MS)
-  await nextTick()
   expect(root.querySelector('[data-pane-reading]')?.textContent).toBe('Reading a.ts')
 
   // The last part arrives: the area draws whole, and the sentence goes.
@@ -100,29 +96,37 @@ test('a pane\'s area stays empty at its size while its parts read, and draws whe
   expect(tree(root, 'a.ts').className).not.toContain('invisible')
   expect(root.querySelector('[data-pane-reading]')).toBeNull()
 
-  // The same pane reads again, as when another file is picked: its tree stays and the view is empty.
+  // The same pane reads again, as when another file is picked: its tree stays, the view is empty,
+  // and it says what it reads only past 300 ms.
   arrived['a.ts'] = false
   await nextTick()
   expect(area(root, 'a.ts').className).toContain('invisible')
   expect(tree(root, 'a.ts').className).not.toContain('invisible')
+  expect(root.querySelector('[data-pane-reading]')).toBeNull()
+  jest.advanceTimersByTime(PANE_WAIT_MS)
+  await nextTick()
+  expect(root.querySelector('[data-pane-reading]')?.textContent).toBe('Reading a.ts')
 })
 
-test('a view that is in before 300 ms never says it reads', async () => {
+test('a view that is in before 300 ms after a switch never says it reads', async () => {
   jest.useFakeTimers()
   for (const key of Object.keys(arrived))
     delete arrived[key]
-  arrived['a.ts'] = false
+  arrived['a.ts'] = true
+  arrived['b.ts'] = false
   const selected = shallowRef('a.ts')
   const root = mountPanel(['a.ts', 'b.ts'], { get value() { return selected.value } })
   await nextTick()
+  selected.value = 'b.ts'
+  await nextTick()
 
   jest.advanceTimersByTime(PANE_WAIT_MS - 1)
-  arrived['a.ts'] = true
+  arrived['b.ts'] = true
   await nextTick()
   jest.advanceTimersByTime(PANE_WAIT_MS * 2)
   await nextTick()
   expect(root.querySelector('[data-pane-reading]')).toBeNull()
-  expect(area(root, 'a.ts').className).not.toContain('invisible')
+  expect(area(root, 'b.ts').className).not.toContain('invisible')
 })
 
 test('switching to a view not read yet shows it at once, empty, and switching back shows the one read as it was', async () => {
@@ -158,4 +162,43 @@ test('switching to a view not read yet shows it at once, empty, and switching ba
   await nextTick()
   expect(area(root, 'a.ts').className).not.toContain('invisible')
   expect(root.querySelector('[data-pane-reading]')).toBeNull()
+})
+
+test('a first view whose data is in as it mounts leaves the pane\'s later reads to the 300 ms rule', async () => {
+  jest.useFakeTimers()
+  for (const key of Object.keys(arrived))
+    delete arrived[key]
+  arrived['a.ts'] = true
+  const selected = shallowRef('a.ts')
+  const root = mountPanel(['a.ts'], { get value() { return selected.value } })
+  await nextTick()
+  expect(root.querySelector('[data-pane-reading]')).toBeNull()
+
+  arrived['a.ts'] = false
+  await nextTick()
+  expect(root.querySelector('[data-pane-reading]')).toBeNull()
+  jest.advanceTimersByTime(PANE_WAIT_MS)
+  await nextTick()
+  expect(root.querySelector('[data-pane-reading]')?.textContent).toBe('Reading a.ts')
+})
+
+test('binding the kinds again, as turning an unrelated plugin on or off does, leaves the shown pane mounted', async () => {
+  jest.useFakeTimers()
+  for (const key of Object.keys(arrived))
+    delete arrived[key]
+  arrived['a.ts'] = true
+  const other: PanelTabKind = { ...kind, kind: 'other' }
+  const kinds = shallowRef<readonly PanelTabKind[]>([kind])
+  const root = mountPanel(['a.ts'], { value: 'a.ts' }, { get value() { return kinds.value } })
+  await nextTick()
+  const shown = root.querySelector('[data-body="a.ts"]')
+
+  kinds.value = [kind, other]
+  await nextTick()
+  expect(root.querySelector('[data-body="a.ts"]')).toBe(shown)
+
+  // A kind bound anew is another pane.
+  kinds.value = [{ ...kind }, other]
+  await nextTick()
+  expect(root.querySelector('[data-body="a.ts"]')).not.toBe(shown)
 })

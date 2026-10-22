@@ -35,7 +35,6 @@ const { useSession } = await import('../auth/session')
 const { identitySchema } = await import('../api/generated/web-api')
 const { useProduct } = await import('../state/product')
 const { conversationSummary, productState } = await import('../__tests__/product-state')
-const { showMetadata } = await import('../__tests__/shown-metadata')
 const { useConversations } = await import('./store')
 const { useWorkPanel } = await import('./work')
 const { default: WorkPane } = await import('./WorkPane.vue')
@@ -142,7 +141,7 @@ async function panePage() {
   } })
   useSession().current = { status: 'signedIn', user }
   globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    // The panel comes with the metadata; only changes are sent.
+    // The panel comes with the conversation's entry in the list; only changes are sent.
     return (init?.method ?? 'GET') === 'GET'
       ? Response.json({ code: 'not_found', message: 'No such route' }, { status: 404 })
       : Response.json({ revision: 2, changed: true })
@@ -155,7 +154,6 @@ async function panePage() {
     conversations: [conversationSummary(id, '')],
     plugins: [plugin('changes'), plugin('file-browser')],
   })
-  showMetadata(id, { panel: { revision: 1, tabs: [], states: [] } })
   const work = useWorkPanel()
   const router = createRouter({ history: createWebHistory(), routes: [{ path: '/chat/:id?', component: { render: () => null } }] })
   const detach = work.attach(router)
@@ -280,22 +278,22 @@ test('a folder the File view’s crumb row goes to is a step in the address, as 
   expect(work.stateFor(id).pinned.file).toEqual({ path: '/work/a.bin', view: 'preview' })
 })
 
-// Production: opening a conversation cold drew its panel at once with the
-// pinned tabs and a No changes body under the loading pane, and the saved
-// tabs joined when the opening came, so the strip changed shape. Planted
-// defect this catches: the panel drawn before the conversation's facts are
-// in. About 100 ms.
-test('the panel shows with the conversation\u2019s facts: not while its opening is still to bring them', async () => {
-  const { id, root } = await panePage()
+// The panel draws its frame and its tabs as soon as the conversation is in the
+// list, which carries them, and not after its opening
+// (`docs/decisions/0049-the-work-panel-shows-at-once.md`). Planted defect this
+// catches: the panel held back until the opening brings the conversation's
+// facts, which a reload shows as a blank frame. About 100 ms.
+test('the panel shows with the conversation in the list, while its opening is still to come', async () => {
+  const { id, work, router, root } = await panePage()
+  await moving(router, () => work.setOpen(id, true))
   const conversation = useConversations().items.find((item) => item.id === id)!
   const panel = () => root.querySelector('aside')
-  expect(panel()).not.toBeNull()
+  const strip = () => [...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim())
 
-  conversation.load = 'loading'
-  await settled()
-  expect(panel()).toBeNull()
-
-  conversation.load = 'opening'
-  await settled()
-  expect(panel()).not.toBeNull()
+  for (const load of ['reading', 'loading', 'opening'] as const) {
+    conversation.load = load
+    await settled()
+    expect(panel()).not.toBeNull()
+    expect(strip()).toEqual(['Changes', 'Files'])
+  }
 })

@@ -1,6 +1,7 @@
 import {
   computed,
   inject,
+  onMounted,
   onScopeDispose,
   provide,
   shallowReactive,
@@ -27,6 +28,13 @@ import {
 // size, and draws once when the last part is in. The click that switched the
 // pane has already changed the tab and the address. After `PANE_WAIT_MS` of
 // the pane being shown and waiting, the area says what it waits for.
+//
+// The first view a panel shows, as the page loads or the panel opens
+// (`docs/decisions/0049-the-work-panel-shows-at-once.md`), says what it waits
+// for from its start: the user has no view yet that the sentence could
+// interrupt, and an empty area tells them nothing. Only that first wait; a
+// later read in the same pane, as when another file is picked, keeps the rule
+// above.
 //
 // A part says "in" for what it first needs only: an answer it holds that is
 // being read again is in, so a view switched back to, or one whose reads are
@@ -56,14 +64,43 @@ const PANE: InjectionKey<Pane> = Symbol('work panel pane')
  * `shown` says whether its tab is the selected one: a pane that waits while
  * another tab is selected has nothing to say yet.
  */
-export function providePane(options: { name: () => string; shown: () => boolean }): Pane {
+export function providePane(options: {
+  name: () => string
+  shown: () => boolean
+  /**
+   * Whether this is the first view the panel shows: its first wait says what
+   * it waits for at once. Read once, as the pane is made.
+   */
+  first?: boolean
+}): Pane {
   const unsettled = shallowReactive(new Set<symbol>())
   const waiting = computed(() => unsettled.size > 0)
   const slow = shallowRef(false)
+  /**
+   * Whether the pane's wait that comes next is its first view's. It ends with the first wait
+   * that is over once the render it ends in has drawn: a part that settles may be replaced in
+   * that render by the view's own, whose parts then read on, as a view that waits for the
+   * conversation's directory is replaced by the files it lists.
+   */
+  let fromStart = options.first ?? false
+  watch(waiting, (now) => {
+    if (!now)
+      fromStart = false
+  }, { flush: 'post' })
+  // A view whose data is all in as it mounts has no first wait to say anything in: its later
+  // reads are the pane's ordinary ones.
+  onMounted(() => {
+    if (!waiting.value)
+      fromStart = false
+  })
   watch(() => waiting.value && options.shown(), (now, _before, onCleanup) => {
     slow.value = false
     if (!now)
       return
+    if (fromStart) {
+      slow.value = true
+      return
+    }
     const timer = setTimeout(() => {
       slow.value = true
     }, PANE_WAIT_MS)

@@ -11,9 +11,11 @@ const props = defineProps<{
   name: string
   /** Whether the tab is the selected one. */
   shown: boolean
+  /** Whether it holds the first view the panel shows, which says what it reads from the start. */
+  first?: boolean
 }>()
 
-providePane({ name: () => props.name, shown: () => props.shown })
+providePane({ name: () => props.name, shown: () => props.shown, first: props.first })
 </script>
 
 <template>
