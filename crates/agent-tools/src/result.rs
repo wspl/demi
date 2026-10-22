@@ -40,8 +40,8 @@
 
 use std::sync::Arc;
 
-use demi_agent_session::{SILENCE_LIMIT, ToolOutcome};
-use demi_agent_store::{Watch, images};
+use demi_agent_session::ToolOutcome;
+use demi_agent_store::images;
 use demi_agent_transcript::REPLAY_CHARS;
 use demi_host_interface::{
     BinaryOutput, CommandMedium, CommandState, CommandStatus, Newest, OutputText,
@@ -69,9 +69,6 @@ const NEWEST_LINES: u64 = 50;
 pub struct Look {
     /// Why the call returned while its command runs, which its result says.
     pub moved: Option<Moved>,
-    /// How the command wakes its node while it runs; not known when none, as
-    /// for a look at another agent's command.
-    pub watch: Option<Watch>,
     /// The command's Host is unreachable, so its silence is not the command's:
     /// a look from another Host says so
     /// (`crates/agent-server/src/server/shell_output.rs`).
@@ -251,10 +248,7 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look) -> String 
                 None => {}
             }
             after.extend(outliving_line(outliving));
-            match hint {
-                Some(hint) => after.push(hint.clone()),
-                None => after.push(running_next(command, look.watch)),
-            }
+            after.extend(hint.clone());
         }
         CommandState::Exited { .. } | CommandState::Aborted | CommandState::Lost { .. } => {}
     }
@@ -368,24 +362,6 @@ fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budg
         }
     }
     lines
-}
-
-/// The next step for a command that runs: it wakes the node when it ends, and
-/// the `demi shell` commands answer it and stop it. It offers no look: the end
-/// brings the output, so a look would only wait for it a second way
-/// (docs/decisions/0052-a-call-waits-for-its-command.md).
-fn running_next(command: &CommandId, watch: Option<Watch>) -> String {
-    let wakes = match watch {
-        Some(Watch::Foreground) => format!(
-            " and wakes you when it ends, or after {} without output",
-            super::duration(SILENCE_LIMIT.as_millis().try_into().unwrap_or(u64::MAX))
-        ),
-        Some(Watch::Background | Watch::Silenced) => " and wakes you when it ends".to_owned(),
-        None => String::new(),
-    };
-    format!(
-        "next: command {command} keeps running{wakes}; answer a prompt with demi shell input {command}, stop it with demi shell stop {command}."
-    )
 }
 
 /// The line that names the background tasks that keep a command running
@@ -938,15 +914,8 @@ mod tests {
             .collect()
     }
 
-    /// The next step of a running command 17 that is not in the background.
-    const NEXT: &str = "next: command 17 keeps running and wakes you when it ends, or after 10m without output; answer a prompt with demi shell input 17, stop it with demi shell stop 17.";
-
     async fn result(status: &CommandStatus) -> String {
-        let look = Look {
-            watch: Some(Watch::Foreground),
-            ..Look::default()
-        };
-        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), look).await;
+        let outcome = shell_outcome(status, &test_model().model, RequestLimits::default(), Look::default()).await;
         text_of(&outcome)[0].to_owned()
     }
 
@@ -973,7 +942,7 @@ mod tests {
         for expected in ["done\nrea", "rea"] {
             let shown = result(&record.status(0, None, Vec::new())).await;
             assert!(
-                shown.ends_with(&format!("\noutput:\n{expected}\n{NEXT}")),
+                shown.ends_with(&format!("\noutput:\n{expected}")),
                 "{shown}"
             );
         }
@@ -981,7 +950,7 @@ mod tests {
         for expected in ["ready\nprompt", "prompt"] {
             let shown = result(&record.status(0, None, Vec::new())).await;
             assert!(
-                shown.ends_with(&format!("\noutput:\n{expected}\n{NEXT}")),
+                shown.ends_with(&format!("\noutput:\n{expected}")),
                 "{shown}"
             );
         }
@@ -1080,7 +1049,6 @@ mod tests {
                 "[... 1040384 bytes of stdout not shown; its newest lines follow ...]",
                 "line 999",
                 "line 1000",
-                NEXT,
             ]
             .join("\n")
         );
@@ -1101,7 +1069,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_running_command_names_its_handles_and_the_newest_output_it_has_not_received() {
+    async fn a_running_command_names_the_newest_output_it_has_not_received() {
         let mut running = exited("");
         running.whole = None;
         running.state = CommandState::Running {
@@ -1120,7 +1088,6 @@ mod tests {
                 "output:",
                 "building",
                 "[... 1048576 bytes not shown so far; the newest: demi shell output 17 --tail 50 ...]",
-                NEXT,
             ]
             .join("\n")
         );

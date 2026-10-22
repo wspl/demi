@@ -6,14 +6,13 @@ use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
-use std::time::Duration;
 
-/// What `background` tells the model.
-const SERVICE: &str = "true for a command that runs until stopped, such as a development server or a watcher: the call returns once its output has been quiet for 2 seconds, and only its exit wakes you.";
+/// What `service` tells the model.
+const SERVICE: &str = "A command that runs until stopped, such as a development server.";
 
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs.
-pub(super) const DESCRIPTION: &str = "The step's title the user sees, an imperative written before it runs, such as \"Run the type checker\".";
+pub(super) const DESCRIPTION: &str = "The step's title the user sees, such as \"Run the type checker\".";
 
 // `description` comes first: a model writes a call's fields in the schema's
 // order, so the title the page shows arrives before a long script.
@@ -22,41 +21,13 @@ pub(super) const DESCRIPTION: &str = "The step's title the user sees, an imperat
 pub(super) struct ShellInput {
     #[schemars(length(min = 1), description = DESCRIPTION)]
     pub(super) description: NonEmpty,
+    #[schemars(description = "The script.")]
     pub(super) script: String,
     /// Was `background` until 0.1.61; transcripts written before keep that
     /// name, so a replayed call still reads.
     #[serde(default, alias = "background")]
     #[schemars(description = SERVICE)]
     pub(super) service: bool,
-}
-
-/// How long a script's first command sleeps, when it is a `sleep`: the sum of
-/// its arguments, each a number with an optional `s`, `m`, `h` or `d` suffix,
-/// up to the first `;`, `&&`, `||`, `|` or line break. A `sleep` that a single
-/// `&` sends to the background holds nothing.
-pub(super) fn leading_sleep(script: &str) -> Option<Duration> {
-    let script = script.trim_start();
-    let end = script.find([';', '&', '|', '\n']).unwrap_or(script.len());
-    if script[end..].starts_with('&') && !script[end..].starts_with("&&") {
-        return None;
-    }
-    let first = &script[..end];
-    let mut words = first.split_whitespace();
-    if words.next()? != "sleep" {
-        return None;
-    }
-    let mut seconds = 0.0_f64;
-    for word in words {
-        let (number, unit) = match word.char_indices().last() {
-            Some((at, 's')) => (&word[..at], 1.0),
-            Some((at, 'm')) => (&word[..at], 60.0),
-            Some((at, 'h')) => (&word[..at], 3_600.0),
-            Some((at, 'd')) => (&word[..at], 86_400.0),
-            _ => (word, 1.0),
-        };
-        seconds += number.parse::<f64>().ok().filter(|number| *number >= 0.0)? * unit;
-    }
-    Some(Duration::try_from_secs_f64(seconds).unwrap_or(Duration::MAX))
 }
 
 // Text a call must not leave empty: the title of a step. (A doc comment
@@ -162,22 +133,5 @@ mod tests {
         )
         .unwrap();
         assert!(server.service);
-    }
-
-    #[test]
-    fn a_script_that_starts_with_a_sleep_says_how_long_it_sleeps() {
-        let secs = |script: &str| leading_sleep(script).map(|sleep| sleep.as_secs_f64());
-        assert_eq!(secs("sleep 45"), Some(45.0));
-        assert_eq!(secs("  sleep 1m 30s && make"), Some(90.0));
-        assert_eq!(secs("sleep 0.5; make"), Some(0.5));
-        assert_eq!(secs("sleep 2h\nmake"), Some(7_200.0));
-        // Only a script's first command counts, and only a `sleep`.
-        assert_eq!(secs("make && sleep 60"), None);
-        assert_eq!(secs("sleeper 60"), None);
-        assert_eq!(secs("sleep forever"), None);
-        // One a single `&` sends to the background holds nothing.
-        assert_eq!(secs("sleep 60 & echo started"), None);
-        assert_eq!(secs("sleep 60 && echo done"), Some(60.0));
-        assert_eq!(secs("echo sleep 60"), None);
     }
 }

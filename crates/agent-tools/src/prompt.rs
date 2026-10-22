@@ -3,11 +3,10 @@
 //! It holds these layers, in this order:
 //!
 //! 1. the identity;
-//! 2. the harness guide;
-//! 3. the rules of the `shell` tool;
-//! 4. the capability index of the node's commands;
-//! 5. the model identity;
-//! 6. the instructions a subagent profile added.
+//! 2. the guidelines;
+//! 3. the capability index of the node's commands;
+//! 4. the model identity;
+//! 5. the instructions a subagent profile added.
 //!
 //! The prompt is rendered once, when the node is assembled, and holds no time,
 //! id, Host or state, so the prefix of every request changes only when the
@@ -19,7 +18,9 @@
 //! - The prompt never lists what the user can change, such as the subagent
 //!   profiles, the skills or the models, which would go stale and cost every
 //!   request its tokens. It names the command that answers at call time.
-//! - Every request carries the whole prompt, so it is kept short.
+//! - Every request carries the whole prompt, so it is kept short, as pi's
+//!   is: a fact is said once, where it belongs. What the `shell` tool does is
+//!   its definition's alone; a result and a report carry data, not rules.
 //!
 //! Writing the layers:
 //!
@@ -28,38 +29,15 @@
 //! - A profile's instructions never replace the identity, so a profile's node
 //!   is Demi with the same harness, tools, capabilities and model, told what
 //!   its kind of work is.
-//! - A rule belongs in the harness guide only when its moment arises during
-//!   ordinary work rather than while the model reads one command's help;
-//!   otherwise it belongs in that command's help.
+//! - A guideline is only what the model cannot tell from its tools and what
+//!   the product's display needs; anything about one command is that
+//!   command's help.
 //! - The model identity line is generated from the node's selection and never
 //!   written by hand: a name that does not follow the configuration makes the
 //!   model claim to be another.
 
-use demi_agent_session::{PromptLayer, SILENCE_LIMIT, SystemPrompt};
+use demi_agent_session::{PromptLayer, SystemPrompt};
 use demi_host_interface::CapabilityIndex;
-
-use crate::{duration, input::DESCRIPTION};
-
-/// The rules of the `shell` tool, which every node's system prompt carries:
-/// what the tool has and does, in as few words as carry it, never what the
-/// model ought to do; each `demi shell` command's help says the rest.
-///
-/// The rule that names how long a command may print nothing before it wakes the
-/// model is written from the session's limit, its one owner.
-fn tool_rules() -> String {
-    let silence = duration(SILENCE_LIMIT.as_millis().try_into().unwrap_or(u64::MAX));
-    [
-        "The shell tool:".to_owned(),
-        "- Runs a script in your working directory; a call returns when it ends, or after 30 s with it still running in the background.".to_owned(),
-        format!("- A command in the background wakes you when it ends, and once after {silence} without output; it keeps running."),
-        "- service: true is for a command that runs until stopped, such as a server: its call returns once its output has been quiet for 2 s, and only its exit wakes you.".to_owned(),
-        "- Commands in one response run in parallel.".to_owned(),
-        "- Results and reports show new output, runningMs and idleMs (time without output).".to_owned(),
-        "- `demi shell status|input|output|stop <commandId>`".to_owned(),
-        "- A call never holds longer than 30 s, a loop or a sleep in it included: you wait by ending your turn, and a command's end or a subagent's message wakes you. The user reads only your replies.".to_owned(),
-    ]
-    .join("\n")
-}
 
 /// What the model identity line names of the model that serves a node,
 /// from its model selection.
@@ -74,9 +52,9 @@ pub struct ModelIdentity<'a> {
 
 /// The system prompt of a node by its layers.
 ///
-/// The layers are the product's `identity`, the product's harness `guide`, the
-/// rules of the `shell` tool, the capability `index` of its commands when it
-/// has any, the line naming `model`, and last, under a heading of their own,
+/// The layers are the product's `identity`, the product's `guide`, the
+/// capability `index` of its commands when it has any, the line naming
+/// `model`, and last, under a heading of their own,
 /// the instructions its subagent profile `added`, which never replace any of
 /// the product's layers.
 pub fn system_prompt(
@@ -92,15 +70,8 @@ pub fn system_prompt(
             layers.push(PromptLayer::Text(text.to_owned()));
         }
     }
-    layers.push(PromptLayer::Text(format!(
-        "{}\n- Tool description: {DESCRIPTION}",
-        tool_rules()
-    )));
     if !index.is_empty() {
-        layers.push(PromptLayer::Commands(format!(
-            "Capabilities:\n\n{}",
-            index.text()
-        )));
+        layers.push(PromptLayer::Commands(index.text()));
     }
     layers.push(PromptLayer::Text(format!(
         "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",

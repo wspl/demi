@@ -5,16 +5,11 @@ use serde_json::Value;
 
 use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 
-/// The paragraph the capability index opens with: what every command does
-/// unless its own help says otherwise.
-pub const HELP_DEFAULTS: &str = "Commands print data on stdout, a list as a table and one object as Key: value lines, as JSON with --json where offered, and errors on stderr; a failure exits 1, a usage error 2. --help works at every level. Stdin bodies come by heredoc or pipe. A value starting with -- goes as --name=value, or after --. `demi file view` shows you an image, a video or a PDF.";
+/// The line the capability index opens with, before one line a group.
+pub const INDEX_OPENER: &str = "Demi commands, run in the shell; `demi <group> --help` for details:";
 
-/// The paragraph after [`HELP_DEFAULTS`] that introduces the groups'
-/// entries.
-pub const INDEX_OPENER: &str = "Demi's own capabilities are `demi` commands you run in the shell. Each group below says what it is for; read its `--help` before you first use it, and an operation's `--help` for its arguments.";
-
-/// The model's capability index: the defaults and the opener, then each
-/// group's section, sorted by the group's path.
+/// The model's capability index: the opener, then one line a group, sorted
+/// by the group's path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapabilityIndex {
     /// The groups, sorted by their paths.
@@ -26,8 +21,7 @@ pub struct CapabilityIndex {
 pub struct IndexGroup {
     /// The group's command line, such as `demi browser`.
     pub path: String,
-    /// Its section: its path, its entry, its operations' names and where its
-    /// details are.
+    /// Its line: its path and its entry.
     pub section: String,
 }
 
@@ -43,16 +37,15 @@ impl CapabilityIndex {
         if self.groups.is_empty() {
             return String::new();
         }
-        let mut sections = vec![HELP_DEFAULTS, INDEX_OPENER];
-        sections.extend(self.groups.iter().map(|group| group.section.as_str()));
-        sections.join("\n\n")
+        let mut lines = vec![INDEX_OPENER];
+        lines.extend(self.groups.iter().map(|group| group.section.as_str()));
+        lines.join("\n")
     }
 }
 
 /// The model's capability index of `groups`, each a top-level group with
-/// its path and its entry: the defaults and the opener, then each group,
-/// sorted by its path, with its entry, its operations' names and where its
-/// details are.
+/// its path and its entry, sorted by its path. A group's operations are in
+/// its `--help`, which the model reads when it uses the group.
 pub fn render_index<'a, B: 'a>(
     groups: impl IntoIterator<Item = (Vec<&'a str>, &'a str, &'a Group<B>)>,
 ) -> CapabilityIndex {
@@ -60,35 +53,13 @@ pub fn render_index<'a, B: 'a>(
     groups.sort_by(|(left, _, _), (right, _, _)| left.cmp(right));
     let groups = groups
         .into_iter()
-        .map(|(path, entry, group)| {
+        .map(|(path, entry, _)| {
             let path = path.join(" ");
-            let mut operations = Vec::new();
-            for child in &group.subcommands {
-                operation_names(child, &mut Vec::new(), &mut operations);
-            }
-            let section = format!(
-                "{path}\n{entry}\nOperations: {}\nDetails: {path} --help; one operation: {path} <operation> --help",
-                operations.join(", ")
-            );
+            let section = format!("- {path}: {entry}");
             IndexGroup { path, section }
         })
         .collect();
     CapabilityIndex { groups }
-}
-
-/// The path of each leaf at or below `node` from the group whose operations
-/// are listed, such as `content fetch`; `path` names the subgroups between.
-fn operation_names<'a, B>(node: &'a Node<B>, path: &mut Vec<&'a str>, names: &mut Vec<String>) {
-    path.push(node.name());
-    match node {
-        Node::Leaf(_) => names.push(path.join(" ")),
-        Node::Group(group) => {
-            for child in &group.subcommands {
-                operation_names(child, path, names);
-            }
-        }
-    }
-    path.pop();
 }
 
 impl<B> Leaf<B> {

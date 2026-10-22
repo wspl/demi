@@ -398,12 +398,6 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
         let results = results.borrow();
         let waited = result(&results, "wait");
         assert_eq!(field(waited, "status"), "running", "{waited}");
-        let lines: Vec<&str> = waited.lines().collect();
-        let line = format!(
-            "[The user sent a message, so command {command} moved to the background. It keeps running.]"
-        );
-        let at = lines.iter().position(|shown| *shown == line).expect(waited);
-        assert!(lines[at + 1].starts_with("next:"), "{waited}");
         assert_eq!(steer_text(&requests[1]).as_deref(), Some("Say go."));
         assert!(!fixture.kinds().contains(&"abort".to_owned()));
         fixture.stop().await;
@@ -464,8 +458,7 @@ async fn a_command_left_running_reports_its_silence_once_and_its_end_and_a_faile
         )
         .await;
         // The result showed `started`, so the report shows nothing new.
-        assert!(progress.contains(".\noutput: (empty)\n"), "{progress}");
-        assert!(progress.ends_with("It keeps running; its end wakes you."), "{progress}");
+        assert!(progress.ends_with(".\noutput: (empty)"), "{progress}");
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
         // Its end carries the output since the last look, as a result
         // shows a command's end, so the model needs no look.
@@ -533,17 +526,11 @@ async fn a_call_returns_at_the_window_and_its_command_moves_to_the_background() 
             record(&results, request);
         }
         let results = results.borrow();
-        // The suite's call returned once the window passed, and says that
-        // the suite moved to the background and what wakes the agent.
+        // The suite's call returned once the window passed.
         let watched = result(&results, "suite");
         assert_eq!(field(watched, "status"), "running", "{watched}");
         let ran: u64 = field(watched, "runningMs").parse().unwrap();
         assert!((1_000..2_000).contains(&ran), "{watched}");
-        assert!(
-            watched.contains("\n[The command is still running, so it moved to the background.]\n"),
-            "{watched}"
-        );
-        assert!(watched.contains("wakes you when it ends, or after 10m without output"), "{watched}");
         let lint = result(&results, "lint");
         assert_eq!(field(lint, "status"), "running", "{lint}");
         let ran: u64 = field(lint, "runningMs").parse().unwrap();
@@ -610,7 +597,6 @@ async fn a_background_command_returns_once_quiet_wakes_its_agent_only_at_its_end
         let first = result(&results, "serve");
         assert_eq!(field(first, "status"), "running", "{first}");
         assert_eq!(shown_output(first), "ready\n");
-        assert!(first.contains("wakes you when it ends"), "{first}");
         // The report ended the long call's window: its command runs on.
         let long = result(&results, "long");
         assert_eq!(field(long, "status"), "running", "{long}");

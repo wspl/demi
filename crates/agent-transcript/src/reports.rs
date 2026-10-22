@@ -39,8 +39,7 @@ pub fn reports_text(reports: &[CommandReport]) -> String {
         .join("\n\n")
 }
 
-/// The text of one report: what happened, its output, and for a command
-/// that still runs, that its end is its next report.
+/// The text of one report: what happened, and its output.
 pub fn report_text(report: &CommandReport) -> String {
     let named = named(&report.command_id, &report.title);
     let headline = match &report.event {
@@ -64,11 +63,7 @@ pub fn report_text(report: &CommandReport) -> String {
             format!("{named} was lost: {reason}. Start it again if it is still needed.")
         }
     };
-    let mut lines = vec![headline, labelled_output(&report.output)];
-    if matches!(report.event, ReportEvent::Running { .. }) {
-        lines.push("It keeps running; its end wakes you.".to_owned());
-    }
-    lines.join("\n")
+    [headline, labelled_output(&report.output)].join("\n")
 }
 
 /// A command's output after the lines that say what became of it, as a

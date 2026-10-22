@@ -46,10 +46,6 @@
 //! - `service: true` is for a command that runs until stopped, such as a
 //!   development server: its call returns once its output has been quiet for
 //!   [`QUIET`], or after [`BACKGROUND_WINDOW`], and only its exit wakes the node.
-//! - A script that starts with a `sleep` of the window or more is refused unless
-//!   it runs in the background, where it is a timer; the refusal comes with
-//!   the way to wait: ending the turn. The refusal costs a call where the sleep
-//!   would hold one for the whole window each time.
 //!
 //! # Calls and steps
 //!
@@ -89,7 +85,7 @@ use demi_agent_session::{
     CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
     ToolOutcome, WindowEnd,
 };
-use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand, Watch};
+use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError, TakenUp,
@@ -103,7 +99,7 @@ use tokio_util::sync::CancellationToken;
 pub use environments::{Environments, Stopper};
 use environments::Handle;
 pub use frames::{shell_output, stored_running_commands};
-use input::{ShellInput, leading_sleep, parse};
+use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
 pub use result::{
@@ -190,11 +186,8 @@ impl Directory for Option<ChildDirectory> {
 /// The tool's name.
 const SHELL: &str = "shell";
 
-/// What a call that starts with a long `sleep` is refused with.
-const SLEEP_REFUSED: &str = "Refused: a call returns after 30 s, so a script that starts with a long sleep only holds it. You wait by ending your turn, and a command's end wakes you.";
-
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. The call returns when the command ends, or after 30 seconds with the command still running in the background: the result carries its commandId, and its end wakes you. With service: true, for a command that runs until stopped, the call returns once its output has been quiet for 2 seconds, and only its exit wakes you. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Run a shell script on the conversation's Host. The call returns the output when the script ends; one still running after 30 s goes on in the background, and its end wakes you, as does 10 minutes without output. service: true runs a command until it is stopped, such as a server: the call returns once its output is quiet for 2 s, and only its exit wakes you. Calls in one response run in parallel.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -221,8 +214,6 @@ const BACKGROUND_WINDOW: Duration = Duration::from_secs(30);
 /// The longest a call watches a command that is not in the background, in
 /// milliseconds: thirty seconds, which the tool's text states.
 pub const CALL_WINDOW_MS: u32 = 30_000;
-/// A script that starts with a `sleep` this long is refused.
-const LONGEST_SLEEP: Duration = Duration::from_secs(30);
 
 /// A node's access to its shell environments: the resolver that names the
 /// current Host, the product's factory, the environments made so far, and
@@ -356,9 +347,6 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         if call.arrival.sent_now() {
             return Ok(ToolOutcome::not_run());
         }
-        if !input.service && leading_sleep(&input.script).is_some_and(|sleep| sleep >= LONGEST_SLEEP) {
-            return Ok(ToolOutcome::error(SLEEP_REFUSED.to_owned()));
-        }
         let cwd = self.cwd().await?;
         let (slot, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
@@ -423,7 +411,6 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             call.request_limits,
             Look {
                 moved,
-                watch: Some(Watch::started(input.service)),
                 unreachable: None,
             },
         )

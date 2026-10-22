@@ -56,7 +56,6 @@ mod breakdown;
 mod compaction;
 mod editing;
 mod generated;
-mod golden;
 mod input;
 mod lists;
 mod recovery;

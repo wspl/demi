@@ -4,11 +4,9 @@
 //!
 //! A compacted history is what every later request of the conversation rests
 //! on: a pass that leaves an invalid request breaks the conversation for good.
-//! So compaction is verified at four levels beyond these scenarios:
+//! So compaction is verified at three levels beyond these scenarios:
 //!
 //! - the invariants over generated sessions (`generated.rs`);
-//! - the request after a pass pinned whole for each provider (`golden.rs`), so
-//!   any change to what the model receives shows in review;
 //! - a real model, by hand, over the large recorded conversation
 //!   (`crates/agent-server/fixtures/compaction`), run against DeepSeek before a
 //!   release that changes compaction;

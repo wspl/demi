@@ -322,11 +322,7 @@ async fn status_one<H: HostResolver>(
         }
         CommandPlace::Stopping(environment) => (None, Some(environment)),
     };
-    let watch = held.as_ref().and_then(|node| node.session().watch_of(&command));
-    let look = Look {
-        watch,
-        ..Look::default()
-    };
+    let look = Look::default();
     if held.as_ref().is_some_and(|node| node.id() == caller) {
         let environment = environment
             .as_ref()

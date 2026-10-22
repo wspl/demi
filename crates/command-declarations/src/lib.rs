@@ -67,7 +67,7 @@ mod help;
 mod input;
 mod parse;
 
-pub use help::{CapabilityIndex, HELP_DEFAULTS, INDEX_OPENER, IndexGroup, render_index};
+pub use help::{CapabilityIndex, INDEX_OPENER, IndexGroup, render_index};
 pub use input::{check_input_subset, command_schema_settings};
 pub use parse::{Parsed, Selected, UsageError};
 
