@@ -39,6 +39,11 @@ import { overlayLayerAttributes } from './context-menu'
  *
  * The focus moves into it as it opens and goes back to its opener as it closes.
  * The page behind takes no touch while it is open: the scrim covers it.
+ *
+ * A `modeless` sheet is the same sheet without the scrim, as Apple Maps' panel
+ * stands over a map that stays usable. The page behind takes touches and the
+ * focus stays where it was, so the owner closes it, besides the drag down and
+ * Back, when what it stands for goes.
  */
 const props = defineProps<{
   open: boolean
@@ -46,6 +51,10 @@ const props = defineProps<{
   label?: string
   /** Where Escape is decided; absent, the sheet's owner handles Escape. */
   overlayStore?: OverlayStore
+  /** No scrim: the page stays as it was and takes touches. */
+  modeless?: boolean
+  /** The least height the sheet has, in px, up to its own maximum: a modeless sheet that stands over something it must hide. */
+  minHeight?: number
 }>()
 
 const emit = defineEmits<{
@@ -91,13 +100,15 @@ watch(() => props.open, (open) => {
   if (open) {
     // A sheet that opens again starts from its resting place.
     offset.value = null
+    if (props.modeless)
+      return
     focusReturn.open()
     // The content may take the focus itself as it mounts, as a menu does; otherwise the sheet holds it.
     void nextTick(() => {
       if (panel.value && !panel.value.contains(document.activeElement))
         focusByPage(panel.value, { preventScroll: true })
     })
-  } else {
+  } else if (!props.modeless) {
     focusReturn.close()
   }
 }, { immediate: true, flush: 'post' })
@@ -222,13 +233,14 @@ onBeforeUnmount(() => {
 const z = stackAbove()
 const panelStyle = computed(() => ({
   zIndex: z(),
+  ...(props.minHeight ? { minHeight: `${props.minHeight}px` } : {}),
   ...(offset.value === null ? {} : { '--sheet-offset': `${offset.value}px` }),
 }))
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="sheet-scrim">
+    <Transition v-if="!modeless" name="sheet-scrim">
       <div v-if="open" class="sheet-scrim fixed inset-0 bg-black/40" :style="{ zIndex: z() }" aria-hidden="true" @click="close" />
     </Transition>
     <Transition name="sheet" @before-leave="onLeaving">
@@ -236,7 +248,7 @@ const panelStyle = computed(() => ({
         v-if="open"
         ref="panel"
         role="dialog"
-        aria-modal="true"
+        :aria-modal="modeless ? undefined : 'true'"
         :aria-label="label"
         v-bind="layerId ? overlayLayerAttributes(layerId, z()) : {}"
         tabindex="-1"

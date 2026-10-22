@@ -5,7 +5,7 @@ import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
-import SelectionToolbar from '@demicodes/web-ui/ui/SelectionToolbar.vue'
+import SelectionFieldHost from '@demicodes/web-ui/agent/comments/SelectionFieldHost.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
@@ -142,8 +142,8 @@ const mainClass = computed(() => {
   </SidebarLayout>
   <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
   <ContextMenu :open-in-work-panel="openInWorkPanel" />
-  <!-- The text selection's toolbar, by a selection in a message. -->
-  <SelectionToolbar />
+  <!-- The text selection's comment field, by a selection in a message. -->
+  <SelectionFieldHost />
   <ToastHost />
   <MediaViewer :viewer="mediaViewer" />
 </template>

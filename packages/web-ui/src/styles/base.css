@@ -2664,7 +2664,7 @@ html[data-theme="light"] .file-pill {
    (`ui/context-menu.ts`), so there it selects no text and brings up no callout.
 
    - A message's text is the exception (`data-context-text`): its long press selects
-     words with the system's handles, and the selection's toolbar stands under them.
+     words with the system's handles, and the selection's comment field stands under them.
    - A text field keeps the system's.
 
    This rule is unlayered, so it wins over a `select-text` utility. */

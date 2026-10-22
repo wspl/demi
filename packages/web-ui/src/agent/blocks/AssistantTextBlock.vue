@@ -64,6 +64,8 @@ const menu: ContextMenuDeclaration = {
     ...(tools && props.blockId && root.value ? tools.selection({ blockId: props.blockId, root: root.value }, selected, () => props.isStreaming) : []),
     ...(targets ? [sendEntry(targets, () => quotedWords(selected.text))] : []),
   ],
+  selectionField: (selected) =>
+    tools && props.blockId && root.value ? tools.field({ blockId: props.blockId, root: root.value }, selected, () => props.isStreaming) : null,
   // A picture takes a comment and a side question as words do, and goes to
   // another conversation as a file.
   pictureEntries: (image) => [

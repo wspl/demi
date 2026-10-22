@@ -15,7 +15,7 @@ import { followTabAttention } from '@demicodes/web-ui/sidebar/tab-attention'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
-import SelectionToolbar from '@demicodes/web-ui/ui/SelectionToolbar.vue'
+import SelectionFieldHost from '@demicodes/web-ui/agent/comments/SelectionFieldHost.vue'
 import { APP_BAR_PX } from '@demicodes/web-ui/ui/app-bar'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
@@ -439,8 +439,8 @@ useAppShortcuts(
   </div>
   <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
   <ContextMenu :open-in-work-panel="openInWorkPanel" />
-  <!-- The text selection's toolbar, by a selection in a message. -->
-  <SelectionToolbar />
+  <!-- The text selection's comment field, by a selection in a message. -->
+  <SelectionFieldHost />
   <ToastHost :below="APP_BAR_PX" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <MediaViewer :viewer="mediaViewer" />

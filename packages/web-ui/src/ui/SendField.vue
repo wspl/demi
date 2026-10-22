@@ -7,7 +7,7 @@ import type { PlaceholderText, TitleText } from './ui-text'
 
 /**
  * A small field that sends what is typed, with the composer's send button at its
- * end, such as the box a new comment is written in.
+ * end, such as the follow-up a side question's card takes.
  *
  * - Return sends, Shift-Return starts a new line, Escape cancels.
  * - It grows with its text up to a few lines.

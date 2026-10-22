@@ -14,8 +14,8 @@ import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
 
 /**
- * Side questions on a reply's words, live. The user selects words of the reply and
- * chooses Ask, writes a question and presses Return. The words turn purple and a card
+ * Side questions on a reply's words, live. The user selects words of the reply,
+ * writes a question in the comment field and chooses Ask. The words turn purple and a card
  * opens under their block, titled Ask until the small model's title arrives, with one
  * status line while the answer is made and then the answer.
  *

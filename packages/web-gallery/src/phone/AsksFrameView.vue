@@ -6,7 +6,7 @@ import GalleryAsks from '../components/GalleryAsks.vue'
 /**
  * One phone of the side questions' specimens (`GalleryPhoneFrame`): the
  * conversation at a phone's size, live, on a seed of `GalleryAsks`; its
- * selection's toolbar holds Comment, Ask and Send to Conversation, the card
+ * selection's field opens in the bottom sheet without a scrim, with Send, Ask and Comment, the card
  * spans the reply's width, and ↗ opens the side conversation full screen.
  * The safe areas are the iPhone 15's.
  */

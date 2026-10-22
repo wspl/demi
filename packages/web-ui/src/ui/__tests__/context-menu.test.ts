@@ -18,7 +18,6 @@ const { createApp, defineComponent, h, nextTick, withDirectives } = await import
 type App = import('vue').App
 const menus = await import('../context-menu')
 const { default: ContextMenu } = await import('../ContextMenu.vue')
-const { default: SelectionToolbar } = await import('../SelectionToolbar.vue')
 const { default: Dialog } = await import('../Dialog.vue')
 const { appOverlayStore } = await import('../../overlay/appOverlay')
 const { ref } = await import('vue')
@@ -292,31 +291,25 @@ function select(node: Node, start: number, end: number, endNode: Node = node): v
   document.dispatchEvent(new Event('selectionchange'))
 }
 
-test('a selection in a message gets a toolbar with what acts on it in place, the right-click menu holding Copy and the rest; any other selection gets none', async () => {
+test('a selection in a message that declares a comment field gets its actions; any other selection gets none', async () => {
+  const comment = (words: string) => words
   page(() => h('div', [
-    message({ selectionEntries: ({ text }) => [{ ...entry(`Comment on “${text}”`), inPlace: true }, entry(`Send “${text}”`)] }),
+    message({ selectionField: ({ text }) => ({ comment: () => void comment(text) }) }),
     message({ selectionEntries: ({ text }) => [entry(`Send “${text}”`)] }),
     h('p', { id: 'outside' }, 'A heading of the page'),
-    h(SelectionToolbar),
   ]))
   await nextTick()
   const [first, second] = document.querySelectorAll('#text')
   select(first!.firstChild!, 0, 3)
-  expect(menus.selectionTools(false)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”'])
-  await nextTick()
-  const toolbar = () => document.querySelector('[data-selection-toolbar]')
-  expect(toolbar()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Comment on “See”')
-  // A phone has no right-click: its toolbar holds every tool the message offers, Copy being the system's.
-  expect(menus.selectionTools(true)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”', 'Send “See”'])
-  // Across two messages, in a message that offers nothing in place, or outside any: no toolbar.
+  expect(menus.selectionFieldOffer()?.text).toBe('See')
+  expect(typeof menus.selectionFieldOffer()?.actions.comment).toBe('function')
+  // Across two messages, in a message that declares no field, or outside any: none.
   select(first!.firstChild!, 0, 3, second!.firstChild!)
-  expect(menus.selectionTools(false)).toBeNull()
+  expect(menus.selectionFieldOffer()).toBeNull()
   select(second!.firstChild!, 0, 3)
-  expect(menus.selectionTools(false)).toBeNull()
-  await nextTick()
-  expect(toolbar()).toBeNull()
+  expect(menus.selectionFieldOffer()).toBeNull()
   select(byId('outside').firstChild!, 0, 6)
-  expect(menus.selectionTools(true)).toBeNull()
+  expect(menus.selectionFieldOffer()).toBeNull()
 })
 
 test('a context menu opened in a dialog stands on it and leaves it open', async () => {

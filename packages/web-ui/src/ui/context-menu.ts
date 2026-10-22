@@ -33,14 +33,14 @@ import type { SentenceText, TitleText } from './ui-text'
  * menu opens at all.
  *
  * On a phone a message's text keeps the system's long press, which selects words.
- * The selection's toolbar (`selectionTools`, SelectionToolbar) offers what a menu
- * would.
+ * The selection's comment field (`selectionField`, SelectionFieldHost) stands by
+ * the selection on both the desktop and a phone.
  *
  * The page's selection is read in one place (`readSelection`): what it selects,
  * judged by the characters and pictures it takes rather than by where the browser
- * puts its ends, its text, and the object whose own text it is. The toolbar, the
- * selection's menu and the objects' tools all take that reading, so they agree on
- * every selection.
+ * puts its ends, its text, and the object whose own text it is. The comment
+ * field, the selection's menu and the objects' tools all take that reading, so
+ * they agree on every selection.
  */
 
 /** One row of a context menu: what it says and what choosing it does. */
@@ -60,12 +60,6 @@ export interface ContextMenuEntry {
   run?: () => unknown
   /** The operation choosing the row starts, as a menu row's (`operations.ts`). */
   operation?: Operation
-  /**
-   * A selection entry that acts on the selected text where it stands, as a
-   * comment on it does: the selection's toolbar offers it on the desktop
-   * too, where every other row is the right-click menu's alone.
-   */
-  inPlace?: boolean
   /** The row's submenu, drawn as it opens; on a phone a sheet over the menu. */
   submenu?: () => VNode
 }
@@ -91,10 +85,15 @@ export interface ContextMenuDeclaration {
   text?: boolean
   /**
    * What the object offers for its own text selected (`readSelection`), after
-   * the selection's Copy in its menu, and on the selection's toolbar
-   * (`selectionTools`).
+   * the selection's Copy in its menu.
    */
   selectionEntries?: (selected: ResolvedSelection) => readonly ContextMenuEntry[]
+  /**
+   * What the selection's comment field does with the words typed in it for the
+   * object's own text selected (`selectionField`); none, or null, for a
+   * selection the field is not offered for.
+   */
+  selectionField?: (selected: ResolvedSelection) => SelectionFieldActions | null
   /**
    * What the object offers for a picture in it, a group after the
    * picture's Copy Image and Save Image, as a reply's Comment, Ask and
@@ -684,7 +683,7 @@ function ownedBy(item: SelectedItem, object: Element): boolean {
 
 /**
  * The page's selection, read in the one place every tool that acts on it reads
- * it: the toolbar, the selection's menu and the objects' own tools take this, and
+ * it: the comment field, the selection's menu and the objects' own tools take this, and
  * none reads the browser's selection itself.
  *
  * It is judged by what it selects, not by where the browser puts its ends: a
@@ -837,31 +836,46 @@ export function selectedLinesBounds(range: Range): DOMRect | null {
   return left === Infinity ? null : new DOMRect(left, top, right - left, bottom - top)
 }
 
-/** What the selection's toolbar shows: the selection read and its object's tools. */
-export interface SelectionTools extends ResolvedSelection {
-  entries: readonly ContextMenuEntry[]
+/**
+ * What the comment field does with the words typed in it; the words are never
+ * empty. An action the page does not offer is absent, and the field shows no
+ * button for it. An action that returns a promise, as one that first keeps a
+ * picture, keeps the field open with its words until the promise ends, and after
+ * a rejection too.
+ */
+export interface SelectionFieldActions {
+  /** Comments on the selection. */
+  comment: (words: string) => void | Promise<void>
+  /** Asks a side question about the selection. */
+  ask?: (words: string) => void | Promise<void>
+  /** Sends the quote and the words to the main agent now. */
+  send?: (words: string) => void | Promise<void>
+  /**
+   * Why the field cannot act now, such as a reply still being written; read where
+   * the field is drawn, so it turns able as the reason goes under a selection that
+   * stays.
+   */
+  readonly unavailable?: SentenceText | null
+}
+
+/** What the selection's comment field shows: the selection read and its object's actions. */
+export interface SelectionFieldOffer extends ResolvedSelection {
+  actions: SelectionFieldActions
 }
 
 /**
- * The tools for the page's selection, when it selects one object's own content
- * and the object offers tools for it, as a message does (`readSelection`,
- * `selectionEntries`).
- *
- * - On the desktop they are those that act in place (`inPlace`), since the
- *   right-click menu holds Copy and the rest.
- * - On a phone, which has no right-click, they are every one of the object's,
- *   Copy being the system's callout's.
- *
- * Null when there are none, and for any other selection, one across two messages
- * or in a text field included.
+ * The comment field's offer for the page's selection, when it selects one
+ * object's own content and the object offers a field for it, as a message does
+ * (`readSelection`, `selectionField`). Null for any other selection, one across
+ * two messages or in a text field included.
  */
-export function selectionTools(phone: boolean): SelectionTools | null {
+export function selectionFieldOffer(): SelectionFieldOffer | null {
   const reading = readSelection()
   const object = reading?.object
-  const offer = object ? declarations.get(object)?.selectionEntries : undefined
+  const offer = object ? declarations.get(object)?.selectionField : undefined
   if (!reading || !object || !offer)
     return null
   const selected = { ...reading, object }
-  const entries = offer(selected).filter((entry) => phone || entry.inPlace === true)
-  return entries.length > 0 ? { ...selected, entries } : null
+  const actions = offer(selected)
+  return actions ? { ...selected, actions } : null
 }

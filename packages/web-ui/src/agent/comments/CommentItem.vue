@@ -7,6 +7,7 @@ import { ICON_PX } from '../../ui/icon-metrics'
 import { t } from '../locales/text'
 import { t as shared } from '../../locales/text'
 import CommentBox from './CommentBox.vue'
+import CommentQuote from './CommentQuote.vue'
 
 /**
  * A comment as its card and the composer's list show it: its text, read as
@@ -38,7 +39,7 @@ function save(text: string): void {
 
 <template>
   <div class="flex flex-col gap-1.5" data-comment>
-    <p v-if="quote" class="line-clamp-2 border-l-2 border-[var(--comment-ink)] pl-2 text-detail text-fg-muted">{{ quote }}</p>
+    <CommentQuote v-if="quote" :text="quote" />
     <CommentBox v-if="editing" :text="text" @save="save" @cancel="editing = false" />
     <div v-else class="flex items-start gap-1">
       <p class="min-w-0 flex-1 whitespace-pre-wrap py-1 text-explanation text-fg-body">{{ text }}</p>

@@ -1,8 +1,9 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
-// Comments on a reply's words. Comment on selected words saves the comment with
-// its quote and where it stands. The reply marks a waiting comment and, once a
+// Comments on a reply's words. The page's comment field, which the reply's
+// words or picture open (`SelectionFieldActions`), saves the comment with its
+// quote and where it stands. The reply marks a waiting comment and, once a
 // message sent it, marks it dimmer. The sent message's bubble shows each quote
 // and its comment before its text. Vue apps on a happy-dom page; a few ms
 // besides the page's start.
@@ -14,6 +15,8 @@ const { default: UserBlock } = await import('../blocks/UserBlock.vue')
 const { default: ReplyComments } = await import('../comments/ReplyComments.vue')
 const { provideBlobUrl } = await import('../media-source')
 type MessageComment = import('@demicodes/protocol').MessageComment
+const { chosenWay, closePictureField, pictureField } = await import('../comments/selection-field')
+type SelectionFieldActions = import('../../ui/context-menu').SelectionFieldActions
 
 let unmount: (() => void) | null = null
 afterEach(() => {
@@ -96,32 +99,37 @@ async function reply(options: { waiting: MessageComment[]; sent: MessageComment[
   return { host, waiting, sent, added, layer, text: host.querySelector('p')!.firstChild as Text }
 }
 
-const chunks: MessageComment = { id: 'c1', blockId: 'text-1', start: START, end: START + 25, at: START, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
-
-test('Comment on words selected in a reply saves them with where they stand, and waits while the reply is written', async () => {
+test('the selection\'s field comments on the words typed, asks nothing without side questions, sends none without a way to, and says to wait while the reply is written', async () => {
   const page = await reply({ waiting: [], sent: [] })
   const range = document.createRange()
   range.setStart(page.text, START)
   range.setEnd(page.text, START + 25)
-  window.getSelection()!.removeAllRanges()
-  window.getSelection()!.addRange(range)
+  const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
+  let streaming = true
+  const actions = page.layer.value!.selectionField({ blockId: 'text-1', root: replyRoot }, { text: range.toString(), range, object: replyRoot }, () => streaming)!
+  expect([actions.ask, actions.send, actions.unavailable]).toEqual([undefined, undefined, 'Wait for this reply to finish.'])
+  streaming = false
+  expect(actions.unavailable).toBeNull()
+  actions.comment('Smaller?')
+  expect(page.added.map(({ id: _id, ...rest }) => rest)).toEqual([{ blockId: 'text-1', start: START, end: START + 25, at: START, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }])
+})
+
+const chunks: MessageComment = { id: 'c1', blockId: 'text-1', start: START, end: START + 25, at: START, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
+
+test('Comment in the menu of words selected in a reply chooses the comment field\'s way, and waits while the reply is written', async () => {
+  const page = await reply({ waiting: [], sent: [] })
+  const range = document.createRange()
+  range.setStart(page.text, START)
+  range.setEnd(page.text, START + 25)
   const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
   let streaming = true
   const [tool] = page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, { text: range.toString(), range, object: replyRoot }, () => streaming)
   expect([tool!.label, tool!.disabled, tool!.disabledReason]).toEqual(['Comment', true, 'Wait for this reply to finish.'])
   streaming = false
   expect(tool!.disabled).toBe(false)
+  chosenWay.value = null
   tool!.run!()
-  await nextTick()
-  await frame()
-  await nextTick()
-  const field = page.host.querySelector('textarea')!
-  field.value = 'Smaller?'
-  field.dispatchEvent(new Event('input'))
-  await nextTick()
-  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  await nextTick()
-  expect(page.added.map(({ id: _id, ...rest }) => rest)).toEqual([{ blockId: 'text-1', start: START, end: START + 25, at: START, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }])
+  expect((chosenWay as { value: { way: string } | null }).value?.way).toBe('comment')
 })
 
 test('a waiting comment marks its words, and once a message sent it the mark is dimmer', async () => {
@@ -422,33 +430,33 @@ async function pictured(pictures: readonly (readonly [string, string])[], option
 }
 
 /**
- * Opens Comment from the menu of the reply's picture `index` and types `text`
- * into its box.
+ * Opens Comment from the menu of the reply's picture `index`, which opens the
+ * page's comment field on it, and returns what the field does.
  */
-async function commentOnPicture(page: Awaited<ReturnType<typeof pictured>>, index: number, text: string): Promise<HTMLTextAreaElement> {
+async function fieldOnPicture(page: Awaited<ReturnType<typeof pictured>>, index: number): Promise<SelectionFieldActions> {
   const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
   const image = replyRoot.querySelectorAll('img')[index]!
   const tools = page.layer.value!.pictureTools({ blockId: 'text-1', root: replyRoot }, image, () => false)
   // Without side questions, the picture takes Comment alone.
   expect(tools.map((tool) => tool.label)).toEqual(['Comment'])
-  const [comment] = tools
-  comment!.run!()
+  closePictureField()
+  tools[0]!.run!()
   await page.settle()
-  const field = page.host.querySelector('textarea')!
-  field.value = text
-  field.dispatchEvent(new Event('input'))
-  await nextTick()
-  return field
+  const opened = pictureField.value!
+  expect([opened.image, opened.way]).toEqual([image, 'comment'])
+  return opened.actions
 }
 
-// A comment on a picture of the reply: Comment in its menu opens the box, and
+// A comment on a picture of the reply: Comment in its menu opens the field, and
 // the comment keeps the picture by its place among the reply's pictures, its
 // alt text as its words, and the picture itself; the reply outlines it.
 test('Comment on a picture of the reply saves it by its place with the picture as its quote, and outlines it', async () => {
   const page = await pictured([['The login page', 'https://example.com/login.png'], ['The chart', CHART]], { waiting: [] })
-  const field = await commentOnPicture(page, 1, 'Which connection?')
-  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  await page.settle()
+  const actions = await fieldOnPicture(page, 1)
+  // The picture is outlined while the field is open on it.
+  expect([...page.host.querySelectorAll('[data-picture-outline]')].map((each) => each.getAttribute('data-picture-outline'))).toEqual(['comment-selection'])
+  await actions.comment('Which connection?')
+  closePictureField()
   await page.settle()
   expect(page.added.map(({ id: _id, ...rest }) => rest)).toEqual([
     { blockId: 'text-1', start: 1, end: 2, at: 18, quote: 'The chart', picture: { type: 'url', url: CHART }, text: 'Which connection?' },
@@ -456,21 +464,15 @@ test('Comment on a picture of the reply saves it by its place with the picture a
   expect([...page.host.querySelectorAll('[data-picture-outline]')].map((each) => each.getAttribute('data-picture-outline'))).toEqual(['comment'])
 })
 
-// Return comments; ⌘Return (Control-Return elsewhere) sends the comment
-// alone at once, leaving the waiting ones as they are.
-test('in a comment\'s box Command-Return sends it alone now and adds nothing to the waiting comments', async () => {
+// Send sends the comment alone at once, leaving the waiting ones as they are.
+test('in the comment field Send sends the comment alone now and adds nothing to the waiting comments', async () => {
   const sentNow: MessageComment[] = []
   const page = await pictured([['The chart', CHART]], { waiting: [], sendNow: (comment) => sentNow.push(comment) })
-  const field = await commentOnPicture(page, 0, 'Now, please.')
-  const buttons = [...page.host.querySelectorAll('[data-comment-field] [role="button"], [data-comment-field] button')].map((button) => button.textContent?.trim())
-  expect(buttons).toContain('Send')
-  expect(buttons).toContain('Comment')
-  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, ctrlKey: true, bubbles: true }))
-  await page.settle()
-  await page.settle()
+  const actions = await fieldOnPicture(page, 0)
+  expect(actions.send).toBeDefined()
+  await actions.send!('Now, please.')
   expect(sentNow.map(({ text, picture }) => ({ text, picture }))).toEqual([{ text: 'Now, please.', picture: { type: 'url', url: CHART } }])
   expect(page.added).toEqual([])
-  expect(page.host.querySelector('textarea')).toBeNull()
 })
 
 // The anchor names the picture by its place and its words. Drawn again, it
@@ -516,25 +518,14 @@ test('a message sent with a picture comment shows the picture as its quote', asy
 test('a comment on words before a picture goes before the comment on the picture', async () => {
   const { inReadingOrder } = await import('../comments/comments')
   const page = await pictured([['The chart', CHART]], { waiting: [] })
-  const field = await commentOnPicture(page, 0, 'Which connection?')
-  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  await page.settle()
-  await page.settle()
+  await (await fieldOnPicture(page, 0)).comment('Which connection?')
+  closePictureField()
   const words = page.host.querySelector('[data-reply-text] p')!.firstChild as Text
   const range = document.createRange()
   range.setStart(words, 8)
   range.setEnd(words, 17)
-  window.getSelection()!.removeAllRanges()
-  window.getSelection()!.addRange(range)
   const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
-  page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, { text: range.toString(), range, object: replyRoot }, () => false)[0]!.run!()
-  await page.settle()
-  const box = page.host.querySelector('textarea')!
-  box.value = 'Which chart?'
-  box.dispatchEvent(new Event('input'))
-  await nextTick()
-  box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  await page.settle()
+  await page.layer.value!.selectionField({ blockId: 'text-1', root: replyRoot }, { text: range.toString(), range, object: replyRoot }, () => false)!.comment('Which chart?')
   expect(page.added.map((comment) => comment.quote)).toEqual(['The chart', 'the chart'])
   expect(inReadingOrder(page.added, ['text-1']).map((comment) => comment.quote)).toEqual(['the chart', 'The chart'])
 })
@@ -632,13 +623,9 @@ test('a comment on a picture of the Host names its copy and keeps no bytes', asy
       return { sha256: 'ef'.repeat(32), mediaType: 'image/png' }
     },
   })
-  const field = await commentOnPicture(page, 0, 'Which connection?')
-  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
-  await page.settle()
-  await page.settle()
+  await (await fieldOnPicture(page, 0)).comment('Which connection?')
   expect(kept).toBe(0)
   expect(page.added.map(({ text, picture }) => ({ text, picture }))).toEqual([
     { text: 'Which connection?', picture: { type: 'ref', ref: 'cd'.repeat(32), mediaType: 'image/png' } },
   ])
-  expect(page.host.querySelector('textarea')).toBeNull()
 })

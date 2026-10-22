@@ -13,16 +13,18 @@ import GalleryComposer from './GalleryComposer.vue'
 
 /**
  * Comments on a reply's words, live: the user selects text in the reply,
- * chooses Comment, writes one and presses Return. The comment marks the text
+ * writes one in the comment field and presses Return. The comment marks the text
  * and waits in the composer's pill, which lists the waiting comments and whose
  * × removes them.
  *
  * - Send sends them with what is typed, the bubble showing each quoted text
  *   and its comment, and the reply keeps their marks, dimmer.
- * - Steer in the box sends a message holding that comment alone, leaving
- *   the pill and the typed text as they are, steering while a turn runs.
- * - A picture of the reply takes a comment from its menu (right-click),
- *   outlined yellow with its mark at the picture's top, and its bubble shows a
+ * - Send in the comment field, or Command-Return, sends a message holding that
+ *   comment alone, leaving the pill and the typed text as they are, steering
+ *   while a turn runs.
+ * - A picture of the reply takes a comment from its menu (right-click), which
+ *   opens the same field, then outlined yellow with its mark at the picture's
+ *   top, and its bubble shows a
  *   small copy of it as the quote.
  *
  * `seed` pins a state: two waiting comments, two sent with a message, or a

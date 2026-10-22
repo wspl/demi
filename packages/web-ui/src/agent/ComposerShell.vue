@@ -151,6 +151,7 @@ onBeforeUnmount(() => {
   <div ref="frame" class="composer-frame relative">
     <div
       ref="shell"
+      data-composer-shell
       class="input-float composer-shell relative bg-surface-raised outline outline-1 transition-[outline-color] duration-200"
       :class="[
         showDrop ? 'outline-transparent' : focused ? 'outline-line-focus' : 'outline-line',
