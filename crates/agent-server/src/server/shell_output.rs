@@ -28,10 +28,10 @@
 //!   and last 8 MiB), so a command that prints without end costs 16 MiB on its
 //!   Host and in the backend alike.
 
-use std::{rc::Weak, sync::Arc};
+use std::{rc::{Rc, Weak}, sync::Arc};
 
 use bytes::Bytes;
-use demi_agent_store::{StoredCommand, StoredOutput};
+use demi_agent_store::{AgentTreeStore, StoredCommand, StoredOutput};
 use demi_agent_tools::{
     HostResolver, Look, PAGE_CHARS, Stopper, look_text, whole_look_text,
 };
@@ -585,7 +585,7 @@ async fn output<H: HostResolver>(
     if raw && !matches!(reading, Reading::Page) {
         return refuse("--raw prints all of the output; take part of it with sed or tail");
     }
-    let found = match find(&call.tree, id).await {
+    let found = match find(Some(&call.tree), call.tree.store(), id).await {
         Ok(found) => found,
         Err(reason) => return fail(&reason),
     };
@@ -624,9 +624,11 @@ async fn output<H: HostResolver>(
     Ok(0)
 }
 
-impl<H: HostResolver> Tree<H> {
+impl<H: HostResolver> AgentServer<H> {
     /// Page `page`, from 1, of what `demi conversation history open` shows of
-    /// the conversation's command `id`; also how many pages there are.
+    /// the command `id` of the conversation `root`; also how many pages there
+    /// are. The conversation need not be open: an ended command is read from
+    /// its store.
     ///
     /// A page is `head`, the line that names the call, on every page, then the
     /// script after `$ `, then the whole output, both streams, its lines as
@@ -636,13 +638,16 @@ impl<H: HostResolver> Tree<H> {
     /// naming how many there are.
     pub async fn command_page(
         &self,
+        root: &NodeId,
         id: &CommandId,
         head: &str,
         script: &str,
         page: u64,
         reserve: usize,
     ) -> Result<(String, u64), String> {
-        let found = find(self, id.as_str()).await?;
+        let tree = self.tree(root);
+        let store = tree.as_ref().map_or_else(|| (self.deps.stores)(root), |tree| tree.store().clone());
+        let found = find(tree.as_deref(), &store, id.as_str()).await?;
         let binary = found.output.binary_stdout_length();
         let text = found.output.text(Streams::Both, binary, Seen::default());
         let shown = Page {
@@ -766,12 +771,16 @@ fn range(lines: &str) -> Option<(u64, u64)> {
     (1 <= from && from <= to).then_some((from, to))
 }
 
-/// The output of the conversation's command `id`: what its Host kept so far
-/// while it runs, the stored output once it ended.
-async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String> {
+/// The command `id` of a conversation: from its live `tree`, when it has
+/// one, while the command runs, else from its `store`.
+async fn find<H: HostResolver>(
+    tree: Option<&Tree<H>>,
+    store: &Rc<dyn AgentTreeStore>,
+    id: &str,
+) -> Result<Found, String> {
     let unknown = || format!("no command {id} in this conversation");
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
-    if let Some(environment) = tree.environment_of(&command) {
+    if let Some(environment) = tree.and_then(|tree| tree.environment_of(&command)) {
         match environment.read_output(&command).await {
             Ok(output) => {
                 return Ok(Found { output, end: None });
@@ -781,7 +790,7 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
             Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
         }
     }
-    match tree.store().command_output(&command).await {
+    match store.command_output(&command).await {
         Ok(Some(StoredCommand {
             end,
             output: StoredOutput::Stored { output, .. },

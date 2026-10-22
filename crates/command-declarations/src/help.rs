@@ -260,7 +260,8 @@ impl<B> Node<B> {
                     notes.push(format!("Failure: {failure}"));
                 }
                 if let Some(permission) = &leaf.permission {
-                    notes.push(format!("Permission: needs the user's permission ({permission}) in each conversation; without it, the command asks the user and waits for the answer."));
+                    let with = leaf.permission_field.as_ref().map_or_else(String::new, |field| format!("with --{field}, "));
+                    notes.push(format!("Permission: {with}needs the user's permission ({permission}) in each conversation; without it, the command asks the user and waits for the answer."));
                 }
                 if leaf.media {
                     notes.push("Media: shows you images, videos and PDFs, attached to the result that reports the command's end, whatever its stdout is.".into());

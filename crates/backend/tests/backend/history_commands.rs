@@ -11,6 +11,8 @@
 //!   thinking block or a subagent's report, or saves a message's attachment
 //!   under the scratch directory.
 //! - A subagent reads its own transcript, where its brief is its parent's.
+//! - An agent reads another agent of its conversation with no permission, and
+//!   lists and reads another conversation of the user once the user allows it.
 //!
 //! The model is the scripted family of the subagent scenarios, the device a
 //! real runner. No test calls a real model.
@@ -26,8 +28,9 @@ use demi_provider_common::testing::event;
 use demi_shared_types::{Block, ToolResultContentBlock};
 use serde_json::json;
 
-use crate::conversations::{FIRST, Socket, send, transcript};
-use crate::subagents::{Answer, Scripts, say, shell, tree_on};
+use crate::conversations::{FIRST, SECOND, Socket, choose, create, send, transcript, working_on};
+use crate::permissions::{categories, decide, permissions, settled};
+use crate::subagents::{Answer, Scripts, background, say, shell, tree_on};
 use crate::support::{Harness, Session, TestBackend, eventually};
 use crate::uploads::{upload, with_upload};
 
@@ -768,4 +771,104 @@ fn text_of(printed: &str, index: usize) -> String {
     let cells = row(printed, index);
     assert!(cells[3].ends_with('Z'), "{printed}");
     cells[4..].join(" ")
+}
+
+// Several seconds: two conversations and a child, and a real device runs the
+// shell jobs of three turns, the second woken by the user's allow.
+#[tokio::test]
+async fn an_agent_reads_its_subagent_and_once_allowed_another_conversation_of_the_user() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, laptop, _root, provider) = tree_on(&scripts, Harness::new()).await;
+    // The other conversation, which works in a project.
+    create(&backend, &master, SECOND).await;
+    choose(&backend, &master, SECOND, &provider, "m").await;
+    working_on(&harness, &laptop, SECOND);
+    let mut other = Socket::connect(&backend, &master, SECOND).await;
+    other.open().await;
+    scripts.root(SECOND, vec![titled("o1", "Measure the cache", "seq 1 5"), say("The cache key is the day.")]);
+    other.chat("n1", "Decide the cache index key").await;
+
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.child(vec![say("The release switch is --release.")]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi agent spawn --description finder <<< 'Look for the release switch'"),
+            say("dispatched"),
+            // The notice that the child finished wakes the parent.
+            shell(
+                "t2",
+                "demi agent show 1 && demi conversation history read 0.. --agent 1 && demi conversation history search --agent 1 release && demi conversation history read 0.. --agent 99; echo \"exit $?\"",
+            ),
+            background("t3", &format!("demi conversation history read 0.. --conversation {SECOND}")),
+            say("asked"),
+            // The user's allow and the command's end wake it.
+            say("read"),
+            say("read"),
+        ],
+    );
+    socket.chat("m1", "Find the release switch").await;
+
+    // Another agent of the conversation asked nothing: its state ends in the
+    // read of its latest blocks, which prints what it said.
+    let child = result(&backend, &master, "t2").await;
+    assert!(!child.contains("Last assistant text"), "{child}");
+    // From its last text: the brief is block 0 and the answer, block 4.
+    assert!(child.contains("\nMore: demi conversation history read 4.. --agent 1\n"), "{child}");
+    assert!(child.contains("[0 parent · 2026-09-24T08:00:00Z]\nLook for the release switch"), "{child}");
+    assert!(child.contains("[4 agent · 2026-09-24T08:00:00Z]\nThe release switch is --release."), "{child}");
+    assert!(child.contains("**release**"), "{child}");
+    assert!(child.contains("no transcript --agent 99\nexit 1"), "{child}");
+    // Another conversation asks the user, once.
+    let requests = permissions(&backend, &master, FIRST).await;
+    assert_eq!(requests.requests.len(), 1, "{requests:?}");
+    assert_eq!(categories(&requests.requests[0]).iter().map(|category| category.id.as_str()).collect::<Vec<_>>(), ["conversation.read"]);
+    let allowed = decide(&backend, &master, FIRST, requests.requests[0].id().as_str(), "allow").await;
+    assert_eq!(allowed.status, reqwest::StatusCode::NO_CONTENT);
+    let read = settled(&scripts, &backend, &master, FIRST, &["(t3) ended with exit code 0"]).await;
+    assert!(read.contains("Decide the cache index key"), "{read}");
+    assert!(read.contains("The cache key is the day."), "{read}");
+    assert!(read.contains("command: Measure the cache · exit 0 · "), "{read}");
+
+    // Once allowed, each command asks nothing more.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let blocks = transcript(&backend, &master, SECOND).await.blocks;
+    let command = blocks.iter().position(|block| matches!(block, Block::ToolCall(_))).unwrap();
+    let missing = "11111111-2222-4333-8444-555555555555";
+    scripts.root_anew(
+        FIRST,
+        vec![
+            shell(
+                "t4",
+                &format!(
+                    "demi conversation list; demi conversation list --json; demi conversation list cache; demi conversation list nowhere; echo \"exit $?\"; \
+                     demi conversation history search --conversation {SECOND} cache; \
+                     demi conversation history read ..2 --conversation {SECOND} --agent 0 --from user; \
+                     demi conversation history open {command} --conversation {SECOND}; \
+                     demi conversation history read 0.. --conversation {missing}; echo \"exit $?\"; \
+                     demi conversation history read 0.. --conversation {SECOND} --agent 7; echo \"exit $?\""
+                ),
+            ),
+            say("done"),
+        ],
+    );
+    socket.chat("m2", "Read the other conversation").await;
+    let listed = result(&backend, &master, "t4").await;
+    assert!(listed.contains(&format!("{SECOND}  ")), "{listed}");
+    assert!(listed.contains("ID") && listed.contains("TITLE") && listed.contains("PROJECT") && listed.contains("CHANGED"), "{listed}");
+    assert!(listed.contains("  work  "), "the project's name: {listed}");
+    assert!(listed.contains(&format!(r#""id":"{SECOND}""#)) && listed.contains(r#""changedAt":"#), "{listed}");
+    // The words find a conversation as the app's Search does, and none finds none.
+    assert!(listed.matches(&format!("{SECOND}  ")).count() == 2, "{listed}");
+    assert!(listed.contains("\nexit 0\n"), "{listed}");
+    assert!(listed.contains("**cache**"), "{listed}");
+    assert!(listed.contains(" user · "), "{listed}");
+    assert!(listed.contains("$ seq 1 5") && listed.contains("5\t5"), "{listed}");
+    assert!(listed.contains(&format!("no transcript --conversation {missing}\nexit 1")), "{listed}");
+    assert!(listed.contains(&format!("no transcript --conversation {SECOND} --agent 7\nexit 1")), "{listed}");
+    // No second request: the allow lasts for the conversation.
+    assert!(permissions(&backend, &master, FIRST).await.requests.is_empty());
+    backend.close().await;
 }

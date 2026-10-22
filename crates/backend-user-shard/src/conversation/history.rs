@@ -1,6 +1,7 @@
-//! `demi conversation history`: an agent finds and reads its own transcript,
-//! which keeps every block a compaction summarized, from the conversation's
-//! database.
+//! `demi conversation history`: an agent finds and reads a transcript, its
+//! own, another agent's of its conversation, or an agent's of another
+//! conversation of the user, which keeps every block a compaction summarized,
+//! from the conversation's database.
 //!
 //! - `read` prints a range of blocks as plain text, each message and text whole
 //!   and every other block as one line that names how to open it.
@@ -10,8 +11,9 @@
 //!   Thinking, scripts and command output are most of a transcript's text and
 //!   would drown what was said.
 //!
-//! The commands reach no Host, but for the one write of a saved attachment, and
-//! need no permission.
+//! The commands reach no Host, but for the one write of a saved attachment.
+//! They need no permission, but to read another conversation, `--conversation`,
+//! which asks the user once per conversation (`conversation.read`).
 //!
 //! A block is named by its index in the agent's transcript, written bare: a word
 //! that starts with `#` is a comment to a shell, so that every line the commands
@@ -40,7 +42,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use super::organize::{failed, refused, verb};
+use super::organize::{READ, failed, refused, verb};
 use crate::shard::Shard;
 
 /// About how many characters a read prints, and a page of what `open`
@@ -50,7 +52,7 @@ const BUDGET: usize = 8_000;
 /// How many blocks a read takes from the database at a time.
 const BATCH: usize = 64;
 
-const GROUP_SUMMARY: &str = "This agent's own transcript, which keeps every block, also what a compaction summarized: search it, read a range of it, open a command, a thinking block, a subagent's report or an attachment it names. A block is named by its index, such as 4213.";
+const GROUP_SUMMARY: &str = "A transcript, which keeps every block, also what a compaction summarized: search it, read a range of it, open a command, a thinking block, a subagent's report or an attachment it names. Yours by default; --agent <n> takes another agent of this conversation, --conversation <id> an agent of another conversation of the user, its main agent unless --agent names one, and asks the user once per conversation. \"You\" below is the agent read. A block is named by its index, such as 4213.";
 
 const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each a row with its index, who wrote it, when and its text cut around the words, which are marked **like this**, between rows of the message before and after it; stderr names the page and the search of the next. Thinking, scripts and command output are not searched. Filters narrow the search, so a common word does not bury what was asked: --from user keeps your user's or parent's messages and steers, --from agent your texts and commands; --after and --before keep what lies after or before a block, 4213, or a day, 2026-10-14, in the user's time zone, and both may be given; --oldest lists the oldest first. For example, search --from user --before 2026-10-15 README finds what the user asked of the README in the days before.";
 
@@ -76,9 +78,24 @@ impl Side {
     }
 }
 
+/// Which transcript a history command reads; none is the caller's own.
+///
+/// The commands' inputs flatten it, so they refuse unknown fields in their
+/// schema alone: serde's `deny_unknown_fields` does not hold with `flatten`.
+#[derive(Deserialize, JsonSchema)]
+struct Target {
+    /// An agent, by its number, of this conversation's tree or of the
+    /// conversation `conversation` names
+    agent: Option<u32>,
+    /// Another conversation of the user, by its id; its main agent unless
+    /// `agent` names another
+    #[schemars(extend("patternDescription" = "a conversation's id, as demi conversation list shows it"))]
+    conversation: Option<ConversationId>,
+}
+
 /// The input of `demi conversation history search`.
 #[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[schemars(deny_unknown_fields)]
 struct SearchArgs {
     /// The words to find
     #[schemars(length(min = 1))]
@@ -99,22 +116,26 @@ struct SearchArgs {
     /// The page of hits, from 1
     #[schemars(range(min = 1))]
     page: Option<u64>,
+    #[serde(flatten)]
+    target: Target,
 }
 
 /// The input of `demi conversation history read`.
 #[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[schemars(deny_unknown_fields)]
 struct ReadArgs {
     /// The blocks to read, by index: 4213..4260, 4213.. or ..4260
     range: String,
     /// Print only the messages of your user or parent, user, or only your
     /// own texts and command lines, agent
     from: Option<Side>,
+    #[serde(flatten)]
+    target: Target,
 }
 
 /// The input of `demi conversation history open`.
 #[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
+#[schemars(deny_unknown_fields)]
 struct OpenArgs {
     /// What to open, as a read names it: a block's index, such as 4214, or
     /// a message's attachment, such as 4213/a1
@@ -122,6 +143,8 @@ struct OpenArgs {
     /// The page to print, from 1
     #[schemars(range(min = 1))]
     page: Option<u64>,
+    #[serde(flatten)]
+    target: Target,
 }
 
 /// The `history` group of `demi conversation`, whose handlers read in
@@ -134,6 +157,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .positionals(["words"])
                 .success_output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
                 .json_output::<Vec<SearchRow>>()
+                .permission_when(READ, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), search))),
         )
         .leaf(
@@ -141,6 +165,7 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<ReadArgs>()
                 .positionals(["range"])
                 .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
+                .permission_when(READ, "conversation")
                 .bind(TypedRpc::new(verb(shard.clone(), read))),
         )
         .leaf(
@@ -148,36 +173,97 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<OpenArgs>()
                 .positionals(["item"])
                 .success_output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
+                .permission_when(READ, "conversation")
                 .bind(TypedRpc::new(verb(shard, open))),
         )
 }
 
-/// The transcript a call reads: its agent's, in its conversation.
+/// The transcript a call reads: its agent's, in its conversation, or the
+/// one its target names.
 struct Reader {
     conversation: ConversationId,
     node: NodeId,
+    /// The agent's number, and the other conversation, as the call's target
+    /// named them: each command a read prints repeats them.
+    agent: Option<u32>,
+    other: Option<ConversationId>,
     /// Whether the agent is the root, whose user is the user; a subagent's
     /// is its parent.
     root: bool,
     zone: TimeZone,
 }
 
+/// A target as the options that name it, each with the space before it.
+fn flags(conversation: &Option<ConversationId>, agent: Option<u32>) -> String {
+    let conversation = conversation.iter().map(|id| format!(" --conversation {id}"));
+    conversation.chain(agent.map(|number| format!(" --agent {number}"))).collect()
+}
+
 impl Reader {
-    fn of<A>(call: &Call<A>) -> Result<Self, RpcError> {
-        let conversation = conversation_of(&call.invocation)?;
-        let caller = call
-            .invocation
-            .caller
-            .as_ref()
-            .ok_or_else(|| failed("only an agent's command has a transcript to read"))?;
+    async fn of<A>(shard: &Shard, call: &Call<A>, target: &Target) -> Result<Self, RpcError> {
+        let here = conversation_of(&call.invocation)?;
         // A zone the user's page reported that this build does not know
         // shows the times in UTC rather than refusing the read.
         let zone = TimeZone::get(&call.invocation.context.locale.time_zone).unwrap_or(TimeZone::UTC);
+        let no_transcript = || failed(format!("no transcript{}", flags(&target.conversation, target.agent)));
+        let (conversation, node) = match (&target.conversation, target.agent) {
+            (None, None) => {
+                let caller = call
+                    .invocation
+                    .caller
+                    .as_ref()
+                    .ok_or_else(|| failed("only an agent's command has a transcript to read"))?;
+                (here, caller.node.clone())
+            }
+            (other, agent) => {
+                let conversation = match other {
+                    // Another user's conversation is none of the caller's.
+                    Some(id) => match shard.services().control.conversation(id.clone()).await.map_err(failed)? {
+                        Some(record) if record.owner == *shard.user() => record.id,
+                        _ => return Err(no_transcript()),
+                    },
+                    None => here,
+                };
+                let node = match agent {
+                    None => root_of(&conversation),
+                    Some(number) => shard
+                        .services()
+                        .conversations
+                        .read(&conversation, move |connection| tree::node_numbered(connection, u64::from(number)))
+                        .await
+                        .map_err(failed)?
+                        .flatten()
+                        .ok_or_else(no_transcript)?,
+                };
+                (conversation, node)
+            }
+        };
         Ok(Self {
-            root: caller.node == root_of(&conversation),
-            node: caller.node.clone(),
+            root: node == root_of(&conversation),
+            node,
             conversation,
+            agent: target.agent,
+            other: target.conversation.clone(),
             zone,
+        })
+    }
+
+    /// The target for a command a read prints, with the space before it;
+    /// none for the caller's own transcript.
+    fn flags(&self) -> String {
+        flags(&self.other, self.agent)
+    }
+
+    /// Which transcript a read of another one is of, such as `agent 3 of
+    /// this conversation`; none for the caller's own.
+    fn name(&self) -> Option<String> {
+        if self.other.is_none() && self.agent.is_none() {
+            return None;
+        }
+        let number = self.agent.unwrap_or(0);
+        Some(match &self.other {
+            Some(conversation) => format!("agent {number} of conversation {conversation}"),
+            None => format!("agent {number} of this conversation"),
         })
     }
 
@@ -257,7 +343,7 @@ const HIT_CHARS: usize = 400;
 const BESIDE_CHARS: usize = 100;
 
 async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&call)?;
+    let reader = Reader::of(&shard, &call, &call.args.target).await?;
     let mut words: Vec<String> = Vec::new();
     for word in call.args.words.iter().flat_map(|words| words.split_whitespace()) {
         if !words.iter().any(|seen| seen == word) {
@@ -358,14 +444,16 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         }
     }
     if !hits.is_empty() {
-        let mut note = format!("page {page} of {pages}");
+        let mut note = reader.name().map_or_else(String::new, |name| format!("transcript of {name}; "));
+        note.push_str(&format!("page {page} of {pages}"));
         if page < pages {
             // The options first, then `--`, so a word such as `--release` is
             // read as a word.
             let quoted: Vec<String> = words.iter().map(|word| shell_word(word)).collect();
             options.push(format!("--page {}", page + 1));
             note.push_str(&format!(
-                "; next: demi conversation history search {} -- {}",
+                "; next: demi conversation history search{} {} -- {}",
+                reader.flags(),
                 options.join(" "),
                 quoted.join(" ")
             ));
@@ -483,7 +571,7 @@ fn excerpt(text: &str, words: &[String], cut: Cut) -> String {
 
 /// A word as a shell reads it back: as it is when it holds no character a
 /// shell treats specially, otherwise in single quotes.
-fn shell_word(word: &str) -> String {
+pub(super) fn shell_word(word: &str) -> String {
     let plain = word
         .chars()
         .all(|character| character.is_alphanumeric() || "-_./:@+,%=".contains(character));
@@ -510,7 +598,7 @@ fn range(text: &str) -> Option<(usize, Option<usize>)> {
 }
 
 async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&call)?;
+    let reader = Reader::of(&shard, &call, &call.args.target).await?;
     let Some((from, to)) = range(&call.args.range) else {
         return Err(refused(format!(
             "{}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260",
@@ -570,17 +658,20 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
             Some(Side::Agent) => format!("No text or command of the agent in {from}..{end}."),
         });
     }
+    if let Some(name) = reader.name() {
+        printed.insert(0, format!("[transcript of {name}]"));
+    }
     let option = from_side.map_or_else(String::new, |side| format!("--from {} ", side.as_str()));
     let next = |at: usize| match to {
-        Some(_) => format!("demi conversation history read {option}{}..{end}", at + 1),
-        None => format!("demi conversation history read {option}{}..", at + 1),
+        Some(_) => format!("demi conversation history read{} {option}{}..{end}", reader.flags(), at + 1),
+        None => format!("demi conversation history read{} {option}{}..", reader.flags(), at + 1),
     };
     if let Some(at) = stopped {
         printed.push(format!("Stopped at {at} · next: {}", next(at)));
     }
     match cut {
         Some((at, pages)) if pages > 1 => {
-            let mut line = format!("Cut {at} · rest: demi conversation history open {at} --page 2");
+            let mut line = format!("Cut {at} · rest: demi conversation history open {at}{} --page 2", reader.flags());
             if at < end {
                 line.push_str(&format!(" · next: {}", next(at)));
             }
@@ -661,7 +752,8 @@ fn item(reader: &Reader, at: usize, block: &Block) -> Option<Shown> {
         Block::Error(error) => line(format!("[{at} error: {}]", error.message)),
         Block::AccountSwitch(switch) => line(format!("[{at} account switched from {} to {}]", switch.from, switch.to)),
         Block::CompactionBoundary(_) => line(format!(
-            "[{at} summary of the earlier conversation: demi conversation history open {at}]"
+            "[{at} summary of the earlier conversation: demi conversation history open {at}{}]",
+            reader.flags()
         )),
         Block::Text(_)
         | Block::Thinking(_)
@@ -784,7 +876,7 @@ fn open_item(text: &str) -> Option<Item> {
 }
 
 async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&call)?;
+    let reader = Reader::of(&shard, &call, &call.args.target).await?;
     let Some(named) = open_item(&call.args.item) else {
         return Err(refused(format!(
             "{}: an item is a block index, such as 4214, or a file of a message, such as 4213/a1",
@@ -817,34 +909,40 @@ async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u
     let printed = match &block {
         Block::ToolCall(tool) => match (&tool.view, tool.shell_command().map(|command| command.script)) {
             (Some(ToolView::Shell(view)), Some(script)) => {
-                let Some(tree) = shard.agent().tree(&root_of(&reader.conversation)) else {
-                    return Err(failed("the conversation's agents are not running"));
-                };
                 // The script and the output are paged together, with room
                 // on each page for the line that names the next.
-                let (printed, pages) = tree
-                    .command_page(&view.command_id, &call_line(at, tool), &script, page, NEXT_CHARS)
+                let (printed, pages) = shard
+                    .agent()
+                    .command_page(
+                        &root_of(&reader.conversation),
+                        &view.command_id,
+                        &call_line(at, tool),
+                        &script,
+                        page,
+                        NEXT_CHARS,
+                    )
                     .await
                     .map_err(failed)?;
-                printed + &next_line(at, page, pages)
+                printed + &next_line(&reader, at, page, pages)
             }
             (Some(ToolView::RepeatedShell { .. }), Some(script)) => {
-                paged(&call_line(at, tool), &format!("$ {script}"), at, page)?
+                paged(&reader, &call_line(at, tool), &format!("$ {script}"), at, page)?
             }
             _ => return Err(failed(format!("{at} is a {} call, which has nothing to open", tool.tool_name))),
         },
-        Block::Thinking(thinking) => paged(&format!("[{at} thinking]"), &thinking.text, at, page)?,
+        Block::Thinking(thinking) => paged(&reader, &format!("[{at} thinking]"), &thinking.text, at, page)?,
         Block::AgentMessage(message) if matches!(message.message.event, AgentMessageEvent::Completion { .. }) => {
-            paged(&report_line(at, message), &message.message.content, at, page)?
+            paged(&reader, &report_line(at, message), &message.message.content, at, page)?
         }
         Block::CompactionBoundary(boundary) => {
-            paged(&format!("[{at} summary of the earlier conversation]"), &boundary.summary, at, page)?
+            paged(&reader, &format!("[{at} summary of the earlier conversation]"), &boundary.summary, at, page)?
         }
         block => match item(&reader, at, block) {
-            Some(Shown { head, body: Some(body) }) => paged(&head, &body, at, page)?,
+            Some(Shown { head, body: Some(body) }) => paged(&reader, &head, &body, at, page)?,
             _ => {
                 return Err(failed(format!(
-                    "a read shows all of {at}: demi conversation history read {at}..{at}"
+                    "a read shows all of {at}: demi conversation history read{} {at}..{at}",
+                    reader.flags()
                 )));
             }
         },
@@ -876,24 +974,25 @@ fn text_pages(body: &str) -> Vec<Range<usize>> {
 
 /// Page `page` of `text` under `head`, with the command for the next page
 /// when one follows.
-fn paged(head: &str, text: &str, at: usize, page: u64) -> Result<String, RpcError> {
+fn paged(reader: &Reader, head: &str, text: &str, at: usize, page: u64) -> Result<String, RpcError> {
     let pages = text_pages(text);
     let Some(range) = usize::try_from(page).ok().and_then(|page| pages.get(page - 1)) else {
         return Err(failed(format!("{at} has {} pages", pages.len())));
     };
     let body: String = text.chars().skip(range.start).take(range.len()).collect();
     let count = u64::try_from(pages.len()).unwrap_or(u64::MAX);
-    Ok(format!("{head}\n{body}\n{}", next_line(at, page, count)))
+    Ok(format!("{head}\n{body}\n{}", next_line(reader, at, page, count)))
 }
 
 /// The line under page `page` of `pages` of what `open` prints of `at`,
 /// which names the next page; nothing under the last.
-fn next_line(at: usize, page: u64, pages: u64) -> String {
+fn next_line(reader: &Reader, at: usize, page: u64, pages: u64) -> String {
     if page >= pages {
         return String::new();
     }
     format!(
-        "Page {page} of {pages} · next: demi conversation history open {at} --page {}\n",
+        "Page {page} of {pages} · next: demi conversation history open {at}{} --page {}\n",
+        reader.flags(),
         page + 1
     )
 }

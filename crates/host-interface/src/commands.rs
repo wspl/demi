@@ -256,10 +256,15 @@ impl CommandSet {
             .zip(self.handlers.get(&invocation.path))
             .ok_or_else(|| RpcError::Failed("not an rpc command of this conversation".into()))?;
         leaf.check_input(&invocation.args).map_err(RpcError::Usage)?;
-        let category = leaf.permission.as_deref().map(|id| {
-            self.category(id)
-                .expect("registration checked that a group declares the leaf's category")
-        });
+        // A leaf may need its category only when the call gives a field.
+        let category = leaf
+            .permission
+            .as_deref()
+            .filter(|_| leaf.permission_field.as_ref().is_none_or(|field| leaf.given(&invocation.args, field)))
+            .map(|id| {
+                self.category(id)
+                    .expect("registration checked that a group declares the leaf's category")
+            });
         let brings_host = leaf.brings_host.as_ref().and_then(|brings| {
             let named = invocation.args.get(&brings.field)?.as_str()?;
             Some(named.to_owned())

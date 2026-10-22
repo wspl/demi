@@ -892,8 +892,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "Activity: streaming",
             "Recent tool calls:",
             "  STATUS  STARTED  DURATION (S)  ENDED  TITLE",
-            "Last assistant text at: -",
-            "Last assistant text: -",
+            "More: demi conversation history read 0.. --agent 3",
         ]
     );
     assert_eq!(refused(&show_root), "demi agent show: 0: no such subagent\n");
@@ -917,6 +916,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "Profile: -",
             "Description: delta",
             "Directory: /workspace",
+            "More: demi conversation history read 3.. --agent 1",
         ]
     );
     let mut archived: Value = serde_json::from_str(&show_archived_json.stdout).unwrap();

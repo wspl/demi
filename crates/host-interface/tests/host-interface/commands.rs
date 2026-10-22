@@ -439,3 +439,44 @@ fn a_permission_category_is_declared_once_in_the_set_and_its_leaves_check_answer
         .unwrap();
     assert!(checked.category.is_none());
 }
+
+#[test]
+fn a_leaf_with_a_permission_field_needs_its_category_only_when_a_call_gives_the_field() {
+    let mut set = CommandSet::new();
+    set.register(GroupBuilder::new("demi", "Roots.").index_entry("Holds roots.").group(
+        GroupBuilder::new("skills", "Skills.")
+            .index_entry("Manages skills.")
+            .permission("skills.manage", "manage skills", "Add and remove sources.")
+            .leaf(
+                LeafBuilder::rpc("add", "Add a note.")
+                    .input::<AddArgs>()
+                    .positionals(["text"])
+                    .permission_when("skills.manage", "count")
+                    .bind(TypedRpc::new(add)),
+            ),
+    ))
+    .unwrap();
+    let needs = |args| {
+        set.check(&invocation(&["demi", "skills", "add"], args))
+            .unwrap()
+            .category
+            .map(|category| category.id.as_str().to_owned())
+    };
+    assert_eq!(needs(json!({"text": "a"})), None);
+    assert_eq!(needs(json!({"text": "a", "count": 2})), Some("skills.manage".to_owned()));
+
+    let unknown = GroupBuilder::new("demi", "Roots.").index_entry("Holds roots.").group(
+        GroupBuilder::new("skills", "Skills.")
+            .index_entry("Manages skills.")
+            .permission("skills.manage", "manage skills", "Add and remove sources.")
+            .leaf(
+                LeafBuilder::rpc("add", "Add a note.")
+                    .input::<AddArgs>()
+                    .positionals(["text"])
+                    .permission_when("skills.manage", "copies")
+                    .bind(TypedRpc::new(add)),
+            ),
+    );
+    let error = CommandSet::new().register(unknown).unwrap_err().to_string();
+    assert!(error.contains("permission field"), "{error}");
+}

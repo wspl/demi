@@ -91,7 +91,7 @@ use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, ModelSwitch, SessionEvent, Settle,
     Subscription,
 };
-use demi_agent_store::{ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, Reprofile};
+use demi_agent_store::{ChildDirectory, ClosePhase, Kind, NodeClose, NodeRecord, Placement, Reprofile};
 use demi_agent_transcript::last_failure;
 use demi_agent_tools::{HostResolver, SubagentSource};
 use demi_conversation_socket_protocol::{
@@ -1693,7 +1693,8 @@ impl<H: HostResolver> Tree<H> {
                 return Ok(None);
             };
             let snapshot = self.snapshot(&child, parent.record().number, now, &placement);
-            let text = show_text(&snapshot);
+            let read = self.read_of(child.id(), snapshot.id).await?;
+            let text = show_text(&snapshot, &read);
             return Ok(Some((ShownAgent::Live(snapshot), text)));
         }
         let Some((record, parent)) = self.stored_child(number).await? else {
@@ -1702,6 +1703,7 @@ impl<H: HostResolver> Tree<H> {
         let Some(close) = record.closed else {
             return Ok(None);
         };
+        let record_id = record.id.clone();
         let failure = match close.phase {
             ClosePhase::Error { ref failure } => Some(bounded(failure).to_owned()),
             ClosePhase::Completed | ClosePhase::Aborted => None,
@@ -1722,8 +1724,20 @@ impl<H: HostResolver> Tree<H> {
                 .effective(&placement)
                 .to_owned(),
         };
-        let text = archived_text(&archived);
+        let read = self.read_of(&record_id, archived.id).await?;
+        let text = archived_text(&archived, &read);
         Ok(Some((ShownAgent::Archived(archived), text)))
+    }
+
+    /// The read `show` names for the agent `number` of node `node`.
+    async fn read_of(&self, node: &NodeId, number: u64) -> Result<String, String> {
+        let last_text = self
+            .store
+            .session_store(node)
+            .last_of(Kind::Text, PATH_END)
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(more(number, last_text))
     }
 
     /// The stored child the model knows by `number`, live or archived, with
@@ -1960,11 +1974,10 @@ fn subagent_preamble(child: u64, parent: u64, can_spawn: bool) -> String {
 }
 
 /// What a child's supervision observed of its transcript: when it last did
-/// something, its recent tool calls, and when it last wrote text.
+/// something, and its recent tool calls.
 struct Telemetry {
     last_event_at: i64,
     tools: Vec<ToolRecord>,
-    last_text_at: Option<i64>,
 }
 
 struct ToolRecord {
@@ -1988,7 +2001,6 @@ impl Telemetry {
         Self {
             last_event_at: now,
             tools: Vec::new(),
-            last_text_at: None,
         }
     }
 
@@ -2040,7 +2052,6 @@ impl Telemetry {
     }
 
     fn text(&mut self, now: i64) {
-        self.last_text_at = Some(now);
         self.last_event_at = now;
     }
 
@@ -2234,8 +2245,6 @@ pub(crate) struct AgentSnapshot {
     /// How long the current execution state has lasted.
     execution_for_ms: u64,
     tools: Vec<ToolSnapshot>,
-    last_assistant_text: String,
-    last_assistant_text_at: Option<Timestamp>,
     /// Its working directory on the primary Host.
     cwd: String,
 }
@@ -2301,7 +2310,6 @@ fn snapshot<H: HostResolver>(
     placement: &Placement,
 ) -> AgentSnapshot {
     let record = child.node.record();
-    let session = child.node.session();
     let telemetry = child.telemetry.borrow();
     let in_flight = telemetry.in_flight();
     let activity = match (execution, in_flight) {
@@ -2337,9 +2345,6 @@ fn snapshot<H: HostResolver>(
                 ended_at: tool.ended_at.map(at),
             })
             .collect(),
-        last_assistant_text: bounded(session.last_answer().as_ref().map_or("", |(_, text)| text))
-            .to_owned(),
-        last_assistant_text_at: telemetry.last_text_at.map(at),
         cwd: record
             .cwd
             .as_ref()
@@ -2349,8 +2354,22 @@ fn snapshot<H: HostResolver>(
     }
 }
 
+/// Past the end of any path, which a store's search of the path's blocks
+/// reads as its end: a position is a database integer.
+const PATH_END: usize = 1 << 62;
+
+/// The last line of `demi agent show`'s text: the history read of the
+/// agent `number`'s latest blocks, from its last text on, or from its first
+/// block when it wrote none.
+fn more(number: u64, last_text: Option<usize>) -> String {
+    format!(
+        "demi conversation history read {}.. --agent {number}",
+        last_text.unwrap_or(0)
+    )
+}
+
 /// `demi agent show`'s text of a live child.
-fn show_text(snapshot: &AgentSnapshot) -> String {
+fn show_text(snapshot: &AgentSnapshot, more: &str) -> String {
     let mut fields = Fields::new();
     fields
         .field("ID", snapshot.id)
@@ -2376,15 +2395,12 @@ fn show_text(snapshot: &AgentSnapshot) -> String {
             tool.title.as_str().into(),
         ]);
     }
-    fields
-        .table("Recent tool calls", &tools)
-        .field("Last assistant text at", snapshot.last_assistant_text_at)
-        .text("Last assistant text", &snapshot.last_assistant_text);
+    fields.table("Recent tool calls", &tools).field("More", more);
     fields.render()
 }
 
 /// `demi agent show`'s text of an archived child.
-fn archived_text(archived: &ArchivedSnapshot) -> String {
+fn archived_text(archived: &ArchivedSnapshot, more: &str) -> String {
     let mut fields = Fields::new();
     fields
         .field("ID", archived.id)
@@ -2398,6 +2414,7 @@ fn archived_text(archived: &ArchivedSnapshot) -> String {
     if let Some(failure) = &archived.failure {
         fields.text("Failure", failure);
     }
+    fields.field("More", more);
     fields.render()
 }
 

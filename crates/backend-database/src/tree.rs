@@ -1921,6 +1921,18 @@ pub fn agent_number(connection: &Connection, node: &NodeId) -> Result<Option<u64
     number.map(|number| decode("nodes", "number", u64::try_from(number))).transpose()
 }
 
+/// The agent numbered `number`, 0 for the root; none when the tree has no
+/// such agent, as for a side question, which has no number.
+pub fn node_numbered(connection: &Connection, number: u64) -> Result<Option<NodeId>, StorageError> {
+    let Ok(number) = i64::try_from(number) else {
+        return Ok(None);
+    };
+    let id: Option<String> = connection
+        .query_row("SELECT id FROM nodes WHERE number = ?1", [number], |row| row.get(0))
+        .optional()?;
+    id.map(|id| decode("nodes", "id", NodeId::try_from(id))).transpose()
+}
+
 /// The saved version of each agent's transcript, by the agent's number,
 /// which the search index compares with what it holds.
 pub fn search_versions(connection: &Connection) -> Result<BTreeMap<u64, SavedVersion>, StorageError> {

@@ -155,6 +155,7 @@ impl LeafBuilder {
                 output: None,
                 media: false,
                 permission: None,
+                permission_field: None,
                 brings_host: None,
                 kind,
             },
@@ -291,6 +292,14 @@ impl LeafBuilder {
     /// conversation the user allowed it for.
     pub fn permission(mut self, category: impl Into<String>) -> Self {
         self.leaf.permission = Some(category.into());
+        self
+    }
+
+    /// The permission category the command needs only in a call that gives
+    /// the input field `field`, which the call without it does not.
+    pub fn permission_when(mut self, category: impl Into<String>, field: impl Into<String>) -> Self {
+        self.leaf.permission = Some(category.into());
+        self.leaf.permission_field = Some(field.into());
         self
     }
 

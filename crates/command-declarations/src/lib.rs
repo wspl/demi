@@ -219,6 +219,10 @@ pub struct Leaf<B = Binding> {
     /// The id of the permission category the command needs, which one of
     /// its groups declares; only an `rpc` leaf names one.
     pub permission: Option<String>,
+    /// The input field that makes the command need its permission: when
+    /// set, only a call that gives the field needs it, as `--conversation`
+    /// does for a history read; without one, every call needs it.
+    pub permission_field: Option<String>,
     /// The string input field that names a host the call may bring into
     /// the conversation, which the dispatch resolves once and hands to the
     /// handler; only an `rpc` leaf names one.
@@ -524,8 +528,22 @@ impl<B> Node<B> {
                     }
                 }
                 let Some(permission) = &leaf.permission else {
+                    if leaf.permission_field.is_some() {
+                        return Err(invalid(format!(
+                            "command {} names a permission field and no permission",
+                            leaf.name
+                        )));
+                    }
                     return Ok(());
                 };
+                if let Some(field) = &leaf.permission_field {
+                    if leaf.property_type(field).is_none() {
+                        return Err(invalid(format!(
+                            "command {} names {field} as its permission field, which is no field of its input",
+                            leaf.name
+                        )));
+                    }
+                }
                 // A request asks the user for one thing.
                 if leaf.brings_host.is_some() {
                     return Err(invalid(format!(
@@ -586,6 +604,7 @@ impl Node<NativeOperation> {
                 output: leaf.output.clone(),
                 media: leaf.media,
                 permission: leaf.permission.clone(),
+                permission_field: leaf.permission_field.clone(),
                 brings_host: leaf.brings_host.clone(),
                 kind: match &leaf.kind {
                     LeafKind::Rpc => LeafKind::Rpc,
@@ -804,7 +823,7 @@ impl<B> Leaf<B> {
 
     /// Whether the command line gives the option `option`: a value, but
     /// `false` for a flag.
-    fn given(&self, values: &serde_json::Map<String, Value>, option: &str) -> bool {
+    pub fn given(&self, values: &serde_json::Map<String, Value>, option: &str) -> bool {
         values
             .get(option)
             .is_some_and(|value| *value != Value::Bool(false))
@@ -928,6 +947,12 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
+    permission_field: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     brings_host: Option<BringsHost>,
     kind: RawKind,
     #[serde(
@@ -970,6 +995,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             output: raw.output,
             media: raw.media,
             permission: raw.permission,
+            permission_field: raw.permission_field,
             brings_host: raw.brings_host,
             kind,
         })
@@ -997,6 +1023,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             output: leaf.output,
             media: leaf.media,
             permission: leaf.permission,
+            permission_field: leaf.permission_field,
             brings_host: leaf.brings_host,
             kind,
             binding,

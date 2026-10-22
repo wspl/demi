@@ -67,7 +67,7 @@ const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles. W
 /// for the reason [`PROFILE_OPTION`]'s does not.
 const RESUME_PROFILE_OPTION: &str = "The name of one of the user's subagent profiles to go on with. Without it the child goes on with the profile it runs on; `demi agent profiles list` lists the profiles, with when to use each.";
 
-const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed, with the reason if it failed. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
+const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state and recent tool titles with durations; for an archived one, how and when it closed, with the reason if it failed. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits what it said, tool outputs, file contents, and older turns: its last line is the history read that prints its latest blocks. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
 
 /// The input of `demi agent spawn`.
 #[derive(Deserialize, JsonSchema)]
