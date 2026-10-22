@@ -16,7 +16,7 @@ use std::{
 use demi_machine_manager_protocol::{DeviceId, GenerationId, MachineImageState};
 
 use super::{
-    durable::{remove_tree, sync, write_json},
+    durable::{remove_tree, sync},
     ext4::{self, Ext4Error},
     store::{ImagePair, ImageStore, Retention, StoreError, read_state},
 };
@@ -67,12 +67,6 @@ impl WorkingPair {
     /// The working pair's record, `None` when the device has no working pair.
     pub fn manifest(&self, off: &OffLoop) -> Result<Option<MachineImageState>, StoreError> {
         read_state(off, &self.directory.join("manifest.json"))
-    }
-
-    /// Replaces the record durably.
-    pub fn write_manifest(&self, off: &OffLoop, state: &MachineImageState) -> io::Result<()> {
-        write_json(off, &self.directory.join("manifest.json"), state)?;
-        sync(off, &self.directory)
     }
 
     /// Publishes the working pair as `device`'s new generation, keeping the

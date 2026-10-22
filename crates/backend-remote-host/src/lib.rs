@@ -49,7 +49,7 @@ pub use offers::offer_response;
 pub use output_records::{decode_output, encode_output};
 pub use pipes::{
     ARRIVAL, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,
-    PipeSink, PipeWriter, Pipes,
+    PipeWriter, Pipes,
 };
 pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,

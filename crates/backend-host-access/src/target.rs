@@ -6,7 +6,6 @@
 
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_backend_database::{Selection, StorageError};
-use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
 use crate::HostShard;
@@ -34,12 +33,4 @@ impl dyn HostShard + '_ {
             .await
     }
 
-    /// The conversation's target as the web app reads it.
-    pub async fn shown_target(
-        &self,
-        record: &ConversationRecord,
-    ) -> Result<ConversationTarget, StorageError> {
-        let resolved = self.resolve_target(record).await?;
-        Ok(record.target.shown(&resolved))
-    }
 }

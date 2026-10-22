@@ -631,14 +631,6 @@ impl<B> Leaf<B> {
         self.input.as_ref()?.value().get("properties")?.as_object()
     }
 
-    /// The last positional field when it is an array, which takes every
-    /// positional argument after the ones before it, such as the paths of
-    /// `demi attachment upload <path>...`.
-    pub fn repeated_positional(&self) -> Option<&str> {
-        let last = self.positionals.as_ref()?.last()?;
-        (self.property_type(last) == Some("array")).then_some(last.as_str())
-    }
-
     pub fn required(&self, field: &str) -> bool {
         self.input
             .as_ref()

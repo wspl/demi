@@ -273,13 +273,6 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
     (text, 0)
 }
 
-/// The estimate of a message's content in `request`: one line per part,
-/// and the weight of its media.
-pub fn content_tokens(content: &[UserContentBlock], request: &RequestView) -> u64 {
-    let (text, media) = content_estimate(content, request);
-    text_tokens(&text) + media
-}
-
 /// A message's or a steer's estimate with its comments before its content:
 /// their text parts, each bounded as replay bounds it, and their pictures.
 fn with_comments((text, media): (String, u64), comments: &[MessageComment], request: &RequestView) -> (String, u64) {
