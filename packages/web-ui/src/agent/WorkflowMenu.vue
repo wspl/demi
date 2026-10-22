@@ -85,6 +85,7 @@ function choose(choice: WorkflowChoice | null, close: () => void) {
             :label="row.label"
             choice
             :is-selected="row.selected"
+            :loading="row.key === 'reading'"
             :disabled="row.unavailable !== null || row.choice === null"
             :disabled-reason="row.unavailable ?? undefined"
             @select="choose(row.choice, close)"

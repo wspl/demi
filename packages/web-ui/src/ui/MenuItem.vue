@@ -56,6 +56,12 @@ const props = withDefaults(defineProps<{
   indicator?: MenuIndicator
   indicatorLabel?: SentenceText
   isDanger?: boolean
+  /**
+   * The row stands for what is still being read, such as a list that has not
+   * come: the spinner shows where an operation's does, and the row is not
+   * choosable.
+   */
+  loading?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
@@ -97,9 +103,11 @@ const props = withDefaults(defineProps<{
 })
 
 const slots = useSlots()
-const { running, blocked, press } = useOperationControl(() => props.operation, true)
+const { running: operating, blocked, press } = useOperationControl(() => props.operation, true)
+// The row works: its operation runs, or what it stands for is still read.
+const running = computed(() => operating.value || props.loading === true)
 const isChoice = computed(() => props.choice === true)
-const isDisabled = computed(() => props.disabled === true || (blocked.value && !running.value))
+const isDisabled = computed(() => props.disabled === true || props.loading === true || (blocked.value && !operating.value))
 const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason) ?? props.hint)
 const menuRoot = inject(menuRootKey, null)
 // Where the check goes is the menu's to say (`MenuLayout`): the caller only says which row is checked.
