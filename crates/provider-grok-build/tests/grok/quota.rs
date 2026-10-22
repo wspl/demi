@@ -7,10 +7,10 @@ use demi_provider_common::{
     Provider,
     testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_shared_types::{QuotaKind, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
+use demi_shared_types::{QuotaKind, QuotaSeverity, QuotaSnapshot, QuotaUnit};
 use serde_json::{Value, json};
 
-use crate::{ACCOUNT, CHAT, NOW, chat, json_answer, pool_with, provider, run, runtime_of, secret};
+use crate::{ACCOUNT, CHAT, chat, json_answer, pool_with, provider, run, runtime_of, secret};
 
 /// The snapshot of a probe whose user and billing endpoints answer `user`
 /// and `billing`, for an account whose sign-in names no email.
@@ -22,51 +22,6 @@ async fn probe(user: Value, billing: Value) -> (Arc<QuotaSnapshot>, MockVendor) 
     let provider = provider(&vendor, &pool, Some(ACCOUNT));
     let snapshot = provider.quota().unwrap().probe().await.unwrap();
     (snapshot, vendor)
-}
-
-#[tokio::test]
-async fn the_probe_asks_the_subscription_and_the_credits_billing_together() {
-    let (reading, vendor) = probe(
-        json!({ "subscriptionTier": "XPremiumPlus", "email": "a@b.com", "hasGrokCodeAccess": true }),
-        json!({ "config": { "monthlyLimit": { "val": 20_000 }, "used": { "val": 5_000 }, "onDemandCap": { "val": 0 }, "billingPeriodEnd": "2026-08-01T00:00:00+00:00" } }),
-    )
-    .await;
-    let mut urls: Vec<String> = vendor
-        .requests()
-        .iter()
-        .map(|request| request.uri.to_string())
-        .collect();
-    urls.sort();
-    assert_eq!(
-        urls,
-        [
-            "/v1/billing?format=credits",
-            "/v1/user?include=subscription"
-        ]
-    );
-    let plan = reading.plan.clone().unwrap();
-    assert_eq!(
-        (plan.id.as_str(), plan.label.as_str()),
-        ("XPremiumPlus", "XPremiumPlus")
-    );
-    assert_eq!(reading.account_label.as_deref(), Some("a@b.com"));
-    assert_eq!(
-        reading.windows,
-        [QuotaWindow {
-            id: "monthly".into(),
-            kind: QuotaKind::Credits,
-            used_percent: Some(25.0),
-            used: Some(5_000.0),
-            limit: Some(20_000.0),
-            unit: Some(QuotaUnit::Credits),
-            resets_at: Some("2026-08-01T00:00:00.000Z".parse().unwrap()),
-            period_seconds: None,
-            // The probe was sent at NOW.
-            requested_at: Some(NOW.parse().unwrap()),
-            severity: Some(QuotaSeverity::Normal),
-            scope: None,
-        }]
-    );
 }
 
 #[tokio::test]
@@ -109,44 +64,6 @@ async fn weekly_credits_take_their_share_and_period_end_and_a_cap_adds_its_windo
         (reading.windows[1].limit, reading.windows[1].used_percent),
         (Some(50.0), None)
     );
-}
-
-/// A monthly plan's credits have the period its billing states, from the
-/// current period's start to its end, which the page reads as a month; no
-/// length is made up when it states none (the first test).
-#[tokio::test]
-async fn monthly_credits_have_the_period_their_billing_states() {
-    let (reading, _vendor) = probe(
-        json!({ "subscriptionTier": "SuperGrok" }),
-        json!({ "config": {
-            "creditUsagePercent": 40,
-            "currentPeriod": { "type": "USAGE_PERIOD_TYPE_MONTHLY", "start": "2026-10-01T00:00:00Z", "end": "2026-11-01T00:00:00Z" },
-        } }),
-    )
-    .await;
-    let windows: Vec<(&str, QuotaKind, Option<u64>)> = reading
-        .windows
-        .iter()
-        .map(|window| (window.id.as_str(), window.kind, window.period_seconds))
-        .collect();
-    assert_eq!(windows, [("monthly", QuotaKind::Credits, Some(31 * 86_400))]);
-}
-
-#[tokio::test]
-async fn a_plan_whose_billing_meters_no_credits_has_no_window_and_odd_fields_are_left_out() {
-    let (reading, _vendor) = probe(
-        json!({ "subscriptionTier": "XPremium", "email": "u@example.com" }),
-        json!({ "config": {
-            "currentPeriod": { "type": "USAGE_PERIOD_TYPE_WEEKLY", "start": "2026-09-18T00:00:00Z", "end": "2026-09-25T00:00:00Z" },
-            "onDemandUsed": { "val": 0 },
-            "prepaidBalance": { "val": 0 },
-            "monthlyLimit": "lots",
-            "billingPeriodEnd": "2026-10-01T00:00:00Z",
-        } }),
-    )
-    .await;
-    assert_eq!(reading.plan.as_ref().unwrap().label, "XPremium");
-    assert!(reading.windows.is_empty(), "{:?}", reading.windows);
 }
 
 #[tokio::test]

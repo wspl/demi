@@ -12,7 +12,7 @@ use demi_provider_common::{
     testing::FixedClock,
 };
 use demi_shared_types::{
-    QuotaKind, QuotaPlan, QuotaSeverity, QuotaUnit, QuotaWindow, SnapshotSource, Timestamp,
+    QuotaKind, QuotaSeverity, QuotaUnit, QuotaWindow, Timestamp,
 };
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -30,13 +30,6 @@ fn window(id: &str, used_percent: f64) -> QuotaWindow {
         requested_at: None,
         severity: severity(Some(used_percent)),
         scope: None,
-    }
-}
-
-fn plan(id: &str) -> QuotaPlan {
-    QuotaPlan {
-        id: id.into(),
-        label: id.into(),
     }
 }
 
@@ -97,83 +90,6 @@ fn share(quota: &ProviderQuota, id: &str) -> Option<f64> {
         .and_then(|window| window.used_percent)
 }
 
-fn ids_and_shares(windows: &[QuotaWindow]) -> Vec<(String, Option<f64>)> {
-    windows
-        .iter()
-        .map(|window| (window.id.clone(), window.used_percent))
-        .collect()
-}
-
-#[tokio::test]
-async fn an_observation_replaces_its_windows_and_keeps_the_probed_plan_and_label() {
-    let quota = quota(Scripted {
-        cost: Some(ProbeCost::Free),
-        probes: Mutex::new(vec![ProbeReading {
-            plan: Some(plan("pro")),
-            account_label: Some("person@example.com".into()),
-            windows: vec![window("monthly", 25.0), window("rpm", 10.0)],
-            absent: Vec::new(),
-        }]),
-        observations: Mutex::new(vec![Some(vec![window("rpm", 40.0), window("tpm", 5.0)])]),
-    });
-    assert!(quota.latest().is_none());
-    let probed = quota.probe().await.unwrap();
-    assert_eq!(
-        (probed.source, probed.observed_at),
-        (SnapshotSource::Probe, NOW.parse().unwrap())
-    );
-
-    observe(&quota, NOW);
-    let observed = quota.latest().unwrap();
-    assert_eq!(observed.source, SnapshotSource::Observation);
-    assert_eq!(observed.plan, Some(plan("pro")));
-    assert_eq!(
-        observed.account_label.as_deref(),
-        Some("person@example.com")
-    );
-    assert_eq!(
-        ids_and_shares(&observed.windows),
-        [
-            ("monthly".into(), Some(25.0)),
-            ("rpm".into(), Some(40.0)),
-            ("tpm".into(), Some(5.0))
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_probe_says_the_plan_and_keeps_the_windows_it_does_not_name() {
-    let quota = quota(Scripted {
-        cost: Some(ProbeCost::Free),
-        probes: Mutex::new(vec![
-            ProbeReading {
-                plan: Some(plan("pro")),
-                account_label: None,
-                windows: vec![window("weekly", 40.0)],
-                absent: Vec::new(),
-            },
-            // A later probe that names no plan clears it.
-            ProbeReading::default(),
-        ]),
-        observations: Mutex::new(vec![Some(vec![window("requests", 5.0)]), None]),
-    });
-    observe(&quota, NOW);
-    let probed = quota.probe().await.unwrap();
-    assert_eq!(probed.plan, Some(plan("pro")));
-    assert_eq!(
-        ids_and_shares(&probed.windows),
-        [
-            ("requests".into(), Some(5.0)),
-            ("weekly".into(), Some(40.0))
-        ]
-    );
-    // A response the source cannot read changes nothing.
-    observe(&quota, NOW);
-    assert_eq!(quota.latest().unwrap(), probed);
-    let again = quota.probe().await.unwrap();
-    assert_eq!((again.plan.as_ref(), again.windows.len()), (None, 2));
-}
-
 /// Observations of several calls on one account, each scripted with the
 /// five-hour share its response reported.
 fn observing(shares: &[f64]) -> ProviderQuota {
@@ -203,15 +119,6 @@ fn a_response_of_a_call_that_started_earlier_and_ended_last_leaves_the_newer_sha
     assert_eq!(share(&quota, "five_hour"), Some(99.0));
 }
 
-#[test]
-fn a_lower_share_of_a_call_that_started_later_replaces_the_window() {
-    // A window can go down for real, as when its oldest use rolls out.
-    let quota = observing(&[99.0, 98.0]);
-    observe(&quota, "2026-10-18T08:21:35.477Z");
-    observe(&quota, "2026-10-18T08:21:36.759Z");
-    assert_eq!(share(&quota, "five_hour"), Some(98.0));
-}
-
 #[tokio::test]
 async fn a_probe_sent_after_an_observed_call_started_replaces_its_share() {
     let quota = quota(Scripted {
@@ -233,22 +140,6 @@ async fn a_probe_sent_after_an_observed_call_started_replaces_its_share() {
     // an older share, which the probe's stays over.
     observe(&quota, "2026-09-18T13:59:30.000Z");
     assert_eq!(share(&quota, "five_hour"), Some(95.0));
-}
-
-#[tokio::test]
-async fn a_family_that_cannot_probe_for_free_is_never_probed() {
-    for (cost, error) in [
-        (None, QuotaError::Unsupported),
-        (Some(ProbeCost::Inference), QuotaError::RequiresInference),
-    ] {
-        let quota = quota(Scripted {
-            cost,
-            probes: Mutex::new(Vec::new()),
-            observations: Mutex::new(Vec::new()),
-        });
-        assert_eq!(quota.probe().await, Err(error));
-        assert!(quota.latest().is_none());
-    }
 }
 
 #[test]

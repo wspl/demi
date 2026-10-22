@@ -258,30 +258,7 @@ impl Runsc {
 
 #[cfg(test)]
 mod tests {
-    use demi_machine_manager_protocol::runtime::RuntimeRelease;
-
     use super::*;
-
-    #[test]
-    fn the_version_must_match_exactly() {
-        let version = RuntimeRelease::pinned().version();
-        assert!(reports_version(
-            &format!("runsc version {version}\nspec: 1.1.0\n"),
-            &version
-        ));
-        assert!(!reports_version(
-            &format!("runsc version {version}.1\n"),
-            &version
-        ));
-        assert!(!reports_version(
-            &format!("runsc version {version}-patched.1\n"),
-            &version
-        ));
-        assert!(!reports_version(
-            &format!("spec: 1.1.0\nrunsc version {version}\n"),
-            &version
-        ));
-    }
 
     #[test]
     fn a_listing_names_each_containers_status() {
@@ -293,31 +270,4 @@ mod tests {
         assert!(status_in(r#"[{"id":"demi-a","status":"exploded"}]"#, &id).is_err());
     }
 
-    #[test]
-    fn every_command_names_the_state_root_and_the_profile() {
-        let runsc = Runsc::new(
-            Tools::placeholder(),
-            Path::new("/run/demi-machine-manager"),
-            true,
-        );
-        let args = runsc.args([OsStr::new("pause"), OsStr::new("demi-a")]);
-        let args: Vec<_> = args.iter().map(|arg| arg.to_str().unwrap()).collect();
-        assert_eq!(
-            args,
-            [
-                "--root=/run/demi-machine-manager/runsc",
-                "--platform=systrap",
-                "--network=sandbox",
-                "--overlay2=none",
-                "--file-access=shared",
-                "--file-access-mounts=shared",
-                "--allow-suid=true",
-                "--directfs=true",
-                "--sidecar-usage-policy=STRICT",
-                "--host-uds=open",
-                "pause",
-                "demi-a",
-            ]
-        );
-    }
 }

@@ -27,6 +27,4 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-demi-command-protocol = { path = "../command-protocol" }
-futures-util.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

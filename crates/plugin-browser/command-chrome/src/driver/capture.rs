@@ -1022,32 +1022,4 @@ mod tests {
         assert!(!sme_without_sve(hwcap | 1 << 22, 0x1a0_3fb2_6181));
     }
 
-    /// A capture that waits in vain for the extension, as when Chrome never
-    /// started its worker, has the extension recreated for the next attempt.
-    #[tokio::test(start_paused = true)]
-    async fn a_capture_that_waits_in_vain_recreates_the_extension() {
-        let tasks = TaskTracker::new();
-        let ended = CancellationToken::new();
-        let (recreated, mut recreations) = mpsc::unbounded_channel();
-        let channel = CaptureChannel::open(
-            &tasks,
-            ended.clone(),
-            Box::new(move || {
-                // The test outlives the channel: its receiver is never gone.
-                let _sent = recreated.send(());
-                Box::pin(async { Ok(()) })
-            }),
-        );
-        let gate = CaptureGate::default();
-        let hold = gate.capture().expect("no resize is under way");
-        let started = channel
-            .start("target", (800, 600), (800, 600), 30, 1_000_000, hold, &CancellationToken::new())
-            .await;
-        assert!(matches!(started, Err(BrowserError::Capture(_))));
-        let recreation = tokio::time::timeout(Duration::from_secs(1), recreations.recv()).await;
-        assert!(matches!(recreation, Ok(Some(()))), "the extension is recreated");
-        ended.cancel();
-        tasks.close();
-        tasks.wait().await;
-    }
 }

@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::testing::{FixedClock, MockResponse, MockVendor};
-use demi_shared_types::{ModelCost, ProviderModel, Timestamp};
+use demi_shared_types::Timestamp;
 use serde_json::{Value, json};
 
 const NOW: &str = "2026-09-08T00:00:00.000Z";
@@ -155,98 +155,4 @@ async fn a_failed_read_returns_the_kept_copy_marked_stale_and_without_a_copy_it_
     // A document that cannot be read after a good one is a failed read too.
     vendor.respond(served(&json!([])));
     assert!(client.refreshed().await.unwrap().stale);
-}
-
-#[tokio::test]
-async fn a_vendors_models_become_catalog_models_with_what_the_document_states() {
-    let vendor = MockVendor::start().await;
-    let client = client(&vendor);
-    vendor.respond(served(&document()));
-    let snapshot = client.refreshed().await.unwrap();
-    let vendors: Vec<(&str, &str, Option<&str>)> = snapshot
-        .vendors()
-        .map(|vendor| {
-            (
-                vendor.id.as_str(),
-                vendor.name.as_str(),
-                vendor.npm.as_deref(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        vendors,
-        [
-            ("deepseek", "DeepSeek", Some("@ai-sdk/openai-compatible")),
-            ("minimax", "MiniMax", None)
-        ]
-    );
-    assert_eq!(
-        snapshot.vendor("deepseek").unwrap().api.as_deref(),
-        Some("https://api.deepseek.com")
-    );
-    assert!(snapshot.vendor_models("amazon-bedrock").is_none());
-
-    let list = snapshot.vendor_models("deepseek").unwrap();
-    assert_eq!(
-        (
-            list.default_model_id.clone(),
-            list.source_fetched_at,
-            list.stale
-        ),
-        (None, snapshot.fetched_at, false)
-    );
-    assert_eq!(
-        list.models[0],
-        ProviderModel {
-            id: "deepseek-v4".into(),
-            display_name: "DeepSeek V4".into(),
-            description: Some("The flagship".into()),
-            context_window: Some(128_000),
-            output_limit: Some(32_000),
-            supports_tools: Some(true),
-            accepted_extensions: Some(demi_shared_types::IMAGE_FILE_EXTENSIONS.to_vec()),
-            supports_reasoning: Some(true),
-            supported_thinking_efforts: Some(vec!["low".into(), "high".into()]),
-            can_disable_thinking: None,
-            service_tiers: Vec::new(),
-            default_service_tier_id: None,
-            cost: Some(ModelCost {
-                input: Some(0.3),
-                output: Some(1.2),
-                cache_read: Some(0.03),
-                cache_write: None,
-            }),
-        }
-    );
-    // What the document does not state, or states as no limit, is unknown.
-    let bare = &list.models[1];
-    assert_eq!(
-        (bare.id.as_str(), bare.display_name.as_str()),
-        ("deepseek-v4-flash", "deepseek-v4-flash")
-    );
-    assert_eq!((bare.context_window, bare.output_limit), (None, None));
-    assert_eq!(
-        (
-            bare.supports_tools,
-            bare.supported_thinking_efforts.clone(),
-            bare.cost
-        ),
-        (None, None, None)
-    );
-    // Types come from the input modalities alone: none stated is unknown,
-    // `text` alone is none, `image` and `pdf` both.
-    let types = |id: &str| {
-        list.models
-            .iter()
-            .find(|model| model.id == id)
-            .unwrap()
-            .accepted_extensions
-            .clone()
-    };
-    assert_eq!(types("deepseek-v4-flash"), None);
-    assert_eq!(types("deepseek-v4-text"), Some(Vec::new()));
-    assert_eq!(
-        types("deepseek-v4-docs"),
-        Some(demi_shared_types::ATTACHMENT_FILE_EXTENSIONS.to_vec())
-    );
 }

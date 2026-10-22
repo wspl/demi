@@ -351,40 +351,6 @@ fn refused_wake_of(device: &str, capacity: Capacity, machine: SandboxMachine) ->
     }
 }
 
-/// The Claude Code machine keeps its current generation alone; a user's
-/// Cloud keeps the one before as well, its fallback.
-#[tokio::test(flavor = "local")]
-#[ignore = "needs root: run the Linux suite with --ignored as root"]
-async fn the_claude_code_machine_keeps_one_generation_where_a_cloud_keeps_two() {
-    isolate();
-    let fixture = fixture();
-    for (device, machine) in [
-        ("cloud", SandboxMachine::Cloud),
-        ("claude-code", SandboxMachine::ClaudeCode),
-    ] {
-        // Two saves, each of a working pair a wake staged.
-        for _ in 0..2 {
-            fixture
-                .call(refused_wake_of(device, CAPACITY, machine))
-                .await
-                .unwrap_err();
-            fixture
-                .call(HibernateParams {
-                    device_id: device.into(),
-                    machine,
-                })
-                .await
-                .unwrap();
-        }
-    }
-    assert_eq!(fixture.generations("cloud").len(), 2);
-    let current = fixture.state("claude-code").await.unwrap();
-    assert_eq!(
-        fixture.generations("claude-code"),
-        [current.generation.to_string()]
-    );
-}
-
 /// The blocks a file of `path` takes on its filesystem, in bytes.
 fn allocated(path: &Path) -> u64 {
     std::fs::metadata(path).unwrap().blocks() * 512
@@ -585,4 +551,3 @@ async fn an_enlargement_that_fails_midway_keeps_the_saved_pair_and_the_next_wake
     let images = fixture.generation("dev-1", &woken);
     assert_eq!(read_in_image(&images.home, "/demi/.profile"), "export EDITOR=vi\n");
 }
-

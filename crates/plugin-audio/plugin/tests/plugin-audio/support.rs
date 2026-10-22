@@ -8,7 +8,7 @@ use demi_host_interface::testing::{MemoryPort, test_command_context};
 use demi_plugin_interface::testing::command_line::{argv, parse, roots};
 use demi_plugin_interface::testing::{TestDemi, loopback};
 use demi_plugin_interface::{
-    AudioAsk, AudioVoices, MadeAudio, Plugin, PluginError, PluginFactory, PluginId, PortRefusal, Reply, Request,
+    AudioAsk, MadeAudio, Plugin, PluginError, PluginFactory, PluginId, PortRefusal, Reply, Request,
 };
 use demi_plugin_audio::Audio;
 use demi_web_api_protocol::ids::UserId;
@@ -45,11 +45,6 @@ impl Plugged {
     /// How the Providers service answers each audio file asked for.
     pub fn answer(&self, answer: impl Fn(&AudioAsk) -> Result<MadeAudio, PortRefusal> + 'static) {
         self.demi.audio_requests.replace(Some(Box::new(answer)));
-    }
-
-    /// How the Providers service answers each listing of voices.
-    pub fn voices(&self, answer: impl Fn(&str, Option<&str>) -> Result<AudioVoices, PortRefusal> + 'static) {
-        self.demi.voice_requests.replace(Some(Box::new(answer)));
     }
 
     /// Runs `demi <line>` from `/workspace` as the backend's dispatch hands

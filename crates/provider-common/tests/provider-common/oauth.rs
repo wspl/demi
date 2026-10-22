@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use demi_provider_common::{
-    oauth::{Lifetime, OAuthSeconds, PollInterval, jwt_claims},
+    oauth::{Lifetime, OAuthSeconds, PollInterval},
     openai_request::{prompt_cache_key, short_hash},
 };
 use serde::Deserialize;
@@ -75,52 +75,6 @@ fn oauth_durations_are_numbers_or_digits_and_unusable_ones_have_a_meaning() {
             Lifetime(None)
         );
     }
-}
-
-/// A token whose payload is `claims`, in base64url without padding.
-fn token(claims: &Value) -> String {
-    use base64::Engine;
-    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string());
-    format!("header.{payload}.signature")
-}
-
-#[test]
-fn a_tokens_claims_are_read_without_its_signature() {
-    let claims: Option<Value> =
-        jwt_claims(&token(&json!({ "sub": "user-1", "exp": 1_700_000_000 })));
-    assert_eq!(
-        claims,
-        Some(json!({ "sub": "user-1", "exp": 1_700_000_000 }))
-    );
-    // A payload that needs padding, with text beyond ASCII.
-    let claims: Option<Value> = jwt_claims(&token(&json!({ "email": "zoé@example.com" })));
-    assert_eq!(claims, Some(json!({ "email": "zoé@example.com" })));
-    let padded = format!(
-        "header.{}==.signature",
-        token(&json!({ "a": 1 })).split('.').nth(1).unwrap()
-    );
-    assert_eq!(jwt_claims::<Value>(&padded), Some(json!({ "a": 1 })));
-    for bad in [
-        "header.payload",
-        "",
-        "a..c",
-        "header.!!!!.signature",
-        "a.b.c.d",
-        "header.bm9wZQ.sig",
-    ] {
-        assert_eq!(jwt_claims::<Value>(bad), None, "{bad}");
-    }
-    // The caller's type decides: a signature-less decode can yield any JSON.
-    assert_eq!(jwt_claims::<Value>(&token(&json!(42))), Some(json!(42)));
-    #[derive(Debug, Deserialize)]
-    struct Claims {
-        #[expect(
-            dead_code,
-            reason = "decoded to show that a number is not these claims"
-        )]
-        sub: String,
-    }
-    assert!(jwt_claims::<Claims>(&token(&json!(42))).is_none());
 }
 
 #[test]

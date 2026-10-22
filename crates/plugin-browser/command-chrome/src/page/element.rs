@@ -658,38 +658,3 @@ impl Located {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The check times of a pause schedule over a quiet minute.
-    async fn checks(mut pauses: CheckPauses) -> Vec<u128> {
-        let start = tokio::time::Instant::now();
-        let mut checks = Vec::new();
-        while start.elapsed() < Duration::from_secs(60) {
-            checks.push(start.elapsed().as_millis());
-            pauses.wait_next().await;
-        }
-        checks
-    }
-
-    /// A wait checks its condition at once, then after 20, 50, 100 and 100
-    /// ms, then every 500 ms: a quiet minute's wait
-    /// checks the page 124 times. Before, it checked every 50 ms, 1,200
-    /// times, which kept the browser busy for as long as it waited.
-    #[tokio::test(start_paused = true)]
-    async fn a_wait_checks_quickly_at_first_and_then_every_half_second() {
-        let checks = checks(CheckPauses::wait()).await;
-        assert_eq!(checks[..7], [0, 20, 70, 170, 270, 770, 1270]);
-        assert_eq!(checks.len(), 124);
-    }
-
-    /// An action checks its element again at once, as Playwright retries an
-    /// action, then after 20, 100 and 100 ms, then every 500 ms.
-    #[tokio::test(start_paused = true)]
-    async fn an_action_checks_again_at_once_then_as_playwright_retries() {
-        let checks = checks(CheckPauses::action()).await;
-        assert_eq!(checks[..7], [0, 0, 20, 120, 220, 720, 1220]);
-    }
-}

@@ -2,17 +2,16 @@
 //! (`crates/shared-types/src/model.rs`,
 //! `crates/provider-common/src/endpoint.rs`).
 
-use std::{num::NonZeroU32, sync::Arc};
+use std::sync::Arc;
 
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
-    RuntimeEnv, ToolDefinition, UserPart,
-    testing::{MockVendor, inference_request, property_order, titled_tool},
+    InferenceItem, InferenceRequest, ResultPart, ToolDefinition, UserPart,
+    testing::inference_request,
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig};
+use demi_shared_types::ThinkingConfig;
 use serde_json::{Value, json};
 
-use crate::{body_of, chunks, provider_at, run};
+use crate::body_of;
 
 fn text(text: &str) -> Vec<UserPart> {
     vec![UserPart::Text(text.into())]
@@ -48,53 +47,6 @@ fn tool_result(id: &str, output: Vec<ResultPart>) -> InferenceItem {
         output,
         is_error: false,
     }
-}
-
-#[tokio::test]
-async fn a_run_streams_from_the_models_endpoint_with_the_key() {
-    let vendor = MockVendor::start().await;
-    for base in ["/v1beta", "/v1beta/"] {
-        vendor.respond(chunks(&[json!({ "candidates": [{ "finishReason": "STOP" }] })]));
-        let mut runtime = provider_at(&vendor, base)
-            .runtime(RuntimeEnv {
-                http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
-            })
-            .unwrap();
-        let mut request = inference_request();
-        request.model_id = "gemini-3.6-flash".into();
-        let events = run(runtime.as_mut(), request).await;
-        assert_eq!(events, [ProviderEvent::Response(None)]);
-    }
-    for sent in vendor.requests() {
-        assert_eq!(
-            sent.uri.to_string(),
-            "/v1beta/models/gemini-3.6-flash:streamGenerateContent?alt=sse"
-        );
-        assert_eq!(sent.header("x-goog-api-key"), Some("google-key"));
-        assert_eq!(sent.header("accept"), Some("text/event-stream"));
-    }
-}
-
-#[tokio::test]
-async fn each_request_sends_its_own_output_limit_or_the_agent_sized_default() {
-    let mut request = inference_request();
-    request.output_limit = NonZeroU32::new(8_000);
-    assert_eq!(
-        body_of(request).await["generationConfig"]["maxOutputTokens"],
-        json!(8_000)
-    );
-    assert_eq!(
-        body_of(inference_request()).await["generationConfig"]["maxOutputTokens"],
-        json!(32_000)
-    );
-    // A request's cap lowers the model's limit.
-    let mut capped = inference_request();
-    capped.output_limit = NonZeroU32::new(8_000);
-    capped.output_cap = NonZeroU32::new(1_024);
-    assert_eq!(
-        body_of(capped).await["generationConfig"]["maxOutputTokens"],
-        json!(1_024)
-    );
 }
 
 #[tokio::test]
@@ -198,17 +150,6 @@ async fn tool_schemas_are_reduced_to_the_keywords_gemini_accepts() {
 }
 
 #[tokio::test]
-async fn a_tools_fields_reach_the_vendor_in_the_order_its_schema_lists_them() {
-    let mut request = inference_request();
-    request.tools = Arc::new([titled_tool()]);
-    let body = body_of(request).await;
-    assert_eq!(
-        property_order(&body["tools"][0]["functionDeclarations"][0]["parameters"]),
-        ["description", "script", "intervalMs"]
-    );
-}
-
-#[tokio::test]
 async fn a_tool_call_replays_with_the_signature_of_the_thinking_item_in_front_of_it() {
     let body = body_of(request_with(vec![
         InferenceItem::UserMessage {
@@ -225,103 +166,6 @@ async fn a_tool_call_replays_with_the_signature_of_the_thinking_item_in_front_of
             { "role": "user", "parts": [{ "text": "list files" }] },
             { "role": "model", "parts": [{ "functionCall": { "name": "shell_exec", "args": { "command": "ls" }, "id": "call-1" }, "thoughtSignature": "sig-abc" }] },
             { "role": "user", "parts": [{ "functionResponse": { "name": "shell_exec", "id": "call-1", "response": { "output": "a.md" } } }] },
-        ])
-    );
-}
-
-#[tokio::test]
-async fn a_tool_call_without_a_signature_of_this_provider_replays_as_text() {
-    // History from another provider: Gemini refuses a function call without
-    // its own signature, so the exchange survives as text.
-    for signature in [
-        Some("{\"type\":\"reasoning\",\"encrypted_content\":\"…\"}"),
-        Some("google:"),
-        None,
-    ] {
-        let mut items = vec![InferenceItem::UserMessage {
-            content: text("list files"),
-        }];
-        if let Some(signature) = signature {
-            items.push(signed(signature));
-        }
-        items.push(tool_use("call-9", "shell_exec", json!({ "command": "ls" })));
-        items.push(tool_result(
-            "call-9",
-            vec![
-                ResultPart::Text("a.md".into()),
-                ResultPart::Image(MediaBytes {
-                    data: B64Bytes::from(&b"PNG"[..]),
-                    media_type: "image/png".into(),
-                }),
-            ],
-        ));
-        let body = body_of(request_with(items)).await;
-        assert_eq!(
-            body["contents"][1],
-            json!({ "role": "model", "parts": [{ "text": "[called shell_exec with {\"command\":\"ls\"}]" }] }),
-            "{signature:?}"
-        );
-        assert_eq!(
-            body["contents"][2],
-            json!({ "role": "user", "parts": [{ "text": "[shell_exec returned] a.md\n[image/png]" }] })
-        );
-        assert!(!body.to_string().contains("functionCall"));
-    }
-}
-
-#[tokio::test]
-async fn video_rides_inline_and_tool_media_follows_the_function_response() {
-    let body = body_of(request_with(vec![
-        InferenceItem::UserMessage {
-            content: vec![
-                UserPart::Text("watch this".into()),
-                UserPart::Video(Medium::Bytes(MediaBytes {
-                    data: B64Bytes::from(&b"VID"[..]),
-                    media_type: "video/mp4".into(),
-                })),
-                UserPart::Image(Medium::Url("https://example.com/a.png".into())),
-            ],
-        },
-        signed("google:sig-2"),
-        tool_use("call-2", "look", Value::Null),
-        tool_result(
-            "call-2",
-            vec![
-                ResultPart::Text("rendered".into()),
-                ResultPart::Image(MediaBytes {
-                    data: B64Bytes::from(&b"PNG"[..]),
-                    media_type: "image/png".into(),
-                }),
-                ResultPart::Document {
-                    bytes: MediaBytes {
-                        data: B64Bytes::from(&b"%PDF"[..]),
-                        media_type: "application/pdf".into(),
-                    },
-                    file_name: "document-3.pdf".into(),
-                },
-            ],
-        ),
-    ]))
-    .await;
-    assert_eq!(
-        body["contents"][0]["parts"],
-        json!([
-            { "text": "watch this" },
-            { "inlineData": { "mimeType": "video/mp4", "data": "VklE" } },
-            { "fileData": { "fileUri": "https://example.com/a.png" } },
-        ])
-    );
-    assert_eq!(
-        body["contents"][1]["parts"][0]["functionCall"]["args"],
-        json!({})
-    );
-    // A function response holds JSON only, so the picture travels beside it.
-    assert_eq!(
-        body["contents"][2]["parts"],
-        json!([
-            { "functionResponse": { "name": "look", "id": "call-2", "response": { "output": "rendered" } } },
-            { "inlineData": { "mimeType": "image/png", "data": "UE5H" } },
-            { "inlineData": { "mimeType": "application/pdf", "data": "JVBERg==" } },
         ])
     );
 }

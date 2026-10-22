@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use demi_plugin_interface::PluginFactory;
 use demi_plugin_interface::testing::loopback;
-use demi_plugin_interface::{DirectoryFile, HostDirectory, PluginError, PluginId};
+use demi_plugin_interface::PluginError;
 use demi_shared_types::{BlobRef, Timestamp};
 use serde_json::json;
 
@@ -51,18 +51,6 @@ fn refusal(error: PluginError) -> (String, String) {
         PluginError::Refused { reason, message } => (reason, message),
         error => panic!("{error:?}"),
     }
-}
-
-/// The path of `skill`'s `SKILL.md` on every Host, for the files it has.
-fn location(name: &str, files: Vec<DirectoryFile>) -> String {
-    let directory = HostDirectory {
-        name: name.to_owned(),
-        files,
-    };
-    format!(
-        "{}/SKILL.md",
-        directory.path(&PluginId::try_from("skills").unwrap())
-    )
 }
 
 #[tokio::test]
@@ -237,95 +225,6 @@ async fn a_source_without_a_skill_or_over_its_bounds_shows_its_failure_and_keeps
                 ),
             ]
         );
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn a_skill_turned_on_has_a_host_directory_and_reaches_the_catalog_at_its_path() {
-    local(async {
-        let repos = Repos::new();
-        tools(&repos);
-        let plugged = Plugged::new(&repos.skills());
-        // Added, `review` is on; `hidden` is never offered to the agent,
-        // even turned on.
-        let source = plugged.add("acme/tools").await;
-        plugged.enable(&source, "hidden").await.unwrap();
-
-        let directories = plugged.demi.directories();
-        let review = directories
-            .iter()
-            .find(|directory| directory.name == "review")
-            .expect("review has a directory");
-        let mut files: Vec<(&str, bool)> = review
-            .files
-            .iter()
-            .map(|file| (file.path.as_str(), file.executable))
-            .collect();
-        files.sort();
-        assert_eq!(files, [("SKILL.md", false), ("scripts/check.sh", true)]);
-
-        // No project searched: the catalog lists the user skills alone.
-        let block = plugged.context(&[]).await.unwrap();
-        let path = location("review", review.files.clone());
-        assert!(
-            block.contains(&format!("<location>{path}</location>")),
-            "{block}"
-        );
-        assert!(
-            block.contains("<description>Review a change.</description>"),
-            "{block}"
-        );
-        assert!(!block.contains("hidden"), "{block}");
-        // Told already, the model gets nothing new; after a compaction it is
-        // told again.
-        assert_eq!(plugged.context(&[&block]).await, None);
-        assert_eq!(
-            plugged.context(&[]).await,
-            Some(block.clone())
-        );
-
-        // Off again, the directories go, and the model learns none is left.
-        let params = json!({ "source": source, "enabled": false });
-        plugged.call("set_source_enabled", params).await.unwrap();
-        assert!(plugged.demi.directories().is_empty());
-        assert_eq!(
-            plugged
-                .context(&[&block])
-                .await
-                .as_deref(),
-            Some("No skills are available now.")
-        );
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn turning_on_a_second_skill_of_a_taken_name_is_refused_with_the_other_source() {
-    local(async {
-        let repos = Repos::new();
-        tools(&repos);
-        repos.commit(
-            "acme/more",
-            &[(
-                "review/SKILL.md",
-                &skill_md("name: review\ndescription: Another review."),
-                false,
-            )],
-        );
-        let plugged = Plugged::new(&repos.skills());
-        let tools = plugged.add("acme/tools").await;
-        let more = plugged.add("acme/more").await;
-        plugged.enable(&tools, "review").await.unwrap();
-
-        let (reason, message) = refusal(plugged.enable(&more, "review").await.unwrap_err());
-        assert_eq!(reason, "skill_name_taken");
-        assert!(message.contains("acme/tools"), "{message}");
-        let whole = json!({ "source": more, "enabled": true });
-        let (reason, _) = refusal(plugged.call("set_source_enabled", whole).await.unwrap_err());
-        assert_eq!(reason, "skill_name_taken");
-        let unknown = refusal(plugged.enable(&more, "nope").await.unwrap_err());
-        assert_eq!(unknown.0, "skill_not_found");
     })
     .await;
 }

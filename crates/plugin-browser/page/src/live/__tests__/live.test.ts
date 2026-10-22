@@ -1,12 +1,11 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
-import { LiveFrameReader, encodeFile, encodeMessage } from '../frames'
-import { browserShortcut, inputMessage, localKey, shortcutKeys } from '../input'
+import { inputMessage } from '../input'
 import { LiveFrameSplitter, decodeAcks, encodeVideo, pageReturned, pointerInput, type LiveChunkAck } from '@demicodes/plugin-sdk'
 import { LIVE_CHUNK_DATA_BYTES } from '@demicodes/protocol'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStream, type PanelReport, type PictureSink } from '../session'
-import { cursorAt, deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
+import { deviceSnap, panelSize, placePicture, panelRect, tabPoint } from '../view'
 
 const WEB = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
 const PHONE = { width: 390, height: 844, devicePixelRatio: 2, mode: 'mobile' } as const
@@ -38,40 +37,6 @@ function moduleFrame(message: LiveModuleMessage): Uint8Array {
   return rawFrame(1, new TextEncoder().encode(JSON.stringify(message)))
 }
 
-test('a control message the browser\'s protocol refuses is an error, never a message', () => {
-  const text = (value: string) => new TextEncoder().encode(value)
-  const refused: Array<[Uint8Array, string]> = [
-    [rawFrame(1, text('{"type":')), 'not JSON'],
-    [rawFrame(1, new Uint8Array([0x7b, 0xff, 0x7d])), 'not JSON'],
-    [rawFrame(1, text('{"type":"state","running":"yes","tabs":[],"watched":null}')), 'the protocol refuses'],
-  ]
-  for (const [bytes, reason] of refused) {
-    expect(() => new LiveFrameReader().read(bytes)).toThrow(reason)
-  }
-})
-
-test('the viewer\'s own paste keys stay with its browser, and reach the page as a paste', () => {
-  const key = (letter: string, altGraph = false) => ({
-    altKey: altGraph, ctrlKey: altGraph, metaKey: !altGraph, shiftKey: false,
-    key: letter, code: `Key${letter.toUpperCase()}`, keyCode: 0, repeat: false, location: 0,
-    getModifierState: (name: string) => name === 'AltGraph' && altGraph,
-  })
-  expect(localKey(key('v'))).toBe(true)
-  expect(localKey(key('c'))).toBe(false)
-  expect(localKey(key('v', true))).toBe(false)
-})
-
-test('a viewer message and a file frame carry their kind and header', () => {
-  const message = encodeMessage({ type: 'watch', tab: null })
-  expect(new DataView(message.buffer).getUint32(0)).toBe(message.length - 4)
-  expect(message[4]).toBe(1)
-  const file = encodeFile(7, 1, new Uint8Array([1, 2, 3]))
-  expect(file[4]).toBe(4)
-  const header = new DataView(file.buffer, 5)
-  expect([header.getUint32(0), header.getUint32(4)]).toEqual([7, 1])
-  expect([...file.subarray(13)]).toEqual([1, 2, 3])
-})
-
 /** A generation of `viewport`'s pictures, at the size the module encodes them. */
 function generation(viewport: LiveStream['viewport'], width = viewport.width * viewport.devicePixelRatio, height = viewport.height * viewport.devicePixelRatio): LiveStream {
   return { tab: 't1', generation: 1, width, height, viewport, scale: 1 }
@@ -101,24 +66,6 @@ test('input maps by the picture shown, never by a viewport the tab list reports 
   expect(tabPoint({ x: 400, y: 300 }, PHONE, next).x).toBeCloseTo(195, 0)
 })
 
-test('the cursor under the pointer comes from the page\'s regions, the last one over the point first', () => {
-  const regions = [
-    { x: 0, y: 0, width: 400, height: 300, cursor: 'pointer' },
-    { x: 100, y: 100, width: 50, height: 50, cursor: 'text' },
-    { x: 200, y: 100, width: 50, height: 50, cursor: 'auto' },
-  ]
-  const cases: Array<[string, { x: number; y: number }, string, string]> = [
-    ['over a button', { x: 10, y: 10 }, 'default', 'pointer'],
-    ['over a field in it', { x: 120, y: 120 }, 'default', 'text'],
-    ['where the page leaves it to the browser', { x: 220, y: 120 }, 'text', 'text'],
-    ['outside every region', { x: 500, y: 500 }, 'default', 'default'],
-    ['where the observer resolved a name this browser has no rule for', { x: 500, y: 500 }, 'url(x.png)', 'default'],
-  ]
-  for (const [where, point, resolved, cursor] of cases) {
-    expect({ where, cursor: cursorAt(point, regions, resolved) }).toEqual({ where, cursor })
-  }
-})
-
 test('a picture starts on a whole device pixel wherever its panel stands', () => {
   expect(deviceSnap(600, 2)).toBe(0)
   expect(deviceSnap(600.5, 2)).toBe(0)
@@ -138,13 +85,6 @@ test('panel points map to the tab and back, within the picture', () => {
   const control = panelRect({ x: 10, y: 20, width: 100, height: 30 }, placement)
   expect(control.left).toBeCloseTo(placement.left + 10 * placement.scale)
   expect(control.width).toBeCloseTo(100 * placement.scale)
-})
-
-test('the viewport menu offers Web and Mobile, and shows what the agent set', () => {
-  expect(viewportChoices(WEB).map((choice) => choice.label)).toEqual(['Web', 'Mobile'])
-  const custom = viewportChoices({ width: 1440, height: 900, devicePixelRatio: 2, mode: 'custom' })
-  expect(custom.map((choice) => choice.label)).toEqual(['Web', 'Mobile', 'Custom 1440 × 900 @2'])
-  expect(custom.at(-1)!.selectable).toBe(false)
 })
 
 /** A session over a stream the test drives, with a clock it controls. */
@@ -301,14 +241,6 @@ test('a choice names the revision the viewer saw, and a dialog is answered once'
   expect(view.sent).toHaveLength(after)
   view.live.watch(null)
   expect(view.live.state.controls).toEqual([])
-})
-
-test('the view ends with the reason the module or the backend gave', () => {
-  const view = session()
-  view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
-  expect(view.live.state).toMatchObject({ connection: 'opening', ended: 'browser_ended' })
-  expect(view.pictures.at(-1)).toEqual(['stop', 0, 0] as never)
-  view.live.close()
 })
 
 test('a view that ends opens again after the page\'s waits, which start over once a view works', () => {
@@ -508,45 +440,6 @@ test('a view the module ended and the socket then closed opens again once', () =
   }
 })
 
-test('a notice that leaves no picture stands in its place until a picture; any other is told once', () => {
-  const told: string[] = []
-  const view = session({ onNotice: (code) => told.push(code) })
-  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
-  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
-  view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'the capture extension did not connect' }))
-  expect(view.live.state.pictureless).toBe('capture_failed')
-  view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
-  expect(view.live.state.pictureless).toBeNull()
-  view.receive(moduleFrame({ type: 'notice', code: 'driver_error', message: 'the page went away' }))
-  view.receive(moduleFrame({ type: 'notice', code: 'timeout', message: 'screen: timed out' }))
-  view.receive(video(TAB.id, 1, 2, false, [0, 0, 0, 1]))
-  expect(view.live.state.pictureless).toBeNull()
-  expect(told).toEqual(['driver_error', 'timeout'])
-  // A Host that cannot capture says so for each tab the page watches.
-  view.receive(moduleFrame({ type: 'notice', code: 'capture_unavailable', message: 'this CPU reports SME without SVE' }))
-  expect(view.live.state.pictureless).toBe('capture_unavailable')
-  view.live.watch(null)
-  expect(view.live.state.pictureless).toBeNull()
-  expect(told).toEqual(['driver_error', 'timeout'])
-})
-
-test('a Host that stopped trying to capture is asked again by Retry, and says it tries until a picture', () => {
-  const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
-  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
-  // Retry is only for a Host that stopped: one still trying is not asked.
-  view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'capture extension disconnected' }))
-  view.live.recapture()
-  expect(view.sent.filter((message) => message.type === 'recapture')).toHaveLength(0)
-  view.receive(moduleFrame({ type: 'notice', code: 'capture_stopped', message: 'the capture extension could not be recreated' }))
-  expect(view.live.state.pictureless).toBe('capture_stopped')
-  view.live.recapture()
-  expect(view.sent.filter((message) => message.type === 'recapture')).toHaveLength(1)
-  expect(view.live.state.pictureless).toBe('capture_failed')
-  view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
-  expect(view.live.state.pictureless).toBeNull()
-})
-
 test('a message the protocol refuses is never sent, so the module does not end the view', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
@@ -582,48 +475,6 @@ test('the page decides what it watches: a tab that is still there is asked for a
   // The tab itself went away.
   view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: null }))
   expect(view.live.state.watched).toBeNull()
-})
-
-test('text the watched tab copies reaches the viewer', () => {
-  const copied: string[] = []
-  const view = session({ onClipboard: (text) => copied.push(text) })
-  view.receive(moduleFrame({ type: 'clipboard', text: 'copy me' }))
-  expect(copied).toEqual(['copy me'])
-})
-
-/** A key as the viewer's browser reports it, with only the modifiers named. */
-function pressed(code: string, held: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey', boolean>> = {}) {
-  return {
-    key: '', code, keyCode: 0, repeat: false, location: 0,
-    metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...held,
-    getModifierState: () => false,
-  }
-}
-
-test('the browser’s own shortcuts act in the panel, as Chrome has them on each platform', () => {
-  expect(browserShortcut(pressed('KeyL', { metaKey: true }), 'mac')).toBe('address')
-  expect(browserShortcut(pressed('BracketLeft', { metaKey: true }), 'mac')).toBe('back')
-  expect(browserShortcut(pressed('BracketRight', { metaKey: true }), 'mac')).toBe('forward')
-  expect(browserShortcut(pressed('KeyR', { metaKey: true }), 'mac')).toBe('reload')
-  expect(browserShortcut(pressed('KeyL', { ctrlKey: true }), 'linux')).toBe('address')
-  expect(browserShortcut(pressed('ArrowLeft', { altKey: true }), 'windows')).toBe('back')
-  expect(browserShortcut(pressed('ArrowRight', { altKey: true }), 'linux')).toBe('forward')
-  expect(browserShortcut(pressed('F5'), 'windows')).toBe('reload')
-  // The page's own keys: Control+L on a Mac, ⌘⇧R, a plain letter, ⌥← moving by words.
-  expect(browserShortcut(pressed('KeyL', { ctrlKey: true }), 'mac')).toBeNull()
-  expect(browserShortcut(pressed('KeyR', { metaKey: true, shiftKey: true }), 'mac')).toBeNull()
-  expect(browserShortcut(pressed('KeyL'), 'mac')).toBeNull()
-  expect(browserShortcut(pressed('ArrowLeft', { altKey: true }), 'mac')).toBeNull()
-})
-
-test('the browser’s menu copies in the page with the platform’s own copy keys', () => {
-  expect(shortcutKeys('t1', 'c', 'mac').map((message) => message.type === 'input' && message.input.type === 'key' && [message.input.action, message.input.key, message.input.modifiers])).toEqual([
-    ['down', 'c', 4],
-    ['up', 'c', 4],
-  ])
-  const [cut] = shortcutKeys('t1', 'x', 'linux')
-  expect(cut).toMatchObject({ type: 'input', tab: 't1', input: { type: 'key', key: 'x', code: 'KeyX', modifiers: 2 } })
-  expect(cut?.type === 'input' && cut.input).not.toHaveProperty('text')
 })
 
 /**

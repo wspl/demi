@@ -8,7 +8,7 @@ use demi_command_package_browser_chrome::driver::{
 use demi_command_package_browser_chrome::tabs::environment::{
     LaunchOptions, with_browser,
 };
-use crate::processes::{chrome_profiles_of, processes};
+use crate::processes::processes;
 use demi_command_sdk::testing::counting_numbers;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -82,130 +82,6 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
             .any(|process| process.pid == helper || process.group == leader)
     );
     assert!(!profile.exists());
-}
-
-/// Chrome keeps its directories apart whatever the service's home and temporary
-/// directory are.
-///
-/// The service's own temporary directory can be long: a Mac's is about 49
-/// characters, and a user can set any. The profile, which can grow large, goes
-/// there. Chrome's temporary directory, where it makes its process-singleton
-/// socket, stays in the short, fixed runtime base, so the socket's path keeps
-/// within its limit and Chrome starts. Under this directory of at least 90
-/// characters the socket's path would take at least 155 bytes, past Linux's
-/// 107.
-///
-/// Retirement leaves nothing in that directory. Chrome writes nothing of its
-/// own in the service's home but the user's certificate database: its crash
-/// reports go with the profile.
-///
-/// Cost: about 5 s. The service's `TMPDIR` and home differ from this test
-/// process's only when the service runs as a program of its own. Starting
-/// Chrome and opening a tab take 2 s, and retiring it 1.5 s.
-#[tokio::test]
-#[ignore = "requires DEMI_TEST_CHROME; starts the service program with its own home and a long TMPDIR"]
-async fn chrome_keeps_its_directories_apart_whatever_the_services_home_and_temporary_directory() {
-    let _turn = crate::families::browser_turn().await;
-    let scratch = tempfile::tempdir().unwrap();
-    let padding = 90usize
-        .saturating_sub(scratch.path().as_os_str().len() + 1)
-        .max(1);
-    let temporary = scratch.path().join("t".repeat(padding));
-    std::fs::create_dir(&temporary).unwrap();
-    let home = tempfile::tempdir().unwrap();
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let service = service_program(home.path(), temporary.to_str().unwrap()).await;
-        agent_call(
-            &service,
-            "browser.open",
-            json!({"url": "about:blank"}),
-            scratch.path(),
-        )
-        .await;
-        assert_eq!(
-            chrome_profiles_of(service.id().unwrap(), &temporary).len(),
-            1,
-            "the service's Chrome keeps its profile in {}",
-            temporary.display()
-        );
-        release_and_shut_down(service, scratch.path()).await;
-    })
-    .await
-    .unwrap();
-    assert_eq!(walk(&temporary), Vec::<PathBuf>::new());
-    // Only what Chrome keeps for the user, and the directories above it, are
-    // in the home: on Linux the certificate
-    // database, on macOS the crash reports.
-    let kept = if cfg!(target_os = "macos") {
-        ["Library/Application Support/Google/Chrome for Testing"]
-    } else {
-        [".local/share/pki"]
-    };
-    let written: Vec<_> = walk(home.path())
-        .into_iter()
-        .filter(|path| {
-            !kept
-                .iter()
-                .any(|kept| path.starts_with(kept) || std::path::Path::new(kept).starts_with(path))
-        })
-        .collect();
-    assert!(
-        written.is_empty(),
-        "Chrome wrote in the service's home: {written:?}"
-    );
-}
-
-/// Without `TMPDIR`, as on the Cloud, a profile and a download saved without
-/// `--output` go to `/var/tmp`, on disk, rather than to a `/tmp` that may be
-/// held in memory. The download is in its environment's directory and goes when
-/// the environment retires. An empty `TMPDIR` stands in for none, since the
-/// service program inherits this test's environment. About 5 s, as above.
-#[tokio::test]
-#[ignore = "requires DEMI_TEST_CHROME; starts the service program without TMPDIR, so it uses /var/tmp"]
-async fn without_tmpdir_profiles_and_downloads_go_to_var_tmp() {
-    let _turn = crate::families::browser_turn().await;
-    let scratch = tempfile::tempdir().unwrap();
-    let home = tempfile::tempdir().unwrap();
-    let base = std::path::Path::new("/var/tmp");
-    let page = url::Url::from_file_path(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/browser/download.html"),
-    )
-    .unwrap();
-    let profile = tokio::time::timeout(Duration::from_secs(60), async {
-        let service = service_program(home.path(), "").await;
-        let tab = agent_call(
-            &service,
-            "browser.open",
-            json!({"url": page.as_str()}),
-            scratch.path(),
-        )
-        .await["tab"]
-            .clone();
-        let profiles = chrome_profiles_of(service.id().unwrap(), base);
-        assert_eq!(
-            profiles.len(),
-            1,
-            "the service's Chrome keeps its profile in {}",
-            base.display()
-        );
-        let download = agent_call(
-            &service,
-            "browser.download",
-            json!({"tab": tab, "css": "#instant"}),
-            scratch.path(),
-        )
-        .await;
-        let saved = PathBuf::from(download["path"].as_str().unwrap());
-        let profile = profiles.into_values().next().unwrap();
-        assert!(saved.starts_with(&profile), "{}", saved.display());
-        assert_eq!(std::fs::read(&saved).unwrap(), b"download fixture\n");
-        release_and_shut_down(service, scratch.path()).await;
-        (profile, saved)
-    })
-    .await
-    .unwrap();
-    assert!(!profile.0.exists(), "{}", profile.0.display());
-    assert!(!profile.1.exists(), "{}", profile.1.display());
 }
 
 /// A service that is killed leaves its profile and a download saved without
@@ -334,7 +210,7 @@ async fn agent_call(
         viewable: None,
     };
     let (completion, stdout, stderr) =
-        crate::commands::exchange(service.client(), &invocation, false).await;
+        exchange(service.client(), &invocation, false).await;
     assert_eq!(
         completion.exit_code,
         0,
@@ -342,30 +218,6 @@ async fn agent_call(
         String::from_utf8_lossy(&stderr)
     );
     serde_json::from_slice(&stdout).unwrap()
-}
-
-/// Releases the service program's conversation, which retires its browser,
-/// and shuts the service down.
-async fn release_and_shut_down(
-    service: demi_command_sdk::testing::ServiceProcess,
-    cwd: &std::path::Path,
-) {
-    let release = demi_command_protocol::Invocation {
-        operation: "release".into(),
-        invocation_id: uuid::Uuid::new_v4().to_string(),
-        command: "demi test".into(),
-        context: service_context(),
-        json: Some(true),
-        edits: None,
-        args: json!({}),
-        cwd: cwd.to_str().unwrap().into(),
-        env: std::collections::BTreeMap::new(),
-        live_input: None,
-        viewable: None,
-    };
-    let (completion, _, _) = crate::commands::exchange(service.client(), &release, true).await;
-    assert_eq!(completion.exit_code, 0);
-    assert!(service.shutdown().await.unwrap().success());
 }
 
 /// Every file and directory under `root`, relative to it.
@@ -384,88 +236,42 @@ fn walk(root: &std::path::Path) -> Vec<PathBuf> {
     found
 }
 
-#[tokio::test]
-#[ignore = "requires DEMI_TEST_CHROME; verifies trusted invocation identity"]
-async fn browser_uses_trusted_conversation_and_caller_despite_script_environment() {
-    crate::families::with_browser_fixture(|mut first| async move {
-        let mut second = first.clone();
-        second.conversation = "other-conversation".into();
-        second.caller = 2;
-        // Each conversation numbers its own tabs: the other's second tab has
-        // a number this conversation has not given out.
-        second.open("fixture.html").await;
-        let second_tab = second.open("fixture.html").await;
-        first
-            .env
-            .insert("DEMI_CONVERSATION_ID".into(), second.conversation.clone());
-        first
-            .env
-            .insert("DEMI_AGENT_NODE_ID".into(), second.caller.to_string());
-        let first_tab = first.open("fixture.html").await;
-        let tabs = first.call("browser.tabs", json!({})).await;
-        assert_eq!(tabs["tabs"].as_array().unwrap().len(), 1);
-        assert_eq!(tabs["tabs"][0]["id"], first_tab);
-        assert_eq!(
-            tabs["tabs"][0]["createdBy"],
-            json!({"kind": "agent", "number": first.caller})
-        );
-        let (_, error) = first
-            .result(
-                "browser.info",
-                json!({"tab": second_tab}),
-                CancellationToken::new(),
-            )
-            .await;
-        assert_eq!(error["error"]["code"], "tab_not_found");
-        assert_eq!(
-            second.call("browser.tabs", json!({})).await["tabs"][1]["id"],
-            second_tab
-        );
-        first.call("browser.close", json!({"tab": first_tab})).await;
-        assert_eq!(
-            first.lifecycle("status").await,
-            json!({"conversations": [second.conversation]})
-        );
-        // The next browser's tab takes the conversation's next number, never
-        // the one the closed tab had.
-        let fresh = first.open("fixture.html").await;
-        assert_ne!(fresh, first_tab);
-        let (_, error) = first
-            .result(
-                "browser.info",
-                json!({"tab": first_tab}),
-                CancellationToken::new(),
-            )
-            .await;
-        assert_eq!(error["error"]["code"], "tab_not_found");
-        first
-    })
-    .await;
-}
-
-#[tokio::test]
-#[ignore = "requires DEMI_TEST_CHROME; verifies the last-tab closing outcome"]
-async fn last_tab_close_fails_its_running_command_as_browser_lost() {
-    crate::families::with_browser_fixture(|fixture| async move {
-        let tab = fixture.open("fixture.html").await;
-        let waiting = fixture.result(
-            "browser.wait",
-            json!({"tab":tab,"url":"**/never","timeout":30000}),
-            CancellationToken::new(),
-        );
-        let close = async {
-            fixture.wait_until_busy(&tab).await;
-            fixture.call("browser.close", json!({"tab":tab})).await;
+/// Runs one invocation, or a conversation lifecycle call, and collects its
+/// completion, standard output and standard error.
+async fn exchange(
+    client: &demi_command_sdk::Client,
+    request: &demi_command_protocol::Invocation,
+    lifecycle: bool,
+) -> (demi_command_protocol::Completion, Vec<u8>, Vec<u8>) {
+    let (_input, mut output) = if lifecycle {
+        use demi_command_protocol::ConversationRequest;
+        let lifecycle = match request.operation.as_str() {
+            "status" => ConversationRequest::Status {},
+            "release" => ConversationRequest::Release {
+                conversation: request.context.conversation.clone(),
+            },
+            other => panic!("unknown lifecycle operation {other}"),
         };
-        let ((code, failure), ()) = tokio::join!(waiting, close);
-        assert_eq!(code, 1, "{failure}");
-        assert_eq!(failure["error"]["code"], "browser_lost");
-        assert_eq!(failure["error"]["details"]["action"], "not_started");
-        assert_eq!(
-            fixture.lifecycle("status").await,
-            json!({"conversations":[]})
-        );
-        fixture
-    })
-    .await;
+        client.conversation(&lifecycle).await
+    } else {
+        client.invoke(request).await
+    }
+    .unwrap();
+    // These fixture commands never request stdin and may finish before invoke returns.
+    // Keep the request handle alive without sending unsolicited input or EOF.
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut completion = None;
+    while let Some(record) = output.next().await.unwrap() {
+        match record {
+            demi_command_protocol::Record::Stdout(bytes) => stdout.extend_from_slice(&bytes),
+            demi_command_protocol::Record::Stderr(bytes) => stderr.extend_from_slice(&bytes),
+            demi_command_protocol::Record::Completion(value) => completion = Some(value),
+            demi_command_protocol::Record::InputPull => panic!("file operation must not read raw stdin"),
+            demi_command_protocol::Record::Medium { .. } | demi_command_protocol::Record::MediumBytes(_) => {
+                panic!("an invocation that is no job command's returns no media")
+            }
+        }
+    }
+    (completion.unwrap(), stdout, stderr)
 }

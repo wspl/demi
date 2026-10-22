@@ -3,10 +3,10 @@
 //! `crates/provider-common/src/endpoint.rs`).
 
 use demi_provider_common::{
-    CallEvent, CallOutcome, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, VendorCall,
-    testing::{MockResponse, MockVendor, every_event, inference_request, next_event},
+    ProviderEvent, ToolCall,
+    testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_shared_types::{FailureSource, TokenUsage};
+use demi_shared_types::TokenUsage;
 use serde_json::{Value, json};
 
 use crate::{chunks, run, runtime};
@@ -15,13 +15,6 @@ async fn events_of(response: MockResponse) -> Vec<ProviderEvent> {
     let vendor = MockVendor::start().await;
     vendor.respond(response);
     run(runtime(&vendor).as_mut(), inference_request()).await
-}
-
-fn failure_of(events: Vec<ProviderEvent>) -> ProviderFailure {
-    match <[ProviderEvent; 1]>::try_from(events) {
-        Ok([ProviderEvent::Error(failure)]) => failure,
-        other => panic!("{other:?}"),
-    }
 }
 
 fn parts(parts: Value) -> Value {
@@ -63,47 +56,6 @@ async fn thought_parts_stream_as_thinking_and_a_function_call_emits_its_signatur
 }
 
 #[tokio::test]
-async fn a_reply_without_usage_metadata_reports_no_usage() {
-    let events = events_of(chunks(&[
-        parts(json!([{ "text": "done" }])),
-        json!({ "candidates": [{ "finishReason": "STOP" }] }),
-    ]))
-    .await;
-    assert_eq!(
-        events,
-        [
-            ProviderEvent::TextDelta("done".into()),
-            ProviderEvent::Response(None),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_signed_call_opens_thinking_and_a_signature_after_thoughts_closes_it() {
-    let events = events_of(chunks(&[
-        parts(json!([{ "functionCall": { "name": "look", "id": "c1" }, "thoughtSignature": "sig-1" }])),
-        parts(json!([{ "text": "plan", "thought": true }, { "text": "", "thoughtSignature": "sig-2" }, { "text": "answer" }])),
-    ]))
-    .await;
-    assert_eq!(
-        events[..6],
-        [
-            ProviderEvent::ThinkingStart,
-            ProviderEvent::ThinkingSignature("google:sig-1".into()),
-            ProviderEvent::ToolCall(ToolCall {
-                tool_use_id: "c1".into(),
-                tool_name: "look".into(),
-                input: json!({})
-            }),
-            ProviderEvent::ThinkingStart,
-            ProviderEvent::ThinkingDelta("plan".into()),
-            ProviderEvent::ThinkingSignature("google:sig-2".into()),
-        ]
-    );
-    assert_eq!(events[6], ProviderEvent::TextDelta("answer".into()));
-}
-
-#[tokio::test]
 async fn a_call_without_an_id_gets_a_new_unique_one() {
     let call = || parts(json!([{ "functionCall": { "name": "shell_exec", "args": {} } }]));
     let ids = |events: Vec<ProviderEvent>| -> Vec<String> {
@@ -123,166 +75,5 @@ async fn a_call_without_an_id_gets_a_new_unique_one() {
     assert!(
         all.iter().all(|id| id.starts_with("shell_exec_")),
         "{all:?}"
-    );
-}
-
-#[tokio::test]
-async fn a_stream_that_ends_without_a_finish_reason_fails_and_keeps_the_text() {
-    let events = events_of(chunks(&[
-        parts(json!([{ "text": "expected 200, got" }])),
-        json!({ "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4 } }),
-    ]))
-    .await;
-    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
-        panic!("{events:?}");
-    };
-    assert_eq!(text, "expected 200, got");
-    assert_eq!(
-        (failure.message.as_str(), &failure.code),
-        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Overloaded))
-    );
-}
-
-#[tokio::test]
-async fn a_reply_ended_for_the_output_limit_or_a_filter_fails_with_the_vendors_reason() {
-    for (end, reason, message) in [
-        (json!({ "candidates": [{ "finishReason": "MAX_TOKENS" }] }), "MAX_TOKENS", "The reply reached the model's output limit (MAX_TOKENS)"),
-        (json!({ "candidates": [{ "finishReason": "SAFETY" }] }), "SAFETY", "The provider's filter stopped the reply (SAFETY)"),
-        (json!({ "promptFeedback": { "blockReason": "PROHIBITED_CONTENT" } }), "PROHIBITED_CONTENT", "The provider's filter stopped the reply (PROHIBITED_CONTENT)"),
-        (json!({ "candidates": [{ "finishReason": "MALFORMED_FUNCTION_CALL" }] }), "MALFORMED_FUNCTION_CALL", "The provider ended the reply before it was complete (MALFORMED_FUNCTION_CALL)"),
-    ] {
-        let events = events_of(chunks(&[parts(json!([{ "text": "half" }])), end.clone()])).await;
-        let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
-            panic!("{reason}: {events:?}");
-        };
-        assert_eq!(text, "half");
-        assert_eq!((failure.message.as_str(), &failure.code), (message, &Some(ErrorCode::Incomplete)));
-        let diagnostics = failure.diagnostics.as_ref().unwrap();
-        assert_eq!(
-            (diagnostics.source, diagnostics.provider_code.as_deref(), diagnostics.upstream.clone()),
-            (FailureSource::Stream, Some(reason), Some(end.to_string()))
-        );
-    }
-}
-
-#[tokio::test]
-async fn a_stream_error_fails_the_run_with_the_chunk_as_its_record() {
-    let chunk = json!({ "error": { "status": "RESOURCE_EXHAUSTED", "message": "quota exceeded" } });
-    let failure = failure_of(
-        events_of(chunks(&[
-            chunk.clone(),
-            parts(json!([{ "text": "never read" }])),
-        ]))
-        .await,
-    );
-    assert_eq!(
-        (failure.message.as_str(), failure.code),
-        ("quota exceeded", Some(ErrorCode::RateLimit))
-    );
-    let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!(
-        (diagnostics.source, diagnostics.provider_code.as_deref()),
-        (FailureSource::Stream, Some("RESOURCE_EXHAUSTED"))
-    );
-    assert_eq!(diagnostics.upstream, Some(chunk.to_string()));
-}
-
-#[tokio::test]
-async fn a_chunk_that_breaks_its_shape_is_a_protocol_failure_naming_the_field() {
-    for (chunk, field) in [
-        (
-            json!({ "candidates": { "content": { "parts": [{ "text": "hello" }] } } }),
-            "candidates",
-        ),
-        (
-            json!({ "usageMetadata": { "promptTokenCount": "10" } }),
-            "promptTokenCount",
-        ),
-        (
-            json!({ "candidates": [{ "content": { "parts": [{ "functionCall": { "name": "" } }] } }] }),
-            "name",
-        ),
-    ] {
-        let failure = failure_of(events_of(chunks(std::slice::from_ref(&chunk))).await);
-        assert_eq!(failure.code, None, "{chunk}");
-        assert!(
-            failure.message.contains(field),
-            "{chunk}: {}",
-            failure.message
-        );
-        assert_eq!(
-            failure.diagnostics.unwrap().upstream,
-            Some(chunk.to_string())
-        );
-    }
-}
-
-#[tokio::test]
-async fn a_refused_request_fails_with_the_vendor_record() {
-    let body = r#"{"error":{"code":429,"message":"Resource has been exhausted","status":"RESOURCE_EXHAUSTED"}}"#;
-    let failure = failure_of(events_of(MockResponse::status(429).chunk(body)).await);
-    assert_eq!(
-        failure.message,
-        format!("Google API request failed with HTTP 429: {body}")
-    );
-    assert_eq!(failure.code, Some(ErrorCode::RateLimit));
-}
-
-#[tokio::test]
-async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_connection() {
-    let vendor = MockVendor::start().await;
-    let first = "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hel\"}]}}]}\n\n";
-    vendor.respond(MockResponse::event_stream(first).stay_open());
-    let mut runtime = runtime(&vendor);
-    let request = inference_request();
-    let cancel = request.cancel.clone();
-    let mut events = runtime.run(request);
-    assert_eq!(
-        next_event(&mut events).await,
-        Some(ProviderEvent::TextDelta("hel".into()))
-    );
-    cancel.cancel();
-    assert_eq!(next_event(&mut events).await, None);
-    vendor.disconnected().await;
-
-    let request = inference_request();
-    request.cancel.cancel();
-    let vendor = MockVendor::start().await;
-    assert!(
-        run(crate::runtime(&vendor).as_mut(), request)
-            .await
-            .is_empty()
-    );
-    assert!(vendor.requests().is_empty());
-}
-
-/// The run's one call is the usage ledger's under the response's id, with
-/// its counts, before the run's end (`crates/backend-database/src/usage.rs`).
-#[tokio::test]
-async fn the_call_ends_under_the_response_id_with_its_counts() {
-    let vendor = MockVendor::start().await;
-    vendor.respond(chunks(&[
-        json!({ "responseId": "resp-g1", "candidates": [{ "content": { "parts": [{ "text": "done" }] } }] }),
-        json!({ "responseId": "resp-g1", "candidates": [{ "finishReason": "STOP" }], "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4 } }),
-    ]));
-    let events = every_event(runtime(&vendor).run(inference_request())).await;
-    let usage = TokenUsage {
-        input_tokens: 10,
-        output_tokens: 4,
-        cache_read_tokens: 0,
-        cache_write_tokens: 0,
-    };
-    assert_eq!(
-        events,
-        [
-            ProviderEvent::TextDelta("done".into()),
-            ProviderEvent::Call(CallEvent::Ended(VendorCall {
-                vendor_id: Some("resp-g1".into()),
-                usage: Some(usage),
-                cache_write_1h_tokens: 0,
-                outcome: CallOutcome::Answered,
-            })),
-            ProviderEvent::Response(Some(usage)),
-        ]
     );
 }

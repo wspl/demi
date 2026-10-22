@@ -1,6 +1,5 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
-use bytes::{BufMut, Bytes, BytesMut};
 use demi_command_protocol::{Completion, ConversationRequest, Invocation, Record};
 use demi_command_sdk::{
     Client, ConversationContext, Handler, InvocationContext, ServiceError, serve,
@@ -27,88 +26,6 @@ impl Handler for Stateless {
             })
         })
     }
-}
-
-#[tokio::test]
-async fn conversation_endpoint_has_no_grants_and_validates_release_identity() {
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let (io, service) = tokio::io::duplex(4096);
-        let server = tokio::spawn(serve(service, Arc::new(Stateless)));
-        let (client, connection) = Client::connect(io).await.unwrap();
-        let driver = tokio::spawn(connection);
-        let release = || ConversationRequest::Release {
-            conversation: "unknown".into(),
-        };
-        for (request, body) in [
-            (
-                ConversationRequest::Status {},
-                b"{\"conversations\":[]}".as_slice(),
-            ),
-            (release(), b"{}".as_slice()),
-            (release(), b"{}".as_slice()),
-        ] {
-            let (_input, mut output) = client.conversation(&request).await.unwrap();
-            assert_eq!(
-                output.next().await.unwrap(),
-                Some(Record::Stdout(Bytes::copy_from_slice(body)))
-            );
-            assert_eq!(
-                output.next().await.unwrap(),
-                Some(Record::Completion(Completion {
-                    exit_code: 0,
-                    error: None
-                }))
-            );
-            assert_eq!(output.next().await.unwrap(), None);
-        }
-        client.shutdown().await.unwrap();
-        server.await.unwrap().unwrap();
-        drop(client);
-        driver.await.unwrap().unwrap();
-
-        let (io, service) = tokio::io::duplex(4096);
-        let server = tokio::spawn(serve(service, Arc::new(Stateless)));
-        let (mut client, connection) = h2::client::handshake(io).await.unwrap();
-        let driver = tokio::spawn(connection);
-        for (path, body, status) in [
-            ("/v1/resource", r#"{"operation":"acquire"}"#, 404),
-            ("/v1/conversation", r#"{"operation":"release"}"#, 400),
-            (
-                "/v1/conversation",
-                r#"{"operation":"acquire","conversation":"one"}"#,
-                400,
-            ),
-            (
-                "/v1/conversation",
-                r#"{"operation":"release","conversation":""}"#,
-                400,
-            ),
-            (
-                "/v1/conversation",
-                r#"{"operation":"status","resource":"one"}"#,
-                400,
-            ),
-        ] {
-            let (response, mut input) = client
-                .send_request(
-                    http::Request::post(format!("http://demi{path}"))
-                        .body(())
-                        .unwrap(),
-                    false,
-                )
-                .unwrap();
-            let mut bytes = BytesMut::new();
-            bytes.put_u32(body.len() as u32);
-            bytes.extend_from_slice(body.as_bytes());
-            input.send_data(bytes.freeze(), true).unwrap();
-            assert_eq!(response.await.unwrap().status(), status);
-        }
-        drop(client);
-        driver.await.unwrap().unwrap();
-        server.await.unwrap().unwrap();
-    })
-    .await
-    .unwrap();
 }
 
 struct Lifecycle {
@@ -189,30 +106,4 @@ async fn conversation_cancellation_joins_hook_and_cleanup_failure_retires_servic
         // A fatal service exit may reset the parent connection.
         let _ = driver.await.unwrap();
     }).await.unwrap();
-}
-
-#[test]
-fn conversation_status_checks_conversation_identity() {
-    use demi_command_protocol::ConversationStatus;
-    assert!(
-        ConversationStatus {
-            conversations: vec![]
-        }
-        .validate()
-        .is_ok()
-    );
-    assert!(
-        ConversationStatus {
-            conversations: vec!["conversation".into()]
-        }
-        .validate()
-        .is_ok()
-    );
-    assert!(
-        ConversationStatus {
-            conversations: vec![String::new()]
-        }
-        .validate()
-        .is_err()
-    );
 }

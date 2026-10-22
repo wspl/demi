@@ -50,6 +50,4 @@ mod query;
 pub mod screenshot;
 mod select;
 mod selection;
-#[cfg(feature = "testing")]
-pub mod testing;
 pub mod upload;

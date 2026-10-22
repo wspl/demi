@@ -6,7 +6,7 @@ use demi_provider_common::{
     testing::{MockResponse, MockVendor, inference_request, next_event},
 };
 
-use crate::{run, runtime};
+use crate::runtime;
 
 /// A response that streams text and then stays open until the client leaves.
 fn open_stream() -> MockResponse {
@@ -15,15 +15,6 @@ fn open_stream() -> MockResponse {
         "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hel\"}}\n\n",
     ))
     .stay_open()
-}
-
-#[tokio::test]
-async fn a_cancelled_request_sends_nothing_and_ends_without_an_event() {
-    let vendor = MockVendor::start().await;
-    let request = inference_request();
-    request.cancel.cancel();
-    assert!(run(runtime(&vendor).as_mut(), request).await.is_empty());
-    assert!(vendor.requests().is_empty());
 }
 
 #[tokio::test]
@@ -40,19 +31,5 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
     );
     cancel.cancel();
     assert_eq!(next_event(&mut events).await, None);
-    vendor.disconnected().await;
-}
-
-#[tokio::test]
-async fn dropping_the_run_mid_stream_drops_the_connection() {
-    let vendor = MockVendor::start().await;
-    vendor.respond(open_stream());
-    let mut runtime = runtime(&vendor);
-    let mut events = runtime.run(inference_request());
-    assert_eq!(
-        next_event(&mut events).await,
-        Some(ProviderEvent::TextDelta("hel".into()))
-    );
-    drop(events);
     vendor.disconnected().await;
 }

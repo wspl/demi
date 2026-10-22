@@ -15,9 +15,8 @@ bench = false
 
 [features]
 # The layers' test support, for the Chrome tests: the capture extension's id
-# (`driver::testing`), Chrome's own view of its targets (`tabs`), driving a
-# page by CSS selector (`page::testing`) and evaluation in a target no
-# command addresses (`cdp::testing`).
+# (`driver::testing`), Chrome's own view of its targets (`tabs`) and evaluation
+# in a target no command addresses (`cdp::testing`).
 testing = []
 
 [dependencies]

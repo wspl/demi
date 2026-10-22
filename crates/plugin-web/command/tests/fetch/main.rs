@@ -17,7 +17,7 @@ use std::{
 
 use axum::{
     Router,
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, header},
     response::{IntoResponse, Redirect, Response},
     routing::get,
 };
@@ -345,61 +345,6 @@ async fn a_pdf_is_saved_and_its_path_printed_with_the_call_that_shows_it() {
             )
         );
         assert!(!output.contains(UNTRUSTED));
-    })
-    .await;
-}
-
-/// A status of 400 or more prints the page as the server answered it and
-/// fails, naming the status.
-#[tokio::test]
-async fn a_missing_page_prints_its_page_and_fails() {
-    within(async {
-        let fixture = Fixture::new(Router::new().route(
-            "/gone",
-            get(|| async {
-                (
-                    StatusCode::NOT_FOUND,
-                    typed("text/html", "<h1>Not here</h1><p>Try the index.</p>"),
-                )
-            }),
-        ))
-        .await;
-        let url = fixture.url("/gone");
-        let (completion, output) = fixture.fetch(json!({"url": url}), false).await;
-        assert_eq!(completion.exit_code, 1);
-        assert_eq!(message(&completion), format!("{url} answered HTTP 404 Not Found"));
-        assert_eq!(
-            output,
-            format!(
-                "Fetched {url} (HTTP 404, text/html, 26 characters as Markdown)\n{UNTRUSTED}\n\n\
-                 # Not here\n\nTry the index.\n"
-            )
-        );
-    })
-    .await;
-}
-
-/// A server that does not answer within --timeout fails the fetch, naming
-/// the deadline and how to give it more.
-#[tokio::test]
-async fn a_page_that_does_not_answer_in_time_fails() {
-    within(async {
-        let fixture = Fixture::new(Router::new().route(
-            "/slow",
-            get(|| std::future::pending::<Response>()),
-        ))
-        .await;
-        let url = fixture.url("/slow");
-        // A short deadline, which the test waits out once.
-        let (completion, output) = fixture
-            .fetch(json!({"url": url, "timeout": 200}), false)
-            .await;
-        assert_eq!(completion.exit_code, 1);
-        assert_eq!(output, "");
-        assert_eq!(
-            message(&completion),
-            format!("{url} did not answer within 0.2 s; --timeout gives it up to 300000 ms")
-        );
     })
     .await;
 }

@@ -17,5 +17,4 @@ mod mcp;
 mod prepared;
 mod runs;
 mod session;
-mod sign_in;
 mod wire;

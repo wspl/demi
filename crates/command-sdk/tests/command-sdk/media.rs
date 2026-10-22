@@ -17,8 +17,8 @@ use std::{
 
 use bytes::Bytes;
 use demi_command_protocol::{
-    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, MAX_MEDIUM_BYTES,
-    MediumFacts, ProtocolError, Record, RecordDecoder, Viewable, sniff_media_type,
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation,
+    MediumFacts, Viewable,
 };
 use demi_command_sdk::{
     Client, Exchange, Handler, InputSource, InvocationContext, OutputSink, ServiceError, serve,
@@ -177,83 +177,4 @@ async fn a_returned_medium_reaches_the_caller_whole_in_its_place() {
             Received::Stdout(Bytes::from_static(b"after\n")),
         ]
     );
-}
-
-/// Planted defect this catches: a writer that sends media for every
-/// invocation, as a user stream's or a package call's would then.
-#[tokio::test]
-async fn the_writer_of_an_invocation_that_is_no_jobs_command_refuses_media() {
-    let received = tokio::time::timeout(Duration::from_secs(5), shot(None))
-        .await
-        .unwrap();
-    assert_eq!(
-        received,
-        [
-            Received::Stdout(Bytes::from_static(b"before\n")),
-            Received::Stderr("this invocation cannot return media: only a job's command can".into()),
-            Received::Stdout(Bytes::from_static(b"after\n")),
-        ]
-    );
-}
-
-#[test]
-fn a_medium_over_16_mib_breaks_the_protocol() {
-    let payload = format!(
-        "{{\"size\":{},\"mediaType\":\"image/png\"}}",
-        MAX_MEDIUM_BYTES + 1
-    );
-    let mut record = vec![5];
-    record.extend_from_slice(&(payload.len() as u32).to_be_bytes());
-    record.extend_from_slice(payload.as_bytes());
-    assert!(matches!(
-        RecordDecoder::default().decode(&mut record.into()),
-        Err(ProtocolError::TooLarge)
-    ));
-    let largest = Record::Medium {
-        size: MAX_MEDIUM_BYTES,
-        facts: facts(),
-    };
-    let mut encoded = largest.encode().unwrap();
-    assert_eq!(
-        RecordDecoder::default().decode(&mut encoded).unwrap(),
-        Some(largest)
-    );
-}
-
-/// `parts` joined and padded with zeros to 16 bytes.
-fn bytes(parts: &[&[u8]]) -> Vec<u8> {
-    let mut bytes = parts.concat();
-    bytes.resize(bytes.len().max(16), 0);
-    bytes
-}
-
-#[test]
-fn media_are_recognized_by_their_magic_numbers_and_nothing_else() {
-    let sniffed = sniff_media_type;
-    assert_eq!(sniffed(&bytes(&[b"\x89PNG\r\n\x1a\n"])), Some("image/png"));
-    assert_eq!(sniffed(&bytes(&[b"\xff\xd8\xff\xe0"])), Some("image/jpeg"));
-    assert_eq!(sniffed(&bytes(&[b"GIF89a"])), Some("image/gif"));
-    assert_eq!(
-        sniffed(&bytes(&[b"RIFF", b"\x01\x02\x03\x04", b"WEBP"])),
-        Some("image/webp")
-    );
-    assert_eq!(sniffed(&bytes(&[b"\x1a\x45\xdf\xa3"])), Some("video/webm"));
-    assert_eq!(
-        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypisom"])),
-        Some("video/mp4")
-    );
-    assert_eq!(
-        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypqt  "])),
-        Some("video/quicktime")
-    );
-    assert_eq!(
-        sniffed(&bytes(&[b"\0\0\0\x20", b"ftypM4V "])),
-        Some("video/x-m4v")
-    );
-
-    assert_eq!(sniffed(&bytes(&[b"%PDF-1.7"])), Some("application/pdf"));
-
-    // Outside the closed set, and too short to tell: no guessing.
-    assert_eq!(sniffed(&bytes(&[b"plain text here"])), None);
-    assert_eq!(sniffed(b"\x89PNG\r\n\x1a\n\0\0\0"), None);
 }

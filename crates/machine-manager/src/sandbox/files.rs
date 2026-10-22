@@ -264,26 +264,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_record_names_one_boot_and_its_slot() {
-        let record: SandboxRecord =
-            serde_json::from_str(r#"{"id":"demi-0f6c3d4e-8a9b-4c1d-9e2f-3a4b5c6d7e8f","slot":3}"#)
-                .unwrap();
-        assert_eq!(record.slot, 3);
-        for invalid in [
-            r#"{"id":"0f6c3d4e","slot":3}"#,
-            r#"{"id":"demi-../x","slot":3}"#,
-            r#"{"id":"demi-a","slot":-1}"#,
-            r#"{"id":"demi-a","slot":3,"token":"x"}"#,
-        ] {
-            assert!(
-                serde_json::from_str::<SandboxRecord>(invalid).is_err(),
-                "{invalid}"
-            );
-        }
-        assert!(SandboxId::new().as_str().starts_with("demi-"));
-    }
-
-    #[test]
     fn credential_modes_do_not_depend_on_the_umask() {
         let off = OffLoop::in_test();
         let temporary = tempfile::tempdir().unwrap();

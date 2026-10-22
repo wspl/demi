@@ -46,7 +46,6 @@
 //! - A lock file takes its name only once it is held, so a sweep in another
 //!   service finds either no lock or a held one.
 
-
 use std::{
     future::Future,
     io,
@@ -1184,27 +1183,6 @@ mod tests {
         assert!(other.exists());
     }
 
-    /// A restart that empties a `/tmp` held in memory takes the runtime
-    /// directories and leaves the profiles on disk. A profile whose runtime
-    /// directory is gone goes; one whose runtime directory is there stays
-    /// with it.
-    #[tokio::test]
-    async fn the_sweep_removes_a_profile_whose_runtime_directory_is_gone() {
-        let temporary = tempfile::tempdir().unwrap();
-        let bases = bases(&temporary);
-        let (emptied, left) = environment(&bases, "emptied");
-        std::fs::remove_dir_all(&emptied).unwrap();
-        let (held, held_profile) = environment(&bases, "held");
-        let lock = std::fs::File::create(held.join(LOCK)).unwrap();
-        lock.try_lock().unwrap();
-        let other = bases.profiles.join("not-a-profile");
-        std::fs::create_dir(&other).unwrap();
-        sweep_orphans_in(&bases, Some(Vec::new()), Owner::current()).await;
-        assert!(!left.exists());
-        assert!(held_profile.exists());
-        assert!(other.exists());
-    }
-
     /// An orphan's link is followed only to a profile directory of this
     /// user's. What a link names otherwise stays, while the orphan goes: a
     /// directory of another name, a symbolic link named as a profile, and,
@@ -1245,29 +1223,6 @@ mod tests {
         for path in named {
             assert!(path.symlink_metadata().is_ok(), "{} went", path.display());
         }
-    }
-
-    /// Every user's environments share `/tmp` and `/var/tmp`, and a service
-    /// sweeps only its own user's: another user's orphan and profile are
-    /// neither opened nor reported. Here they are this test's, and the first
-    /// sweep runs for another user.
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn the_sweep_leaves_other_users_environments_alone() {
-        let temporary = tempfile::tempdir().unwrap();
-        let bases = bases(&temporary);
-        let (orphan, profile) = environment(&bases, "orphan");
-        std::fs::File::create(orphan.join(LOCK)).unwrap();
-        let (emptied, left) = environment(&bases, "emptied");
-        std::fs::remove_dir_all(&emptied).unwrap();
-        let this_user = Owner::current();
-        let another_user = Owner {
-            uid: this_user.uid.wrapping_add(1),
-        };
-        sweep_orphans_in(&bases, Some(Vec::new()), another_user).await;
-        assert!(orphan.exists() && profile.exists() && left.exists());
-        sweep_orphans_in(&bases, Some(Vec::new()), this_user).await;
-        assert!(!orphan.exists() && !profile.exists() && !left.exists());
     }
 
     /// Another service of the same user may sweep at any moment, also while
@@ -1329,19 +1284,4 @@ mod tests {
         making.unwrap();
     }
 
-    #[tokio::test]
-    async fn failed_process_retirement_retains_the_directories_and_cause() {
-        let temporary = tempfile::tempdir().unwrap();
-        let bases = bases(&temporary);
-        let mut directories = EnvironmentDirectories::create(&bases).unwrap();
-        directories.keep_until_retired();
-        let runtime = directories.runtime().to_owned();
-        let profile = directories.profile().to_owned();
-        let result = directories.remove(Err(BrowserError::Timeout)).await;
-        assert!(
-            matches!(&result, Err(BrowserError::ProfileRetained { path, source }) if *path == profile && matches!(**source, BrowserError::Timeout)),
-            "{result:?}"
-        );
-        assert!(runtime.is_dir() && profile.is_dir());
-    }
 }

@@ -9,6 +9,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 pub struct Process {
     pub pid: i32,
+    #[allow(dead_code)]
     pub parent: i32,
     pub group: i32,
 }
@@ -45,6 +46,7 @@ pub fn processes() -> Vec<Process> {
 /// The profiles in `base` of the Chrome processes `parent` started, by main
 /// process, read from the profiles' singleton locks rather than asked of the
 /// service.
+#[allow(dead_code)]
 pub fn chrome_profiles_of(
     parent: u32,
     base: &std::path::Path,

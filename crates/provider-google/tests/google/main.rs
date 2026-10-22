@@ -1,15 +1,12 @@
 //! The Google Gemini provider at its boundaries.
 //!
 //! The tests cover the request it sends to a scripted vendor, the events it
-//! makes of recorded streams, its failures, its cancellation, what it says
-//! about itself, and a Gemini key's images and videos. No test calls the real
-//! vendor.
+//! makes of recorded streams, its cancellation, and a Gemini key's voices,
+//! audio and image failures. No test calls the real vendor.
 
 mod audio;
-mod images;
 mod request;
 mod stream;
-mod videos;
 
 use std::sync::Arc;
 

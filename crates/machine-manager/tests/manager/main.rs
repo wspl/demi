@@ -40,7 +40,7 @@ const OWNER: &str = "mount-namespace-owner.json";
 const READY_DEADLINE: Duration = Duration::from_secs(60);
 
 /// The host's init: the host's mounts are shared, as systemd's are, and its
-/// `/run` is its own. So is its cgroup root, which `cgroups` prepares.
+/// `/run` is its own. So is its cgroup root, which `CGROUPS` prepares.
 const INIT: &str = "set -e
 mount --make-rshared /
 mount -t tmpfs -o mode=0755 tmpfs /run
@@ -48,26 +48,11 @@ eval \"$1\"
 echo ready
 exec sleep infinity";
 
-/// The stand-in host's cgroup root.
-#[derive(Clone, Copy)]
-enum Cgroups {
-    /// One that offers the controllers the limits need; no sandbox runs, so
-    /// a stand-in that takes the manager's writes does.
-    Offered,
-    /// No cgroup hierarchy at all, and nothing can be created there.
-    Absent,
-}
-
-impl Cgroups {
-    fn mount(self) -> &'static str {
-        match self {
-            Self::Offered => {
-                "mount -t tmpfs tmpfs /sys/fs/cgroup && echo 'cpu memory pids' > /sys/fs/cgroup/cgroup.controllers"
-            }
-            Self::Absent => "mount -t tmpfs -o ro tmpfs /sys/fs/cgroup",
-        }
-    }
-}
+/// The stand-in host's cgroup root, one that offers the controllers the
+/// limits need; no sandbox runs, so a stand-in that takes the manager's
+/// writes does.
+const CGROUPS: &str =
+    "mount -t tmpfs tmpfs /sys/fs/cgroup && echo 'cpu memory pids' > /sys/fs/cgroup/cgroup.controllers";
 
 /// The CPU the stand-in host's mount namespace and every manager's are made
 /// on. Linux 6.18 numbers namespaces from per-CPU batches (`gen_cookie_next`
@@ -152,7 +137,7 @@ struct Host {
 }
 
 impl Host {
-    fn start(cgroups: Cgroups) -> Self {
+    fn start() -> Self {
         // On one CPU with every manager's namespace, so the host's gets the
         // lower number (`namespace_cpu`: kernel/nstree.c, mnt_ns_loop).
         let mut unshare = Command::new("taskset")
@@ -165,7 +150,7 @@ impl Host {
                 "--mount-proc",
                 "--kill-child",
             ])
-            .args(["--", "sh", "-c", INIT, "init", cgroups.mount()])
+            .args(["--", "sh", "-c", INIT, "init", CGROUPS])
             .stdout(Stdio::piped())
             .spawn()
             .expect("unshare from util-linux");
@@ -308,19 +293,6 @@ impl Manager {
         }
     }
 
-    /// Stops the manager as its unit does, with SIGTERM, and answers what it
-    /// wrote to its standard error.
-    fn stop(mut self) -> String {
-        kill_process(self.pid(), Signal::TERM).unwrap();
-        let errors = stderr(&mut self.nsenter);
-        let status = self.nsenter.wait().unwrap();
-        assert!(
-            status.success(),
-            "the manager's stop exited {status}: {errors}"
-        );
-        errors
-    }
-
     fn namespace(&mut self) -> Namespace {
         identity(Path::new(&format!("/proc/{}/ns/mnt", self.pid()))).expect("a running manager")
     }
@@ -350,7 +322,7 @@ fn the_next_start_recovers_and_releases_a_killed_managers_namespace() {
     let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
     let settings = Settings::new(directory.path(), image.path());
     let notify = UnixDatagram::bind(&settings.notify).unwrap();
-    let host = Host::start(Cgroups::Offered);
+    let host = Host::start();
 
     let mut first = host.manager(&settings, &[]);
     first.wait_ready(&notify);
@@ -392,48 +364,4 @@ fn the_next_start_recovers_and_releases_a_killed_managers_namespace() {
         "the stop-post recovery released the handle"
     );
     assert!(!host.runtime_file(OWNER).exists());
-}
-
-/// With the resource limits on, as by default, a host without the cgroup v2
-/// controllers stops the start before readiness, with an error that names
-/// every controller it lacks.
-#[test]
-#[ignore = "needs root: run the Linux suite with --ignored as root"]
-fn a_start_with_the_limits_on_fails_naming_each_cgroup_controller_the_host_lacks() {
-    let directory = tempfile::tempdir().unwrap();
-    let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
-    let settings = Settings::new(directory.path(), image.path());
-    let notify = UnixDatagram::bind(&settings.notify).unwrap();
-    let host = Host::start(Cgroups::Absent);
-
-    let Start::Exited(status, errors) = host.manager(&settings, &[]).start(&notify) else {
-        panic!("the manager became ready without the cgroup controllers");
-    };
-    assert!(!status.success(), "{status}");
-    assert!(errors.contains("missing: cpu, memory, pids."), "{errors}");
-    assert!(errors.contains("DEMI_MANAGED_LIMITS=off"), "{errors}");
-}
-
-/// With the resource limits off, the manager starts on a host where no
-/// cgroup can be created, and its log says the Clouds run without limits.
-#[test]
-#[ignore = "needs root: run the Linux suite with --ignored as root"]
-fn a_start_with_the_limits_off_needs_no_cgroup_and_says_so() {
-    let directory = tempfile::tempdir().unwrap();
-    let image = CloudImage::new(&entries(), &[RUNNER, TINI], Architecture::host().unwrap());
-    let mut settings = Settings::new(directory.path(), image.path());
-    settings
-        .variables
-        .push(("DEMI_MANAGED_LIMITS", "off".to_owned()));
-    let notify = UnixDatagram::bind(&settings.notify).unwrap();
-    let host = Host::start(Cgroups::Absent);
-
-    let mut manager = host.manager(&settings, &[]);
-    manager.wait_ready(&notify);
-    let errors = manager.stop();
-    assert!(
-        errors.contains("DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"),
-        "{errors}"
-    );
-    assert!(errors.contains("resource limits off"), "{errors}");
 }

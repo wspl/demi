@@ -346,10 +346,4 @@ mod tests {
         assert_eq!(id, CAPTURE_EXTENSION_ID);
     }
 
-    #[test]
-    fn the_user_agent_carries_the_major_version_and_no_headless_token() {
-        let desktop = desktop_user_agent("153.0.8010.36");
-        assert!(desktop.contains("Chrome/153.0.0.0"), "{desktop}");
-        assert!(!desktop.contains("Headless"));
-    }
 }

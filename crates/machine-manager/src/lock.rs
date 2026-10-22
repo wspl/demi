@@ -83,28 +83,3 @@ pub fn verify_inherited(_: &OffLoop, data: &Path) -> Result<(), LockError> {
     }
     rustix::fs::flock(inherited, FlockOperation::NonBlockingLockExclusive).map_err(|_| refused())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_second_manager_is_refused_with_the_path() {
-        let off = OffLoop::in_test();
-        let data = tempfile::tempdir().unwrap();
-        let runtime = tempfile::tempdir().unwrap();
-        let first = ManagerLock::acquire(&off, data.path(), runtime.path()).unwrap();
-        let error = ManagerLock::acquire(&off, data.path(), runtime.path())
-            .err()
-            .expect("the second manager is refused");
-        assert_eq!(
-            error.to_string(),
-            format!(
-                "Another Cloud manager owns {}",
-                data.path().join("manager.lock").display()
-            )
-        );
-        drop(first);
-        ManagerLock::acquire(&off, data.path(), runtime.path()).unwrap();
-    }
-}

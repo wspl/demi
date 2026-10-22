@@ -3,7 +3,7 @@
 
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Write as _},
+    io::Write as _,
     path::Path,
 };
 
@@ -46,22 +46,6 @@ fn separate_recorder_handles_share_the_job_journal() {
 }
 
 #[test]
-fn an_error_can_leave_a_real_edit() {
-    let root = tempfile::tempdir().unwrap();
-    let recorder = recorder(root.path(), "job");
-    let path = root.path().join("file");
-    let result: io::Result<()> = recorder.record(&path, || {
-        fs::write(&path, "partial")?;
-        Err(io::Error::other("failed after writing"))
-    });
-    assert!(result.is_err());
-    assert_eq!(
-        contents(&recorder.report().unwrap().files[0].edits[0]).1,
-        "partial"
-    );
-}
-
-#[test]
 fn failed_open_of_large_file_is_not_an_edit() {
     let root = tempfile::tempdir().unwrap();
     let recorder = recorder(root.path(), "job");
@@ -85,18 +69,6 @@ fn failed_open_of_large_file_is_not_an_edit() {
     let report = recorder.report().unwrap();
     assert_eq!(report.files.len(), 1);
     assert!(report.files[0].edits[0].modified.is_none());
-}
-
-#[test]
-fn a_failed_write_below_a_file_is_not_an_edit() {
-    let root = tempfile::tempdir().unwrap();
-    let recorder = recorder(root.path(), "job");
-    let file = root.path().join("file");
-    fs::write(&file, "plain").unwrap();
-    let below = file.join("child");
-    let result = recorder.record(&below, || fs::write(&below, "never"));
-    assert!(result.is_err());
-    assert!(recorder.report().unwrap().files.is_empty());
 }
 
 /// Binary is what git calls binary

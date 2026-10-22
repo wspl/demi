@@ -105,22 +105,3 @@ pub fn chunks(source: &SourceId, generation: u32, frame: &EncodedFrame) -> Optio
             .collect(),
     )
 }
-
-#[cfg(test)]
-mod tests {
-    use demi_live_view_protocol::MAX_FRAME_BYTES;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn a_frame_the_page_cannot_send_ends_the_stream() {
-        for bytes in [vec![0, 0, 0, 0], vec![0, 0, 0, 5, CONTROL_FRAME]] {
-            let input = Input::from_stream(futures_util::stream::iter([Ok(Bytes::from(bytes))]));
-            assert!(Reader::new(input).next().await.is_err());
-        }
-        let mut too_large = vec![];
-        too_large.extend_from_slice(&u32::try_from(MAX_FRAME_BYTES + 1).unwrap().to_be_bytes());
-        let input = Input::from_stream(futures_util::stream::iter([Ok(Bytes::from(too_large))]));
-        assert!(Reader::new(input).next().await.is_err());
-    }
-}

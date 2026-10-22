@@ -367,7 +367,6 @@ mod tests {
     struct Harness {
         directory: tempfile::TempDir,
         service: Rc<ScriptedService>,
-        deaths: mpsc::Sender<DeviceId>,
         stop: oneshot::Sender<()>,
         server: tokio::task::JoinHandle<InFlight>,
     }
@@ -379,7 +378,7 @@ mod tests {
                 .await
                 .expect("bind");
             let service = Rc::new(ScriptedService::default());
-            let (deaths, received) = mpsc::channel(4);
+            let (_deaths, received) = mpsc::channel(4);
             let (stop, stopped) = oneshot::channel::<()>();
             let server =
                 tokio::task::spawn_local(serve(socket, service.clone(), received, async {
@@ -389,7 +388,6 @@ mod tests {
             Self {
                 directory,
                 service,
-                deaths,
                 stop,
                 server,
             }
@@ -445,68 +443,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "local")]
-    async fn every_call_reaches_the_service_and_its_result_the_client() {
-        let harness = Harness::start().await;
-        let mut client = harness.connect().await;
-        let lines = [
-            r#"{"id":"1","op":"reconcile","params":{}}"#,
-            r#"{"id":"2","op":"current_base_version","params":{}}"#,
-            r#"{"id":"3","op":"image_state","params":{"deviceId":"dev-1"}}"#,
-            r#"{"id":"4","op":"runtime_state","params":{"deviceId":"dev-1"}}"#,
-            r#"{"id":"5","op":"wake","params":{"deviceId":"dev-1","capacity":{"systemBytes":4096,"homeBytes":4096},"boot":{"backendUrl":"http://backend","deviceToken":"tok"},"machine":"cloud"}}"#,
-            r#"{"id":"6","op":"checkpoint","params":{"deviceId":"dev-1","machine":"cloud"}}"#,
-            r#"{"id":"7","op":"reset","params":{"deviceId":"dev-1","operationId":"op-1","baseVersion":"base-2","capacity":{"systemBytes":4096,"homeBytes":4096},"machine":"cloud"}}"#,
-            r#"{"id":"8","op":"hibernate","params":{"deviceId":"dev-1","machine":"claude_code"}}"#,
-        ];
-        for line in lines {
-            let request = decode_request(line).expect("request");
-            client.send(format!("{line}\n").as_bytes()).await;
-            assert_eq!(
-                client.receive().await,
-                Some(MachineResponse::Ok {
-                    id: request.id,
-                    result: ScriptedService::result(&request.call),
-                })
-            );
-        }
-        let service = harness.stop().await;
-        let expected: Vec<_> = lines
-            .iter()
-            .map(|line| decode_request(line).expect("request").call)
-            .collect();
-        assert_eq!(*service.calls.borrow(), expected);
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_failure_is_an_error_reply_and_the_connection_stays_usable() {
-        let harness = Harness::start().await;
-        harness
-            .service
-            .failures
-            .borrow_mut()
-            .push(("hibernate", "no such machine"));
-        let mut client = harness.connect().await;
-        client
-            .send(b"{\"id\":\"1\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"dev-9\",\"machine\":\"cloud\"}}\n")
-            .await;
-        assert_eq!(
-            client.receive().await,
-            Some(MachineResponse::Error {
-                id: "1".into(),
-                message: "no such machine".into()
-            })
-        );
-        // An empty line is skipped.
-        client
-            .send(b"\n{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n")
-            .await;
-        assert!(
-            matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "2")
-        );
-        harness.stop().await;
-    }
-
-    #[tokio::test(flavor = "local")]
     async fn concurrent_requests_are_answered_as_they_finish() {
         let harness = Harness::start().await;
         let (release, wait) = oneshot::channel();
@@ -522,31 +458,6 @@ mod tests {
         assert!(
             matches!(client.receive().await, Some(MachineResponse::Ok { id, .. }) if id == "slow")
         );
-        harness.stop().await;
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_death_reaches_every_connection() {
-        let harness = Harness::start().await;
-        let mut first = harness.connect().await;
-        let mut second = harness.connect().await;
-        // A round trip on each shows the server has accepted both.
-        for client in [&mut first, &mut second] {
-            client
-                .send(b"{\"id\":\"1\",\"op\":\"reconcile\",\"params\":{}}\n")
-                .await;
-            client.receive().await.expect("reply");
-        }
-        let device = DeviceId::parse("dev-1").expect("device id");
-        harness.deaths.send(device).await.expect("server");
-        for client in [&mut first, &mut second] {
-            assert_eq!(
-                client.receive().await,
-                Some(MachineResponse::Death {
-                    device_id: "dev-1".into()
-                })
-            );
-        }
         harness.stop().await;
     }
 

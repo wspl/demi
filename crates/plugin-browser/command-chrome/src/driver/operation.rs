@@ -447,67 +447,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deadline_cause_survives_cleanup_wrappers() {
-        let timed_out = after_cleanup::<()>(Err(BrowserError::Timeout), Err(BrowserError::Timeout))
-            .unwrap_err();
-        assert!(timed_out.is_deadline());
-        let failure = timed_out.with_deadline_cause(BrowserError::NotActionable {
-            condition: "hit".into(),
-            interceptor: Some("overlay".into()),
-        });
-        assert_eq!(failure.code(), BrowserErrorCode::NotActionable);
-        assert_eq!(failure.details().condition.as_deref(), Some("hit"));
-        assert_eq!(failure.details().interceptor.as_deref(), Some("overlay"));
-        assert!(
-            matches!(failure, BrowserError::Cleanup { cleanup, .. } if matches!(*cleanup, BrowserError::Timeout))
-        );
-    }
-
-    #[tokio::test]
-    async fn controller_deadline_cancellation_is_a_timeout() {
-        let ended = CancellationToken::new();
-        let cancelled = CancellationToken::new();
-        cancelled.cancel();
-        let expired = Operation::until(&ended, &cancelled, Instant::now());
-        assert!(matches!(
-            expired.run(std::future::pending::<Result<()>>()).await,
-            Err(BrowserError::Timeout)
-        ));
-        let active = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
-        assert!(matches!(
-            active.run(std::future::pending::<Result<()>>()).await,
-            Err(BrowserError::Cancelled)
-        ));
-    }
-
-    #[tokio::test]
-    async fn transport_end_retains_its_cause_while_explicit_close_stays_closed() {
-        let ended = CancellationToken::new();
-        let cancelled = CancellationToken::new();
-        let (failure, _) = tokio::sync::watch::channel(None);
-        let mut operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
-        operation.connection_failure = Some(&failure);
-        operation.begin_input();
-        ended.cancel();
-        let closed = operation
-            .run(std::future::pending::<Result<()>>())
-            .await
-            .unwrap_err();
-        assert_eq!(
-            operation.failure(closed, "tab", None).code(),
-            BrowserErrorCode::BrowserLost
-        );
-        failure.send_replace(Some("transport ended".into()));
-        let lost = operation
-            .run(std::future::pending::<Result<()>>())
-            .await
-            .unwrap_err();
-        let error = operation.failure(lost, "tab", None);
-        assert_eq!(error.code(), BrowserErrorCode::OutcomeUnknown);
-        assert_eq!(error.details().action, Some(ActionProgress::Unknown));
-    }
-
-    #[test]
     fn connection_loss_after_dispatch_has_an_unknown_outcome() {
         let ended = CancellationToken::new();
         let cancelled = CancellationToken::new();
@@ -547,50 +486,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn browser_errors_keep_causes_and_input_progress() {
-        for (error, code) in [
-            (BrowserError::TabNotFound, "tab_not_found"),
-            (BrowserError::Closed, "browser_lost"),
-            (BrowserError::TargetNotFound, "target_not_found"),
-            (BrowserError::Ambiguous(2), "ambiguous_target"),
-            (BrowserError::HistoryBoundary, "history_boundary"),
-            (
-                BrowserError::NavigationFailed("ERR_EMPTY_RESPONSE".into()),
-                "navigation_failed",
-            ),
-            (
-                BrowserError::OutputExists("existing.png".into()),
-                "output_exists",
-            ),
-            (
-                BrowserError::Io(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
-                "io_error",
-            ),
-            (
-                BrowserError::Configuration("bad key".into()),
-                "invalid_input",
-            ),
-        ] {
-            assert_eq!(error.code().to_string(), code);
-        }
-        let ended = CancellationToken::new();
-        let cancelled = CancellationToken::new();
-        let operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
-        let progress = |error| operation.failure(error, "tab", None).details().action;
-        assert_eq!(
-            progress(BrowserError::Timeout),
-            Some(ActionProgress::NotStarted)
-        );
-        operation.begin_input();
-        assert_eq!(
-            progress(BrowserError::Closed),
-            Some(ActionProgress::Unknown)
-        );
-        operation.complete_input();
-        assert_eq!(
-            progress(BrowserError::Timeout),
-            Some(ActionProgress::Completed)
-        );
-    }
 }

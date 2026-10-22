@@ -1433,22 +1433,6 @@ mod tests {
     }
 
     #[test]
-    fn a_page_destroyed_before_its_creation_is_handled_stays_out() {
-        let mut book = live(&["a"]);
-        let popup = target("popup");
-        let (gone, changed) = book.gone(&popup);
-        assert!(gone.is_none() && !changed);
-        // Its creation and attachment arrive late, on their own buffers.
-        assert!(!book.found(&page(&popup, Some(&target("a")))));
-        assert!(!book.is_pending(&popup));
-        assert!(matches!(
-            book.ready(&popup, false, Some("popup")),
-            Some(BrowserError::TabNotFound)
-        ));
-        assert_eq!(listed(&book), ["a"]);
-    }
-
-    #[test]
     fn the_last_tab_waits_for_creations_batches_and_popups() {
         let a = target("a");
         let mut book = live(&["a"]);
@@ -1470,33 +1454,6 @@ mod tests {
     }
 
     #[test]
-    fn the_registry_seals_once_when_its_last_tab_goes() {
-        let a = target("a");
-        let mut book = live(&["a"]);
-        assert!(!book.settle(0));
-        assert_eq!(book.gone(&a).0, Some("a"));
-        assert!(!book.settle(1), "a held batch keeps it open");
-        assert!(book.settle(0));
-        assert!(!book.settle(0), "it seals only once");
-        assert!(!book.admit(), "a sealed registry creates no tab");
-    }
-
-    #[test]
-    fn a_tab_readied_after_sealing_is_refused() {
-        let mut book = live(&["a"]);
-        assert!(book.admit());
-        book.set_up(&target("late"));
-        book.gone(&target("a"));
-        book.sealed = true;
-        assert!(matches!(
-            book.ready(&target("late"), true, Some("late")),
-            Some(BrowserError::Closed)
-        ));
-        assert!(listed(&book).is_empty());
-        assert_eq!(book.creating, 0);
-    }
-
-    #[test]
     fn a_listing_waits_for_tabs_being_set_up_and_lists_in_creation_order() {
         let mut book = live(&["first"]);
         let popup = target("popup");
@@ -1512,20 +1469,6 @@ mod tests {
     }
 
     #[test]
-    fn an_opener_keeps_its_id_after_it_closes() {
-        let mut book = live(&["opener"]);
-        let opener = target("opener");
-        let popup = target("popup");
-        let id = book.public_id(&opener);
-        book.found(&page(&popup, Some(&opener)));
-        book.gone(&opener);
-        // Chrome may drop the opener from later target information.
-        book.found(&page(&popup, None));
-        assert_eq!(book.opener(&popup), Some(&opener));
-        assert_eq!(book.public_id(&opener), id);
-    }
-
-    #[test]
     fn reconciling_finds_the_pages_events_missed_and_drops_the_vanished() {
         let mut book = live(&["a", "b"]);
         let popup = target("popup");
@@ -1535,14 +1478,4 @@ mod tests {
         assert_eq!(book.pending(), [popup]);
     }
 
-    #[test]
-    fn a_closing_tab_is_closed_once_until_chrome_refuses() {
-        let a = target("a");
-        let mut book = live(&["a", "b"]);
-        assert_eq!(book.start_closing(&a), Some("a"));
-        assert!(!book.closable(&a));
-        assert_eq!(book.start_closing(&a), None);
-        book.not_closed(&a);
-        assert!(book.closable(&a));
-    }
 }

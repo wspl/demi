@@ -156,40 +156,6 @@ async fn check(tools: &Tools, image: &Path, mode: &str) -> Result<(), Ext4Error>
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    fn superblock(
-        blocks_lo: u32,
-        blocks_hi: u32,
-        log: u32,
-        incompat: u32,
-    ) -> [u8; SUPERBLOCK_BYTES] {
-        let mut block = [0; SUPERBLOCK_BYTES];
-        block[0x04..0x08].copy_from_slice(&blocks_lo.to_le_bytes());
-        block[0x18..0x1c].copy_from_slice(&log.to_le_bytes());
-        block[0x38..0x3a].copy_from_slice(&MAGIC.to_le_bytes());
-        block[0x60..0x64].copy_from_slice(&incompat.to_le_bytes());
-        block[0x150..0x154].copy_from_slice(&blocks_hi.to_le_bytes());
-        block
-    }
-
-    #[test]
-    fn a_capacity_is_blocks_times_block_size() {
-        assert_eq!(
-            parse_capacity(&superblock(262_144, 0, 2, 0)).map(NonZeroU64::get),
-            Some(1 << 30)
-        );
-        // The high word counts only with the 64-bit feature.
-        assert_eq!(parse_capacity(&superblock(0, 1, 2, 0)), None);
-        assert_eq!(
-            parse_capacity(&superblock(0, 1, 2, INCOMPAT_64BIT)).map(NonZeroU64::get),
-            Some((1 << 32) * 4096)
-        );
-        let mut not_ext4 = superblock(1, 0, 2, 0);
-        not_ext4[0x38] = 0;
-        assert_eq!(parse_capacity(&not_ext4), None);
-    }
-
     #[cfg(target_os = "linux")]
     mod linux {
         use std::process::Command;

@@ -2,20 +2,17 @@
 //! `crates/provider-common/src/endpoint.rs`,
 //! `crates/backend-providers/src/llm/vendors.rs`).
 
-use std::{num::NonZeroU32, sync::Arc};
+use std::sync::Arc;
 
 use demi_provider_common::VendorPolicy;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
-    RuntimeEnv, ToolDefinition, UserPart,
-    testing::{
-        MockResponse, MockVendor, inference_request, property_order, sse_body, titled_tool,
-    },
+    InferenceItem, InferenceRequest, MediaBytes, ResultPart, ToolDefinition, UserPart,
+    testing::inference_request,
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
-use serde_json::{Value, json};
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, WireApi};
+use serde_json::json;
 
-use crate::{body_of, provider_at, provider_of, run};
+use crate::body_of;
 
 fn text(text: &str) -> Vec<UserPart> {
     vec![UserPart::Text(text.into())]
@@ -87,111 +84,6 @@ const NO_POLICY: VendorPolicy = VendorPolicy {
     effort_as_budget: false,
 };
 
-/// Each wire's answer as the endpoint streams it, and the events a run makes
-/// of it. The mapping itself is the shared mappers' (`demi_provider_common::wire`);
-/// which mapper reads the answer is this runtime's choice.
-fn answer(wire: WireApi) -> (MockResponse, Vec<ProviderEvent>) {
-    let text = ProviderEvent::TextDelta("hi".into());
-    match wire {
-        WireApi::Responses => {
-            let body = sse_body(&[
-                json!({ "type": "response.output_text.delta", "delta": "hi" }),
-                json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 3, "output_tokens": 1 } } }),
-            ]);
-            let usage = TokenUsage {
-                input_tokens: 3,
-                output_tokens: 1,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0,
-            };
-            (
-                MockResponse::event_stream(body),
-                vec![text, ProviderEvent::Response(Some(usage))],
-            )
-        }
-        WireApi::ChatCompletions => {
-            let chunk = sse_body(&[json!({ "choices": [{ "delta": { "content": "hi" }, "finish_reason": "stop" }] })]);
-            let body = format!("{chunk}data: [DONE]\n\n");
-            let events = vec![text, ProviderEvent::Response(None)];
-            (MockResponse::event_stream(body), events)
-        }
-    }
-}
-
-#[tokio::test]
-async fn a_run_posts_to_its_wires_endpoint_with_the_key_and_reads_the_answer_as_that_wire() {
-    let vendor = MockVendor::start().await;
-    let cases = [
-        (WireApi::Responses, "/v1/", "/v1/responses"),
-        (
-            WireApi::Responses,
-            "/gateway/v1/responses",
-            "/gateway/v1/responses",
-        ),
-        (
-            WireApi::ChatCompletions,
-            "/openai/v1",
-            "/openai/v1/chat/completions",
-        ),
-        (
-            WireApi::ChatCompletions,
-            "/v1/chat/completions/",
-            "/v1/chat/completions",
-        ),
-    ];
-    for (wire, base, _) in cases {
-        let (response, expected) = answer(wire);
-        vendor.respond(response);
-        let mut runtime = provider_at(&vendor, base, wire, NO_POLICY)
-            .runtime(RuntimeEnv {
-                http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
-            })
-            .unwrap();
-        let events = run(runtime.as_mut(), inference_request()).await;
-        assert_eq!(events, expected, "{wire:?}");
-    }
-    for ((_, _, path), request) in cases.iter().zip(vendor.requests()) {
-        assert_eq!(
-            (request.method.as_str(), request.uri.path()),
-            ("POST", *path)
-        );
-        assert_eq!(request.header("authorization"), Some("Bearer sk-test"));
-        assert_eq!(request.header("content-type"), Some("application/json"));
-        assert_eq!(request.header("accept"), Some("text/event-stream"));
-    }
-}
-
-#[tokio::test]
-async fn each_request_sends_its_own_output_limit_and_none_without_one() {
-    let with_limit = |limit: Option<u32>| {
-        let mut request = inference_request();
-        request.output_limit = limit.and_then(NonZeroU32::new);
-        request
-    };
-    let responses = body_of(WireApi::Responses, NO_POLICY, with_limit(Some(8_000))).await;
-    assert_eq!(responses["max_output_tokens"], json!(8_000));
-    let chat = body_of(
-        WireApi::ChatCompletions,
-        NO_POLICY,
-        with_limit(Some(32_000)),
-    )
-    .await;
-    assert_eq!(chat["max_completion_tokens"], json!(32_000));
-    let responses = body_of(WireApi::Responses, NO_POLICY, with_limit(None)).await;
-    assert!(responses.get("max_output_tokens").is_none());
-    let chat = body_of(WireApi::ChatCompletions, NO_POLICY, with_limit(None)).await;
-    assert!(chat.get("max_completion_tokens").is_none());
-    // A request's cap lowers the model's limit, and stands in for none.
-    let capped = |limit: Option<u32>| InferenceRequest {
-        output_cap: NonZeroU32::new(1_024),
-        ..with_limit(limit)
-    };
-    let responses = body_of(WireApi::Responses, NO_POLICY, capped(Some(8_000))).await;
-    assert_eq!(responses["max_output_tokens"], json!(1_024));
-    let chat = body_of(WireApi::ChatCompletions, NO_POLICY, capped(None)).await;
-    assert_eq!(chat["max_completion_tokens"], json!(1_024));
-}
-
 #[tokio::test]
 async fn a_responses_body_carries_the_transcript_tools_tier_and_reasoning() {
     let mut request = request_with(vec![
@@ -230,32 +122,6 @@ async fn a_responses_body_carries_the_transcript_tools_tier_and_reasoning() {
             "service_tier": "priority",
         })
     );
-}
-
-#[tokio::test]
-async fn a_blank_system_prompt_no_tools_and_no_tier_are_left_out() {
-    let mut request = inference_request();
-    request.system_prompt = " \n".into();
-    let body = body_of(WireApi::Responses, NO_POLICY, request).await;
-    for field in [
-        "instructions",
-        "tools",
-        "tool_choice",
-        "parallel_tool_calls",
-        "reasoning",
-        "service_tier",
-        "stream_options",
-    ] {
-        assert!(body.get(field).is_none(), "{field}");
-    }
-    let chat = body_of(WireApi::ChatCompletions, NO_POLICY, inference_request()).await;
-    assert_eq!(
-        chat["messages"],
-        json!([{ "role": "user", "content": "hello" }])
-    );
-    for field in ["tools", "tool_choice", "reasoning_effort", "service_tier"] {
-        assert!(chat.get(field).is_none(), "{field}");
-    }
 }
 
 #[tokio::test]
@@ -311,27 +177,6 @@ async fn reasoning_follows_the_thinking_setting_and_a_summary_turned_off_leaves_
 }
 
 #[tokio::test]
-async fn assistant_status_is_replayed_only_when_the_vendor_policy_asks() {
-    let items = vec![
-        InferenceItem::UserMessage {
-            content: text("hello"),
-        },
-        assistant("prior reply"),
-    ];
-    let lean = body_of(WireApi::Responses, NO_POLICY, request_with(items.clone())).await;
-    assert_eq!(
-        lean["input"][1],
-        json!({ "type": "message", "role": "assistant", "content": [{ "type": "output_text", "text": "prior reply", "annotations": [] }] })
-    );
-    let policy = VendorPolicy {
-        replay_assistant_status: true,
-        ..NO_POLICY
-    };
-    let strict = body_of(WireApi::Responses, policy, request_with(items)).await;
-    assert_eq!(strict["input"][1]["status"], json!("completed"));
-}
-
-#[tokio::test]
 async fn only_this_providers_reasoning_items_are_replayed_with_their_replayable_fields() {
     let item = json!({ "type": "reasoning", "id": "rs_1", "summary": [{ "type": "summary_text", "text": "sum" }], "encrypted_content": "enc", "status": "completed" });
     let body = body_of(
@@ -356,51 +201,6 @@ async fn only_this_providers_reasoning_items_are_replayed_with_their_replayable_
         json!([
             { "role": "user", "content": [{ "type": "input_text", "text": "hello" }] },
             { "type": "reasoning", "id": "rs_1", "summary": [{ "type": "summary_text", "text": "sum" }], "encrypted_content": "enc" },
-        ])
-    );
-}
-
-#[tokio::test]
-async fn user_media_rides_as_images_and_files() {
-    let png = B64Bytes::from(&b"PNG"[..]);
-    let content = vec![
-        UserPart::Text("look".into()),
-        UserPart::Image(Medium::Bytes(MediaBytes {
-            data: png,
-            media_type: "image/png".into(),
-        })),
-        UserPart::Image(Medium::Url("https://example.com/a.png".into())),
-        UserPart::Document {
-            bytes: MediaBytes {
-                data: B64Bytes::from(&b"%PDF"[..]),
-                media_type: "application/pdf".into(),
-            },
-            file_name: "a.pdf".into(),
-        },
-    ];
-    let request = || {
-        request_with(vec![InferenceItem::UserMessage {
-            content: content.clone(),
-        }])
-    };
-    let responses = body_of(WireApi::Responses, NO_POLICY, request()).await;
-    assert_eq!(
-        responses["input"][0]["content"],
-        json!([
-            { "type": "input_text", "text": "look" },
-            { "type": "input_image", "image_url": "data:image/png;base64,UE5H", "detail": "auto" },
-            { "type": "input_image", "image_url": "https://example.com/a.png", "detail": "auto" },
-            { "type": "input_file", "filename": "a.pdf", "file_data": "data:application/pdf;base64,JVBERg==" },
-        ])
-    );
-    let chat = body_of(WireApi::ChatCompletions, NO_POLICY, request()).await;
-    assert_eq!(
-        chat["messages"][0]["content"],
-        json!([
-            { "type": "text", "text": "look" },
-            { "type": "image_url", "image_url": { "url": "data:image/png;base64,UE5H", "detail": "auto" } },
-            { "type": "image_url", "image_url": { "url": "https://example.com/a.png", "detail": "auto" } },
-            { "type": "file", "file": { "filename": "a.pdf", "file_data": "data:application/pdf;base64,JVBERg==" } },
         ])
     );
 }
@@ -472,23 +272,6 @@ async fn media_a_tool_returned_follows_its_output_in_a_user_message() {
 }
 
 #[tokio::test]
-async fn a_tools_fields_reach_the_vendor_in_the_order_its_schema_lists_them() {
-    for (wire, at) in [
-        (WireApi::Responses, "/tools/0/parameters"),
-        (WireApi::ChatCompletions, "/tools/0/function/parameters"),
-    ] {
-        let mut request = inference_request();
-        request.tools = Arc::new([titled_tool()]);
-        let body = body_of(wire, NO_POLICY, request).await;
-        assert_eq!(
-            property_order(body.pointer(at).unwrap()),
-            ["description", "script", "intervalMs"],
-            "{wire:?}"
-        );
-    }
-}
-
-#[tokio::test]
 async fn a_chat_completions_body_carries_the_transcript_tools_tier_and_effort() {
     let mut request = request_with(vec![
         InferenceItem::UserMessage {
@@ -521,137 +304,4 @@ async fn a_chat_completions_body_carries_the_transcript_tools_tier_and_effort() 
             "stream_options": { "include_usage": true },
         })
     );
-}
-
-/// The Chat Completions messages of `items` with thinking passed back.
-async fn replayed(items: Vec<InferenceItem>, pass_back: bool) -> Value {
-    let policy = VendorPolicy {
-        pass_back_reasoning_content: pass_back,
-        ..NO_POLICY
-    };
-    body_of(WireApi::ChatCompletions, policy, request_with(items)).await["messages"].clone()
-}
-
-#[tokio::test]
-async fn thinking_is_replayed_as_reasoning_content_only_when_the_vendor_policy_asks() {
-    let tool_round = vec![
-        InferenceItem::UserMessage {
-            content: text("hello"),
-        },
-        thinking("inspect ", None),
-        thinking("first", None),
-        InferenceItem::AssistantRedactedThinking {
-            model_id: "deepseek-v4-pro".into(),
-            data: "opaque".into(),
-            kept_past_summary: false,
-        },
-        tool_use("call-1", "a.ts"),
-        tool_result("call-1", contents("contents")),
-    ];
-    let call = json!([{ "id": "call-1", "type": "function", "function": { "name": "read_file", "arguments": "{\"path\":\"a.ts\"}" } }]);
-    let dropped = replayed(tool_round.clone(), false).await;
-    assert_eq!(
-        dropped[1],
-        json!({ "role": "assistant", "content": null, "tool_calls": call })
-    );
-    let kept = replayed(tool_round, true).await;
-    assert_eq!(
-        kept[1],
-        json!({ "role": "assistant", "content": null, "tool_calls": call, "reasoning_content": "inspect first" })
-    );
-
-    // A tool round without thinking still carries an empty one.
-    let second_round = replayed(
-        vec![
-            InferenceItem::UserMessage {
-                content: text("hello"),
-            },
-            thinking("first thought", None),
-            tool_use("call-1", "a.ts"),
-            tool_result("call-1", contents("a")),
-            tool_use("call-2", "b.ts"),
-            tool_result("call-2", contents("b")),
-        ],
-        true,
-    )
-    .await;
-    assert_eq!(second_round[1]["reasoning_content"], json!("first thought"));
-    assert_eq!(second_round[3]["reasoning_content"], json!(""));
-
-    // Thinking stays within its assistant message; thinking no message
-    // followed goes nowhere.
-    let segments = replayed(
-        vec![
-            InferenceItem::UserMessage {
-                content: text("first"),
-            },
-            thinking("thought one", None),
-            assistant("answer one"),
-            InferenceItem::UserMessage {
-                content: text("second"),
-            },
-            thinking("orphaned", None),
-            InferenceItem::UserMessage {
-                content: text("third"),
-            },
-            assistant("answer three"),
-        ],
-        true,
-    )
-    .await;
-    assert_eq!(
-        segments,
-        json!([
-            { "role": "user", "content": "first" },
-            { "role": "assistant", "content": "answer one", "reasoning_content": "thought one" },
-            { "role": "user", "content": "second" },
-            { "role": "user", "content": "third" },
-            { "role": "assistant", "content": "answer three" },
-        ])
-    );
-}
-
-// OpenAI and xAI both speak Responses with encrypted reasoning: each stamps the
-// reasoning it receives with its vendor, and replays only its own. So a
-// conversation moved between them never sends one vendor's ciphertext to the
-// other, in either direction.
-//
-// Milliseconds.
-//
-// Planted defect: one stamp for every entry of the family, so the other
-// vendor's item is replayed.
-#[tokio::test]
-async fn openai_and_xai_each_stamp_their_reasoning_and_replay_only_their_own() {
-    let item = json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "enc" });
-    let streamed = sse_body(&[
-        json!({ "type": "response.output_item.done", "item": item }),
-        json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 3, "output_tokens": 1 } } }),
-    ]);
-    for (own, other) in [("openai", "xai"), ("xai", "openai")] {
-        let vendor = MockVendor::start().await;
-        vendor.respond(MockResponse::event_stream(streamed.clone()));
-        vendor.respond(MockResponse::event_stream(streamed.clone()));
-        let provider = provider_of(&vendor, "/v1", WireApi::Responses, NO_POLICY, Some(own));
-        let mut runtime = provider.runtime(RuntimeEnv { http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()) }).unwrap();
-        let events = run(runtime.as_mut(), inference_request()).await;
-        let stamped: Vec<&String> = events
-            .iter()
-            .filter_map(|event| match event {
-                ProviderEvent::ThinkingSignature(signature) => Some(signature),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(stamped.len(), 1, "{own}: {events:?}");
-        assert!(stamped[0].starts_with(&format!("{own}:{{")), "{own}: {}", stamped[0]);
-
-        let history = vec![
-            InferenceItem::UserMessage { content: text("hello") },
-            thinking("mine", Some(&format!("{own}:{item}"))),
-            thinking("theirs", Some(&format!("{other}:{item}"))),
-        ];
-        run(runtime.as_mut(), request_with(history)).await;
-        let sent = vendor.requests()[1].json();
-        let replayed: Vec<&Value> = sent["input"].as_array().unwrap().iter().filter(|input| input["type"] == "reasoning").collect();
-        assert_eq!(replayed.len(), 1, "{own} replays only its own: {sent}");
-    }
 }

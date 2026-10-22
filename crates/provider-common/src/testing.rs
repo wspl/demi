@@ -55,14 +55,6 @@ pub fn titled_tool() -> ToolDefinition {
     }
 }
 
-/// The names of `schema`'s properties in the order its JSON carries them.
-pub fn property_order(schema: &serde_json::Value) -> Vec<&str> {
-    schema["properties"]
-        .as_object()
-        .map(|properties| properties.keys().map(String::as_str).collect())
-        .unwrap_or_default()
-}
-
 /// Builders of the events a scripted run yields.
 pub mod event {
     use super::*;
@@ -541,8 +533,6 @@ enum Ending {
     Open,
     /// The server never answers: no status, no headers.
     Silent,
-    /// The connection breaks before the body ends.
-    Broken,
 }
 
 impl MockResponse {
@@ -584,12 +574,6 @@ impl MockResponse {
     /// it notices the client leaving.
     pub fn stay_open(mut self) -> Self {
         self.ending = Ending::Open;
-        self
-    }
-
-    /// Breaks the connection after the chunks, before the body is complete.
-    pub fn break_off(mut self) -> Self {
-        self.ending = Ending::Broken;
         self
     }
 
@@ -796,16 +780,6 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
                 Some((Ok(Bytes::from_static(b": ping\n\n")), guard))
             });
             chunks.chain(pings).boxed()
-        }
-        // A body stream that fails makes the server drop the connection
-        // without ending the body. The pause before it lets the server flush
-        // what came before, which it does when the body has nothing ready.
-        Ending::Broken => {
-            let failure = async {
-                tokio::time::sleep(Duration::from_millis(20)).await;
-                Err(std::io::Error::other("MockVendor breaks the connection"))
-            };
-            chunks.chain(stream::once(failure)).boxed()
         }
     };
     let mut response = Response::new(Body::from_stream(body));

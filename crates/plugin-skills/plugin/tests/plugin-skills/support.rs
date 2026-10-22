@@ -4,9 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use demi_command_declarations::Node;
-use demi_host_interface::RpcInvocation;
-use demi_host_interface::testing::{MemoryPort, test_command_context};
-use demi_plugin_interface::testing::command_line::{argv, parse, roots};
+use demi_plugin_interface::testing::command_line::roots;
 use demi_plugin_interface::testing::{TestDemi, loopback};
 use demi_plugin_interface::{
     Plugin, PluginError, PluginFactory, PluginId, Reply, Request, WatchSubject,
@@ -36,45 +34,6 @@ impl Plugged {
             root: roots(skills.manifest()).remove(0),
             project: RefCell::default(),
         }
-    }
-
-    /// Runs `demi <line>` as the backend's dispatch hands it to the plugin
-    /// once the conversation has the grant: its exit status, stdout and
-    /// stderr.
-    pub async fn run(&self, line: &[&str]) -> (u8, String, String) {
-        let parsed = parse(&self.root, line, None).unwrap();
-        let memory = MemoryPort::new();
-        self.demi.rpc.replace(Some(memory.clone()));
-        let invocation = RpcInvocation {
-            // The plugin host hands the plugin its path from its own group.
-            path: parsed.path[1..].to_vec(),
-            argv: argv(line),
-            args: parsed.values,
-            json: parsed.json,
-            host: "laptop".into(),
-            cwd: "/workspace".into(),
-            env: Default::default(),
-            context: test_command_context(),
-            caller: None,
-            stdin: false,
-            pipes: None,
-            brought: None,
-        };
-        let request = Request::Command {
-            user: user(),
-            invocation: Box::new(invocation),
-        };
-        let text = |bytes: Vec<u8>| String::from_utf8(bytes).unwrap();
-        // A failure is told as the backend's dispatcher tells it, after the
-        // command's path (`crates/host-interface/src/rpc.rs`).
-        let (code, told) = match self.plugin.call(request, self.demi.port()).await {
-            Ok(Reply::Exit { code }) => (code, String::new()),
-            Err(PluginError::Failed { message }) => {
-                (1, format!("{}: {message}\n", parsed.path.join(" ")))
-            }
-            other => panic!("{other:?}"),
-        };
-        (code, text(memory.stdout()), text(memory.stderr()) + &told)
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, PluginError> {

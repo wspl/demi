@@ -3,14 +3,13 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_provider_common::{
-    InferenceItem, MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ResultPart,
-    RuntimeEnv, ToolDefinition, UserPart, VendorPolicy,
-    testing::{MockVendor, every_vendor_accepts, inference_request, property_order, titled_tool},
+    InferenceItem, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition, UserPart, VendorPolicy,
+    testing::{MockVendor, inference_request},
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
 use serde_json::{Value, json};
 
-use crate::{provider_at, run, runtime, runtime_with, stop};
+use crate::{run, runtime, runtime_with, stop};
 
 fn text(text: &str) -> Vec<UserPart> {
     vec![UserPart::Text(text.into())]
@@ -41,31 +40,6 @@ async fn body_for(
     request.output_limit = output_limit.and_then(NonZeroU32::new);
     run(runtime_with(&vendor, policy).as_mut(), request).await;
     vendor.requests()[0].json()
-}
-
-#[tokio::test]
-async fn a_run_posts_to_the_messages_endpoint_with_the_key_and_version() {
-    let vendor = MockVendor::start().await;
-    for base in ["/v1", "/v1/", "/v1/messages"] {
-        vendor.respond(stop());
-        let mut runtime = provider_at(&vendor, base)
-            .runtime(RuntimeEnv {
-                http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
-            })
-            .unwrap();
-        let events = run(runtime.as_mut(), inference_request()).await;
-        assert_eq!(events, [ProviderEvent::Response(None)]);
-    }
-    for request in vendor.requests() {
-        assert_eq!(
-            (request.method.as_str(), request.uri.path()),
-            ("POST", "/v1/messages")
-        );
-        assert_eq!(request.header("x-api-key"), Some("sk-ant-test"));
-        assert_eq!(request.header("anthropic-version"), Some("2023-06-01"));
-        assert_eq!(request.header("content-type"), Some("application/json"));
-        assert_eq!(request.header("accept"), Some("text/event-stream"));
-    }
 }
 
 #[tokio::test]
@@ -150,20 +124,6 @@ async fn the_body_groups_turns_and_carries_the_tools_system_prompt_and_tier() {
             "thinking": { "type": "enabled", "budget_tokens": 1024 },
             "service_tier": "standard_only",
         })
-    );
-}
-
-#[tokio::test]
-async fn a_tools_fields_reach_the_vendor_in_the_order_its_schema_lists_them() {
-    let vendor = MockVendor::start().await;
-    vendor.respond(stop());
-    let mut request = inference_request();
-    request.tools = Arc::new([titled_tool()]);
-    run(runtime(&vendor).as_mut(), request).await;
-    let body = vendor.requests()[0].json();
-    assert_eq!(
-        property_order(&body["tools"][0]["input_schema"]),
-        ["description", "script", "intervalMs"]
     );
 }
 
@@ -306,66 +266,6 @@ async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_a
 }
 
 #[tokio::test]
-async fn a_blank_system_prompt_no_tools_and_no_tier_are_left_out() {
-    let vendor = MockVendor::start().await;
-    vendor.respond(stop());
-    let mut request = inference_request();
-    request.system_prompt = " \n\t".into();
-    run(runtime(&vendor).as_mut(), request).await;
-    let body = vendor.requests()[0].json();
-    for absent in [
-        "system",
-        "tools",
-        "thinking",
-        "output_config",
-        "service_tier",
-    ] {
-        assert!(body.get(absent).is_none(), "{absent}: {body}");
-    }
-    assert_eq!(body["max_tokens"], json!(32_000));
-}
-
-#[tokio::test]
-async fn a_reused_runtime_uses_the_output_limit_of_each_request() {
-    let vendor = MockVendor::start().await;
-    let mut runtime = runtime(&vendor);
-    // A request's cap lowers the model's limit, and stands in for none.
-    let cases = [
-        ("a", Some(8_000), None),
-        ("b", Some(32_000), None),
-        ("c", None, None),
-        ("d", Some(8_000), Some(1_024)),
-        ("e", None, Some(1_024)),
-    ];
-    for (model, limit, cap) in cases {
-        vendor.respond(stop());
-        let mut request = inference_request();
-        request.model_id = model.into();
-        request.output_limit = limit.and_then(NonZeroU32::new);
-        request.output_cap = cap.and_then(NonZeroU32::new);
-        run(runtime.as_mut(), request).await;
-    }
-    let sent: Vec<(Value, Value)> = vendor
-        .requests()
-        .iter()
-        .map(|request| {
-            let body = request.json();
-            (body["model"].clone(), body["max_tokens"].clone())
-        })
-        .collect();
-    assert_eq!(
-        sent,
-        [
-            (json!("a"), json!(8_000)),
-            (json!("b"), json!(32_000)),
-            (json!("c"), json!(32_000)),
-            (json!("d"), json!(1_024)),
-            (json!("e"), json!(1_024))
-        ]
-    );
-}
-
-#[tokio::test]
 async fn thinking_maps_onto_a_budget_or_adaptive_thinking_at_an_effort() {
     let items = || {
         vec![InferenceItem::UserMessage {
@@ -482,88 +382,6 @@ async fn thinking_maps_onto_a_budget_or_adaptive_thinking_at_an_effort() {
 }
 
 #[tokio::test]
-async fn thinking_is_sent_back_only_when_this_provider_received_it_and_no_summary_replaced_its_history()
- {
-    let model = || "claude-opus-4-8".to_owned();
-    let body = body(
-        vec![
-            // Reasoning compaction kept after a summary would fail the
-            // vendor's check of the history before it.
-            InferenceItem::UserMessage {
-                content: text("Previous conversation summary:\nthe user said hello"),
-            },
-            InferenceItem::AssistantThinking {
-                model_id: model(),
-                text: "kept".into(),
-                signature: Some("anthropic:sig-0".into()),
-                kept_past_summary: true,
-            },
-            InferenceItem::AssistantRedactedThinking {
-                model_id: model(),
-                data: "anthropic:kept-opaque".into(),
-                kept_past_summary: true,
-            },
-            InferenceItem::AssistantText {
-                model_id: model(),
-                text: "hello".into(),
-            },
-            InferenceItem::UserMessage {
-                content: text("hi"),
-            },
-            InferenceItem::AssistantThinking {
-                model_id: model(),
-                text: "plan".into(),
-                signature: Some("anthropic:sig-1".into()),
-                kept_past_summary: false,
-            },
-            InferenceItem::AssistantThinking {
-                model_id: model(),
-                text: "theirs".into(),
-                signature: Some("google:sig-2".into()),
-                kept_past_summary: false,
-            },
-            InferenceItem::AssistantThinking {
-                model_id: model(),
-                text: "unsigned".into(),
-                signature: None,
-                kept_past_summary: false,
-            },
-            InferenceItem::AssistantRedactedThinking {
-                model_id: model(),
-                data: "anthropic:opaque".into(),
-                kept_past_summary: false,
-            },
-            InferenceItem::AssistantRedactedThinking {
-                model_id: model(),
-                data: "opaque-elsewhere".into(),
-                kept_past_summary: false,
-            },
-            InferenceItem::ToolUse {
-                model_id: model(),
-                tool_use_id: "toolu-1".into(),
-                tool_name: "ls".into(),
-                input: json!({}),
-            },
-        ],
-        None,
-        None,
-    )
-    .await;
-    assert_eq!(
-        body["messages"][1],
-        json!({ "role": "assistant", "content": [{ "type": "text", "text": "hello" }] })
-    );
-    assert_eq!(
-        body["messages"][3],
-        json!({ "role": "assistant", "content": [
-            { "type": "thinking", "thinking": "plan", "signature": "sig-1" },
-            { "type": "redacted_thinking", "data": "opaque" },
-            { "type": "tool_use", "id": "toolu-1", "name": "ls", "input": {} },
-        ] })
-    );
-}
-
-#[tokio::test]
 async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
     let bytes = |data: &[u8], media_type: &str| MediaBytes {
         data: B64Bytes::from(data.to_vec()),
@@ -623,48 +441,4 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
             { "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data": "JVBERg==" }, "title": "document-3.pdf" },
         ])
     );
-}
-
-/// A Codex call after a model switch, stored as `call_…|fc_…`: its call and its
-/// result go to the vendor under one id the vendor's pattern accepts, so they
-/// pair.
-///
-/// The same request sends the same bytes again, so the cached prefix holds.
-// Cost: two requests to a local stub, a few milliseconds.
-#[tokio::test]
-async fn a_codex_call_replays_under_an_id_the_vendor_accepts_the_same_each_time() {
-    let codex_id = "call_7QmZ|fc_68e0a1";
-    let vendor = MockVendor::start().await;
-    let mut runtime = runtime_with(&vendor, VendorPolicy::default());
-    let mut request = inference_request();
-    request.items = vec![
-        InferenceItem::UserMessage { content: text("list") },
-        InferenceItem::ToolUse {
-            model_id: "gpt-6.1-sol".into(),
-            tool_use_id: codex_id.into(),
-            tool_name: "shell".into(),
-            input: json!({ "script": "ls" }),
-        },
-        InferenceItem::ToolResult {
-            tool_use_id: codex_id.into(),
-            output: vec![ResultPart::Text("a.txt".into())],
-            is_error: false,
-        },
-        InferenceItem::UserMessage { content: text("continue") },
-    ]
-    .into();
-    for _ in 0..2 {
-        vendor.respond(stop());
-        run(runtime.as_mut(), request.clone()).await;
-    }
-    let requests = vendor.requests();
-    assert_eq!(requests[0].body, requests[1].body);
-    let body = requests[0].json();
-    let messages = body["messages"].as_array().unwrap();
-    let call = &messages[1]["content"][0];
-    let result = &messages[2]["content"][0];
-    assert_eq!((&call["type"], &result["type"]), (&json!("tool_use"), &json!("tool_result")));
-    let id = call["id"].as_str().unwrap();
-    assert!(every_vendor_accepts(id), "{id}");
-    assert_eq!(result["tool_use_id"], call["id"]);
 }

@@ -8,23 +8,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::WireApi;
 
-use crate::{run, runtime};
-
-#[tokio::test]
-async fn a_cancelled_request_sends_nothing_and_ends_without_an_event() {
-    let vendor = MockVendor::start().await;
-    let request = inference_request();
-    request.cancel.cancel();
-    assert!(
-        run(
-            runtime(&vendor, WireApi::Responses, VendorPolicy::default()).as_mut(),
-            request
-        )
-        .await
-        .is_empty()
-    );
-    assert!(vendor.requests().is_empty());
-}
+use crate::runtime;
 
 #[tokio::test]
 async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_connection() {

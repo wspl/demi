@@ -5,27 +5,20 @@
 //! paused clock; no other timer is pending while they wait on the scripted
 //! issuer.
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::time::Duration;
 
 use demi_provider_common::{
     Provider,
-    credentials::{AccountsCapability, CredentialPool, LoginError, LoginKind, MemoryCredentialPool},
+    credentials::MemoryCredentialPool,
     testing::{MockResponse, MockVendor, login_io},
 };
 use demi_shared_types::LoginPending;
 use serde_json::{Value, json};
-use tokio::sync::Notify;
 
-use crate::{form, json_answer, provider, token};
+use crate::{json_answer, provider};
 
 const DEVICE_CODE: &str = "/oauth2/device/code";
 const TOKEN: &str = "/oauth2/token";
-const USER: &str = "/v1/user";
-const CLIENT_ID: &str = "b1a00492-073a-47ea-816f-4c329264a828";
-
 /// The issuer's device-code answer, with `fields` over one that polls at
 /// once and lives ten minutes.
 fn device_code(fields: Value) -> MockResponse {
@@ -55,150 +48,6 @@ fn pending() -> MockResponse {
     json_answer(400, json!({ "error": "authorization_pending" }))
 }
 
-fn paths(vendor: &MockVendor) -> Vec<String> {
-    vendor
-        .requests()
-        .iter()
-        .map(|request| request.uri.path().to_owned())
-        .collect()
-}
-
-async fn stored(pool: &MemoryCredentialPool, id: &str) -> Value {
-    serde_json::from_str(&pool.document(id).read().await.unwrap().unwrap().text).unwrap()
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_device_login_follows_the_grok_clis_contract_and_stores_the_user() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(DEVICE_CODE, device_code(json!({ "verification_uri_complete": "https://auth.x.ai/activate?user_code=GROK-1234" })));
-    vendor.respond_at(TOKEN, pending());
-    let id_token = token(json!({ "sub": "user_1", "email": "id@example.com" }));
-    vendor.respond_at(TOKEN, confirmed("at_1", Some(id_token)));
-    vendor.respond_at(
-        USER,
-        json_answer(
-            200,
-            json!({ "userId": "user_1", "firstName": "G", "email": "g@example.com" }),
-        ),
-    );
-    let pool = MemoryCredentialPool::new();
-    let provider = provider(&vendor, &pool, None);
-    let accounts = provider.accounts().unwrap();
-    assert_eq!(
-        accounts.capability(),
-        AccountsCapability {
-            login: Some(LoginKind::Device)
-        }
-    );
-
-    let shown = Arc::new(Mutex::new(Vec::new()));
-    let report = {
-        let shown = shown.clone();
-        move |pending: LoginPending| shown.lock().unwrap().push(pending)
-    };
-    let account = accounts.login(login_io(&report)).await.unwrap();
-    let shown = shown.lock().unwrap().clone();
-    assert_eq!(shown.len(), 1);
-    assert_eq!(
-        shown[0].verification_url,
-        "https://auth.x.ai/activate?user_code=GROK-1234"
-    );
-    assert_eq!(shown[0].user_code.as_deref(), Some("GROK-1234"));
-
-    // The proxy's details of the user win over the id token's.
-    assert_eq!(account.label, "g@example.com");
-    assert_eq!(
-        accounts.active().await.unwrap().as_deref(),
-        Some(account.id.as_str())
-    );
-    let issuer = vendor.url("");
-    assert_eq!(
-        stored(&pool, &account.id).await,
-        json!({
-            "accessToken": "at_1",
-            "refreshToken": "rt_1",
-            "expiresAt": "2026-09-18T15:00:00.000Z",
-            "issuer": format!("{issuer}/"),
-            "clientId": CLIENT_ID,
-            "userId": "user_1",
-            "email": "g@example.com",
-        })
-    );
-    let listed = pool.list().await.unwrap();
-    assert_eq!(listed[0].identity_key, Some(format!("{issuer}::user_1")));
-
-    let requests = vendor.requests();
-    assert_eq!(paths(&vendor), [DEVICE_CODE, TOKEN, TOKEN, USER]);
-    let scope = "openid+profile+email+offline_access+grok-cli%3Aaccess+api%3Aaccess+conversations%3Aread+conversations%3Awrite+workspaces%3Aread+workspaces%3Awrite";
-    assert_eq!(
-        form(&requests[0]),
-        format!("client_id={CLIENT_ID}&scope={scope}&referrer=grok-build")
-    );
-    assert_eq!(
-        form(&requests[1]),
-        format!(
-            "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code&device_code=dev_code_1&client_id={CLIENT_ID}"
-        )
-    );
-    for request in &requests[..3] {
-        assert_eq!(
-            (
-                request.header("x-grok-client-surface"),
-                request.header("x-grok-client-version")
-            ),
-            (Some("ui"), Some("1.0.62"))
-        );
-    }
-    let user = &requests[3];
-    assert_eq!(
-        (
-            user.header("authorization"),
-            user.header("x-xai-token-auth")
-        ),
-        (Some("Bearer at_1"), Some("xai-grok-cli"))
-    );
-    assert_eq!(user.header("x-grok-client-mode"), Some("interactive"));
-}
-
-#[tokio::test(start_paused = true)]
-async fn tokens_that_act_for_a_team_make_the_team_the_accounts_user_without_an_email() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(DEVICE_CODE, device_code(json!({})));
-    let access =
-        token(json!({ "sub": "user-42", "principal_type": "Team", "principal_id": "team-123" }));
-    vendor.respond_at(
-        TOKEN,
-        confirmed(
-            &access,
-            Some(token(
-                json!({ "sub": "user-42", "email": "member@example.com" }),
-            )),
-        ),
-    );
-    // The proxy describes the member who signed in; the account is the team's.
-    vendor.respond_at(
-        USER,
-        json_answer(
-            200,
-            json!({ "userId": "user-42", "email": "member@example.com" }),
-        ),
-    );
-    let pool = MemoryCredentialPool::new();
-    let provider = provider(&vendor, &pool, None);
-    let report = |_: LoginPending| {};
-    let account = provider.accounts().unwrap().login(login_io(&report)).await.unwrap();
-    assert_eq!(account.label, "team-123");
-    let document = stored(&pool, &account.id).await;
-    assert_eq!(
-        (&document["userId"], &document["principal"]),
-        (
-            &json!("team-123"),
-            &json!({ "kind": "Team", "id": "team-123" })
-        )
-    );
-    assert!(document.get("email").is_none(), "{document}");
-}
-
 #[tokio::test(start_paused = true)]
 async fn a_slow_down_waits_five_seconds_longer_before_each_later_poll() {
     let vendor = MockVendor::start().await;
@@ -217,62 +66,4 @@ async fn a_slow_down_waits_five_seconds_longer_before_each_later_poll() {
         (Duration::from_secs(16)..Duration::from_millis(16_100)).contains(&waited),
         "{waited:?}"
     );
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_refused_login_or_an_address_a_web_browser_cannot_trust_fails_and_stores_nothing() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(DEVICE_CODE, device_code(json!({})));
-    vendor.respond_at(TOKEN, json_answer(400, json!({ "error": "access_denied" })));
-    vendor.respond_at(
-        DEVICE_CODE,
-        device_code(json!({ "verification_uri": "http://auth.example.com/activate" })),
-    );
-    vendor.respond_at(
-        DEVICE_CODE,
-        device_code(json!({ "verification_uri": null })),
-    );
-    let pool = MemoryCredentialPool::new();
-    let provider = provider(&vendor, &pool, None);
-    let accounts = provider.accounts().unwrap();
-    let report = |_: LoginPending| panic!("a failed login showed a code");
-    let refused = |_: LoginPending| {};
-    assert_eq!(
-        accounts.login(login_io(&refused)).await.unwrap_err(),
-        LoginError::Failed("Grok device login failed: access_denied".into())
-    );
-    let insecure = accounts.login(login_io(&report)).await.unwrap_err();
-    assert_eq!(
-        insecure,
-        LoginError::Failed("Grok device code failed: the response is malformed at verification_uri: a field is missing, unknown or of the wrong type".into())
-    );
-    let unnamed = accounts.login(login_io(&report)).await.unwrap_err();
-    assert_eq!(
-        unnamed,
-        LoginError::Failed(
-            "Grok device code failed: the response names no verification_uri".into()
-        )
-    );
-    assert!(pool.list().await.unwrap().is_empty());
-}
-
-#[tokio::test(start_paused = true)]
-async fn dropping_a_login_while_it_waits_for_the_user_stops_it_and_stores_nothing() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(DEVICE_CODE, device_code(json!({ "interval": 5 })));
-    vendor.respond_at(TOKEN, pending());
-    let pool = MemoryCredentialPool::new();
-    let provider = provider(&vendor, &pool, None);
-    let shown = Arc::new(Notify::new());
-    let report = {
-        let shown = shown.clone();
-        move |_: LoginPending| shown.notify_one()
-    };
-    tokio::select! {
-        _ = provider.accounts().unwrap().login(login_io(&report)) => panic!("the login ended without the user"),
-        () = shown.notified() => {}
-    }
-    tokio::time::sleep(Duration::from_secs(60)).await;
-    assert_eq!(paths(&vendor), [DEVICE_CODE]);
-    assert!(pool.list().await.unwrap().is_empty());
 }

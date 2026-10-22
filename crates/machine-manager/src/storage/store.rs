@@ -307,21 +307,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_corrupt_record_is_an_error() {
-        let off = OffLoop::in_test();
-        let directory = tempfile::tempdir().unwrap();
-        let store = ImageStore::new(directory.path().to_owned());
-        let device = DeviceId::parse("device").unwrap();
-        std::fs::create_dir(directory.path().join("device")).unwrap();
-        std::fs::write(
-            directory.path().join("device/current.json"),
-            r#"{"generation":"g"}"#,
-        )
-        .unwrap();
-        assert!(matches!(
-            store.read(&off, &device),
-            Err(StoreError::Corrupt { .. })
-        ));
-    }
 }

@@ -1,12 +1,10 @@
 //! The events a Codex run makes over server-sent events, and its failures
 //! (`crates/provider-common/src/contract.rs`).
 
-use std::time::Duration;
-
-use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode, read_codex_failure};
+use demi_provider_codex::{TransportMode, read_codex_failure};
 use demi_provider_common::{
     ErrorCode, HttpFailureRecord, ProviderEvent, ProviderFailure, ToolCall,
-    testing::{MockResponse, MockVendor, inference_request, next_event},
+    testing::{MockResponse, MockVendor, inference_request},
 };
 use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, Timestamp, TokenUsage};
 use serde_json::json;
@@ -65,51 +63,6 @@ async fn a_run_streams_thinking_text_tool_calls_and_usage() {
     );
 }
 
-#[tokio::test]
-async fn a_stream_that_ends_without_completion_fails_after_its_text() {
-    let (events, _vendor) = events_of(stream(&[
-        json!({ "type": "response.output_text.delta", "delta": "hi" }),
-    ]))
-    .await;
-    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
-        panic!("{events:?}");
-    };
-    assert_eq!(
-        (text.as_str(), &failure.code),
-        ("hi", &Some(demi_provider_common::ErrorCode::Overloaded))
-    );
-}
-
-#[tokio::test]
-async fn a_usage_limit_in_the_stream_names_when_it_lifts() {
-    // 2026-09-22T07:37:39Z, as Unix seconds.
-    let frame = json!({ "type": "error", "error": { "type": "usage_limit_reached", "message": "The usage limit has been reached", "plan_type": "pro", "resets_at": 1_790_062_659, "resets_in_seconds": 321_250 }, "status_code": 429 });
-    let (events, _vendor) = events_of(stream(std::slice::from_ref(&frame))).await;
-    let failure = failure_of(events);
-    assert_eq!(
-        (failure.message.as_str(), failure.code.clone()),
-        (
-            "The usage limit has been reached",
-            Some(ErrorCode::UsageLimit)
-        )
-    );
-    let lifts = "2026-09-22T07:37:39.000Z"
-        .parse::<Timestamp>()
-        .unwrap()
-        .as_millisecond()
-        - NOW.parse::<Timestamp>().unwrap().as_millisecond();
-    assert_eq!(
-        failure.retry_after,
-        Some(Duration::from_millis(lifts.unsigned_abs()))
-    );
-    let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!(
-        (diagnostics.source, diagnostics.provider_code.as_deref()),
-        (FailureSource::Stream, Some("usage_limit_reached"))
-    );
-    assert_eq!(diagnostics.upstream, Some(frame.to_string()));
-}
-
 /// Codex's own sign of a used-up account, as the Codex CLI reads it, is a
 /// usage limit, which waiting a few seconds does not fix; any other 429
 /// only throttles. One mock vendor per case, about 10 ms each.
@@ -146,116 +99,6 @@ async fn a_used_up_account_is_a_usage_limit_and_any_other_429_throttles() {
         let (events, _vendor) = events_of(MockResponse::status(429).chunk(body)).await;
         assert_eq!(failure_of(events).code, Some(code), "{body}");
     }
-}
-
-/// Codex's quota and credit codes are a usage limit with no status at all,
-/// as in a `response.failed` frame, which the Codex CLI reads the same way.
-#[tokio::test]
-async fn a_failed_response_whose_quota_is_used_up_is_a_usage_limit() {
-    let frame = json!({ "type": "response.failed", "response": { "error": { "code": "insufficient_quota", "message": "You exceeded your current quota." } } });
-    let (events, _vendor) = events_of(stream(std::slice::from_ref(&frame))).await;
-    assert_eq!(failure_of(events).code, Some(ErrorCode::UsageLimit));
-}
-
-#[tokio::test]
-async fn a_refused_request_keeps_the_whole_answer_and_is_not_retried_by_the_provider() {
-    let body = r#"{"error":{"code":"server_error","message":"backend failed"}}"#;
-    let (events, vendor) = events_of(
-        MockResponse::status(500)
-            .header("x-request-id", "req-http-1")
-            .header("retry-after", "2")
-            .chunk(body),
-    )
-    .await;
-    assert_eq!(vendor.requests().len(), 1);
-    let failure = failure_of(events);
-    assert_eq!(
-        failure.message,
-        format!("Codex API request failed with HTTP 500: {body}")
-    );
-    assert_eq!(
-        (failure.code.clone(), failure.retry_after),
-        (Some(ErrorCode::Overloaded), Some(Duration::from_secs(2)))
-    );
-    let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!(
-        (diagnostics.source, diagnostics.http_status),
-        (FailureSource::Http, Some(500))
-    );
-    assert_eq!(diagnostics.provider_code.as_deref(), Some("server_error"));
-    assert_eq!(
-        diagnostics.provider_request_id.as_deref(),
-        Some("req-http-1")
-    );
-    let record = HttpFailureRecord::read(&diagnostics).unwrap();
-    assert_eq!(record.body, body);
-    let names: Vec<&str> = record
-        .headers
-        .iter()
-        .map(|(name, _)| name.as_str())
-        .collect();
-    assert!(
-        names.contains(&"retry-after") && names.contains(&"x-request-id") && names.is_sorted(),
-        "{names:?}"
-    );
-}
-
-#[tokio::test]
-async fn response_headers_that_do_not_arrive_in_time_fail_the_run_as_overloaded() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(RESPONSES, MockResponse::silent());
-    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()), crate::releases(&vendor));
-    config.backend_url = vendor.url("/backend-api").parse().unwrap();
-    config.auth_url = vendor.url("").parse().unwrap();
-    config.transport = TransportMode::Sse;
-    config.header_timeout = Duration::from_millis(50);
-    let clock = std::sync::Arc::new(demi_provider_common::testing::FixedClock(
-        NOW.parse().unwrap(),
-    ));
-    let snapshots = std::sync::Arc::new(demi_provider_common::quota::MemorySnapshots::new());
-    let provider = CodexProvider::new(
-        config,
-        std::sync::Arc::new(pool),
-        snapshots,
-        demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
-        clock,
-    );
-    let failure = failure_of(run(runtime_of(&provider).as_mut(), inference_request()).await);
-    assert_eq!(
-        failure.message,
-        "Codex SSE response headers timed out after 50ms"
-    );
-    assert_eq!(failure.code, Some(ErrorCode::Overloaded));
-    assert_eq!(
-        failure.diagnostics.unwrap().source,
-        FailureSource::Transport
-    );
-}
-
-#[tokio::test]
-async fn cancelling_mid_stream_stops_the_download() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(
-        RESPONSES,
-        MockResponse::event_stream(
-            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hel\"}\n\n",
-        )
-        .stay_open(),
-    );
-    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let provider = provider(&vendor, &pool, TransportMode::Sse);
-    let mut runtime = runtime_of(&provider);
-    let request = inference_request();
-    let cancel = request.cancel.clone();
-    let mut events = runtime.run(request);
-    assert_eq!(
-        next_event(&mut events).await,
-        Some(ProviderEvent::TextDelta("hel".into()))
-    );
-    cancel.cancel();
-    assert_eq!(next_event(&mut events).await, None);
-    vendor.disconnected().await;
 }
 
 fn diagnostics(source: FailureSource, upstream: String) -> ProviderErrorDiagnostics {

@@ -45,7 +45,6 @@ demi-command-package-browser-chrome = { path = "../command-chrome", features = [
 demi-command-sdk = { path = "../../command-sdk", features = ["testing"] }
 demi-live-view-protocol = { path = "../../live-view-protocol", features = ["testing"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
-regex = "1"
 # The repair tests fetch from their fixture site.
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 tempfile = "3"

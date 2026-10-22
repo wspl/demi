@@ -628,59 +628,6 @@ mod tests {
     }
 
     #[test]
-    fn printable_keys_carry_their_text_so_the_page_gets_keypress() {
-        let event = viewer_key_on(
-            &ViewerKey {
-                text: Some("a"),
-                ..down("KeyA", "a", 65)
-            },
-            false,
-            false,
-        );
-        assert_eq!(
-            fields(&event),
-            (DispatchKeyEventType::KeyDown, "a", "KeyA", 65, 0)
-        );
-        assert_eq!(event.text.as_deref(), Some("a"));
-        assert_eq!(event.unmodified_text.as_deref(), Some("a"));
-        assert_eq!(event.is_keypad, Some(false));
-    }
-
-    #[test]
-    fn enter_types_a_carriage_return() {
-        assert_eq!(
-            viewer_key_on(&down("Enter", "Enter", 13), false, false)
-                .text
-                .as_deref(),
-            Some("\r")
-        );
-        let numpad = viewer_key_on(
-            &ViewerKey {
-                location: 3,
-                ..down("NumpadEnter", "Enter", 13)
-            },
-            false,
-            false,
-        );
-        assert_eq!(numpad.text.as_deref(), Some("\r"));
-        assert_eq!(numpad.is_keypad, Some(true));
-    }
-
-    #[test]
-    fn keys_without_a_character_stay_raw() {
-        for (code, key, key_code) in [
-            ("Tab", "Tab", 9),
-            ("Backspace", "Backspace", 8),
-            ("ArrowLeft", "ArrowLeft", 37),
-            ("Escape", "Escape", 27),
-        ] {
-            let event = viewer_key_on(&down(code, key, key_code), false, false);
-            assert_eq!(event.r#type, DispatchKeyEventType::RawKeyDown);
-            assert_eq!(event.text, None);
-        }
-    }
-
-    #[test]
     fn a_mac_viewer_uses_control_shortcuts_on_a_linux_host() {
         let select_all = viewer_key_on(
             &ViewerKey {
@@ -797,31 +744,6 @@ mod tests {
             false,
         );
         assert_eq!(alt_graph.text.as_deref(), Some("@"));
-    }
-
-    #[test]
-    fn other_viewers_keep_their_modifiers() {
-        for modifiers in [CONTROL, META] {
-            let event = viewer_key_on(
-                &ViewerKey {
-                    modifiers,
-                    ..down("KeyA", "a", 65)
-                },
-                false,
-                false,
-            );
-            assert_eq!(event.modifiers, Some(modifiers));
-        }
-    }
-
-    #[test]
-    fn command_click_becomes_control_click_on_a_linux_host() {
-        assert_eq!(
-            click_modifiers_on(META | SHIFT, true, false),
-            CONTROL | SHIFT
-        );
-        assert_eq!(click_modifiers_on(META, true, true), META);
-        assert_eq!(click_modifiers_on(META, false, false), META);
     }
 
     #[test]

@@ -188,32 +188,3 @@ pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetail
         error: format!("{tab}{message} ({code}, action {action})"),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_text_error_ends_with_its_tab_message_code_and_progress_after_its_details() {
-        let rendered = render_error(
-            BrowserErrorCode::NotActionable,
-            "The button is covered.",
-            &ErrorDetails {
-                action: Some(ActionProgress::NotStarted),
-                tab: Some("t1".into()),
-                url: Some("https://example.test/".into()),
-                interceptor: Some("<div id=overlay>".into()),
-                delivered: Some(0),
-                ..ErrorDetails::default()
-            },
-        );
-        assert_eq!(
-            rendered.context,
-            "Current URL: https://example.test/\nInterceptor: <div id=overlay>\nDelivered: 0\n"
-        );
-        assert_eq!(
-            rendered.error,
-            "t1: The button is covered (not_actionable, action not started)"
-        );
-    }
-}

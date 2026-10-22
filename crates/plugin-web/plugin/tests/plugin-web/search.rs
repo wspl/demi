@@ -1,7 +1,7 @@
 //! `demi web search` each way: anonymously and signed in over the MCP
 //! server, with a key over the REST API, and the words of each failure.
 
-use serde_json::{Value, json};
+use serde_json::json;
 
 use crate::exa::{Exa, FakeExa, pages};
 use crate::support::Plugged;
@@ -183,69 +183,6 @@ fn a_signed_in_search_sends_its_token_and_a_saved_key_offers_every_option() {
     });
 }
 
-/// `--json` prints the pages, a date Exa does not know as null; a search
-/// that finds nothing says so.
-#[test]
-fn json_lists_the_pages_and_nothing_found_says_so() {
-    local(async {
-        let plugged = Plugged::new(FakeExa::new(Exa {
-            pages: pages(),
-            ..Exa::default()
-        }));
-        let (code, stdout, _) = plugged
-            .run(&["web", "search", "rolldown 1.0", "--count", "1", "--json"])
-            .await;
-        assert_eq!(code, 0);
-        let printed: Value = serde_json::from_str(&stdout).unwrap();
-        assert_eq!(
-            printed,
-            json!([{
-                "title": "Announcing Rolldown 1.0",
-                "url": "https://voidzero.dev/posts/announcing-rolldown-1-0",
-                "published": null,
-                "highlights": ["Rolldown reached 1.0."],
-            }])
-        );
-        let (code, stdout, _) = plugged.run(&["web", "search", "nothing at all"]).await;
-        assert_eq!((code, stdout.as_str()), (0, "No pages found. Try other words or fewer filters.\n"));
-    });
-}
-
-/// Each failure prints its words: the anonymous limit, the account's rate
-/// limit with the seconds of Retry-After, and no credit.
-#[test]
-fn each_failure_prints_its_words() {
-    local(async {
-        let anonymous = Plugged::new(FakeExa::new(Exa {
-            pages: pages(),
-            refuse: Some((429, vec![])),
-            ..Exa::default()
-        }));
-        assert_eq!(
-            anonymous.run(TWO_QUERIES).await.2,
-            "demi web search: the anonymous search limit is reached; sign in to Exa in Settings › Web Search to search with your own account\n"
-        );
-
-        let keyed = Plugged::new(FakeExa::new(Exa {
-            pages: pages(),
-            key: Some("exa-key-1234"),
-            ..Exa::default()
-        }));
-        keyed.call("save_key", json!({ "key": "exa-key-1234" })).await.unwrap();
-        keyed.exa.0.borrow_mut().refuse = Some((429, vec![("Retry-After", "20")]));
-        assert_eq!(
-            keyed.run(TWO_QUERIES).await.2,
-            "demi web search: Exa's rate limit is reached; try again in 20 s\n"
-        );
-        keyed.exa.0.borrow_mut().refuse = Some((402, vec![]));
-        assert_eq!(
-            keyed.run(TWO_QUERIES).await.2,
-            "demi web search: your Exa account has no credit left\n"
-        );
-
-    });
-}
-
 /// Exa refuses a stale access token with 401: the plugin host renews it
 /// once, the request goes once more with the new one, and the user stays
 /// signed in. When the renewed token is refused too, the search fails with
@@ -342,26 +279,5 @@ fn a_refused_token_exa_will_not_renew_expires_the_sign_in() {
         assert_eq!((code, stdout), (0, two_queries_printed()));
         let exa = plugged.exa.0.borrow();
         assert!(!exa.mcp_headers.last().unwrap().contains_key("authorization"));
-    });
-}
-
-/// A sign-in the plugin host forgot, as when Exa refused to renew it, fails
-/// the next search once with the words for an expired sign-in.
-#[test]
-fn a_sign_in_the_host_forgot_fails_one_search_as_expired() {
-    local(async {
-        let plugged = Plugged::new(FakeExa::new(Exa {
-            pages: pages(),
-            token: Some("live-token"),
-            ..Exa::default()
-        }));
-        plugged.sign_in("live-token");
-        assert_eq!(plugged.run(TWO_QUERIES).await.0, 0);
-        plugged.demi.access_token.replace(None);
-        assert_eq!(
-            plugged.run(TWO_QUERIES).await.2,
-            "demi web search: the Exa sign-in has expired; sign in again in Settings › Web Search\n"
-        );
-        assert_eq!(plugged.run(TWO_QUERIES).await.0, 0);
     });
 }

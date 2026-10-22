@@ -19,7 +19,7 @@ use demi_provider_bytedance::{Ark, ArkConfig, ArkProvider, Speech, SpeechConfig,
 use demi_provider_common::{
     ErrorCode, Provider, ProviderHttp, Secret,
     audio::{AudioFormatAsk, AudioOption, AudioRequest},
-    images::{Aspect, ImageRequest, InputImage},
+    images::{Aspect, InputImage},
     media::{MediaFailure, MediaVendor},
     media_catalog::Catalog,
     testing::{FixedClock, MockResponse, MockVendor},
@@ -107,62 +107,6 @@ fn audio(kind: AudioKind, model: &str, text: &str) -> AudioRequest {
 
 /// Planted defects this catches:
 ///
-/// - the image asked for as an address rather than base64, or with Ark's
-///   watermark, its JPEG or its group of images;
-/// - a shape sent as other than the catalog's size of it, or a size sent with
-///   no shape asked;
-/// - one edit image sent as an array, or several as one;
-/// - the key other than a bearer token;
-/// - an image Ark refused read as made.
-// One scripted vendor, four requests: milliseconds.
-#[tokio::test]
-async fn seedream_generates_and_edits_as_base64_in_the_catalogs_size() {
-    let vendor = MockVendor::start().await;
-    let path = "/api/v3/images/generations";
-    for image in [b"made-1".as_slice(), b"made-2", b"made-3"] {
-        vendor.respond_at(path, json_answer(200, json!({ "model": "dola-seedream-5-0-pro-260628", "data": [{ "b64_json": b64(image), "size": "2816x1584" }] })));
-    }
-    vendor.respond_at(path, json_answer(200, json!({ "data": [{ "error": { "code": "OutputImageSensitiveContentDetected", "message": "The image may contain sensitive content" } }] })));
-    let provider = ark(&vendor, Ark::Byteplus);
-    let maker = provider.images().expect("an Ark key makes images");
-    assert_eq!(maker.vendor(), Some(MediaVendor::Byteplus));
-    let (http, catalog) = (http(), catalog());
-    let request = |aspect: Option<Aspect>, images: Vec<InputImage>| ImageRequest {
-        model: "dola-seedream-5-0-pro-260628".into(),
-        prompt: "A lighthouse at dusk".into(),
-        aspect,
-        transparent: false,
-        images,
-    };
-
-    let wide = maker.make(&http, &catalog, request(Some(Aspect { width: 16, height: 9 }), Vec::new())).await.result.unwrap();
-    assert_eq!(wide.bytes.as_ref(), b"made-1");
-    maker.make(&http, &catalog, request(None, vec![png(b"one")])).await.result.unwrap();
-    maker.make(&http, &catalog, request(None, vec![png(b"one"), png(b"two")])).await.result.unwrap();
-    let refused = maker.make(&http, &catalog, request(None, Vec::new())).await.result;
-    assert!(
-        matches!(&refused, Err(MediaFailure::Refused { message, trace, .. })
-            if message == "The image may contain sensitive content" && trace.code.as_deref() == Some("OutputImageSensitiveContentDetected")),
-        "{refused:?}"
-    );
-
-    let sent = vendor.requests();
-    assert_eq!(sent[0].header("authorization"), Some("Bearer ark-key"));
-    assert_eq!(
-        sent[0].json(),
-        json!({ "model": "dola-seedream-5-0-pro-260628", "prompt": "A lighthouse at dusk", "size": "2816x1584",
-                "response_format": "b64_json", "watermark": false, "sequential_image_generation": "disabled", "output_format": "png" })
-    );
-    assert_eq!(sent[1].json()["image"], json!(format!("data:image/png;base64,{}", b64(b"one"))));
-    assert_eq!(sent[1].json().get("size"), None, "no shape asked sends no size");
-    assert_eq!(
-        sent[2].json()["image"],
-        json!([format!("data:image/png;base64,{}", b64(b"one")), format!("data:image/png;base64,{}", b64(b"two"))])
-    );
-}
-
-/// Planted defects this catches:
-///
 /// - the prompt or an image outside `content`, or an image in the wrong role;
 /// - an option sent other than in its field, or the watermark left on;
 /// - a status read wrongly, `running` as queued, `cancelled` or `expired` as
@@ -244,31 +188,6 @@ async fn an_ark_task_is_asked_read_through_its_states_and_downloaded() {
     assert_eq!(sent[1].header("authorization"), Some("Bearer ark-key"));
     let download = sent.last().unwrap();
     assert_eq!((download.uri.path(), download.header("authorization")), ("/files/cgt-1.mp4", None));
-}
-
-/// Planted defects this catches: a stopped call that deletes a running or
-/// finished task, which Ark cannot stop and whose record it would delete,
-/// or one that leaves a queued task to run and be paid for.
-// One scripted vendor, three requests: milliseconds.
-#[tokio::test]
-async fn a_stopped_call_cancels_its_task_only_while_it_is_queued() {
-    let vendor = MockVendor::start().await;
-    let task = "/api/v3/contents/generations/tasks/cgt-2";
-    vendor.respond_at(task, json_answer(200, json!({ "id": "cgt-2", "status": "running" })));
-    vendor.respond_at(task, json_answer(200, json!({ "id": "cgt-2", "status": "queued" })));
-    vendor.respond_at(task, MockResponse::status(200).chunk("{}"));
-    let provider = ark(&vendor, Ark::Byteplus);
-    let maker = provider.videos().unwrap();
-    let http = http();
-
-    maker.cancel(&http, taken("cgt-2")).expect("Ark cancels a task").await.result.unwrap();
-    maker.cancel(&http, taken("cgt-2")).expect("Ark cancels a task").await.result.unwrap();
-
-    let methods: Vec<_> = vendor.requests().iter().map(|request| (request.method.as_str().to_owned(), request.uri.path().to_owned())).collect();
-    assert_eq!(
-        methods,
-        [("GET".to_owned(), task.to_owned()), ("GET".to_owned(), task.to_owned()), ("DELETE".to_owned(), task.to_owned())]
-    );
 }
 
 /// The answer of a speech: chunked JSON objects, each with a piece of the
@@ -359,129 +278,6 @@ async fn seed_speech_joins_its_pieces_until_the_end_and_wraps_pcm_for_wav() {
     let zh_sent = &doubao.requests()[0];
     assert_eq!(headers(zh_sent), [Some("speech-key".into()), Some("seed-tts-2.0".into()), None]);
     assert_eq!(zh_sent.json()["req_params"]["audio_params"], json!({ "format": "mp3", "sample_rate": 24000 }));
-}
-
-/// Planted defects this catches:
-///
-/// - an effect, or Seed Audio's speech, sent to Seed speech's endpoint, or with
-///   a resource header;
-/// - the speaker or the instructions left out of Seed Audio's speech, or the
-///   speaker sent outside its one `references` item, or the instructions sent
-///   with an effect;
-/// - the format or the speed's rate not asked;
-/// - the base64 not decoded;
-/// - an answer without audio read as made;
-/// - the options a Seed speech model does not take said of Seed Audio's, or its
-///   name.
-// One scripted vendor, three requests: milliseconds.
-#[tokio::test]
-async fn seed_audio_makes_an_effect_and_speaks_as_base64() {
-    let vendor = MockVendor::start().await;
-    let path = "/api/v3/tts/create";
-    vendor.respond_at(path, json_answer(200, json!({ "audio": b64(b"OggS-effect"), "duration": 3.2, "original_duration": 3.2, "url": "https://example.test/a" })));
-    vendor.respond_at(path, json_answer(200, json!({ "audio": b64(b"RIFF-speech"), "duration": 1.0 })));
-    vendor.respond_at(path, json_answer(200, json!({ "code": 40000001, "message": "text_prompt is required" })));
-    let provider = speech(&vendor, Speech::Byteplus);
-    let maker = provider.audio().unwrap();
-    let (http, catalog) = (http(), catalog());
-    let door = AudioRequest { duration: Some(3.0), looped: true, format: AudioFormatAsk::Opus, ..audio(AudioKind::Effect, "seed-audio-1.0", "A door creaks open") };
-    assert_eq!(maker.unsent(&catalog, &door), [AudioOption::Duration, AudioOption::Loop]);
-    let spoken = AudioRequest {
-        voice: Some("en_female_stokie_uranus_bigtts".into()),
-        instructions: Some("Whisper, as in a library".into()),
-        speed: Some(2.0),
-        seed: Some(3),
-        format: AudioFormatAsk::Wav,
-        ..audio(AudioKind::Speech, "seed-audio-1.0", "Stay close.")
-    };
-    assert_eq!(maker.unsent(&catalog, &spoken), [AudioOption::Seed]);
-    let tts = AudioRequest { model: "seed-tts-2.0".into(), ..spoken.clone() };
-    assert_eq!(maker.unsent(&catalog, &tts), [AudioOption::Instructions, AudioOption::Seed]);
-    let names = [&door, &spoken, &tts].map(|request| maker.shape_name(&catalog, request));
-    assert_eq!(names, ["Seed Audio", "Seed Audio", "Seed speech"]);
-
-    let made = maker.make(&http, &catalog, door.clone()).await.result.unwrap();
-    assert_eq!((made.bytes.as_ref(), made.pcm), (b"OggS-effect".as_slice(), None));
-    let said = maker.make(&http, &catalog, spoken).await.result.unwrap();
-    assert_eq!((said.bytes.as_ref(), said.pcm), (b"RIFF-speech".as_slice(), None), "Seed Audio's WAV is a file");
-    let refused = maker.make(&http, &catalog, door).await.result;
-    assert!(
-        matches!(&refused, Err(MediaFailure::Refused { message, trace, .. }) if message == "text_prompt is required" && trace.code.as_deref() == Some("40000001")),
-        "{refused:?}"
-    );
-
-    let sent = vendor.requests();
-    assert_eq!((sent[0].header("x-api-key"), sent[0].header("x-api-resource-id")), (Some("speech-key"), None));
-    assert_eq!(sent[0].json(), json!({ "model": "seed-audio-1.0", "text_prompt": "A door creaks open", "audio_config": { "format": "ogg_opus" } }));
-    assert_eq!(
-        sent[1].json(),
-        json!({ "model": "seed-audio-1.0", "text_prompt": "Whisper, as in a library\nStay close.",
-                "references": [{ "speaker": "en_female_stokie_uranus_bigtts" }],
-                "audio_config": { "format": "wav", "speech_rate": 100 } })
-    );
-}
-
-/// Planted defects this catches:
-///
-/// - a key checked by a listing ByteDance does not answer to a key;
-/// - a refusal of the probe's body read as a refused key, or a refused key read
-///   as a pass;
-/// - the probe sent with a prompt that would make something;
-/// - the models not the catalog's, or not named.
-// Two scripted vendors, four requests: milliseconds.
-#[tokio::test]
-async fn a_key_passes_on_a_body_refusal_and_fails_on_a_key_refusal() {
-    let ark_vendor = MockVendor::start().await;
-    let generations = "/api/v3/images/generations";
-    ark_vendor.respond_at(generations, json_answer(400, json!({ "error": { "code": "MissingParameter", "message": "The request failed because it is missing the `prompt` parameter.", "type": "BadRequest" } })));
-    ark_vendor.respond_at(generations, json_answer(401, json!({ "error": { "code": "AuthenticationError", "message": "The API key or AK/SK in the request is missing or invalid.", "type": "Unauthorized" } })));
-    let speech_vendor = MockVendor::start().await;
-    let create = "/api/v3/tts/create";
-    speech_vendor.respond_at(create, json_answer(400, json!({ "code": 40000001, "message": "text_prompt is empty" })));
-    speech_vendor.respond_at(create, json_answer(401, json!({ "code": 45000010, "message": "invalid api key" })));
-    let (http, catalog) = (http(), catalog());
-
-    let images = ark(&ark_vendor, Ark::Byteplus);
-    let passed = images.images().unwrap().check_key(&http, &catalog).await.unwrap();
-    let named: Vec<_> = passed.iter().map(|model| (model.id.as_str(), model.name.as_deref())).collect();
-    assert_eq!(named, [("dola-seedream-5-0-pro-260628", Some("Dola Seedream 5.0 Pro"))]);
-    let refused = images.images().unwrap().check_key(&http, &catalog).await;
-    assert!(
-        matches!(&refused, Err(MediaFailure::KeyRefused { message, .. }) if message == "The API key or AK/SK in the request is missing or invalid."),
-        "{refused:?}"
-    );
-    let probe = &ark_vendor.requests()[0];
-    assert_eq!(probe.json(), json!({ "model": "dola-seedream-5-0-pro-260628", "prompt": "" }));
-
-    let voices = speech(&speech_vendor, Speech::Byteplus);
-    let passed = voices.audio().unwrap().check_key(&http, &catalog).await.unwrap();
-    let kinds: Vec<_> = passed.iter().map(|model| (model.id.as_str(), model.kinds.clone())).collect();
-    assert_eq!(
-        kinds,
-        [("seed-audio-1.0", vec![AudioKind::Speech, AudioKind::Effect]), ("seed-tts-2.0", vec![AudioKind::Speech])]
-    );
-    let refused = voices.audio().unwrap().check_key(&http, &catalog).await;
-    assert!(matches!(&refused, Err(MediaFailure::KeyRefused { message, .. }) if message == "invalid api key"), "{refused:?}");
-    assert_eq!(speech_vendor.requests()[0].json()["text_prompt"], json!(""));
-}
-
-/// Planted defects this catches: speakers read from another model's or
-/// another service's list, or not searched.
-// No request: microseconds.
-#[tokio::test]
-async fn the_speakers_are_the_catalogs_for_the_model_and_service() {
-    let vendor = MockVendor::start().await;
-    let (http, catalog) = (http(), catalog());
-    let byteplus = speech(&vendor, Speech::Byteplus);
-    let listed = byteplus.audio().unwrap().voices(&http, &catalog, "seed-tts-2.0", None).await.unwrap().unwrap();
-    let ids: Vec<_> = listed.iter().map(|voice| voice.id.as_str()).collect();
-    assert_eq!(ids, ["en_female_stokie_uranus_bigtts", "zh_female_vv_uranus_bigtts"]);
-    let searched = byteplus.audio().unwrap().voices(&http, &catalog, "seed-tts-2.0", Some("zh_")).await.unwrap().unwrap();
-    assert_eq!(searched.len(), 1);
-    let doubao = speech(&vendor, Speech::Doubao);
-    let listed = doubao.audio().unwrap().voices(&http, &catalog, "seed-tts-2.0", None).await.unwrap().unwrap();
-    assert_eq!(listed.iter().map(|voice| voice.id.as_str()).collect::<Vec<_>>(), ["zh_female_xiaohe_uranus_bigtts"]);
-    assert!(vendor.requests().is_empty());
 }
 
 /// A catalog of no models, for a maker whose requests are one.

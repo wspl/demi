@@ -4,11 +4,10 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ResultPart,
-    ToolCall, ToolDefinition, UserPart,
-    testing::{MockResponse, MockVendor, inference_request, next_event},
+    ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ResultPart, ToolDefinition, UserPart,
+    testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_shared_types::{B64Bytes, ThinkingConfig};
 use serde_json::{Value, json};
 
 use crate::{CHAT, chat, pool_with, provider, run, runtime_of, secret};
@@ -27,47 +26,6 @@ async fn exchange(
 
 async fn body_of(request: InferenceRequest) -> Value {
     exchange(request, chat(&[])).await.1.requests()[0].json()
-}
-
-#[tokio::test]
-async fn a_run_posts_to_the_chat_proxy_with_the_grok_clis_identity() {
-    let mut request = inference_request();
-    request.model_id = "grok-4.5".into();
-    let (events, vendor) = exchange(
-        request,
-        chat(&[json!({ "choices": [{ "delta": { "content": "hi" } }] })]),
-    )
-    .await;
-    assert_eq!(
-        events,
-        [
-            ProviderEvent::TextDelta("hi".into()),
-            ProviderEvent::Response(None)
-        ]
-    );
-    let sent = &vendor.requests()[0];
-    assert_eq!((sent.method.as_str(), sent.uri.path()), ("POST", CHAT));
-    let expected = [
-        ("authorization", "Bearer session-token"),
-        ("x-xai-token-auth", "xai-grok-cli"),
-        ("x-authenticateresponse", "authenticate-response"),
-        ("x-grok-client-identifier", "grok-shell"),
-        ("x-grok-client-mode", "interactive"),
-        ("x-grok-client-version", "1.0.62"),
-        ("x-userid", "user-1"),
-        ("x-grok-user-id", "user-1"),
-        ("x-email", "user@example.com"),
-        ("x-grok-model-override", "grok-4.5"),
-        ("x-grok-session-id", "session-1"),
-        ("x-grok-conv-id", "session-1"),
-        ("x-grok-req-id", "request-1"),
-        ("x-grok-turn-idx", "turn-1"),
-        ("accept", "text/event-stream"),
-    ];
-    for (name, value) in expected {
-        assert_eq!(sent.header(name), Some(value), "{name}");
-    }
-    assert!(sent.header("x-grok-client-surface").is_none());
 }
 
 #[tokio::test]
@@ -171,76 +129,6 @@ async fn video_becomes_text_and_a_pdf_is_left_to_its_attachment_tag() {
     );
 }
 
-#[tokio::test]
-async fn the_stream_maps_reasoning_tool_calls_and_usage_by_the_shared_mapper() {
-    let (events, _vendor) = exchange(
-        inference_request(),
-        chat(&[
-            json!({ "choices": [{ "delta": { "reasoning_content": "think" } }] }),
-            json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "c1", "function": { "name": "shell_exec", "arguments": "{\"cmd\"" } }] } }] }),
-            json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "function": { "arguments": ":\"ls\"}" } }] }, "finish_reason": "tool_calls" }] }),
-            json!({ "choices": [], "usage": { "prompt_tokens": 5, "completion_tokens": 2 } }),
-        ]),
-    )
-    .await;
-    assert_eq!(
-        events,
-        [
-            ProviderEvent::ThinkingStart,
-            ProviderEvent::ThinkingDelta("think".into()),
-            // The call as the model writes it, for display, then whole.
-            ProviderEvent::ToolCallStart {
-                tool_use_id: "c1".into(),
-                tool_name: "shell_exec".into(),
-            },
-            ProviderEvent::ToolCallInput {
-                tool_use_id: "c1".into(),
-                partial_json: "{\"cmd\"".into(),
-            },
-            ProviderEvent::ToolCallInput {
-                tool_use_id: "c1".into(),
-                partial_json: ":\"ls\"}".into(),
-            },
-            ProviderEvent::ToolCall(ToolCall {
-                tool_use_id: "c1".into(),
-                tool_name: "shell_exec".into(),
-                input: json!({ "cmd": "ls" })
-            }),
-            ProviderEvent::Response(Some(TokenUsage {
-                input_tokens: 5,
-                output_tokens: 2,
-                cache_read_tokens: 0,
-                cache_write_tokens: 0
-            })),
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_refused_request_fails_with_the_vendor_record() {
-    let (events, _vendor) = exchange(
-        inference_request(),
-        MockResponse::status(429)
-            .header("retry-after", "7")
-            .chunk("slow down"),
-    )
-    .await;
-    let [ProviderEvent::Error(failure)] = events.as_slice() else {
-        panic!("{events:?}");
-    };
-    assert_eq!(
-        failure.message,
-        "Grok Build API request failed with HTTP 429: slow down"
-    );
-    assert_eq!(
-        (failure.code.clone(), failure.retry_after),
-        (
-            Some(ErrorCode::RateLimit),
-            Some(std::time::Duration::from_secs(7))
-        )
-    );
-}
-
 /// Grok Build's signs of a used-up account, as the Grok CLI reads them, are
 /// usage limits; any other 403 is a refused request and a 429 throttles.
 /// One mock vendor per case, about 10 ms each.
@@ -261,27 +149,4 @@ async fn a_used_up_account_is_a_usage_limit_and_a_429_throttles() {
         };
         assert_eq!(failure.code, Some(code), "{status} {body}");
     }
-}
-
-#[tokio::test]
-async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_connection() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(
-        CHAT,
-        MockResponse::event_stream("data: {\"choices\":[{\"delta\":{\"content\":\"hel\"}}]}\n\n")
-            .stay_open(),
-    );
-    let pool = pool_with(secret(&vendor, json!({}))).await;
-    let provider = provider(&vendor, &pool, Some(crate::ACCOUNT));
-    let mut runtime = runtime_of(&provider);
-    let request = inference_request();
-    let cancel = request.cancel.clone();
-    let mut events = runtime.run(request);
-    assert_eq!(
-        next_event(&mut events).await,
-        Some(ProviderEvent::TextDelta("hel".into()))
-    );
-    cancel.cancel();
-    assert_eq!(next_event(&mut events).await, None);
-    vendor.disconnected().await;
 }

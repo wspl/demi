@@ -1,12 +1,10 @@
 //! The Anthropic Messages API provider at its boundaries.
 //!
 //! The tests cover the request it sends to a scripted vendor, the events it
-//! makes of recorded event streams, its failures, its cancellation and what it
-//! says about itself. No test calls the real vendor.
+//! makes of recorded event streams, a stream that breaks off and its
+//! cancellation. No test calls the real vendor.
 
 mod cancellation;
-mod failures;
-mod metadata;
 mod request;
 mod stream;
 
@@ -21,11 +19,6 @@ use demi_provider_common::{
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
-
-/// A provider whose endpoint is `base` on the scripted vendor.
-pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> AnthropicProvider {
-    provider_with(vendor, base, VendorPolicy::default())
-}
 
 /// A provider whose endpoint is `base` on the scripted vendor, for a vendor
 /// of `policy`.

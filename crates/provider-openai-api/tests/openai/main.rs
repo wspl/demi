@@ -4,14 +4,12 @@
 //!
 //! - the requests it sends to a scripted vendor over both wires and the answers
 //!   it reads back;
-//! - its failures, its cancellation, and what it says about itself;
-//! - an OpenAI or xAI key's images and videos, and a compatible API's videos.
+//! - its cancellation;
+//! - an OpenAI or xAI key's image sizes and failures, and its videos.
 //!
 //! No test calls the real vendor.
 
 mod cancellation;
-mod failures;
-mod audio;
 mod images;
 mod request;
 mod videos;

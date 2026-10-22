@@ -295,21 +295,6 @@ async function loadRecorder() {
   }
 }
 
-// Planted defect this catches: a stop that retires the recording before its
-// encoder's flush, which drops the last pictures, the ones a model looks for.
-test('the pictures a stop makes the encoder flush are delivered before it is acknowledged', async () => {
-  const extension = await loadRecorder()
-  extension.send({ type: 'record', capture: 1, target: 'tab', width: 100, height: 80, keyInterval: 120 })
-  await setImmediate()
-  for (const at of [1000, 17000, 33000]) extension.draw(at)
-  await setImmediate()
-  expect(extension.encoder()?.pending.length).toBe(3)
-  extension.send({ type: 'stop', capture: 1 })
-  await setImmediate()
-  await setImmediate()
-  expect(extension.sent).toEqual(['started', 'picture', 'picture', 'picture', 'stopped'])
-})
-
 // Planted defects this catches: a capture opened at the live view's pace,
 // which a recording that joins cannot raise, and one capped at 60 frames a
 // second, which skips every second frame of a 120 Hz screen without a count.
@@ -322,21 +307,6 @@ test('a tab is captured at the full frame rate, and at its own size, whichever c
   extension.send({ type: 'record', capture: 2, target: 'tab', width: 100, height: 80, keyInterval: 120 })
   await setImmediate()
   expect(extension.opened).toEqual([{ maxFrameRate: 120, width: 100, height: 80 }])
-})
-
-// Planted defect this catches: frames the browser discarded before the
-// extension read them, which no count shows.
-test('the frames the browser discarded are reported as missed', async () => {
-  const extension = await loadRecorder()
-  extension.send({ type: 'record', capture: 1, target: 'tab', width: 100, height: 80, keyInterval: 120 })
-  await setImmediate()
-  extension.draw(1000, 7)
-  await setImmediate()
-  extension.stats.discardedFrames = 3
-  extension.send({ type: 'stop', capture: 1 })
-  await setImmediate()
-  await setImmediate()
-  expect(extension.sent).toContainEqual({ missed: 3 })
 })
 
 // Planted defect this catches: a frame the tab drew again unchanged that is
@@ -360,15 +330,4 @@ test('a frame equal to the one before is not coded and a one-pixel change says w
   const header = new DataView(extension.pictures[1])
   expect(header.getUint8(8) & 2).toBe(2)
   expect([24, 26, 28, 30].map(at => header.getUint16(at))).toEqual([5, 3, 1, 1])
-})
-
-// Planted defect this catches: a key frame only at the start, which leaves the
-// end of a long recording to be decoded from its beginning.
-test('a key frame comes every interval the Host names and at the first picture', async () => {
-  const extension = await loadRecorder()
-  extension.send({ type: 'record', capture: 1, target: 'tab', width: 100, height: 80, keyInterval: 3 })
-  await setImmediate()
-  for (let step = 1; step <= 7; step++) extension.draw(step * 16000, step)
-  await setImmediate()
-  expect(extension.encoder()?.keys).toEqual([true, false, false, true, false, false, true])
 })

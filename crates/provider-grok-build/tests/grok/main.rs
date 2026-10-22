@@ -5,7 +5,6 @@
 //! and device login. No test calls the real vendor.
 
 mod auth;
-mod images;
 mod videos;
 mod login;
 mod models;
@@ -20,7 +19,7 @@ use demi_provider_common::{
     Provider, ProviderRuntime, RuntimeEnv,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     quota::MemorySnapshots,
-    testing::{FixedClock, MockResponse, MockVendor, RecordedRequest, jwt},
+    testing::{FixedClock, MockResponse, MockVendor, RecordedRequest},
 };
 use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
 use demi_shared_types::Clock;
@@ -149,9 +148,4 @@ pub(crate) fn json_answer(status: u16, body: Value) -> MockResponse {
 /// The form a request sent, as its encoded text.
 pub(crate) fn form(request: &RecordedRequest) -> String {
     String::from_utf8(request.body.to_vec()).unwrap()
-}
-
-/// A token whose claims are `claims`.
-pub(crate) fn token(claims: Value) -> String {
-    jwt(&claims)
 }

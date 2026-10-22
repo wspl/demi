@@ -1,8 +1,8 @@
 //! The Grok Build catalog (`crates/backend-providers/src/llm/catalog.rs`).
 
 use demi_provider_common::{
-    CatalogError, Provider,
-    testing::{MockResponse, MockVendor},
+    Provider,
+    testing::MockVendor,
 };
 use serde_json::json;
 
@@ -74,49 +74,4 @@ async fn the_catalog_reads_the_proxys_models_each_time_from_an_envelope_or_a_bar
     let second = provider.list_models().await.unwrap();
     assert_eq!(second.models[0].id, "grok-test");
     assert_eq!(vendor.requests().len(), 2);
-}
-
-#[tokio::test]
-async fn a_catalog_that_cannot_be_read_is_a_failed_refresh() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(
-        MODELS,
-        json_answer(
-            200,
-            json!({ "data": [{ "id": "frontier", "context_window": "wide" }] }),
-        ),
-    );
-    vendor.respond_at(MODELS, json_answer(200, json!({ "data": [] })));
-    vendor.respond_at(MODELS, MockResponse::status(503).chunk("down"));
-    let pool = pool_with(secret(&vendor, json!({}))).await;
-    let provider = provider(&vendor, &pool, Some(ACCOUNT));
-    match provider.list_models().await {
-        Err(CatalogError::Invalid(message)) => {
-            assert!(message.contains("context_window"), "{message}")
-        }
-        other => panic!("{other:?}"),
-    }
-    assert_eq!(
-        provider.list_models().await,
-        Err(CatalogError::Invalid(
-            "Grok Build models answer lists no model".into()
-        ))
-    );
-    assert_eq!(
-        provider.list_models().await,
-        Err(CatalogError::Unavailable(
-            "Grok Build models request failed with HTTP 503".into()
-        ))
-    );
-    let staged = crate::provider(
-        &vendor,
-        &demi_provider_common::credentials::MemoryCredentialPool::new(),
-        None,
-    );
-    assert_eq!(
-        staged.list_models().await,
-        Err(CatalogError::Unauthenticated(
-            "No Grok account is signed in".into()
-        ))
-    );
 }

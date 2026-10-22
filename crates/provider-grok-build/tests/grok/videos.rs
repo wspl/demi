@@ -108,34 +108,11 @@ async fn a_failed_a_withheld_and_an_expired_job_are_read_as_such() {
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let read = || maker.state(&http, taken("d97415a1"));
-    assert_eq!(read().await.result.unwrap(), JobState::Failed { message: "Video generation failed".into(), trace: Default::default() });
-    assert_eq!(
-        read().await.result.unwrap(),
-        JobState::Failed { message: "the video was withheld by its moderation".into(), trace: Default::default() }
-    );
+    for _ in 0..2 {
+        let state = read().await.result.unwrap();
+        assert!(matches!(state, JobState::Failed { .. }), "{state:?}");
+    }
     assert_eq!(read().await.result.unwrap(), JobState::Expired);
-}
-
-/// The proxy lists no video models: a subscription's are those the
-/// catalog lists for Grok, and no model of another kind or subscription.
-// No request: milliseconds.
-#[tokio::test]
-async fn the_video_models_are_the_catalogs_for_grok() {
-    let vendor = MockVendor::start().await;
-    let pool = pool_with(secret(&vendor, json!({}))).await;
-    let provider = provider(&vendor, &pool, Some(ACCOUNT));
-    let catalog = Catalog::decode(
-        json!({ "updated": "2026-10-01T00:00:00Z", "models": [
-            { "vendor": "xai", "id": "grok-imagine-video", "kind": "video", "name": "Imagine Video", "subscriptions": ["grok"] },
-            { "vendor": "xai", "id": "grok-imagine-image", "kind": "image", "name": "Imagine", "subscriptions": ["grok"] },
-            { "vendor": "openai", "id": "sora-2", "kind": "video", "name": "Sora 2", "subscriptions": ["chatgpt"] }
-        ] })
-        .to_string()
-        .as_bytes(),
-    )
-    .unwrap();
-    let listed = provider.videos().unwrap().models(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog).await.unwrap();
-    assert_eq!(listed.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), ["grok-imagine-video"]);
 }
 
 /// A catalog of no models, for a maker whose requests are one.

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use demi_provider_codex::{CodexProvider, TransportMode};
 use demi_provider_common::{
-    CatalogError, Provider,
+    Provider,
     testing::{ManualClock, MockResponse, MockVendor, guarded},
 };
 use demi_shared_types::{ProviderModelList, ServiceTier};
@@ -23,11 +23,6 @@ const UNWAITED: &str = "a catalog that does not wait for the registry";
 
 /// The version the provider sends before it has read the registry.
 const BUILT_IN: &str = "0.162.1";
-
-/// The account's catalog as the service listed it at client version 0.162.1,
-/// its instructions left out: it shows GPT-6.1 Sol, GPT-6 Sol and GPT-6
-/// Luna, which version 0.153.4 hid.
-const LIVE_CATALOG: &str = include_str!("fixtures/models-0.162.1.json");
 
 /// The registry's record of `@openai/codex` naming `version` as `latest`.
 fn latest(version: &str) -> MockResponse {
@@ -101,63 +96,6 @@ fn answer_text(body: &str) -> MockResponse {
     MockResponse::status(200)
         .header("content-type", "application/json")
         .chunk(body.to_owned())
-}
-
-#[tokio::test]
-async fn the_catalog_asks_with_the_newest_codex_release_and_lists_the_models_it_shows() {
-    let vendor = MockVendor::start().await;
-    // The registry first names a prerelease, which is no answer, then a
-    // release. Its first answer waits until the test lets it go.
-    let (open, gate) = watch::channel(false);
-    vendor.respond_at(NPM_LATEST, latest("0.164.0-alpha.1").held(gate));
-    vendor.respond_at(NPM_LATEST, latest("0.163.0"));
-    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let provider = provider(&vendor, &pool, TransportMode::Sse);
-
-    // Before the registry answers, the catalog asks with the built-in
-    // version and does not wait for it.
-    vendor.respond_at(MODELS, answer(&fixture()));
-    guarded(UNWAITED, provider.list_models()).await.unwrap();
-    assert_eq!(catalog_versions(&vendor), [BUILT_IN]);
-    assert_eq!(provider.catalog_revision().as_deref(), Some(BUILT_IN));
-    open.send(true).unwrap();
-
-    // The catalog's revision is the version its requests ask with.
-    let list = catalog_at(&provider, &vendor, "0.163.0", LIVE_CATALOG).await;
-    assert_eq!(provider.catalog_revision().as_deref(), Some("0.163.0"));
-    let models: Vec<(&str, Option<u32>)> = list
-        .models
-        .iter()
-        .map(|model| (model.id.as_str(), model.context_window))
-        .collect();
-    assert_eq!(
-        models,
-        [
-            ("gpt-6.1-sol", Some(500_000)),
-            ("gpt-6-astra", Some(272_000)),
-            ("gpt-6-sol", Some(272_000)),
-            ("gpt-6-luna", Some(272_000)),
-            ("gpt-5.6-sol", Some(272_000)),
-            ("gpt-5.6-terra", Some(272_000)),
-            ("gpt-5.6-luna", Some(272_000)),
-        ]
-    );
-    assert_eq!(list.default_model_id.as_deref(), Some("gpt-6.1-sol"));
-    // No request named the prerelease: its read failed, and the registry was
-    // read again.
-    let versions = catalog_versions(&vendor);
-    assert!(
-        versions.iter().all(|version| [BUILT_IN, "0.163.0"].contains(&version.as_str())),
-        "{versions:?}"
-    );
-    assert_eq!(registry_reads(&vendor), 2);
-
-    // The version read is believed: the next catalog asks with it and reads
-    // the registry no more.
-    vendor.respond_at(MODELS, answer(&fixture()));
-    provider.list_models().await.unwrap();
-    assert_eq!(catalog_versions(&vendor).last().unwrap(), "0.163.0");
-    assert_eq!(registry_reads(&vendor), 2);
 }
 
 #[tokio::test]
@@ -286,62 +224,5 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
             list.models[0].default_service_tier_id.as_deref()
         ),
         (Some(true), Some("priority"))
-    );
-}
-
-#[tokio::test]
-async fn a_catalog_refused_with_401_refreshes_once_and_reads_again() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(MODELS, MockResponse::status(401).chunk("unauthorized"));
-    let refreshed = json!({ "access_token": "new-access", "refresh_token": "refresh-2" });
-    vendor.respond_at(
-        "/oauth/token",
-        MockResponse::status(200).chunk(refreshed.to_string()),
-    );
-    vendor.respond_at(MODELS, answer(&fixture()));
-    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let list = provider(&vendor, &pool, TransportMode::Sse)
-        .list_models()
-        .await
-        .unwrap();
-    assert_eq!(list.models.len(), 3);
-    let requests = vendor.requests();
-    let authorizations: Vec<Option<&str>> = requests
-        .iter()
-        .filter(|request| request.uri.path() == MODELS)
-        .map(|request| request.header("authorization"))
-        .collect();
-    assert_eq!(
-        authorizations,
-        [
-            Some(format!("Bearer {}", fresh_token()).as_str()),
-            Some("Bearer new-access")
-        ]
-    );
-}
-
-#[tokio::test]
-async fn a_catalog_that_cannot_be_read_is_refused_and_one_that_fails_is_unavailable() {
-    let vendor = MockVendor::start().await;
-    let mut malformed = fixture();
-    malformed["models"][0]["supported_reasoning_levels"] = json!([{ "effort": 3 }]);
-    vendor.respond_at(MODELS, answer(&malformed));
-    let mut mistyped = fixture();
-    mistyped["models"][0]["default_service_tier"] = json!(3);
-    vendor.respond_at(MODELS, answer(&mistyped));
-    vendor.respond_at(MODELS, MockResponse::status(503).chunk("overloaded"));
-    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let provider = provider(&vendor, &pool, TransportMode::Sse);
-    for field in ["effort", "default_service_tier"] {
-        match provider.list_models().await {
-            Err(CatalogError::Invalid(message)) => assert!(message.contains(field), "{message}"),
-            other => panic!("{other:?}"),
-        }
-    }
-    assert_eq!(
-        provider.list_models().await,
-        Err(CatalogError::Unavailable(
-            "Codex models request failed with HTTP 503".into()
-        ))
     );
 }

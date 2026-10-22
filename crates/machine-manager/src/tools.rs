@@ -162,19 +162,6 @@ impl Tools {
         })
     }
 
-    /// Programs with no paths, for tests that only build command lines.
-    #[cfg(test)]
-    pub(crate) fn placeholder() -> Self {
-        Self {
-            runsc: PathBuf::new(),
-            mke2fs: PathBuf::new(),
-            e2fsck: PathBuf::new(),
-            resize2fs: PathBuf::new(),
-            bsdtar: PathBuf::new(),
-            nft: PathBuf::new(),
-        }
-    }
-
     /// The programs on `PATH`, for tests that do not run runsc.
     #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn on_path() -> Self {

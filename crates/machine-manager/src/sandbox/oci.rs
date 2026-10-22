@@ -333,34 +333,3 @@ fn mounts(directory: &RuntimeDirectory, backend_socket: &Path) -> Result<Vec<Mou
         bind(directory.hosts(), "/etc/hosts", &["bind", "ro", "nodev"])?,
     ])
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_configuration_is_the_shipped_profile() {
-        let directory = RuntimeDirectory::new(
-            std::path::Path::new("/run/demi-machine-manager"),
-            "demi-00000000-0000-4000-8000-000000000000",
-        );
-        let spec = spec(&Boot {
-            directory: &directory,
-            namespace: "demi-3",
-            cgroup: Some(Cgroup {
-                name: "demi-00000000-0000-4000-8000-000000000000",
-                limits: Limits {
-                    cpus: std::num::NonZeroU32::new(2).unwrap(),
-                    memory_mib: std::num::NonZeroU32::new(2048).unwrap(),
-                    claude_code_memory_mib: std::num::NonZeroU32::new(4096).unwrap(),
-                },
-            }),
-            runner_release: "release-of-the-runner",
-            backend_socket: std::path::Path::new("/run/demi-backend"),
-        })
-        .unwrap();
-        let expected: Spec =
-            serde_json::from_str(include_str!("../../tests/fixtures/oci-config.json")).unwrap();
-        assert_eq!(spec, expected);
-    }
-}

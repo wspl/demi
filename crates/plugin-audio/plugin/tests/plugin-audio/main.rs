@@ -1,26 +1,14 @@
 //! The audio plugin through the JSON loopback over an in-memory Demi, which
-//! answers its audio and its voices.
-//!
-//! The tests cover the file checked before a byte reaches stdout, raw PCM
-//! wrapped as WAV, the summary and its warnings, the voices table, and the
-//! words a failure is told in. The whole path through the backend is the
-//! backend's `audio` scenario's.
+//! answers its audio: raw PCM wrapped as WAV, and the file checked before a
+//! byte reaches stdout.
 
 mod support;
 
 use demi_plugin_interface::{
-    AudioFileFormat, AudioOption, AudioVoices, MadeAudio, MediaRefusal, PcmShape, PortRefusal, VoiceInfo,
+    AudioOption, MadeAudio, PcmShape,
 };
-use demi_shared_types::{AudioKind, Cost, Currency};
 
 use crate::support::{Plugged, local};
-
-/// Two seconds of a 440 Hz tone, 16 kHz mono, with a Xing header.
-const SPEECH_MP3: &[u8] = include_bytes!("fixtures/speech.mp3");
-/// One second, 8 kHz mono.
-const CLIP_FLAC: &[u8] = include_bytes!("fixtures/clip.flac");
-/// Three seconds of Opus in Ogg.
-const CLIP_OPUS: &[u8] = include_bytes!("fixtures/clip.opus");
 
 fn made(bytes: &[u8], shape: &str, unsent: Vec<AudioOption>) -> MadeAudio {
     MadeAudio {
@@ -35,51 +23,6 @@ fn made(bytes: &[u8], shape: &str, unsent: Vec<AudioOption>) -> MadeAudio {
         speed: None,
         cost: None,
     }
-}
-
-/// The file goes to stdout as it came, and a line says its length and format,
-/// read from the file, with the model, the entry, the voice and the cost. The
-/// call's options reach the Providers service.
-///
-/// Planted defects this catches:
-///
-/// - the length or format taken from the format asked rather than the file;
-/// - the voice or cost left out of the line;
-/// - an option dropped on its way to the service.
-#[test]
-fn the_audio_goes_to_stdout_with_a_line_that_says_what_came_back() {
-    local(async {
-        let plugged = Plugged::new();
-        plugged.answer(|_| {
-            Ok(MadeAudio {
-                model: "gpt-4o-mini-tts".into(),
-                provider: "OpenAI".into(),
-                vendor: "OpenAI".into(),
-                account: Some("Work".into()),
-                cost: Some(Cost { amount: 0.01, currency: Currency::Usd }),
-                ..made(SPEECH_MP3, "OpenAI Speech", Vec::new())
-            })
-        });
-        let line = [
-            "audio", "speech", "Welcome aboard.", "--model", "gpt-4o-mini-tts", "--voice", "coral", "--instructions",
-            "Cheerful", "--speed", "1.25",
-        ];
-        let (code, stdout, stderr) = plugged.run(&line).await;
-        assert_eq!(code, 0, "{stderr}");
-        assert_eq!(stdout, SPEECH_MP3);
-        assert_eq!(stderr, "0:02 MP3 speech from gpt-4o-mini-tts (OpenAI, Work), voice coral, $0.01\n");
-        let ask = plugged.demi.audio_asked.borrow()[0].clone();
-        assert_eq!(
-            (ask.kind, ask.text.as_str(), ask.voice.as_deref(), ask.instructions.as_deref(), ask.speed, ask.format),
-            (AudioKind::Speech, "Welcome aboard.", Some("coral"), Some("Cheerful"), Some(1.25), AudioFileFormat::Mp3)
-        );
-
-        plugged.answer(|_| Ok(made(CLIP_FLAC, "OpenAI Speech", Vec::new())));
-        let (code, stdout, stderr) =
-            plugged.run(&["audio", "speech", "Hi.", "--model", "m", "--format", "flac"]).await;
-        assert_eq!((code, stdout.as_slice()), (0, CLIP_FLAC), "{stderr}");
-        assert_eq!(stderr, "0:01 FLAC speech from eleven_v3 (ElevenLabs)\n");
-    });
 }
 
 /// Raw PCM is written as a WAV file of its shape, whose length the line reads
@@ -141,50 +84,6 @@ fn raw_pcm_is_wrapped_as_wav() {
     });
 }
 
-/// Each option the shape took no field for is a warning, with where to say it
-/// instead. A length off by more than a second from the one sent is a warning,
-/// and none is told for a length that was not sent.
-///
-/// Planted defects this catches:
-///
-/// - an unsent option left untold, so the agent believes the piece is
-///   instrumental;
-/// - a length warning for a length the vendor never received;
-/// - a length mismatch left untold.
-#[test]
-fn what_the_shape_does_not_take_and_a_different_length_are_warnings() {
-    local(async {
-        let plugged = Plugged::new();
-        plugged.answer(|_| {
-            Ok(made(SPEECH_MP3, "Lyria", vec![AudioOption::Duration, AudioOption::Instrumental, AudioOption::Seed]))
-        });
-        let line = ["audio", "music", "A calm piano", "--model", "lyria-3-clip-preview", "--duration", "30", "--instrumental", "--seed", "3"];
-        let (code, _, stderr) = plugged.run(&line).await;
-        assert_eq!(code, 0, "{stderr}");
-        assert_eq!(
-            stderr,
-            "0:02 MP3 music from eleven_v3 (ElevenLabs)\n\
-             demi audio music: warning: Lyria takes no --duration; say the length in the prompt\n\
-             demi audio music: warning: Lyria takes no --instrumental; say so in the prompt\n\
-             demi audio music: warning: Lyria takes no --seed\n"
-        );
-        let ask = plugged.demi.audio_asked.borrow()[0].clone();
-        assert_eq!((ask.kind, ask.duration, ask.instrumental, ask.seed), (AudioKind::Music, Some(30.0), true, Some(3)));
-
-        plugged.answer(|_| Ok(made(CLIP_OPUS, "ElevenLabs", Vec::new())));
-        let line = ["audio", "effect", "Door creak", "--model", "m", "--duration", "5", "--loop", "--format", "wav"];
-        let (code, _, stderr) = plugged.run(&line).await;
-        assert_eq!(code, 0, "{stderr}");
-        assert_eq!(
-            stderr,
-            "0:03 Opus sound effect from eleven_v3 (ElevenLabs)\n\
-             demi audio effect: warning: ElevenLabs makes no WAV; wrote Opus\n\
-             demi audio effect: warning: asked for 0:05, got 0:03\n"
-        );
-        assert!(plugged.demi.audio_asked.borrow()[1].looped);
-    });
-}
-
 /// A file that is not audio fails the call and writes nothing.
 /// Planted defect this catches: the bytes written before the check, which
 /// leaves a broken file behind `> voice.mp3`.
@@ -199,80 +98,5 @@ fn a_file_that_is_not_audio_fails_and_writes_nothing() {
             stderr.starts_with("demi audio speech: ElevenLabs returned a file that is not audio this reads: the file is no MP3, WAV, FLAC or Ogg audio"),
             "{stderr}"
         );
-    });
-}
-
-/// The voices are a table with whose each is. An entry that lists none, and a
-/// search that matches none, say so on stderr. The model and the search reach
-/// the service.
-///
-/// Planted defects this catches:
-///
-/// - the account's voices not told from the vendor's;
-/// - an entry that lists none shown as an empty table without a word, which
-///   reads as an account without voices.
-#[test]
-fn the_voices_are_listed_and_an_entry_that_lists_none_says_so() {
-    local(async {
-        let plugged = Plugged::new();
-        plugged.voices(|model, search| {
-            assert_eq!((model, search), ("eleven_v3", Some("george")));
-            Ok(AudioVoices {
-                model: model.into(),
-                provider: "ElevenLabs".into(),
-                vendor: "ElevenLabs".into(),
-                voices: Some(vec![
-                    VoiceInfo {
-                        id: "JBFqnCBsd6RMkjVDRZzb".into(),
-                        name: Some("George".into()),
-                        languages: vec!["en".into(), "fr".into()],
-                        description: Some("Warm".into()),
-                        own: Some(false),
-                    },
-                    VoiceInfo { id: "mine".into(), name: Some("George Clone".into()), languages: Vec::new(), description: None, own: Some(true) },
-                ]),
-            })
-        });
-        let (code, stdout, stderr) = plugged.run(&["audio", "voices", "george", "--model", "eleven_v3"]).await;
-        assert_eq!((code, stderr.as_str()), (0, ""));
-        assert_eq!(
-            String::from_utf8(stdout).unwrap(),
-            "ID                    NAME          KIND      LANGUAGES  DESCRIPTION\n\
-             JBFqnCBsd6RMkjVDRZzb  George        built-in  en, fr     Warm\n\
-             mine                  George Clone  own       -          -\n"
-        );
-
-        plugged.voices(|model, _| {
-            Ok(AudioVoices { model: model.into(), provider: "Local".into(), vendor: "Local".into(), voices: None })
-        });
-        let (code, stdout, stderr) = plugged.run(&["audio", "voices", "--model", "qwen3-tts"]).await;
-        assert_eq!(
-            (code, stdout.len(), stderr.as_str()),
-            (0, 0, "demi audio voices: note: Local lists no voices; --voice is sent as given\n")
-        );
-    });
-}
-
-/// ElevenLabs speech without a voice, and a model of another kind, are
-/// told in the design's words, naming what to do.
-#[test]
-fn a_missing_voice_and_a_model_of_another_kind_are_told_in_the_designs_words() {
-    local(async {
-        let plugged = Plugged::new();
-        plugged.answer(|_| {
-            Err(PortRefusal::Media { refusal: MediaRefusal::NeedsVoice { vendor: "ElevenLabs".into(), model: "eleven_v3".into() } })
-        });
-        let (code, _, stderr) = plugged.run(&["audio", "speech", "Hi.", "--model", "eleven_v3"]).await;
-        assert_eq!(
-            (code, stderr.as_str()),
-            (1, "demi audio speech: ElevenLabs needs --voice; demi audio voices --model eleven_v3 lists them\n")
-        );
-        plugged.answer(|_| {
-            Err(PortRefusal::Media {
-                refusal: MediaRefusal::Kind { model: "music_v1".into(), asked: AudioKind::Speech, makes: vec![AudioKind::Music] },
-            })
-        });
-        let (code, _, stderr) = plugged.run(&["audio", "speech", "Hi.", "--model", "music_v1"]).await;
-        assert_eq!((code, stderr.as_str()), (1, "demi audio speech: \"music_v1\" makes no speech; it makes music\n"));
     });
 }

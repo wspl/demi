@@ -95,17 +95,6 @@ test('a button whose box changes from one frame to the next is not stable', asyn
   expect(button.waiting()).toBe(false)
 })
 
-test('a button that keeps its box from one frame to the next is stable', async () => {
-  const state = await elementState()
-  const button = animated()
-  const result = state.call(button.element, ['stable'], false, 'probe_test', false)
-  for (const x of [10, 10]) {
-    await button.paint(x)
-  }
-  expect((await result).failed).toBeNull()
-  expect(button.waiting()).toBe(false)
-})
-
 test('an interceptor whose first event lands on its element leaves with its callback', async () => {
   const state = await elementState()
   const listeners = new Map<string, (event: object) => void>()

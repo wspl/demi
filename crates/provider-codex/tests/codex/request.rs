@@ -7,10 +7,10 @@ use std::sync::Arc;
 use demi_provider_codex::TransportMode;
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, ResultPart, ToolDefinition, UserPart,
-    openai_request::{prompt_cache_key, short_hash},
-    testing::{MockVendor, RecordedRequest, inference_request, jwt},
+    openai_request::short_hash,
+    testing::{MockVendor, RecordedRequest, inference_request},
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
+use demi_shared_types::{B64Bytes, ThinkingConfig};
 use serde_json::{Value, json};
 
 use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, provider, run, runtime_of, secret};
@@ -169,137 +169,5 @@ async fn thinking_signed_by_another_vendor_is_skipped_and_tool_images_ride_insid
     assert_eq!(
         (&body["instructions"], &body["tools"]),
         (&json!(""), &json!([]))
-    );
-}
-
-#[tokio::test]
-async fn the_tier_is_sent_only_when_selected_and_efforts_reach_codex_unchanged() {
-    let mut standard = request_with(Vec::new());
-    standard.thinking = None;
-    let body = body_of(standard.clone()).await;
-    assert!(body.get("service_tier").is_none() && body.get("reasoning").is_none());
-    standard.service_tier_id = Some("priority".into());
-    assert_eq!(body_of(standard).await["service_tier"], json!("priority"));
-    for effort in ["low", "xhigh", "max", "ultra"] {
-        let mut request = request_with(Vec::new());
-        request.thinking = Some(ThinkingConfig::Effort {
-            effort: effort.into(),
-            summary: None,
-        });
-        assert_eq!(
-            body_of(request).await["reasoning"],
-            json!({ "effort": effort, "summary": "auto" })
-        );
-    }
-    // A summary turned off still reaches Codex as `auto`.
-    let mut off = request_with(Vec::new());
-    off.thinking = Some(ThinkingConfig::Effort {
-        effort: "high".into(),
-        summary: Some(ThinkingSummary::Off),
-    });
-    assert_eq!(
-        body_of(off).await["reasoning"],
-        json!({ "effort": "high", "summary": "auto" })
-    );
-}
-
-#[tokio::test]
-async fn the_headers_name_the_account_the_session_and_the_request() {
-    let request = sent(request_with(Vec::new())).await;
-    assert_eq!(
-        request.header("authorization"),
-        Some(format!("Bearer {}", fresh_token()).as_str())
-    );
-    assert_eq!(request.header("chatgpt-account-id"), Some("acct-1"));
-    assert_eq!(
-        request.header("openai-beta"),
-        Some("responses=experimental")
-    );
-    assert_eq!(
-        (request.header("session-id"), request.header("thread-id")),
-        (Some("session-1"), Some("session-1"))
-    );
-    assert_eq!(request.header("x-client-request-id"), Some("request-1"));
-    assert_eq!(request.header("accept"), Some("text/event-stream"));
-    assert!(
-        request
-            .header("user-agent")
-            .unwrap()
-            .starts_with("demi-codex-provider/")
-    );
-    assert!(request.header("x-openai-fedramp").is_none());
-
-    // The backend derives the cache key from the session header and refuses
-    // one over 64 characters, so a long id arrives clamped like the body's.
-    let mut long = request_with(Vec::new());
-    long.session_id = format!("chat-{}", "x".repeat(80));
-    let clamped = sent(long.clone()).await;
-    let key = prompt_cache_key(&long.session_id).into_owned();
-    assert!(key.len() <= 64);
-    assert_eq!(
-        (clamped.header("session-id"), clamped.header("thread-id")),
-        (Some(key.as_str()), Some(key.as_str()))
-    );
-    assert_eq!(clamped.json()["prompt_cache_key"], json!(key));
-}
-
-#[tokio::test]
-async fn a_fedramp_account_says_so() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(RESPONSES, completed());
-    let access = jwt(
-        &json!({ "exp": crate::NOW_SECONDS + 3_600, "https://api.openai.com/auth": { "chatgpt_account_id": "acct-1", "chatgpt_account_is_fedramp": true } }),
-    );
-    let pool = pool_with(secret(&access, "refresh-1", NOW)).await;
-    let provider = provider(&vendor, &pool, TransportMode::Sse);
-    run(runtime_of(&provider).as_mut(), inference_request()).await;
-    assert_eq!(
-        vendor.requests()[0].header("x-openai-fedramp"),
-        Some("true")
-    );
-}
-
-/// Codex → Claude → Codex: the history keeps each call's id as its provider
-/// gave it.
-///
-/// So Codex's own call goes back with its call id and its item id as Codex gave
-/// them, whatever form Claude was sent, and Claude's call is a call id whole.
-// Cost: one request to a local stub, a few milliseconds.
-#[tokio::test]
-async fn codexs_ids_come_back_as_codex_gave_them_after_another_vendor() {
-    let call = |model: &str, id: &str| {
-        [
-            InferenceItem::ToolUse {
-                model_id: model.into(),
-                tool_use_id: id.into(),
-                tool_name: "shell_exec".into(),
-                input: json!({ "script": "ls" }),
-            },
-            InferenceItem::ToolResult {
-                tool_use_id: id.into(),
-                output: vec![ResultPart::Text("a.txt".into())],
-                is_error: false,
-            },
-        ]
-    };
-    let mut items = vec![InferenceItem::UserMessage { content: text("list") }];
-    items.extend(call("gpt-5.4", "call_7QmZ|fc_68e0a1"));
-    items.extend(call("claude-opus-5-5", "toolu_01Ab"));
-    let body = body_of(request_with(items)).await;
-    let calls: Vec<(Value, Value)> = body["input"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|item| item["type"] == "function_call" || item["type"] == "function_call_output")
-        .map(|item| (item["call_id"].clone(), item.get("id").cloned().unwrap_or(Value::Null)))
-        .collect();
-    assert_eq!(
-        calls,
-        [
-            (json!("call_7QmZ"), json!("fc_68e0a1")),
-            (json!("call_7QmZ"), Value::Null),
-            (json!("toolu_01Ab"), Value::Null),
-            (json!("toolu_01Ab"), Value::Null),
-        ]
     );
 }

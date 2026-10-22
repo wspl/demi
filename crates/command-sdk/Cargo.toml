@@ -43,7 +43,5 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation"] }
 # The crate's own tests count its pauses (`testing::pauses`) and run on a
 # paused clock.
 demi-command-sdk = { path = ".", features = ["testing"] }
-# The package tests check artifact locations with the protocol's rules.
-garde.workspace = true
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }

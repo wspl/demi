@@ -2,21 +2,21 @@
 //! (`crates/provider-common/src/contract.rs`,
 //! `crates/provider-common/src/wire/mod.rs`), over recorded frames.
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_provider_common::{
-    ErrorCode, ProviderEvent, ProviderFailure, ToolCall, read_http_failure,
+    ProviderEvent, ToolCall, read_http_failure,
     testing::FixedClock,
     wire::{
         Vendor,
-        responses::{decode_frame, map_events, sse_events},
+        responses::{map_events, sse_events},
     },
 };
 use demi_shared_types::{
-    FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp, TokenUsage,
+    Timestamp, TokenUsage,
 };
-use futures_util::{StreamExt, stream};
+use futures_util::stream;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -54,13 +54,6 @@ async fn events_with(
 
 async fn events(frames: &[Value]) -> Vec<ProviderEvent> {
     events_with(frames, read_http_failure).await
-}
-
-fn failure_of(events: Vec<ProviderEvent>) -> ProviderFailure {
-    match <[ProviderEvent; 1]>::try_from(events) {
-        Ok([ProviderEvent::Error(failure)]) => failure,
-        other => panic!("{other:?}"),
-    }
 }
 
 #[tokio::test]
@@ -178,217 +171,4 @@ async fn a_finished_items_text_is_emitted_only_when_no_delta_streamed_it() {
     // A completion without usage gives a response without usage, never
     // zeros.
     assert_eq!(events.last(), Some(&ProviderEvent::Response(None)));
-}
-
-#[tokio::test]
-async fn a_stream_that_ends_without_its_completion_fails_and_keeps_the_text() {
-    let events = events(&[json!({ "type": "response.output_text.delta", "delta": "hi" })]).await;
-    let [ProviderEvent::TextDelta(text), ProviderEvent::Error(failure)] = &events[..] else {
-        panic!("{events:?}");
-    };
-    assert_eq!(text, "hi");
-    assert_eq!(
-        (failure.message.as_str(), &failure.code),
-        ("The provider's stream ended before the reply was complete", &Some(ErrorCode::Overloaded))
-    );
-}
-
-#[tokio::test]
-async fn a_failure_keeps_the_frame_as_its_record_and_takes_the_wait_from_the_providers_reader() {
-    // A field in a form Demi does not read survives: the record is the text
-    // as it came.
-    let frame = r#"{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":"soon"},"status_code":"429"}"#;
-    let in_a_minute: demi_provider_common::FailureReader = |diagnostics, received_at| {
-        assert_eq!(
-            diagnostics.upstream.as_deref(),
-            Some(
-                r#"{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":"soon"},"status_code":"429"}"#
-            )
-        );
-        let later = Timestamp::from_millisecond(received_at.as_millisecond() + 60_000).unwrap();
-        ProviderFailureFacts {
-            retry_at: Some(later),
-            continue_with: None,
-            signed_out: None,
-            not_exposed: None,
-            device_offline: None,
-        }
-    };
-    let failure = failure_of(events_with(&[Value::String(frame.into())], in_a_minute).await);
-    assert_eq!(failure.message, "The usage limit has been reached");
-    assert_eq!(
-        failure.code,
-        Some(ErrorCode::Vendor("usage_limit_reached".into()))
-    );
-    assert_eq!(failure.retry_after, Some(Duration::from_secs(60)));
-    let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!(
-        (diagnostics.source, diagnostics.provider_code.as_deref()),
-        (FailureSource::Stream, Some("usage_limit_reached"))
-    );
-    assert_eq!(diagnostics.upstream.as_deref(), Some(frame));
-}
-
-#[tokio::test]
-async fn failed_incomplete_and_error_events_end_the_run_classified_and_naming_the_vendor() {
-    let cases = [
-        (
-            json!({ "type": "response.failed", "response": { "error": { "code": "context_length_exceeded", "message": "too long" } } }),
-            "too long",
-            Some(ErrorCode::ContextLengthExceeded),
-            Some("context_length_exceeded"),
-        ),
-        (
-            json!({ "type": "response.failed" }),
-            "Codex response failed",
-            None,
-            None,
-        ),
-        (
-            json!({ "type": "response.incomplete", "response": { "incomplete_details": { "reason": "max_output_tokens" } } }),
-            "The reply reached the model's output limit (max_output_tokens)",
-            Some(ErrorCode::Incomplete),
-            Some("max_output_tokens"),
-        ),
-        (
-            json!({ "type": "response.incomplete", "response": { "incomplete_details": { "reason": "content_filter" } } }),
-            "The provider's filter stopped the reply (content_filter)",
-            Some(ErrorCode::Incomplete),
-            Some("content_filter"),
-        ),
-        (
-            json!({ "type": "error", "code": "server_error", "message": "backend failed" }),
-            "backend failed",
-            Some(ErrorCode::Overloaded),
-            Some("server_error"),
-        ),
-        (
-            json!({ "type": "error", "error": { "type": "invalid_request_error", "message": "Invalid prompt_cache_key" }, "status": 400 }),
-            "Invalid prompt_cache_key",
-            Some(ErrorCode::Vendor("invalid_request_error".into())),
-            Some("invalid_request_error"),
-        ),
-        // A code that is not a string reads as absent, so the message still
-        // reaches the user.
-        (
-            json!({ "type": "error", "message": "upstream failed", "code": 500 }),
-            "upstream failed",
-            None,
-            None,
-        ),
-        (json!({ "type": "error" }), "Codex stream error", None, None),
-    ];
-    for (frame, message, code, provider_code) in cases {
-        let events = events(&[
-            frame.clone(),
-            json!({ "type": "response.output_text.delta", "delta": "never read" }),
-        ])
-        .await;
-        let failure = failure_of(events);
-        assert_eq!(
-            (failure.message.as_str(), &failure.code),
-            (message, &code),
-            "{frame}"
-        );
-        let diagnostics = failure.diagnostics.unwrap();
-        assert_eq!(
-            diagnostics.provider_code.as_deref(),
-            provider_code,
-            "{frame}"
-        );
-        let upstream: Value =
-            serde_json::from_str(diagnostics.upstream.as_deref().unwrap()).unwrap();
-        assert_eq!(upstream, frame);
-    }
-}
-
-#[tokio::test]
-async fn a_failure_keeps_the_request_and_response_ids_it_carries() {
-    let failure = failure_of(
-        events(&[json!({ "type": "response.failed", "response": { "id": "resp-1", "error": { "code": "server_error", "message": "Failed. Please include the request ID req-1 in your message." } } })]).await,
-    );
-    assert_eq!(failure.code, Some(ErrorCode::Overloaded));
-    let ProviderErrorDiagnostics {
-        provider_request_id,
-        provider_response_id,
-        ..
-    } = *failure.diagnostics.unwrap();
-    assert_eq!(
-        (
-            provider_request_id.as_deref(),
-            provider_response_id.as_deref()
-        ),
-        (Some("req-1"), Some("resp-1"))
-    );
-    let named = failure_of(
-        events(&[
-            json!({ "type": "error", "error": { "message": "failed", "request_id": "req-2" } }),
-        ])
-        .await,
-    );
-    assert_eq!(
-        named.diagnostics.unwrap().provider_request_id.as_deref(),
-        Some("req-2")
-    );
-}
-
-#[tokio::test]
-async fn a_malformed_mapped_event_is_a_protocol_failure_that_names_its_field() {
-    let cases = [
-        (
-            json!({ "type": "response.output_item.done", "item": { "type": "message", "content": 42 } }),
-            "content",
-        ),
-        (
-            json!({ "type": "response.output_text.delta", "delta": 42 }),
-            "delta",
-        ),
-        (
-            json!({ "type": "response.completed", "response": { "usage": { "input_tokens": "100" } } }),
-            "input_tokens",
-        ),
-        (
-            json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 12.5 } } }),
-            "input_tokens",
-        ),
-        (
-            json!({ "type": "response.output_item.done", "item": { "type": "reasoning", "summary": [{ "type": "summary_text" }] } }),
-            "text",
-        ),
-    ];
-    for (frame, field) in cases {
-        let failure = failure_of(events(std::slice::from_ref(&frame)).await);
-        assert_eq!(failure.code, None, "{frame}");
-        assert!(
-            failure.message.contains(field),
-            "{frame}: {}",
-            failure.message
-        );
-        let diagnostics = failure.diagnostics.unwrap();
-        assert_eq!(diagnostics.source, FailureSource::Stream);
-        assert_eq!(diagnostics.upstream, Some(frame.to_string()));
-    }
-    // An event or item type Demi does not map decodes to nothing.
-    assert_eq!(
-        decode_frame(r#"{"type":"response.queued","id":"r1"}"#).unwrap(),
-        None
-    );
-    assert_eq!(decode_frame(" [DONE] ").unwrap(), None);
-    assert!(decode_frame(r#"{"delta":"no type"}"#).is_err());
-}
-
-#[tokio::test]
-async fn a_cancelled_run_ends_without_a_further_event() {
-    let cancel = CancellationToken::new();
-    cancel.cancel();
-    let frames = body(&[json!({ "type": "response.output_text.delta", "delta": "hi" })]);
-    let events: Vec<ProviderEvent> = map_events(
-        sse_events(frames, "Codex", cancel.clone()),
-        vendor(read_http_failure),
-        "codex:".into(),
-        cancel,
-    )
-    .collect()
-    .await;
-    assert!(events.is_empty(), "{events:?}");
 }

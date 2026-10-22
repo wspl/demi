@@ -30,7 +30,7 @@ pub use demi_provider_common::testing::{all_events, next_event};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRuntime, ResultPart, ToolDefinition, UserPart,
 };
-use demi_shared_types::{Clock, StreamKind, Timestamp};
+use demi_shared_types::{Clock, StreamKind};
 use futures_channel::mpsc;
 use futures_util::StreamExt as _;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
@@ -58,30 +58,10 @@ pub fn site() -> CliSite {
     }
 }
 
-/// The access token an earlier release kept in the test account's record.
-pub const TOKEN: &str = "sk-ant-oat01-test-access";
-/// Its refresh token.
-pub const REFRESH: &str = "sk-ant-ort01-test-refresh";
-
 pub const NOW: &str = "2026-09-24T08:00:00Z";
 
 pub fn clock() -> Arc<dyn Clock> {
     Arc::new(FixedClock(NOW.parse().unwrap()))
-}
-
-/// The secret document an earlier release kept of a Claude sign-in whose
-/// access token is `token` and expires at `expires_at`.
-pub fn earlier_sign_in(token: &str, refresh: &str, expires_at: &str) -> String {
-    json!({
-        "accessToken": token,
-        "refreshToken": refresh,
-        "expiresAt": expires_at.parse::<Timestamp>().unwrap(),
-        "scopes": ["user:inference", "user:profile"],
-        "subscriptionType": "max",
-        "accountId": "account-1",
-        "email": "alex@example.test",
-    })
-    .to_string()
 }
 
 /// Stores the test account as the one account of `pool`, with `secret`, an
@@ -278,10 +258,6 @@ impl ScriptedPlacement {
             holds_adoption: Rc::default(),
         };
         (placement, Starts(starts))
-    }
-
-    pub fn fail_next(&self, message: &str) {
-        *self.failure.borrow_mut() = Some(StartError(message.into()));
     }
 
     /// How many processes were started.
@@ -593,13 +569,6 @@ impl Cli {
         message
     }
 
-    /// The turn running now consumes `message`, a user message read with
-    /// [`Cli::read`]: its result names the message's client id.
-    pub fn consume(&self, message: &Value) {
-        let uuid = message["uuid"].as_str().unwrap_or_else(|| panic!("a user message carries a client id: {message}"));
-        self.consumed.borrow_mut().push(uuid.to_owned());
-    }
-
     /// Every line the provider wrote and the test did not read yet.
     pub fn unread(&mut self) -> Vec<Value> {
         std::iter::from_fn(|| self.inputs.try_recv().ok()).collect()
@@ -696,29 +665,10 @@ impl Cli {
         self.state.end.borrow().clone()
     }
 
-    /// How the process ended, once it does.
-    pub async fn ended(&self) -> ProcessEnd {
-        let mut end = self.state.end.subscribe();
-        let ended = guarded("the process's end", end.wait_for(Option::is_some))
-            .await
-            .expect("the state lives");
-        ended.clone().expect("the end is set")
-    }
-
     /// The process's configuration directory: its account's, or a
     /// sign-in's own.
     pub fn config_dir(&self) -> &str {
         &self.state.site.config_dir
-    }
-
-    /// The name of the process's own directory under it.
-    pub fn process_dir(&self) -> &str {
-        &self.state.site.process_dir
-    }
-
-    /// Whether the process's own directory was removed.
-    pub fn config_removed(&self) -> bool {
-        self.state.removed.get()
     }
 
     /// The process writes `bytes` as the file `name` of its configuration

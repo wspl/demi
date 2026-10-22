@@ -17,7 +17,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, VideoAsk, VideoStep,
+    AskedVideo, AudioAsk, ImageAsk, MadeAudio, MadeImage, MediaListing, VideoAsk, VideoStep,
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, SecretName, StoredSecret, StoredValue, WebRequest, WebResponse,
@@ -89,9 +89,6 @@ pub type VideoRequests = Box<dyn Fn(&VideoAsk) -> Result<AskedVideo, PortRefusal
 /// How a test answers a request for audio: the audio made, or a refusal.
 pub type AudioRequests = Box<dyn Fn(&AudioAsk) -> Result<MadeAudio, PortRefusal>>;
 
-/// How a test answers a listing of a model's voices.
-pub type VoiceRequests = Box<dyn Fn(&str, Option<&str>) -> Result<AudioVoices, PortRefusal>>;
-
 /// A package call a plugin made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackageCall {
@@ -160,9 +157,6 @@ pub struct TestDemi {
     /// What each wait for the job answers, in order.
     pub video_steps: RefCell<VecDeque<Result<VideoStep, PortRefusal>>>,
     pub audio_requests: RefCell<Option<AudioRequests>>,
-    /// Each audio file the plugin asked for.
-    pub audio_asked: RefCell<Vec<AudioAsk>>,
-    pub voice_requests: RefCell<Option<VoiceRequests>>,
     /// Woken at each port message the plugin sends.
     answered: tokio::sync::Notify,
 }
@@ -203,8 +197,6 @@ impl TestDemi {
             videos_asked: RefCell::default(),
             video_steps: RefCell::default(),
             audio_requests: RefCell::default(),
-            audio_asked: RefCell::default(),
-            voice_requests: RefCell::default(),
             answered: tokio::sync::Notify::new(),
         }
     }
@@ -487,15 +479,9 @@ impl TestDemi {
             PortMessage::MakeAudio { ask } => {
                 let requests = self.audio_requests.borrow();
                 let answer = requests.as_ref().expect("the test answers audio requests");
-                let answer = answer(&ask);
-                self.audio_asked.borrow_mut().push(ask);
-                PortAnswer::Audio { audio: answer? }
+                PortAnswer::Audio { audio: answer(&ask)? }
             }
-            PortMessage::AudioVoices { model, search } => {
-                let requests = self.voice_requests.borrow();
-                let answer = requests.as_ref().expect("the test answers voice listings");
-                PortAnswer::AudioVoices { voices: answer(&model, search.as_deref())? }
-            }
+            PortMessage::AudioVoices { .. } => panic!("no test lists voices"),
         };
         Ok(answer)
     }

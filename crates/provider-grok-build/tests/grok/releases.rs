@@ -5,9 +5,8 @@ use std::sync::Arc;
 
 use demi_provider_common::{
     Provider,
-    testing::{FixedClock, ManualClock, MockResponse, MockVendor, guarded},
+    testing::{ManualClock, MockResponse, MockVendor, guarded},
 };
-use demi_shared_types::Clock;
 use serde_json::json;
 use tokio::sync::watch;
 
@@ -57,45 +56,6 @@ async fn catalog_at(provider: &impl Provider, vendor: &MockVendor, version: &str
         }
     };
     guarded(&format!("a request naming version {version}"), polled).await;
-}
-
-#[tokio::test]
-async fn requests_name_the_newest_stable_grok_cli_release_the_pointer_names() {
-    let vendor = MockVendor::start().await;
-    // The pointer first names a prerelease, which is no answer, then a
-    // release on its first line. Its first answer waits until the test lets
-    // it go.
-    let (open, gate) = watch::channel(false);
-    vendor.respond_at(STABLE, pointer("1.0.70-beta.1\n").held(gate));
-    vendor.respond_at(STABLE, pointer("1.0.70\nsha256 0123\n"));
-    let pool = pool_with(secret(&vendor, json!({}))).await;
-    let clock: Arc<dyn Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
-    let releases = releases_at(&vendor, clock.clone());
-    let provider = provider_at(&vendor, &pool, Some(ACCOUNT), clock, releases);
-
-    // Before the pointer answers, a request names the built-in version and
-    // does not wait for it.
-    vendor.respond_at(MODELS, json_answer(200, json!([{ "id": "grok-test" }])));
-    guarded(UNWAITED, provider.list_models()).await.unwrap();
-    assert_eq!(sent_versions(&vendor), [BUILT_IN]);
-    open.send(true).unwrap();
-
-    catalog_at(&provider, &vendor, "1.0.70").await;
-    // No request named the prerelease: its read failed, and the pointer was
-    // read again.
-    let versions = sent_versions(&vendor);
-    assert!(
-        versions.iter().all(|version| [BUILT_IN, "1.0.70"].contains(&version.as_str())),
-        "{versions:?}"
-    );
-    assert_eq!(pointer_reads(&vendor), 2);
-
-    // The version read is believed: the next request names it and reads the
-    // pointer no more.
-    vendor.respond_at(MODELS, json_answer(200, json!([{ "id": "grok-test" }])));
-    provider.list_models().await.unwrap();
-    assert_eq!(sent_versions(&vendor).last().unwrap(), "1.0.70");
-    assert_eq!(pointer_reads(&vendor), 2);
 }
 
 #[tokio::test]

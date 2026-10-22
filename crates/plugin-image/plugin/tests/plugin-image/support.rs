@@ -1,6 +1,5 @@
 //! The plugin behind the loopback, over an in-memory Demi.
 
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use demi_command_declarations::Node;
@@ -46,18 +45,6 @@ impl Plugged {
     /// How the Providers service answers each image asked for.
     pub fn answer(&self, answer: impl Fn(&ImageAsk) -> Result<MadeImage, PortRefusal> + 'static) {
         self.demi.image_requests.replace(Some(Box::new(answer)));
-    }
-
-    /// The files of the conversation's Host by path; none while it is not
-    /// running.
-    pub fn host_files(&self, files: Option<Vec<(&str, Vec<u8>)>>) {
-        let files = files.map(|files| {
-            files
-                .into_iter()
-                .map(|(path, bytes)| (path.to_owned(), bytes))
-                .collect::<BTreeMap<_, _>>()
-        });
-        self.demi.host_files.replace(files);
     }
 
     /// Runs `demi <line>` from `/workspace` as the backend's dispatch hands

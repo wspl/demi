@@ -2525,7 +2525,6 @@ dependencies = [
  "image",
  "libc",
  "png",
- "regex",
  "reqwest",
  "serde_json",
  "sysinfo",
@@ -2543,7 +2542,6 @@ name = "demi-claude-code"
 version = "0.1.60"
 dependencies = [
  "bytes",
- "demi-claude-code",
  "demi-command-package-claude-code-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
@@ -2709,7 +2707,6 @@ dependencies = [
  "demi-command-sdk",
  "demi-shared-artifacts",
  "futures-util",
- "garde",
  "h2",
  "http",
  "libc",
@@ -2821,11 +2818,9 @@ name = "demi-live-view"
 version = "0.1.60"
 dependencies = [
  "bytes",
- "demi-command-protocol",
  "demi-command-sdk",
  "demi-live-view-protocol",
  "demi-shared-types",
- "futures-util",
  "garde",
  "serde",
  "serde_json",

@@ -17,11 +17,6 @@ name = "demi-claude-code"
 path = "src/main.rs"
 test = false
 
-[features]
-# Test support: an installer that also downloads from a fixture server on
-# 127.0.0.1.
-testing = []
-
 [dependencies]
 bytes.workspace = true
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
@@ -36,7 +31,6 @@ tokio-util.workspace = true
 url = "2"
 
 [dev-dependencies]
-demi-claude-code = { path = ".", features = ["testing"] }
 # The program started and driven as a service (`testing::ServiceProcess`).
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 futures-util.workspace = true

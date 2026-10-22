@@ -1,6 +1,5 @@
 //! The plugin behind the loopback, over an in-memory Demi.
 
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use demi_command_declarations::Node;
@@ -51,12 +50,6 @@ impl Plugged {
     /// What the job's waits answer, in order.
     pub fn steps(&self, steps: impl IntoIterator<Item = Result<VideoStep, PortRefusal>>) {
         self.demi.video_steps.borrow_mut().extend(steps);
-    }
-
-    /// The files of the conversation's Host by path.
-    pub fn host_files(&self, files: Vec<(&str, Vec<u8>)>) {
-        let files = files.into_iter().map(|(path, bytes)| (path.to_owned(), bytes)).collect::<BTreeMap<_, _>>();
-        self.demi.host_files.replace(Some(files));
     }
 
     /// What the command line refuses `demi <line>` for before the plugin

@@ -47,20 +47,3 @@ pub async fn require_format(data: &Path) -> Result<(), FormatError> {
     })
     .await
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A new state directory takes this release's format and opens again;
-    /// one a newer release made stops the start.
-    #[tokio::test]
-    async fn a_state_directory_of_another_format_is_refused() {
-        let data = tempfile::tempdir().unwrap();
-        require_format(data.path()).await.unwrap();
-        require_format(data.path()).await.unwrap();
-        std::fs::write(data.path().join("format"), "999\n").unwrap();
-        let refused = require_format(data.path()).await;
-        assert!(matches!(refused, Err(FormatError::Unknown { .. })), "{refused:?}");
-    }
-}

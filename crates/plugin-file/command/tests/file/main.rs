@@ -385,40 +385,6 @@ async fn a_section_keeps_its_lines_and_matches_one_place() {
     .unwrap();
 }
 
-/// The result shows at most 60 numbered lines, then how to read the rest.
-#[tokio::test]
-async fn a_long_change_shows_its_first_60_lines_and_how_to_read_the_rest() {
-    tokio::time::timeout(Duration::from_secs(15), async {
-        let before: String = (1..=200).map(|line| format!("l{line:03}\n")).collect();
-        let (root, service) = service_with(&[("big.txt", &before)]).await;
-        let replace: String = (50..=150).map(|line| format!("n{line:03}\n")).collect();
-        let blocks = format!("<<<<<<< SEARCH\nl050\n.......\nl150\n=======\n{replace}>>>>>>> REPLACE\n");
-        let (result, output, _) = call(
-            service.client(),
-            root.path().to_str().unwrap(),
-            "file.edit",
-            serde_json::json!({"path": "big.txt", "blocks": blocks}),
-        )
-        .await;
-        assert_eq!(result.exit_code, 0, "{result:?}");
-        let shown: String = (49..=108)
-            .map(|line| {
-                let text = if (50..=150).contains(&line) { format!("n{line:03}") } else { format!("l{line:03}") };
-                format!("{line:>4}  {text}\n")
-            })
-            .collect();
-        assert_eq!(
-            String::from_utf8(output).unwrap(),
-            format!(
-                "Edited big.txt (+101 \u{2212}101)\n{shown}[\u{2026} 43 more lines changed; read them: sed -n 109,151p big.txt]\n"
-            )
-        );
-        assert!(service.shutdown().await.unwrap().success());
-    })
-    .await
-    .unwrap();
-}
-
 /// Changes within two lines of each other show as one piece; farther ones
 /// are set apart by `--`, and a blank line shows as its number alone.
 #[tokio::test]

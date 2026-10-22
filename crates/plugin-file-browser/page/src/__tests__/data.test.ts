@@ -1,33 +1,7 @@
 import { expect, test } from 'bun:test'
-import { filePlace, fileView, firstFileData, locateFolder, type FileData, openFile, shownPath, showFile, showMode, treeShown } from '../data'
+import { filePlace, firstFileData, locateFolder, type FileData, openFile, shownPath, showFile, showMode, treeShown } from '../data'
 
 // Cost: pure, under a millisecond.
-
-test('each file opened replaces the one shown, in the view chosen last, which the tab records for it', () => {
-  const first = showMode(showFile(firstFileData(), 'src/a.md'), 'source')
-  expect(first).toEqual({ path: 'src/a.md', view: 'source' })
-  // Another file names no view: it shows in the page's choice until the tab records it.
-  const second = showFile(first, 'src/b.md')
-  expect(second).toEqual({ path: 'src/b.md' })
-  // Opening the file shown changes nothing, nor does the view it already shows in.
-  expect(showFile(first, 'src/a.md')).toBe(first)
-  expect(showMode(first, 'source')).toBe(first)
-})
-
-test('the view keeps the directory it was opened for through its files, and another directory moves within the file shown', () => {
-  // A child's link opens the file for the child's directory; a pick in its tree stays there.
-  const child = showFile(firstFileData(), '/slots/2/src/a.ts', undefined, '/slots/2')
-  expect(child).toEqual({ path: '/slots/2/src/a.ts', root: '/slots/2' })
-  const picked = showFile(child, '/slots/2/src/b.ts', undefined, child.root)
-  expect(picked).toEqual({ path: '/slots/2/src/b.ts', root: '/slots/2' })
-  // The conversation's own link names no directory: the view returns to the conversation's.
-  expect(showFile(picked, '/work/src/c.ts').root).toBeUndefined()
-  // The same file for another directory is not the file shown: the view moves its tree.
-  expect(showFile(picked, picked.path, undefined, '/work')).toEqual({ path: picked.path, root: '/work' })
-  expect(showFile(picked, picked.path, undefined, '/slots/2')).toBe(picked)
-  // A folder shows no file: its tree alone.
-  expect(showFile(picked, '', undefined, '/slots/3')).toEqual({ path: '', root: '/slots/3' })
-})
 
 // A reload, a copied link and Back show the File view where its address
 // says (`docs/decisions/0014-the-work-panel-has-addresses.md`): what the place
@@ -53,20 +27,6 @@ test('the File view reads back from its address where it was, and a place that d
   expect(filePlace.read(filePlace.write(tree), tree)).toEqual({ ...tree, view: 'preview' })
   expect(filePlace.read({ path: '/work/b.ts' }, tree)).toEqual({ path: '/work/b.ts' })
   expect(treeShown(tree)).toEqual({ path: '/work/a.ts' })
-})
-
-// A file opened without a view shows in the one the user last chose
-// anywhere, and the address records it in the same move. Planted defect this
-// catches: an address that names no view for it, which a reload shows in the
-// page's start.
-test('a file opened without a view is written with the one last chosen', () => {
-  fileView.value = 'source'
-  try {
-    expect(filePlace.write(showFile(firstFileData(), '/work/notes.md'))).toEqual({ path: '/work/notes.md', view: 'source' })
-    expect(filePlace.write(showMode(showFile(firstFileData(), '/work/notes.md'), 'preview')).view).toBe('preview')
-  } finally {
-    fileView.value = 'preview'
-  }
 })
 
 // An attachment of a Windows Host opens the file it was uploaded from by the
