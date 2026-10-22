@@ -449,13 +449,15 @@ impl ConversationRuntime {
                 let account = running.account().clone();
                 if let Some(previous) = previous.filter(|previous| previous != account.as_str()) {
                     // The account the agent kept was used up, removed or of another rotation.
+                    let used_up = CredentialId::try_from(previous.as_str())
+                        .is_ok_and(|previous| assembly.rotation().is_used_up(&entry.id, &previous, now));
                     tracing::info!(
                         event = "account.rotated",
                         conversation = %self.scope.conversation,
                         provider = %entry.id,
                         from = previous,
                         to = %account,
-                        cause = "kept_unusable",
+                        cause = if used_up { "used_up" } else { "kept_unusable" },
                         "an agent took another account"
                     );
                 }

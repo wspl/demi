@@ -31,7 +31,17 @@ const FAST_TIER: &str = "priority";
 /// refreshes the token that was refused, once, and reads again.
 pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogError> {
     let url = models_url(&shared.models_url, &shared.releases.current());
-    tracing::debug!("reading the Codex catalog at {url}");
+    tracing::debug!(event = "codex_catalog.read_started", url = %url, "reading the Codex catalog");
+    let began = std::time::Instant::now();
+    let ended = |outcome: &'static str, status: Option<u16>| {
+        tracing::debug!(
+            event = "codex_catalog.read_ended",
+            outcome,
+            status,
+            ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "the Codex catalog was read"
+        );
+    };
     let mut refused_token = None;
     loop {
         let credentials = shared
@@ -48,6 +58,7 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
             .send()
             .await
             .map_err(|error| {
+                ended("failed", None);
                 CatalogError::Unavailable(format!(
                     "Codex models request failed: {}",
                     error.without_url()
@@ -59,6 +70,7 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
             continue;
         }
         if !status.is_success() {
+            ended("http_status", Some(status.as_u16()));
             return Err(CatalogError::Unavailable(format!(
                 "Codex models request failed with HTTP {}",
                 status.as_u16()
@@ -70,6 +82,7 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
                 error.without_url()
             ))
         })?;
+        ended("read", Some(status.as_u16()));
         return catalog(&text, &*shared.clock);
     }
 }

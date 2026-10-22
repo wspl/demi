@@ -36,11 +36,12 @@
 
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::Poll;
 
 use async_stream::stream;
 use demi_provider_common::credentials::{AuthFailure, AuthReason};
 use demi_provider_common::{
-    Ahead, CallEvent, CallOutcome, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    Ahead, CallEvent, CallOutcome, ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, ToolResultKinds, offers, quota::Observation,
 };
 use demi_shared_types::Model;
@@ -107,13 +108,29 @@ fn answered(items: &[InferenceItem]) -> bool {
 
 impl ProviderRuntime for ClaudeCodeRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        let span = timing::run_span(&self.shared.id, &request.session_id, &request.request_id);
+        let span = timing::run_span(&self.shared.id, &request.session_id, &request.request_id, &request.turn_id);
         let timing = RunTiming::new(span.clone());
+        let outcome = timing.outcome();
         let run = run(self, request, timing);
         let mut run = Box::pin(run);
         stream::poll_fn(move |context| {
             let _entered = span.enter();
-            run.as_mut().poll_next(context)
+            let polled = run.as_mut().poll_next(context);
+            // The run ends at its response, its failure, or a batch of tool
+            // calls; an end with none of them was a stop.
+            match &polled {
+                Poll::Ready(Some(ProviderEvent::Response(_))) => outcome.set(Some("answered")),
+                Poll::Ready(Some(ProviderEvent::Error(failure))) => {
+                    outcome.set(Some("failed"));
+                    span.record("error_code", failure.code.as_ref().map_or("failed", ErrorCode::as_str));
+                }
+                Poll::Ready(Some(ProviderEvent::ToolCall(_))) if outcome.get().is_none() => {
+                    outcome.set(Some("tool_calls"));
+                }
+                Poll::Ready(None) if outcome.get().is_none() => outcome.set(Some("stopped")),
+                _ => {}
+            }
+            polled
         })
         .boxed_local()
     }
@@ -173,9 +190,14 @@ impl ProviderRuntime for ClaudeCodeRuntime {
                 tokio::task::spawn_local(live.close());
             }
             tracing::debug!(
+                event = "claude_code_prepared.started",
                 provider = %self.shared.id,
-                session = %request.session_id,
-                ?ahead,
+                node = %request.session_id,
+                ahead = match ahead {
+                    Ahead::Opened => "opened",
+                    Ahead::Chosen => "chosen",
+                    Ahead::Ended => "ended",
+                },
                 "preparing a Claude Code process ahead"
             );
             self.prepared = Some(Prepared::start(&self.shared, &self.placement, request));
@@ -288,7 +310,7 @@ fn run(
                     if let Some((previous, _)) = previous {
                         previous.close().await;
                     }
-                    let started = LiveCli::start(&runtime.shared, &*runtime.placement, &request);
+                    let started = LiveCli::start(&runtime.shared, &*runtime.placement, &request, Took::New);
                     let mut live = match cancel.run_until_cancelled(started).await {
                         // Giving the start up drops what it started, which
                         // closes it.
@@ -366,6 +388,8 @@ fn run(
                 match line {
                     // The results of calls, printed as the CLI sends them.
                     None | Some(Line::ControlResponse(_)) | Some(Line::User(_)) => {}
+                    // A status line: what matters of it is logged.
+                    Some(Line::System(line)) => live.note_system(&line),
                     // The quota the vendor reported is the call's open now,
                     // or the one that ended last; the snapshot took it as
                     // the line was read.
@@ -437,7 +461,7 @@ fn run(
                                         let (events, answered) = replaced.events(block);
                                         for event in events {
                                             live.mirror.observe(&event);
-                                            timing.delta();
+                                            timing.delta(&event);
                                             yield event;
                                         }
                                         match answered {
@@ -544,7 +568,7 @@ fn run(
                             if let Some(streaming) = &mut live.streaming {
                                 streaming.observe(&event, live.mirror.last_block());
                             }
-                            timing.delta();
+                            timing.delta(&event);
                             yield event;
                         }
                     }

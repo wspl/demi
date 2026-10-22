@@ -385,7 +385,12 @@ impl<H: HostResolver> Connection<H> {
         match (self.server.deps.stores)(&self.root).saved_versions().await {
             Ok(saved) => Some(saved),
             Err(error) => {
-                tracing::warn!(root = %self.root, %error, "the stored versions could not be read");
+                tracing::warn!(
+                    event = "stored_versions.read_failed",
+                    conversation = %self.root,
+                    %error,
+                    "the stored versions could not be read"
+                );
                 None
             }
         }
@@ -474,7 +479,7 @@ impl<H: HostResolver> Connection<H> {
         }
         let asked = Instant::now();
         let _turn = self.server.opening.acquire(self.root.clone()).await;
-        let lock_wait_ms = asked.elapsed().as_millis();
+        let lock_wait_ms = crate::millis(asked.elapsed());
         let opening = Instant::now();
         let was_live = self.server.tree(&self.root).is_some();
         let (tree, continuation) = match self.server.live_or_open(&self.root).await {
@@ -484,7 +489,7 @@ impl<H: HostResolver> Connection<H> {
                 return;
             }
         };
-        let open_ms = opening.elapsed().as_millis();
+        let open_ms = crate::millis(opening.elapsed());
         // Each live node's context usage is read before the attach, which
         // takes its frames in one step with nothing awaited.
         tree.refresh_context().await;
@@ -508,7 +513,7 @@ impl<H: HostResolver> Connection<H> {
             follows = followed,
             lock_wait_ms,
             open_ms,
-            attach_ms = building.elapsed().as_millis(),
+            attach_ms = crate::millis(building.elapsed()),
             followed_nodes = self.follows.followed_nodes(),
             "a page opened the conversation"
         );

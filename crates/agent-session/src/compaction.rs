@@ -37,7 +37,7 @@ use super::{
     ActionEnd, AgentSession, ErrorReport, SessionConfig, SessionDeps, SessionEvent, SessionShared,
     TurnError,
     cancel::TurnCancel,
-    core::{CoreParts, SessionCore, TurnStage},
+    core::{CoreParts, SessionCore, TurnStage, WaitEnd, WaitStart},
     input::InputQueue,
     reports::Watched,
     media::{held, model_view},
@@ -174,6 +174,8 @@ impl CompactionConfig {
         let model_window = u64::from(model.model.context_window);
         if model_window > 0 && input > model_window {
             tracing::error!(
+                event = "compaction.skipped",
+                reason = "input_over_window",
                 provider = %model.provider_id,
                 model = %model.model.id,
                 input_tokens = usage.input_tokens,
@@ -220,53 +222,87 @@ pub(super) enum Trigger {
 }
 
 impl Trigger {
-    /// Logs the pass this trigger starts in `session`.
-    fn log(&self, session: &str) {
+    /// Logs the pass this trigger starts in `core`'s session.
+    fn log(&self, core: &SessionCore) {
+        let turn = core.running_turn();
+        let turn = turn.as_ref().map(tracing::field::display);
         match self {
             Self::BeforeTurn {
                 estimate,
                 threshold,
-            } => tracing::info!(
-                session,
+            } => session_log!(
+                core,
+                info,
+                event = "compaction.started",
+                node = %core.id,
+                turn,
+                trigger = "estimate_before_turn",
                 estimate,
                 threshold,
-                "compacting before a turn: the estimate is at or over the token threshold"
+                "a compaction pass started"
             ),
-            Self::Usage { tokens, threshold } => tracing::info!(
-                session,
+            Self::Usage { tokens, threshold } => session_log!(
+                core,
+                info,
+                event = "compaction.started",
+                node = %core.id,
+                turn,
+                trigger = "usage_in_turn",
                 tokens,
                 threshold,
-                "compacting inside a turn: a response's usage is at or over the token threshold"
+                "a compaction pass started"
             ),
-            Self::TokenRefusal {
-                request_id,
-                message,
-            } => tracing::info!(
-                session,
-                request_id,
-                message,
-                "compacting after the vendor refused a request for its tokens"
+            Self::TokenRefusal { request_id, .. } => session_log!(
+                core,
+                info,
+                event = "compaction.started",
+                node = %core.id,
+                turn,
+                trigger = "vendor_refused",
+                provider_request_id = request_id,
+                "a compaction pass started"
             ),
             Self::ModelSwitch {
                 model,
                 estimate,
                 threshold,
-            } => tracing::info!(
-                session,
+            } => session_log!(
+                core,
+                info,
+                event = "compaction.started",
+                node = %core.id,
+                turn,
+                trigger = "model_switch",
                 model,
                 estimate,
                 threshold,
-                "compacting before a model switch: the estimate is at or over the new model's token threshold"
+                "a compaction pass started"
             ),
             Self::UserAction {
                 estimate,
                 compact_from,
-            } => tracing::info!(
-                session,
+            } => session_log!(
+                core,
+                info,
+                event = "compaction.started",
+                node = %core.id,
+                turn,
+                trigger = "user",
                 estimate,
                 compact_from,
-                "compacting at the user's request"
+                "a compaction pass started"
             ),
+        }
+    }
+
+    /// What the log calls the trigger.
+    fn name(&self) -> &'static str {
+        match self {
+            Self::BeforeTurn { .. } => "estimate_before_turn",
+            Self::Usage { .. } => "usage_in_turn",
+            Self::TokenRefusal { .. } => "vendor_refused",
+            Self::ModelSwitch { .. } => "model_switch",
+            Self::UserAction { .. } => "user",
         }
     }
 }
@@ -321,7 +357,7 @@ pub(super) async fn compacting<T>(
     let (before, waiting) = s.update(|core| {
         let paused = (core.stage(), core.waited_ms().is_some());
         core.set_stage(TurnStage::Compacting);
-        core.stop_waiting();
+        core.stop_waiting(WaitEnd::CompactionPass);
         paused
     });
     let result = work.await;
@@ -329,7 +365,7 @@ pub(super) async fn compacting<T>(
         s.update(|core| {
             core.set_stage(stage);
             if waiting {
-                core.start_waiting();
+                core.start_waiting(WaitStart::CompactionEnd);
             }
         });
     }
@@ -398,10 +434,11 @@ fn usage_at(
 /// A media read that fails here leaves the clients with the usage they had: the
 /// next request reads the same media and reports its failure where the turn can
 /// act on it.
-pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel) {
-    if let Ok(usage) = context_usage(s, cancel).await {
-        s.emit(SessionEvent::ContextUsageChanged { usage });
-    }
+pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel) -> Option<u64> {
+    let usage = context_usage(s, cancel).await.ok()?;
+    let tokens = usage.tokens;
+    s.emit(SessionEvent::ContextUsageChanged { usage });
+    Some(tokens)
 }
 
 /// Why a `compact` frame is refused at `usage`, or none when it is taken.
@@ -508,7 +545,68 @@ pub(super) async fn run_pass(
     cancel: &TurnCancel,
     trigger: &Trigger,
 ) -> Result<bool, TurnError> {
-    trigger.log(&s.read(|core| core.id.to_string()));
+    s.read(|core| trigger.log(core));
+    let began = s.read(|core| core.clock().now().as_millisecond());
+    let tokens_before = held_context_usage(s).await.map(|usage| usage.tokens);
+    let mut facts = PassFacts::default();
+    let result = pass(s, cancel, &mut facts).await;
+    let outcome = match &result {
+        Ok(true) => "done",
+        Ok(false) => "no_gain",
+        Err(TurnError::Cancelled) => "stopped",
+        Err(TurnError::Failed(_)) => "failed",
+    };
+    let ms = s.read(|core| u64::try_from(core.clock().now().as_millisecond() - began).unwrap_or(0));
+    s.read(|core| {
+        let turn = core.running_turn();
+        session_log!(
+            core,
+            info,
+            event = "compaction.ended",
+            node = %core.id,
+            turn = turn.as_ref().map(tracing::field::display),
+            trigger = trigger.name(),
+            outcome,
+            code = match &result {
+                Err(TurnError::Failed(report)) => report.code.as_deref(),
+                _ => None,
+            },
+            tokens_before,
+            tokens_after = facts.tokens_after,
+            window_tokens = facts.window_tokens,
+            summary_tokens = facts.summary_tokens,
+            kept_tail_tokens = facts.kept_tokens,
+            attempts = facts.attempts,
+            ms,
+            "a compaction pass ended"
+        );
+    });
+    if matches!(result, Ok(true)) {
+        s.update(SessionCore::count_compaction);
+    }
+    result
+}
+
+/// What a pass learned as it ran, for its end line.
+#[derive(Default)]
+struct PassFacts {
+    /// The tokens of the blocks the summary replaces.
+    window_tokens: Option<u64>,
+    summary_tokens: Option<u64>,
+    /// The tokens of the user's messages the boundary keeps.
+    kept_tokens: Option<u64>,
+    /// The context's estimate once the pass wrote its boundary.
+    tokens_after: Option<u64>,
+    /// How many summary requests it took, a request too long for the
+    /// context asking again with less.
+    attempts: u32,
+}
+
+async fn pass(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+    facts: &mut PassFacts,
+) -> Result<bool, TurnError> {
     let model = s.read(|core| core.model.clone());
     let window_tokens = cancel.guard(window_in_use(s, &model)).await?;
     let budget = window_tokens.map_or(KEPT_WORK, |window| {
@@ -555,6 +653,9 @@ pub(super) async fn run_pass(
                 .sum::<u64>();
             (tokens, kept_messages(window, view.start + start, words))
         });
+        facts.window_tokens = Some(compacted_tokens);
+        facts.kept_tokens = Some(kept.iter().map(|message| text_tokens(&message.text)).sum());
+        facts.attempts += 1;
         // The copy holds what it sends by reference, with the bytes the
         // session holds for it.
         let (history, held) = s.read(|core| {
@@ -575,8 +676,9 @@ pub(super) async fn run_pass(
             Summary::Written(summary) if summary.is_empty() => return Ok(false),
             Summary::Written(summary) => {
                 let running = cancel.guard(s.runtime.running_work()).await?;
+                let summary_tokens = text_tokens(&summary);
+                facts.summary_tokens = Some(summary_tokens);
                 s.update(|core| {
-                    let summary_tokens = text_tokens(&summary);
                     let model = core.model.clone();
                     let boundary = core.transcript.insert_compaction_boundary(
                         view.start + cut,
@@ -605,7 +707,7 @@ pub(super) async fn run_pass(
                     core.release_media();
                 });
                 persist::flush(s).await?;
-                report_context_usage(s, cancel).await;
+                facts.tokens_after = report_context_usage(s, cancel).await;
                 return Ok(true);
             }
             Summary::TooLong(report) => {

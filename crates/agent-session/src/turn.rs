@@ -46,7 +46,7 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::{Kind, StoreError, changes, media};
+use demi_agent_store::{Kind, StoreError, changes, media, media::ModelView};
 use demi_agent_transcript::{
     PendingCall,
     estimate::context_tokens,
@@ -65,7 +65,7 @@ use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
     cancel::{CancelReason, TurnCancel},
     compaction::{self, Trigger},
-    core::{SendNow, SessionCore, TurnStage, with_request_id},
+    core::{SendNow, SessionCore, TurnStage, WaitStart, with_request_id},
     input::Take,
     media::model_view,
     persist, reports,
@@ -107,12 +107,14 @@ async fn run_turn(
     // The turn's first request follows its new input; each later one
     // continues the running turn.
     let mut continues = false;
+    // Why the loop goes round again, which says what began the wait.
+    let mut again = WaitStart::TurnStart;
     loop {
         cancel.check()?;
         // The turn needs the model's next answer from here: after its input,
         // a step's calls, or a response that the input arriving meanwhile
         // continues.
-        s.update(SessionCore::start_waiting);
+        s.update(|core| core.start_waiting(again));
         if switch_first && apply_switch(s, cancel).await? {
             s.update(|core| core.push_resume(None));
         }
@@ -122,7 +124,7 @@ async fn run_turn(
         if ends_for_message(s).await? {
             return Ok(());
         }
-        write_inputs(s).await?;
+        write_inputs(s, "before_request").await?;
         let before = s.read(|core| core.inputs.arrivals());
         let reached = stream(s, cancel, continues).await?;
         let recover = reached.is_some();
@@ -146,7 +148,7 @@ async fn run_turn(
             // the boundary after them writes them. The human steers wait for
             // the next request, pending, so Steer and Recall still reach
             // them while the tools run.
-            if s.update(|core| core.write_inputs(Take::AgentMessages)) {
+            if s.update(|core| core.write_inputs(Take::AgentMessages, "after_stream")) {
                 persist::flush(s).await?;
             }
         }
@@ -154,7 +156,7 @@ async fn run_turn(
         if ends_for_message(s).await? {
             return Ok(());
         }
-        if let Some(trigger) = reached.filter(|_| auto_compactions < MAX_AUTO_COMPACTIONS) {
+        if let Some(trigger) = reached.clone().filter(|_| auto_compactions < MAX_AUTO_COMPACTIONS) {
             let before_compaction = estimate(s, cancel).await?;
             let compacted =
                 compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await?;
@@ -163,18 +165,51 @@ async fn run_turn(
             if compacted && estimate(s, cancel).await? < before_compaction {
                 auto_compactions += 1;
                 s.update(|core| core.push_resume(None));
+                again = WaitStart::CompactionEnd;
+                s.read(|core| core.log_continued("after_compaction"));
                 continue;
             }
+            if compacted {
+                s.read(|core| {
+                    session_log!(
+                        core,
+                        info,
+                        event = "compaction.skipped",
+                        node = %core.id,
+                        turn = %core.turn(),
+                        reason = "no_gain",
+                        "a pass freed no tokens, so the turn goes on without compacting again"
+                    );
+                });
+            }
+        } else if reached.is_some() {
+            // The turn goes on over the threshold: the limit is why.
+            s.read(|core| {
+                session_log!(
+                    core,
+                    info,
+                    event = "compaction.skipped",
+                    node = %core.id,
+                    turn = %core.turn(),
+                    reason = "auto_limit",
+                    limit = MAX_AUTO_COMPACTIONS,
+                    "a turn over its token threshold compacts no more"
+                );
+            });
         }
         // Input that arrived during the round asks the provider once more;
         // the human steers among it are written before that request.
         if s.update(|core| core.arrived_since(before)) {
             write_inputs_after_step(s).await?;
+            again = WaitStart::InputArrived;
+            s.read(|core| core.log_continued("input_arrived"));
             continue;
         }
         if !executed {
             return Ok(());
         }
+        again = WaitStart::ToolRound;
+        s.read(|core| core.log_continued("tool_results"));
     }
 }
 
@@ -210,18 +245,18 @@ pub(super) async fn apply_switch(
 
 /// Writes the waiting input into the turn: human steers, command reports
 /// and agent messages. An agent message written is saved at once.
-async fn write_inputs(s: &SessionShared) -> Result<(), TurnError> {
-    write_taken(s, Take::Everything).await
+async fn write_inputs(s: &SessionShared, boundary: &'static str) -> Result<(), TurnError> {
+    write_taken(s, Take::Everything, boundary).await
 }
 
 /// Writes the waiting input but the human steers, which stay pending until
 /// the request that carries them.
 async fn write_inputs_after_step(s: &SessionShared) -> Result<(), TurnError> {
-    write_taken(s, Take::AllButSteers).await
+    write_taken(s, Take::AllButSteers, "after_step").await
 }
 
-async fn write_taken(s: &SessionShared, take: Take) -> Result<(), TurnError> {
-    if s.update(|core| core.write_inputs(take)) {
+async fn write_taken(s: &SessionShared, take: Take, boundary: &'static str) -> Result<(), TurnError> {
+    if s.update(|core| core.write_inputs(take, boundary)) {
         persist::flush(s).await?;
     }
     Ok(())
@@ -233,7 +268,8 @@ async fn write_taken(s: &SessionShared, take: Take) -> Result<(), TurnError> {
 async fn ends_for_message(s: &SessionShared) -> Result<bool, TurnError> {
     match s.update(SessionCore::take_send_now) {
         Some(SendNow::Message) => {
-            write_inputs(s).await?;
+            s.update(SessionCore::yield_turn);
+            write_inputs(s, "yield").await?;
             Ok(true)
         }
         Some(SendNow::Steer) | None => Ok(false),
@@ -282,11 +318,12 @@ async fn stream(
     let mut attempt = 1;
     let mut refusal_compacted = false;
     loop {
-        let request = request(s, cancel).await?;
-        let request_id = request.request_id.clone();
-        let start = s.read(|core| core.transcript.len());
         let model = s.read(|core| core.model.clone());
         let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
+        s.update(|core| core.count_request());
+        let request = request(s, cancel, window).await?;
+        let request_id = request.request_id.clone();
+        let start = s.read(|core| core.transcript.len());
         let mut runtime = s
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
@@ -333,8 +370,24 @@ async fn stream(
             s.update(|core| core.record_failure(&report));
             return Err(TurnError::Failed(Box::new(report)));
         }
+        let unwound_blocks = s.read(|core| core.transcript.len().saturating_sub(start));
         drop_attempt(s, start).await?;
         let delay = policy.delay(attempt, failure.retry_after);
+        s.read(|core| {
+            session_log!(
+                core,
+                info,
+                event = "model_request.retried",
+                node = %core.id,
+                turn = %core.turn(),
+                request_no = core.requests_so_far(),
+                attempt,
+                cause = failure.code.as_ref().map(|code| code.as_str()),
+                delay_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
+                unwound_blocks,
+                "a failed model request is asked again after a delay"
+            );
+        });
         s.emit(SessionEvent::RetryScheduled {
             attempt,
             delay_ms: u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
@@ -377,13 +430,17 @@ async fn compact_before_request(
 async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
     let blocks = s.read(|core| core.transcript.blocks()[..cut - core.transcript.start()].to_vec());
     persist::commit_rewrite(s, blocks).await?;
-    s.update(SessionCore::start_waiting);
+    s.update(|core| core.start_waiting(WaitStart::Retry));
     Ok(())
 }
 
 /// The next request: what the context sources tell the node first, saved at
 /// once, then the system prompt, the tools and the replay.
-async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequest, TurnError> {
+async fn request(
+    s: &SessionShared,
+    cancel: &TurnCancel,
+    window: Option<u64>,
+) -> Result<InferenceRequest, TurnError> {
     // Only the context the model receives counts as seen: a block before
     // the last compaction boundary is summarized away, so its source tells
     // the model again.
@@ -416,14 +473,46 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     let system_prompt = system_prompt(s, &model, cancel).await?.text();
     let request_id = s.ids.next_id();
     let view = model_view(s, cancel).await?;
-    Ok(s.update(|core| {
+    let request = s.update(|core| {
         core.inference_request(
             &view,
             system_prompt,
             request_id,
             cancel.child_token(),
         )
-    }))
+    });
+    log_built(s, &request, &view, window);
+    Ok(request)
+}
+
+/// Logs what the request holds, to set the session's estimate beside the
+/// tokens the model reports: its size, the hashes of the instructions and
+/// tools it carries, which say whether what the model is told changed, and
+/// the threshold it is judged by.
+fn log_built(s: &SessionShared, request: &InferenceRequest, view: &ModelView, window: Option<u64>) {
+    s.read(|core| {
+        if !tracing::enabled!(tracing::Level::DEBUG) {
+            return;
+        }
+        let (system_prompt_hash, tools_hash) = request.prompt_hashes();
+        session_log!(
+            core,
+            debug,
+            event = "request.built",
+            node = %core.id,
+            turn = %core.turn(),
+            request_no = core.requests_so_far(),
+            estimate_tokens = context_tokens(&core.request_view(view), &request.system_prompt),
+            replayed_blocks = request.blocks.len(),
+            items = request.items.len(),
+            window,
+            threshold = s.config.compaction.threshold(window, &core.model.model),
+            system_prompt_hash,
+            tools_hash,
+            instructions_bytes = request.system_prompt.len(),
+            "a provider request was built"
+        );
+    });
 }
 
 /// The system prompt of a request that infers with `model`. One that cannot
@@ -536,7 +625,7 @@ async fn read(
                 let within_run = !matches!(event, ProviderEvent::Response(_));
                 s.update(|core| {
                     if completes_text && core.complete_tail_text() && within_run {
-                        core.start_waiting();
+                        core.start_waiting(WaitStart::TextEnded);
                     }
                     core.apply_event(event);
                 });
@@ -579,7 +668,10 @@ async fn run_tools(
     if calls.is_empty() {
         return Ok(false);
     }
-    s.update(|core| core.set_stage(TurnStage::Tools));
+    s.update(|core| {
+        core.set_stage(TurnStage::Tools);
+        core.count_tool_round();
+    });
     // Every call is in the store as executing before a tool runs: a process
     // that dies during one leaves it executing, and restore completes it as
     // interrupted without running it again.
@@ -712,7 +804,11 @@ async fn with_lists(
                 // The lists are made of the window's calls alone: the call
                 // still completes, and a later listing of the request reads
                 // them again.
-                tracing::warn!(error = &error as &dyn std::error::Error, "the request's earlier calls were not read");
+                tracing::warn!(
+                    event = "earlier_calls.read_failed",
+                    error = &error as &dyn std::error::Error,
+                    "the request's earlier calls were not read"
+                );
                 None
             }
         },

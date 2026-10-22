@@ -50,6 +50,18 @@
 //! Work that must outlive its waiter is owned by a task of the session, never
 //! by the waiting future.
 
+/// Logs one line in the session's span, which holds its conversation, node
+/// and user, unless the session is a copy that only summarizes: its work is
+/// its session's, and a line of its own would say it twice. The first
+/// argument is the core, the second the level.
+macro_rules! session_log {
+    ($core:expr, $level:ident, $($line:tt)+) => {
+        if !$core.one_request {
+            tracing::$level!(parent: &$core.span, $($line)+);
+        }
+    };
+}
+
 mod ahead;
 mod breakdown;
 mod bus;
@@ -551,6 +563,8 @@ pub(crate) struct SessionShared {
     store: Rc<dyn SessionStore>,
     ids: Rc<dyn IdSource>,
     config: SessionConfig,
+    /// What the session's tasks and lines log in (`SessionRuntime::log_span`).
+    span: tracing::Span,
     worker: RefCell<Option<AbortOnDropHandle<()>>>,
     persister: RefCell<Option<AbortOnDropHandle<()>>>,
 }
@@ -766,6 +780,7 @@ impl AgentSession {
                 .iter()
                 .find(|running| running.tool_use_id == call.tool_use_id);
             let command = started.map(|running| running.command.clone());
+            core::log_interrupted(&deps.runtime.log_span(), &id, None, &call, &core::CallEnd::Crashed, command.as_ref());
             let text = core::interrupted_text(&core::CallEnd::Crashed, command.as_ref());
             // The call keeps naming the command it started, which runs as
             // far as the conversation knows, so that its later report and
@@ -829,6 +844,7 @@ impl AgentSession {
     }
 
     fn start(core: SessionCore, deps: SessionDeps) -> Self {
+        let span = core.span.clone();
         let status = core.status();
         let arrivals = core.window_arrivals();
         let shared = Rc::new(SessionShared {
@@ -845,14 +861,14 @@ impl AgentSession {
             store: deps.store,
             ids: deps.ids,
             config: deps.config,
+            span: span.clone(),
             worker: RefCell::new(None),
             persister: RefCell::new(None),
         });
-        // The session's work logs where its start was asked, such as a
-        // socket's frame or a request
-        // (`crates/backend-http/src/request_id.rs`).
+        // The session's work logs in its own span, never in the request that
+        // happened to start it, which ended long before most of the work.
         let worker = tokio::task::spawn_local(
-            worker::run(Rc::downgrade(&shared), shared.work.clone()).in_current_span(),
+            worker::run(Rc::downgrade(&shared), shared.work.clone()).instrument(span.clone()),
         );
         let persister = tokio::task::spawn_local(
             persist::run(
@@ -860,7 +876,7 @@ impl AgentSession {
                 shared.persist_wake.clone(),
                 deps.config.persist_interval,
             )
-            .in_current_span(),
+            .instrument(span),
         );
         *shared.worker.borrow_mut() = Some(AbortOnDropHandle::new(worker));
         *shared.persister.borrow_mut() = Some(AbortOnDropHandle::new(persister));

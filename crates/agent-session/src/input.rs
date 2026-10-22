@@ -23,7 +23,9 @@
 //! the transcript is lost with a restart, and nothing else keeps a copy of it
 //! for a client that reconnects, which reads the list from the live session.
 
-use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer};
+use std::collections::HashMap;
+
+use demi_shared_types::{AgentMessage, BlockId, CommandReport, PendingSteer, Timestamp};
 
 use demi_agent_store::PendingAgentInput;
 
@@ -100,6 +102,10 @@ pub(super) struct InputQueue {
     /// How many of them were agent messages and command reports, which end
     /// a shell call's window (`crates/agent-tools/src/lib.rs`).
     joining: u64,
+    /// When each steer and agent message that came while the session ran was
+    /// admitted, by its id, for the line that says how long it waited; one a
+    /// checkpoint restored has none. Live only.
+    admitted: HashMap<String, Timestamp>,
 }
 
 impl InputQueue {
@@ -134,6 +140,16 @@ impl InputQueue {
         self.arrivals
     }
 
+    /// Notes when the input waiting under `id` was admitted.
+    pub(super) fn note_admitted(&mut self, id: &str, at: Timestamp) {
+        self.admitted.insert(id.to_owned(), at);
+    }
+
+    /// Takes the note of when the input under `id` was admitted.
+    pub(super) fn take_admitted(&mut self, id: &str) -> Option<Timestamp> {
+        self.admitted.remove(id)
+    }
+
     pub(super) fn joining(&self) -> u64 {
         self.joining
     }
@@ -155,6 +171,7 @@ impl InputQueue {
             return false;
         };
         self.entries.remove(index);
+        self.admitted.remove(id.as_str());
         self.arrivals = self.arrivals.saturating_sub(1);
         true
     }
@@ -230,15 +247,19 @@ impl InputQueue {
     }
 
     /// Withdraws the waiting command reports `keep` does not keep, as a
-    /// withdrawn steer is: they cause no request.
-    pub(super) fn retain_reports(&mut self, mut keep: impl FnMut(&CommandReport) -> bool) {
-        let before = self.entries.len();
-        self.entries.retain(|input| match input {
-            Input::Report(report, _) => keep(report),
-            _ => true,
-        });
-        let withdrawn = u64::try_from(before - self.entries.len()).unwrap_or(u64::MAX);
-        self.arrivals = self.arrivals.saturating_sub(withdrawn);
+    /// withdrawn steer is: they cause no request. Returns them.
+    pub(super) fn retain_reports(&mut self, mut keep: impl FnMut(&CommandReport) -> bool) -> Vec<CommandReport> {
+        let withdrawn: Vec<CommandReport> = self
+            .entries
+            .extract_if(.., |input| matches!(input, Input::Report(report, _) if !keep(report)))
+            .filter_map(|input| match input {
+                Input::Report(report, _) => Some(report),
+                _ => None,
+            })
+            .collect();
+        let count = u64::try_from(withdrawn.len()).unwrap_or(u64::MAX);
+        self.arrivals = self.arrivals.saturating_sub(count);
+        withdrawn
     }
 
     /// Takes the command reports: the input a continuation opens with.
@@ -257,5 +278,7 @@ impl InputQueue {
     pub(super) fn discard_steers(&mut self) {
         self.entries
             .retain(|input| !matches!(input, Input::Steer(_)));
+        let waiting: Vec<String> = self.entries.iter().filter_map(|input| input.id().map(str::to_owned)).collect();
+        self.admitted.retain(|id, _| waiting.contains(id));
     }
 }

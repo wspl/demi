@@ -304,6 +304,7 @@ impl Refresh {
             // a token.
             let refusal = TokenRefusal::of(&response.bytes().await.unwrap_or_default());
             tracing::warn!(
+                event = "grok_token.refresh_refused",
                 status,
                 error = refusal.named(),
                 "Grok refused a token refresh"

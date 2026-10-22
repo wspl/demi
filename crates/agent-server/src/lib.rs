@@ -56,6 +56,13 @@
 
 mod node;
 mod server;
+
+/// A duration as the whole milliseconds a log line's `_ms` field holds: an
+/// integer, never the `u128` that `as_millis` gives, which a log line records
+/// as a string.
+pub(crate) fn millis(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
 #[cfg(feature = "testing")]
 pub mod testing;
 pub mod small_request;

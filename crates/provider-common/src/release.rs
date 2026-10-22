@@ -102,9 +102,26 @@ impl KeptRelease {
         // read before, and a later request reads again.
         let read_again = async move {
             let name = kept.source.name;
-            match kept.newest.read(false, || kept.newest_release()).await {
-                Ok(version) => tracing::debug!("the newest {name} release is {version}"),
-                Err(reason) => tracing::warn!("the newest {name} release was not read: {reason}"),
+            let began = std::time::Instant::now();
+            let read = kept.newest.read(false, || kept.newest_release()).await;
+            let ms = u64::try_from(began.elapsed().as_millis()).unwrap_or(u64::MAX);
+            match read {
+                Ok(version) => tracing::debug!(
+                    event = "release.read",
+                    name,
+                    outcome = "read",
+                    version = %version,
+                    ms,
+                    "the newest release was read"
+                ),
+                Err(reason) => tracing::warn!(
+                    event = "release.read",
+                    name,
+                    outcome = "failed",
+                    reason,
+                    ms,
+                    "the newest release was not read"
+                ),
             }
         };
         let kept = self.0.newest.kept(&Handle::current(), read_again);

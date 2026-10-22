@@ -896,7 +896,13 @@ impl<H: HostResolver> Tree<H> {
         let now = match self.root.placement().await {
             Ok(now) => Some(now),
             Err(error) => {
-                tracing::warn!(root = %self.root.id(), %error, "where the conversation works could not be read");
+                tracing::warn!(
+                    event = "node_directory.read_failed",
+                    conversation = %self.root.id(),
+                    node = %self.root.id(),
+                    %error,
+                    "where the conversation works could not be read"
+                );
                 None
             }
         };
@@ -1066,6 +1072,12 @@ impl<H: HostResolver> Tree<H> {
                 }
                 let id = record.id.clone();
                 let restoring = std::time::Instant::now();
+                tracing::info!(
+                    event = "subagent.restore_started",
+                    conversation = %self.root.id(),
+                    node = %id,
+                    "a live subagent is being restored"
+                );
                 let origin = match self.stored(&id).await {
                     Ok(origin) => origin,
                     Err(error) => {
@@ -1091,9 +1103,10 @@ impl<H: HostResolver> Tree<H> {
                     continue;
                 }
                 tracing::info!(
-                    root = %self.root.id(),
+                    event = "subagent.restored",
+                    conversation = %self.root.id(),
                     node = %id,
-                    restore_ms = restoring.elapsed().as_millis(),
+                    restore_ms = crate::millis(restoring.elapsed()),
                     "a live subagent was restored"
                 );
             }
@@ -1173,7 +1186,14 @@ impl<H: HostResolver> Tree<H> {
     /// state does not rebuild, with what failed, `error`: its rows stay as
     /// they are, and its own live children close as an abort closes them.
     async fn close_unrebuilt(&self, owner: &Node<H>, record: NodeRecord, error: String) {
-        tracing::warn!(node = %record.id, %error, "a live subagent could not be rebuilt and closes as failed");
+        tracing::warn!(
+            event = "subagent.rebuild_failed",
+            conversation = %self.root.id(),
+            node = %record.id,
+            %error,
+            outcome = "closed_failed",
+            "a live subagent could not be rebuilt"
+        );
         let runs_on = self
             .summaries
             .borrow()
@@ -1232,7 +1252,13 @@ impl<H: HostResolver> Tree<H> {
                 last_failure(&checkpoint.transcript).map(|error| error.id.clone())
             }),
             Err(error) => {
-                tracing::warn!(node = %id, %error, "a closed subagent's transcript did not load for its completion");
+                tracing::warn!(
+                    event = "subagent_transcript.load_failed",
+                    conversation = %self.root.id(),
+                    node = %id,
+                    %error,
+                    "a closed subagent's transcript did not load for its completion"
+                );
                 None
             }
         }
@@ -1471,8 +1497,18 @@ impl<H: HostResolver> Tree<H> {
         origin: Option<BlockId>,
     ) {
         let message = completion(record, close, origin);
+        let message_id = message.id.clone();
         match owner.session().accept_agent_message(message).await {
-            Ok(()) | Err(AgentMessageError::Closed) => {}
+            Ok(()) => tracing::info!(
+                event = "agent_message.sent",
+                conversation = %self.root.id(),
+                from_node = %record.id,
+                to_node = %owner.id(),
+                kind = "completion",
+                message = %message_id,
+                "a subagent's completion was accepted"
+            ),
+            Err(AgentMessageError::Closed) => {}
             Err(error) => self.report(format!(
                 "the completion of subagent {} was not delivered: {error}",
                 record.id
@@ -1552,11 +1588,21 @@ impl<H: HostResolver> Tree<H> {
             event: AgentMessageEvent::Message {},
             origin: sender.session().call_block(call),
         };
+        let message_id = message.id.clone();
         recipient
             .session()
             .accept_agent_message(message)
             .await
             .map_err(|error| error.to_string())?;
+        tracing::info!(
+            event = "agent_message.sent",
+            conversation = %self.root.id(),
+            from_node = %caller,
+            to_node = %recipient_id,
+            kind = "send",
+            message = %message_id,
+            "an agent's message was accepted"
+        );
         Ok(recipient.record().number)
     }
 

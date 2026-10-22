@@ -10,6 +10,7 @@ use demi_agent_transcript::{opens_input_turn, resume_point, resume_point_within,
 use demi_provider_common::Ahead;
 use demi_shared_types::TurnId;
 use tokio::sync::Notify;
+use tracing::Instrument as _;
 
 use demi_conversation_socket_protocol::AgentCode;
 
@@ -52,7 +53,9 @@ pub(crate) async fn run(session: Weak<SessionShared>, work: Rc<Notify>) {
         };
         loop {
             while let Some(started) = s.update(|core| core.take_started()) {
-                run_action(&s, started).await;
+                // The action's lines carry its turn, and no other.
+                let span = tracing::info_span!(parent: &s.span, "turn", turn = %started.turn);
+                run_action(&s, started).instrument(span).await;
             }
             // Idle now: what was asked to ready ahead is readied, unless an
             // action starts first.
@@ -235,7 +238,7 @@ async fn execute(
             // arrived during the pass wait in the transcript for the next
             // turn.
             let agent_input = s.read(|core| core.inputs.has_agent_input());
-            if s.update(|core| core.write_inputs(Take::Everything)) {
+            if s.update(|core| core.write_inputs(Take::Everything, "after_compaction")) {
                 persist::flush(s).await?;
             }
             if agent_input {
@@ -360,16 +363,21 @@ async fn end_switch(
 
 fn conclude(s: &SessionShared, cancel: &TurnCancel, body: Result<(), TurnError>) -> Outcome {
     match body {
-        Ok(()) => Outcome::Completed,
+        Ok(()) => {
+            s.read(|core| core.log_turn_ended("answered", None));
+            Outcome::Completed
+        }
         Err(TurnError::Cancelled) => {
             let reason = cancel
                 .reason()
                 .expect("a stopped action's token was cancelled with its reason");
             s.update(|core| core.record_stop(reason));
+            s.read(|core| core.log_turn_ended("stopped", None));
             Outcome::Aborted
         }
         Err(TurnError::Failed(report)) => {
             s.update(|core| core.fail(&report));
+            s.read(|core| core.log_turn_ended("failed", report.code.as_deref()));
             Outcome::Failed(*report)
         }
     }
