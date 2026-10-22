@@ -573,7 +573,6 @@ pub(crate) fn commit(
     announce: impl FnOnce() + 'static,
 ) -> impl Future<Output = Result<AttachmentRow, String>> {
     let committed = tasks.spawn_local(async move {
-        let commit = db.commit_point();
         let row = db
             .call(move |connection| {
                 let transaction = connection.transaction()?;
@@ -591,7 +590,7 @@ pub(crate) fn commit(
                     node: attachment.node,
                 };
                 conversation_attachments::insert(&transaction, std::slice::from_ref(&stored))?;
-                commit.commit(transaction)?;
+                transaction.commit()?;
                 Ok(stored.row)
             })
             .await?;

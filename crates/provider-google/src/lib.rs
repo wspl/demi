@@ -138,7 +138,6 @@ impl Provider for GoogleProvider {
         }
     }
 
-
     fn images(&self) -> Option<&dyn ImageMaker> {
         self.images.as_ref().map(|images| images as &dyn ImageMaker)
     }
@@ -198,17 +197,5 @@ impl ProviderRuntime for GoogleRuntime {
             // (`crates/provider-common/src/contract.rs`).
             tool_results: ToolResultKinds::ALL,
         }
-    }
-}
-
-/// Test support (feature `testing`): the body this provider sends for a
-/// request, for the tests of what sends its requests.
-#[cfg(feature = "testing")]
-pub mod testing {
-    use demi_provider_common::InferenceRequest;
-
-    /// The `streamGenerateContent` body of `request`.
-    pub fn body(request: &InferenceRequest) -> Vec<u8> {
-        crate::request::encode(request)
     }
 }

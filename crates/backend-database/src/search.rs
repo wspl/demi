@@ -113,20 +113,6 @@ struct Indexes {
     turns: KeyedSerialGate<UserId>,
     /// Each user whose index was deleted and built again empty.
     resets: broadcast::Sender<UserId>,
-    #[cfg(any(test, feature = "testing"))]
-    work: std::sync::Mutex<SearchWork>,
-}
-
-/// How much work the indexes have done, which tests bound by the sizes of
-/// what changed.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SearchWork {
-    /// Conversations indexed whole.
-    pub whole: u64,
-    /// Rows added or removed, by a whole indexing or a save's changes.
-    pub rows: u64,
-    /// Texts a query read to answer with.
-    pub texts: u64,
 }
 
 /// How many resets wait for a slow follower before it hears that it missed
@@ -295,35 +281,7 @@ impl SearchIndexes {
             directory,
             turns: KeyedSerialGate::new(),
             resets: broadcast::channel(RESETS_WAITING).0,
-            #[cfg(any(test, feature = "testing"))]
-            work: std::sync::Mutex::default(),
         })))
-    }
-
-    /// How much work the indexes have done so far.
-    #[cfg(any(test, feature = "testing"))]
-    pub fn work(&self) -> SearchWork {
-        *self.0.work.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    /// Adds to the work done; nothing outside tests.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(unused_variables))]
-    fn record(&self, add: impl FnOnce(&mut SearchWork)) {
-        #[cfg(any(test, feature = "testing"))]
-        add(&mut self.0.work.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
-    }
-
-    /// Overwrites `user`'s index with bytes SQLite does not read, in the
-    /// user's turn, so no operation opens the file between its truncation
-    /// and its write and finds an empty file it would make a valid index.
-    #[cfg(any(test, feature = "testing"))]
-    pub async fn corrupt(&self, user: &UserId) -> Result<(), StorageError> {
-        let _turn = self.0.turns.acquire(user.clone()).await;
-        // Each operation's connection closed with its WAL checkpointed, so
-        // the file holds the index alone; garbage in it does not open.
-        let path = self.0.directory.join(format!("{user}.sqlite"));
-        tokio::fs::write(&path, b"not a database at all, and long enough to be read as a header").await?;
-        Ok(())
     }
 
     /// Each user whose index is deleted and built again empty from now on,
@@ -417,27 +375,18 @@ impl SearchIndexes {
         indexed: IndexedConversation,
     ) -> Result<(), StorageError> {
         let conversation = conversation.clone();
-        let indexes = self.clone();
         self.with(user, move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-            let mut rows = remove_rows(&transaction, &conversation)?;
+            remove_rows(&transaction, &conversation)?;
             transaction.execute("INSERT INTO conversations (id) VALUES (?1)", [conversation.as_str()])?;
             insert_title(&transaction, &conversation, &indexed.title)?;
-            rows += 1;
             for agent in &indexed.agents {
                 set_version(&transaction, &conversation, agent.agent, agent.version)?;
                 for message in &agent.messages {
                     insert_text(&transaction, &conversation, agent.agent, message)?;
                 }
-                rows += agent.messages.len();
             }
             transaction.commit()?;
-            // Within the user's turn, so a search that sees the rows
-            // sees their work counted too.
-            indexes.record(|work| {
-                work.whole += 1;
-                work.rows += count_of(rows);
-            });
             Ok(())
         })
         .await
@@ -464,7 +413,6 @@ impl SearchIndexes {
         change: TranscriptChange,
     ) -> Result<bool, StorageError> {
         let conversation = conversation.clone();
-        let indexes = self.clone();
         self.with(user, move |connection| {
             let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
             if !holds(&transaction, &conversation)? {
@@ -475,12 +423,12 @@ impl SearchIndexes {
                 return Ok(false);
             }
             let (id, agent) = (conversation.as_str(), integer(change.agent));
-            let mut rows = transaction
+            transaction
                 .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position >= ?3")?
                 .execute(params![id, agent, integer(change.version.blocks)])?;
             for written in &change.written {
                 let (block, position) = (written.block.as_str(), count(written.position));
-                rows += transaction
+                transaction
                     .prepare_cached(
                         "DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position = ?3 AND block <> ?4",
                     )?
@@ -507,7 +455,7 @@ impl SearchIndexes {
                     continue;
                 }
                 if held.is_some() {
-                    rows += transaction
+                    transaction
                         .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3")?
                         .execute(params![id, agent, block])?;
                 }
@@ -518,13 +466,10 @@ impl SearchIndexes {
                         text: text.clone(),
                     };
                     insert_text(&transaction, &conversation, change.agent, &message)?;
-                    rows += 1;
                 }
             }
             set_version(&transaction, &conversation, change.agent, change.version)?;
             transaction.commit()?;
-            // Within the user's turn, as in `index`.
-            indexes.record(|work| work.rows += count_of(rows));
             Ok(true)
         })
         .await
@@ -658,7 +603,7 @@ impl SearchIndexes {
         ranked: Vec<ConversationId>,
         limit: usize,
     ) -> Result<Vec<Found>, StorageError> {
-        let (found, texts) = self
+        let found = self
             .with(user, move |connection| {
                 let transaction = connection.transaction()?;
                 let (long, short): (Vec<&String>, Vec<&String>) = words
@@ -725,13 +670,11 @@ impl SearchIndexes {
                 found.truncate(limit);
                 let mut message = transaction.prepare_cached("SELECT block, text FROM texts WHERE id = ?1")?;
                 let mut answer = Vec::with_capacity(found.len());
-                let mut texts = 0;
                 for (_, (conversation, title, newest)) in found {
                     let message = match newest {
                         Some((row, _)) => {
                             let (block, text): (String, String) =
                                 message.query_row([row], |row| Ok((row.get(0)?, row.get(1)?)))?;
-                            texts += 1;
                             let (line, ranges) = match_line(&text, &words);
                             Some(FoundMessage {
                                 block: decode("texts", "block", BlockId::try_from(block))?,
@@ -747,10 +690,9 @@ impl SearchIndexes {
                         message,
                     });
                 }
-                Ok((answer, texts))
+                Ok(answer)
             })
             .await?;
-        self.record(|work| work.texts += texts);
         Ok(found)
     }
 }
@@ -796,11 +738,6 @@ fn version_of(revision: i64, blocks: i64) -> Result<SavedVersion, StorageError> 
         revision: decode("agents", "revision", u64::try_from(revision))?,
         blocks: decode("agents", "blocks", u64::try_from(blocks))?,
     })
-}
-
-/// A count of rows as the work counts it.
-fn count_of(rows: usize) -> u64 {
-    u64::try_from(rows).unwrap_or(u64::MAX)
 }
 
 /// Whether the index holds the conversation.
@@ -850,8 +787,8 @@ fn insert_text(
 fn remove_rows(
     transaction: &rusqlite::Transaction<'_>,
     conversation: &ConversationId,
-) -> Result<usize, StorageError> {
-    let rows = transaction.execute(
+) -> Result<(), StorageError> {
+    transaction.execute(
         "DELETE FROM texts WHERE conversation = ?1",
         [conversation.as_str()],
     )?;
@@ -860,7 +797,7 @@ fn remove_rows(
         "DELETE FROM conversations WHERE id = ?1",
         [conversation.as_str()],
     )?;
-    Ok(rows)
+    Ok(())
 }
 
 /// A word as a `LIKE` pattern matches it literally.

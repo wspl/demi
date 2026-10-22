@@ -11,11 +11,6 @@ doctest = false
 test = false
 bench = false
 
-[features]
-# The body of a request and a release reader that reads nothing, for the
-# tests of this provider and of what sends its requests.
-testing = ["demi-provider-common/testing"]
-
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }

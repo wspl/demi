@@ -42,8 +42,6 @@ pub mod cache;
 mod invocations;
 mod process;
 mod registry;
-#[cfg(feature = "testing")]
-pub mod testing;
 
 use std::{fmt, path::PathBuf, time::SystemTime};
 
@@ -52,8 +50,6 @@ use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
 pub use invocations::Invoking;
-#[cfg(feature = "testing")]
-pub use registry::Decision;
 pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
 
 /// Why a resident service could not be had, or why it ended.

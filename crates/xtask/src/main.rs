@@ -43,55 +43,30 @@
 //!                                      needs it
 //! ```
 //!
-//! Every Rust check selects the same thing, the whole workspace with the
-//! runner's `test-fixtures` feature, which builds the fixture programs the
-//! tests start: Cargo unifies features over what one command selects, so a
-//! command that chose one crate or other features would build its own copy of
-//! every shared dependency.
+//! Every Rust check selects the same thing, the whole workspace: Cargo unifies
+//! features over what one command selects, so a command that chose one crate
+//! or other features would build its own copy of every shared dependency.
 //!
-//! A test that starts another program, a runner or `demi-file`, starts the one
-//! Cargo built into the target directory it runs from and builds nothing
-//! itself. A whole-selection `cargo test` builds every program first, because
-//! Cargo builds a package's executables for that package's integration tests,
-//! so every crate whose program a test starts has an integration test binary.
-//! One test target builds only what it links, so before running one alone that
-//! starts another crate's program, build the selection.
+//! `xtask dev` and the scripted machine manager start the programs the
+//! workspace built beside them, which a whole-selection build places in the
+//! target directory.
 //!
 //! The release workflow builds and publishes and runs no check. Developers run
-//! the checks on their machines, and release acceptance runs the shared Rust
-//! suite on each platform that ships a feature and checks the artifacts and
-//! installers on each:
+//! the checks on their machines, and release acceptance checks the artifacts
+//! and installers on each platform that ships a feature:
 //!
 //! - A Linux executable with an ELF interpreter or a shared-library dependency
 //!   fails.
 //! - Windows exercises the PowerShell installer, and Linux and macOS the shell
 //!   installer, with registration separation, release reuse and draining
 //!   upgrades.
-//! - Each installer and publication fixture runs three times per platform.
 //!
 //! The checks:
 //!
 //! ```sh
-//! cargo check --workspace --all-targets --features demi-runner/test-fixtures
-//! cargo test --workspace --features demi-runner/test-fixtures   # --test <name>: one target
-//! bun run test            # the TypeScript tests; builds the programs they start first
+//! cargo check --workspace --all-targets
+//! cargo test --workspace   # the compaction tests; --test <name>: one target
 //! ```
-//!
-//! The ignored suites take their resources from the environment, and their
-//! module documentation gives each command:
-//!
-//! - The Chrome tests of `command-package-browser` (`DEMI_TEST_CHROME`, one at
-//!   a time, and on Linux `DEMI_TEST_CHROME_RUNTIME`).
-//! - The backend's `real_browser`, `claude_code` and `real_cloud` suites. The
-//!   last runs as root through `crates/machine-manager/scripts/cloud-suite.sh`,
-//!   which on a Mac runs in the Lima VM.
-//!
-//! The machine manager's tests that need root run as root with the manager's
-//! unit test executable and `--include-ignored`, each in mount and network
-//! namespaces of its own.
-//!
-//! The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which `bun
-//! run test` sets, and an ordinary run starts no Chrome and no Cloud suite.
 //!
 //! `crates/command-sdk/examples/benchmark.rs` is a standalone synthetic service
 //! and client that measures the machine and build it runs on. It never calls a

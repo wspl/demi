@@ -36,8 +36,8 @@ jobs:
         with:
           key: ci
       - run: bun install --frozen-lockfile
-      - run: cargo check --locked --workspace --all-targets --features demi-runner/test-fixtures
-      - run: cargo test --locked --workspace --features demi-runner/test-fixtures
+      - run: cargo check --locked --workspace --all-targets
+      - run: cargo test --locked --workspace
       - run: bun run typecheck:web
       - run: bun run check:registry
 

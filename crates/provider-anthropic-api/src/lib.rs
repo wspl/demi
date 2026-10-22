@@ -88,7 +88,6 @@ impl Provider for AnthropicProvider {
         }
     }
 
-
     fn read_failure(
         &self,
         diagnostics: &ProviderErrorDiagnostics,
@@ -134,17 +133,5 @@ impl ProviderRuntime for AnthropicRuntime {
             tool_results: ToolResultKinds::IMAGES_AND_DOCUMENTS,
             ..RequestLimits::anthropic_messages(model)
         }
-    }
-}
-
-/// Test support (feature `testing`): the body this provider sends for a
-/// request, for the tests of what sends its requests.
-#[cfg(feature = "testing")]
-pub mod testing {
-    use demi_provider_common::{InferenceRequest, VendorPolicy};
-
-    /// The Messages API body of `request` for a vendor of `policy`.
-    pub fn body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
-        crate::request::encode(request, policy)
     }
 }

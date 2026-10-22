@@ -11,10 +11,5 @@ test = false
 doctest = false
 bench = false
 
-[features]
-# A view of the entrants waiting at an activity gate, for the tests of the
-# crates that use one.
-testing = []
-
 [dependencies]
 tokio.workspace = true

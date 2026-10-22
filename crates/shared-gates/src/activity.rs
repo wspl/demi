@@ -67,9 +67,6 @@ struct Inner {
     permits: Arc<Semaphore>,
     state: watch::Sender<GateState>,
     hub: Option<ActivityHub>,
-    /// How many entrants wait for a lease, for a test.
-    #[cfg(feature = "testing")]
-    waiting: watch::Sender<usize>,
 }
 
 impl Inner {
@@ -95,8 +92,6 @@ impl ActivityGate {
             permits: Arc::new(Semaphore::new(PERMITS as usize)),
             state: watch::Sender::new(GateState::default()),
             hub,
-            #[cfg(feature = "testing")]
-            waiting: watch::Sender::new(0),
         }))
     }
 
@@ -104,8 +99,6 @@ impl ActivityGate {
     /// this call.
     pub async fn enter(&self, purpose: Purpose) -> GateLease {
         let acquire = self.0.permits.clone().acquire_owned();
-        #[cfg(feature = "testing")]
-        let acquire = counted(&self.0.waiting, acquire);
         let permit = acquire.await.expect("a gate's semaphore is never closed");
         GateLease::admit(self.0.clone(), purpose, permit)
     }
@@ -148,49 +141,6 @@ impl ActivityGate {
         self.0.state.subscribe()
     }
 
-    /// How many entrants wait for a lease now, behind a reservation that
-    /// holds or waits for the gate (`testing`).
-    #[cfg(feature = "testing")]
-    pub fn waiting(&self) -> watch::Receiver<usize> {
-        self.0.waiting.subscribe()
-    }
-}
-
-/// `acquire`, counted in `waiting` from the first time it is not ready until
-/// it is, or until it is given up. It is polled as it would be uncounted, so
-/// the view changes nothing of when an entrant gets its lease.
-#[cfg(feature = "testing")]
-async fn counted<F: std::future::Future>(waiting: &watch::Sender<usize>, acquire: F) -> F::Output {
-    let mut acquire = std::pin::pin!(acquire);
-    let mut counted = None;
-    std::future::poll_fn(|context| {
-        let poll = acquire.as_mut().poll(context);
-        if poll.is_pending() && counted.is_none() {
-            counted = Some(Waiting::count(waiting));
-        }
-        poll
-    })
-    .await
-}
-
-/// One entrant counted as waiting until it drops: when its lease comes, or
-/// when its wait is given up.
-#[cfg(feature = "testing")]
-struct Waiting<'a>(&'a watch::Sender<usize>);
-
-#[cfg(feature = "testing")]
-impl<'a> Waiting<'a> {
-    fn count(waiting: &'a watch::Sender<usize>) -> Self {
-        waiting.send_modify(|count| *count += 1);
-        Self(waiting)
-    }
-}
-
-#[cfg(feature = "testing")]
-impl Drop for Waiting<'_> {
-    fn drop(&mut self) {
-        self.0.send_modify(|count| *count -= 1);
-    }
 }
 
 impl Default for ActivityGate {

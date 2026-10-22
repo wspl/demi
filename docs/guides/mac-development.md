@@ -119,28 +119,6 @@ network policy refuses that range to the Clouds, so every name a Cloud looks up
 would be unreachable. `--dns 1.1.1.1` then gives the Clouds a resolver that
 answers with the real addresses.
 
-### The Cloud suite
-
-`crates/machine-manager/scripts/cloud-suite.sh` runs in the VM, as root, with
-programs built for it on the Mac:
-
-1. Build the manager, `demi-server` and the backend's scenario test executable
-   for the VM's Linux target with the Mac's cross tools.
-2. Run `cloud-suite.sh` in the VM with `--programs` naming the VM's release
-   root. That root is a whole server release (`commands/`, `runners/` and
-   `release.json` beside `image/`), because the suite's backend publishes its
-   command packages.
-
-The suite's manager and the installed one cannot run at once, because both own
-the same firewall table:
-
-- Stop the installed service for the run and start it again afterwards.
-- The script refuses to start while a manager runs.
-- The table a stopped manager leaves it replaces, and the installed manager
-  makes its own again when it starts.
-- The suite's manager has a state directory and a socket of its own, so the
-  installed manager's Clouds stay as they were.
-
 ### Other options
 
 `--root <directory>` passes on to the installer, which then only writes the
@@ -187,19 +165,6 @@ Pair the Mac with the installer at the same URL,
 `curl -fsSL http://<the Mac's address>:3271/install.sh | sh`. Verify the
 connection by starting a Cloud through the backend.
 
-## Machine manager tests
-
-The manager builds only for Linux, so on a Mac you cross-build its tests with
-cargo-zigbuild and run them in the VM. Run the tests that need root with
-`--include-ignored` under sudo:
-
-```sh
-cargo zigbuild --tests --target aarch64-unknown-linux-musl \
-  -p demi-machine-manager -p demi-machine-manager-protocol --target-dir .cache/linux-target
-limactl shell demi-machine-manager -- <test executable>
-limactl shell demi-machine-manager -- sudo <test executable> --include-ignored
-```
-
 ## Limits of a Lima Cloud
 
 A Lima Cloud has these limits:
@@ -209,8 +174,7 @@ A Lima Cloud has these limits:
 - A backend on the Mac cannot keep its runner socket's connections within one
   sandbox read (`crates/backend-http/src/lib.rs`): the sandbox reads the socket
   Lima forwards inside the VM. A large file written to a Lima Cloud can then
-  stall before its end. The Cloud suite runs its backend inside the VM, where
-  the workaround applies.
+  stall before its end. A backend inside the VM keeps the workaround.
 - Lima's `vz` VMs do not pass SME through, so the live view captures on Apple
   M4 and later. A VM that passes SME without SVE through cannot capture
   (`crates/plugin-browser/command-chrome/src/live.rs`).

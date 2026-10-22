@@ -170,7 +170,6 @@ impl Provider for OpenAiProvider {
         }
     }
 
-
     fn images(&self) -> Option<&dyn ImageMaker> {
         self.images.as_ref().map(|images| images as &dyn ImageMaker)
     }
@@ -230,22 +229,5 @@ impl ProviderRuntime for OpenAiRuntime {
             tool_results: ToolResultKinds::IMAGES_AND_DOCUMENTS,
             ..RequestLimits::OPENAI
         }
-    }
-}
-
-/// Test support (feature `testing`): the bodies this provider sends for a
-/// request, for the tests of what sends its requests.
-#[cfg(feature = "testing")]
-pub mod testing {
-    use demi_provider_common::{InferenceRequest, VendorPolicy};
-
-    /// The Responses API body of `request` for OpenAI's own entry, of
-    /// `policy`.
-    pub fn responses_body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
-        crate::request::responses(request, policy, "openai:")
-    }
-
-    pub fn chat_completions_body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
-        crate::request::chat_completions(request, policy)
     }
 }

@@ -130,10 +130,8 @@ Dependencies point down. The following rules apply:
 
 -   A crate or package never knows the products, adapters, user interfaces,
     providers or machines above it, in production code or in tests.
--   A test reaches a fake through the `testing` feature of the crate that owns
-    what it fakes.
--   No crate has a dev-dependency on a crate that depends on it, except on
-    itself to turn on its own `testing`.
+-   A compaction test reaches a fake through the `testing` feature of the crate
+    that owns what it fakes.
 -   A crate's public items are the ones its entry comment names. The rest is
     `pub(crate)` or private.
 
@@ -253,19 +251,15 @@ Inside a crate, these rules apply:
 
 ### Test binaries
 
-These rules decide how many test binaries a crate has:
+Demi keeps one test binary, the compaction tests'
+(`crates/agent-session/tests/agent-session`). These rules apply:
 
--   Each crate has one test binary, its integration tests, which test the
-    public boundary with a module per area.
 -   The library and every executable set `test = false`. Every library sets
     `doctest = false` and `bench = false`. Otherwise, `--all-targets` compiles
     each library twice.
--   A crate without programs whose behavior is observable only inside keeps
-    unit tests and no `tests/`.
 -   A test gets a binary of its own only when it changes or exhausts
     process-wide state (such as the open-file limit), or needs what others
     must not have (such as root). Its file says so at the top.
--   A test reaches another program as the binary Cargo built.
 
 ## Contracts
 
@@ -357,20 +351,13 @@ Tests handle time by these rules:
 
 -   Timer logic inside one process runs on Tokio's paused clock, so a test
     asserts exact times.
--   A test whose timers run while it waits on a real runner, service or
-    database uses real time with short windows, because a paused clock jumps
-    to the next timer whenever the runtime is idle.
 -   Wall time comes from an injected `Clock`.
--   A backend test without a real runner runs the shards on the test's own
-    runtime (`ShardPlacement::Inline`).
 
 ## Dependency graphs
 
 Each graph lists every member once, as `name -> dependency, dependency`, or as
-`name -> none`. The crate check (`crates/xtask/src/boundaries.rs`) and the
-package check (`scripts/__tests__/package-boundaries.test.ts`) read these
-blocks and fail until every manifest agrees with its line. Each graph
-therefore stays one fenced `text` block in this form.
+`name -> none`. Whoever changes a manifest changes its line, and each graph
+stays one fenced `text` block in this form.
 
 ### Rust crates
 
@@ -379,7 +366,6 @@ Rust crates:
 
 ```text
 shared-types -> none
-log-capture -> none
 command-protocol -> none
 conversation-socket-protocol -> shared-types
 command-sdk -> shared-artifacts, command-protocol, shared-types

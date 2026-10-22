@@ -24,9 +24,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-#[cfg(feature = "testing")]
-pub mod testing;
-
 /// A frame's kind, the byte after its length: a JSON control message.
 pub const CONTROL_FRAME: u8 = 1;
 /// A chunk of a video frame, from the Host: [`VideoHeader`], then its part

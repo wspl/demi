@@ -1,24 +1,17 @@
-//! Test support (feature `testing`): provider runtimes that play scripts,
-//! uploads a test resolves, and a client that drives one connection the way a
-//! socket would. No test calls a real model.
+//! What the compaction fixture's harness (`fixtures/compaction`) builds on: a
+//! client that drives one connection the way a socket would, and the parts of
+//! a product the server needs and a harness leaves empty.
 
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    rc::Rc,
-    time::Duration,
-};
+use std::{collections::HashMap, rc::Rc, time::Duration};
 
-use demi_agent_store::{media::HeldMedia, testing::test_model};
-use demi_agent_tools::{HostResolver, ProfileModel, Unavailable};
-use demi_conversation_socket_protocol::{AgentEntry, AgentRole, CacheChart, ClientContent, ClientFrame, ServerFrame};
-use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
-use demi_shared_types::{ContextUsage, ModelSelection, NodeId, PictureFailure, ProviderModel, SessionPhase, UnavailableSetting, UserContentBlock};
+use demi_conversation_socket_protocol::{AgentEntry, CacheChart, ClientContent, ClientFrame, ServerFrame};
+use demi_agent_tools::HostResolver;
+use demi_shared_types::{NodeId, PictureFailure, SessionPhase};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
     AgentServer, AgentsSource, Connection, ContentError, ContentResolver, FileReference, FrameRx, KeptAgents, Outgoing,
-    ProviderResolver, ReplyFiles, ResolveError, ResolvedFiles,
+    ReplyFiles, ResolvedFiles,
 };
 
 /// A message's content of one text, as the web app sends it.
@@ -28,169 +21,11 @@ pub fn client_text(text: &str) -> Vec<ClientContent> {
     }]
 }
 
-/// Makes one provider's runtimes.
-type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
+/// A backend that holds no upload and pairs no device: every file reference
+/// is refused.
+struct NoFiles;
 
-/// Provider runtimes by provider id.
-///
-/// Every runtime of one provider plays that provider's one script, and a
-/// provider without one is unknown. Every conversation's record holds the
-/// selection a test chose last, else [`test_model`]. A provider's catalog lists
-/// the models a test gave it.
-#[derive(Default)]
-pub struct ScriptedProviders {
-    runtimes: RefCell<HashMap<String, Runtimes>>,
-    catalogs: RefCell<HashMap<String, Vec<ProviderModel>>>,
-    selection: RefCell<Option<ModelSelection>>,
-    /// Every resolution asked for: the conversation and the provider.
-    pub calls: RefCell<Vec<(NodeId, String)>>,
-}
-
-impl ScriptedProviders {
-    /// The selection every conversation's tree opens with from now on, as
-    /// its record would hold it.
-    pub fn select(&self, model: ModelSelection) {
-        self.selection.replace(Some(model));
-    }
-
-    pub fn provide(&self, provider: &str, script: &ScriptedRuntime) {
-        self.provide_runtime(provider, script.clone());
-    }
-
-    /// Every runtime of `provider` is a copy of `runtime`, such as one that
-    /// answers each node of a tree from a script of its own.
-    pub fn provide_runtime(&self, provider: &str, runtime: impl ProviderRuntime + Clone + 'static) {
-        self.runtimes.borrow_mut().insert(
-            provider.to_owned(),
-            Rc::new(move || Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
-        );
-    }
-
-    /// `provider`'s catalog lists `models` from now on, in place of what it
-    /// listed.
-    pub fn list(&self, provider: &str, models: Vec<ProviderModel>) {
-        self.catalogs
-            .borrow_mut()
-            .insert(provider.to_owned(), models);
-    }
-
-    /// `provider` is gone from now on: it has no runtime and no catalog.
-    pub fn remove(&self, provider: &str) {
-        self.runtimes.borrow_mut().remove(provider);
-        self.catalogs.borrow_mut().remove(provider);
-    }
-}
-
-impl ProviderResolver for ScriptedProviders {
-    fn selection<'a>(
-        &'a self,
-        _root: &'a NodeId,
-    ) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
-        let selection = self.selection.borrow().clone().unwrap_or_else(test_model);
-        Box::pin(async move { Ok(selection) })
-    }
-
-    fn runtime<'a>(
-        &'a self,
-        root: &'a NodeId,
-        model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>> {
-        self.calls
-            .borrow_mut()
-            .push((root.clone(), model.provider_id.clone()));
-        let runtimes = self.runtimes.borrow().get(&model.provider_id).cloned();
-        let provider = model.provider_id.clone();
-        Box::pin(async move {
-            let runtimes = runtimes.ok_or(ResolveError::Unknown(provider))?;
-            Ok(runtimes())
-        })
-    }
-
-    /// The model's own window, or the profile's Context: no user limits it
-    /// here.
-    fn context_window<'a>(
-        &'a self,
-        model: &'a ModelSelection,
-        own: Option<u32>,
-    ) -> LocalBoxFuture<'a, u32> {
-        let window = demi_shared_types::session_context_window(model.model.context_window, own, None);
-        Box::pin(async move { window })
-    }
-
-    /// A scripted provider's family is its id.
-    fn family<'a>(
-        &'a self,
-        model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<String, ResolveError>> {
-        let family = model.provider_id.clone();
-        Box::pin(async move { Ok(family) })
-    }
-
-    /// The selection the provider's catalog makes of `model`, as a backend
-    /// makes it: an entry without a runtime is gone.
-    fn profile_selection<'a>(
-        &'a self,
-        model: &'a ProfileModel,
-    ) -> LocalBoxFuture<'a, Result<ModelSelection, Unavailable>> {
-        let provider = &model.provider_id;
-        let known = self.runtimes.borrow().contains_key(provider);
-        let listed = self.catalogs.borrow().get(provider).and_then(|catalog| {
-            catalog
-                .iter()
-                .find(|listed| listed.id == model.model_id)
-                .cloned()
-        });
-        let selection = (|| {
-            if !known {
-                return Err(Unavailable::Entry);
-            }
-            let listed = listed.ok_or_else(|| Unavailable::Model(model.model_id.clone()))?;
-            let missing = |setting| match setting {
-                UnavailableSetting::Effort(effort) => Unavailable::Effort {
-                    model: model.model_id.clone(),
-                    effort,
-                },
-                UnavailableSetting::Tier(tier) => Unavailable::Tier {
-                    model: model.model_id.clone(),
-                    tier,
-                },
-            };
-            let thinking = listed
-                .thinking_for(model.thinking_effort.as_deref())
-                .map_err(missing)?;
-            let tier = listed
-                .tier_for(model.service_tier_id.as_deref())
-                .map_err(missing)?;
-            Ok(listed.selection(provider, thinking, tier))
-        })();
-        Box::pin(async move { selection })
-    }
-}
-
-/// Uploads a test gave the blocks they resolve to, with the bytes of their
-/// media; every other file reference is refused, as a backend refuses one
-/// it does not hold.
-#[derive(Debug, Default)]
-pub struct TestFiles {
-    uploads: RefCell<BTreeMap<String, (Vec<UserContentBlock>, HeldMedia)>>,
-}
-
-impl TestFiles {
-    pub fn new() -> Rc<Self> {
-        Rc::new(Self::default())
-    }
-
-    /// The upload `reference` resolves to `blocks`, whose media reference
-    /// the blobs of `media`'s bytes, as [`upload_blocks`](demi_agent_store::attachments::upload_blocks)
-    /// answers them.
-    pub fn upload(&self, reference: &str, (blocks, media): (Vec<UserContentBlock>, HeldMedia)) {
-        self.uploads
-            .borrow_mut()
-            .insert(reference.to_owned(), (blocks, media));
-    }
-}
-
-impl ContentResolver for TestFiles {
+impl ContentResolver for NoFiles {
     fn resolve<'a>(
         &'a self,
         files: Vec<FileReference>,
@@ -200,21 +35,13 @@ impl ContentResolver for TestFiles {
             code: Some("frame_delivery_failed".to_owned()),
         };
         Box::pin(async move {
-            let mut resolved = ResolvedFiles::default();
-            for file in files {
-                let (blocks, media) = match file {
-                    FileReference::Upload { r#ref, .. } => {
-                        let uploaded = self.uploads.borrow().get(&r#ref).cloned();
-                        uploaded.ok_or_else(|| refused(format!("upload {ref} is not available")))?
-                    }
-                    FileReference::RemoteFile { device_id, .. } => {
-                        return Err(refused(format!("device {device_id} is not paired")));
-                    }
-                };
-                resolved.blocks.push(blocks);
-                resolved.media.absorb(media);
+            match files.into_iter().next() {
+                None => Ok(ResolvedFiles::default()),
+                Some(FileReference::Upload { r#ref, .. }) => Err(refused(format!("upload {ref} is not available"))),
+                Some(FileReference::RemoteFile { device_id, .. }) => {
+                    Err(refused(format!("device {device_id} is not paired")))
+                }
             }
-            Ok(resolved)
         })
     }
 }
@@ -233,64 +60,18 @@ impl AgentsSource for NoKeptAgents {
     }
 }
 
-/// A Host whose files a test names: a path a reply writes, read against its
-/// working directory, is a file when `files` holds what it resolves to, and a
-/// picture is copied when `pictures` holds its path.
-pub struct TestHostFiles {
-    pub files: RefCell<Vec<String>>,
-    /// The pictures the Host copies, by the path asked for: the attachment's
-    /// number, or why it is not copied. A path not here is a file that is
-    /// not there.
-    pub pictures: RefCell<HashMap<String, Result<String, PictureFailure>>>,
-    /// The paths asked for, in order.
-    pub copied: RefCell<Vec<String>>,
-    /// Holds each copy until it is opened.
-    hold: tokio::sync::watch::Sender<bool>,
-}
+/// A Host without files: no path a reply writes is a file, and no picture is
+/// copied.
+pub struct NoHostFiles;
 
-impl Default for TestHostFiles {
-    fn default() -> Self {
-        Self {
-            files: RefCell::default(),
-            pictures: RefCell::default(),
-            copied: RefCell::default(),
-            hold: tokio::sync::watch::Sender::new(true),
-        }
-    }
-}
-
-impl TestHostFiles {
-    /// Holds the copies asked for from now until [`release`](Self::release),
-    /// as a Host that is slow to answer.
-    pub fn hold(&self) {
-        self.hold.send_replace(false);
-    }
-
-    /// Lets the held copies, and those asked for later, go on.
-    pub fn release(&self) {
-        self.hold.send_replace(true);
-    }
-}
-
-impl ReplyFiles for TestHostFiles {
+impl ReplyFiles for NoHostFiles {
     fn files<'a>(
         &'a self,
         _root: &'a NodeId,
-        cwd: &'a str,
-        paths: Vec<String>,
+        _cwd: &'a str,
+        _paths: Vec<String>,
     ) -> LocalBoxFuture<'a, Option<HashMap<String, String>>> {
-        Box::pin(async move {
-            let held = self.files.borrow();
-            Some(
-                paths
-                    .into_iter()
-                    .filter_map(|path| {
-                        let resolved = if path.starts_with('/') { path.clone() } else { format!("{cwd}/{path}") };
-                        held.contains(&resolved).then_some((path, resolved))
-                    })
-                    .collect(),
-            )
-        })
+        Box::pin(async { Some(HashMap::new()) })
     }
 
     fn copy_picture<'a>(
@@ -299,59 +80,23 @@ impl ReplyFiles for TestHostFiles {
         _node: &'a NodeId,
         _device: Option<&'a str>,
         _cwd: &'a str,
-        path: &'a str,
+        _path: &'a str,
     ) -> LocalBoxFuture<'a, Result<String, PictureFailure>> {
-        Box::pin(async move {
-            self.copied.borrow_mut().push(path.to_owned());
-            let mut open = self.hold.subscribe();
-            // The sender lives as long as this Host, which the caller holds.
-            let _ = open.wait_for(|open| *open).await;
-            self.pictures
-                .borrow()
-                .get(path)
-                .cloned()
-                .unwrap_or(Err(PictureFailure::Missing))
-        })
+        Box::pin(async { Err(PictureFailure::Missing) })
     }
 }
 
-/// The agents' entry a frame carries: the one an `agent` frame changes, none
-/// for another frame.
-pub fn agent_entries(frame: &ServerFrame) -> &[AgentEntry] {
+/// The entry of the agent `id` an `agent` frame carries.
+fn entry_in<'a>(frame: &'a ServerFrame, id: &NodeId) -> Option<&'a AgentEntry> {
     match frame {
-        ServerFrame::Agent { agent, .. } => std::slice::from_ref(agent),
-        _ => &[],
+        ServerFrame::Agent { agent, .. } if &agent.id == id => Some(agent),
+        _ => None,
     }
 }
 
-/// The entry of the agent `id` the frame carries.
-pub fn entry_in<'a>(frame: &'a ServerFrame, id: &NodeId) -> Option<&'a AgentEntry> {
-    agent_entries(frame).iter().find(|entry| &entry.id == id)
-}
-
-/// The root's entry the frame carries.
-pub fn root_entry(frame: &ServerFrame) -> Option<&AgentEntry> {
-    agent_entries(frame).iter().find(|entry| entry.role == AgentRole::Root)
-}
-
-/// The root's estimate of its next request the frame carries.
-pub fn root_context(frame: &ServerFrame) -> Option<&ContextUsage> {
-    root_entry(frame).and_then(|entry| entry.context.as_ref())
-}
-
-/// Whether the frame says the agent `id` is at `phase`.
-pub fn phase_is(frame: &ServerFrame, id: &NodeId, phase: SessionPhase) -> bool {
-    entry_in(frame, id).is_some_and(|entry| entry.phase == phase)
-}
-
-/// Whether the frame says the root is at `phase`.
-pub fn root_phase_is(frame: &ServerFrame, phase: SessionPhase) -> bool {
-    root_entry(frame).is_some_and(|entry| entry.phase == phase)
-}
-
-/// How long a test's wait for a frame may take before it fails as a hang
-/// (`testing.md` § Time and stability): the scripted model answers at once.
-pub const HANG_GUARD: Duration = Duration::from_secs(10);
+/// How long a wait for a frame may take before it fails as a hang: the
+/// scripted model answers at once.
+const HANG_GUARD: Duration = Duration::from_secs(10);
 
 /// A client of one connection: it hands frames to the connection as the
 /// backend's socket task would, and reads what the outbox sends back.
@@ -371,16 +116,7 @@ pub struct TestClient<H: HostResolver> {
 impl<H: HostResolver> TestClient<H> {
     /// A client of the conversation `root`, whose frames refer to no file.
     pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId) -> Self {
-        Self::connect_with(server, root, TestFiles::new())
-    }
-
-    /// A client whose frames' files `files` resolves.
-    pub fn connect_with(
-        server: &Rc<AgentServer<H>>,
-        root: &NodeId,
-        files: Rc<dyn ContentResolver>,
-    ) -> Self {
-        let (connection, frames) = server.connect(root.clone(), files);
+        let (connection, frames) = server.connect(root.clone(), Rc::new(NoFiles));
         Self {
             root: root.clone(),
             root_phase: std::cell::Cell::new(SessionPhase::Idle),
@@ -408,7 +144,7 @@ impl<H: HostResolver> TestClient<H> {
     pub async fn open(&self) {
         self.send(ClientFrame::Open { draft: None, follows: Vec::new() }).await;
         self.connection.follows().follow_agents();
-        self.subscribe(&self.root).await;
+        self.connection.follows().follow_node(self.root.clone());
         if let Some(entry) = self.read_agents().iter().find_map(|frame| entry_in(frame, &self.root)) {
             self.root_phase.set(entry.phase);
         }
@@ -417,7 +153,7 @@ impl<H: HostResolver> TestClient<H> {
     /// What a page reads of the agents now: one `agent` frame of each entry,
     /// at the collection's version, as the changes that follow would carry them.
     /// None while the tree is not live.
-    pub fn read_agents(&self) -> Vec<ServerFrame> {
+    fn read_agents(&self) -> Vec<ServerFrame> {
         let Some(tree) = self.server.tree(&self.root) else {
             return Vec::new();
         };
@@ -428,37 +164,13 @@ impl<H: HostResolver> TestClient<H> {
             .collect()
     }
 
-    /// What a page reads of the live commands of `node` with its latest page,
-    /// or of a closed child's stopping ones:
-    /// one `shell_output` frame of each, as the changes that follow would carry them.
-    pub fn read_commands(&self, node: &NodeId) -> Vec<ServerFrame> {
-        let Some(tree) = self.server.tree(&self.root) else {
-            return Vec::new();
-        };
-        let commands = match tree.latest_page(node) {
-            Some((_, commands, _)) => commands,
-            None => tree.stopping_commands(node),
-        };
-        commands
-            .into_iter()
-            .map(|status| ServerFrame::ShellOutput { node: node.clone(), status: Box::new(status) })
-            .collect()
-    }
-
-    /// Follows the node `node`, as a page that read its page does, at the
-    /// version it read: the follow is registered without a frame, so the page
-    /// hears of the changes after it alone.
-    pub async fn subscribe(&self, node: &NodeId) {
-        self.connection.follows().follow_node(node.clone());
-    }
-
     /// Hands `frame` to the connection and waits until it is handled.
     pub async fn send(&self, frame: ClientFrame) {
         self.connection.handle(frame).await;
     }
 
     /// The next frame; `None` once the outbox is closed or lagged.
-    pub async fn next(&mut self) -> Option<ServerFrame> {
+    async fn next(&mut self) -> Option<ServerFrame> {
         if self.read.is_empty() {
             match self.frames.recv().await {
                 Outgoing::Frames(step) => self.read.extend(step),
@@ -489,22 +201,6 @@ impl<H: HostResolver> TestClient<H> {
         .await
     }
 
-    /// Every frame waiting now.
-    pub fn received(&mut self) -> Vec<ServerFrame> {
-        let mut frames: Vec<ServerFrame> = self.read.drain(..).collect();
-        frames.extend(waiting_frames(&mut self.frames));
-        if let Some(entry) = frames.iter().rev().find_map(|frame| entry_in(frame, &self.root)) {
-            self.root_phase.set(entry.phase);
-        }
-        frames
-    }
-
-    /// The connection and its outbox apart, for a test that looks at what
-    /// the page has heard while a frame of its is still being handled.
-    pub fn split(&mut self) -> (&Connection<H>, &mut FrameRx) {
-        (&self.connection, &mut self.frames)
-    }
-
     /// The frames up to and including the first that `until` accepts. The
     /// wait fails, listing the frames it saw, when the connection closes
     /// first or when the client's hang guard runs out.
@@ -528,22 +224,4 @@ impl<H: HostResolver> TestClient<H> {
             Err(_) => panic!("no frame ended the wait within {guard:?}: {frames:#?}"),
         }
     }
-
-    /// What the outbox has next, lagged or closed included.
-    pub async fn outgoing(&mut self) -> Outgoing {
-        self.frames.recv().await
-    }
-
-    pub fn connection(&self) -> &Connection<H> {
-        &self.connection
-    }
-}
-
-/// Every frame `outbox` holds now.
-pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
-    let mut frames = Vec::new();
-    while let Some(Outgoing::Frames(step)) = outbox.try_recv() {
-        frames.extend(step);
-    }
-    frames
 }

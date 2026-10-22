@@ -74,9 +74,7 @@ pub enum MachinesError {
 
 /// A handle on the machine manager's socket.
 ///
-/// It is `Send + Sync`: a service every shard shares. The `testing` feature
-/// exports it for the Cloud suite, which asks a real manager for a checkpoint
-/// and a device's generation.
+/// It is `Send + Sync`: a service every shard shares.
 pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
     /// Ends the supervisor with the client.

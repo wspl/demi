@@ -22,7 +22,7 @@ use super::{
     errors::{OpError, Parts},
 };
 use crate::{
-    blocking, fault,
+    blocking,
     network::slots::Slot,
     sandbox::Sandbox,
     server::chain,
@@ -262,7 +262,6 @@ impl DeviceWorker {
         let copied = self.stage_working(state, capacity, stage.path()).await;
         stage.remove().await;
         copied?;
-        fault::point("working-staged");
         let lease = self.core.slots.take()?;
         let mut sandbox = Sandbox::new(&self.core, lease);
         let started = sandbox
@@ -512,7 +511,6 @@ impl DeviceWorker {
         let system = ImagePair::in_directory(stage).system;
         let system_bytes = capacity.system_bytes;
         ext4::make_system(&self.core.tools, &system, system_bytes).await?;
-        fault::point("reset-staged");
         // The home enters the new generation as a link to the saved image.
         let home = self.core.store.images(&self.device, &state.generation).home;
         let reset = MachineImageState {

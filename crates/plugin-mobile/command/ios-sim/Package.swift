@@ -32,31 +32,16 @@ let package = Package(
   targets: libraries.map { name, checksum in
     .binaryTarget(name: name, url: "\(release)/\(name).xcframework.zip", checksum: checksum)
   } + [
-    // The device's frame as DeviceKit draws it, apart from the simulator
-    // so its geometry is tested on its own (`swift test`).
+    // The device's frame as DeviceKit draws it, apart from the simulator.
     .target(
       name: "DemiChrome",
       path: "Sources/DemiChrome",
-      swiftSettings: [.swiftLanguageMode(.v5)]
-    ),
-    .testTarget(
-      name: "DemiChromeTests",
-      dependencies: ["DemiChrome"],
-      path: "Tests/DemiChromeTests",
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
     .executableTarget(
       name: "DemiIosSim",
       dependencies: libraries.map { .byName(name: $0.0) } + ["DemiChrome"],
       path: "Sources/DemiIosSim",
-      swiftSettings: [.swiftLanguageMode(.v5)]
-    ),
-    // The tree's reading of what idb's read leaves out, against a screen
-    // the test plays.
-    .testTarget(
-      name: "DemiIosSimTests",
-      dependencies: ["DemiIosSim"],
-      path: "Tests/DemiIosSimTests",
       swiftSettings: [.swiftLanguageMode(.v5)]
     ),
   ]

@@ -727,7 +727,6 @@ impl SessionStore for SqliteSessionStore {
         let node = self.node.clone();
         Box::pin(async move {
             let completions = update.carried_completions()?;
-            let commit = self.db.commit_point();
             let change = self
                 .db
                 .call(move |connection| {
@@ -744,7 +743,7 @@ impl SessionStore for SqliteSessionStore {
                         }
                         _ => None,
                     };
-                    commit.commit(transaction)?;
+                    transaction.commit()?;
                     Ok(Ok(change))
                 })
                 .await
@@ -893,7 +892,6 @@ impl SessionStore for SqliteSessionStore {
     fn switch(&self, position: usize, version: u32, held_from: usize) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
         let node = self.node.clone();
         Box::pin(async move {
-            let commit = self.db.commit_point();
             let switched = self
                 .db
                 .call(move |connection| {
@@ -946,7 +944,7 @@ impl SessionStore for SqliteSessionStore {
                     } else {
                         None
                     };
-                    commit.commit(transaction)?;
+                    transaction.commit()?;
                     Ok(Ok((Switched { from, blocks, versions, before }, change)))
                 })
                 .await

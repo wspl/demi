@@ -21,8 +21,6 @@ mod quota;
 mod releases;
 mod request;
 mod run;
-#[cfg(feature = "testing")]
-pub mod testing;
 mod transport;
 
 use std::{

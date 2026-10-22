@@ -26,7 +26,3 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 typed-path = "0.12"
-
-[features]
-# The Host conformance cases and an in-memory rpc port (`shell::testing`).
-testing = []

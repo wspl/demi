@@ -31,6 +31,4 @@ pub mod numbers;
 pub mod operation;
 pub mod output;
 pub mod process;
-#[cfg(any(test, feature = "testing"))]
-pub mod testing;
 pub mod text;

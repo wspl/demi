@@ -11,11 +11,6 @@ test = false
 doctest = false
 bench = false
 
-[features]
-# A job's shell and scope with the view of its units' activity, and the
-# utilities one by one (`demi_runner_shell::testing`).
-testing = []
-
 [dependencies]
 brush-core = "0.5"
 brush-builtins = "0.2"

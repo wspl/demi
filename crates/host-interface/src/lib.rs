@@ -32,8 +32,6 @@ mod paths;
 mod record;
 mod reserved;
 mod rpc;
-#[cfg(feature = "testing")]
-pub mod testing;
 
 pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
 pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};

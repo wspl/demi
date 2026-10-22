@@ -12,8 +12,8 @@ test = false
 bench = false
 
 [features]
-# The session a new process resumes (`testing`), for the tests of what
-# sends this provider's requests.
+# The session a new process resumes (`testing`), which the compaction tests
+# compare a summary's replay with.
 testing = []
 
 [dependencies]

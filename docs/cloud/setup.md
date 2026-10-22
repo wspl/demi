@@ -89,7 +89,7 @@ The backend's definition of each holds.
 | Variable | Meaning |
 | --- | --- |
 | `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/opt/demi/data/cloud`. |
-| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/demi/gvisor/<pinned version>/runsc`. A deployment leaves it out; the manager's tests name a stand-in. |
+| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/demi/gvisor/<pinned version>/runsc`. A deployment leaves it out. |
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: see [DNS](#dns). |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory and PID limits. |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on. Either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
@@ -245,7 +245,6 @@ becomes an argument of a privileged program.
    - shell, native and conversation browser operations;
    - packages and home files that persist across stop and wake;
    - reset of a broken system.
-4. Check network refusal and failure cleanup as the Cloud suite does
-   (`crates/backend/tests/backend/real_cloud.rs`).
+4. Check network refusal and failure cleanup.
 5. Measure each execution host's performance separately. Results on one host
    do not certify another host, image, runtime or concurrent-user capacity.

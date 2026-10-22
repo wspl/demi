@@ -8,8 +8,7 @@
 //! - Connects those sessions to Hosts through their runners.
 //!
 //! Runners execute work on a device; the backend owns conversation state and
-//! product policy. `Backend::start` with a `BackendConfig` is the entry point
-//! for tests.
+//! product policy.
 //!
 //! # Two parts in every path
 //!

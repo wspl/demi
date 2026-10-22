@@ -5,7 +5,6 @@ edition.workspace = true
 license = "LicenseRef-Demi-License"
 publish.workspace = true
 
-
 [lib]
 # No doc examples.
 test = false
@@ -75,10 +74,12 @@ url = { version = "2", features = ["serde"] }
 [dev-dependencies]
 # The scripted machine manager (`examples/scripted_machines`), which `xtask dev`
 # runs the backend against.
-demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
-demi-host-interface = { path = "../host-interface", features = ["testing"] }
+# `testing` for `built_program`, which finds the runner the workspace built.
+demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
+demi-host-interface = { path = "../host-interface" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 futures-util.workspace = true
+rustix = { version = "1", features = ["process"] }
 serde_json.workspace = true
 tempfile = "3"
 tokio = { workspace = true }

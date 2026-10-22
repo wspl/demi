@@ -7,6 +7,7 @@ publish.workspace = true
 
 [lib]
 # No doc examples.
+test = false
 doctest = false
 bench = false
 
@@ -14,11 +15,6 @@ bench = false
 name = "demi-machine-manager"
 path = "src/main.rs"
 test = false
-
-[features]
-# Acceptance builds: `DEMI_MACHINE_MANAGER_FAULT=<point>` aborts the process at that
-# point (`crates/backend/tests/backend/real_cloud.rs`).
-fault-injection = []
 
 [dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts" }

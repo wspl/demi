@@ -5,9 +5,7 @@
 //! its target, and the page finds a picture's copy by the same target. The
 //! target of an image is the one the Markdown parser gives it, which the page
 //! reads from its own parser's token with its entities decoded
-//! (`packages/web-ui/src/markdown/picture-key.ts`); the two readings are held
-//! to one another by
-//! `crates/agent-transcript/tests/agent-transcript/fixtures/picture-targets.json`.
+//! (`packages/web-ui/src/markdown/picture-key.ts`).
 
 use std::sync::LazyLock;
 

@@ -12,8 +12,8 @@ doctest = false
 bench = false
 
 [features]
-# The programs a test finds beside itself and the runner's native fixture's
-# operations (`command_protocol::testing`).
+# The programs the workspace built beside the running one, which `xtask dev` and
+# the scripted machine manager start (`command_protocol::testing`).
 testing = ["dep:jiff"]
 
 [dependencies]

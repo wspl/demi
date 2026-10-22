@@ -75,17 +75,6 @@ pub struct Installation {
 }
 
 impl Chrome {
-    /// A Chrome on a Host of `target` whose glibc is `glibc`, whatever this
-    /// machine is.
-    #[cfg(any(test, feature = "testing"))]
-    pub fn on(target: &'static str, glibc: Option<GlibcVersion>) -> Self {
-        Self {
-            target,
-            glibc: Arc::new(move || Ok(glibc)),
-            ..Self::default()
-        }
-    }
-
     /// Takes the service's artifacts source, which the runner answers.
     pub fn attach(&self, artifacts: Artifacts) {
         self.artifacts.send_replace(Some(artifacts));

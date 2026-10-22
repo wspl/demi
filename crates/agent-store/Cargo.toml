@@ -12,9 +12,9 @@ doctest = false
 bench = false
 
 [features]
-# An in-memory tree store and blob namespace, the tree store contract's cases
-# and the values the agent crates' tests build on (`agent_store::testing`).
-testing = ["dep:sha2"]
+# An in-memory tree store and blob namespace and the values the compaction
+# tests build on (`agent_store::testing`).
+testing = []
 
 [dependencies]
 bytes.workspace = true
@@ -32,6 +32,5 @@ image = { version = "0.25", default-features = false, features = ["gif", "jpeg",
 # QuickTime, and WebM, in one parser.
 nom-exif = "3.8"
 serde.workspace = true
-sha2 = { version = "0.10", optional = true }
 thiserror.workspace = true
 tokio.workspace = true

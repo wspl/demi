@@ -162,7 +162,6 @@ async fn probe(core: &Core, stage: &Path) -> Result<(), PreflightError> {
         mount::system_overlay(off, &stage.join("base"), &volume, &stage.join("merged"))?;
         fs_err::write(stage.join("merged/probe"), "Cloud storage preflight")?;
         freeze::freeze(off, &volume)?;
-        crate::fault::point("probe-frozen");
         clone_sparse(off, &image, &stage.join("copy.ext4"))
     })
     .await?;

@@ -71,8 +71,6 @@ mod shebang;
 mod signals;
 mod timeout;
 mod timing;
-#[cfg(feature = "testing")]
-pub mod testing;
 mod utilities;
 mod work;
 

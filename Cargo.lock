@@ -1815,7 +1815,6 @@ dependencies = [
  "image",
  "nom-exif",
  "serde",
- "sha2 0.10.9",
  "thiserror 2.0.20",
  "tokio",
 ]
@@ -1853,7 +1852,6 @@ version = "0.1.63"
 dependencies = [
  "comrak",
  "demi-agent-store",
- "demi-agent-transcript",
  "demi-conversation-socket-protocol",
  "demi-provider-common",
  "demi-shared-types",
@@ -1877,11 +1875,11 @@ dependencies = [
  "demi-backend-host-access",
  "demi-backend-http",
  "demi-backend-providers",
- "demi-backend-remote-host",
  "demi-backend-runners",
  "demi-backend-user-shard",
  "demi-command-declarations",
  "demi-command-package-browser-protocol",
+ "demi-command-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
  "demi-plugin-audio",
@@ -1915,6 +1913,7 @@ dependencies = [
  "hex",
  "hkdf 0.12.4",
  "rand 0.9.5",
+ "rustix",
  "sd-notify",
  "serde_json",
  "sha2 0.10.9",
@@ -1966,7 +1965,6 @@ name = "demi-backend-blobs"
 version = "0.1.63"
 dependencies = [
  "async-trait",
- "axum",
  "bytes",
  "demi-agent-store",
  "demi-shared-types",
@@ -2246,11 +2244,8 @@ dependencies = [
  "demi-shared-types",
  "futures-util",
  "garde",
- "rustix",
  "serde",
  "serde_json",
- "sha2 0.10.9",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2269,7 +2264,6 @@ dependencies = [
  "demi-backend-database",
  "demi-backend-page-sync",
  "demi-backend-remote-host",
- "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-host-interface",
  "demi-runner-protocol",
@@ -2286,9 +2280,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
- "sha2 0.10.9",
  "shlex",
- "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
@@ -2678,13 +2670,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-log-capture"
-version = "0.1.63"
-dependencies = [
- "tracing",
-]
-
-[[package]]
 name = "demi-machine-manager"
 version = "0.1.63"
 dependencies = [
@@ -2873,7 +2858,6 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.20",
- "tokio",
  "tokio-util",
  "url",
 ]
@@ -3042,7 +3026,6 @@ name = "demi-provider-common"
 version = "0.1.63"
 dependencies = [
  "async-stream",
- "axum",
  "base64 0.22.1",
  "bytes",
  "demi-shared-artifacts",
@@ -3063,7 +3046,6 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.20",
  "tokio",
- "tokio-rustls",
  "tokio-util",
  "tracing",
  "uuid",
@@ -3194,7 +3176,6 @@ dependencies = [
 name = "demi-runner-command-packages"
 version = "0.1.63"
 dependencies = [
- "bytes",
  "demi-command-protocol",
  "demi-command-sdk",
  "demi-runner-process",

@@ -132,8 +132,6 @@ pub(crate) enum Input {
     Watch(FileWatchRequest),
     /// A `stream`'s word on whether anyone watches it.
     Watched(bool),
-    /// A text message as it came, to a test's page.
-    Text(String),
 }
 
 /// What a text message after the header means to a consumer of `kind`;
@@ -152,7 +150,7 @@ pub(crate) fn text_input(kind: crate::channel::Kind, data: &[u8]) -> Option<Inpu
         Kind::Stream => serde_json::from_slice::<StreamWatched>(data)
             .ok()
             .map(|watched| Input::Watched(watched.watched)),
-        Kind::Request | Kind::Raw => None,
+        Kind::Request => None,
     }
 }
 
@@ -459,7 +457,7 @@ fn write_body(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
         match input.recv().await {
             Some(Input::Bytes(bytes)) => Some((Ok(bytes), Some(input))),
             Some(Input::End) => None,
-            Some(Input::Watch(_) | Input::Text(_) | Input::Watched(_)) | None => {
+            Some(Input::Watch(_) | Input::Watched(_)) | None => {
                 let cut = io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "the page ended the write before its last byte",
@@ -517,12 +515,12 @@ fn live_input(
                 message = stream.recv() => match message {
                     Some(Input::Bytes(bytes)) => inputs.from_stream.push(&bytes),
                     Some(Input::Watched(watched)) => (inputs.watched)(watched),
-                    Some(Input::End | Input::Watch(_) | Input::Text(_)) => {}
+                    Some(Input::End | Input::Watch(_)) => {}
                     None => return None,
                 },
                 message = async { inputs.acks.as_mut()?.recv().await }, if inputs.acks.is_some() => match message {
                     Some(Input::Bytes(bytes)) => inputs.from_acks.push(&bytes),
-                    Some(Input::End | Input::Watch(_) | Input::Text(_) | Input::Watched(_)) => {}
+                    Some(Input::End | Input::Watch(_) | Input::Watched(_)) => {}
                     // The page closed its `video` channel; the view's
                     // pictures stop, which ends it.
                     None => inputs.acks = None,
@@ -540,7 +538,7 @@ fn stream_input(input: mpsc::UnboundedReceiver<Input>, watched: Box<dyn Fn(bool)
             match input.recv().await? {
                 Input::Bytes(bytes) => return Some((Ok(bytes), (input, watched))),
                 Input::Watched(now) => watched(now),
-                Input::End | Input::Watch(_) | Input::Text(_) => {}
+                Input::End | Input::Watch(_) => {}
             }
         }
     }))
@@ -571,7 +569,7 @@ async fn watch_messages(
                         // The watch ended first; its end follows.
                         let _ = requests.send(request);
                     }
-                    Some(Input::Bytes(_) | Input::End | Input::Text(_) | Input::Watched(_)) => {}
+                    Some(Input::Bytes(_) | Input::End | Input::Watched(_)) => {}
                 }
                 continue;
             }

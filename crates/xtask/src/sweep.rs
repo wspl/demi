@@ -28,29 +28,11 @@ use serde::Deserialize;
 
 /// The builds whose products the sweep keeps, as `cargo` arguments: the one
 /// selection's type check and test build, and the build `bun xtask` makes
-/// before every command, `bun xtask dev` and `bun run test` among them.
+/// before every command, `bun xtask dev` among them.
 const BUILDS: [&[&str]; 3] = [
-    &[
-        "check",
-        "--workspace",
-        "--all-targets",
-        "--features",
-        "demi-runner/test-fixtures",
-    ],
-    &[
-        "test",
-        "--workspace",
-        "--features",
-        "demi-runner/test-fixtures",
-        "--no-run",
-    ],
-    &[
-        "build",
-        "--workspace",
-        "--all-targets",
-        "--features",
-        "demi-runner/test-fixtures",
-    ],
+    &["check", "--workspace", "--all-targets"],
+    &["test", "--workspace", "--no-run"],
+    &["build", "--workspace", "--all-targets"],
 ];
 
 /// The profile directory the builds write, under the build directory.

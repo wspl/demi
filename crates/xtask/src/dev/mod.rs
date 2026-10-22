@@ -97,7 +97,7 @@
 //!    the installers and the local store's downloads use:
 //!
 //!    ```sh
-//!    cargo build --workspace --all-targets --features demi-runner/test-fixtures
+//!    cargo build --workspace --all-targets
 //!    DEMI_RELEASE=/opt/demi/dev-<build> \
 //!    DEMI_BACKEND_DATA=~/.demi/development \
 //!    DEMI_INSTANCE_MODE=isolated \

@@ -39,9 +39,6 @@ pub mod edits;
 pub mod errors;
 pub mod paths;
 
-#[cfg(feature = "testing")]
-pub mod testing;
-
 mod artifacts;
 mod asking;
 mod client;

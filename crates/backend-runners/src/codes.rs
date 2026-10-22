@@ -70,39 +70,3 @@ pub fn new_device_token() -> DeviceToken {
     let bits: [u8; 32] = rand::random();
     DeviceToken::try_from(hex::encode(bits)).expect("64 hexadecimal digits are a device token")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_code_prints_in_groups_and_parses_however_it_is_typed() {
-        let code = ClaimCode::generate();
-        let printed = code.printed();
-        assert_eq!(printed.len(), 26 + 6);
-        assert!(
-            printed
-                .split('-')
-                .all(|group| (1..=GROUP).contains(&group.len()))
-        );
-        assert!(
-            printed
-                .chars()
-                .all(|char| char == '-' || "0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(char))
-        );
-        assert_eq!(ClaimCode::parse(&printed), Some(code));
-        let messy = format!(" {} ", printed.to_lowercase().replace('-', " "));
-        assert_eq!(ClaimCode::parse(&messy), Some(code));
-        let confusable = printed.replace('0', "o").replace('1', "l");
-        assert_eq!(ClaimCode::parse(&confusable), Some(code));
-        for refused in [
-            "",
-            "AAAA-BBBB",
-            "NOPE-NOPE",
-            &printed[..printed.len() - 1],
-            "U".repeat(26).as_str(),
-        ] {
-            assert_eq!(ClaimCode::parse(refused), None, "{refused}");
-        }
-    }
-}

@@ -23,9 +23,6 @@ use std::path::{Path, PathBuf};
 use chromiumoxide::browser::BrowserConfigBuilder;
 
 use demi_live_view_protocol::VIDEO_CODEC;
-use demi_command_package_browser_protocol::release::{
-    RUNTIME_FONTS_ENTRY, RUNTIME_LIBRARIES_ENTRY,
-};
 use demi_command_protocol::{ColorScheme, CommandLocale};
 
 use crate::driver::operation::Result;
@@ -74,15 +71,6 @@ impl Runtime {
                 .to_owned(),
             fonts,
         }
-    }
-
-    /// The runtime with both archives unpacked into `directory`, as the
-    /// Chrome tests' `DEMI_TEST_CHROME_RUNTIME` names it.
-    pub fn unpacked(directory: &Path) -> Self {
-        Self::installed(
-            &directory.join(RUNTIME_LIBRARIES_ENTRY),
-            directory.join(RUNTIME_FONTS_ENTRY),
-        )
     }
 
     /// Chrome's environment with the runtime: its libraries before the

@@ -250,32 +250,14 @@ Add your family there. Then:
   How users add your family's entries (a key, a device login or a token import)
   is a `web-ui` change that lands in `web` and the gallery together.
 
-## Test it
+## Check it
 
-No automated test calls a real model. Tests feed your code inline vendor
-streams, and the `provider-common` crate's `testing` feature supplies the fakes:
+Demi keeps no provider tests ([Testing](../delivery/testing.md)). Check your
+provider on the running product during acceptance, against the real vendor
+and by hand:
 
-| Fake | What it does |
-|---|---|
-| `MockVendor` | An in-process HTTP server that scripts status, headers, body chunks and delays, and records each request |
-| `sse_body` | Builds a server-sent events body from a list of payloads |
-| `FakeWebSocket` | A WebSocket server that records the handshake headers, scripts frames and records the close reason |
-| `ScriptedCli` | A process Host whose process scripts its output, reacts to its input, and counts terminations and waits |
-| `ScriptedRuntime` | A runtime with scripted runs, for tests of what sits above providers |
-| `FixedClock`, `jwt` | A fixed wall clock, and a token with the claims you give it |
-| `MemoryCredentialPool` | A credential pool held in memory, for account and refresh tests |
-
-Run timeouts, polling intervals and freshness windows on Tokio's paused clock
-([Tests and time](../../ARCHITECTURE.md#tests-and-time)). Cover at least:
-
-- Each way a run ends, including cancellation that drops the connection, and no
-  event after the last one.
-- An unregistered tag that is ignored, and a malformed registered payload that
-  fails with its field's path.
+- Each way a run ends, including a cancellation that drops the connection, and
+  no event after the last one.
 - The failure record, its message and the facts your reader returns.
-- A refresh race over the memory pool, in which the loser uses the winner's
-  tokens.
-- Your login flow against `MockVendor`.
+- Your login flow, and a refresh that two requests race.
 
-Run a check against the real vendor by hand during acceptance, never in the
-test suite.

@@ -108,9 +108,6 @@ mod gathering;
 mod operation;
 mod pairs;
 mod peer;
-#[cfg(feature = "testing")]
-pub mod testing;
-
 use std::collections::HashMap;
 use std::sync::Arc;
 

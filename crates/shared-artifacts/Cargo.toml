@@ -11,10 +11,6 @@ test = false
 doctest = false
 bench = false
 
-[features]
-# Test support: a download client that also reaches a fixture server on 127.0.0.1.
-testing = []
-
 [dependencies]
 # A runner executable's compressed copy, decoded as it streams to an
 # installer (`crates/backend-http/src/install.rs`).

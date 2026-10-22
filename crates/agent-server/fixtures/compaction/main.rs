@@ -513,7 +513,7 @@ impl Conversation {
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
             agents: Rc::new(demi_agent_server::testing::NoKeptAgents),
-            reply_files: Rc::new(demi_agent_server::testing::TestHostFiles::default()),
+            reply_files: Rc::new(demi_agent_server::testing::NoHostFiles),
         });
         let client = open_client(&server, &root).await;
         Ok(Self {

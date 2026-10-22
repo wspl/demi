@@ -69,7 +69,7 @@ use demi_agent_tools::{
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, FileKind, Host, HostError, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, FileKind, Host, HostError, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment,
 };
 use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
@@ -203,16 +203,6 @@ impl<H: HostResolver> Node<H> {
                 %error,
                 "a shell refused the node's new commands"
             );
-        }
-    }
-
-    /// The caller a job the node's call `tool_use_id` of `turn` starts
-    /// records.
-    pub fn job_caller(&self, tool_use_id: &str, turn: Option<TurnId>) -> JobCaller {
-        JobCaller {
-            node: self.runtime.node.clone(),
-            tool_use_id: tool_use_id.to_owned(),
-            turn,
         }
     }
 

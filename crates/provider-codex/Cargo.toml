@@ -11,11 +11,6 @@ doctest = false
 test = false
 bench = false
 
-[features]
-# A scripted Codex backend WebSocket, for the tests of this provider and of
-# what sends its requests.
-testing = []
-
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }

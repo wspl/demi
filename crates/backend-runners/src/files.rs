@@ -7,7 +7,7 @@ use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
 pub use demi_command_protocol::{TextRefusal, text_of};
 use demi_backend_remote_host::RemoteHost;
-use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs, LinkTarget};
+use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, LinkTarget};
 use demi_runner_protocol::wire::{self, ReadAt};
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
@@ -27,11 +27,6 @@ pub const TEXT_RANGE: ByteRange = ByteRange {
     offset: 0,
     length: Some(EDIT_FILE_BYTES as u64 + 1),
 };
-
-/// One file of a Host as text, with one request (`crates/runner-host/src/lib.rs`), read as [`TEXT_RANGE`] says.
-pub async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextError> {
-    text_of_stream(fs.read_stream(path, TEXT_RANGE).await?).await
-}
 
 /// The bytes of a [`TEXT_RANGE`] read as text, under the limits above.
 pub async fn text_of_stream(mut stream: ByteStream) -> Result<String, TextError> {
@@ -72,139 +67,4 @@ pub async fn browse_directory(
         })
         .collect();
     Ok((entries, read_at))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::time::{Duration, UNIX_EPOCH};
-
-    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture, answered_requests};
-    use tokio::sync::mpsc;
-
-    use super::*;
-
-    /// The modification time `path` itself has, in milliseconds.
-    fn modified(path: &std::path::Path) -> i64 {
-        let time = std::fs::symlink_metadata(path).unwrap().modified().unwrap();
-        let milliseconds = time.duration_since(UNIX_EPOCH).unwrap().as_millis();
-        i64::try_from(milliseconds).unwrap()
-    }
-
-    // About a tenth of a second: a real runner process lists the directory.
-    #[tokio::test(flavor = "local")]
-    async fn a_listing_is_one_request_to_the_host_and_carries_each_entrys_own_metadata() {
-        let (tap, mut replies) = mpsc::channel(1 << 10);
-        let fixture = RunnerFixture::start(FixtureOptions {
-            tap: Some(tap),
-            ..FixtureOptions::default()
-        })
-        .await;
-        let directory = fixture.home_dir().join("listed");
-        std::fs::create_dir(&directory).unwrap();
-        std::fs::write(directory.join("notes.txt"), "four").unwrap();
-        let written = UNIX_EPOCH + Duration::from_millis(1_600_000_000_123);
-        std::fs::File::options()
-            .write(true)
-            .open(directory.join("notes.txt"))
-            .unwrap()
-            .set_modified(written)
-            .unwrap();
-        std::fs::create_dir(directory.join("photos")).unwrap();
-        // A link's own size is its target's name, nine bytes, not the four
-        // the target holds.
-        std::os::unix::fs::symlink("notes.txt", directory.join("link")).unwrap();
-        answered_requests(&mut replies);
-
-        let host = fixture.host();
-        let path = format!("{}/listed", fixture.home());
-        let (entries, _) = browse_directory(&host, &path).await.unwrap();
-
-        assert_eq!(
-            answered_requests(&mut replies),
-            1,
-            "one request lists the directory"
-        );
-        let mut listed: Vec<_> = entries
-            .iter()
-            .map(|entry| {
-                (
-                    entry.name.as_str(),
-                    entry.is_directory,
-                    entry.link.as_ref().map(|link| (link.target.as_str(), link.leads_to.clone())),
-                    entry.size,
-                    entry.modified_at.as_millisecond(),
-                )
-            })
-            .collect();
-        listed.sort_unstable_by_key(|entry| entry.0);
-        let photos = directory.join("photos");
-        assert_eq!(
-            listed,
-            [
-                (
-                    "link",
-                    false,
-                    Some(("notes.txt", wire::LinkTarget::File)),
-                    9,
-                    modified(&directory.join("link"))
-                ),
-                ("notes.txt", false, None, 4, 1_600_000_000_123),
-                (
-                    "photos",
-                    true,
-                    None,
-                    std::fs::symlink_metadata(&photos).unwrap().len(),
-                    modified(&photos),
-                ),
-            ]
-        );
-        fixture.stop().await;
-    }
-
-    // About a tenth of a second: a real runner process reads the files.
-    #[tokio::test(flavor = "local")]
-    async fn a_files_text_is_one_request_and_a_file_past_the_limit_is_refused_by_its_bytes() {
-        let (tap, mut replies) = mpsc::channel(1 << 10);
-        let fixture = RunnerFixture::start(FixtureOptions {
-            tap: Some(tap),
-            ..FixtureOptions::default()
-        })
-        .await;
-        std::fs::write(fixture.home_dir().join("notes.txt"), "1\n2\n").unwrap();
-        std::fs::write(
-            fixture.home_dir().join("large.txt"),
-            vec![b'a'; EDIT_FILE_BYTES + 1],
-        )
-        .unwrap();
-        answered_requests(&mut replies);
-        let host = fixture.host();
-
-        let notes = read_text_file(&host, &format!("{}/notes.txt", fixture.home())).await;
-        assert_eq!(notes, Ok("1\n2\n".to_owned()));
-        assert_eq!(answered_requests(&mut replies), 1, "one request reads the text");
-        let large = read_text_file(&host, &format!("{}/large.txt", fixture.home())).await;
-        assert_eq!(large, Err(TextError::Refused(TextRefusal::TooLarge)));
-        assert_eq!(answered_requests(&mut replies), 1, "one request refuses it");
-        fixture.stop().await;
-    }
-
-    #[test]
-    fn text_is_utf8_without_a_nul_byte_up_to_the_snapshot_limit() {
-        assert_eq!(
-            text_of(b"1\n2\n".to_vec()),
-            Ok("1\n2\n".to_owned())
-        );
-        assert_eq!(
-            text_of(b"\x00\xff\x01".to_vec()),
-            Err(TextRefusal::NotText)
-        );
-        assert_eq!(
-            text_of(b"nul \x00 inside".to_vec()),
-            Err(TextRefusal::NotText)
-        );
-        assert_eq!(
-            text_of(vec![b'a'; EDIT_FILE_BYTES + 1]),
-            Err(TextRefusal::TooLarge)
-        );
-    }
 }

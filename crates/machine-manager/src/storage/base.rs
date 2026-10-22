@@ -204,7 +204,6 @@ pub async fn import(tools: &Tools, image: &Path, bases: &Path) -> Result<BaseVer
     let Some((release, stage)) = prepared.pending else {
         return Ok(prepared.version);
     };
-    crate::fault::point("base-staged");
     let extracted = extract(tools, &release, &stage).await;
     let bases = bases.to_owned();
     blocking::run(move |off| {

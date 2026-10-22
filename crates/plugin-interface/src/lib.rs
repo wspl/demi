@@ -52,8 +52,6 @@ mod port;
 pub mod project;
 mod providers;
 mod request;
-#[cfg(feature = "testing")]
-pub mod testing;
 mod web;
 
 pub use manifest::{

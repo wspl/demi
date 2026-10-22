@@ -8,9 +8,6 @@
 //!
 //! - Operations of one device run one at a time, in arrival order.
 //! - A device's first wake makes its storage.
-//! - It records every call. A script can hold a reset, fail one, keep a wake
-//!   from starting its runner, or kill a runner as a crash would, which the
-//!   manager reports as a death to every connection.
 //! - A call whose handling panics is answered with the panic, never left
 //!   waiting.
 //! - Its `reconcile` keeps the sandboxes that run, as the real manager's does.
@@ -28,90 +25,48 @@ use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions, runner_binary};
+use crate::runner::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
-    BaseVersion, Capacity, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, SandboxMachine,
-    WIRE_VERSION, decode_request, encode_line,
+    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, WIRE_VERSION,
+    decode_request, encode_line,
 };
 use futures_util::FutureExt as _;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};
-use tokio::time::Instant;
+use tokio::sync::{Semaphore, mpsc};
 use tokio_util::task::AbortOnDropHandle;
 
 /// The base every device boots from.
-pub const BASE: &str = "test-base";
-
-/// What the manager does differently, as a test sets it.
-#[derive(Default)]
-pub struct Script {
-    /// Fail the next reset with this message.
-    pub fail_reset: Option<String>,
-    /// Hold each reset at its disk step: the first is notified once one
-    /// arrives there, and the reset goes on once the second is.
-    pub hold_reset: Option<(Arc<Notify>, Arc<Notify>)>,
-    /// Wakes start no runner, as a guest that never connects.
-    pub silent_wake: bool,
-    /// Fail the next hibernate with this message.
-    pub fail_hibernate: Option<String>,
-    /// The whole environment of each Cloud runner that starts from now on,
-    /// as a guest image gives it; none inherits the test process's.
-    pub cloud_env: Option<BTreeMap<String, String>>,
-    /// The artifact cache each Cloud runner that starts from now on uses,
-    /// as `DEMI_ARTIFACTS`; none keeps its own in its state.
-    pub artifacts: Option<String>,
-    /// The executable each Cloud runner that starts from now on runs; the
-    /// workspace's `demi-runner` unless set.
-    pub runner: Option<PathBuf>,
-    /// The configured base, as after the server's upgrade; [`BASE`] unless
-    /// set. A new Cloud and a reset take it; a Cloud made earlier keeps its
-    /// own.
-    pub base: Option<String>,
-}
+const BASE: &str = "test-base";
 
 /// A device's storage and its sandbox.
 struct Guest {
-    /// The kind of machine its first wake named.
-    machine: SandboxMachine,
     runner: Option<RunnerProcess>,
     image: MachineImageState,
     generations: u64,
-    /// The capacity its latest wake named.
-    named: Capacity,
 }
 
 #[derive(Default)]
 struct State {
-    /// Every call, in arrival order, with when it arrived.
-    calls: Vec<(String, Instant)>,
     guests: HashMap<String, Guest>,
     /// One operation at a time per device.
     workers: HashMap<String, Arc<Semaphore>>,
-    script: Script,
 }
 
 struct Shared {
-    /// The workspace's `demi-runner`, found when the manager starts, on the
-    /// test's thread, so that a missing or stale build stops the test there
-    /// rather than in the task of a call.
+    /// The workspace's `demi-runner`, found when the manager starts, so that a
+    /// missing or stale build stops it there rather than in the task of a call.
     runner: PathBuf,
+    /// The artifact cache each Cloud runner uses, as `DEMI_ARTIFACTS`; none
+    /// keeps its own in its state.
+    artifacts: Option<String>,
     state: Mutex<State>,
-    deaths: broadcast::Sender<String>,
-    /// Told of each call as it arrives, for a test that waits for one.
-    arrived: watch::Sender<()>,
 }
 
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Records `call` as it arrives.
-    fn record(&self, call: String) {
-        self.lock().calls.push((call, Instant::now()));
-        self.arrived.send_replace(());
     }
 
     fn worker(&self, device: &str) -> Arc<Semaphore> {
@@ -126,27 +81,25 @@ impl Shared {
 /// The manager, listening while it lives.
 pub struct ScriptedManager {
     socket: PathBuf,
-    shared: Arc<Shared>,
     _directory: tempfile::TempDir,
     _server: AbortOnDropHandle<()>,
 }
 
 impl ScriptedManager {
-    pub fn start() -> Self {
+    /// Starts the manager; its Cloud runners use the artifact cache
+    /// `artifacts` when given.
+    pub fn start(artifacts: Option<String>) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let socket = directory.path().join("machines.sock");
         let listener = UnixListener::bind(&socket).unwrap();
-        let (deaths, _) = broadcast::channel(64);
         let shared = Arc::new(Shared {
             runner: runner_binary(),
+            artifacts,
             state: Mutex::new(State::default()),
-            deaths,
-            arrived: watch::Sender::new(()),
         });
-        let server = tokio::spawn(serve(listener, shared.clone()));
+        let server = tokio::spawn(serve(listener, shared));
         Self {
             socket,
-            shared,
             _directory: directory,
             _server: AbortOnDropHandle::new(server),
         }
@@ -154,172 +107,6 @@ impl ScriptedManager {
 
     pub fn socket(&self) -> &Path {
         &self.socket
-    }
-
-    /// Every call so far, such as `wake:<device>`, in arrival order.
-    pub fn calls(&self) -> Vec<String> {
-        self.shared
-            .lock()
-            .calls
-            .iter()
-            .map(|(call, _)| call.clone())
-            .collect()
-    }
-
-    /// When `call` first arrived, once it has, such as the
-    /// `hibernate:<device>` that stops a Cloud. Waiting longer than
-    /// `patience` fails the test as hung.
-    pub async fn arrival(&self, call: &str, patience: std::time::Duration) -> Instant {
-        let mut arrived = self.shared.arrived.subscribe();
-        let first = async {
-            loop {
-                let found = self
-                    .shared
-                    .lock()
-                    .calls
-                    .iter()
-                    .find(|(name, _)| name == call)
-                    .map(|(_, at)| *at);
-                if let Some(at) = found {
-                    return at;
-                }
-                // The manager keeps the sender while it lives.
-                arrived.changed().await.unwrap();
-            }
-        };
-        match tokio::time::timeout(patience, first).await {
-            Ok(at) => at,
-            Err(_) => panic!("the manager never received {call}: {:?}", self.calls()),
-        }
-    }
-
-    /// How many calls so far are `call`.
-    pub fn count(&self, call: &str) -> usize {
-        self.calls()
-            .iter()
-            .filter(|recorded| *recorded == call)
-            .count()
-    }
-
-    /// Changes what the manager does from now on.
-    pub fn script(&self, change: impl FnOnce(&mut Script)) {
-        change(&mut self.shared.lock().script);
-    }
-
-    /// The users' Clouds whose storage the manager made.
-    pub fn devices(&self) -> Vec<String> {
-        self.of(SandboxMachine::Cloud)
-    }
-
-    /// The Claude Code machine, once the manager made its storage
-    /// (`crates/backend-cloud/src/lib.rs`).
-    pub fn claude_code_machine(&self) -> String {
-        let machines = self.of(SandboxMachine::ClaudeCode);
-        let [machine] = machines.as_slice() else {
-            panic!("the instance has one Claude Code machine: {machines:?}");
-        };
-        machine.clone()
-    }
-
-    fn of(&self, machine: SandboxMachine) -> Vec<String> {
-        let mut devices: Vec<String> = self
-            .shared
-            .lock()
-            .guests
-            .iter()
-            .filter(|(_, guest)| guest.machine == machine)
-            .map(|(device, _)| device.clone())
-            .collect();
-        devices.sort();
-        devices
-    }
-
-    /// The system and home bytes the device's latest wake named.
-    pub fn named_capacity(&self, device: &str) -> (u64, u64) {
-        let named = self.shared.lock().guests[device].named;
-        (named.system_bytes.get(), named.home_bytes.get())
-    }
-
-    /// Whether the device's runner runs.
-    pub fn running(&self, device: &str) -> bool {
-        self.shared
-            .lock()
-            .guests
-            .get_mut(device)
-            .and_then(|guest| guest.runner.as_mut())
-            .is_some_and(RunnerProcess::running)
-    }
-
-    /// The runner's installation state, `/run/demi` on a real Cloud, whose
-    /// `jobs/` stands for the job root on the Cloud's system image.
-    pub fn state(&self, device: &str) -> std::path::PathBuf {
-        self.shared
-            .lock()
-            .guests
-            .get(device)
-            .and_then(|guest| guest.runner.as_ref())
-            .expect("the device has a runner")
-            .state_dir()
-            .to_owned()
-    }
-
-    /// The home the device's runner reports, where the Cloud's files are.
-    pub fn home(&self, device: &str) -> String {
-        self.shared.lock().guests[device]
-            .runner
-            .as_ref()
-            .expect("the device booted")
-            .home()
-            .to_owned()
-    }
-
-    /// The device's runner's log as it is now, `log/host.log` in its
-    /// state.
-    pub fn log(&self, device: &str) -> String {
-        std::fs::read_to_string(self.state(device).join("log/host.log")).unwrap_or_default()
-    }
-
-    /// The device's runner's artifact cache (`crates/runner-command-packages/src/cache.rs`): in its state, unless the script names one.
-    pub fn artifacts(&self, device: &str) -> std::path::PathBuf {
-        let state = self.shared.lock();
-        match &state.script.artifacts {
-            Some(cache) => cache.into(),
-            None => state.guests[device]
-                .runner
-                .as_ref()
-                .expect("the device booted")
-                .state_dir()
-                .join("artifacts"),
-        }
-    }
-
-    /// Kills the device's runner as a crash would, and reports its death.
-    pub async fn kill(&self, device: &str) {
-        let worker = self.shared.worker(device);
-        let _turn = worker.acquire().await.unwrap();
-        let taken = self
-            .shared
-            .lock()
-            .guests
-            .get_mut(device)
-            .and_then(|guest| guest.runner.take());
-        let Some(mut runner) = taken else {
-            return;
-        };
-        runner.kill().await;
-        if let Some(guest) = self.shared.lock().guests.get_mut(device) {
-            guest.runner = Some(runner);
-        }
-        // Every connection hears it; none may be open.
-        let _ = self.shared.deaths.send(device.to_owned());
-    }
-
-    /// Stops the device's runner the way a manager restart does: without a
-    /// death event.
-    pub async fn stop_quietly(&self, device: &str) {
-        let worker = self.shared.worker(device);
-        let _turn = worker.acquire().await.unwrap();
-        stop_runner(&self.shared, device).await;
     }
 }
 
@@ -334,8 +121,8 @@ async fn serve(listener: UnixListener, shared: Arc<Shared>) {
 }
 
 /// One backend connection: requests run concurrently and are answered as
-/// they finish; deaths go out as they happen. A line that is not a request
-/// drops the connection, as the real manager does.
+/// they finish. A line that is not a request drops the connection, as the real
+/// manager does.
 async fn connection(stream: UnixStream, shared: Arc<Shared>) {
     let (read, mut write) = stream.into_split();
     let (lines, mut outgoing) = mpsc::channel::<Vec<u8>>(64);
@@ -344,20 +131,8 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
         version: WIRE_VERSION,
     });
     lines.try_send(hello).expect("a new connection's queue has room");
-    let mut deaths = shared.deaths.subscribe();
     let writer = AbortOnDropHandle::new(tokio::spawn(async move {
-        loop {
-            let line = tokio::select! {
-                line = outgoing.recv() => match line {
-                    Some(line) => line,
-                    None => return,
-                },
-                death = deaths.recv() => match death {
-                    Ok(device) => encode_line(&MachineResponse::Death { device_id: device }),
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(broadcast::error::RecvError::Closed) => return,
-                },
-            };
+        while let Some(line) = outgoing.recv().await {
             if write.write_all(&line).await.is_err() {
                 return;
             }
@@ -419,7 +194,6 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
         // The sandboxes that run stay running, and the manager reports them
         // (`crates/machine-manager-protocol/src/lib.rs`).
         MachineCall::Reconcile(_) => {
-            shared.record("reconcile".into());
             let devices: Vec<String> = shared.lock().guests.keys().cloned().collect();
             let mut running = Vec::new();
             for device in devices {
@@ -437,7 +211,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             }
             json(serde_json::to_value(demi_machine_manager_protocol::Reconciled { running }).unwrap())
         }
-        MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(configured_base(shared))),
+        MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(BASE)),
         MachineCall::ImageState(params) => {
             let image = shared
                 .lock()
@@ -466,46 +240,29 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.record(format!("wake:{device}"));
-            let (silent, env, program, taken) = {
+            let (env, taken) = {
                 let mut state = shared.lock();
-                let silent = state.script.silent_wake;
-                let program = state.script.runner.clone().unwrap_or_else(|| shared.runner.clone());
-                let artifacts = state
-                    .script
-                    .artifacts
-                    .clone()
-                    .map(|cache| ("DEMI_ARTIFACTS".to_owned(), cache));
-                let env = match (&state.script.cloud_env, artifacts) {
-                    (Some(variables), artifacts) => {
-                        SpawnEnv::Exactly(variables.clone().into_iter().chain(artifacts).collect())
-                    }
-                    (None, Some((name, cache))) => {
-                        SpawnEnv::Overlay(BTreeMap::from([(name, Some(cache))]))
-                    }
-                    (None, None) => SpawnEnv::Inherit,
+                let env = match &shared.artifacts {
+                    Some(cache) => SpawnEnv::Overlay(BTreeMap::from([("DEMI_ARTIFACTS".to_owned(), Some(cache.clone()))])),
+                    None => SpawnEnv::Inherit,
                 };
-                let base = state.script.base.clone().unwrap_or_else(|| BASE.into());
                 let capacity = params.capacity;
                 let guest = state.guests.entry(device.clone()).or_insert_with(|| Guest {
-                    machine: params.machine,
                     runner: None,
                     image: image(
                         1,
-                        &base,
+                        BASE,
                         None,
                         capacity.system_bytes.get(),
                         capacity.home_bytes.get(),
                     ),
                     generations: 1,
-                    named: capacity,
                 });
-                guest.named = capacity;
                 // A smaller disk is enlarged to the capacity named, a larger
                 // one kept.
                 guest.image.system_bytes = guest.image.system_bytes.max(capacity.system_bytes);
                 guest.image.home_bytes = guest.image.home_bytes.max(capacity.home_bytes);
-                (silent, env, program, guest.runner.take())
+                (env, guest.runner.take())
             };
             let backend = params.boot.backend_url.to_string();
             let token = params.boot.device_token.expose().to_owned();
@@ -516,8 +273,6 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let runner = match taken {
                 // A sandbox that runs is left as it is.
                 Some((running, true)) => Some(running),
-                // A guest that never connects: its runner does not start.
-                taken if silent => taken.map(|(runner, _)| runner),
                 Some((mut stopped, false)) => {
                     stopped.start_again_with_token(&backend, &token);
                     Some(stopped)
@@ -526,11 +281,9 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                     let options = RunnerProcessOptions {
                         name: "cloud".into(),
                         env,
-                        token: Some(token),
-                        managed: true,
-                        release: None,
+                        token,
                     };
-                    Some(RunnerProcess::start_program(program, &backend, options))
+                    Some(RunnerProcess::start_program(shared.runner.clone(), &backend, options))
                 }
             };
             shared.lock().guests.get_mut(&device).unwrap().runner = runner;
@@ -540,10 +293,6 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.record(format!("hibernate:{device}"));
-            if let Some(message) = shared.lock().script.fail_hibernate.take() {
-                return Err(message);
-            }
             stop_runner(shared, &device).await;
             json(serde_json::Value::Null)
         }
@@ -551,25 +300,12 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.record(format!("checkpoint:{device}"));
             json(serde_json::Value::Null)
         }
         MachineCall::Reset(params) => {
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.record(format!(
-                "reset:{device}:{}:{}",
-                params.operation_id, params.base_version
-            ));
-            let hold = shared.lock().script.hold_reset.clone();
-            if let Some((rebuilding, proceed)) = hold {
-                rebuilding.notify_one();
-                proceed.notified().await;
-            }
-            if let Some(message) = shared.lock().script.fail_reset.take() {
-                return Err(message);
-            }
             stop_runner(shared, &device).await;
             let taken = shared
                 .lock()
@@ -616,11 +352,6 @@ async fn stop_runner(shared: &Shared, device: &str) {
     if let Some(guest) = shared.lock().guests.get_mut(device) {
         guest.runner = Some(runner);
     }
-}
-
-/// The base the scripted manager is configured with.
-fn configured_base(shared: &Shared) -> String {
-    shared.lock().script.base.clone().unwrap_or_else(|| BASE.into())
 }
 
 fn image(

@@ -17,7 +17,6 @@ use super::{
 };
 use crate::{
     blocking::{self, OffLoop},
-    fault,
     linux::{freeze, loopdev, mount, trim},
     manager::Core,
     network::{
@@ -155,13 +154,11 @@ impl Sandbox {
         blocking::run(move |off| -> io::Result<()> {
             write_json(off, &pair.sandbox_record(), &record)?;
             sync(off, pair.directory())?;
-            fault::point("sandbox-record");
             directory.create(off)?;
             mount::bind(off, &base, &directory.base())?;
             mount::remount_read_only(off, &directory.base())?;
             mount::bind(off, &programs, &directory.programs())?;
             mount::remount_read_only(off, &directory.programs())?;
-            fault::point("base-bound");
             Ok(())
         })
         .await?;
@@ -174,7 +171,6 @@ impl Sandbox {
                 mount::ext4(off, &device.path(), &target)
             })
             .await?;
-            fault::point("volume-mounted");
         }
         let directory = self.directory.clone();
         let credentials = boot.clone();
@@ -191,9 +187,7 @@ impl Sandbox {
             Ok(())
         })
         .await?;
-        fault::point("credentials-written");
         core.network.attach(&self.slot).await?;
-        fault::point("network-attached");
         let spec = oci::spec(&oci::Boot {
             directory: &self.directory,
             namespace: &self.slot.namespace(),
@@ -219,7 +213,6 @@ impl Sandbox {
         core.runsc
             .start(&self.record.id, self.directory.root(), log)
             .await?;
-        fault::point("sandbox-started");
         let runsc = core.runsc.clone();
         let id = self.record.id.clone();
         self.waiter = Some(tokio::task::spawn_local(
@@ -274,7 +267,6 @@ impl Sandbox {
                 for volume in Volume::ALL {
                     frozen.freeze(&directory.volume(volume))?;
                 }
-                fault::point("frozen");
                 for volume in Volume::ALL {
                     clone_sparse(off, images.get(volume), copies.get(volume))?;
                     sync(off, copies.get(volume))?;

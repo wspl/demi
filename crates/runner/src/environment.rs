@@ -125,7 +125,7 @@ pub async fn login_environment(
     let group = child
         .id()
         .and_then(|id| rustix::process::Pid::from_raw(id.cast_signed()));
-    let output = match tokio::time::timeout(timeout(), child.wait_with_output()).await {
+    let output = match tokio::time::timeout(LOGIN_SHELL, child.wait_with_output()).await {
         Ok(output) => output.map_err(|error| format!("the login shell {shell} failed: {error}"))?,
         Err(_) => {
             // What the shell started goes with it; a group that ended
@@ -135,7 +135,7 @@ pub async fn login_environment(
             }
             return Err(format!(
                 "the login shell {shell} took longer than {} s",
-                timeout().as_secs_f32()
+                LOGIN_SHELL.as_secs_f32()
             ));
         }
     };
@@ -153,19 +153,6 @@ pub async fn login_environment(
     env.remove(RESOLVING);
     env.entry("SHELL".into()).or_insert(shell);
     Ok(env)
-}
-
-/// How long the login shell may take: [`LOGIN_SHELL`], shorter in a test.
-#[cfg(unix)]
-fn timeout() -> std::time::Duration {
-    #[cfg(feature = "test-fixtures")]
-    if let Some(milliseconds) = std::env::var("DEMI_LOGIN_SHELL_TIMEOUT_MS")
-        .ok()
-        .and_then(|value| value.parse().ok())
-    {
-        return std::time::Duration::from_millis(milliseconds);
-    }
-    LOGIN_SHELL
 }
 
 /// The account's login shell, as the user database names it.
@@ -206,9 +193,6 @@ mod macos {
         let locale = CFPreferencesCopyAppValue(&CFString::from_str("AppleLocale"), any)
             .and_then(|value| value.downcast::<CFString>().ok())
             .map(|locale| locale.to_string());
-        // A test names the region the user chose.
-        #[cfg(feature = "test-fixtures")]
-        let locale = std::env::var("DEMI_APPLE_LOCALE").ok().or(locale);
         locale
             .as_deref()
             .and_then(|locale| chosen(locale, Path::new(LOCALES)))

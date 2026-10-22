@@ -1,11 +1,10 @@
-//! Test support (feature `testing`): predictable identities, and the texts
-//! the model receives for a resume and an agent message, which a session's
-//! tests compare its requests with.
+//! Predictable identities, and the text the model receives for a resume,
+//! which the compaction tests compare requests with (feature `testing`).
 
 use std::cell::Cell;
 
 use crate::IdSource;
-pub use crate::replay::{RESUME_TEXT, agent_message_envelope};
+pub use crate::replay::RESUME_TEXT;
 
 /// Identities `<prefix>-1`, `<prefix>-2`, and on.
 #[derive(Debug)]
