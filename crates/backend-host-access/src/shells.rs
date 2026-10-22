@@ -292,7 +292,7 @@ impl Keeper {
         if let Err(error) = indexed {
             // The command runs all the same; a backend that starts again
             // does not take it up.
-            tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job was not recorded");
+            tracing::warn!(event = "job.record_failed", conversation = %self.conversation, %command, kind = "job", error = &error as &dyn std::error::Error, "a running job was not recorded");
             return;
         }
         let running = RunningCommand {
@@ -314,7 +314,7 @@ impl Keeper {
             .call(move |connection| running::record(connection, &running))
             .await;
         if let Err(error) = recorded {
-            tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running command was not recorded");
+            tracing::warn!(event = "job.record_failed", conversation = %self.conversation, %command, kind = "command", error = &error as &dyn std::error::Error, "a running command was not recorded");
         }
     }
 
@@ -443,7 +443,7 @@ impl CommandKeeper for Keeper {
                         if let Err(error) = &copies {
                             // The file's record stays in the list without this
                             // segment's copies.
-                            tracing::warn!(conversation = %self.conversation, %command, path = %file.path, "an edit's copies were not stored: {error}");
+                            tracing::warn!(event = "edit_copies.store_failed", conversation = %self.conversation, %command, path = %file.path, %error, "an edit's copies were not stored");
                         }
                         copies.ok()
                     })
@@ -460,7 +460,7 @@ impl CommandKeeper for Keeper {
                 Ok(bytes) => bytes,
                 // The medium is read from the Host instead.
                 Err(error) => {
-                    tracing::debug!(conversation = %self.conversation, %blob, "a blob was not read: {error}");
+                    tracing::warn!(event = "blob.read_failed", conversation = %self.conversation, %blob, %error, "a blob was not read");
                     None
                 }
             }
@@ -477,7 +477,7 @@ impl CommandKeeper for Keeper {
             if let Err(error) = recorded {
                 // The model keeps its place; a backend that starts again
                 // shows it the output from its last recorded place.
-                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a place in a command's output was not recorded");
+                tracing::warn!(event = "command_place.record_failed", conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a place in a command's output was not recorded");
             }
         })
     }
@@ -497,7 +497,7 @@ impl CommandKeeper for Keeper {
                     missing: output.missing().cloned(),
                 },
                 Err(reason) => {
-                    tracing::warn!(conversation = %self.conversation, %command, "a command's output was not stored: {reason}");
+                    tracing::warn!(event = "command_output.store_failed", conversation = %self.conversation, %command, %reason, "a command's output was not stored");
                     OutputRow::NotStored(reason)
                 }
             };
@@ -517,14 +517,14 @@ impl CommandKeeper for Keeper {
                     if let Err(error) = self.control.end_running_job(job).await {
                         // A runner's next hello lists no such job, and the
                         // backend finds nothing to take up.
-                        tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job's record was not removed");
+                        tracing::warn!(event = "job_record.remove_failed", conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job's record was not removed");
                     }
                 }
                 Ok(None) => {}
                 // The command ends all the same; `demi shell output` then
                 // finds no record of it.
                 Err(error) => {
-                    tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
+                    tracing::warn!(event = "command_output.record_failed", conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
                 }
             }
         })

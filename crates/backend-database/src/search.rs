@@ -889,7 +889,9 @@ fn open_index(path: &Path) -> Result<(Connection, bool), StorageError> {
         Ok(Some(connection)) => return Ok((connection, false)),
         Ok(None) => {}
         Err(error) => tracing::warn!(
-            path = %path.display(),
+            event = "search_index.rebuilt",
+            database = path.file_name().map(|name| name.to_string_lossy().into_owned()),
+            cause = "open_failed",
             error = &error as &dyn std::error::Error,
             "a search index did not open; it is built again"
         ),

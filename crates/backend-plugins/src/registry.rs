@@ -210,9 +210,11 @@ fn served(
     let manifest: &Manifest = factory.manifest();
     let left_out = |what: &str, name: &str| {
         tracing::info!(
+            event = "plugin_part.left_out",
             plugin = %manifest.id,
             what,
             name,
+            reason = "not_served",
             "a part whose package the catalog does not serve is left out"
         );
     };

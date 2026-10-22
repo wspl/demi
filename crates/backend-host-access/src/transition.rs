@@ -171,6 +171,18 @@ pub struct TransitionHold {
     _tree: Option<Reservation>,
 }
 
+/// The line that ends a wait of a transition for what holds the conversation.
+fn wait_ended(conversation: &ConversationId, what: &'static str, waited: std::time::Instant) {
+    tracing::info!(
+        event = "host_wait.ended",
+        %conversation,
+        what,
+        waited_ms = u64::try_from(waited.elapsed().as_millis()).unwrap_or(u64::MAX),
+        outcome = "ready",
+        "a transition waited for a conversation's Host work"
+    );
+}
+
 impl dyn HostShard + '_ {
     /// Holds the conversation for an archive or a detach once the shard
     /// reserved its idle tree, `tree`: its transfers and streams ended and
@@ -182,7 +194,9 @@ impl dyn HostShard + '_ {
         tree: Option<Reservation>,
     ) -> Result<TransitionHold, ChangeRefusal> {
         let slot = self.conversations().slot(id);
+        let waited = std::time::Instant::now();
         let transfers = slot.transfers.close().await;
+        wait_ended(id, "transfers", waited);
         let files = slot
             .file_gate()
             .try_reserve()
@@ -204,8 +218,12 @@ impl dyn HostShard + '_ {
         tree: Option<Reservation>,
     ) -> TransitionHold {
         let slot = self.conversations().slot(id);
+        let waited = std::time::Instant::now();
         let transfers = slot.transfers.close().await;
+        wait_ended(id, "transfers", waited);
+        let waited = std::time::Instant::now();
         let files = slot.file_gate().reserve().await;
+        wait_ended(id, "file_gate", waited);
         TransitionHold {
             _files: files,
             _transfers: transfers,
@@ -323,7 +341,7 @@ impl dyn HostShard + '_ {
                 // As for a record that cannot be read: where the conversation
                 // runs now is not known.
                 Err(error) => {
-                    tracing::warn!(conversation = %id, "a moved conversation's target cannot be resolved: {error}");
+                    tracing::warn!(event = "conversation_move.target_unresolved", conversation = %id, %error, "a moved conversation's target cannot be resolved");
                     return;
                 }
             },
@@ -332,7 +350,7 @@ impl dyn HostShard + '_ {
             // Releasing a device the conversation runs on again would only end
             // its services early; one that is never released keeps them.
             Err(error) => {
-                tracing::warn!(conversation = %id, "a moved conversation's record cannot be read: {error}");
+                tracing::warn!(event = "conversation_move.record_unread", conversation = %id, %error, "a moved conversation's record cannot be read");
                 return;
             }
         };

@@ -122,11 +122,11 @@ impl Shard {
         match services.control.preferences(self.user().clone()).await {
             Ok(preferences) if preferences.resume_at_retry == Some(true) => {}
             Ok(_) => {
-                tracing::info!(%conversation, "a failed turn's retry time came; it waits for the user, as their preference says");
+                tracing::info!(event = "failed_turn_retry.settled", %conversation, turn = %error, outcome = "held", reason = "user_preference", "a failed turn's retry time came; it waits for the user");
                 return;
             }
-            Err(error) => {
-                tracing::warn!(%conversation, "the preferences were not read for a failed turn's retry time: {error}");
+            Err(read) => {
+                tracing::warn!(event = "failed_turn_retry.preferences_read_failed", %conversation, turn = %error, error = %read, "the preferences were not read for a failed turn's retry time");
                 return;
             }
         }
@@ -134,10 +134,10 @@ impl Shard {
             .resume_unfinished_turn(conversation, |failed| &failed.id == error, None)
             .await
         {
-            Ok(true) => tracing::info!(%conversation, "a failed turn resumed at its retry time"),
-            Ok(false) => {}
+            Ok(true) => tracing::info!(event = "failed_turn_retry.settled", %conversation, turn = %error, outcome = "resumed", "a failed turn resumed at its retry time"),
+            Ok(false) => tracing::info!(event = "failed_turn_retry.settled", %conversation, turn = %error, outcome = "skipped", "a failed turn was not the conversation's to resume"),
             Err(why) => {
-                tracing::warn!(%conversation, "a failed turn was not resumed at its retry time: {why}");
+                tracing::warn!(event = "failed_turn_retry.settled", %conversation, turn = %error, outcome = "failed", %why, "a failed turn was not resumed at its retry time");
             }
         }
     }
@@ -210,7 +210,7 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
             .duration_since(live.services().clock.now().to_jiff());
         match Duration::try_from(left) {
             Ok(wait) if !wait.is_zero() => {
-                tracing::info!(%conversation, %retry_at, "a failed turn waits for its retry time");
+                tracing::info!(event = "failed_turn_retry.scheduled", %conversation, turn = %id, retry_at_ms = retry_at.as_millisecond(), "a failed turn waits for its retry time");
                 wait
             }
             _ => {

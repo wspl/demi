@@ -33,6 +33,7 @@ use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::StreamExt as _;
+use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
 use crate::services::Services;
@@ -153,9 +154,11 @@ impl ProviderResolver for ConversationProviders {
                     // any limit, and a history too large for the vendor still
                     // compacts when its request is refused.
                     tracing::warn!(
+                        event = "context_limits.read_failed",
                         user = %self.user,
                         %error,
-                        "the context limits could not be read; the model's window is used"
+                        fallback = "model_window",
+                        "the context limits could not be read"
                     );
                     return window;
                 }
@@ -429,13 +432,33 @@ impl ConversationRuntime {
             self.unannounced = false;
             return Ok((account.clone(), Some(Some(agent_account(&account, rotation)))));
         }
+        let previous = named
+            .map(|named| named.credential_id.clone())
+            .or_else(|| self.account.as_ref().map(ToString::to_string));
         let (choice, candidates) = assembly
             .take_account(entry, model)
+            .instrument(tracing::info_span!(
+                "account_choice",
+                conversation = %self.scope.conversation,
+                user = %self.scope.user
+            ))
             .await
             .map_err(|error| refused(error.to_string(), None))?;
         match choice {
             Some(Choice::Account(running)) => {
                 let account = running.account().clone();
+                if let Some(previous) = previous.filter(|previous| previous != account.as_str()) {
+                    // The account the agent kept was used up, removed or of another rotation.
+                    tracing::info!(
+                        event = "account.rotated",
+                        conversation = %self.scope.conversation,
+                        provider = %entry.id,
+                        from = previous,
+                        to = %account,
+                        cause = "kept_unusable",
+                        "an agent took another account"
+                    );
+                }
                 self.account = Some(account.clone());
                 // Readied ahead, the agent is idle and counts on none.
                 self.running = runs.then_some(running);
@@ -476,13 +499,20 @@ impl ConversationRuntime {
         let used_up = self.account.clone()?;
         let now = self.scope.services.clock.now();
         // The moment the failure names, else the account's quota's.
-        let moment = self.current.as_ref().and_then(|current| {
-            let named = failure
+        let named = self.current.as_ref().and_then(|current| {
+            failure
                 .diagnostics
                 .as_ref()
-                .and_then(|diagnostics| current.provider.read_failure(diagnostics, now).retry_at);
-            named.or_else(|| current.provider.quota()?.used_up_until(now))
+                .and_then(|diagnostics| current.provider.read_failure(diagnostics, now).retry_at)
         });
+        let moment = named.or_else(|| self.current.as_ref()?.provider.quota()?.used_up_until(now));
+        let source = if moment.is_none() {
+            "default"
+        } else if named.is_some() {
+            "vendor_refusal"
+        } else {
+            "snapshot"
+        };
         let window = self.current.as_ref().and_then(|current| {
             let snapshot = current.provider.quota()?.latest()?;
             window_used_up(&snapshot, &self.selection.model, moment)
@@ -494,7 +524,7 @@ impl ConversationRuntime {
         self.scope
             .services
             .assembly
-            .mark_used_up(&entry.id, &used_up, until);
+            .mark_used_up(&entry.id, &used_up, until, source);
         Some((used_up, moment, window))
     }
 
@@ -515,11 +545,28 @@ impl ConversationRuntime {
         // The agent stops counting on the used-up account before the
         // choice, which then counts it nowhere.
         self.running = None;
-        let (choice, candidates) = assembly.take_account(&entry, &model).await.map_err(drop)?;
+        let (choice, candidates) = assembly
+            .take_account(&entry, &model)
+            .instrument(tracing::info_span!(
+                "account_choice",
+                conversation = %self.scope.conversation,
+                user = %self.scope.user
+            ))
+            .await
+            .map_err(drop)?;
         let Some(Choice::Account(running)) = choice else {
             return Err(());
         };
         let next = running.account().clone();
+        tracing::info!(
+            event = "account.rotated",
+            conversation = %self.scope.conversation,
+            provider = %entry.id,
+            from = %used_up,
+            to = %next,
+            cause = "used_up",
+            "an agent moved to another account"
+        );
         self.account = Some(next.clone());
         self.running = Some(running);
         self.unannounced = false;
@@ -828,9 +875,10 @@ impl ProviderRuntime for ConversationRuntime {
                 Ok(admitted) => admitted,
                 Err(failure) => {
                     tracing::debug!(
+                        event = "ahead_preparation.skipped",
                         conversation = %self.scope.conversation,
-                        "nothing was readied ahead: {}",
-                        failure.message
+                        reason = failure.code.as_ref().map(|code| code.as_str()),
+                        "nothing was readied ahead"
                     );
                     return;
                 }

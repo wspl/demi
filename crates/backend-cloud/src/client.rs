@@ -178,7 +178,21 @@ enum Incoming {
 
 struct Pending {
     operation: &'static str,
+    started: std::time::Instant,
     answer: oneshot::Sender<Result<serde_json::Value, MachinesError>>,
+}
+
+impl Pending {
+    /// The line that ends a call to the machine manager.
+    fn log_ended(&self, outcome: &'static str) {
+        tracing::info!(
+            event = "machine_manager.call.ended",
+            operation = self.operation,
+            outcome,
+            ms = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "a call to the machine manager ended"
+        );
+    }
 }
 
 impl Supervisor {
@@ -216,6 +230,7 @@ impl Supervisor {
                 Err(reason) => {
                     // A caller that went away needs no answer.
                     let _ = answer.send(Err(MachinesError::Unavailable { operation, reason }));
+                    tracing::info!(event = "machine_manager.call.ended", operation, outcome = "unavailable", ms = 0u64, "a call to the machine manager ended");
                     return;
                 }
             }
@@ -226,7 +241,7 @@ impl Supervisor {
             id: id.clone(),
             call,
         });
-        self.pending.insert(id, Pending { operation, answer });
+        self.pending.insert(id, Pending { operation, started: std::time::Instant::now(), answer });
         let connection = self
             .connection
             .as_mut()
@@ -242,13 +257,13 @@ impl Supervisor {
             Ok(response) => response,
             Err(error) => {
                 // The manager's other replies are still readable.
-                tracing::warn!("an unreadable line from the machine manager was dropped: {error}");
+                tracing::warn!(event = "machine_manager.line_dropped", %error, "an unreadable line from the machine manager was dropped");
                 return;
             }
         };
         let (id, result) = match response {
             MachineResponse::Hello { .. } => {
-                tracing::warn!("the machine manager sent a second hello, which was dropped");
+                tracing::warn!(event = "machine_manager.hello_repeated", "the machine manager sent a second hello, which was dropped");
                 return;
             }
             MachineResponse::Death { device_id } => {
@@ -260,7 +275,7 @@ impl Supervisor {
                         let _ = self.deaths.send(device).await;
                     }
                     Err(error) => {
-                        tracing::warn!("the machine manager reported the death of {error}")
+                        tracing::warn!(event = "machine_manager.sandbox_died", reason = "device_id_unreadable", %error, "the machine manager reported the death of a sandbox that is no device")
                     }
                 }
                 return;
@@ -270,12 +285,14 @@ impl Supervisor {
         };
         match self.pending.remove(&id) {
             Some(pending) => {
+                pending.log_ended(if result.is_ok() { "ok" } else { "failed" });
                 // A caller that went away reads no answer; the operation
                 // ran all the same.
                 let _ = pending.answer.send(result);
             }
             None => tracing::warn!(
-                id,
+                event = "machine_manager.answer_unmatched",
+                call_id = id,
                 "the machine manager answered a request this backend did not send"
             ),
         }
@@ -287,11 +304,14 @@ impl Supervisor {
         self.connection = None;
         if !self.pending.is_empty() {
             tracing::warn!(
+                event = "machine_manager.connection_dropped",
                 calls = self.pending.len(),
-                "the machine manager's connection dropped: {reason}"
+                reason,
+                "the machine manager's connection dropped"
             );
         }
         for (_, pending) in self.pending.drain() {
+            pending.log_ended("unavailable");
             let error = MachinesError::Unavailable {
                 operation: pending.operation,
                 reason: reason.to_owned(),

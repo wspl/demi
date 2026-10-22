@@ -91,7 +91,7 @@ async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str) -
         Ok(KeptWorkflows::Found(found)) => found,
         Ok(KeptWorkflows::None) => return None,
         Err(error) => {
-            tracing::warn!(%conversation, %error, "the project's workflows were not taken");
+            tracing::warn!(event = "project_workflows.read_failed", %conversation, %error, "the project's workflows were not taken");
             return None;
         }
     };
@@ -224,7 +224,7 @@ pub(crate) async fn search_instructions(
     let taken_file = |path: String, answer: &HostFile| match answer {
         HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
         HostFile::Unreadable { message } => {
-            tracing::info!(%path, %message, "a project instruction file cannot be read");
+            tracing::info!(event = "instruction_file.unreadable", %conversation, %path, reason = %message, "a project instruction file cannot be read");
             None
         }
         HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
@@ -267,7 +267,7 @@ pub(crate) async fn search_instructions(
     let mut files = Vec::new();
     for (read, text) in taken.into_iter().zip(texts) {
         let Some(text) = text else {
-            tracing::info!(path = %read.path, "a project instruction file kept growing while it was read; it is left out until it next changes");
+            tracing::info!(event = "instruction_file.left_out", %conversation, path = %read.path, reason = "growing", "a project instruction file kept growing while it was read; it is left out until it next changes");
             continue;
         };
         if !text.trim().is_empty() {

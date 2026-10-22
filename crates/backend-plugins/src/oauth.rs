@@ -315,7 +315,7 @@ impl Shared {
         if let Err(error) = forgot {
             // The next sign-in uses the stale client and fails again, which
             // tries this again.
-            tracing::warn!(plugin = self.plugin_id(plugin), %error, "a forgotten OAuth client stayed");
+            tracing::warn!(event = "oauth_client.forget_failed", plugin = self.plugin_id(plugin), %error, "a forgotten OAuth client stayed");
         }
     }
 
@@ -434,7 +434,12 @@ impl Shared {
                 .map_err(failed)?
                 .map(|stored| stored.revision);
             match self.write_secret(plugin, TOKENS, &sealed(&tokens), revision).await {
-                Ok(_) => break,
+                Ok(_) => {
+                    if revision.is_some() {
+                        self.log_login_ended(plugin, "replaced");
+                    }
+                    break;
+                }
                 Err(PortFailure::Refused(PortRefusal::Conflict)) => continue,
                 Err(failure) => return Err(failed(failure)),
             }
@@ -475,8 +480,9 @@ impl Shared {
                         .into(),
                 ));
             }
-            return self.signed_out(plugin, revision).await;
+            return self.signed_out(plugin, revision, "no_refresh_token").await;
         };
+        let by = if forced { "401_retry" } else { "background" };
         // From here the renewal is the shard's: it holds the turn and stores
         // the vendor's answer whether or not this call still waits, since
         // the vendor may spend the refresh token the moment it answers
@@ -484,7 +490,7 @@ impl Shared {
         let (answer, answered) = tokio::sync::oneshot::channel();
         let shared = self.clone();
         self.product.spawn(Box::pin(async move {
-            let renewed = shared.renew(plugin, tokens, &refresh, revision).await;
+            let renewed = shared.renew(plugin, tokens, &refresh, revision, by).await;
             drop(turn);
             // A call that went away needs no answer: the tokens are stored.
             let _ = answer.send(renewed);
@@ -514,6 +520,7 @@ impl Shared {
         tokens: Tokens,
         refresh: &Secret,
         revision: u64,
+        by: &'static str,
     ) -> Result<String, PortFailure> {
         let oauth = self.oauth(plugin)?;
         // Nothing cancels a renewal: each call to the vendor ends by its
@@ -524,13 +531,27 @@ impl Shared {
             .await;
         let refused = match asked {
             Ok(Exchanged::Issued(issued)) => {
-                return self.store_renewal(plugin, tokens, issued, revision).await;
+                let expires_in_s = issued.expires_in.0.map(|lifetime| lifetime.as_secs());
+                let stored = self.store_renewal(plugin, tokens, issued, revision).await;
+                if stored.is_ok() {
+                    tracing::info!(
+                        event = "oauth_token.renewed",
+                        plugin = self.plugin_id(plugin),
+                        user = %self.user,
+                        expires_in_s,
+                        by,
+                        "a sign-in's access token was renewed"
+                    );
+                }
+                return stored;
             }
             Ok(Exchanged::Refused { status, refusal }) => {
                 // The code names the refusal; the description may quote a
                 // token and is never read.
                 tracing::warn!(
+                    event = "oauth_token.renew_refused",
                     plugin = self.plugin_id(plugin),
+                    user = %self.user,
                     status,
                     error = refusal.named(),
                     "the vendor refused to renew a sign-in"
@@ -549,7 +570,7 @@ impl Shared {
         let (status, refusal) = refused?;
         // Only a refusal of the refresh token itself says it is dead.
         if matches!(status, 400 | 401) && refusal.is("invalid_grant") {
-            return self.signed_out(plugin, revision).await;
+            return self.signed_out(plugin, revision, "invalid_grant").await;
         }
         if unknown_client(&refusal) {
             self.forget_client(plugin, oauth, &tokens.client_id).await;
@@ -627,9 +648,10 @@ impl Shared {
             }
         };
         self.changed(plugin, None);
+        self.log_login_ended(plugin, "user_signed_out");
         if let Err(failure) = self.revoke(plugin, oauth, &tokens, cancel).await {
             // The tokens are forgotten here; the vendor lets them expire.
-            tracing::warn!(plugin = self.plugin_id(plugin), %failure, "the vendor did not revoke a sign-in");
+            tracing::warn!(event = "oauth_token.revoke_failed", plugin = self.plugin_id(plugin), user = %self.user, %failure, "the vendor did not revoke a sign-in");
         }
         Ok(())
     }
@@ -738,14 +760,28 @@ impl Shared {
 
     /// Forgets the tokens at `revision`, which the vendor will not renew,
     /// and answers that the user is signed out.
-    async fn signed_out<T>(&self, plugin: usize, revision: u64) -> Result<T, PortFailure> {
+    async fn signed_out<T>(&self, plugin: usize, revision: u64, cause: &'static str) -> Result<T, PortFailure> {
         match self.remove_secret(plugin, TOKENS, revision).await {
             // A conflict is another worker's newer sign-in, which stays.
             Ok(()) | Err(PortFailure::Refused(PortRefusal::Conflict)) => {}
             Err(failure) => return Err(failure),
         }
         self.changed(plugin, None);
+        self.log_login_ended(plugin, cause);
         Err(PortFailure::Refused(PortRefusal::SignedOut))
+    }
+
+    /// The line that ends a user's sign-in to a plugin's vendor: the
+    /// provider's `invalid_grant`, the user's sign-out or a new sign-in
+    /// over it is `cause`.
+    fn log_login_ended(&self, plugin: usize, cause: &'static str) {
+        tracing::info!(
+            event = "oauth_login.ended",
+            plugin = self.plugin_id(plugin),
+            user = %self.user,
+            cause,
+            "a user's sign-in to a plugin's vendor ended"
+        );
     }
 }
 

@@ -84,7 +84,7 @@ impl Shard {
                 // The installers and the runners' updates report the
                 // deployment's broken record; the pages show the runners'
                 // releases as unknown meanwhile.
-                tracing::warn!("the current runner release cannot be read: {error}");
+                tracing::warn!(event = "runner_release.read_failed", %error, "the current runner release cannot be read");
                 None
             }
         };

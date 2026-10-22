@@ -72,6 +72,7 @@ async fn run(
     config: Config,
     #[cfg(unix)] open_files: std::io::Result<demi_shared_cli::OpenFileLimit>,
 ) -> ExitCode {
+    let started = std::time::Instant::now();
     // Installed before anything starts, so a stop signal that comes while the
     // backend starts is kept and ends it once it is up.
     let mut stop = match StopSignals::install() {
@@ -122,15 +123,22 @@ async fn run(
     // A refused raise leaves the limit as it was; the backend still works,
     // running out of files sooner.
     #[cfg(unix)]
-    match open_files {
-        Ok(limit) => tracing::info!(
-            "open-file limit {} (started with {})",
-            limit.raised,
-            limit.started_soft
-        ),
-        Err(error) => tracing::warn!("the open-file limit could not be raised: {error}"),
-    }
-    let served = serve(&config, settings, &release, &mut stop).await;
+    let open_files_limit = match open_files {
+        Ok(limit) => {
+            tracing::info!(
+                event = "open_files.limit_raised",
+                raised = limit.raised,
+                started_soft = limit.started_soft,
+                "the open-file limit was raised"
+            );
+            Some(limit.raised)
+        }
+        Err(error) => {
+            tracing::warn!(event = "open_files.limit_raise_failed", %error, "the open-file limit could not be raised");
+            None
+        }
+    };
+    let served = serve(&config, settings, &release, &mut stop, started, open_files_limit).await;
     log.close().await;
     served
 }
@@ -141,40 +149,92 @@ async fn serve(
     mut settings: BackendConfig,
     release: &Path,
     stop: &mut StopSignals,
+    started: std::time::Instant,
+    open_files_limit: Option<u64>,
 ) -> ExitCode {
     settings.native = match publish(&settings, release, stop).await {
         Ok(native) => native,
         Err(error) => {
-            eprintln!("demi-backend: {error}");
+            tracing::error!(event = "backend.start_failed", step = "publish", %error, "the backend did not start");
             return ExitCode::FAILURE;
         }
     };
     let data = settings.data_dir.clone();
+    let previous_exit = exit_state::begin(&data);
     let backend = match Backend::start(settings).await {
         Ok(backend) => backend,
         Err(error) => {
-            eprintln!("demi-backend: {error}");
+            tracing::error!(event = "backend.start_failed", step = "start", %error, "the backend did not start");
             return ExitCode::FAILURE;
         }
     };
     tracing::info!(
-        address = %backend.local_addr(),
-        data = %data.display(),
+        event = "backend.started",
+        version = env!("CARGO_PKG_VERSION"),
         mode = %config.mode,
+        address = %backend.local_addr(),
+        data_dir = %data.display(),
+        previous_exit,
+        open_files_limit,
+        ms_to_ready = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         "demi-backend is listening"
     );
     // Readiness for systemd's Type=notify, which an upgrade waits for;
     // without a notify socket, as in development, this does nothing.
     if let Err(error) = sd_notify::notify(&[sd_notify::NotifyState::Ready]) {
-        tracing::warn!("systemd was not told that the backend is ready: {error}");
+        tracing::warn!(event = "systemd.ready_failed", %error, "systemd was not told that the backend is ready");
     }
     stop.requested().await;
+    // A stop is a SIGINT or a SIGTERM, which an upgrade's restart sends as a
+    // stop does: the backend cannot tell them apart.
+    let census = backend.census().await;
+    tracing::info!(
+        event = "backend.stopping",
+        cause = "signal",
+        live_conversations = census.live_trees,
+        running_turns = census.running_turns,
+        trees_running_commands = census.trees_running_commands,
+        "the backend is stopping"
+    );
     match backend.close().await {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => {
+            exit_state::end(&data);
+            ExitCode::SUCCESS
+        }
         Err(errors) => {
-            eprintln!("demi-backend: {errors}");
+            tracing::error!(event = "backend.close_failed", error = %errors, "the backend did not close cleanly");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// What the previous run left of how it ended: `running` while the backend
+/// serves, `clean` once it closed. A start that finds `running` follows a run
+/// the system or an operator killed.
+mod exit_state {
+    use std::path::Path;
+
+    const FILE: &str = "exit-state";
+
+    /// Answers how the previous run ended (`clean`, `killed` or `unknown`
+    /// for a data directory that has no run before) and marks this run as
+    /// running.
+    pub(super) fn begin(data: &Path) -> &'static str {
+        let path = data.join(FILE);
+        let previous = match std::fs::read_to_string(&path).as_deref().map(str::trim) {
+            Ok("clean") => "clean",
+            Ok("running") => "killed",
+            _ => "unknown",
+        };
+        // A directory that cannot be written leaves the next start with
+        // `unknown`, and the backend serves all the same.
+        let _ = std::fs::write(&path, "running");
+        previous
+    }
+
+    /// Marks this run as ended in order.
+    pub(super) fn end(data: &Path) {
+        let _ = std::fs::write(data.join(FILE), "clean");
     }
 }
 

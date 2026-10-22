@@ -266,7 +266,7 @@ impl Drop for Wait {
                 Ok(true) => changed(&*shard, &conversation),
                 Ok(false) => {}
                 // The next start withdraws every credential request left.
-                Err(error) => tracing::warn!(%request, "a credential request was not withdrawn: {error}"),
+                Err(error) => tracing::warn!(event = "credential_request.withdraw_failed", %request, %error, "a credential request was not withdrawn"),
             }
         }));
     }
@@ -844,14 +844,17 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
             if let Err(error) = shard.control().delivered_permission(request.id.clone()).await {
                 // The request stays decided, and the next start delivers it
                 // again under its id, which the agent admits once.
-                tracing::warn!(request = %request.id, "a delivered permission decision was not forgotten: {error}");
+                tracing::warn!(event = "permission_decision.forget_failed", request = %request.id, conversation = %request.conversation, %error, "a delivered permission decision was not forgotten");
             }
         }
         Err(error) => {
             tracing::warn!(
+                event = "permission_decision.delivery_failed",
                 request = %request.id,
                 conversation = %request.conversation,
-                "a permission decision was not delivered; the next start delivers it: {error}"
+                %error,
+                retry = "next_start",
+                "a permission decision was not delivered"
             );
         }
     }
@@ -907,7 +910,7 @@ async fn declared(shard: &dyn PermissionShard) -> Vec<Category> {
     match shard.categories().await {
         Ok(categories) => categories,
         Err(error) => {
-            tracing::warn!("the permission categories were not read: {error}");
+            tracing::warn!(event = "permission_categories.read_failed", %error, "the permission categories were not read");
             Vec::new()
         }
     }

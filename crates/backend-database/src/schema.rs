@@ -3993,7 +3993,8 @@ impl Schema {
         // after an upgrade, and that open or read waits for it: the log says
         // when it ran and what it cost.
         let (from, to) = (recorded, self.version());
-        tracing::info!(path = %path.display(), from, to, steps = migrations.len(), "a database's schema migration starts");
+        let database = path.file_name().map(|name| name.to_string_lossy().into_owned());
+        tracing::info!(event = "schema.migration_started", database, from, to, steps = migrations.len(), "a database's schema migration starts");
         let started = std::time::Instant::now();
         let migrated = migrations
             .iter()
@@ -4013,17 +4014,19 @@ impl Schema {
             .and_then(|()| Ok(transaction.commit()?));
         match &migrated {
             Ok(()) => tracing::info!(
-                path = %path.display(),
+                event = "schema.migration_ended",
+                database,
                 from,
                 to,
-                elapsed = ?started.elapsed(),
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 "a database's schema migration ended"
             ),
             Err(error) => tracing::warn!(
-                path = %path.display(),
+                event = "schema.migration_failed",
+                database,
                 from,
                 to,
-                elapsed = ?started.elapsed(),
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
                 error = error as &dyn std::error::Error,
                 "a database's schema migration failed and changed nothing"
             ),

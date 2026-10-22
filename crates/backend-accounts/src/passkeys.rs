@@ -83,7 +83,7 @@ impl RelyingParty {
         let id = relying_party_id(public)?;
         let origin = Url::parse(&public.origin().ascii_serialization()).ok()?;
         let mut builder = WebauthnBuilder::new(id, &origin)
-            .inspect_err(|error| tracing::warn!("the public URL is no relying party: {error}"))
+            .inspect_err(|error| tracing::warn!(event = "passkeys.relying_party_refused", %error, "the public URL is no relying party"))
             .ok()?
             .rp_name("demi");
         if let Some(page) = page.filter(|page| page.origin() != origin.origin()) {
@@ -91,7 +91,7 @@ impl RelyingParty {
         }
         builder
             .build()
-            .inspect_err(|error| tracing::warn!("the relying party could not be built: {error}"))
+            .inspect_err(|error| tracing::warn!(event = "passkeys.relying_party_failed", %error, "the relying party could not be built"))
             .ok()
             .map(Self)
     }

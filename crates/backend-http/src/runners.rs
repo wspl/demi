@@ -122,6 +122,8 @@ pub(super) async fn paired_device(state: &AppState, headers: &HeaderMap) -> Opti
             // What the device's runner asked for goes ahead; its device shows
             // nothing of it.
             tracing::warn!(
+                event = "runner_device.read_failed",
+                route = "runner_request",
                 error = &error as &dyn std::error::Error,
                 "the device of a runner's request could not be read"
             );
@@ -307,6 +309,8 @@ async fn device_of(
         Ok(None) => Err(unauthorized()),
         Err(error) => {
             tracing::error!(
+                event = "runner_device.read_failed",
+                route = "pipe",
                 error = &error as &dyn std::error::Error,
                 "a pipe's device could not be read"
             );

@@ -210,7 +210,7 @@ impl Shard {
         match self.services().control.conversation(conversation.clone()).await {
             Ok(record) => record.map(|record| record.title),
             Err(error) => {
-                tracing::warn!(%conversation, "a conversation was not read for its notification: {error}");
+                tracing::warn!(event = "notification.conversation_read_failed", %conversation, %error, "a conversation was not read for its notification");
                 None
             }
         }
@@ -219,14 +219,27 @@ impl Shard {
     /// The subscriptions `message` goes to now: those that chose it, but
     /// those of a session a page of which shows its conversation.
     pub(crate) async fn recipients(&self, message: &PushMessage) -> Result<Vec<StoredPushSubscription>, StorageError> {
+        Ok(self.split_recipients(message).await?.0)
+    }
+
+    /// [`Self::recipients`], with the count of the subscriptions that chose
+    /// `message` and were left out because a page of their session shows its
+    /// conversation.
+    async fn split_recipients(&self, message: &PushMessage) -> Result<(Vec<StoredPushSubscription>, u64), StorageError> {
         let subscriptions = self.services().push.subscriptions(self.user().clone()).await?;
-        Ok(subscriptions
-            .into_iter()
-            .filter(|subscription| {
-                message.chosen_by(&subscription.events)
-                    && !self.notifications.shows(&subscription.session, message.conversation())
-            })
-            .collect())
+        let mut suppressed = 0;
+        let mut recipients = Vec::new();
+        for subscription in subscriptions {
+            if !message.chosen_by(&subscription.events) {
+                continue;
+            }
+            if self.notifications.shows(&subscription.session, message.conversation()) {
+                suppressed += 1;
+            } else {
+                recipients.push(subscription);
+            }
+        }
+        Ok((recipients, suppressed))
     }
 
     /// Delivers `message` in the background, after the notifications before
@@ -236,29 +249,51 @@ impl Shard {
         let this = self.this();
         self.tasks().spawn_local(async move {
             let _turn = this.notifications.delivering.lock().await;
-            let recipients = match recipients {
-                Some(recipients) => recipients,
-                None => match this.recipients(&message).await {
-                    Ok(recipients) => recipients,
+            let started = std::time::Instant::now();
+            let (recipients, suppressed) = match recipients {
+                Some(recipients) => (recipients, 0),
+                None => match this.split_recipients(&message).await {
+                    Ok(split) => split,
                     Err(error) => {
-                        tracing::warn!(user = %this.user(), "the push subscriptions were not read: {error}");
+                        tracing::warn!(event = "push_subscriptions.read_failed", user = %this.user(), %error, "the push subscriptions were not read");
                         return;
                     }
                 },
             };
+            let kind = match &message {
+                PushMessage::TurnFinished { .. } => "turn_finished",
+                PushMessage::TurnFailed { .. } => "turn_failed",
+                PushMessage::Permission { .. } => "ask",
+                PushMessage::Agent { .. } => "agent",
+            };
+            let sent = |recipients: usize, removed: bool| {
+                tracing::info!(
+                    event = "notification.sent",
+                    user = %this.user(),
+                    conversation = %message.conversation(),
+                    kind,
+                    recipients,
+                    suppressed_by_page = suppressed,
+                    removed_gone = removed,
+                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "a notification was delivered"
+                );
+            };
             if recipients.is_empty() {
+                sent(0, false);
                 return;
             }
             let services = this.services();
             let Some(contact) = services.public_url.get() else {
                 // The backend serves only once it listens, which sets it.
-                tracing::error!("a notification came before the backend listened");
+                tracing::error!(event = "notification.too_early", conversation = %message.conversation(), "a notification came before the backend listened");
                 return;
             };
             let removed = services
                 .push
                 .deliver(this.user(), &message, &recipients, contact.as_str())
                 .await;
+            sent(recipients.len(), removed);
             // Each session says whether its browser has notifications on.
             if removed {
                 this.mark(demi_backend_page_sync::Part::Sessions);

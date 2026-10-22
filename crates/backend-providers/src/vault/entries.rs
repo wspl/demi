@@ -513,6 +513,7 @@ impl Vault {
             // An entry deleted meanwhile marked its owner as it went.
             Ok(None) => {}
             Err(error) => tracing::warn!(
+                event = "entry_change.announce_failed",
                 provider = %id,
                 error = &error as &dyn std::error::Error,
                 "a change of an entry was not marked on its owner's pages"

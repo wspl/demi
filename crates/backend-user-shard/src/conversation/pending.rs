@@ -117,7 +117,7 @@ impl Shard {
             Ok(pending) if !pending.is_empty() => pending,
             Ok(_) => return false,
             Err(error) => {
-                tracing::warn!(conversation = %id, "the pending changes cannot be read: {error}");
+                tracing::warn!(event = "pending_changes.read_failed", conversation = %id, %error, "the pending changes cannot be read");
                 return false;
             }
         };
@@ -127,12 +127,12 @@ impl Shard {
             let record = match host.owned_conversation(id).await {
                 Ok(record) => record,
                 Err(error) => {
-                    tracing::warn!(conversation = %id, "the detaches an agent asked for were not made: {error}");
+                    tracing::warn!(event = "detach.failed", conversation = %id, host_id = %device, step = "read_record", %error, "the detaches an agent asked for were not made");
                     break;
                 }
             };
             if let Err(refusal) = host.detach(&record, device.clone()).await {
-                tracing::warn!(conversation = %id, %device, "an agent's detach was not made: {refusal}");
+                tracing::warn!(event = "detach.failed", conversation = %id, host_id = %device, step = "detach", error = %refusal, "an agent's detach was not made");
             }
         }
         drop(hold);

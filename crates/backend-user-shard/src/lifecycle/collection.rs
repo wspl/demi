@@ -68,10 +68,10 @@ impl Shard {
                 match shard.collect_once().await {
                     Ok(0) => {}
                     Ok(removed) => {
-                        tracing::info!(user = %shard.user(), removed, "unreferenced blobs removed");
+                        tracing::info!(event = "blobs.collected", user = %shard.user(), removed, "unreferenced blobs removed");
                     }
                     Err(why) => {
-                        tracing::warn!(user = %shard.user(), "the collection removed nothing more: {why}");
+                        tracing::warn!(event = "blobs.collect_stopped", user = %shard.user(), %why, "the collection removed nothing more");
                     }
                 }
                 let state = &shard.blob_collection().state;
@@ -134,7 +134,7 @@ impl Shard {
                 // The blob stays, and so does its upload record, until a
                 // later collection removes both.
                 Err(error) => {
-                    tracing::warn!(user = %self.user(), %blob, error = &error as &dyn std::error::Error, "a blob was not removed");
+                    tracing::warn!(event = "blob.remove_failed", user = %self.user(), %blob, error = &error as &dyn std::error::Error, "a blob was not removed");
                 }
             }
         }

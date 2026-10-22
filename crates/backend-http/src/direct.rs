@@ -415,8 +415,13 @@ impl Signaling {
         let (answered, switched) = answered;
         let message = match answered {
             Ok(DirectAnswer::Answer(sdp)) => DirectMessage::Answer { peer: which, sdp },
-            Ok(DirectAnswer::Refused(code, message)) => {
-                tracing::debug!(device = %self.device, "a runner refused an offer: {message}");
+            Ok(DirectAnswer::Refused(code, _)) => {
+                // The runner's own words are not logged: its code says why.
+                let reason = match code {
+                    OfferRefusal::Busy => "busy",
+                    OfferRefusal::InvalidOffer => "invalid_offer",
+                };
+                tracing::debug!(event = "runner_offer.refused", host_id = %self.device, reason, "a runner refused an offer");
                 let code = match code {
                     OfferRefusal::Busy => Unanswered::Busy,
                     OfferRefusal::InvalidOffer => Unanswered::InvalidOffer,

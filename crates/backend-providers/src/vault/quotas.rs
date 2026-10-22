@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use demi_backend_database::providers::CredentialRow;
 use demi_provider_common::quota::QuotaSnapshotStore;
-use demi_shared_types::{Clock, QuotaSnapshot, Timestamp};
+use demi_shared_types::{Clock, QuotaSnapshot, SnapshotSource, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -164,6 +164,7 @@ impl AccountQuotas {
                     .filter(|reset| *reset > now)
                     .max();
                 let (provider, id) = account;
+                let id_for_log = id.clone();
                 let stored = quotas
                     .vault
                     .control()
@@ -171,6 +172,9 @@ impl AccountQuotas {
                     .await;
                 if let Err(error) = stored {
                     tracing::warn!(
+                        event = "quota_snapshot.store_failed",
+                        provider = %provider,
+                        account = %id_for_log,
                         error = &error as &dyn std::error::Error,
                         "an account's quota snapshot was not stored; the next probe reads it again"
                     );
@@ -201,13 +205,38 @@ impl QuotaSnapshotStore for AccountQuota {
         &self,
         next: &mut dyn FnMut(Option<&QuotaSnapshot>) -> QuotaSnapshot,
     ) -> Arc<QuotaSnapshot> {
-        let snapshot = {
+        let (before, snapshot) = {
             let mut held = self.quotas.lock();
             let kept = held.entry(self.account.clone()).or_default();
             let snapshot = Arc::new(next(kept.as_deref()));
-            *kept = Some(snapshot.clone());
-            snapshot
+            let before = kept.replace(snapshot.clone());
+            (before, snapshot)
         };
+        // Who set a window to what, when: a window flips between values when
+        // several sources write it.
+        let source = match snapshot.source {
+            SnapshotSource::Probe => "probe",
+            SnapshotSource::Observation => "response",
+        };
+        for window in &snapshot.windows {
+            let from = before
+                .as_deref()
+                .and_then(|before| before.windows.iter().find(|held| held.id == window.id))
+                .and_then(|held| held.used_percent);
+            if from != window.used_percent {
+                tracing::debug!(
+                    event = "quota_window.updated",
+                    provider = %self.account.0,
+                    account = %self.account.1,
+                    window = window.id.as_str(),
+                    used_pct_from = from,
+                    used_pct_to = window.used_percent,
+                    source,
+                    observed_at_ms = snapshot.observed_at.as_millisecond(),
+                    "an account's usage window changed"
+                );
+            }
+        }
         self.quotas.write_through(self.account.clone());
         snapshot
     }

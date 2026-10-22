@@ -142,7 +142,8 @@ impl Sourcing {
                 } else {
                     wanted.artifact.size
                 };
-                tracing::info!(file = %wanted.file, "downloading a file of the server release");
+                tracing::info!(event = "release_file.download_started", file = %wanted.file, "downloading a file of the server release");
+                let started = std::time::Instant::now();
                 // GitHub serves a release's files through a redirect to
                 // short-lived storage; the caller checks what arrives
                 // against the release's record.
@@ -151,12 +152,22 @@ impl Sourcing {
                     redirects: REDIRECTS,
                     ..demi_shared_artifacts::Download::new(url.as_str())
                 };
-                let (received, bytes) =
-                    demi_shared_artifacts::download_bytes(&self.client, request, cancel)
-                        .await
-                        .map_err(|error| error.to_string())?;
-                received.plain().map_err(|error| error.to_string())?;
-                Ok(Bytes::from(bytes))
+                let downloaded = demi_shared_artifacts::download_bytes(&self.client, request, cancel)
+                    .await
+                    .map_err(|error| error.to_string())
+                    .and_then(|(received, bytes)| {
+                        received.plain().map_err(|error| error.to_string())?;
+                        Ok(Bytes::from(bytes))
+                    });
+                tracing::info!(
+                    event = "release_file.download_ended",
+                    file = %wanted.file,
+                    outcome = if downloaded.is_ok() { "downloaded" } else { "failed" },
+                    bytes = downloaded.as_ref().ok().map(|bytes| bytes.len() as u64),
+                    ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "a file of the server release was downloaded"
+                );
+                downloaded
             }
         }
     }

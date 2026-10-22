@@ -134,6 +134,7 @@ impl From<MachinesError> for CloudError {
 impl From<StorageError> for CloudError {
     fn from(error: StorageError) -> Self {
         tracing::error!(
+            event = "cloud_records.failed",
             error = &error as &dyn std::error::Error,
             "the Cloud's records failed"
         );
@@ -597,7 +598,9 @@ impl dyn CloudShard {
     /// counts once the runner connects with it. A boot that fails saves what
     /// the sandbox wrote, best effort, and lets its runner go.
     pub(crate) async fn boot(&self, machine: &Machine) -> Result<(), CloudError> {
+        let started = std::time::Instant::now();
         let booted = self.start_sandbox(machine).await;
+        operation_ended(&machine.device.id, "boot", started, booted.is_ok());
         if let Err(error) = &booted {
             let device = &machine.device.id;
             let hibernate = HibernateParams {
@@ -607,7 +610,7 @@ impl dyn CloudShard {
             // The boot's failure is the one reported; a save that fails too
             // is logged beside it.
             if let Err(saved) = self.cloud_services().machines.call(hibernate).await {
-                tracing::warn!(device = %device, %error, "a Cloud whose boot failed was not saved: {saved}");
+                tracing::warn!(event = "cloud.boot_save_failed", host_id = %device, %error, save_error = %saved, "a Cloud whose boot failed was not saved");
             }
             self.devices().disconnect(device, "Cloud boot failed");
         }
@@ -770,7 +773,7 @@ impl dyn CloudShard {
                 }
             }
         }
-        tracing::warn!(device = %device, "the Cloud's sandbox stopped by itself");
+        tracing::warn!(event = "cloud.sandbox_stopped", host_id = %device, cause = "by_itself", "the Cloud's sandbox stopped by itself");
         self.devices()
             .disconnect(device, "the Cloud's sandbox stopped");
     }
@@ -818,6 +821,7 @@ impl dyn CloudShard {
     /// without one: a broken guest never keeps the disks from being saved.
     pub(crate) async fn save(&self, machine: &Machine) -> Result<(), CloudError> {
         let device = &machine.device.id;
+        let started = std::time::Instant::now();
         self.flush(device).await;
         let hibernate = HibernateParams {
             device_id: device.to_string(),
@@ -826,6 +830,7 @@ impl dyn CloudShard {
         let saved = self.cloud_services().machines.call(hibernate).await;
         self.devices().disconnect(device, "Cloud stopped");
         self.packages_lost(device);
+        operation_ended(device, "save", started, saved.is_ok());
         Ok(saved?)
     }
 
@@ -838,10 +843,15 @@ impl dyn CloudShard {
         match tokio::time::timeout(self.cloud_services().tuning.sync_timeout, link.sync()).await {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
-                tracing::warn!(device = %device, "the Cloud did not flush its filesystems: {error}")
+                tracing::warn!(event = "cloud.flush_failed", host_id = %device, %error, "the Cloud did not flush its filesystems")
             }
             Err(_) => {
-                tracing::warn!(device = %device, "the Cloud did not flush its filesystems in time")
+                tracing::warn!(
+                    event = "cloud.flush_timed_out",
+                    host_id = %device,
+                    waited_ms = u64::try_from(self.cloud_services().tuning.sync_timeout.as_millis()).unwrap_or(u64::MAX),
+                    "the Cloud did not flush its filesystems in time"
+                )
             }
         }
     }
@@ -901,7 +911,7 @@ impl dyn CloudShard {
                 return Ok(());
             }
         }
-        tracing::warn!(device = %device.id, "a running Cloud found no capacity at the start; it is saved and stopped");
+        tracing::warn!(event = "cloud.capacity_refused", host_id = %device.id, outcome = "saved_and_stopped", "a running Cloud found no capacity at the start");
         let hibernate = HibernateParams {
             device_id: device.id.to_string(),
             machine: sandbox_machine(device),
@@ -923,4 +933,17 @@ fn joinable(task: tokio::task::JoinHandle<Result<(), CloudError>>) -> Transition
     }
     .boxed_local()
     .shared()
+}
+
+/// The line that ends an operation on a Cloud: what ran on which device, how
+/// it went and how long it took.
+pub(crate) fn operation_ended(device: &DeviceId, operation: &'static str, started: std::time::Instant, succeeded: bool) {
+    tracing::info!(
+        event = "cloud_operation.ended",
+        host_id = %device,
+        operation,
+        outcome = if succeeded { "ok" } else { "failed" },
+        ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        "an operation on a Cloud ended"
+    );
 }

@@ -39,8 +39,9 @@ pub fn manage_socket(path: &Path) -> io::Result<Option<UnixListener>> {
     let directory = path.parent().unwrap_or(Path::new("/"));
     if !directory.is_dir() {
         tracing::info!(
-            "no upgrade can announce the next runner release: the management socket's directory {} does not exist",
-            directory.display()
+            event = "manage_socket.missing",
+            directory = %directory.display(),
+            "no upgrade can announce the next runner release: the management socket's directory does not exist"
         );
         return Ok(None);
     }
@@ -66,7 +67,7 @@ pub(crate) async fn serve(listener: UnixListener, state: AppState, stop: Cancell
             Ok((stream, _)) => {
                 answers.spawn(answer(stream, state.clone(), stop.clone()));
             }
-            Err(error) => tracing::warn!("a management connection was not accepted: {error}"),
+            Err(error) => tracing::warn!(event = "manage.accept_failed", %error, "a management connection was not accepted"),
         }
     }
     answers.close();
@@ -84,13 +85,13 @@ async fn answer(stream: UnixStream, state: AppState, stop: CancellationToken) {
         read = read.read_line(&mut line) => read,
     };
     if let Err(error) = request {
-        tracing::warn!("a management request was not read: {error}");
+        tracing::warn!(event = "manage.request_unread", %error, "a management request was not read");
         return;
     }
     let next = match announce(&state, &line).await {
         Ok(next) => next,
         Err(error) => {
-            tracing::warn!("the next runner release was not announced: {error}");
+            tracing::warn!(event = "runner_release.announce_failed", %error, "the next runner release was not announced");
             // An asker that went away needs no refusal.
             let _ = send(&mut write, &PrefetchAnswer::Refused { error }).await;
             return;
@@ -128,7 +129,7 @@ async fn announce(state: &AppState, request: &str) -> Result<Arc<NextRelease>, S
         .await?;
     let next = Arc::new(next);
     state.services.prefetches.announce(next.clone());
-    tracing::info!("runner release {} comes next; the connected devices download it ahead", request.release);
+    tracing::info!(event = "runner_release.announced", release = request.release.as_str(), "a runner release comes next; the connected devices download it ahead");
     let users = state
         .services
         .control

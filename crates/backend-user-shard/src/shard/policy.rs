@@ -359,7 +359,7 @@ impl LinkPolicy for ShardPolicy {
                             .await;
                     }
                     Err(error) => {
-                        tracing::warn!(device = %device, %package, "a package message was dropped: {error}");
+                        tracing::warn!(event = "package_event.dropped", host_id = %device, %package, cause = "conversation_unreachable", %error, "a package message was dropped");
                     }
                 },
                 PackageEvent::Lost { package } => {

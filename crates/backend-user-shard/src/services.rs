@@ -289,6 +289,8 @@ impl Storage {
                 // database has one.
                 if let Err(failure) = control.close().await {
                     tracing::error!(
+                        event = "control_db.close_failed",
+                        after = "start_failed",
                         error = &failure as &dyn std::error::Error,
                         "the control database did not close after a failed start"
                     );

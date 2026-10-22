@@ -184,7 +184,7 @@ async fn revalidated(path: PathBuf, content_type: &'static str, request: Request
     let bytes = match tokio::fs::read(&path).await {
         Ok(bytes) => bytes,
         Err(error) => {
-            tracing::warn!(path = %path.display(), "a file of the web app could not be read: {error}");
+            tracing::warn!(event = "web_asset.read_failed", file = path.file_name().map(|name| name.to_string_lossy().into_owned()), %error, "a file of the web app could not be read");
             return ApiError::no_route(request.method(), request.uri().path()).into_response();
         }
     };

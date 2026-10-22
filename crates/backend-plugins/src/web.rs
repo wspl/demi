@@ -38,6 +38,7 @@ pub(crate) async fn send(
     cancel: &CancellationToken,
 ) -> Result<WebResponse, PortFailure> {
     let host = request.url.host_str().unwrap_or_default().to_owned();
+    let started = std::time::Instant::now();
     let answered = tokio::select! {
         answered = tokio::time::timeout(request.deadline(), exchange(client, request)) => answered,
         () = cancel.cancelled() => return Err(refusal(WebFailure::Unreachable {
@@ -45,12 +46,22 @@ pub(crate) async fn send(
         })),
     };
     let answered = answered.unwrap_or(Err(WebFailure::TimedOut));
+    let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     match &answered {
         Ok(response) => {
-            tracing::info!(%plugin, host, status = response.status, "a plugin's outbound request")
+            tracing::info!(event = "plugin_web.sent", %plugin, host, status = response.status, ms, "a plugin's outbound request")
         }
         Err(failure) => {
-            tracing::info!(%plugin, host, %failure, "a plugin's outbound request failed")
+            // The failure's message may quote the vendor's text; its kind is logged.
+            let failure = match failure {
+                WebFailure::NotHttps => "not_https",
+                WebFailure::Invalid { .. } => "invalid",
+                WebFailure::TimedOut => "timed_out",
+                WebFailure::TooLarge => "too_large",
+                WebFailure::Unreachable { .. } => "unreachable",
+                WebFailure::Vendor { .. } => "vendor",
+            };
+            tracing::warn!(event = "plugin_web.failed", %plugin, host, failure, ms, "a plugin's outbound request failed")
         }
     }
     answered.map_err(refusal)

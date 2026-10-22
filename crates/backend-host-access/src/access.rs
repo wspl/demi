@@ -927,7 +927,7 @@ impl dyn HostShard + '_ {
             return;
         };
         if let Err(error) = link.release_conversation(conversation, over).await {
-            tracing::warn!(device = %device, conversation, "the conversation release failed: {error}");
+            tracing::warn!(event = "host_release.conversation_failed", host_id = %device, conversation, %error, "the conversation release failed");
         }
     }
 
@@ -943,7 +943,7 @@ impl dyn HostShard + '_ {
     pub async fn release_packages(&self, packages: &[String]) {
         let releases = self.devices().links().into_iter().map(|(device, link)| async move {
             if let Err(error) = link.release_packages(packages.to_vec()).await {
-                tracing::warn!(device = %device, ?packages, "the package release failed: {error}");
+                tracing::warn!(event = "host_release.packages_failed", host_id = %device, packages = packages.len(), %error, "the package release failed");
             }
         });
         join_all(releases).await;

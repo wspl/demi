@@ -214,7 +214,7 @@ pub async fn route_deaths(
             // A device the backend no longer has is no one's to stop.
             Ok(None) => continue,
             Err(error) => {
-                tracing::error!(device = %id, "the death of a Cloud could not be routed: {error}");
+                tracing::error!(event = "cloud.death_unrouted", host_id = %id, %error, "the death of a Cloud could not be routed");
                 continue;
             }
         };

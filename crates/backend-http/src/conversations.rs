@@ -60,12 +60,14 @@ pub(super) async fn owned(
     id: &str,
 ) -> Result<ConversationRecord, ApiError> {
     let id = ConversationId::try_from(id).map_err(|_| not_found())?;
-    services
+    let record = services
         .control
         .conversation(id)
         .await?
         .filter(|record| record.owner == *user)
-        .ok_or_else(not_found)
+        .ok_or_else(not_found)?;
+    tracing::Span::current().record("conversation_id", tracing::field::display(&record.id));
+    Ok(record)
 }
 
 /// `GET /conversations?archived=`: the caller's conversations that are
@@ -481,7 +483,7 @@ pub(super) async fn stream(
             .await;
         // A shard that is closing takes no socket: dropping it closes it.
         if adopted.is_err() {
-            tracing::info!("a conversation socket arrived while the backend shuts down");
+            tracing::info!(event = "socket.refused", kind = "conversation", reason = "shutting_down", "a conversation socket arrived while the backend shuts down");
         }
     }))
 }

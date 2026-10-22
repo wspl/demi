@@ -248,6 +248,7 @@ pub(super) async fn owned_device(
     if !device.is_host_of(user) || kind.is_some_and(|kind| kind != device.kind) {
         return Err(device_not_found());
     }
+    tracing::Span::current().record("host_id", tracing::field::display(&device.id));
     Ok(device)
 }
 

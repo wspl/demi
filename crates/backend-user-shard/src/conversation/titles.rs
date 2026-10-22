@@ -103,17 +103,20 @@ impl Titles {
         let small_requests = self.small_requests.clone();
         let in_flight = self.sides_in_flight.clone();
         tasks.spawn_local(async move {
+            let started = std::time::Instant::now();
             let titled = async {
                 let answer = small_requests.run(&conversation, &selection, small, cancel.clone()).await?;
-                match answer.as_deref().and_then(title_from_response) {
-                    Some(title) if !cancel.is_cancelled() => write(title).await?,
-                    _ => {}
-                }
-                Ok::<(), TitleFailure>(())
+                Ok::<&'static str, TitleFailure>(match answer.as_deref().and_then(title_from_response) {
+                    Some(_) if cancel.is_cancelled() => "aborted",
+                    Some(title) => {
+                        write(title).await?;
+                        "set"
+                    }
+                    None => "empty",
+                })
             };
-            if let Err(failure) = titled.await {
-                tracing::warn!(%conversation, side = %key.1, %failure, "a side question's title request wrote nothing");
-            }
+            let titled = titled.await;
+            log_title(&conversation, Some(&key.1), &selection, started, &titled);
             in_flight.borrow_mut().remove(&key);
         }
         .in_current_span());
@@ -141,11 +144,9 @@ impl Titles {
         let in_flight = self.in_flight.clone();
         // The title logs under what asked for it, such as a socket's send.
         tasks.spawn_local(async move {
-            if let Err(failure) =
-                generate(&small_requests, &control, &id, &selection, request, &cancel).await
-            {
-                tracing::warn!(conversation = %id, %failure, "a title request wrote nothing");
-            }
+            let started = std::time::Instant::now();
+            let titled = generate(&small_requests, &control, &id, &selection, request, &cancel).await;
+            log_title(&id, None, &selection, started, &titled);
             in_flight.borrow_mut().remove(&id);
             marks.mark(Part::Conversation(id));
         }
@@ -184,8 +185,34 @@ enum TitleFailure {
     Storage(#[from] StorageError),
 }
 
+/// The line that ends a title request: whether it set a title, found no text
+/// to title or an answer to take one from, was stopped, or failed.
+fn log_title(
+    conversation: &ConversationId,
+    side: Option<&NodeId>,
+    selection: &ModelSelection,
+    started: std::time::Instant,
+    titled: &Result<&'static str, TitleFailure>,
+) {
+    let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let side = side.map(tracing::field::display);
+    let (outcome, error) = match titled {
+        Ok(outcome) => (*outcome, None),
+        Err(failure) => ("failed", Some(failure.to_string())),
+    };
+    let provider = selection.provider_id.as_str();
+    let model = selection.model.id.as_str();
+    if error.is_some() {
+        tracing::warn!(event = "title.ended", %conversation, side, provider, model, ms, outcome, error, "a title request ended");
+    } else {
+        tracing::info!(event = "title.ended", %conversation, side, provider, model, ms, outcome, "a title request ended");
+    }
+}
+
 /// Asks the small model for a title of the conversation `id`, which infers
 /// with `selection`, and writes it, unless the request is stopped first.
+/// Answers how it ended: `set`, `empty` for a message or an answer with no
+/// title in it, or `aborted`.
 async fn generate(
     small_requests: &SmallRequests,
     control: &ControlService,
@@ -193,24 +220,24 @@ async fn generate(
     selection: &ModelSelection,
     request: TitleRequest,
     cancel: &CancellationToken,
-) -> Result<(), TitleFailure> {
+) -> Result<&'static str, TitleFailure> {
     // A message without text leaves nothing to title.
     let Some(small) = title_request(&request.message) else {
-        return Ok(());
+        return Ok("empty");
     };
     let answer = small_requests
         .run(id, selection, small, cancel.clone())
         .await?;
     let Some(title) = answer.as_deref().and_then(title_from_response) else {
-        return Ok(());
+        return Ok("empty");
     };
     if cancel.is_cancelled() {
-        return Ok(());
+        return Ok("aborted");
     }
     control
         .generated_title(id.clone(), title, request.from)
         .await?;
-    Ok(())
+    Ok("set")
 }
 
 impl Shard {

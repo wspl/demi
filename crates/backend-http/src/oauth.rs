@@ -78,7 +78,7 @@ pub(super) async fn callback(
         ),
         Err(CallbackError::Storage(error)) => return Err(error.into()),
         Err(CallbackError::Exchange { vendor, failure }) => {
-            tracing::warn!(vendor, %failure, "a plugin's sign-in did not complete");
+            tracing::warn!(event = "plugin_sign_in.failed", vendor, error = %failure, "a plugin's sign-in did not complete");
             (
                 StatusCode::BAD_GATEWAY,
                 page(

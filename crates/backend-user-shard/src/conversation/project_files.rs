@@ -169,7 +169,7 @@ impl Shard {
         let at = match self.kept_at(id).await {
             Ok(at) => at,
             Err(error) => {
-                tracing::warn!(conversation = %id, %error, "the project's instruction files were not taken");
+                tracing::warn!(event = "project_instructions.read_failed", conversation = %id, %error, "the project's instruction files were not taken");
                 return Rc::from([]);
             }
         };
@@ -217,7 +217,7 @@ impl Shard {
         let at = match self.kept_at(&id).await {
             Ok(at) => at,
             Err(error) => {
-                tracing::warn!(conversation = %id, %plugin, %error, "a plugin's project search was not taken");
+                tracing::warn!(event = "project_search.read_failed", conversation = %id, %plugin, %error, "a plugin's project search was not taken");
                 return None;
             }
         };

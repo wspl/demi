@@ -440,6 +440,7 @@ impl Shard {
                 Ok(None) => return Ending::SessionEnded,
                 Err(error) => {
                     tracing::error!(
+                        event = "conversation_socket.session_read_failed",
                         error = &error as &dyn std::error::Error,
                         "a conversation socket's session could not be read"
                     );
@@ -492,7 +493,7 @@ impl Shard {
             return;
         }
         if let Err(reason) = self.restore_tree(conversation).await {
-            tracing::debug!(%conversation, reason, "a conversation is read without its tree");
+            tracing::debug!(event = "conversation.read_without_tree", %conversation, reason, "a conversation is read without its tree");
         }
     }
 
@@ -620,6 +621,7 @@ impl Shard {
         connection: &demi_agent_server::Connection<super::ShardHosts>,
         frame: ClientFrame,
     ) -> Handled {
+        let started = std::time::Instant::now();
         // A message saved for later goes as the frame the composer would send, as
         // the turn the page named, one at a time. It leaves the list once the
         // session takes it, and stays when the session refuses it.
@@ -670,6 +672,7 @@ impl Shard {
             .file_gate()
             .enter(Purpose::Demand)
             .await;
+        let files_pending_ms = millis(started.elapsed());
         // An open takes its turn among the changes of the model settings: the
         // tree opens with the selection the record holds, never with one a
         // change is about to replace. A delivered open keeps both gates until
@@ -687,6 +690,7 @@ impl Shard {
         // A refusal names the command the page sent: a saved message's is
         // its `send_saved`'s, whatever frame it became.
         let command = if from_list { ClientFrameKind::SendSaved } else { frame.kind() };
+        let sent = sent_facts(&frame);
         let opening = matches!(frame, ClientFrame::Open { .. });
         let followed = match &frame {
             ClientFrame::Open { follows, .. } => follows.clone(),
@@ -700,6 +704,19 @@ impl Shard {
                     return Handled::Opened { replies: Vec::new() };
                 }
                 let taken = connection.handle_as(frame, command).await;
+                if let (true, Some((message, attachments))) = (taken, sent) {
+                    tracing::info!(
+                        event = "message.accepted",
+                        %conversation,
+                        user = %self.user(),
+                        turn = message.as_str(),
+                        kind = kind_name(command),
+                        attachments,
+                        files_pending_ms,
+                        ms_to_accept = millis(started.elapsed()),
+                        "a message was taken by its conversation"
+                    );
+                }
                 if let (true, Some((id, turn))) = (taken, saved) {
                     self.take_saved(conversation, id, turn).await;
                 }
@@ -723,7 +740,7 @@ impl Shard {
                 }
             }
             Err(error) => {
-                tracing::error!(%conversation, error = &error as &dyn std::error::Error, "a frame was not prepared");
+                tracing::error!(event = "frame.prepare_failed", %conversation, frame_kind = kind_name(command), error = &error as &dyn std::error::Error, "a frame was not prepared");
                 // A send's failure inside the backend is told as one, with
                 // the request ID beside it.
                 let code = match command {
@@ -814,6 +831,7 @@ impl Shard {
             Ok(true) => self.mark(Part::Metadata(conversation.clone())),
             Ok(false) => {}
             Err(error) => tracing::error!(
+                event = "saved_message.stuck",
                 %conversation,
                 error = &error as &dyn std::error::Error,
                 "a sent message saved for later stayed on its list"
@@ -853,8 +871,10 @@ impl Shard {
                 // The backend decides a send failed, and says so here, under
                 // the socket's request ID.
                 tracing::warn!(
+                    event = "message.refused",
                     %conversation,
-                    command = ?command,
+                    user = %self.user(),
+                    frame_kind = kind_name(*command),
                     code = %refusal.code,
                     cause = %refusal.reason,
                     "a send was refused"
@@ -892,6 +912,7 @@ impl Shard {
                     .await
                     .unwrap_or_else(|error| {
                         tracing::warn!(
+                            event = "frame_attachments.read_failed",
                             %conversation,
                             error = &error as &dyn std::error::Error,
                             "the attachments a transcript frame names were not read"
@@ -973,6 +994,7 @@ impl Shard {
             Ok(None) => return true,
             Err(error) => {
                 tracing::warn!(
+                    event = "conversation_view.read_failed",
                     %conversation,
                     error = &error as &dyn std::error::Error,
                     "what a page shows of a conversation was not read"
@@ -1311,4 +1333,32 @@ impl ContentResolver for ConversationFiles {
             Ok(ResolvedFiles { blocks, media })
         })
     }
+}
+
+/// A duration as the integer `_ms` fields of the log hold it.
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// A frame's kind as the protocol names it, such as `send` or `steer`.
+fn kind_name(kind: ClientFrameKind) -> String {
+    serde_json::to_value(kind)
+        .ok()
+        .and_then(|name| name.as_str().map(str::to_owned))
+        .unwrap_or_default()
+}
+
+/// The message a frame sends and how many files it names, for a frame that
+/// sends one.
+fn sent_facts(frame: &ClientFrame) -> Option<(String, usize)> {
+    let (message, content) = match frame {
+        ClientFrame::Send(send) => (send.message_id.to_string(), &send.content),
+        ClientFrame::Steer { steer_id, content, .. } => (steer_id.to_string(), content),
+        _ => return None,
+    };
+    let files = content
+        .iter()
+        .filter(|part| !matches!(part, ClientContent::Text { .. }))
+        .count();
+    Some((message, files))
 }

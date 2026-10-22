@@ -34,7 +34,7 @@ impl dyn CloudShard {
             Err(error) => {
                 // The status answers without them; the manager answers them
                 // again when it can.
-                tracing::warn!(device = %device.id, "the Cloud's disks could not be read: {error}");
+                tracing::warn!(event = "cloud.disks_read_failed", host_id = %device.id, %error, "the Cloud's disks could not be read");
                 None
             }
         };
@@ -46,7 +46,7 @@ impl dyn CloudShard {
             Some(image) => match machines.call(CurrentBaseVersionParams {}).await {
                 Ok(configured) => configured != image.base_version,
                 Err(error) => {
-                    tracing::warn!("the configured Cloud image could not be read: {error}");
+                    tracing::warn!(event = "cloud.image_read_failed", %error, "the configured Cloud image could not be read");
                     false
                 }
             },

@@ -213,7 +213,20 @@ async fn fetch(
     directory: &str,
     id: &str,
 ) -> Result<String, String> {
-    let unknown = || format!("the conversation has no attachment {id}");
+    let resolved = |outcome: &'static str| {
+        tracing::info!(
+            event = "attachment.resolved",
+            %conversation,
+            attachment = id,
+            outcome,
+            by = "model",
+            "an attachment was looked up"
+        );
+    };
+    let unknown = || {
+        resolved("unknown");
+        format!("the conversation has no attachment {id}")
+    };
     let number: AttachmentNumber = id.parse().map_err(|_| unknown())?;
     let row = shard
         .conversation_db(conversation)
@@ -222,6 +235,7 @@ async fn fetch(
         .map_err(|error| error.to_string())?
         .flatten()
         .ok_or_else(unknown)?;
+    resolved("found");
     let bytes = shard
         .blobs()
         .get(&row.blob)
@@ -419,7 +433,7 @@ pub async fn copy_picture(
     let row = store(shard, conversation, device, cwd, Some(node), path, Purpose::Picture)
         .await
         .map_err(|error| {
-            tracing::debug!(%path, %error, "a picture of a reply was not copied");
+            tracing::warn!(event = "reply_picture.copy_failed", %conversation, %path, %error, "a picture of a reply was not copied");
             error.failure()
         })?;
     Ok(row.number.to_string())
@@ -462,6 +476,7 @@ async fn store(
         .opening(&sha256)
         .await
         .map_err(|error| CopyError::Unreadable(error.to_string()))?;
+    let deduplicated = held.is_some();
     // The media type and an image's or a video's size come from the file's
     // opening, so a held blob is read only that far, and a file read whole
     // is read only that far too: the same file gets the same record.
@@ -510,9 +525,21 @@ async fn store(
         let conversation = conversation.clone();
         move || shard.summary_changed(&conversation)
     };
-    commit(shard.tasks(), shard.conversation_db(conversation), attachment, announce)
+    let node_id = attachment.node.clone();
+    let stored = commit(shard.tasks(), shard.conversation_db(conversation), attachment, announce)
         .await
-        .map_err(CopyError::Unreadable)
+        .map_err(CopyError::Unreadable)?;
+    tracing::info!(
+        event = "attachment.stored",
+        %conversation,
+        node = node_id.as_ref().map(tracing::field::display),
+        attachment = %stored.number,
+        bytes = stored.size,
+        deduplicated,
+        by = if purpose == Purpose::Picture { "reply_picture" } else { "command" },
+        "an attachment was stored"
+    );
+    Ok(stored)
 }
 
 /// An attachment's record before the conversation gives it its number.

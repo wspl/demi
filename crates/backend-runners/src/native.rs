@@ -374,6 +374,7 @@ impl NativeCatalog {
                 };
                 match artifacts.sourcing.ensure(wanted, cancel).await {
                     Ok(()) => tracing::info!(
+                        event = "native_package.stored",
                         package = %descriptor.id,
                         target = %target,
                         "the package executable is in the store"
@@ -382,9 +383,11 @@ impl NativeCatalog {
                     Err(error) => {
                         stored = false;
                         tracing::warn!(
+                            event = "native_package.store_failed",
                             package = %descriptor.id,
                             target = %target,
-                            "the package executable was not stored ahead: {error}"
+                            %error,
+                            "the package executable was not stored ahead"
                         );
                     }
                 }
@@ -414,6 +417,7 @@ impl NativeCatalog {
                 }
             }
             Err(error) => tracing::warn!(
+                event = "paired_systems.list_failed",
                 error = &error as &dyn std::error::Error,
                 "the paired devices' systems cannot be listed"
             ),
@@ -436,7 +440,7 @@ impl NativeCatalog {
             Ok(Some(release)) => release,
             Ok(None) => return,
             Err(error) => {
-                tracing::warn!("the runner release to source cannot be read: {error}");
+                tracing::warn!(event = "runner_release.read_failed", %error, "the runner release to source cannot be read");
                 return;
             }
         };
@@ -444,6 +448,7 @@ impl NativeCatalog {
             Ok(systems) => systems.into_iter().map(|system| system.platform).collect(),
             Err(error) => {
                 tracing::warn!(
+                    event = "paired_systems.list_failed",
                     error = &error as &dyn std::error::Error,
                     "the paired devices' systems cannot be listed"
                 );
@@ -455,9 +460,9 @@ impl NativeCatalog {
                 continue;
             }
             match self.source_runner(target, artifact, cancel).await {
-                Ok(()) => tracing::info!(target = %target, "the runner executable is in the store"),
+                Ok(()) => tracing::info!(event = "runner_executable.stored", target = %target, "the runner executable is in the store"),
                 Err(error) => {
-                    tracing::warn!(target = %target, "the runner executable was not sourced: {error}")
+                    tracing::warn!(event = "runner_executable.source_failed", target = %target, %error, "the runner executable was not sourced")
                 }
             }
         }

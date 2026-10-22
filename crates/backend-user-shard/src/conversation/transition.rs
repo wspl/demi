@@ -241,14 +241,15 @@ impl Shard {
         };
         let reason = moved.as_ref().err().map(|refusal| refusal.code().0.to_string());
         tracing::info!(
+            event = "conversation_move.ended",
             move_id = %id,
             conversation = %record.id,
-            from = %from_host,
-            to = %to_host,
+            from_host_id = %from_host,
+            host_id = %to_host,
             check_ms = steps.check,
             transfers_ms = steps.transfers,
             commit_ms = steps.commit,
-            total_ms = started.elapsed().as_millis() as u64,
+            ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             outcome,
             reason,
             "a conversation move ended"
@@ -562,7 +563,8 @@ impl Shard {
 fn failed(field: PatchField, refusal: &ChangeRefusal) -> FieldResult {
     if let ChangeRefusal::Storage(error) = refusal {
         tracing::error!(
-            ?field,
+            event = "conversation_change.failed",
+            field = ?field,
             error = error as &dyn std::error::Error,
             "a conversation change failed"
         );

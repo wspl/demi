@@ -94,7 +94,7 @@ pub(super) async fn product_pages(
         }
         if lost_origin(headers) && !site.origin_dropped.swap(true, Ordering::Relaxed) {
             tracing::warn!(
-                path = request.uri().path(),
+                event = "proxy.origin_dropped",
                 "a proxy in front of the backend drops the Origin header, so the check against requests \
                  from other sites is off: a web browser's request came with Sec-Fetch-Site and without Origin"
             );

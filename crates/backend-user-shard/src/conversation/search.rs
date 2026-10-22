@@ -140,9 +140,11 @@ impl Shard {
                     Ok(true) => continue,
                     Ok(false) => {}
                     Err(error) => tracing::warn!(
+                        event = "search_index.save_failed",
                         conversation = %id,
+                        fallback = "read_whole",
                         error = &error as &dyn std::error::Error,
-                        "a save was not indexed for search; the conversation is read whole"
+                        "a save was not indexed for search"
                     ),
                 }
                 // The index lacks the conversation, or a change before this one:
@@ -267,6 +269,7 @@ impl Shard {
                 // The conversations not reached are indexed by their next
                 // change, or at the next start.
                 tracing::warn!(
+                    event = "search_index.catch_up_failed",
                     user = %self.user(),
                     error = &error as &dyn std::error::Error,
                     "the search index was not brought in step"
@@ -314,6 +317,7 @@ impl Shard {
 fn report_catch_up(id: &ConversationId, caught_up: Result<(), StorageError>) {
     if let Err(error) = caught_up {
         tracing::warn!(
+            event = "search_index.conversation_failed",
             conversation = %id,
             error = &error as &dyn std::error::Error,
             "a conversation was not indexed for search"
@@ -358,6 +362,7 @@ pub async fn follow_resets(
                     // start; their conversations' changes meanwhile apply as
                     // they come.
                     tracing::warn!(
+                        event = "search_index.list_failed",
                         error = &error as &dyn std::error::Error,
                         "the conversations to index for search cannot be listed"
                     );

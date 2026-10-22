@@ -152,14 +152,16 @@ impl dyn CloudShard {
         machine: &Rc<Machine>,
         operation: ManagedOperation,
     ) -> Result<(), CloudError> {
+        let started = std::time::Instant::now();
         let reset = self.reset_steps(machine, operation.clone()).await;
+        crate::machine::operation_ended(&machine.device.id, "reset", started, reset.is_ok());
         let (next, phase) = match &reset {
             Ok(()) => (ResetPhase::Ready, None),
             Err(error) => {
                 // The failure is the one reported; a save that fails too is
                 // logged beside it.
                 if let Err(saved) = self.save(machine).await {
-                    tracing::warn!(device = %machine.device.id, "a Cloud whose reset failed was not saved: {saved}");
+                    tracing::warn!(event = "cloud.save_failed", host_id = %machine.device.id, step = "reset", error = %error, save_error = %saved, "a Cloud whose reset failed was not saved");
                 }
                 machine.error.replace(Some(error.to_string()));
                 (ResetPhase::Failed, Some(error.to_string()))
@@ -307,7 +309,7 @@ pub async fn recover_clouds(
     let mut running = Vec::new();
     for device in reconciled.running {
         let Ok(id) = DeviceId::try_from(device.as_str()) else {
-            tracing::warn!(device, "the machine manager runs a sandbox no device id names");
+            tracing::warn!(event = "machine_manager.sandbox_unnamed", sandbox = device, "the machine manager runs a sandbox no device id names");
             continue;
         };
         if reset.contains(&id) {
@@ -317,7 +319,7 @@ pub async fn recover_clouds(
             Some(record) => running.push(record),
             // A device the backend no longer has is no one's Cloud; the
             // manager's own stop saves it.
-            None => tracing::warn!(device = %id, "the machine manager runs a sandbox of a device that is gone"),
+            None => tracing::warn!(event = "machine_manager.sandbox_orphaned", host_id = %id, "the machine manager runs a sandbox of a device that is gone"),
         }
     }
     Ok(running)

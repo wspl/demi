@@ -204,7 +204,7 @@ impl AccountMachine for ClaudeMachine {
                     let context = match provider_context(control, shard.user(), &entry).await {
                         Ok(context) => context,
                         Err(error) => {
-                            tracing::warn!(entry = %entry, "Claude Code account work found no command context: {error}");
+                            tracing::warn!(event = "claude_code.command_context_missing", account = %entry, %error, "Claude Code account work found no command context");
                             return;
                         }
                     };
@@ -340,7 +340,7 @@ impl Placement for CrossPlacement {
                     })
                     .await;
                 if let Err(error) = held {
-                    tracing::warn!("the Claude Code machine was not held for work: {error}");
+                    tracing::warn!(event = "claude_code_machine.hold_failed", step = "work", %error, "the Claude Code machine was not held for work");
                 }
             });
         }
@@ -606,8 +606,16 @@ impl AccountGates {
         let shared = match gate.lock.clone().try_read_owned() {
             Ok(shared) => shared,
             Err(_) => {
-                tracing::info!(account, "a start of a Claude Code account waits for a change of the account");
-                gate.lock.clone().read_owned().await
+                tracing::info!(event = "claude_code_start.waited", account, reason = "account_change", "a start of a Claude Code account waits for a change of the account");
+                let waited = std::time::Instant::now();
+                let shared = gate.lock.clone().read_owned().await;
+                tracing::info!(
+                    event = "claude_code_start.released",
+                    account,
+                    waited_ms = u64::try_from(waited.elapsed().as_millis()).unwrap_or(u64::MAX),
+                    "a start of a Claude Code account was released"
+                );
+                shared
             }
         };
         if gate.removed.get() {
@@ -705,7 +713,7 @@ impl MachinePlacement {
                     let _ = released.await;
                 }
                 Err(error) => {
-                    tracing::warn!("the Claude Code machine could not be held for work: {error}")
+                    tracing::warn!(event = "claude_code_machine.hold_failed", step = "access", %error, "the Claude Code machine could not be held for work")
                 }
             }
         });
@@ -858,7 +866,7 @@ impl MachinePlacement {
                     // A shard that is gone keeps nothing to drop.
                     if let (true, Some(shard)) = (gone, kept_by.upgrade()) {
                         shard.claude_cli().forget_versions(&device);
-                        tracing::info!(device = %device, "the Claude Code versions kept for the device were dropped: its executable was gone");
+                        tracing::info!(event = "claude_code_versions.dropped", host_id = %device, reason = "executable_gone", "the Claude Code versions kept for the device were dropped");
                     }
                     end
                 })
@@ -1055,7 +1063,7 @@ impl MachineDir {
             // A directory left behind is said here; the next sign-in or
             // process makes its own all the same.
             if let Err(error) = host.fs().rm(&path, options).await {
-                tracing::warn!(path, "a Claude Code directory was not removed: {error}");
+                tracing::warn!(event = "claude_code_dir.remove_failed", path, %error, "a Claude Code directory was not removed");
             }
         })
     }
@@ -1229,7 +1237,7 @@ impl Drop for WaitingForVersions<'_> {
         {
             // Dropping the ask cancels its call to the machine.
             kept.remove(self.device);
-            tracing::info!(device = %self.device, "the ask of the device's Claude Code versions was given up by every start that waited for it");
+            tracing::info!(event = "claude_code_versions.ask_abandoned", host_id = %self.device, "the ask of the device's Claude Code versions was given up by every start that waited for it");
         }
     }
 }
@@ -1386,7 +1394,7 @@ impl Shard {
         let mut kept = self.claude_cli().versions.borrow_mut();
         if let Some(kept) = kept.get(&target.device).filter(|kept| kept.link.is(link)) {
             if kept.versions.peek().is_none() {
-                tracing::info!(device = %target.device, "a start shares the ask of the device's Claude Code versions under way");
+                tracing::info!(event = "claude_code_versions.ask_shared", host_id = %target.device, "a start shares the ask of the device's Claude Code versions under way");
             }
             return (kept.versions.clone(), kept.waiting.clone());
         }
@@ -1446,7 +1454,7 @@ impl Shard {
     pub(crate) fn cli_package_lost(&self, device: &DeviceId, lost: &Lost<'_>) {
         if matches!(lost, Lost::Every | Lost::Package(PACKAGE)) {
             self.claude_cli().forget_versions(device);
-            tracing::info!(device = %device, "the Claude Code versions kept for the device were dropped: its package was lost");
+            tracing::info!(event = "claude_code_versions.dropped", host_id = %device, reason = "package_lost", "the Claude Code versions kept for the device were dropped");
         }
     }
 
@@ -1472,7 +1480,7 @@ impl Shard {
                 () = shard.closed() => None,
             };
             if let Some(Err(error)) = upgraded {
-                tracing::warn!(user = %shard.user(), "the Claude Code machine's CLI was not updated: {error}");
+                tracing::warn!(event = "claude_code_cli.update_failed", user = %shard.user(), %error, "the Claude Code machine's CLI was not updated");
             }
             shard.claude_cli().upgrading.borrow_mut().remove(&release.version);
         });
@@ -1502,9 +1510,11 @@ impl Shard {
                 }
                 Err(RecvError::Lagged(missed)) => {
                     tracing::warn!(
+                        event = "claude_code_accounts.changes_missed",
                         user = %self.user(),
                         missed,
-                        "account changes were missed; every prepared process is closed"
+                        outcome = "prepared_processes_closed",
+                        "account changes were missed"
                     );
                     self.claude_cli().prepared.close_all();
                     self.agent().prepare_open(None);
