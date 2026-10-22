@@ -8,11 +8,14 @@
 //!   descriptors, a utility's stdout and shell descriptor duplication keep
 //!   their association with the path. A write to an old descriptor after its
 //!   path was replaced is not attributed to the file now there.
-//! - An external program's stdout or stderr redirected into a file goes through
-//!   a runner-owned pipe that forwards into the registered file through the
-//!   same recorder. The child completes only after those streams have drained,
-//!   a forwarding error failing it. A background task's program writes the
-//!   file itself, as it may outlive the job and the runner.
+//! - An external program's stdout or stderr redirected into a registered file
+//!   is handed the file itself, as bash does. The recorder reads the file's
+//!   before side then and its after side once, when the program has exited;
+//!   the command completes after that (`external_output`). On Windows, a file
+//!   opened for appending goes through a runner-owned pipe that forwards into
+//!   it through the recorder, as MSYS programs refuse an appending handle
+//!   (`appends`). A background task's program writes the file itself and
+//!   unrecorded, as it may outlive the job and the runner.
 //! - What an external program writes through its other inherited descriptors
 //!   stays outside tracking.
 //!
@@ -222,7 +225,8 @@ pub struct Scope {
     /// detaches (`Scope::recorder`).
     pub edits: Option<demi_command_sdk::edits::Recorder>,
     /// Whether the scope's work is a background task's, whose programs write
-    /// the files they are redirected to themselves (`external_output`).
+    /// the files they are redirected to themselves, unrecorded
+    /// (`external_output`).
     background: bool,
     /// Readable once `cancellation` is, so blocking IO polls it with its
     /// file; made when blocking IO first needs it. A std mutex: the job's
@@ -453,6 +457,41 @@ impl Scope {
         (file_identity(&current).ok()? == identity).then_some(path)
     }
 
+    /// An external program's output into `file`, which a pipe carries: the
+    /// runner reads it and writes the file through the recorder. The command
+    /// completes once the pipe has drained, a forwarding error failing it.
+    #[cfg(windows)]
+    fn piped_output(
+        &self,
+        file: File,
+    ) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
+        let (reader, writer) = self.descriptors(super::job::pipe)?;
+        let scope = self.clone();
+        let completion = self.tasks.spawn_blocking(move || -> io::Result<()> {
+            let mut buffer = vec![0; 64 * 1024];
+            loop {
+                let count = scope.read(&reader, &mut buffer)?;
+                if count == 0 {
+                    return Ok(());
+                }
+                let mut bytes = &buffer[..count];
+                while !bytes.is_empty() {
+                    let count = scope.write(&file, bytes)?;
+                    if count == 0 {
+                        return Err(io::ErrorKind::WriteZero.into());
+                    }
+                    bytes = &bytes[count..];
+                }
+            }
+        });
+        Ok((
+            writer,
+            Some(Box::pin(async move {
+                completion.await.map_err(io::Error::other)?
+            })),
+        ))
+    }
+
     fn edit(&self, path: &Path) -> Option<Box<dyn Send>> {
         if std::fs::metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
             return None;
@@ -569,6 +608,32 @@ impl Scope {
     }
 }
 
+/// Whether `file` was opened for appending: with append access and none to
+/// write at a position, which a handle of `>>` has and MSYS programs refuse.
+#[cfg(windows)]
+fn appends(file: &File) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Wdk::Storage::FileSystem::{
+        FILE_ACCESS_INFORMATION, FileAccessInformation, NtQueryInformationFile,
+    };
+    use windows_sys::Win32::{
+        Storage::FileSystem::{FILE_APPEND_DATA, FILE_WRITE_DATA},
+        System::IO::IO_STATUS_BLOCK,
+    };
+    let mut status = unsafe { std::mem::zeroed::<IO_STATUS_BLOCK>() };
+    let mut access = FILE_ACCESS_INFORMATION { AccessFlags: 0 };
+    let result = unsafe {
+        NtQueryInformationFile(
+            file.as_raw_handle(),
+            &mut status,
+            (&raw mut access).cast(),
+            std::mem::size_of::<FILE_ACCESS_INFORMATION>() as u32,
+            FileAccessInformation,
+        )
+    };
+    result >= 0 && access.AccessFlags & FILE_APPEND_DATA != 0 && access.AccessFlags & FILE_WRITE_DATA == 0
+}
+
 /// The control of the job's own output streams. The files a shell makes of
 /// them, a task's included, keep the mark, so that the shell can tell a task
 /// that still holds them from one that redirected both elsewhere.
@@ -632,37 +697,36 @@ impl ExecutionHost for Scope {
         &self,
         file: File,
     ) -> io::Result<(File, Option<brush_core::execution_host::OutputCompletion>)> {
-        // A background task's program may outlive the job, whose runner then
-        // is no place for its output to pass through: the runner's exit would
-        // break the pipe, and the program would die of it on its next write.
-        // Its writes are not recorded as edits, as those of a job that has
-        // ended are not.
-        if self.background || self.file_path(&file).is_none() {
+        // A background task's program may outlive the job and the runner. Its
+        // writes are not recorded as edits, as those of a job that has ended
+        // are not.
+        if self.background {
             return Ok((file, None));
         }
-        let (reader, writer) = self.descriptors(super::job::pipe)?;
+        let Some(path) = self.file_path(&file) else {
+            return Ok((file, None));
+        };
+        #[cfg(windows)]
+        if appends(&file) {
+            return self.piped_output(file);
+        }
+        let Some(held) = self.recorder().and_then(|edits| edits.hold(&path).ok()) else {
+            return Ok((file, None));
+        };
         let scope = self.clone();
-        let completion = self.tasks.spawn_blocking(move || -> io::Result<()> {
-            let mut buffer = vec![0; 64 * 1024];
-            loop {
-                let count = scope.read(&reader, &mut buffer)?;
-                if count == 0 {
-                    return Ok(());
-                }
-                let mut bytes = &buffer[..count];
-                while !bytes.is_empty() {
-                    let count = scope.write(&file, bytes)?;
-                    if count == 0 {
-                        return Err(io::ErrorKind::WriteZero.into());
-                    }
-                    bytes = &bytes[count..];
-                }
-            }
-        });
+        let tasks = self.tasks.clone();
         Ok((
-            writer,
+            file,
             Some(Box::pin(async move {
-                completion.await.map_err(io::Error::other)?
+                tasks
+                    .spawn_blocking(move || {
+                        if scope.recorder().is_some() {
+                            // A failure is logged; it never fails the command.
+                            let _ = held.settle();
+                        }
+                    })
+                    .await
+                    .map_err(io::Error::other)
             })),
         ))
     }

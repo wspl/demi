@@ -25,7 +25,8 @@
 //! (a write-capable open, a write to an opened file, a whole-file write,
 //! publishing a temporary file over a destination). It saves the after contents
 //! before releasing the operation, never rereading the workspace at job exit.
-//! So two jobs that write one file stay apart:
+//! So two jobs that write one file stay apart, but for a program that writes its
+//! file itself, below:
 //!
 //! ```text
 //!              x=0, y=0
@@ -37,6 +38,10 @@
 //! - Successive writes to a file combine only when the earlier saved after
 //!   contents equal the next before contents, so a combined segment never holds
 //!   anyone else's change. Otherwise a new segment starts.
+//! - A program that writes its redirected file itself is the exception. Its
+//!   before side is taken when it is handed the file (`Recorder::hold`) and its
+//!   after side once, when it has exited (`Held::settle`), so its edit holds
+//!   what any other writer wrote to the file meanwhile.
 //! - A combined segment that returns to its original bytes disappears.
 //! - A segment without contents cannot establish continuity: the file then
 //!   keeps only metadata rather than a stale or misleading diff.
@@ -44,7 +49,9 @@
 //! # Locking and failure
 //!
 //! One OS lock covers capture, mutation and publication, shared by every
-//! participating writer of a runner installation.
+//! participating writer of a runner installation. A program that writes its
+//! file itself takes it to capture the before side and again to publish the
+//! edit, not while it runs.
 //!
 //! - It is held for one file operation, never while a command waits for input,
 //!   another command or a background task.
@@ -114,6 +121,20 @@ impl Recorder {
         let result = operation();
         drop(recording);
         result
+    }
+
+    /// Reads the before side of `path`, which a program will write itself
+    /// (`Held::settle`).
+    pub fn hold(&self, path: &Path) -> io::Result<Held> {
+        if fs::metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
+            return Err(io::Error::other("not a regular file"));
+        }
+        let _lock = self.locked().inspect_err(diagnostic)?;
+        Ok(Held {
+            recorder: self.clone(),
+            path: normalize(path),
+            before: Contents::read(path),
+        })
     }
 
     /// Records the rename of `from` to `to` that runs while the returned guard
@@ -222,6 +243,26 @@ impl Recorder {
             before: Vec::new(),
             changed: false,
         })
+    }
+}
+
+/// A file as a program that writes it itself found it, which no lock is held
+/// for while the program runs (`Recorder::hold`).
+pub struct Held {
+    recorder: Recorder,
+    path: PathBuf,
+    before: Contents,
+}
+
+impl Held {
+    /// Records the edit from the before side to the file as it is now, once the
+    /// program that wrote it has exited. It continues the file's last segment
+    /// as any edit does, so writes of the job's own before the program's
+    /// stay one edit.
+    pub fn settle(self) -> io::Result<()> {
+        let mut recording = self.recorder.locked().inspect_err(diagnostic)?;
+        recording.before.push((self.path, self.before));
+        Ok(())
     }
 }
 
