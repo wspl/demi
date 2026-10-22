@@ -40,8 +40,8 @@ written by the release before. What migrates, and what is read as it is.
 
 ## Performance
 
-What the change costs and saves, measured or to be measured, before and
-after.
+What the change costs and saves, as the spike measured it before the build,
+and which lines of the log show it once it runs.
 
 ## Drawbacks
 
