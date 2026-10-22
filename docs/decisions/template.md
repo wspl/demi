@@ -40,8 +40,8 @@ written by the release before. What migrates, and what is read as it is.
 
 ## Performance
 
-What the change costs and saves, measured or to be measured, before and
-after.
+What the change costs and saves: what the spike measured, and what only the
+whole change can show, to be measured before and after.
 
 ## Drawbacks
 
