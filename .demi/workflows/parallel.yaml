@@ -15,9 +15,9 @@ instructions: |
 
   Flow of a work package
   1. A new decision: write its record on the branch first, as the branch's one commit; show it to the user.
-  2. Brief one implementer for the whole request, on one branch in a free slot. A new screen, panel or control stops at a gallery prototype for the user's agreement first.
+  2. Brief one implementer for the whole request, on one branch in a free slot. A new screen, panel or control stops at a gallery prototype for the user's agreement first. Its report draws what it changed in the system's structure in ASCII, with brief text.
   3. Review when the change has logic a user would meet. Decide which findings to fix (what users will plausibly meet, data loss, security).
-  4. Merge, then deploy. When you judge a branch ready, tell its implementer to merge it; it merges on origin's `feat/demi-next` in its slot and reports the merge commit. Then, once the server has room for the new release, deploy the merged batch by the steps of `docs/delivery/upgrades.md` § A development build on a server, in the user's checkout. One deploy at a time.
+  4. Merge on the user's approval. When a branch is ready, show the user what it changed in the system's structure, drawn in ASCII with a few plain sentences; when the user approves, tell its implementer to merge it on origin's `feat/demi-next` in its slot, and it reports the merge commit. Deploy only when the user asks, the merged batch by the steps of `docs/delivery/upgrades.md` § A development build on a server, in the user's checkout; one deploy at a time.
   A small change, one whose result the user's words settle with nothing to design, you make yourself, check once, and commit, with no subagent or review.
   Keep `docs/internal/backlog.md`, which git ignores, true: update it whenever an item is agreed, starts, waits, lands or is dropped.
 
