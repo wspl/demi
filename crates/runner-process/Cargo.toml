@@ -35,6 +35,10 @@ tracing.workspace = true
 # The pipes a spawned process inherits besides its standard streams
 # (`crates/runner-host/src/lib.rs`).
 command-fds = "0.3"
+# A child's SIGHUP ignored for `nohup`, set between fork and exec, and on
+# Apple an ended child's processor time, which only proc_pid_rusage reads
+# (`src/process.rs`).
+libc = "0.2"
 # The open-file limit, raised at start and restored in children (`crates/command-sdk/src/descriptors.rs`).
 rlimit = "0.11"
 rustix = { version = "1", features = ["fs", "process"] }
@@ -47,17 +51,12 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = "0.18"
 
-# An ended child's processor time, which only proc_pid_rusage reads, in Mach
-# time units (`src/process.rs`).
+# proc_pid_rusage's Mach time units (`src/process.rs`).
 [target.'cfg(target_vendor = "apple")'.dependencies]
-libc = "0.2"
 mach2 = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
-
-[target.'cfg(unix)'.dev-dependencies]
-libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"
