@@ -30,7 +30,7 @@ final class Output: @unchecked Sendable {
 
   func control(_ object: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: object) else {
-      log("a message did not serialize: \(object)")
+      log("a message did not serialize")
       return
     }
     write(.control, data)

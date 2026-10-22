@@ -23,6 +23,7 @@ fault-injection = []
 [dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-cli = { path = "../shared-cli" }
+demi-shared-types = { path = "../shared-types", features = ["tracing"] }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 clap = { version = "4", features = ["derive", "env"] }

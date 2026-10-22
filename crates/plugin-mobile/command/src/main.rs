@@ -6,17 +6,12 @@ async fn main() {
     // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
     demi_command_sdk::Launch::from_process();
-    // Diagnostics go to standard error, which the runner drains into the
-    // Host's log line by line.
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_max_level(tracing::Level::INFO)
-        .without_time()
-        .with_target(false)
-        .init();
+    // Events go to standard error as lines of the log, which the runner keeps
+    // as they are.
+    demi_command_sdk::log_to_stderr("mobile");
     let service = Arc::new(demi_mobile::DemiMobile::new());
     if let Err(error) = demi_command_sdk::serve_stdio(service).await {
-        eprintln!("demi-mobile: {error}");
+        tracing::error!(event = "mobile_service.exited", %error, "the service ended with an error");
         std::process::exit(1);
     }
     std::process::exit(0);

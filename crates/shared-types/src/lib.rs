@@ -79,6 +79,8 @@ mod file_types;
 mod ids;
 mod kept;
 mod log;
+#[cfg(feature = "tracing")]
+pub mod log_layer;
 mod media;
 mod model;
 #[cfg(feature = "mp4")]

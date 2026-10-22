@@ -170,7 +170,7 @@ impl ImageStore {
             // A failure to remove the stage is logged beside the first error,
             // which the caller acts on; the next publication removes it.
             if let Err(cleanup) = remove_tree(off, &stage) {
-                tracing::warn!("machines: {cleanup}");
+                tracing::warn!(event = "stage.remove_failed", kind = "generation", error = %cleanup, "a stage that stays behind could not be removed");
             }
             return Err(error.into());
         }

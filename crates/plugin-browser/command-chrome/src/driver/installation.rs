@@ -199,7 +199,7 @@ impl Chrome {
                     .collect(),
             ),
             Err(error) => {
-                tracing::warn!("the installed Chrome could not be listed: {error}");
+                tracing::warn!(event = "chrome_installation.list_failed", %error, "the installed Chrome could not be listed");
                 None
             }
         }

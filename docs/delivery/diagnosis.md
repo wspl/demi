@@ -28,7 +28,7 @@ The `events` table has one row per line, whatever wrote it:
 | Column | Holds |
 | --- | --- |
 | `at` | Milliseconds since the Unix epoch, by the writer's clock: the page's, a Host's or the backend's differ |
-| `origin` | `backend`, `runner` or `page` |
+| `origin` | `backend`, `runner`, `page` or `machine_manager` |
 | `level` | `trace`, `debug`, `info`, `warn` or `error` |
 | `event` | What happened, as `noun.verb` in the past tense, such as `command.ended`; the `tracing` target for a backend event that names none, with its message in `fields.message` |
 | `request_id` | The HTTP request, a socket's upgrade included. A page's line carries the request that brought it to the backend |
@@ -113,6 +113,16 @@ on a million lines.
   its commands' exits. A Host that is offline keeps its lines in its files
   until it connects again. The backend stores them as the Host's owner's: a
   request, page or turn ID a runner names is not taken.
+- **A command package's service** writes each `tracing` event as one JSON line
+  of the log on its standard error (`demi_command_sdk::log_to_stderr`), and its
+  runner keeps the line as it is among its own, so a service's line names its
+  conversation and invocation as any other. A line of its standard error that is
+  not one, as a panic's report, is kept with the event `stderr` and its text in
+  `fields.text`.
+- **The Cloud machine manager's** `tracing` events go to its journal, and each
+  of `info` and above is also sent as a line on every connection the backend
+  has open to it; the backend stores it with the origin `machine_manager`. A
+  line made while no connection is open stays in the journal alone.
 - **A page's** lines go to `POST /log` every 5 seconds while it has lines, at
   once for an error, and in one request when the page is hidden, which the
   browser finishes after the page is gone and which is small (16 KiB) because

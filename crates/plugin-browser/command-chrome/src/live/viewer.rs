@@ -44,6 +44,7 @@ use crate::live::{
     uploads,
     writer::Writer,
 };
+use crate::traced::SpawnTraced as _;
 
 /// How long after the viewer's input text the tab copies reaches its
 /// clipboard, as a local browser allows a user-activated write.
@@ -521,7 +522,7 @@ fn start_observer(
     let tasks = live.tasks().clone();
     let live = live.clone();
     let tab = tab.clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         tokio::select! {
             () = tab.ended().cancelled() => {}
             observed = live.observer(&tab) => {
@@ -565,7 +566,7 @@ impl Session<'_> {
                 // A browser that ended takes its tab list with it; the view
                 // ends with it and says so.
                 if !self.environment.ended().is_cancelled() {
-                    tracing::warn!("live view tabs: {error}");
+                    tracing::warn!(event = "live_view.step_failed", step = "tabs", %error, "a step of the live view failed");
                     self.writer.notice(error.code(), &error.to_string()).await;
                 }
                 return;
@@ -875,7 +876,7 @@ impl Session<'_> {
             // or copied text of this tab.
             Err(error) => {
                 if !watched.tab.ended().is_cancelled() {
-                    tracing::warn!("live view observer of {}: {error}", watched.tab.id());
+                    tracing::warn!(event = "live_view.step_failed", step = "observer", tab = %watched.tab.id(), %error, "a step of the live view failed");
                     self.writer.notice(error.code(), &error.to_string()).await;
                 }
                 return;

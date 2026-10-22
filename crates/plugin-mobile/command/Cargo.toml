@@ -39,7 +39,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
 # The Android driver (`crates/plugin-mobile/command/src/android/mod.rs`): the
 # emulator's gRPC interface,
 # its JWT signed with ES256, and the UI tree's XML. Its pictures are coded by

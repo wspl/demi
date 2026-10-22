@@ -17,6 +17,7 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::Result;
+use crate::traced::SpawnTraced as _;
 
 /// Where a tab's top-level page is in its loading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +60,7 @@ pub(crate) async fn observe(
     // operated, so every load after that is seen from its start.
     let load = watch::channel(PageLoad::Idle).0;
     let follows = load.clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         loop {
             let now = tokio::select! {
                 _ = ended.cancelled() => break,

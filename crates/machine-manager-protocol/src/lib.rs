@@ -25,6 +25,9 @@
 //!   completion order, matched to their requests by id. A reply for a connection
 //!   that has closed is discarded and its operation still completes. A death
 //!   event goes to every connection.
+//! - A line of the manager's log (`MachineResponse::Log`) goes to every open
+//!   connection as a death event does, and the backend stores it in its log. A
+//!   line made while no connection is open stays in the manager's journal.
 //!
 //! It holds no manager policy and no IO.
 

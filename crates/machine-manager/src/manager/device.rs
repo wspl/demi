@@ -102,7 +102,7 @@ impl Stage {
         // A stage that stays behind has not replaced anything, and the next
         // reconciliation removes it; the failure is logged.
         if let Err(error) = blocking::run(move |off| remove_tree(off, &path)).await {
-            tracing::warn!("machines: {error}");
+            tracing::warn!(event = "stage.remove_failed", kind = "device", %error, "a stage that stays behind could not be removed");
         }
     }
 }
@@ -180,7 +180,7 @@ impl DeviceWorker {
     /// the working pair, and report the death even when those fail.
     async fn runtime_exited(&mut self, outcome: Result<(), ToolError>) {
         if let Err(error) = outcome {
-            tracing::error!(device = %self.device, "machines: Cloud runtime wait failed: {error}");
+            tracing::error!(event = "cloud_runtime.wait_failed", host_id = %self.device, %error, "a Cloud's runtime could not be waited for");
         }
         // No request named the machine: the save removes no fallback.
         let recovered = match self.stop().await {
@@ -188,7 +188,7 @@ impl DeviceWorker {
             Err(error) => Err(error),
         };
         if let Err(error) = recovered {
-            tracing::error!(device = %self.device, "machines: Cloud recovery failed: {}", chain(&error));
+            tracing::error!(event = "cloud_recovery.failed", host_id = %self.device, error = %chain(&error), "a Cloud's recovery after its sandbox exited failed");
         }
         self.report_death().await;
     }

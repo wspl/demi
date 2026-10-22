@@ -1,5 +1,5 @@
-//! The one line of the log, whatever wrote it: the backend, a Host's runner or
-//! a page.
+//! The one line of the log, whatever wrote it: the backend, a Host's runner,
+//! the Cloud's machine manager or a page.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -24,6 +24,9 @@ pub enum LogOrigin {
     Backend,
     Runner,
     Page,
+    /// The Cloud machine manager, which sends its lines on the backend's
+    /// connection to it.
+    MachineManager,
 }
 
 /// One line of the log, as the backend stores it, whatever wrote it. A line

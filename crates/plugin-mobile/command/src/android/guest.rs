@@ -172,7 +172,7 @@ impl U2 {
             Ok(Err(why)) if why == HELD => {
                 drop(lines);
                 if let Err(error) = self.stop_left().await {
-                    tracing::info!("the refused Android helper did not stop: {error}");
+                    tracing::info!(event = "android_helper.stop_failed", case = "refused", %error, "the Android helper did not stop");
                 }
                 return Err(DriverError::Failed(TAKEN.into()));
             }
@@ -288,7 +288,7 @@ impl Guest for U2 {
                         // `com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME`
                         Ok(method) => method.trim().split_once('/').map(|(package, _)| package.to_owned()),
                         Err(error) => {
-                            tracing::info!("the input method was not read: {error}");
+                            tracing::info!(event = "android_input_method.read_failed", %error, "the input method was not read");
                             None
                         }
                     }
@@ -425,7 +425,7 @@ impl Guest for U2 {
             if let Some(server) = self.server.lock().await.take() {
                 server.reader.abort();
                 if let Err(error) = self.stop_left().await {
-                    tracing::info!("the Android helper did not stop: {error}");
+                    tracing::info!(event = "android_helper.stop_failed", case = "close", %error, "the Android helper did not stop");
                 }
             }
         })

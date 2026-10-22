@@ -21,6 +21,7 @@ bytes.workspace = true
 clap = { version = "4", default-features = false, features = ["derive", "error-context", "std", "usage"] }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-protocol = { path = "../command-protocol" }
+demi-shared-types = { path = "../shared-types", features = ["tracing"] }
 futures-util.workspace = true
 h2.workspace = true
 http.workspace = true
@@ -31,6 +32,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

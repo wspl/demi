@@ -2,7 +2,7 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_command_protocol::{
-    ARTIFACTS_PATH, CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH,
+    ARTIFACTS_PATH, CONVERSATION_PATH, is_conversation_scope, CommandError, Completion, ConversationRequest, INFO_PATH,
     INVOKE_PATH, Invocation, MAX_MEDIUM_BYTES, MAX_METADATA_BYTES, MAX_RECORD_BYTES, MediumFacts, Metadata,
     MESSAGES_PATH, NUMBERS_PATH,
     ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, StreamOpen, VERSION,
@@ -17,6 +17,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
+use tracing::Instrument as _;
 
 use crate::{
     Input, ServiceError,
@@ -384,6 +385,24 @@ where
     }
 }
 
+/// The span a call's events are written in, which names the conversation and
+/// invocation the call serves.
+fn call_span(operation: &str, invocation: Option<&str>, conversation: Option<&str>) -> tracing::Span {
+    let span = tracing::info_span!(
+        "call",
+        operation,
+        invocation = tracing::field::Empty,
+        conversation = tracing::field::Empty
+    );
+    if let Some(invocation) = invocation {
+        span.record("invocation", invocation);
+    }
+    if let Some(conversation) = conversation {
+        span.record("conversation", conversation);
+    }
+    span
+}
+
 fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), ServiceError> {
     let mut headers = Response::new(());
     *headers.status_mut() = status;
@@ -457,6 +476,25 @@ async fn invoke<H: Handler + ?Sized>(
     {
         return reject(&mut response, StatusCode::NOT_FOUND);
     }
+    let span = match &call {
+        Call::Invocation(request) => call_span(
+            request.operation(),
+            Some(request.invocation_id()),
+            request.conversation(),
+        ),
+        Call::Conversation(request) => {
+            let (operation, conversation) = match request {
+                ConversationRequest::Release { conversation } => ("release", Some(conversation)),
+                ConversationRequest::Status {} => ("status", None),
+            };
+            call_span(
+                operation,
+                None,
+                conversation.map(String::as_str).filter(|name| is_conversation_scope(name)),
+            )
+        }
+        Call::Stream(..) => tracing::Span::none(),
+    };
     let release = matches!(
         &call,
         Call::Conversation(ConversationRequest::Release { .. })
@@ -488,7 +526,7 @@ async fn invoke<H: Handler + ?Sized>(
             relay(Input::http(body), output, finish)
         }
     };
-    let mut task = AbortOnDropHandle::new(tokio::spawn(work));
+    let mut task = AbortOnDropHandle::new(tokio::spawn(work.instrument(span)));
     let outcome = loop {
         tokio::select! {
             biased;

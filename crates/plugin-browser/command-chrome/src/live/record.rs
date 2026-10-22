@@ -38,6 +38,7 @@ use demi_shared_recording_protocol::{Area, EndReason};
 use crate::driver::capture::{CaptureChannel, RecordEvent};
 use crate::driver::operation::BrowserError;
 use crate::tabs::{tab::BrowserTab, viewport::pixels};
+use crate::traced::SpawnTraced as _;
 
 /// How long a capture that failed waits before it starts again.
 const RETRY: Duration = Duration::from_secs(1);
@@ -53,7 +54,7 @@ const FINISH: Duration = Duration::from_secs(5);
 /// Starts recording `tab` into `live`. The task ends with the recording, and
 /// ends the recording when the tab closes or the duration runs out.
 pub fn start(tab: BrowserTab, captures: CaptureChannel, live: Live, tasks: &TaskTracker) {
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         let sink = live.sink();
         let handover = live.handover().clone();
         // Cancelled when the tab closes or the limit comes: the session hands
@@ -119,7 +120,7 @@ async fn session(
                 if failures >= FAILURES {
                     return Ending::Failed(note);
                 }
-                tracing::warn!("a recording's capture failed, starting again: {note}");
+                tracing::warn!(event = "recording.capture_restarted", %note, "a recording's capture failed and starts again");
                 tokio::select! {
                     _ = over.cancelled() => return Ending::Handed,
                     _ = handover.requested().cancelled() => return Ending::Handed,

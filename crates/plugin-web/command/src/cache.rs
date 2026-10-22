@@ -51,7 +51,7 @@ pub async fn write(url: &str, page: &Page) {
     }
     .await;
     if let Err(error) = written {
-        tracing::warn!("a fetched page could not be kept: {error}");
+        tracing::warn!(event = "web_cache.write_failed", %error, "a fetched page could not be kept");
     }
     let Ok(mut entries) = tokio::fs::read_dir(&directory).await else {
         return;

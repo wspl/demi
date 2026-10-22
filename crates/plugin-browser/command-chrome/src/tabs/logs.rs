@@ -16,6 +16,7 @@ use crate::driver::{
 use crate::tabs::protocol::{
     CONSOLE_BYTES, CONSOLE_ENTRIES, DEFAULT_NODES, LogEntry, LogLevel, LogsInput, LogsResult,
 };
+use crate::traced::SpawnTraced as _;
 
 /// Reads waiting for the collector; a full queue holds back their senders.
 const READS: usize = 8;
@@ -146,7 +147,7 @@ pub(crate) async fn observe(
     let mut events = page.event_listener::<EventConsoleApiCalled>().await?;
     let mut history = History::new()?;
     let (reads, mut requests) = mpsc::channel::<Read>(READS);
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         loop {
             // Reads first: a flood of console messages does not hold them up.
             tokio::select! {

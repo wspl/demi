@@ -5,6 +5,7 @@
 use std::num::NonZeroU64;
 
 use demi_runner_protocol::boot::ManagedBoot;
+use demi_shared_types::LogLine;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{BaseVersion, MachineImageState, RuntimeState, Volume};
@@ -17,7 +18,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it.
-pub const VERSION: u32 = 4;
+pub const VERSION: u32 = 5;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -186,7 +187,7 @@ pub struct ResetParams {
 }
 
 /// A message from the manager: the reply to a request, or the death of a
-/// device's sandbox, which every connection receives.
+/// device's sandbox or a line of its log, which every connection receives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
 #[serde(
     tag = "type",
@@ -218,6 +219,13 @@ pub enum MachineResponse {
     Death {
         #[garde(length(min = 1))]
         device_id: String,
+    },
+    /// A line of the manager's log, sent on every open connection as a death
+    /// is: the backend stores it in its log. A line made while no connection
+    /// is open is not sent.
+    Log {
+        #[garde(skip)]
+        line: LogLine,
     },
 }
 

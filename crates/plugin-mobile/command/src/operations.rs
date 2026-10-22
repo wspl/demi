@@ -722,7 +722,7 @@ pub(crate) async fn discard(file: &std::path::Path) {
     if let Err(error) = tokio::fs::remove_file(file).await
         && error.kind() != std::io::ErrorKind::NotFound
     {
-        tracing::warn!("{} could not be removed: {error}", file.display());
+        tracing::warn!(event = "mobile_file.remove_failed", path = %file.display(), %error, "a file could not be removed");
     }
 }
 

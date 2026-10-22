@@ -85,13 +85,13 @@ impl Kept {
                 Ok(bytes) => match demi_shared_types::decode_slice::<Record>(&bytes) {
                     Ok(record) => record,
                     Err(error) => {
-                        tracing::error!("{} does not read, and is replaced: {error}", path.display());
+                        tracing::error!(event = "mobile_state.failed", op = "read_replaced", path = %path.display(), %error, "the record of the devices does not read, and is replaced");
                         Record::default()
                     }
                 },
                 Err(error) if error.kind() == io::ErrorKind::NotFound => Record::default(),
                 Err(error) => {
-                    tracing::error!("{} could not be read: {error}", path.display());
+                    tracing::error!(event = "mobile_state.failed", op = "read", path = %path.display(), %error, "the record of the devices could not be read");
                     Record::default()
                 }
             },
@@ -179,7 +179,7 @@ impl Kept {
             return;
         };
         if let Err(error) = write(path, &record) {
-            tracing::error!("{} could not be written: {error}", path.display());
+            tracing::error!(event = "mobile_state.failed", op = "write", path = %path.display(), %error, "the record of the devices could not be written");
         }
     }
 }

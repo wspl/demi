@@ -145,7 +145,7 @@ pub async fn retain(images: &Path, working: &Path, base: &BaseVersion) -> Result
                 continue;
             }
             remove_tree(off, &entry.path())?;
-            tracing::info!("machines: removed the Cloud base {name}, which nothing needs");
+            tracing::info!(event = "cloud_base.removed", %name, "a Cloud base that nothing needs was removed");
         }
         sync(off, &bases)?;
         Ok(())
@@ -213,7 +213,7 @@ pub async fn import(tools: &Tools, image: &Path, bases: &Path) -> Result<BaseVer
             // The stage is never visible to a runtime; the next import
             // removes it if this removal fails.
             if let Err(error) = remove_tree(off, &stage) {
-                tracing::warn!("machines: {error}");
+                tracing::warn!(event = "stage.remove_failed", kind = "base_publish", %error, "a stage that stays behind could not be removed");
             }
         }
         published.map(|()| release.version)
@@ -268,7 +268,7 @@ fn prepare(off: &OffLoop, image: &Path, bases: &Path) -> Result<Prepared, BaseEr
     let copied = copy_verified(&image.join(manifest.rootfs.file.name()), &stage, &manifest);
     if let Err(error) = copied {
         if let Err(cleanup) = remove_tree(off, &stage) {
-            tracing::warn!("machines: {cleanup}");
+            tracing::warn!(event = "stage.remove_failed", kind = "base_copy", error = %cleanup, "a stage that stays behind could not be removed");
         }
         return Err(error);
     }

@@ -6,6 +6,9 @@
 //! (the runner does), and a command's algorithm belongs to its package, never
 //! to the SDK or the runner.
 //!
+//! A service's `tracing` events leave as JSON lines of the one log on its
+//! standard error (`log_to_stderr`), which the runner keeps as they are.
+//!
 //! The runner and every command program use this one SDK. A command program
 //! depends on it and on `command-protocol` without depending on the runner or
 //! on Demi's command implementations. The SDK holds no credentials.
@@ -44,6 +47,7 @@ mod asking;
 mod client;
 mod exchange;
 mod launch;
+mod log;
 mod messages;
 mod numbers;
 mod server;
@@ -56,6 +60,7 @@ pub use asking::{Answered, Asked, Pending, Reporter, RequestStream};
 pub use client::{Client, CommandInput, CommandOutput};
 pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
 pub use launch::{COMMAND_SERVICE, Launch};
+pub use log::log_to_stderr;
 pub use messages::{Messages, MessagesAsk, Told};
 pub use numbers::{Draw, Numbers, NumbersAsk};
 pub use server::{

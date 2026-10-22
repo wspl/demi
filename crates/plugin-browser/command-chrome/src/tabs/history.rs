@@ -15,6 +15,7 @@ use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::Result;
+use crate::traced::SpawnTraced as _;
 
 /// Which ends of its history a tab is away from.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -55,7 +56,7 @@ pub(crate) async fn observe(
     let ends = watch::channel(read(page).await?).0;
     let follows = ends.clone();
     let page = page.clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         loop {
             tokio::select! {
                 _ = ended.cancelled() => break,

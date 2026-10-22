@@ -185,7 +185,7 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
                     if let Some((encoder, _)) = &mut current {
                         match encoder.set_rate(changed.0, changed.1.max(1)) {
                             Ok(()) => force_key = true,
-                            Err(error) => tracing::warn!("the encoding did not change: {error}"),
+                            Err(error) => tracing::warn!(event = "android_encoder.unchanged", %error, "the encoding did not change"),
                         }
                     }
                 }
@@ -217,7 +217,7 @@ fn encode(shared: &Shared, events: &mpsc::Sender<CaptureEvent>, load: &Load, siz
         if current.as_ref().is_none_or(|(_, at)| *at != (width, height)) {
             match started(load, width, height, rate.0, rate.1) {
                 Ok(encoder) => {
-                    tracing::debug!("the live view of an emulator is coded by {}", encoder.name());
+                    tracing::debug!(event = "android_encoder.chosen", purpose = "live", encoder = encoder.name(), "an encoder was chosen");
                     current = Some((encoder, (width, height)));
                     force_key = true;
                 }

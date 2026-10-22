@@ -2,7 +2,7 @@
 //! diagnostics and a service's standard error.
 
 /// A longer line of text continues on the next line.
-pub const LINE_BYTES: usize = 4096;
+pub const LINE_BYTES: usize = demi_command_protocol::STDERR_LINE_BYTES;
 
 /// Cuts a byte stream that arrives in arbitrary chunks into log lines: at
 /// each newline, and at `LINE_BYTES` when no newline comes.

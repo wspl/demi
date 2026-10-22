@@ -4,7 +4,7 @@
 //!
 //! - Requests on a connection run concurrently and are answered in completion
 //!   order.
-//! - A death event goes to every connection.
+//! - A death event and a line of the manager's log go to every connection.
 //!
 //! The socket's owner and group are the boundary: there is no authentication
 //! and no TCP listener. The group includes only trusted backend infrastructure,
@@ -23,6 +23,7 @@ use demi_machine_manager_protocol::{
     DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, decode_request,
     WIRE_VERSION, encode_line,
 };
+use demi_shared_types::LogLine;
 use futures_util::StreamExt;
 use tokio::{
     io::AsyncWriteExt,
@@ -123,6 +124,7 @@ pub async fn serve<S: MachineService + 'static>(
     socket: Socket,
     service: Rc<S>,
     mut deaths: mpsc::Receiver<DeviceId>,
+    mut lines: mpsc::Receiver<LogLine>,
     shutdown: impl Future<Output = ()>,
 ) -> InFlight {
     let requests = TaskTracker::new();
@@ -130,6 +132,7 @@ pub async fn serve<S: MachineService + 'static>(
     let mut outboxes: HashMap<u64, mpsc::WeakSender<Vec<u8>>> = HashMap::new();
     let mut next_connection = 0_u64;
     let mut deaths_open = true;
+    let mut lines_open = true;
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
@@ -154,7 +157,7 @@ pub async fn serve<S: MachineService + 'static>(
                     });
                 }
                 Err(error) => {
-                    tracing::warn!("machines: accepting a connection failed: {error}");
+                    tracing::warn!(event = "manager.accept_failed", %error, "accepting a connection failed");
                     // A failure such as a lack of open files lasts a while;
                     // retrying at once would only spin.
                     tokio::time::sleep(ACCEPT_BACKOFF).await;
@@ -183,6 +186,23 @@ pub async fn serve<S: MachineService + 'static>(
                 }
                 None => deaths_open = false,
             },
+            line = lines.recv(), if lines_open => match line {
+                Some(line) => {
+                    let line = encode_line(&MachineResponse::Log { line });
+                    // A reader holds a line whole up to the wire's limit, and
+                    // past it drops its connection, which a line of the log
+                    // is not worth.
+                    if line.len() <= MAX_LINE_BYTES {
+                        for outbox in outboxes.values().filter_map(mpsc::WeakSender::upgrade) {
+                            // A connection whose queue is full stays behind:
+                            // the replies and deaths in it matter more, and
+                            // the journal has the line.
+                            let _ = outbox.try_send(line.clone());
+                        }
+                    }
+                }
+                None => lines_open = false,
+            },
         }
     }
     connections.shutdown().await;
@@ -190,7 +210,7 @@ pub async fn serve<S: MachineService + 'static>(
     drop(listener);
     let removed = blocking::run(move |_| fs_err::remove_file(path)).await;
     if let Err(error) = removed {
-        tracing::warn!("machines: removing the socket failed: {error}");
+        tracing::warn!(event = "manager.socket_remove_failed", %error, "removing the socket failed");
     }
     requests.close();
     InFlight(requests)
@@ -230,11 +250,11 @@ async fn read_requests<S: MachineService + 'static>(
         let line = match line {
             Ok(line) => line,
             Err(LinesCodecError::Io(error)) if error.kind() != io::ErrorKind::InvalidData => {
-                tracing::debug!("machines: connection error: {error}");
+                tracing::debug!(event = "manager_connection.errored", %error, "a connection failed");
                 return;
             }
             Err(error) => {
-                tracing::warn!("machines: dropping a connection over a bad frame: {error}");
+                tracing::warn!(event = "manager_connection.dropped", reason = "bad_frame", %error, "a connection was dropped over a bad frame");
                 return;
             }
         };
@@ -246,7 +266,7 @@ async fn read_requests<S: MachineService + 'static>(
                 requests.spawn_local(answer(service.clone(), request, outbox.downgrade()));
             }
             Err(error) => {
-                tracing::warn!("machines: dropping a connection over a bad frame: {error}");
+                tracing::warn!(event = "manager_connection.dropped", reason = "bad_frame", %error, "a connection was dropped over a bad frame");
                 return;
             }
         }
@@ -256,7 +276,7 @@ async fn read_requests<S: MachineService + 'static>(
 async fn write_lines(mut write: OwnedWriteHalf, mut queued: mpsc::Receiver<Vec<u8>>) {
     while let Some(line) = queued.recv().await {
         if let Err(error) = write.write_all(&line).await {
-            tracing::debug!("machines: connection error: {error}");
+            tracing::debug!(event = "manager_connection.errored", %error, "a connection failed");
             return;
         }
     }
@@ -270,13 +290,30 @@ async fn answer<S: MachineService>(
     outbox: mpsc::WeakSender<Vec<u8>>,
 ) {
     let operation = request.call.name();
+    let started = std::time::Instant::now();
     let response = match service.handle(request.call).await {
-        Ok(result) => MachineResponse::Ok {
-            id: request.id,
-            result,
-        },
+        Ok(result) => {
+            tracing::info!(
+                event = "manager_call.ended",
+                operation,
+                outcome = "ok",
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "a request ended"
+            );
+            MachineResponse::Ok {
+                id: request.id,
+                result,
+            }
+        }
         Err(error) => {
-            tracing::warn!("machines: {operation} failed: {}", chain(&error));
+            tracing::warn!(
+                event = "manager_call.ended",
+                operation,
+                outcome = "failed",
+                error_chain = %chain(&error),
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                "a request ended"
+            );
             MachineResponse::Error {
                 id: request.id,
                 message: error.to_string(),

@@ -12,6 +12,7 @@ use crate::tabs::{environment::BrowserEnvironment, navigation::reload, tab::Brow
 
 use crate::live::protocol::{TabId, ViewportMode};
 use crate::live::{hub::Membership, writer::Writer};
+use crate::traced::SpawnTraced as _;
 
 pub(crate) enum Command {
     Mode { tab: TabId, mode: ViewportMode },
@@ -31,7 +32,7 @@ pub(crate) fn start(
     let (commands, mut receiver) = mpsc::channel(COMMANDS);
     let environment = environment.clone();
     let writer = writer.until(environment.ended());
-    environment.tasks().clone().spawn(async move {
+    environment.tasks().clone().spawn_traced(async move {
         loop {
             let command = tokio::select! {
                 biased;
@@ -91,7 +92,7 @@ pub(crate) fn answer(tab: BrowserTab, accept: bool, text: Option<String>, writer
     let tasks = tab.state().tasks.clone();
     let writer = writer.until(tab.ended());
     // The dialog's owner ends with the tab, and its answer with the owner.
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         let Some(dialog) = tab.state().dialog.open() else {
             return;
         };

@@ -166,7 +166,7 @@ impl Run<'_> {
                 rate: Rate::Quality,
             };
             let encoder = demi_shared_h264::open(settings, self.load).map_err(|error| format!("the video encoder did not start: {error}"))?;
-            tracing::debug!("a recording of an emulator is coded by {}", encoder.name());
+            tracing::debug!(event = "android_encoder.chosen", purpose = "record", encoder = encoder.name(), "an encoder was chosen");
             self.encoder = Some((encoder, (width, height)));
             self.since_key = 0;
         }
@@ -220,7 +220,7 @@ impl Run<'_> {
         // A picture the encoder gave that no draw is held for is a defect of
         // the encoder; its place is not known, so it is the whole picture.
         for picture in coded {
-            tracing::warn!("a recording's encoder gave a picture nobody drew at {}", picture.time_us);
+            tracing::warn!(event = "android_record.picture_unmatched", time_us = picture.time_us, "a recording's encoder gave a picture nobody drew");
             self.sink.push_picture(Picture {
                 data: picture.data,
                 key: picture.key,

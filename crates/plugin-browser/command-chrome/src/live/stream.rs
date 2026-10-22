@@ -20,6 +20,7 @@ use crate::tabs::{
     tab::BrowserTab,
     viewport::{Viewports, pixels},
 };
+use crate::traced::SpawnTraced as _;
 
 pub(crate) type StreamHandle = stream::StreamHandle<BrowserViewport>;
 pub(crate) type StreamView = stream::StreamView<BrowserViewport>;
@@ -137,7 +138,7 @@ impl stream::Source for TabSource {
     fn redraw(&self) {
         let page = self.tab.page().clone();
         let ended = self.tab.ended().clone();
-        self.tasks.spawn(async move {
+        self.tasks.spawn_traced(async move {
             tokio::select! {
                 _ = ended.cancelled() => {}
                 _painted = tokio::time::timeout(

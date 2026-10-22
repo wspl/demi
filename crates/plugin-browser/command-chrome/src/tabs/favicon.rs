@@ -32,6 +32,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::{BrowserError, Result};
 use crate::tabs::tab::BrowserTab;
+use crate::traced::SpawnTraced as _;
 
 /// How long finding, loading and drawing an icon may take: a site that does
 /// not answer for its icon leaves the tab without one.
@@ -64,7 +65,7 @@ impl Drop for OpenStream {
     fn drop(&mut self) {
         let page = self.page.clone();
         let close = CloseParams::new(self.handle.clone());
-        self.tasks.spawn(async move {
+        self.tasks.spawn_traced(async move {
             // A page that is gone took its streams with it.
             let _ = page.execute(close).await;
         });
@@ -226,7 +227,7 @@ pub(crate) async fn observe(
     let follows = icon.clone();
     let page = page.clone();
     let streams = tasks.clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         loop {
             tokio::select! {
                 _ = ended.cancelled() => break,

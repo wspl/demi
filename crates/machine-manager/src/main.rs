@@ -41,12 +41,18 @@ fn main() -> std::process::ExitCode {
     std::process::ExitCode::FAILURE
 }
 
+/// Lines of the log waiting for the server's fan-out, which takes them at
+/// once; the queue is bounded so that memory is.
+#[cfg(target_os = "linux")]
+const LOG_LINES: usize = 256;
+
 #[cfg(target_os = "linux")]
 fn main() -> std::process::ExitCode {
     // A panic leaves its report on standard error
     // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
-    use tracing_subscriber::{fmt, prelude::*};
+    use demi_shared_types::{LogOrigin, log_layer::LineLayer};
+    use tracing_subscriber::{filter::LevelFilter, fmt, prelude::*};
 
     let config = match demi_machine_manager::config::Config::from_env() {
         Ok(config) => config,
@@ -56,8 +62,11 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    // The journal records the service's standard error and the time; the
-    // messages name their part of the manager themselves.
+    // The journal records the service's standard error and the time. The
+    // events of `info` and above also go to the backend as lines of the log,
+    // on each connection the backend has open; a line made while none is
+    // open stays in the journal alone.
+    let (lines, forwarded) = tokio::sync::mpsc::channel(LOG_LINES);
     tracing_subscriber::registry()
         .with(
             fmt::layer()
@@ -65,13 +74,21 @@ fn main() -> std::process::ExitCode {
                 .without_time()
                 .with_target(false),
         )
+        .with(
+            LineLayer::new(LogOrigin::MachineManager, move |line| {
+                // Logging never holds up what it describes: a line the
+                // queue has no room for stays in the journal alone.
+                let _ = lines.try_send(line);
+            })
+            .with_filter(LevelFilter::INFO),
+        )
         .init();
     // One thread owns the manager's state.
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build_local(tokio::runtime::LocalOptions::default())
         .expect("the manager's runtime");
-    let result = runtime.block_on(service::run(config));
+    let result = runtime.block_on(service::run(config, forwarded));
     // Every task the manager owns has ended; blocking jobs that remain belong
     // to nothing that waits for them.
     runtime.shutdown_background();
@@ -79,8 +96,9 @@ fn main() -> std::process::ExitCode {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             tracing::error!(
-                "demi-machine-manager: {}",
-                demi_machine_manager::server::chain(&*error)
+                event = "machine_manager.exited",
+                error_chain = %demi_machine_manager::server::chain(&*error),
+                "the machine manager ended with an error"
             );
             std::process::ExitCode::FAILURE
         }
@@ -103,7 +121,9 @@ mod service {
         storage::{base, durable, state, store::ImageStore},
         tools::Tools,
     };
+    use demi_shared_types::LogLine;
     use tokio::signal::unix::{SignalKind, signal};
+    use tokio::sync::mpsc::Receiver;
 
     type Failure = Box<dyn Error>;
 
@@ -161,7 +181,7 @@ mod service {
     /// queue is bounded so that memory is.
     const DEATHS: usize = 64;
 
-    pub async fn run(config: Config) -> Result<(), Failure> {
+    pub async fn run(config: Config, lines: Receiver<LogLine>) -> Result<(), Failure> {
         if config.mode == Mode::CheckConfig {
             return Ok(());
         }
@@ -201,7 +221,8 @@ mod service {
         match core.config.limits {
             Some(_) => cgroup::prepare().await?,
             None => tracing::warn!(
-                "demi-machine-manager: DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"
+                event = "machine_manager.limits_off",
+                "DEMI_MANAGED_LIMITS=off: Clouds run without CPU, memory or PID limits"
             ),
         }
         let (working, images) = (core.config.working(), core.config.images());
@@ -231,8 +252,10 @@ mod service {
             "off"
         };
         tracing::info!(
-            "demi-machine-manager: gVisor/systrap ready at {}, resource limits {limits}",
-            socket_path.display()
+            event = "machine_manager.ready",
+            socket = %socket_path.display(),
+            limits,
+            "gVisor/systrap is ready"
         );
         let stopping = async move {
             tokio::select! {
@@ -240,7 +263,7 @@ mod service {
                 _ = interrupt.recv() => {}
             }
         };
-        let in_flight = server::serve(socket, manager.clone(), received, stopping).await;
+        let in_flight = server::serve(socket, manager.clone(), received, lines, stopping).await;
         let drained = manager.close().await;
         in_flight.wait().await;
         drained?;

@@ -72,6 +72,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
 use tokio::sync::{broadcast, watch};
 use tokio::task::AbortHandle;
+use tracing::Instrument as _;
 
 use crate::catalog::{Entry, NONE_AVAILABLE};
 use crate::fetch::FetchError;
@@ -262,14 +263,16 @@ impl Plugin for Instance {
     ) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
         Box::pin(async move {
             match request {
-                Request::Context { seen, project, .. } => {
-                    let text = self.0.context(&port, project, &seen).await?;
+                Request::Context { conversation, seen, project, .. } => {
+                    let span = tracing::info_span!("skills_context", conversation = %conversation);
+                    let text = self.0.context(&port, project, &seen).instrument(span).await?;
                     Ok(Reply::Context { text })
                 }
                 Request::ProjectSearch {
-                    directory, paths, ..
+                    conversation, directory, paths, ..
                 } => {
-                    let (skills, watch) = project::search(&port, paths, &directory).await?;
+                    let span = tracing::info_span!("skills_search", conversation = %conversation);
+                    let (skills, watch) = project::search(&port, paths, &directory).instrument(span).await?;
                     let found = serde_json::to_value(skills).expect("project skills encode as JSON");
                     Ok(Reply::Project { found, watch })
                 }
@@ -457,14 +460,14 @@ impl State {
         let task = tokio::task::spawn_local(async move {
             let fetched = state.fetch_source(&port, &id, fetch_stop).await;
             if let Err(error) = &fetched {
-                tracing::warn!(source = %id, %error, "a skill source's fetch was not recorded");
+                tracing::warn!(event = "skill_source.fetch_record_failed", source = %id, %error, "a skill source's fetch was not recorded");
             }
             state.fetching.borrow_mut().remove(&id);
             end.send_replace(Some(fetched.map_err(|error| error.to_string())));
             // A page that misses this change reads the state again when it
             // reconnects.
             if let Err(error) = port.changed(Scope::User).await {
-                tracing::warn!(source = %id, %error, "the pages did not learn of a fetch's end");
+                tracing::warn!(event = "skill_source.fetch_announce_failed", source = %id, %error, "the pages did not learn of a fetch's end");
             }
         });
         let mut fetches = self.fetches.borrow_mut();
@@ -555,7 +558,7 @@ impl State {
                 tokio::select! {
                     _ = ticks.tick() => {
                         if let Err(error) = state.check_due(&port).await {
-                            tracing::warn!(%error, "the skill sources were not checked");
+                            tracing::warn!(event = "skill_sources.check_failed", %error, "the skill sources were not checked");
                         }
                     }
                     moved = moves.recv() => {
@@ -573,7 +576,7 @@ impl State {
                             Err(error) => Err(error),
                         };
                         if let Err(error) = told {
-                            tracing::warn!(%error, "the pages did not learn of a source's move");
+                            tracing::warn!(event = "skill_source.move_announce_failed", %error, "the pages did not learn of a source's move");
                         }
                     }
                 }
@@ -601,17 +604,18 @@ impl State {
             }
         }
         let checks = due.into_iter().map(|(id, url)| async move {
+            let started = std::time::Instant::now();
             let checked = tokio::task::spawn_blocking(move || fetch::remote_head(&url)).await;
-            (id, checked)
+            (id, checked, u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX))
         });
-        for (id, checked) in join_all(checks).await {
+        for (id, checked, ms) in join_all(checks).await {
             match checked {
                 Ok(Ok(commit)) => self.heads.checked(&id, now, commit),
                 Ok(Err(message)) => {
-                    tracing::info!(source = %id, %message, "a skill source's default branch was not checked");
+                    tracing::info!(event = "skill_source.branch_unchecked", source = %id, reason = %message, ms, "a skill source's default branch was not checked");
                 }
                 Err(error) => {
-                    tracing::warn!(source = %id, %error, "a skill source's check ended");
+                    tracing::warn!(event = "skill_source.check_ended", source = %id, %error, ms, "a skill source's check ended without an answer");
                 }
             }
         }
@@ -649,7 +653,7 @@ impl State {
             for skill in source.skills.iter().filter(|skill| skill.enabled) {
                 let shadowed = entries.iter().any(|entry| entry.name == skill.name);
                 if shadowed {
-                    tracing::info!(skill = %skill.name, origin = %source.origin, "a user skill is shadowed by a project skill");
+                    tracing::info!(event = "skill.shadowed", skill = %skill.name, origin = %source.origin, by = "project", "a user skill is shadowed by a project skill");
                     continue;
                 }
                 if !skill.disable_model_invocation {

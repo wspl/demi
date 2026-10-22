@@ -17,6 +17,10 @@
 //!     +---- authenticated outbound connection ----> Backend (runner socket)
 //! ```
 //!
+//! The manager's `tracing` events go to the systemd journal, and the events of
+//! `info` and above also go to the backend as lines of its log, on each
+//! connection it has open (`server`, `crates/shared-types/src/log_layer.rs`).
+//!
 //! The backend owns device identity, authentication, Cloud policy and the
 //! durable allocation and reset intent. The manager owns sandbox processes,
 //! mounts, networking, resource enforcement and stored generations, and has no

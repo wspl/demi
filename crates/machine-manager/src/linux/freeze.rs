@@ -83,7 +83,7 @@ impl<'a> Frozen<'a> {
 impl Drop for Frozen<'_> {
     fn drop(&mut self) {
         for error in self.thaw_recorded() {
-            tracing::error!("machines: {error}");
+            tracing::error!(event = "volume.thaw_failed", %error, "a frozen volume could not be thawed");
         }
     }
 }

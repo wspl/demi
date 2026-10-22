@@ -23,6 +23,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result};
+use crate::traced::SpawnTraced as _;
 
 /// Requests waiting for the owner; a full queue holds back their senders.
 const REQUESTS: usize = 16;
@@ -71,7 +72,7 @@ impl DialogInput {
             ended,
             failure,
         };
-        tasks.spawn(owner.run(received));
+        tasks.spawn_traced(owner.run(received));
         Self { requests, dialog }
     }
 
@@ -147,7 +148,7 @@ impl Owner {
                     Some(Request::Defer(releases)) => {
                         self.deferred.extend(releases);
                         if let Err(error) = self.deliver().await {
-                            tracing::warn!("a dialog's held input was not delivered: {error}");
+                            tracing::warn!(event = "dialog.input_delivery_failed", %error, "a dialog's held input was not delivered");
                         }
                     }
                     Some(Request::Answer {

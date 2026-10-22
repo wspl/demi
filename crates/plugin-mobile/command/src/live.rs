@@ -930,14 +930,14 @@ fn draw(
             Ok(None) => (None, *open.device.screen().borrow()),
             Err(error) => {
                 // The drawn frame stands in for a frame the driver could not draw.
-                tracing::warn!("{}'s frame was not drawn: {error}", open.name);
+                tracing::warn!(event = "live_frame.draw_failed", name = %open.name, %error, "a frame was not drawn");
                 let screen = *open.device.screen().borrow();
                 let frame = crate::frame::drawn(LiveCorners::round(0.0), open.platform, &open.model, screen.orientation);
                 (Some(frame), screen)
             }
         };
         let orientation = screen.orientation;
-        tracing::debug!("{}'s frame took {:?}", open.name, started.elapsed());
+        tracing::debug!(event = "live_frame.drawn", name = %open.name, ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX), "a frame was drawn");
         Drawn {
             area,
             orientation,

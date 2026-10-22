@@ -386,13 +386,16 @@ async fn mutate(
     let cwd = context.request.cwd.clone();
     let edits = context.request.edits.clone();
     let cancellation = context.cancellation.clone();
+    // The blocking thread's events belong to the invocation's span.
+    let span = tracing::Span::current();
     let message = tokio::task::spawn_blocking(move || {
+        let _entered = span.enter();
         // The permit covers planning, writes and rollback, cancellation included.
         let _permit = permit;
         let recorder = edits.and_then(|edits| match Recorder::new(edits) {
             Ok(recorder) => Some(recorder),
             Err(error) => {
-                tracing::warn!("edit recording failed: {error}");
+                tracing::warn!(event = "edit_record.failed", %error, "an edit could not be recorded");
                 None
             }
         });

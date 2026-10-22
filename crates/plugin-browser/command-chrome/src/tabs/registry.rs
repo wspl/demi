@@ -59,6 +59,7 @@ use crate::tabs::{
     protocol::{BrowserCreatedBy, BrowserViewport, TabId},
     tab::{BrowserTab, TabState},
 };
+use crate::traced::SpawnTraced as _;
 
 /// Target events of one kind the owner has not handled yet. Past this it
 /// has lost events and reconciles from Chrome's target list.
@@ -819,7 +820,7 @@ pub(crate) async fn start(
         holds: watch::channel(0).0,
         publish,
     };
-    tasks.spawn(owner.run(receiver, events));
+    tasks.spawn_traced(owner.run(receiver, events));
     Ok(tabs)
 }
 
@@ -913,7 +914,7 @@ impl Owner {
         if matches!(error, BrowserError::Closed) {
             return;
         }
-        tracing::warn!("a popup is closed without a tab number: {error}");
+        tracing::warn!(event = "browser_popup.closed", reason = "no_tab_number", %error, "a popup was closed");
         self.book.unusable(&target);
         self.settle();
         self.close_page(target);
@@ -922,7 +923,7 @@ impl Owner {
     /// Asks Chrome to close a page that does not become a tab.
     fn close_page(&self, target: TargetId) {
         let browser = self.context.browser.clone();
-        self.context.tasks.spawn(async move {
+        self.context.tasks.spawn_traced(async move {
             let closed = async {
                 browser
                     .call()?
@@ -938,7 +939,7 @@ impl Owner {
                 // An ended environment closes its pages with it.
                 Ok(()) | Err(BrowserError::Closed) => {}
                 Err(error) => {
-                    tracing::warn!("could not close a browser page that is not a tab: {error}");
+                    tracing::warn!(event = "browser_page.close_failed", %error, "a page that is not a tab could not be closed");
                 }
             }
         });
@@ -968,7 +969,7 @@ impl Owner {
                     return;
                 }
                 let context = self.context.clone();
-                self.context.tasks.spawn(async move {
+                self.context.tasks.spawn_traced(async move {
                     let page = tokio::select! {
                         _ = context.ended.cancelled() => Err(BrowserError::Closed),
                         page = async { Ok(context.browser.call()?.new_page("about:blank").await?) } => page,
@@ -1039,7 +1040,7 @@ impl Owner {
             Request::Popups { opener, reply } => self.popups.push((opener, reply)),
             Request::Retitle { reply } => {
                 let context = self.context.clone();
-                self.context.tasks.spawn(async move {
+                self.context.tasks.spawn_traced(async move {
                     let targets = tokio::select! {
                         _ = context.ended.cancelled() => Err(BrowserError::Closed),
                         targets = async {
@@ -1132,7 +1133,7 @@ impl Owner {
         self.book.set_up(&target);
         self.publish();
         let context = self.context.clone();
-        self.context.tasks.spawn(async move {
+        self.context.tasks.spawn_traced(async move {
             let tab = tokio::select! {
                 _ = context.ended.cancelled() => Err(BrowserError::Closed),
                 tab = context.set_up(page, id, created_by) => tab,
@@ -1178,7 +1179,7 @@ impl Owner {
                 self.close_page(target);
             }
             (Err(error), None) => {
-                tracing::warn!("a page's new browser tab could not be set up: {error}");
+                tracing::warn!(event = "browser_tab.setup_failed", %error, "a new tab could not be set up");
             }
         }
     }
@@ -1229,7 +1230,7 @@ impl Owner {
         }
         tab.ended.cancel();
         let context = self.context.clone();
-        self.context.tasks.spawn(async move {
+        self.context.tasks.spawn_traced(async move {
             let closed = tokio::select! {
                 _ = context.ended.cancelled() => Ok(()),
                 closed = close_target(&context.browser, &tab, deadline) => closed,
@@ -1261,7 +1262,14 @@ impl Owner {
     /// A target event buffer overflowed: the events it lost cost one
     /// reconciliation.
     async fn lost(&mut self, lost: EventStreamError) {
-        tracing::info!("the browser tab registry reconciles: {lost}");
+        tracing::info!(
+            event = "browser_tabs.reconciled",
+            lost_events = match &lost {
+                EventStreamError::Lagged(count) => *count,
+                EventStreamError::InvalidType => 0,
+            },
+            "the tab registry was rebuilt from Chrome's target list"
+        );
         self.reconcile().await;
     }
 
@@ -1285,7 +1293,7 @@ impl Owner {
         match targets {
             Ok(targets) => self.register(&targets).await,
             // Only an ending browser has no target list; its end follows.
-            Err(error) => tracing::debug!("the browser tab registry could not reconcile: {error}"),
+            Err(error) => tracing::debug!(event = "browser_tabs.reconcile_failed", %error, "the tab registry could not be rebuilt"),
         }
         self.book.reconciling = false;
         self.publish();

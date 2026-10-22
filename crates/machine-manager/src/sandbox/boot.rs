@@ -400,9 +400,9 @@ fn trim_mounted(off: &OffLoop, directory: &RuntimeDirectory) {
             Err(error) => Err(error),
         };
         match trimmed {
-            Ok(Some(bytes)) => tracing::debug!("machines: trimmed {bytes} bytes of {volume}"),
+            Ok(Some(bytes)) => tracing::debug!(event = "volume.trimmed", %volume, bytes, "a volume was trimmed"),
             Ok(None) => {}
-            Err(error) => tracing::warn!("machines: the {volume} image stays untrimmed: {error}"),
+            Err(error) => tracing::warn!(event = "volume.trim_failed", %volume, %error, "a volume stays untrimmed"),
         }
     }
 }

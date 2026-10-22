@@ -303,7 +303,7 @@ impl Sdk for Installed {
     fn processes(&self) -> BoxFuture<'_, Vec<(String, Process)>> {
         Box::pin(async {
             tokio::task::spawn_blocking(emulators).await.unwrap_or_else(|error| {
-                tracing::warn!("the emulators' processes were not read: {error}");
+                tracing::warn!(event = "android_processes.read_failed", %error, "the emulators' processes were not read");
                 Vec::new()
             })
         })

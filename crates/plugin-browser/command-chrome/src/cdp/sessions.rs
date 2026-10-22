@@ -52,6 +52,7 @@ use crate::tabs::{
 
 use crate::cdp::catalog::catalog;
 use crate::cdp::protocol::{CDP_BYTES, CDP_EVENTS, CdpEvent, CdpEventsResult};
+use crate::traced::SpawnTraced as _;
 
 /// Requests waiting for a tab's debugging owner or for a connection's pump;
 /// a full queue holds back their senders.
@@ -136,7 +137,7 @@ impl SessionsOwner {
             }
         }
         if let Err(error) = self.close_all().await {
-            tracing::warn!("a closed tab's debugging connections did not close cleanly: {error}");
+            tracing::warn!(event = "cdp_session.close_unclean", %error, "a closed tab's debugging connections did not close cleanly");
         }
     }
 
@@ -215,7 +216,7 @@ impl SessionsOwner {
         if let Err(error) = buffer.push(event)
             && let Err(gap) = buffer.mark_gap()
         {
-            tracing::warn!("a tab's debugging events lost their order: {error}; {gap}");
+            tracing::warn!(event = "cdp_events.reordered", %error, %gap, "a tab's debugging events lost their order");
         }
         self.recorded.send_replace(buffer.next());
     }
@@ -339,7 +340,7 @@ impl DebugConnection {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let stop = ended.child_token();
         let (reason, ended) = watch::channel(None);
-        let task = AbortOnDropHandle::new(tasks.spawn(pump(
+        let task = AbortOnDropHandle::new(tasks.spawn_traced(pump(
             socket,
             receiver,
             targets,

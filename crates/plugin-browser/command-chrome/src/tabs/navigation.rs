@@ -39,6 +39,7 @@ use crate::tabs::{
     protocol::{BrowserOperation, Load, NavigationResult, TabMoved},
     tab::BrowserTab,
 };
+use crate::traced::SpawnTraced as _;
 
 /// How long a navigation nobody waits for may load.
 const DETACHED_LOAD_TIMEOUT: Duration = Duration::from_secs(60);
@@ -541,7 +542,7 @@ where
 {
     let page = tab.page.clone();
     let ended = tab.ended.clone();
-    tab.state.tasks.spawn(async move {
+    tab.state.tasks.spawn_traced(async move {
         // A closing tab must not receive a late address-bar navigation. The user
         // sees load failures in Chrome; there is no command waiting for an answer.
         tokio::select! {

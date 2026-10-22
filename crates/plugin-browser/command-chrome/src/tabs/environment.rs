@@ -645,8 +645,11 @@ async fn sweep_orphans_in(bases: &DirectoryBases, installations: Option<Vec<Path
         let installations = installations.clone().unwrap_or_default();
         if let Err(error) = sweep_orphan(&runtime, installations, owner).await {
             tracing::warn!(
-                "could not remove the orphaned browser environment {}: {error}",
-                runtime.display()
+                event = "browser_environment.orphan_remove_failed",
+                what = "environment",
+                directory = ?runtime.file_name().unwrap_or_default(),
+                %error,
+                "an orphaned browser directory could not be removed"
             );
         }
     }
@@ -667,8 +670,11 @@ async fn sweep_orphans_in(bases: &DirectoryBases, installations: Option<Vec<Path
         );
         if gone && let Err(error) = remove_present(&profile).await {
             tracing::warn!(
-                "could not remove the orphaned browser profile {}: {error}",
-                profile.display()
+                event = "browser_environment.orphan_remove_failed",
+                what = "profile",
+                directory = ?profile.file_name().unwrap_or_default(),
+                %error,
+                "an orphaned browser directory could not be removed"
             );
         }
     }
@@ -1062,7 +1068,7 @@ async fn retire_browser(
 ) -> Result<()> {
     if let Err(error) = process.observe().await {
         // The drain reads the process table again as it signals.
-        tracing::warn!("Chrome's helpers were not observed before retirement: {error}");
+        tracing::warn!(event = "browser.helpers_unobserved", %error, "Chrome's helpers were not observed before retirement");
     }
     let leader = match browser {
         Some(mut browser) => {
@@ -1090,6 +1096,7 @@ async fn retire_browser(
         }
         None => {
             tracing::warn!(
+                event = "browser.call_outlived",
                 "a browser call outlived its environment; Chrome's process tree ends without closing it"
             );
             Ok(())

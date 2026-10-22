@@ -275,7 +275,7 @@ impl Mapped {
         match file {
             Ok(file) => Some(Self { path, file }),
             Err(error) => {
-                tracing::warn!("the emulator's pictures come in its messages, for {}: {error}", path.display());
+                tracing::warn!(event = "android_screen.messages_only", path = %path.display(), %error, "the emulator's pictures come in its messages");
                 None
             }
         }

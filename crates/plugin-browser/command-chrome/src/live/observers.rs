@@ -44,6 +44,7 @@ use crate::tabs::tab::BrowserTab;
 use demi_command_package_browser_protocol::live::{
     ControlToken, CursorRegion, LiveControl, LiveDownload, LiveMenu, MAX_CURSOR_REGIONS,
 };
+use crate::traced::SpawnTraced as _;
 
 /// The isolated world's name, shared by its script and its binding.
 const WORLD: &str = "demi-live";
@@ -178,7 +179,7 @@ pub(crate) async fn start(
     let ended = tab.ended().clone();
     let observing = tab.clone();
     let spawner = tasks.clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         let mut frames = FrameRegions::default();
         loop {
             let heard_now = tokio::select! {
@@ -227,7 +228,7 @@ pub(crate) async fn start(
                             let menu = LiveMenu { x: x + left, y: y + top, link, selection, editable };
                             let _unwatched = reporting.menus.send(menu);
                         }
-                        Err(error) => tracing::warn!("live view observer report: {error}"),
+                        Err(error) => tracing::warn!(event = "live_view.step_failed", step = "observer_report", %error, "a step of the live view failed"),
                     }
                 }
                 Heard::Created { world, unique, frame } => {
@@ -255,7 +256,7 @@ pub(crate) async fn start(
                     let pointer = *reporting.pointer.borrow();
                     if let Some((x, y)) = pointer {
                         let tab = observing.clone();
-                        spawner.spawn(async move {
+                        spawner.spawn_traced(async move {
                             let expression = format!("globalThis.demiLive.pointer({x}, {y})");
                             let told = call(&tab, &expression, true);
                             // A document replaced again meanwhile waits for its own pointer events.
@@ -339,7 +340,7 @@ async fn listen(
     )
     .await?;
     let id = page.target_id().clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         loop {
             let next = tokio::select! {
                 _ = ended.cancelled() => break,

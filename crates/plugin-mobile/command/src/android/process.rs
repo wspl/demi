@@ -44,7 +44,7 @@ impl Process {
             // The system no longer has the process to watch.
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
-                tracing::warn!("the end of process {} cannot be watched: {error}", self.pid);
+                tracing::warn!(event = "android_process.watch_failed", pid = self.pid, %error, "the end of a process cannot be watched");
                 std::future::pending::<()>().await;
             }
         }

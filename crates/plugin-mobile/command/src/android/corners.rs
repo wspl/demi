@@ -104,11 +104,11 @@ pub async fn read(guest: &dyn Guest, density: f64, limit: Duration) -> PanelCorn
     let (top, bottom) = match tokio::time::timeout_at(deadline, radii(guest, density)).await {
         Ok(Ok(radii)) => radii,
         Ok(Err(error)) => {
-            tracing::warn!("the screen's corner radius does not read, so its corners are square: {error}");
+            tracing::warn!(event = "android_screen.corner_unread", cause = "unreadable", %error, fallback = "square", "the screen's corner radius does not read");
             return PanelCorners::square();
         }
         Err(_) => {
-            tracing::warn!("the screen's corner radius took too long to read, so its corners are square");
+            tracing::warn!(event = "android_screen.corner_unread", cause = "timeout", fallback = "square", "the screen's corner radius took too long to read");
             return PanelCorners::square();
         }
     };
@@ -134,7 +134,7 @@ fn corner(radius: f64, shape: std::result::Result<Vec<(f64, f64)>, String>) -> C
     match shape {
         Ok(points) => Corner::Curve(points),
         Err(error) => {
-            tracing::warn!("the screen's corner drawable does not read, so its corner is a circle: {error}");
+            tracing::warn!(event = "android_screen.corner_unread", cause = "drawable_unreadable", %error, fallback = "circle", "the screen's corner drawable does not read");
             Corner::Round(radius)
         }
     }

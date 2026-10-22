@@ -14,6 +14,7 @@ bench = false
 [dependencies]
 demi-command-protocol = { path = "../command-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
+demi-shared-types = { path = "../shared-types" }
 garde.workspace = true
 serde.workspace = true
 serde_json.workspace = true

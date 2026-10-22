@@ -165,8 +165,10 @@ pub(crate) async fn search(
     for (_, skill) in found {
         match skills.iter().find(|kept| kept.name == skill.name) {
             Some(kept) => tracing::info!(
+                event = "skill.shadowed",
                 skill = %skill.location,
                 kept = %kept.location,
+                by = "earlier_project_skill",
                 "a project skill is shadowed by one of the same name"
             ),
             None => skills.push(skill),
@@ -197,7 +199,7 @@ fn project_skill(paths: HostPaths, directory: &str, text: &[u8], size: u64) -> O
     match parsed {
         Ok(parsed) => {
             for warning in &parsed.warnings {
-                tracing::info!(skill = %location, %warning, "a project skill has a warning");
+                tracing::info!(event = "project_skill.warned", skill = %location, %warning, "a project skill has a warning");
             }
             Some(ProjectSkill {
                 name: parsed.name,
@@ -207,7 +209,7 @@ fn project_skill(paths: HostPaths, directory: &str, text: &[u8], size: u64) -> O
             })
         }
         Err(reason) => {
-            tracing::info!(skill = %location, %reason, "a project SKILL.md is not a skill");
+            tracing::info!(event = "project_skill.rejected", skill = %location, %reason, "a project SKILL.md is not a skill");
             None
         }
     }

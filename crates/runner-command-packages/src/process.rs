@@ -380,6 +380,30 @@ fn exited(status: std::io::Result<std::process::ExitStatus>) -> ExitReason {
     }
 }
 
+/// Hands one line of a service's standard error to the Host's log. A service
+/// writes its `tracing` events as JSON lines (`demi_command_sdk::log_to_stderr`),
+/// which the log keeps as they are, in the `service_line` field that
+/// `crates/runner/src/host_log.rs` reads; any other line is kept as text, as a
+/// panic's report is.
+fn keep(source: &str, line: &str) {
+    let parsed = line
+        .starts_with('{')
+        .then(|| serde_json::from_str::<wire::LogLine>(line).ok())
+        .flatten()
+        .filter(|parsed| wire::is_event_name(&parsed.event));
+    let Some(parsed) = parsed else {
+        tracing::info!(source, "{line}");
+        return;
+    };
+    match parsed.level {
+        wire::LogLevel::Trace => tracing::trace!(service_line = line, "{}", parsed.event),
+        wire::LogLevel::Debug => tracing::debug!(service_line = line, "{}", parsed.event),
+        wire::LogLevel::Info => tracing::info!(service_line = line, "{}", parsed.event),
+        wire::LogLevel::Warn => tracing::warn!(service_line = line, "{}", parsed.event),
+        wire::LogLevel::Error => tracing::error!(service_line = line, "{}", parsed.event),
+    }
+}
+
 /// A service's standard error, which goes two ways (`crates/command-protocol/src/lib.rs`): each line to the Host's log as it arrives, and
 /// the end kept to accompany the service's failure.
 struct Stderr {
@@ -414,7 +438,7 @@ impl Stderr {
             Ok(0) => self.close(),
             Ok(count) => {
                 for line in self.lines.push(&buffer[..count]) {
-                    tracing::info!(source = self.source.as_str(), "{line}");
+                    keep(&self.source, &line);
                 }
                 self.tail.push(&buffer[..count]);
             }
@@ -428,7 +452,7 @@ impl Stderr {
     fn close(&mut self) {
         self.pipe = None;
         if let Some(line) = std::mem::take(&mut self.lines).finish() {
-            tracing::info!(source = self.source.as_str(), "{line}");
+            keep(&self.source, &line);
         }
     }
 

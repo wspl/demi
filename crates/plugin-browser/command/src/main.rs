@@ -11,14 +11,9 @@ async fn main() {
     // (`crates/xtask/src/native/build.rs`).
     demi_shared_cli::install_panic_hook();
     demi_command_sdk::Launch::from_process();
-    // Diagnostics go to standard error, which the runner drains into the
-    // Host's log line by line.
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_max_level(tracing::Level::INFO)
-        .without_time()
-        .with_target(false)
-        .init();
+    // Events go to standard error as lines of the log, which the runner keeps
+    // as they are.
+    demi_command_sdk::log_to_stderr("browser");
     let browser = Arc::new(demi_browser::DemiBrowser::new());
     let chrome = browser.chrome().clone();
     let service = demi_command_sdk::serve_stdio(browser);
@@ -32,7 +27,7 @@ async fn main() {
         () = &mut sweep => service.await,
     };
     if let Err(error) = result {
-        eprintln!("demi-browser: {error}");
+        tracing::error!(event = "browser_service.exited", %error, "the service ended with an error");
         std::process::exit(1);
     }
     // The executable owns synchronous Windows stdio workers; HTTP/2 has drained.

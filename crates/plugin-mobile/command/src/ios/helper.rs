@@ -137,7 +137,7 @@ impl Connection {
             use tokio::io::AsyncBufReadExt;
             let mut lines = tokio::io::BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
-                tracing::info!("demi-ios-sim: {line}");
+                tracing::info!(event = "ios_helper.said", text = %line, "the iOS helper wrote to its standard error");
             }
         });
         Ok(Self {
@@ -319,9 +319,9 @@ impl Drop for Helper {
         runtime.spawn(async move {
             match tokio::time::timeout(LETTING_GO, process.wait()).await {
                 Ok(Ok(_)) => {}
-                Ok(Err(error)) => tracing::warn!("the iOS helper could not be waited for: {error}"),
+                Ok(Err(error)) => tracing::warn!(event = "ios_helper.wait_failed", %error, "the iOS helper could not be waited for"),
                 Err(_) => {
-                    tracing::warn!("the iOS helper did not end when its input closed; it is killed");
+                    tracing::warn!(event = "ios_helper.killed", reason = "input_closed_without_end", "the iOS helper did not end when its input closed; it is killed");
                     // Killing waits for it; a helper that is gone already is ended.
                     let _killed = process.kill().await;
                 }

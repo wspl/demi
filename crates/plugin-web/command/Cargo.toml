@@ -47,4 +47,3 @@ shlex = "2"
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true

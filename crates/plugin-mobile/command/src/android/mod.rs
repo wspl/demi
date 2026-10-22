@@ -296,7 +296,7 @@ impl Driver for Android {
             // it started, whether or not it ever said where it listens.
             match self.sdk.terminate(process).await {
                 Ok(()) => booting.undone(),
-                Err(failure) => tracing::warn!("{native_id} stayed up after its boot failed: {failure}"),
+                Err(failure) => tracing::warn!(event = "emulator.boot_cleanup_failed", native_id, %failure, "an emulator stayed up after its boot failed"),
             }
             Err(error)
         })
@@ -309,7 +309,7 @@ impl Driver for Android {
                     Ok(()) => return Ok(()),
                     // An emulator that does not take the request is ended
                     // as a process.
-                    Err(error) => tracing::warn!("{native_id} did not shut down when asked: {error}"),
+                    Err(error) => tracing::warn!(event = "emulator.shutdown_failed", native_id, %error, "an emulator did not shut down when asked"),
                 }
             }
             // One that never said where it listens is ended the same way.
@@ -559,11 +559,11 @@ impl AndroidDevice {
                 match read {
                     Ok(Ok(art)) => Some(Arc::new(art)),
                     Ok(Err((folder, error))) => {
-                        tracing::warn!("Android Studio's device art in {} does not read: {error}", folder.display());
+                        tracing::warn!(event = "android_art.read_failed", folder = %folder.display(), %error, "Android Studio's device art does not read");
                         None
                     }
                     Err(error) => {
-                        tracing::warn!("reading Android Studio's device art stopped: {error}");
+                        tracing::warn!(event = "android_art.read_failed", %error, "reading Android Studio's device art stopped");
                         None
                     }
                 }
@@ -701,13 +701,13 @@ impl AndroidDevice {
                         tell(on);
                     }
                     if again && !turned {
-                        tracing::warn!("the display's log ends as soon as it is followed");
+                        tracing::warn!(event = "android_power_log.ended_early", "the display's log ends as soon as it is followed");
                         return;
                     }
                     turns = match guest.display().await {
                         Ok(log) => log,
                         Err(error) => {
-                            tracing::warn!("the display's log cannot be followed again: {error}");
+                            tracing::warn!(event = "android_power_log.follow_failed", %error, "the display's log cannot be followed again");
                             return;
                         }
                     };
@@ -878,7 +878,7 @@ impl Drop for Restore {
         let guest = self.guest.clone();
         tokio::spawn(async move {
             if let Err(error) = guest.set_clipboard(&saved).await {
-                tracing::warn!("the clipboard was not put back after a paste: {error}");
+                tracing::warn!(event = "android_clipboard.restore_failed", %error, "the clipboard was not put back after a paste");
             }
         });
     }
@@ -921,7 +921,7 @@ impl Drop for Pressed {
         let client = self.client.clone();
         tokio::spawn(async move {
             if let Err(error) = release(client, held).await {
-                tracing::warn!("{held:?} was not released: {error}");
+                tracing::warn!(event = "android_input.release_failed", held = ?held, %error, "a held input was not released");
             }
         });
     }
@@ -992,7 +992,14 @@ impl Device for AndroidDevice {
             // times slower than the emulator's own (about 220 ms more for a
             // 1080 × 2424 screen): the screenshot is never a size the
             // coordinates are not in.
-            tracing::info!("the emulator drew {drawn:?} for {:?}; scaling its whole picture", (width, height));
+            tracing::info!(
+                event = "android_screenshot.rescaled",
+                drawn_w = drawn.0,
+                drawn_h = drawn.1,
+                width,
+                height,
+                "the emulator drew another size; its whole picture is scaled"
+            );
             self.scaled_screenshot().await
         })
     }
@@ -1120,6 +1127,8 @@ impl Device for AndroidDevice {
                 Orientation::PortraitUpsideDown => 180.0,
                 Orientation::LandscapeRight => -90.0,
             };
+            let from = self.screen.borrow().orientation;
+            let started = std::time::Instant::now();
             self.client
                 .clone()
                 .set_physical_model(PhysicalModelValue {
@@ -1134,8 +1143,11 @@ impl Device for AndroidDevice {
             // points by the turned screen.
             let mut screen = self.screen.subscribe();
             let shown = tokio::time::timeout(TURN, screen.wait_for(|screen| screen.orientation == orientation)).await;
-            if !matches!(shown, Ok(Ok(_))) {
-                tracing::warn!("the emulator's pictures did not turn {orientation} within {TURN:?}");
+            let ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+            if matches!(shown, Ok(Ok(_))) {
+                tracing::info!(event = "mobile_rotation.ended", serial = %self.serial, from = %from, to = %orientation, ms, outcome = "turned", "a rotation ended");
+            } else {
+                tracing::warn!(event = "mobile_rotation.ended", serial = %self.serial, from = %from, to = %orientation, ms, outcome = "timed_out", "a rotation ended: the emulator's pictures did not turn in time");
             }
             Ok(())
         })

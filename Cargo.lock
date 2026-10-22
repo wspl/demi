@@ -2375,7 +2375,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2392,6 +2391,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "tracing",
  "url",
 ]
 
@@ -2543,6 +2543,7 @@ dependencies = [
  "clap",
  "demi-command-protocol",
  "demi-shared-artifacts",
+ "demi-shared-types",
  "futures-util",
  "h2",
  "http",
@@ -2554,6 +2555,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "windows-sys 0.61.2",
 ]
 
@@ -2596,7 +2598,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2621,7 +2622,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2692,6 +2692,7 @@ dependencies = [
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",
+ "demi-shared-types",
  "fs-err",
  "futures-util",
  "ipnet",
@@ -2723,6 +2724,7 @@ version = "0.1.63"
 dependencies = [
  "demi-command-protocol",
  "demi-runner-protocol",
+ "demi-shared-types",
  "garde",
  "serde",
  "serde_json",
@@ -2778,7 +2780,6 @@ dependencies = [
  "tonic-prost",
  "tonic-prost-build",
  "tracing",
- "tracing-subscriber",
  "windows-sys 0.61.2",
  "zip",
  "zstd 0.13.3",
@@ -3531,6 +3532,8 @@ dependencies = [
  "sha2 0.10.9",
  "symphonia",
  "thiserror 2.0.20",
+ "tracing",
+ "tracing-subscriber",
  "unicode-width 0.2.2",
 ]
 

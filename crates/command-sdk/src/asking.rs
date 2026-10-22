@@ -243,9 +243,10 @@ impl RequestStream {
                     }
                     Some(Record::InputPull) => pulls += 1,
                     Some(Record::Stderr(bytes)) => tracing::info!(
-                        "{} stream: {}",
-                        A::NAME,
-                        String::from_utf8_lossy(&bytes).trim_end()
+                        event = "command_stream.stderr_received",
+                        stream = A::NAME,
+                        bytes = bytes.len(),
+                        "a command stream's service wrote to its standard error"
                     ),
                     // A stream's writer refuses media.
                     Some(Record::Medium { .. } | Record::MediumBytes(_)) => {

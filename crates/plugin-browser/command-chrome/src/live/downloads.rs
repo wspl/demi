@@ -15,6 +15,7 @@ use tokio_util::task::TaskTracker;
 use crate::driver::operation::Result;
 use crate::tabs::tab::BrowserTab;
 use demi_command_package_browser_protocol::live::{DownloadState, LiveDownload, MAX_DOWNLOADS};
+use crate::traced::SpawnTraced as _;
 
 /// The longest file name the protocol carries, in characters.
 const NAME_CHARS: usize = 255;
@@ -36,7 +37,7 @@ pub(crate) async fn follow(
     let mut progress = browser.event_listener::<EventDownloadProgress>().await?;
     drop(browser);
     let tab = tab.clone();
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         loop {
             tokio::select! {
                 _ = tab.ended().cancelled() => break,
@@ -109,7 +110,7 @@ async fn advance(
             Err(error) => {
                 // The file stays under the browser's own name, which the
                 // retirement removes; the bubble cannot offer it.
-                tracing::warn!("live view download {}: {error}", event.guid);
+                tracing::warn!(event = "live_view_download.failed", guid = %event.guid, %error, "a download could not be named");
                 (DownloadState::Canceled, String::new())
             }
         },

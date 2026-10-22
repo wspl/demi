@@ -15,7 +15,9 @@
 //!
 //! Every part of the runner writes `tracing` events. The log is a layer that
 //! writes them as lines, so no module holds a handle to the files, and a
-//! resident service's standard error enters the same way, as `stderr` lines.
+//! resident service's standard error enters the same way, as `stderr` lines,
+//! except a line the service wrote as a `LogLine` itself
+//! (`demi_command_sdk::log_to_stderr`), which is kept as it is.
 //! An event names what happened in its `event` field, `noun.verb` in the past
 //! tense, and its IDs (`conversation`, `turn`, `request_id`) go to the line's
 //! own fields; the backend adds the Host's ID.
@@ -257,12 +259,20 @@ impl<S: Subscriber> Layer<S> for HostLogLayer {
 
 /// An event as a line: its `event` field names it, else its target does; an
 /// event of a resident service's standard error (it has a `source`) is a
-/// `stderr` line with the text in its fields.
+/// `stderr` line with the text in its fields. A line a service wrote as a
+/// [`LogLine`] arrives whole in the `service_line` field
+/// (`crates/runner-command-packages/src/process.rs`) and is kept as it is.
 fn line_of(event: &Event<'_>) -> LogLine {
     let mut collected = Collected::default();
     event.record(&mut collected);
     let metadata = event.metadata();
     let mut values = collected.values;
+    if let Some(Value::String(written)) = values.remove("service_line")
+        && let Ok(mut line) = serde_json::from_str::<LogLine>(&written)
+    {
+        line.origin = LogOrigin::Runner;
+        return line;
+    }
     let mut refused = false;
     let mut text = |name: &str| match values.remove(name) {
         Some(Value::String(text)) => Some(text),

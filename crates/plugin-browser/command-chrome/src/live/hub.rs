@@ -45,6 +45,7 @@ use crate::live::{
     observers::{self, Observed},
     stream::{self, StreamHandle, StreamView},
 };
+use crate::traced::SpawnTraced as _;
 
 /// Requests waiting for the hub; a full queue holds back their viewers.
 const REQUESTS: usize = 32;
@@ -144,7 +145,7 @@ impl Hub {
             held: Vec::new(),
             modes: Vec::new(),
         };
-        tasks.spawn(owner.run(received, environment.ended().clone()));
+        tasks.spawn_traced(owner.run(received, environment.ended().clone()));
         Self {
             requests,
             operations,
@@ -578,7 +579,7 @@ impl Owner {
             match tab.update_screen(desired).await {
                 Ok(()) => self.screen = Some(desired),
                 Err(error) => {
-                    tracing::warn!("live view screen: {error}");
+                    tracing::warn!(event = "live_view.step_failed", step = "screen", %error, "a step of the live view failed");
                     let driver = self.driver;
                     self.notify(|viewer, _| Some(viewer) == driver, &error);
                 }
@@ -588,7 +589,7 @@ impl Owner {
             if let Err(error) = fit(&tab, tab.viewport().mode, panel).await
                 && !tab.ended().is_cancelled()
             {
-                tracing::warn!("live view viewport of {}: {error}", tab.id());
+                tracing::warn!(event = "live_view.step_failed", step = "viewport", tab = %tab.id(), %error, "a step of the live view failed");
                 self.notify(
                     |_, entry| {
                         entry

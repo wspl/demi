@@ -394,6 +394,6 @@ async fn release(tab: Option<&BrowserTab>, held: Held) {
     if let Ok(Err(error)) = delivered
         && !tab.ended().is_cancelled()
     {
-        tracing::warn!("live view input release on {}: {error}", tab.id());
+        tracing::warn!(event = "live_view.step_failed", step = "input_release", tab = %tab.id(), %error, "a step of the live view failed");
     }
 }

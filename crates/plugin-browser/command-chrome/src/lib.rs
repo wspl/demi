@@ -41,3 +41,4 @@ pub mod driver;
 pub mod live;
 pub mod page;
 pub mod tabs;
+pub mod traced;

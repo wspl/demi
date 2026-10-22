@@ -16,6 +16,7 @@ use crate::tabs::environment::BrowserEnvironment;
 use demi_command_package_browser_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
 
 use crate::live::{commands::find, hub::Membership, observers, protocol::TabId, writer::Writer};
+use crate::traced::SpawnTraced as _;
 
 pub(crate) enum Item {
     Start {
@@ -79,7 +80,7 @@ pub(crate) fn start(
 ) {
     let tasks = environment.tasks().clone();
     let writer = writer.until(&stop);
-    tasks.spawn(async move {
+    tasks.spawn_traced(async move {
         let mut pending: Option<Upload> = None;
         loop {
             let item = tokio::select! {

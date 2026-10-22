@@ -276,7 +276,7 @@ impl Driver for Ios {
             self.once::<Value>(&["boot", native_id]).await?;
             match self.launch.boots().get(native_id) {
                 Some(boot) => booting.began(*boot),
-                None => tracing::warn!("{native_id}'s boot has no mark; it is not kept past this program"),
+                None => tracing::warn!(event = "ios_simulator.unmarked", native_id, "a simulator's boot has no mark; it is not kept past this program"),
             }
             Ok(())
         })
@@ -349,7 +349,7 @@ async fn follow(session: Weak<Session>, mut events: mpsc::UnboundedReceiver<Even
                 }
             }
             Event::Lost { udid, reason } => {
-                tracing::info!("the iOS simulator {udid} went away: {reason}");
+                tracing::info!(event = "ios_simulator.gone", %udid, %reason, "an iOS simulator went away");
                 if let Some(device) = devices.get(&udid) {
                     device.ended.cancel();
                 }
@@ -656,6 +656,8 @@ impl Device for IosDevice {
 
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move {
+            let from = self.state.screen.borrow().orientation;
+            let started = std::time::Instant::now();
             let answer = self
                 .call("orient", json!({ "orientation": orientation_name(orientation) }))
                 .await?;
@@ -665,6 +667,15 @@ impl Device for IosDevice {
             // The orientation the screen took, which an app may have refused.
             let screen = turned.screen();
             self.state.screen.send_if_modified(|current| std::mem::replace(current, screen) != screen);
+            tracing::info!(
+                event = "mobile_rotation.ended",
+                udid = %self.udid,
+                from = %from,
+                to = %orientation,
+                ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                outcome = if screen.orientation == orientation { "turned" } else { "refused" },
+                "a rotation ended"
+            );
             Ok(())
         })
     }
@@ -707,7 +718,7 @@ impl Device for IosDevice {
                         () = sink.handover().requested().cancelled() => {
                             let params = json!({ "recording": recording, "udid": udid });
                             if let Err(error) = helper.ask("recordStop", params).await {
-                                tracing::info!("the iOS helper's recordStop: {error}");
+                                tracing::info!(event = "ios_helper.call_failed", method = "recordStop", %error, "a call to the iOS helper failed");
                             }
                         }
                         () = sink.ended().cancelled() => {}
@@ -837,7 +848,7 @@ impl IosCapture {
         params["udid"] = Value::String(self.udid.clone());
         tokio::spawn(async move {
             if let Err(error) = helper.ask(method, params).await {
-                tracing::info!("the iOS helper's {method}: {error}");
+                tracing::info!(event = "ios_helper.call_failed", method, %error, "a call to the iOS helper failed");
             }
         });
     }
@@ -881,7 +892,7 @@ impl Drop for IosRecording {
         let params = json!({ "recording": self.recording, "udid": self.udid });
         tokio::spawn(async move {
             if let Err(error) = helper.ask("recordStop", params).await {
-                tracing::info!("the iOS helper's recordStop: {error}");
+                tracing::info!(event = "ios_helper.call_failed", method = "recordStop", %error, "a call to the iOS helper failed");
             }
         });
     }

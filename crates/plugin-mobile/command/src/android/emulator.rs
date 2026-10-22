@@ -286,7 +286,7 @@ impl Drop for Registered {
         if let Err(error) = std::fs::remove_file(&self.0)
             && error.kind() != std::io::ErrorKind::NotFound
         {
-            tracing::info!("{} was not removed: {error}", self.0.display());
+            tracing::warn!(event = "emulator_dir.remove_failed", path = %self.0.display(), %error, "an emulator's registration was not removed");
         }
     }
 }

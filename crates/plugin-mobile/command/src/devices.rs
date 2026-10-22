@@ -289,13 +289,13 @@ enum Closing {
 }
 
 impl Closing {
-    /// Why, as the Host's log says it.
-    fn words(self) -> &'static str {
+    /// Why, as the log's `reason` field says it.
+    fn reason(self) -> &'static str {
         match self {
-            Self::Asked => "closed by the agent or its tab",
-            Self::Released => "its conversation was released",
-            Self::Lost => "it went away",
-            Self::Ending => "the service ends",
+            Self::Asked => "asked",
+            Self::Released => "released",
+            Self::Lost => "lost",
+            Self::Ending => "ending",
         }
     }
 }
@@ -392,11 +392,12 @@ impl Devices {
     async fn sweep(self: Arc<Self>) {
         for device in self.kept.forget_where_gone(|conversation| (self.exists)(conversation)) {
             tracing::info!(
-                device = %device.handle,
+                event = "mobile_device.closed",
+                handle = %device.handle,
+                native_id = %device.native_id,
                 conversation = %device.conversation,
-                "{} ({}) closes: its conversation is no longer on this Host",
-                device.handle,
-                device.native_id,
+                reason = "conversation_gone",
+                "a device closed"
             );
             self.shut_down_if_demis(device.platform, &device.native_id).await;
         }
@@ -417,7 +418,7 @@ impl Devices {
                 (true, None)
             }
             Err(error) => {
-                tracing::warn!("{native_id} did not shut down: {error}");
+                tracing::warn!(event = "mobile_device.shutdown_failed", native_id, %error, "a device did not shut down");
                 (false, Some(error.to_string()))
             }
         }
@@ -502,7 +503,7 @@ impl Devices {
                 }
                 Probe::Booting => BOOT_POLL,
                 Probe::Unknown(why) => {
-                    tracing::warn!("{} could not be found yet: {why}", entry.native_id);
+                    tracing::warn!(event = "mobile_device.resume_pending", step = "find", native_id = %entry.native_id, %why, "a device could not be found yet");
                     failures += 1;
                     retry_after(failures)
                 }
@@ -513,7 +514,7 @@ impl Devices {
                             return;
                         }
                         Err(error) => {
-                            tracing::warn!("{} could not be attached yet: {error}", entry.native_id);
+                            tracing::warn!(event = "mobile_device.resume_pending", step = "attach", native_id = %entry.native_id, why = %error, "a device could not be attached yet");
                             failures += 1;
                             retry_after(failures)
                         }
@@ -580,7 +581,7 @@ impl Devices {
             }
             None => {
                 if let Err(error) = device.detach().await {
-                    tracing::warn!("{} did not detach cleanly: {error}", entry.native_id);
+                    tracing::warn!(event = "mobile_device.detach_failed", native_id = %entry.native_id, %error, "a device did not detach cleanly");
                 }
             }
         }
@@ -600,11 +601,13 @@ impl Devices {
             return;
         }
         tracing::info!(
-            device = %entry.handle,
+            event = "mobile_device.closed",
+            handle = %entry.handle,
+            native_id = %entry.native_id,
             conversation = %entry.conversation,
-            "{} ({}) closes: it was lost: {why}",
-            entry.handle,
-            entry.native_id,
+            reason = "lost",
+            %why,
+            "a device closed"
         );
         self.kept.closed(&entry.native_id);
         self.changed(&entry.conversation);
@@ -632,17 +635,17 @@ impl Devices {
             if let Err(error) = tokio::fs::remove_file(&path).await
                 && error.kind() != std::io::ErrorKind::NotFound
             {
-                tracing::warn!("{} could not be removed: {error}", path.display());
+                tracing::warn!(event = "mobile_file.remove_failed", path = %path.display(), %error, "a file could not be removed");
             }
         }
         tracing::info!(
-            device = %entry.handle,
+            event = "mobile_device.closed",
+            handle = %entry.handle,
+            native_id = %entry.native_id,
             conversation = %entry.conversation,
-            reason = ?why,
-            "{} ({}) closes: {}",
-            entry.handle,
-            entry.native_id,
-            why.words(),
+            reason = why.reason(),
+            resuming = true,
+            "a device closed"
         );
         let (shut_down, failure) = self.shut_down_if_demis(entry.platform, &entry.native_id).await;
         self.changed(&entry.conversation);
@@ -862,7 +865,7 @@ impl Devices {
                     match driver.shutdown(&simulator.native_id).await {
                         Ok(()) => self.kept.unbooted(driver.platform(), &simulator.native_id),
                         Err(failure) => {
-                            tracing::warn!("{} stayed booted after a failed open: {failure}", simulator.name);
+                            tracing::warn!(event = "mobile_device.stayed_booted", name = %simulator.name, %failure, "a simulator stayed booted after a failed open");
                         }
                     }
                 }
@@ -876,7 +879,7 @@ impl Devices {
         let number = match numbers.draw(conversation, ServiceSequence::Device, 1).await {
             Ok(number) => number,
             Err(error) => {
-                let failure = self.let_go(&driver, &device, &simulator.native_id, booted, &simulator.name).await;
+                let failure = self.let_go(&driver, &device, &simulator.native_id, booted).await;
                 if booted && failure.is_none() {
                     self.kept.unbooted(driver.platform(), &simulator.native_id);
                 }
@@ -1052,7 +1055,7 @@ impl Devices {
                 if let Err(error) = tokio::fs::remove_file(&path).await
                     && error.kind() != std::io::ErrorKind::NotFound
                 {
-                    tracing::warn!("{} could not be removed: {error}", path.display());
+                    tracing::warn!(event = "mobile_file.remove_failed", path = %path.display(), %error, "a file could not be removed");
                 }
             }
         }
@@ -1066,19 +1069,18 @@ impl Devices {
         // Every close says why, so a tab that went can be told apart from
         // another afterwards.
         tracing::info!(
-            device = %open.handle,
+            event = "mobile_device.closed",
+            handle = %open.handle,
             name = %open.name,
+            native_id = %open.native_id,
             conversation = %open.conversation,
-            reason = ?why,
+            reason = why.reason(),
             shut_down,
-            "{} ({}) closes: {}",
-            open.handle,
-            open.name,
-            why.words(),
+            "a device closed"
         );
         // A device that went away is let go as any other, so what attaching
         // started inside it ends; it is never shut down for going away.
-        let failure = self.let_go(&driver, &open.device, &open.native_id, shut_down, &open.name).await;
+        let failure = self.let_go(&driver, &open.device, &open.native_id, shut_down).await;
         // A device that went away may still be booted, as when its helper
         // ended: it stays Demi's until it is shut down.
         if shut_down && failure.is_none() {
@@ -1100,10 +1102,9 @@ impl Devices {
         device: &Arc<dyn Device>,
         native_id: &str,
         shut_down: bool,
-        name: &str,
     ) -> Option<String> {
         if let Err(error) = device.detach().await {
-            tracing::warn!("{name} did not detach cleanly: {error}");
+            tracing::warn!(event = "mobile_device.detach_failed", native_id, %error, "a device did not detach cleanly");
         }
         if !shut_down {
             return None;
@@ -1111,7 +1112,7 @@ impl Devices {
         match driver.shutdown(native_id).await {
             Ok(()) => None,
             Err(error) => {
-                tracing::warn!("{name} did not shut down: {error}");
+                tracing::warn!(event = "mobile_device.shutdown_failed", native_id, %error, "a device did not shut down");
                 Some(error.to_string())
             }
         }
@@ -1168,16 +1169,20 @@ impl Devices {
             return;
         }
         tracing::info!(
-            device = %open.handle,
+            event = "mobile_device.reconnecting",
+            handle = %open.handle,
             name = %open.name,
-            "{} ({}) loses its connection and reconnects",
-            open.handle,
-            open.name,
+            native_id = %open.native_id,
+            conversation = %open.conversation,
+            from = "open",
+            to = "resuming",
+            cause = "connection_ended",
+            "a device lost its connection and reconnects"
         );
         open.closed.cancel();
         drop(turn);
         if let Err(error) = open.device.detach().await {
-            tracing::warn!("{} did not detach cleanly: {error}", open.name);
+            tracing::warn!(event = "mobile_device.detach_failed", native_id = %open.native_id, %error, "a device did not detach cleanly");
         }
         self.changed(&open.conversation);
         self.tasks.spawn(self.clone().resume(entry, RECONNECT_DELAY));
@@ -1261,7 +1266,7 @@ impl Announcer {
                 };
                 if let Err(error) = messages.send(&conversation, message.clone()).await {
                     // The stream ends with the service; nobody is left to tell.
-                    tracing::info!("the plugin was not told of {conversation}'s devices: {error}");
+                    tracing::warn!(event = "mobile_plugin.announce_failed", %conversation, %error, "the plugin was not told of a conversation's devices");
                     return;
                 }
             }

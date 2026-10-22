@@ -320,7 +320,7 @@ impl Drop for ChromeProcess {
             let alive = signal_group(group, libc::SIGKILL)
                 .and_then(|_| kill_helpers(&mut self.processes, &self.installations, &self.marker));
             if let Err(error) = alive {
-                tracing::warn!("could not terminate Chrome process tree {group}: {error}");
+                tracing::warn!(event = "chrome_process.terminate_failed", %group, %error, "a Chrome process tree could not be terminated");
             }
         }
     }

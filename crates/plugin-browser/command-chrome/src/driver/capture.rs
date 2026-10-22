@@ -65,6 +65,7 @@ use demi_command_package_browser_protocol::capture::{self as extension, CaptureC
 use demi_shared_types::DecodeError;
 
 use crate::driver::operation::{BrowserError, Result};
+use crate::traced::SpawnTraced as _;
 
 /// Frames a capture's consumer has not taken yet; beyond them the consumer
 /// is behind and the newest frames are dropped until it asks for a key frame.
@@ -250,7 +251,7 @@ impl CaptureServer {
     /// one before, and hands them to `channel`.
     pub fn serve(self, channel: CaptureChannel, tasks: &TaskTracker, ended: CancellationToken) {
         let connections = tasks.clone();
-        tasks.spawn(async move {
+        tasks.spawn_traced(async move {
             loop {
                 let accepted = tokio::select! {
                     _ = ended.cancelled() => break,
@@ -377,7 +378,7 @@ impl CaptureChannel {
             recreated: None,
             stopped,
         };
-        tasks.spawn(owner.run(received, routed));
+        tasks.spawn_traced(owner.run(received, routed));
         Self {
             requests,
             connected: watched,
@@ -690,8 +691,8 @@ impl Owner {
         let (commands, outgoing) = mpsc::channel(EXTENSION_COMMANDS);
         let stop = self.ended.child_token();
         let (sink, stream) = socket.split();
-        self.tasks.spawn(write(sink, outgoing, stop.clone()));
-        self.tasks.spawn(read(
+        self.tasks.spawn_traced(write(sink, outgoing, stop.clone()));
+        self.tasks.spawn_traced(read(
             stream,
             self.inbound.clone(),
             self.generation,
@@ -874,16 +875,16 @@ impl Owner {
             return;
         }
         self.recreated = Some(Instant::now());
-        tracing::warn!("recreating the capture extension: {why}");
+        tracing::warn!(event = "capture_extension.recreated", %why, "the capture extension is recreated");
         let recreation = (self.recreate)();
         let ended = self.ended.clone();
         let stopped = self.stopped.clone();
-        self.tasks.spawn(async move {
+        self.tasks.spawn_traced(async move {
             tokio::select! {
                 // The extension ends with the browser.
                 _ = ended.cancelled() => {}
                 recreated = recreation => if let Err(error) = recreated {
-                    tracing::warn!("the capture extension could not be recreated: {error}");
+                    tracing::warn!(event = "capture_extension.recreate_failed", %error, "the capture extension could not be recreated");
                     stopped.send_replace(Some(format!(
                         "the capture extension could not be recreated: {error}"
                     )));
@@ -974,7 +975,7 @@ async fn read(
             Ok(Some(message)) => message,
             Ok(None) => continue,
             Err(error) => {
-                tracing::warn!("capture extension message refused: {error}");
+                tracing::warn!(event = "capture_extension.message_refused", %error, "a message of the capture extension was refused");
                 break;
             }
         };

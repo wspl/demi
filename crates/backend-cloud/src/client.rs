@@ -12,6 +12,7 @@
 //!   retries.
 //! - A death event goes to the one receiver the backend routes to the device's
 //!   owner.
+//! - A line of the manager's log is stored in the backend's log as it arrives.
 //!
 //! A supervisor task owns the connection, the calls in flight and the id
 //! counter. The client is its handle, and the task ends with the client.
@@ -26,6 +27,7 @@ use demi_machine_manager_protocol::{
     DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation,
     WIRE_VERSION, decode_response, encode_line,
 };
+use demi_backend_database::server_log::ServerLog;
 use futures_util::StreamExt as _;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::UnixStream;
@@ -94,8 +96,9 @@ enum Command {
 impl MachinesClient {
     /// A client of the socket at `socket`, on the runtime that calls this,
     /// and the receiver of the manager's death events: the device of each
-    /// sandbox that exited without being asked to stop.
-    pub fn new(socket: PathBuf) -> (Self, mpsc::Receiver<DeviceId>) {
+    /// sandbox that exited without being asked to stop. The lines of the
+    /// manager's log that arrive on the connection are stored in `log`.
+    pub fn new(socket: PathBuf, log: ServerLog) -> (Self, mpsc::Receiver<DeviceId>) {
         let (commands, received) = mpsc::channel(QUEUE);
         let (deaths, died) = mpsc::channel(DEATHS);
         let supervisor = Supervisor {
@@ -104,6 +107,7 @@ impl MachinesClient {
             pending: HashMap::new(),
             next_id: 1,
             deaths,
+            log,
         };
         let task = tokio::spawn(supervisor.run(received));
         (
@@ -160,6 +164,7 @@ struct Supervisor {
     pending: HashMap<String, Pending>,
     next_id: u64,
     deaths: mpsc::Sender<DeviceId>,
+    log: ServerLog,
 }
 
 struct Connection {
@@ -278,6 +283,10 @@ impl Supervisor {
                         tracing::warn!(event = "machine_manager.sandbox_died", reason = "device_id_unreadable", %error, "the machine manager reported the death of a sandbox that is no device")
                     }
                 }
+                return;
+            }
+            MachineResponse::Log { line } => {
+                self.log.store_manager(line);
                 return;
             }
             MachineResponse::Ok { id, result } => (id, Ok(result)),

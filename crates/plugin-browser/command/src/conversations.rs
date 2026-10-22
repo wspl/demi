@@ -52,6 +52,7 @@ use tokio_util::{
     sync::CancellationToken,
     task::{TaskTracker, task_tracker::TaskTrackerToken},
 };
+use tracing::Instrument as _;
 
 use demi_command_package_browser_chrome::driver::{
     installation::Chrome,
@@ -79,6 +80,7 @@ use crate::protocol::{
     CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
     OpenResult, ScreenshotResult, ShowResult, TabsResult,
 };
+use demi_command_package_browser_chrome::traced::SpawnTraced as _;
 
 /// Requests waiting for an owner; a full queue holds back their senders.
 const REQUESTS: usize = 64;
@@ -197,16 +199,21 @@ impl ConversationBrowser {
             tasks: tasks.clone(),
         };
         let owned = CancellationToken::new();
-        tasks.spawn(announce(
+        // The owner's events name the conversation, which it does not hold.
+        let span = tracing::info_span!("conversation_browser", conversation = %conversation);
+        tasks.spawn_traced(announce(
             conversation,
             numbers.watch_changes(),
             messages,
             owned.clone(),
         ));
-        tasks.spawn(async move {
-            owner.run(receiver).await;
-            owned.cancel();
-        });
+        tasks.spawn_traced(
+            async move {
+                owner.run(receiver).await;
+                owned.cancel();
+            }
+            .instrument(span),
+        );
         Arc::new(Self {
             requests,
             lifecycle,
@@ -432,7 +439,9 @@ impl Owner {
                 Event::Finished(finished) => {
                     if let Err(error) = self.finished(finished) {
                         tracing::warn!(
-                            "a conversation's browser did not finish its cleanup: {error}"
+                            event = "browser_cleanup.failed",
+                            %error,
+                            "a conversation's browser did not finish its cleanup"
                         );
                     }
                 }
@@ -440,7 +449,11 @@ impl Owner {
             }
         }
         if let Err(error) = self.retire().await {
-            tracing::warn!("a conversation's browser did not finish its cleanup: {error}");
+            tracing::warn!(
+                event = "browser_cleanup.failed",
+                %error,
+                "a conversation's browser did not finish its cleanup"
+            );
         }
     }
 
@@ -542,7 +555,7 @@ impl Owner {
         let chrome = self.chrome.clone();
         let numbers = self.numbers.clone();
         let owner_stop = stop.clone();
-        let task = self.tasks.spawn(async move {
+        let task = self.tasks.spawn_traced(async move {
             let publisher = publish.clone();
             let retire = owner_stop.clone();
             let result = async {
@@ -787,7 +800,7 @@ async fn announce(
         {
             // The plugin then shows the tabs it read last until the next
             // change reaches it.
-            tracing::info!("the plugin was not told of the tabs' change: {error}");
+            tracing::warn!(event = "browser_tabs.announce_failed", %conversation, %error, "the plugin was not told of the tabs' change");
         }
         if ended {
             return;
@@ -899,7 +912,7 @@ impl Conversations {
         let (numbers, source) = watch::channel(None);
         let (messages, sender) = watch::channel(None);
         let libraries = Libraries { home, codec };
-        tasks.spawn(serve(receiver, tasks.clone(), chrome.clone(), source, sender, libraries));
+        tasks.spawn_traced(serve(receiver, tasks.clone(), chrome.clone(), source, sender, libraries));
         Self {
             requests,
             tasks,

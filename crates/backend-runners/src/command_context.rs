@@ -2,7 +2,10 @@
 //! declared command of a job or a user stream knows beyond its arguments.
 //! The backend is its only source and builds it when the work starts.
 
-use demi_command_protocol::{ColorScheme, CommandCaller, CommandContext, CommandLocale};
+use demi_command_protocol::{
+    AUTOMATION_SCOPE_PREFIX, ColorScheme, CommandCaller, CommandContext, CommandLocale,
+    PROVIDER_SCOPE_PREFIX,
+};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::settings::BrowserLocale;
 
@@ -39,7 +42,7 @@ pub async fn provider_context(
     context(
         control,
         user,
-        format!("provider-{provider}"),
+        format!("{PROVIDER_SCOPE_PREFIX}{provider}"),
         CommandCaller::User {},
     )
     .await
@@ -56,7 +59,7 @@ pub async fn automation_context(
     context(
         control,
         user,
-        format!("automation-{automation}"),
+        format!("{AUTOMATION_SCOPE_PREFIX}{automation}"),
         CommandCaller::User {},
     )
     .await

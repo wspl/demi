@@ -74,7 +74,7 @@ pub use edits::{
     EditContext, EditCopies, EditFile, EditJournal, EditKind, PathChange, TextRefusal, text_of,
 };
 pub use invocation::{
-    COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
+    AUTOMATION_SCOPE_PREFIX, COMMAND_LOCALE_LANGUAGES, PROVIDER_SCOPE_PREFIX, is_conversation_scope, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
     ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
     recordings_directory, recordings_in, scratch_name, without_nul,
 };
@@ -94,6 +94,10 @@ pub const MAX_METADATA_BYTES: usize = 256 * 1024;
 /// The most bytes of one response record's payload or one input chunk: the
 /// protocol's framing, which every reader allocates a record's length for.
 pub const MAX_RECORD_BYTES: usize = 64 * 1024;
+/// The longest line of a service's standard error that stays whole: the
+/// runner reads the stream line by line for the Host's log, and continues a
+/// longer line on the next, which breaks a line of the log in two.
+pub const STDERR_LINE_BYTES: usize = 4096;
 pub const INFO_PATH: &str = "/v1/info";
 pub const INVOKE_PATH: &str = "/v1/invoke";
 pub const CONVERSATION_PATH: &str = "/v1/conversation";
@@ -108,6 +112,13 @@ pub const SHUTDOWN_PATH: &str = "/v1/shutdown";
 pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'static {
     fn validate(&self) -> Result<(), ProtocolError>;
     fn operation(&self) -> &str;
+
+    /// The invocation's ID, which a service's log lines name it by.
+    fn invocation_id(&self) -> &str;
+
+    /// The conversation the invocation serves, which a service's log lines
+    /// name; none for a local caller, which names only its execution context.
+    fn conversation(&self) -> Option<&str>;
 
     /// Whether the invocation may return media (`crates/runner-jobs/src/commands/command_output.rs`): only one a job's command makes, which carries the media
     /// types the job may show the model.
@@ -128,6 +139,14 @@ impl Metadata for Invocation {
         &self.operation
     }
 
+    fn invocation_id(&self) -> &str {
+        &self.invocation_id
+    }
+
+    fn conversation(&self) -> Option<&str> {
+        Some(self.context.conversation.as_str()).filter(|name| is_conversation_scope(name))
+    }
+
     fn returns_media(&self) -> bool {
         self.viewable.is_some()
     }
@@ -140,6 +159,14 @@ impl Metadata for LocalInvocation {
 
     fn operation(&self) -> &str {
         &self.operation
+    }
+
+    fn invocation_id(&self) -> &str {
+        &self.invocation_id
+    }
+
+    fn conversation(&self) -> Option<&str> {
+        None
     }
 
     /// The runner hands the media of the commands it dispatches to their

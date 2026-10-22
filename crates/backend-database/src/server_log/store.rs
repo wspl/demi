@@ -63,6 +63,7 @@ fn origin_name(origin: LogOrigin) -> &'static str {
         LogOrigin::Backend => "backend",
         LogOrigin::Runner => "runner",
         LogOrigin::Page => "page",
+        LogOrigin::MachineManager => "machine_manager",
     }
 }
 

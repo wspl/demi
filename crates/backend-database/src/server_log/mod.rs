@@ -210,6 +210,23 @@ impl ServerLog {
         }
     }
 
+    /// Stores a line the machine manager sent on its connection. The manager
+    /// is the backend's own infrastructure, but its line is the manager's,
+    /// whatever it claims: the origin is the manager's, and no user, request,
+    /// conversation, turn or page is taken, since the manager serves none.
+    pub fn store_manager(&self, mut line: LogLine) {
+        let Some(sink) = &self.sink else {
+            return;
+        };
+        line.origin = LogOrigin::MachineManager;
+        line.user_id = None;
+        line.request_id = None;
+        line.conversation_id = None;
+        line.turn_id = None;
+        line.page_id = None;
+        sink.push(Row { line, seq: None });
+    }
+
     /// Stores the lines of a page's `POST /log`, which the route has
     /// checked and given their page, user and origin.
     pub fn store_page(&self, lines: Vec<LogLine>) {

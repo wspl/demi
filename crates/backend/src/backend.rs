@@ -314,7 +314,7 @@ impl Backend {
             clock: config.clock,
             master_account: config.master_account,
         };
-        let (machines, deaths) = MachinesClient::new(config.machines_socket);
+        let (machines, deaths) = MachinesClient::new(config.machines_socket, config.log.clone());
         let keys = ServiceKeys {
             vault: secret.vault_key(),
             email_codes: secret.email_code_key(),

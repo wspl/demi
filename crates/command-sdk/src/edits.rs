@@ -676,5 +676,5 @@ fn normalize(path: &Path) -> PathBuf {
 /// Inside the runner the event reaches the Host log; inside a command service
 /// it reaches standard error, which the runner drains into the same log.
 fn diagnostic(error: &io::Error) {
-    tracing::warn!("edit recording failed: {error}");
+    tracing::warn!(event = "edit_record.failed", %error, "an edit could not be recorded");
 }
