@@ -115,7 +115,7 @@ const waiting = new Set<() => void>()
 
 /** Reports why the page replaced its socket named `name`, for a developer; the user sees what the page shows. */
 function reportReplaced(name: string, why: string): void {
-  reportError(t('socketReplaced'), `The ${name} ${why}`)
+  reportError(t('socketReplaced'), `The ${name} ${why}`, { userVisible: false })
 }
 
 /**

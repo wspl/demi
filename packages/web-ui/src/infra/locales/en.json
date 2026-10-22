@@ -1,4 +1,7 @@
 {
   "copyFailed": "Could Not Copy",
-  "clipboardUnavailable": "The clipboard isn’t available here."
+  "clipboardUnavailable": "The clipboard isn’t available here.",
+  "unexpected": {
+    "title": "Something Went Wrong"
+  }
 }

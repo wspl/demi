@@ -1067,6 +1067,9 @@ export function createSettingsState() {
       theme: 'system' as 'light' | 'dark' | 'system',
       fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
     },
+    developer: {
+      showUnexpectedErrors: false,
+    },
     notifications: {
       enabled: false,
       turnFinishes: true,

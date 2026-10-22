@@ -23,7 +23,7 @@ import type { CommitHistorySource } from '../files/history'
 import type { TranscriptRequest } from '../files/request-changes'
 import type { FileBrowserSource } from '../files/types'
 import { provideOnScreen } from '../files/on-screen'
-import { reportError } from '../infra/errors'
+import { reportDefect, reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SettingsGroupId, SettingsNavGroup, SettingsNavItem } from '../settings/types'
@@ -307,7 +307,7 @@ export interface PageContext {
   readonly errors: {
     /** An error the user sees; a call its caller dropped is none. */
     report(message: HeadlineText, error: unknown): void
-    /** A defect of the page itself, which only the console shows; a call its caller dropped is none. */
+    /** A defect of the page itself, which the console shows, and a toast does when the user chose to see defects; a call its caller dropped is none. */
     defect(message: string, error: unknown): void
   }
   readonly overlays: OverlayStore
@@ -645,7 +645,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     },
     defect: (message, error) => {
       if (!dropped(error)) {
-        reportError(message, error)
+        reportDefect(message, error)
       }
     },
   }

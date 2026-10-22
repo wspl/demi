@@ -316,6 +316,10 @@
     },
     "users": {
       "keywords": "accounts,people,admin,add user,invite,reset password,role,disable,sign out everywhere"
+    },
+    "developer": {
+      "keywords": "developer,debug,troubleshooting",
+      "errorsKeywords": "error,bug,log,debug,diagnostics"
     }
   },
   "changeEmail": {
@@ -738,5 +742,10 @@
   },
   "provider": {
     "endpointInvalid": "Enter an http or https address."
+  },
+  "developer": {
+    "title": "Developer",
+    "showUnexpectedErrors": "Show unexpected errors",
+    "showUnexpectedErrorsDescription": "Shows a notice with an ID you can copy when this page fails."
   }
 }

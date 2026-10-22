@@ -17,6 +17,8 @@ defineProps<{
   action?: TitleText
   /** The request a failure came from, named under the message. */
   requestId?: string | null
+  /** The message stays on one line, cut with an ellipsis where it does not fit. */
+  oneLine?: boolean
 }>()
 
 /** Each tone's mark: a check for success, an i for a fact, a cross for a failure. */
@@ -53,7 +55,8 @@ const icons = useIconPx()
       <!-- A message of several lines, such as one per refused conversation, keeps its lines. -->
       <div
         v-if="message"
-        class="text-detail leading-4 whitespace-pre-line text-fg-muted"
+        class="text-detail leading-4 text-fg-muted"
+        :class="oneLine ? 'truncate' : 'whitespace-pre-line'"
       >{{ message }}</div>
       <RequestIdLine v-if="requestId" class="text-fg-subtle" :request-id="requestId" />
       <Button

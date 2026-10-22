@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { showUnexpectedErrors } from '@demicodes/web-ui/infra/errors'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
@@ -18,6 +19,7 @@ import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
+import SettingsDeveloper from '@demicodes/web-ui/settings/SettingsDeveloper.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
@@ -140,6 +142,8 @@ const pluginPage = computed(() => settingsPage(PLUGIN_PAGES, props.tab))
 
 // Text size resizes the transcript here as it does in the product.
 watch(() => s.value.general.fontSize, applyTranscriptTextSize, { immediate: true })
+// The specimen's switch governs the gallery's own failures, as the product's governs its own.
+watch(() => s.value.developer.showUnexpectedErrors, showUnexpectedErrors, { immediate: true })
 
 /** Light and dark switch the gallery itself, so the preview and the page follow; System keeps the current mode. */
 function setThemeChoice(choice: ThemeChoice) {
@@ -401,6 +405,11 @@ function resetShortcuts() {
     :bindings="s.keys"
     @rebind="rebind"
     @reset="resetShortcuts"
+  />
+
+  <SettingsDeveloper
+    v-else-if="tab === 'developer'"
+    v-model:show-unexpected-errors="s.developer.showUnexpectedErrors"
   />
 
   <GalleryAbout v-else-if="tab === 'about'" />

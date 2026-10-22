@@ -115,6 +115,11 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let chain: Promise<unknown> = Promise.resolve()
 /** The lines that did not get in, and why, for the next request's `log.dropped` line. */
 let dropped = { count: readDropped(), why: 'the page was left before they were sent' }
+/**
+ * The errors still waiting for the request that carries their line, each by the
+ * line: the one that sends a line answers its ID, whichever call wrote it.
+ */
+const awaiting = new Map<PageLogLine, (requestId: string | null) => void>()
 /** Whether this hidden period's request is sent already. */
 let hiddenSent = false
 
@@ -180,8 +185,9 @@ function scalars(fields: Record<string, unknown>): Record<string, LogValue> {
 
 /**
  * Writes a line, which waits for the next send; an `error` goes at once.
- * Answers the backend's request ID of the request that carried it, or null
- * when it did not get in.
+ * Answers the backend's request ID of the request that carried the line, or
+ * null when the backend refused it. A page that cannot send yet answers when
+ * the line is sent.
  */
 function write(
   level: LogLevel,
@@ -201,7 +207,9 @@ function write(
   }
   buffer.push(line)
   if (level === 'error') {
-    return flush()
+    const carried = new Promise<string | null>((resolve) => awaiting.set(line, resolve))
+    void flush()
+    return carried
   }
   schedule()
   return Promise.resolve(null)
@@ -255,42 +263,52 @@ function giveBack(taken: Taken): void {
   buffer = [...taken.real, ...buffer]
 }
 
+/** Answers each error among `lines` with the ID of the request that carried it, or null. */
+function settle(lines: PageLogLine[], requestId: string | null): void {
+  for (const line of lines) {
+    awaiting.get(line)?.(requestId)
+    awaiting.delete(line)
+  }
+}
+
 /** What a refused request lost, counted once: its lines, and the lost lines it carried the count of. */
 function lose(taken: Taken, why: string): void {
   drop(taken.real.length + taken.carried, why)
 }
 
-/** Sends what the buffer holds, a request of at most `BODY_BYTES` at a time; the request ID of the last. */
-function flush(): Promise<string | null> {
+/** Sends what the buffer holds, a request of at most `BODY_BYTES` at a time. */
+function flush(): Promise<void> {
   const run = chain.then(async () => {
     const send = sender
-    let last: string | null = null
     while (send && signedIn && buffer.length + dropped.count > 0) {
       const taken = take(BODY_BYTES, true)
-      const answer = await send({ page: PAGE_ID, lines: taken.body }, false)
+      // A request that failed outright is one that reached nothing.
+      const answer = await send({ page: PAGE_ID, lines: taken.body }, false).catch((): PageLogAnswer => ({ kind: 'unreached' }))
       if (answer.kind === 'unreached') {
         giveBack(taken)
         schedule()
-        return null
+        return
       }
       if (answer.kind === 'unauthorized') {
         // Nothing is sent until the app says the page is signed in.
         giveBack(taken)
         signedIn = false
-        return null
+        return
       }
       if (answer.kind === 'refused') {
         lose(taken, `the backend refused them with ${answer.status}`)
+        settle(taken.real, null)
+      } else {
+        settle(taken.real, answer.requestId)
       }
-      last = answer.requestId
     }
     if (signedIn && buffer.length + dropped.count > 0) {
       schedule()
     }
-    return last
   })
-  chain = run.catch(() => null)
-  return run.catch(() => null)
+  const settled = run.catch(() => undefined)
+  chain = settled
+  return settled
 }
 
 /** The hidden page's one request: what fits 16 KiB, `keepalive`; the rest is counted for the next load. */
@@ -305,12 +323,14 @@ function sendHidden(): void {
   if (!signedIn) {
     // The lines would be refused: they are counted for the next load.
     drop(buffer.length, 'the page was hidden while it could not send')
+    settle(buffer, null)
     buffer = []
     keepDropped()
     return
   }
   const taken = take(HIDDEN_BYTES, false)
   drop(buffer.length, 'the page was hidden with more than a request holds')
+  settle(buffer, null)
   buffer = []
   keepDropped()
   if (taken.body.length === 0) {
@@ -322,10 +342,12 @@ function sendHidden(): void {
       if (answer.kind !== 'stored') {
         lose(taken, "the hidden page's request did not get in")
       }
+      settle(taken.real, answer.kind === 'stored' ? answer.requestId : null)
       keepDropped()
     },
     () => {
       lose(taken, "the hidden page's request did not get in")
+      settle(taken.real, null)
       keepDropped()
     },
   )
@@ -378,8 +400,8 @@ export function pageLogSignedIn(signed: boolean): void {
 
 /**
  * Writes the failure the page found itself as an `error` line, which goes at
- * once; answers the ID of the request that carried it, or null when it did not
- * get in. It says what failed and where, never a value the page held.
+ * once; answers the ID of the request that carried it, once it is sent, or null
+ * when it did not get in. It says what failed and where, never a value the page held.
  */
 export function logPageError(report: { title: string; message: string; detail: string }): Promise<string | null> {
   return pageLog.error(ERROR_EVENT, report)

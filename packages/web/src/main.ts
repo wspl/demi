@@ -29,7 +29,8 @@ import { followThemeColor } from '@demicodes/web-ui/theme/themeColor'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
 import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicodes/web-ui/i18n/languages'
-import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
+import { reportPageErrorsWith, showUnexpectedErrors } from '@demicodes/web-ui/infra/errors'
+import { reportUncaughtErrors } from '@demicodes/web-ui/infra/uncaught'
 import { logPageError, logPageWith, pageLogSignedIn } from '@demicodes/web-ui/infra/log'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
@@ -151,6 +152,9 @@ const restored = session.restore(startup.signal, accountCache.signInOffline).the
   }
 })
 const preferences = usePreferences(pinia)
+// Whether the page shows the defects it logs is the user's choice (Settings ›
+// General); until the preferences arrive it does not.
+const stopShowingErrors = watch(() => preferences.showUnexpectedErrors, showUnexpectedErrors, { immediate: true })
 const notifications = useNotifications(pinia)
 const stopIdentity = watch(
   () => session.user?.id,
@@ -344,10 +348,14 @@ window.addEventListener('focus', refreshVisible)
 document.addEventListener('visibilitychange', refreshVisible)
 const stopPhonePage = installPhonePage()
 const app = createApp(App).use(pinia).use(router).use(i18n)
+// What no code caught, from here on, is logged like any defect the page finds.
+const stopUncaught = reportUncaughtErrors(app)
 app.mount('#app')
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     startup.abort()
+    stopUncaught()
+    stopShowingErrors()
     stopReports()
     stopLog()
     stopLogSession()

@@ -18,6 +18,7 @@ import type { WindowRect } from '@demicodes/web-ui/ui/floating-window'
 import { KEEPS_WINDOWS } from '@demicodes/web-ui/ui/window-stack'
 import { useMediaViewer, type ShownMedium } from '@demicodes/web-ui/files/media-viewer'
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from '../fixtures/blobs'
+import { simulatedRequestId } from '../fixtures/request-failures'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import DropdownTrigger from '@demicodes/web-ui/ui/DropdownTrigger.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -188,6 +189,8 @@ const layersModel = ref('opus')
 const layersReasoning = ref('low')
 const pinDangerToast = ref(true)
 const pinRejectedToast = ref(true)
+const pinUnexpectedToast = ref(true)
+const pinUnexpectedLongToast = ref(true)
 const pinNeutralToast = ref(true)
 const pinCopiedToast = ref(true)
 const pinUndoToast = ref(true)
@@ -1137,7 +1140,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, a fact, Copied, Undo, and live host."
+        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, an error the page found itself with the ID of its line in the log, a fact, Copied, Undo, and live host."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">
@@ -1168,6 +1171,42 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 v-else
                 size="md"
                 @click="pinRejectedToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="unexpected, short">
+            <div class="w-80">
+              <Toast
+                v-if="pinUnexpectedToast"
+                title="Something Went Wrong"
+                message="Cannot read properties of undefined (reading 'id')"
+                tone="danger"
+                one-line
+                :request-id="simulatedRequestId('Something Went Wrong')"
+                @dismiss="pinUnexpectedToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                @click="pinUnexpectedToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="unexpected, long">
+            <div class="w-80">
+              <Toast
+                v-if="pinUnexpectedLongToast"
+                title="Something Went Wrong"
+                message="Failed to execute 'removeChild' on 'Node': the node to be removed is not a child of this node, while patching the transcript block"
+                tone="danger"
+                one-line
+                :request-id="simulatedRequestId('Something Went Wrong, long')"
+                @dismiss="pinUnexpectedLongToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                @click="pinUnexpectedLongToast = true"
               >Show</Button>
             </div>
           </GallerySpecimen>

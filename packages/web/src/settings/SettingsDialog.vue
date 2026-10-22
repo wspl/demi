@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
+import SettingsDeveloper from '@demicodes/web-ui/settings/SettingsDeveloper.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
@@ -480,6 +481,11 @@ function resetShortcuts(): void {
       :bindings="resources.keys"
       @rebind="rebind"
       @reset="resetShortcuts"
+    />
+    <SettingsDeveloper
+      v-else-if="section === 'developer'"
+      :show-unexpected-errors="preferences.showUnexpectedErrors"
+      @update:show-unexpected-errors="preferences.update({ showUnexpectedErrors: $event })"
     />
     <AboutPanel v-else-if="section === 'about'" />
   </SettingsDialog>

@@ -101,6 +101,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     preferences.send_while_running = patch.send_while_running.or(preferences.send_while_running);
     preferences.resume_at_retry = patch.resume_at_retry.or(preferences.resume_at_retry);
     preferences.resume_after_restart = patch.resume_after_restart.or(preferences.resume_after_restart);
+    preferences.show_unexpected_errors = patch.show_unexpected_errors.or(preferences.show_unexpected_errors);
     preferences.multi_account_warned = patch.multi_account_warned.or(preferences.multi_account_warned);
     if let Some(hidden) = patch.hidden_providers {
         preferences.hidden_providers = hidden;

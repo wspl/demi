@@ -316,6 +316,10 @@
     },
     "users": {
       "keywords": "アカウント,メンバー,管理者,ユーザーを追加,招待,パスワードをリセット,ロール,無効化,すべてサインアウト"
+    },
+    "developer": {
+      "keywords": "開発,デバッグ,トラブルシューティング",
+      "errorsKeywords": "エラー,ログ,デバッグ,診断"
     }
   },
   "changeEmail": {
@@ -738,5 +742,10 @@
   },
   "provider": {
     "endpointInvalid": "http または https のアドレスを入力してください。"
+  },
+  "developer": {
+    "title": "開発者",
+    "showUnexpectedErrors": "予期しないエラーを表示",
+    "showUnexpectedErrorsDescription": "このページでエラーが起きると、コピーできる ID を添えて通知します。"
   }
 }

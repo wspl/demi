@@ -1,10 +1,22 @@
 import { find } from '../locales/text'
+import { t } from './locales/text'
 import { formatBytes } from '../files/format'
-import { showToast, showToastRequestId } from './toast'
+import { shownToast, showToast, showToastRequestId } from './toast'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 export interface ReportErrorOptions {
+  /**
+   * Whether a toast tells of it. Left out, a defect gets one when the user
+   * chose to see them (`showUnexpectedErrors`) and a failure of any other kind
+   * none; `false` never shows one, for a report that is a diagnostic.
+   */
   userVisible?: boolean
+  /**
+   * The page's own defect even when a request names the error, as with an error
+   * nothing handled (`reportDefect`): it is logged, and the toast keeps the
+   * request's ID.
+   */
+  defect?: boolean
   expected?: boolean
   /** Where it failed, such as what of a value did not read with its schema; never a value the page held. */
   detail?: string
@@ -42,6 +54,17 @@ export function reportPageErrorsWith(report: PageErrorReporter): () => void {
       reporter = null
     }
   }
+}
+
+let showDefects = false
+
+/**
+ * Whether a defect no caller shows gets a toast with the ID of its line in the
+ * log, the choice of Settings › General. It is the user's, so a defect is
+ * logged whatever it says.
+ */
+export function showUnexpectedErrors(show: boolean): void {
+  showDefects = show
 }
 
 /**
@@ -261,6 +284,10 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
  * A defect no request names, one the page found itself, is written to the log as an
  * error line, and its toast shows the ID of the request that carried the line once
  * it is in. A failure of the environment (`environmental`) is not reported.
+ *
+ * Every occurrence of a defect writes its line, but the same failure does not
+ * stack toasts: while its toast is shown, a repeat shows nothing more, and a
+ * repeat of a failure a request names gives the toast that request's ID.
  */
 export function reportError(
   title: HeadlineText,
@@ -268,23 +295,48 @@ export function reportError(
   options: ReportErrorOptions = {}
 ): void {
   const message = error instanceof Error ? error.message : String(error)
+  const detail = options.detail ?? detailOf(error)
   if (!options.expected)
     console.error(`[demi] ${title}: ${message}`, options.detail ?? '')
   const requestId = requestIdOf(error)
-  const reported = options.expected || requestId !== null || isEnvironmental(error)
-    ? null
-    : sendReport({ title, message, detail: options.detail ?? detailOf(error) })
-  if (!options.userVisible)
+  const defect = !options.expected && !isEnvironmental(error) && (requestId === null || options.defect === true)
+  const key = `${title}\n${message}\n${detail}`
+  const reported = defect ? sendReport({ title, message, detail }) : null
+  if (!(options.userVisible ?? (defect && showDefects)))
     return
+  const shown = defect ? shownToast(key) : undefined
+  if (shown !== undefined) {
+    return
+  }
+  // What the page found itself has no words of the catalogue's: its body is the
+  // error's own message, in English, on one line. A coded failure, or one a
+  // caller shows, has words.
+  const worded = options.userVisible === true || errorCode(error) !== null || options.message !== undefined
   const toast = showToast({
     title,
-    message: () => options.message ?? errorMessage(error),
+    message: () => options.message ?? (worded ? errorMessage(error) : message),
     tone: 'danger',
+    oneLine: !worded,
     requestId,
+    key: defect ? key : undefined,
   })
-  void reported?.then((requestId) => {
-    if (requestId) {
-      showToastRequestId(toast, requestId)
-    }
-  })
+  if (requestId === null) {
+    void reported?.then((lineId) => {
+      if (lineId) {
+        showToastRequestId(toast, lineId)
+      }
+    })
+  }
+}
+
+/**
+ * Tells of a defect of the page that no caller words: an error nothing caught, or
+ * one a plugin's page reports as its own. Its toast is the catalogue's *Something
+ * Went Wrong* over the error's message, and `what` says where it happened, for
+ * the log.
+ */
+export function reportDefect(what: string, error: unknown): void {
+  const requestId = requestIdOf(error)
+  const where = requestId === null ? what : `${what} (request ${requestId})`
+  reportError(t('unexpected.title'), error, { defect: true, detail: `${where}\n${detailOf(error)}` })
 }

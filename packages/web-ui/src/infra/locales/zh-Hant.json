@@ -1,4 +1,7 @@
 {
   "copyFailed": "無法複製",
-  "clipboardUnavailable": "此處無法使用剪貼簿。"
+  "clipboardUnavailable": "此處無法使用剪貼簿。",
+  "unexpected": {
+    "title": "發生問題"
+  }
 }

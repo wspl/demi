@@ -5,6 +5,7 @@ import {
   Bot,
   BrainCircuit,
   CircleUser,
+  Code,
   Database,
   Info,
   KeyRound,
@@ -182,6 +183,15 @@ export function settingsSections(): SettingsNavGroup[] {
     },
     {
       items: [
+        {
+          id: 'developer',
+          label: t('developer.title'),
+          icon: Code,
+          keywords: words(t('sections.developer.keywords')),
+          settings: [
+            { label: t('developer.showUnexpectedErrors'), keywords: words(t('sections.developer.errorsKeywords')) },
+          ],
+        },
         {
           id: 'about',
           label: t('about.title'),

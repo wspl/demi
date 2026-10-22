@@ -14,6 +14,7 @@ import { followThemeColor } from '@demicodes/web-ui/theme/themeColor'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
+import { reportUncaughtErrors } from '@demicodes/web-ui/infra/uncaught'
 import { loadRegionRenderers } from '@demicodes/web-ui/infra/region-load'
 import { simulatedRequestId } from './fixtures/request-failures'
 import { galleryState, persistGalleryState } from './gallery-state'
@@ -53,13 +54,17 @@ setHistoryTraversal((delta) => router.options.history.go(delta, false))
 reportPageErrorsWith((report) => new Promise((resolve) => {
   setTimeout(() => resolve(simulatedRequestId(`${report.title}\n${report.detail}`)), 400)
 }))
-createApp(App).use(router).use(i18n).mount('#app')
+const app = createApp(App).use(router).use(i18n)
+// As in the product, what no code caught is reported like any defect.
+const stopUncaught = reportUncaughtErrors(app)
+app.mount('#app')
 // As in the product, what a specimen's regions need loads in the background once the page has shown.
 void router.isReady().then(loadRegionRenderers)
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     window.removeEventListener('languagechange', followBrowser)
     stopLanguage()
+    stopUncaught()
   })
 }
 installSizeAudit((run) => router.afterEach(run))

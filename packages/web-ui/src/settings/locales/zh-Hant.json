@@ -316,6 +316,10 @@
     },
     "users": {
       "keywords": "帳號,人員,管理員,新增使用者,邀請,重設密碼,角色,停用,全部登出"
+    },
+    "developer": {
+      "keywords": "開發,除錯,疑難排解",
+      "errorsKeywords": "錯誤,日誌,除錯,診斷"
     }
   },
   "changeEmail": {
@@ -738,5 +742,10 @@
   },
   "provider": {
     "endpointInvalid": "請輸入 http 或 https 網址。"
+  },
+  "developer": {
+    "title": "開發者",
+    "showUnexpectedErrors": "顯示非預期的錯誤",
+    "showUnexpectedErrorsDescription": "頁面發生錯誤時顯示通知，並附上可複製的 ID。"
   }
 }

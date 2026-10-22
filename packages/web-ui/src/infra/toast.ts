@@ -36,6 +36,10 @@ export interface Toast {
   action?: ToastAction
   /** The request a failure came from, which the toast names under its message. */
   requestId?: string | null
+  /** Its message is one line, cut with an ellipsis where it does not fit. */
+  oneLine?: boolean
+  /** What it says of, so that the same failure does not stack (`shownToast`). */
+  key?: string
 }
 
 /** How long a toast that is not a failure stays while the pointer is not over the toasts. */
@@ -77,6 +81,8 @@ export function showToast(input: {
   tone: ToastTone
   action?: ToastAction
   requestId?: string | null
+  oneLine?: boolean
+  key?: string
 }): string {
   const id = createId()
   let message = input.message
@@ -92,6 +98,8 @@ export function showToast(input: {
     tone: input.tone,
     action: input.action,
     requestId: input.requestId ?? null,
+    oneLine: input.oneLine,
+    key: input.key,
   })
   if (input.tone !== 'danger') {
     const durationMs = input.action ? ACTION_TOAST_DURATION_MS : TOAST_DURATION_MS
@@ -102,6 +110,11 @@ export function showToast(input: {
     }
   }
   return id
+}
+
+/** The ID of the toast still shown that was made with `key`, if any. */
+export function shownToast(key: string): string | undefined {
+  return toasts.find((toast) => toast.key === key)?.id
 }
 
 /**

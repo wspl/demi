@@ -1,4 +1,7 @@
 {
   "copyFailed": "복사할 수 없습니다",
-  "clipboardUnavailable": "여기서는 클립보드를 사용할 수 없습니다."
+  "clipboardUnavailable": "여기서는 클립보드를 사용할 수 없습니다.",
+  "unexpected": {
+    "title": "문제가 발생했습니다"
+  }
 }

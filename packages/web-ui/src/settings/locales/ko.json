@@ -316,6 +316,10 @@
     },
     "users": {
       "keywords": "계정,사람,관리자,사용자 추가,초대,비밀번호 재설정,역할,비활성화,모든 곳에서 로그아웃"
+    },
+    "developer": {
+      "keywords": "개발,디버그,문제 해결",
+      "errorsKeywords": "오류,로그,디버그,진단"
     }
   },
   "changeEmail": {
@@ -738,5 +742,10 @@
   },
   "provider": {
     "endpointInvalid": "http 또는 https 주소를 입력하십시오."
+  },
+  "developer": {
+    "title": "개발자",
+    "showUnexpectedErrors": "예기치 않은 오류 표시",
+    "showUnexpectedErrorsDescription": "이 페이지에서 오류가 발생하면 복사할 수 있는 ID와 함께 알림을 표시합니다."
   }
 }

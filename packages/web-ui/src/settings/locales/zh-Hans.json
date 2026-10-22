@@ -316,6 +316,10 @@
     },
     "users": {
       "keywords": "账户,人员,管理员,添加用户,邀请,重置密码,角色,禁用,全部退出登录"
+    },
+    "developer": {
+      "keywords": "开发,调试,疑难解答",
+      "errorsKeywords": "错误,报错,日志,调试,诊断"
     }
   },
   "changeEmail": {
@@ -738,5 +742,10 @@
   },
   "provider": {
     "endpointInvalid": "输入 http 或 https 地址。"
+  },
+  "developer": {
+    "title": "开发者",
+    "showUnexpectedErrors": "显示意外错误",
+    "showUnexpectedErrorsDescription": "页面出错时显示通知，并附上可复制的 ID。"
   }
 }

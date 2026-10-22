@@ -1,4 +1,7 @@
 {
   "copyFailed": "コピーできませんでした",
-  "clipboardUnavailable": "ここではクリップボードを使用できません。"
+  "clipboardUnavailable": "ここではクリップボードを使用できません。",
+  "unexpected": {
+    "title": "問題が発生しました"
+  }
 }

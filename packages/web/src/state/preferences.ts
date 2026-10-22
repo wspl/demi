@@ -108,6 +108,8 @@ export const usePreferences = defineStore('preferences', () => {
    * interrupted goes on by itself once the backend is back; absent means yes.
    */
   const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
+  /** Whether the page shows the defects it found itself, with the ID of their lines in the log; absent means no. */
+  const showUnexpectedErrors = computed(() => product.snapshot?.preferences.showUnexpectedErrors ?? false)
   /**
    * Whether the user went on past the warning about several subscription
    * accounts, which then never shows again
@@ -365,6 +367,7 @@ export const usePreferences = defineStore('preferences', () => {
     sendWhileRunning,
     resumeAtRetry,
     resumeAfterRestart,
+    showUnexpectedErrors,
     multiAccountWarned,
     smallModel,
     smallModelSameProvider,

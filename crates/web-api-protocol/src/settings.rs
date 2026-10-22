@@ -424,6 +424,17 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
+    /// Whether the page shows an error of its own that no caller shows, with
+    /// an ID that finds its line in the log. The page logs every error
+    /// either way. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub show_unexpected_errors: Option<bool>,
     /// Whether the user went on past the dialog about using several
     /// subscription accounts (`crates/backend-providers/src/llm/rotation.rs`), which then
     /// never shows again. Absent means no.
@@ -666,6 +677,17 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
+    /// Whether the page shows an error of its own that no caller shows, with
+    /// an ID that finds its line in the log. The page logs every error
+    /// either way. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub show_unexpected_errors: Option<bool>,
     /// Whether the user went on past the dialog about using several
     /// subscription accounts (`crates/backend-providers/src/llm/rotation.rs`), which then
     /// never shows again. Absent means no.
