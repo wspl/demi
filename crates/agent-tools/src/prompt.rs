@@ -50,7 +50,7 @@ const TOOL_RULES: &[&str] = &[
     "- Commands in one response run in parallel.",
     "- Results and reports show new output, runningMs and idleMs (time without output).",
     "- `demi shell status|input|output|stop <commandId>`",
-    "- Reports, subagent messages and ends wake you; the user reads only your replies.",
+    "- A call never holds longer than 10 s, a loop or a sleep in it included: you wait by ending your turn, and a running command's report, a subagent's message or an end wakes you. The user reads only your replies.",
 ];
 
 /// What the model identity line names of the model that serves a node,

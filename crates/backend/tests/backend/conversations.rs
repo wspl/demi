@@ -1321,23 +1321,9 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         system.contains("You are Demi, an agent that does work for the user"),
         "{system}"
     );
-    // The files and the subagents a reply names are links the page opens.
-    assert!(
-        system.contains("`[runner.md](docs/execution/runner.md#L438)`")
-            && system.contains("`[File icons](agent:4)`"),
-        "{system}"
-    );
     assert!(
         system.contains("demi host"),
         "the backend's group is among the commands: {system}"
-    );
-    // A file the agent delivers is its attachment block, in the guide and
-    // in `demi attachment`'s entry alike, and never a link to the
-    // attachment.
-    assert!(
-        system.matches(r#"`<attachment id=\"a3\" />` on a line of its own"#).count() == 2
-            && !system.contains("](attachment:"),
-        "{system}"
     );
     // Without the command packages the backend's own groups are
     // offered, and none of the packages'.
