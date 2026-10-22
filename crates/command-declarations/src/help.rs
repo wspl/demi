@@ -7,7 +7,7 @@ use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 
 /// The paragraph the capability index opens with: what every command does
 /// unless its own help says otherwise.
-pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints its data on stdout, a list as a table under a header row and one object as Key: value lines, and --json, where usage offers it, prints the same as JSON; warnings and errors go to stderr, and a failure exits 1, a usage error 2. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. Read text with the standard tools; file view alone shows you an image, a video or a PDF, from a file or a pipe.";
+pub const HELP_DEFAULTS: &str = "Commands print data on stdout, a list as a table and one object as Key: value lines, as JSON with --json where offered, and errors on stderr; a failure exits 1, a usage error 2. --help works at every level. Stdin bodies come by heredoc or pipe. A value starting with -- goes as --name=value, or after --. `demi file view` shows you an image, a video or a PDF.";
 
 /// The paragraph after [`HELP_DEFAULTS`] that introduces the groups'
 /// entries.

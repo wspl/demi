@@ -15,11 +15,11 @@ pub const INTERVAL_CAP_MS: u32 = 600_000;
 
 /// What `intervalMs` asks of the model; its bounds are the product's, which
 /// every request states alike (`crates/provider-common/src/contract.rs`).
-const INTERVAL: &str = "How often the command reports to you while it runs, required: a number of whole milliseconds from 15000 to 600000 (ten minutes) for a command that ends, such as a build or a test suite. It does not change when the call returns, which is when the command ends or after 10 seconds; a command still running then has its commandId in the result, and reports to you every interval until it ends, and when it ends. Short for a command that should end within minutes, long for one that takes long. A value outside the bounds is taken as the nearest bound. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its output has been quiet for 2 seconds, or after 30 seconds, and the command reports only its end.";
+const INTERVAL: &str = "How often the command reports while it runs: 15000–600000 ms; null for a command that runs until stopped, which reports only its end.";
 
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs.
-pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a command in the imperative, such as \"Install Chrome for Testing\", \"Start the browser with a blank tab\" or \"Run the type checker\". It is written before the step runs, so never state a result or a state reached (not \"Chrome for Testing installed\"). Do not describe waiting, pausing or tool mechanics; no generic action or bare noun; no scripts, output, protocol state, step numbers, tool names, ids, internal labels or reasons.";
+pub(super) const DESCRIPTION: &str = "The step's title the user sees, an imperative written before it runs, such as \"Run the type checker\".";
 
 // `description` comes first: a model writes a call's fields in the schema's
 // order, so the title the page shows arrives before a long script.

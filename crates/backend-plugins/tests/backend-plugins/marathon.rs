@@ -105,9 +105,9 @@ async fn a_coding_workflow_edits_files_and_every_command_starts_in_the_workspace
         );
         for taught in [
             "Capabilities:",
-            "demi agent\nRuns subagents",
+            "demi agent\n",
             "Operations: spawn, cwd, send, abort, resume, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check, workflows use\n",
-            "demi file\nUse it whenever you change the task's files",
+            "demi file\n",
             "Operations: view, edit, patch\n",
             "Details: demi file --help; one operation: demi file <operation> --help",
         ] {

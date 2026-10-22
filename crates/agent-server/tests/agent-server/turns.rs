@@ -883,7 +883,7 @@ async fn the_system_prompt_layers_its_parts_in_order_and_a_context_change_is_sav
     let layers = [
         "system prompt\n\nharness guide\n\n",
         "The shell tool:",
-        "Capabilities:\n\nUnless a command states otherwise",
+        "Capabilities:\n\n",
         "greet\nGreets the caller by name.\nOperations: hello\n",
         "This conversation runs on test-model (stub, test-model). If asked which model you are, answer with this.",
     ];

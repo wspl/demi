@@ -6,25 +6,8 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_file_protocol::{EditArgs, PACKAGE, PatchArgs, ViewArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
-/// The group's entry in the model's capability index: when to use it, and
-/// the shape of a call, since a model takes up a tool by the example it
-/// has seen. Its example starts at the margin, as `demi file edit`'s help
-/// says why.
-const ENTRY: &str = "Use it whenever you change the task's files, so each change is exact and the user sees it, and whenever you want to see an image, a video or a PDF: `view` shows you one from a file or a pipe, as in `demi browser screenshot t1 | demi file view`. Read text with cat, sed -n or rg. One `edit` creates and changes several files and keeps each file's line endings, CRLF included, then you build:
-demi file edit <<'EOF' && cargo check
-src/stream.rs
-<<<<<<< SEARCH
-=======
-pub struct Stream;
->>>>>>> REPLACE
-src/lib.rs
-<<<<<<< SEARCH
-mod socket;
-=======
-mod socket;
-mod stream;
->>>>>>> REPLACE
-EOF";
+/// The group's entry in the model's capability index.
+const ENTRY: &str = "Exact edits the user sees; view shows you an image, a video or a PDF.";
 
 /// The help of `demi file edit`'s stdin: the blocks, with an example the
 /// model can copy. Its lines start at the margin, since a marker is a whole

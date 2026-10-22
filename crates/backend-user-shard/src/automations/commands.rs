@@ -44,7 +44,7 @@ const MANAGE_DESCRIPTION: &str = "Manage Automations lets the agents of this con
 const SUMMARY: &str = "The user's automations: the agent started on a repeating cycle with tasks in it, once, every interval, by cron, when a command's output changes, or when a URL is called, in a new conversation each run or in an existing one. List, show, create, change, run now and delete them.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Starts the agent without the user: repeating every day, week, month or year, or every N of them, with one or more tasks, each a moment in the cycle with its own message; once; every interval; by cron; when a command's output changes; or when another system calls a URL; in a new conversation each run or in this one. Use it when the user asks for something to happen on a schedule or on an event: restate the schedule in words and the target, and create it once the user agrees. A run may change its own automation, such as pausing it once its job is done.";
+const ENTRY: &str = "Runs the agent on a schedule, once, every interval, by cron, when a command's output changes, or on a URL call; in a new conversation or this one.";
 
 const LIST_SUMMARY: &str = "List the user's automations: id, whether it is on, its trigger's kind, its next and last run, and its name; show gives the schedule, the tasks and the target.";
 const SHOW_SUMMARY: &str = "Show one automation: its trigger, a repeat's tasks with their ids, its target, model, prompt, state and latest runs.";

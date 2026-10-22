@@ -34,7 +34,7 @@ const ORGANIZE_DESCRIPTION: &str = "Organize Conversations lets the agents of th
 const SUMMARY: &str = "This conversation in the user's sidebar: rename it, and list the user's projects; and your own history in it, which history searches and reads.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Renames this conversation and lists the user's projects, each a directory on a Host; `demi host move` to a project's directory puts this conversation in it. Use it when the user asks to organize the conversation. Its history commands search and read your own earlier history, such as what a compaction summarized.";
+const ENTRY: &str = "Renames the conversation, lists projects, searches and reads its earlier history.";
 
 const RENAME_SUMMARY: &str = "Rename this conversation, as its title in the user's sidebar.";
 

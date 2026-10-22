@@ -53,7 +53,7 @@ const MANAGE_DESCRIPTION: &str = "Add, change and remove your provider entries a
 const SUMMARY: &str = "The user's provider entries and their models: list and show them, add, edit and remove entries, and search models.dev to add models to an entry's list. A change needs the user's permission and reaches every conversation.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Lists the user's provider entries and shows the models each offers, the ones the model menu and subagent profiles can use, with what an entry still needs; adds, renames and removes entries, and adds models to an entry's list, filled from a models.dev search. Use it when the user asks which models they have, or to add a provider or a model. It never takes a key as an argument: the user adds keys in Settings, or a key is piped in with --api-key-stdin.";
+const ENTRY: &str = "The user's model providers and their models.";
 
 const LIST_SUMMARY: &str = "List each provider entry: its id, its name in Settings, its kind, its count of models and its status (Ready, or what it still needs); demi providers show lists an entry's models. --all adds the entries and models the user turned off. A read.";
 

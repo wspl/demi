@@ -10,7 +10,7 @@ use serde::Deserialize;
 const SUMMARY: &str = "Make videos through the user's provider entries, one MP4 per call, written to stdout, and list the video models they offer.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Makes videos through the user's Grok subscription, xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark API key, or a compatible API: `generate` makes one MP4 from a prompt with the model `--model` names, optionally from a first frame, a last frame and reference images of the Host; `models` lists the models with their durations, resolutions, prices per second and the entry a call takes. The call waits for the vendor's job, minutes at most, saying on stderr how it moves; the video's bytes go to stdout: `> clip.mp4` saves it. Use it when the user asks for a video, a clip or an animation.";
+const ENTRY: &str = "Generates videos through the user's subscriptions or keys; the bytes go to stdout.";
 
 const GENERATE_SUMMARY: &str = "Make one video from the prompt, waiting for the vendor's job, and write its MP4 to stdout; stderr names the job at once, says each change of its state, then the video's length, size, sound, model, entry and cost. An option the result does not honour, or the entry's API has no field for, adds a warning and still succeeds.";
 

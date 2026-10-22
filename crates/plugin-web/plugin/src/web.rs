@@ -37,7 +37,7 @@ use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
 use crate::search::{DEFAULT_COUNT, MAX_COUNT, SearchArgs, SearchedPage};
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Searches the web and reads pages: `search` lists pages for one to four queries, with their links and the lines that matter, and `fetch` reads a URL from the Host as Markdown, a part at a time, and saves a PDF, an image or any other file for `demi file view`. Use them for documentation, release notes, news or an API's JSON. Not for a page that needs JavaScript, a sign-in or clicks, where `demi browser` works.";
+const ENTRY: &str = "Searches the web; fetches a page as Markdown, or a file.";
 
 /// The plugin's commands: the `demi web` group.
 pub(crate) fn commands() -> CommandPlugin {

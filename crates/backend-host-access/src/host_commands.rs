@@ -79,7 +79,7 @@ const SUMMARY: &str =
     "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another, expose a device's port to the backend's requests.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on with the user's account; forwards a port between Hosts, as ssh -L does; exposes a device's port, such as Ollama's, to a provider entry. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or reaching a service on another Host.";
+const ENTRY: &str = "Hosts and devices: list, run a command on another, attach, detach, move the conversation, forward and expose ports, pair.";
 
 /// The path of `demi host pair`, which always brings a host the
 /// conversation may not reach.

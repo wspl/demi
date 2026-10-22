@@ -11,7 +11,7 @@ use demi_host_interface::{GroupBuilder, LeafBuilder};
 /// The group's summary.
 const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. A new Host needs demi browser install once before its first browser command. Use inspect to obtain node references; never guess them. Run a sequence of steps as one script: chain the commands in one shell call and read each result with --json to decide the next.";
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Drives a real browser on the Host: opens pages, reads their text and structure, clicks, types, fills forms, uploads and downloads files, takes screenshots, reads values with read-only scripts (demi browser eval t1 'document.title'), and keeps tabs and sign-ins for the whole conversation. Use it when a task needs a live page: checking a site the user is building, using a site that needs JavaScript or a sign-in, or showing the user a page in their work panel. Not for fetching a static URL or an API, where curl is enough.";
+const ENTRY: &str = "A real browser on the Host: pages, tabs, sign-ins, clicks, forms, uploads, downloads, screenshots, read-only scripts, CDP.";
 
 /// What every leaf but `screenshot` writes on success.
 const SUCCESS: &str = "readable page results; one validated JSON value with --json";

@@ -77,7 +77,7 @@ const MANAGE_DESCRIPTION: &str = "Manage Credentials lets the agents of this con
 const SUMMARY: &str = "The user's credentials: named secrets such as API keys, tokens and passwords, each with fields. Ask the user for one, pass a field's value on without reading it, list and show them, or remove one.";
 
 /// The group's entry in the model's capability index.
-const ENTRY: &str = "Keeps the secrets a task needs, API keys, tokens, passwords, as the user's named credentials: `request` asks the user for one on a card and waits for the answer; `read` writes one field's value to standard output, to pass into a pipe, a file or `$(…)` without printing it. Use it whenever a task needs a secret, rather than asking the user to paste it into the conversation, where it would join the transcript.";
+const ENTRY: &str = "The user's named secrets: request one on a card, read a field into a pipe or a file. A secret is asked for this way, never in the conversation.";
 
 const LIST_SUMMARY: &str = "List the user's credentials: name, field names, when each is removed (- for kept always), and whether this conversation may use it. No value.";
 

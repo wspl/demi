@@ -140,7 +140,7 @@ struct ShowArgs {
 }
 
 /// The group's entry in the model's capability index.
-const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; resumes one onto another profile to go on from what it knows; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists, checks and picks workflows. A single lookup or edit is faster by hand.";
+const AGENT_ENTRY: &str = "Subagents with a fresh context each, run in parallel: spawn, send, resume (onto another profile too), abort, list, show; profiles; workflows.";
 
 /// `demi agent spawn --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
